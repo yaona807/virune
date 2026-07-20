@@ -1,0 +1,7 @@
+record User derives Eq {
+	name: String
+}
+
+fn same(left: User, right: User) -> Bool {
+	return left == right
+}

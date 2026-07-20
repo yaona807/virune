@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "status": "compile-error",
+  "diagnostics": [
+    {
+      "severity": "error",
+      "code": "L2046",
+      "line": 4,
+      "column": 9,
+      "endLine": 4,
+      "endColumn": 40
+    }
+  ],
+  "rules": [
+    "type.generics"
+  ]
+}

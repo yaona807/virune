@@ -1,0 +1,56 @@
+{
+	"name": "@virune/stdlib",
+	"version": "1.0.0",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/yaona807/virune.git",
+		"directory": "packages/stdlib"
+	},
+	"homepage": "https://github.com/yaona807/virune#readme",
+	"bugs": {
+		"url": "https://github.com/yaona807/virune/issues"
+	},
+	"type": "module",
+	"engines": {
+		"node": ">=24.0.0"
+	},
+	"exports": {
+		".": "./dist/src/index.js",
+		"./node/fs": "./dist/src/node-fs.js",
+		"./browser/fetch": "./dist/src/browser-fetch.js",
+		"./node/console": "./dist/src/node-console.js",
+		"./node/path": "./dist/src/node-path.js",
+		"./node/process": "./dist/src/node-process.js",
+		"./node/http": "./dist/src/node-http.js",
+		"./timer": "./dist/src/timer.js",
+		"./stream": "./dist/src/stream.js",
+		"./browser/storage": "./dist/src/browser-storage.js",
+		"./browser/dom": "./dist/src/browser-dom.js",
+		"./node/crypto": "./dist/src/node-crypto.js",
+		"./url": "./dist/src/url.js"
+	},
+	"files": [
+		"LICENSE",
+		"README.md",
+		"README_ja.md",
+		"dist/src"
+	],
+	"dependencies": {
+		"@virune/runtime": "1.0.0"
+	},
+	"scripts": {
+		"build": "tsc -b",
+		"test": "node --test dist/test/**/*.test.js"
+	},
+	"description": "Virune standard-library adapters for Node.js and browsers.",
+	"license": "MIT",
+	"keywords": [
+		"virune",
+		"standard-library",
+		"nodejs",
+		"browser"
+	],
+	"publishConfig": {
+		"access": "public"
+	}
+}

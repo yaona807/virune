@@ -1,0 +1,32 @@
+{
+  "files": [],
+  "references": [
+    {
+      "path": "./packages/runtime"
+    },
+    {
+      "path": "./packages/compiler"
+    },
+    {
+      "path": "./packages/js-interop"
+    },
+    {
+      "path": "./packages/formatter"
+    },
+    {
+      "path": "./packages/stdlib"
+    },
+    {
+      "path": "./packages/cli"
+    },
+    {
+      "path": "./packages/language-server"
+    },
+    {
+      "path": "./packages/vscode"
+    },
+    {
+      "path": "./integration"
+    }
+  ]
+}

@@ -1,0 +1,4 @@
+fn writeMessage(message: String) -> Unit {
+	Console.print(message)
+	return Unit
+}

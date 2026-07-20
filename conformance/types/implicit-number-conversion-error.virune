@@ -1,0 +1,3 @@
+fn value() -> Float {
+	return 1
+}

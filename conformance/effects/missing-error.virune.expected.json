@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "status": "compile-error",
+  "diagnostics": [
+    {
+      "severity": "error",
+      "code": "L2076",
+      "line": 2,
+      "column": 2,
+      "endLine": 2,
+      "endColumn": 24
+    }
+  ],
+  "rules": [
+    "type.capabilities"
+  ]
+}

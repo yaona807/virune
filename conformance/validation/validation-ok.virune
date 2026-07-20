@@ -1,0 +1,6 @@
+fn validate(value: Int) -> Validation<Int, String> {
+	if value > 0 {
+		return Validation.valid<Int, String>(value)
+	}
+	return Validation.invalid<Int, String>("must be positive")
+}

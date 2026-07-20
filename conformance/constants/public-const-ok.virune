@@ -1,0 +1,6 @@
+pub const VERSION: String = "1.0"
+const RETRIES: Int = 3
+
+pub fn version() -> String {
+	return VERSION
+}

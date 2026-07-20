@@ -1,0 +1,61 @@
+name: Nightly quality suites
+
+on:
+  schedule:
+    - cron: '17 18 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  fuzz:
+    name: Fuzz shard ${{ matrix.shard }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run test:fuzz:long
+        env:
+          VIRUNE_FUZZ_DURATION_MS: 900000
+          VIRUNE_FUZZ_SHARD: ${{ matrix.shard }}
+          VIRUNE_FUZZ_ARTIFACT_DIR: fuzz-regressions/artifacts/shard-${{ matrix.shard }}
+      - name: Upload fuzz regressions
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: fuzz-regressions-${{ matrix.shard }}
+          path: fuzz-regressions/artifacts/shard-${{ matrix.shard }}
+          if-no-files-found: ignore
+          retention-days: 30
+
+  binding-corpus:
+    name: Binding corpus
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run test:binding-corpus
+        env:
+          VIRUNE_BINDING_CORPUS_REPORT: .cache/binding-corpus/report.current.json
+      - name: Upload corpus report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: binding-corpus-report
+          path: .cache/binding-corpus/report.current.json
+          retention-days: 30

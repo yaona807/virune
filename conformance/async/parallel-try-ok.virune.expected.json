@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "status": "compile-success",
+  "diagnostics": [],
+  "rules": [
+    "task.parallel-try"
+  ]
+}

@@ -1,0 +1,5 @@
+pub fn main() -> Unit uses Console {
+	let name = "Virune"
+	Console.print("Hello from {name}")
+	return Unit
+}

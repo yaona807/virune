@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "status": "compile-success",
+  "diagnostics": [],
+  "rules": [
+    "ffi.explicit",
+    "ffi.safe"
+  ]
+}

@@ -1,0 +1,7 @@
+fn encode(value: String) -> String {
+	return Url.encodeComponent(value)
+}
+
+fn decode(value: String) -> Result<String, JsError> {
+	return Url.decodeComponent(value)
+}

@@ -1,0 +1,6 @@
+fn first(values: List<Int>) -> Int? {
+	return match values {
+		[head, ..._] => Some(head)
+		[] => None
+	}
+}

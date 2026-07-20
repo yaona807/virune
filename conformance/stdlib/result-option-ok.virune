@@ -1,0 +1,10 @@
+fn double(value: Int) -> Int => value * 2
+fn positive(value: Int) -> Bool => value > 0
+
+fn useValues(value: Int?, result: Result<Int, String>) -> Int {
+	let mapped = Option.map(value, double)
+	let filtered = Option.filter(mapped, positive)
+	let safe = Option.unwrapOr(filtered, 0)
+	let resultValue = Result.unwrapOr(Result.map(result, double), 0)
+	return safe + resultValue
+}

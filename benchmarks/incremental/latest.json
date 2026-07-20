@@ -1,0 +1,173 @@
+{
+	"schemaVersion": 1,
+	"generatedAt": "2026-07-18T11:11:42.683Z",
+	"nodeVersion": "v24.0.0",
+	"platform": "linux-x64",
+	"results": [
+		{
+			"moduleCount": 100,
+			"clean": {
+				"milliseconds": 171.7,
+				"diagnostics": 0,
+				"stats": {
+					"parsedModules": 100,
+					"reusedParsedModules": 0,
+					"checkedModules": 100,
+					"reusedCheckedModules": 0,
+					"emittedModules": 100,
+					"reusedEmittedModules": 0,
+					"invalidatedModules": 0
+				}
+			},
+			"unchanged": {
+				"milliseconds": 41.97,
+				"diagnostics": 0,
+				"stats": {
+					"parsedModules": 0,
+					"reusedParsedModules": 100,
+					"checkedModules": 0,
+					"reusedCheckedModules": 100,
+					"emittedModules": 0,
+					"reusedEmittedModules": 100,
+					"invalidatedModules": 0
+				}
+			},
+			"implementationChange": {
+				"milliseconds": 42.07,
+				"diagnostics": 0,
+				"stats": {
+					"parsedModules": 1,
+					"reusedParsedModules": 99,
+					"checkedModules": 1,
+					"reusedCheckedModules": 99,
+					"emittedModules": 1,
+					"reusedEmittedModules": 99,
+					"invalidatedModules": 0
+				}
+			},
+			"signatureChange": {
+				"milliseconds": 47.44,
+				"diagnostics": 0,
+				"stats": {
+					"parsedModules": 1,
+					"reusedParsedModules": 99,
+					"checkedModules": 2,
+					"reusedCheckedModules": 98,
+					"emittedModules": 2,
+					"reusedEmittedModules": 98,
+					"invalidatedModules": 0
+				}
+			}
+		},
+		{
+			"moduleCount": 500,
+			"clean": {
+				"milliseconds": 528.46,
+				"diagnostics": 0,
+				"stats": {
+					"parsedModules": 500,
+					"reusedParsedModules": 0,
+					"checkedModules": 500,
+					"reusedCheckedModules": 0,
+					"emittedModules": 500,
+					"reusedEmittedModules": 0,
+					"invalidatedModules": 0
+				}
+			},
+			"unchanged": {
+				"milliseconds": 193.51,
+				"diagnostics": 0,
+				"stats": {
+					"parsedModules": 0,
+					"reusedParsedModules": 500,
+					"checkedModules": 0,
+					"reusedCheckedModules": 500,
+					"emittedModules": 0,
+					"reusedEmittedModules": 500,
+					"invalidatedModules": 0
+				}
+			},
+			"implementationChange": {
+				"milliseconds": 217.72,
+				"diagnostics": 0,
+				"stats": {
+					"parsedModules": 1,
+					"reusedParsedModules": 499,
+					"checkedModules": 1,
+					"reusedCheckedModules": 499,
+					"emittedModules": 1,
+					"reusedEmittedModules": 499,
+					"invalidatedModules": 0
+				}
+			},
+			"signatureChange": {
+				"milliseconds": 186.02,
+				"diagnostics": 0,
+				"stats": {
+					"parsedModules": 1,
+					"reusedParsedModules": 499,
+					"checkedModules": 2,
+					"reusedCheckedModules": 498,
+					"emittedModules": 2,
+					"reusedEmittedModules": 498,
+					"invalidatedModules": 0
+				}
+			}
+		},
+		{
+			"moduleCount": 1000,
+			"clean": {
+				"milliseconds": 787.99,
+				"diagnostics": 0,
+				"stats": {
+					"parsedModules": 1000,
+					"reusedParsedModules": 0,
+					"checkedModules": 1000,
+					"reusedCheckedModules": 0,
+					"emittedModules": 1000,
+					"reusedEmittedModules": 0,
+					"invalidatedModules": 0
+				}
+			},
+			"unchanged": {
+				"milliseconds": 416.72,
+				"diagnostics": 0,
+				"stats": {
+					"parsedModules": 0,
+					"reusedParsedModules": 1000,
+					"checkedModules": 0,
+					"reusedCheckedModules": 1000,
+					"emittedModules": 0,
+					"reusedEmittedModules": 1000,
+					"invalidatedModules": 0
+				}
+			},
+			"implementationChange": {
+				"milliseconds": 370.77,
+				"diagnostics": 0,
+				"stats": {
+					"parsedModules": 1,
+					"reusedParsedModules": 999,
+					"checkedModules": 1,
+					"reusedCheckedModules": 999,
+					"emittedModules": 1,
+					"reusedEmittedModules": 999,
+					"invalidatedModules": 0
+				}
+			},
+			"signatureChange": {
+				"milliseconds": 423.81,
+				"diagnostics": 0,
+				"stats": {
+					"parsedModules": 1,
+					"reusedParsedModules": 999,
+					"checkedModules": 2,
+					"reusedCheckedModules": 998,
+					"emittedModules": 2,
+					"reusedEmittedModules": 998,
+					"invalidatedModules": 0
+				}
+			}
+		}
+	]
+}

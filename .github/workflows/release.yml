@@ -1,0 +1,40 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - name: Verify release tag matches package version
+        shell: bash
+        run: |
+          expected="v$(node -p 'require("./package.json").version')"
+          test "$GITHUB_REF_NAME" = "$expected" || { echo "Expected tag $expected, got $GITHUB_REF_NAME" >&2; exit 1; }
+      - run: npm ci
+      - run: npm run verify
+      - run: npm run pack:virune
+      - run: npm run pack:vscode
+      - run: npm run smoke:release
+      - name: Create or update GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" release/* --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" release/* --generate-notes --verify-tag
+          fi

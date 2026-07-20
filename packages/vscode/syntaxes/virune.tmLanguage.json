@@ -1,0 +1,232 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Virune",
+  "scopeName": "source.virune",
+  "patterns": [
+    {
+      "include": "#comments"
+    },
+    {
+      "include": "#strings"
+    },
+    {
+      "include": "#attributes"
+    },
+    {
+      "include": "#declarations"
+    },
+    {
+      "include": "#constants"
+    },
+    {
+      "include": "#numbers"
+    },
+    {
+      "include": "#builtins"
+    },
+    {
+      "include": "#keywords"
+    },
+    {
+      "include": "#operators"
+    }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        {
+          "name": "comment.line.documentation.virune",
+          "match": "///.*$"
+        },
+        {
+          "name": "comment.line.double-slash.virune",
+          "match": "//.*$"
+        }
+      ]
+    },
+    "strings": {
+      "patterns": [
+        {
+          "name": "string.quoted.double.virune",
+          "begin": "\"",
+          "beginCaptures": {
+            "0": {
+              "name": "punctuation.definition.string.begin.virune"
+            }
+          },
+          "end": "\"",
+          "endCaptures": {
+            "0": {
+              "name": "punctuation.definition.string.end.virune"
+            }
+          },
+          "patterns": [
+            {
+              "name": "constant.character.escape.brace.virune",
+              "match": "\\{\\{|\\}\\}"
+            },
+            {
+              "name": "meta.interpolation.virune",
+              "begin": "(?<!\\\\)\\{(?!\\{)",
+              "beginCaptures": {
+                "0": {
+                  "name": "punctuation.section.interpolation.begin.virune"
+                }
+              },
+              "end": "(?<!\\\\)\\}(?!\\})",
+              "endCaptures": {
+                "0": {
+                  "name": "punctuation.section.interpolation.end.virune"
+                }
+              },
+              "patterns": [
+                {
+                  "include": "$self"
+                }
+              ]
+            },
+            {
+              "name": "constant.character.escape.virune",
+              "match": "\\\\[\"\\\\nrt]"
+            },
+            {
+              "name": "invalid.illegal.escape.virune",
+              "match": "\\\\."
+            }
+          ]
+        }
+      ]
+    },
+    "attributes": {
+      "patterns": [
+        {
+          "match": "(@)([A-Za-z_][A-Za-z0-9_]*)",
+          "captures": {
+            "1": {
+              "name": "punctuation.definition.annotation.virune"
+            },
+            "2": {
+              "name": "entity.name.function.decorator.virune"
+            }
+          }
+        }
+      ]
+    },
+    "declarations": {
+      "patterns": [
+        {
+          "match": "\\b(fn)(\\s+)([A-Za-z_][A-Za-z0-9_]*)",
+          "captures": {
+            "1": {
+              "name": "storage.type.function.virune"
+            },
+            "3": {
+              "name": "entity.name.function.virune"
+            }
+          }
+        },
+        {
+          "match": "\\b(record|enum|newtype|type)(\\s+)([A-Za-z_][A-Za-z0-9_]*)",
+          "captures": {
+            "1": {
+              "name": "storage.type.virune"
+            },
+            "3": {
+              "name": "entity.name.type.virune"
+            }
+          }
+        },
+        {
+          "match": "\\b(extern)(\\s+)([A-Za-z_][A-Za-z0-9_]*)",
+          "captures": {
+            "1": {
+              "name": "storage.type.virune"
+            },
+            "3": {
+              "name": "entity.name.namespace.virune"
+            }
+          }
+        },
+        {
+          "match": "\\b(let|const)(\\s+)(?:mut\\s+)?([A-Za-z_][A-Za-z0-9_]*)",
+          "captures": {
+            "1": {
+              "name": "storage.type.virune"
+            },
+            "3": {
+              "name": "variable.other.definition.virune"
+            }
+          }
+        }
+      ]
+    },
+    "constants": {
+      "patterns": [
+        {
+          "name": "constant.language.boolean.virune",
+          "match": "\\b(?:true|false)\\b"
+        }
+      ]
+    },
+    "numbers": {
+      "patterns": [
+        {
+          "name": "constant.numeric.integer.big.virune",
+          "match": "\\b(?:0x[0-9A-Fa-f](?:_?[0-9A-Fa-f])*|0b[01](?:_?[01])*|(?:0|[1-9](?:_?[0-9])*))n\\b"
+        },
+        {
+          "name": "constant.numeric.float.virune",
+          "match": "\\b(?:(?:0|[1-9](?:_?[0-9])*)\\.[0-9](?:_?[0-9])*(?:[eE][+-]?[0-9](?:_?[0-9])*)?|(?:0|[1-9](?:_?[0-9])*)[eE][+-]?[0-9](?:_?[0-9])*)\\b"
+        },
+        {
+          "name": "constant.numeric.integer.virune",
+          "match": "\\b(?:0x[0-9A-Fa-f](?:_?[0-9A-Fa-f])*|0b[01](?:_?[01])*|0|[1-9](?:_?[0-9])*)\\b"
+        }
+      ]
+    },
+    "builtins": {
+      "patterns": [
+        {
+          "name": "support.type.primitive.virune",
+          "match": "\\b(?:Bool|Int|Float|BigInt|String|Unit|Unknown|Never|Byte|Int8|UInt8|Int16|UInt16|Int32|UInt32|Int64|UInt64)\\b"
+        },
+        {
+          "name": "support.type.virune",
+          "match": "\\b(?:Option|Result|List|Map|Set|Stream|Future|Bytes|MutableBytes|ByteOrder|Duration|JsError|JsonError)\\b"
+        },
+        {
+          "name": "support.function.virune",
+          "match": "\\b(?:expect|panic|Some|Ok|Err|None)\\b"
+        }
+      ]
+    },
+    "keywords": {
+      "patterns": [
+        {
+          "name": "keyword.control.virune",
+          "match": "\\b(?:await|break|continue|defer|discard|else|for|if|in|match|parallel|return|then|try|while|with)\\b"
+        },
+        {
+          "name": "keyword.control.import.virune",
+          "match": "\\b(?:as|from|import)\\b"
+        },
+        {
+          "name": "storage.type.virune",
+          "match": "\\b(?:enum|extern|fn|newtype|record|test|type)\\b"
+        },
+        {
+          "name": "storage.modifier.virune",
+          "match": "\\b(?:async|const|derives|js|let|module|mut|pub|unsafe|uses)\\b"
+        }
+      ]
+    },
+    "operators": {
+      "patterns": [
+        {
+          "name": "keyword.operator.virune",
+          "match": "\\|>|=>|->|==|!=|<=|>=|&&|\\|\\||\\.\\.=|\\.\\.\\.|[|=<>+\\-*/%!?:]"
+        }
+      ]
+    }
+  }
+}

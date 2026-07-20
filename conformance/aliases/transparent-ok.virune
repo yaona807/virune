@@ -1,0 +1,5 @@
+type UserId = Int
+
+fn identity(value: UserId) -> Int {
+	return value
+}

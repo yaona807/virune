@@ -1,0 +1,3 @@
+record Action {
+	run: fn() -> Unit uses *
+}

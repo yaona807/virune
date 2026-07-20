@@ -1,0 +1,6 @@
+fn classify(value: Int?) -> Int {
+	return match value {
+		Some(left) | Some(right) => 1
+		None => 0
+	}
+}

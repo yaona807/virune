@@ -1,0 +1,10 @@
+fn double(value: Int) -> Int => value * 2
+fn positive(value: Int) -> Bool => value > 0
+
+async fn collect() -> List<Int> uses Task {
+	let stream = Stream.fromList([1, 2, 3])
+		|> Stream.map(double)
+		|> Stream.filter(positive)
+		|> Stream.take(2)
+	return await Stream.collect(stream)
+}

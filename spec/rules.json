@@ -1,0 +1,558 @@
+{
+  "schemaVersion": 1,
+  "languageVersion": "1.0",
+  "rules": [
+    {
+      "id": "collection.eq-hash",
+      "tests": [
+        {
+          "file": "packages/runtime/test/runtime.test.ts",
+          "case": "Virune Map and Set use structural equality and nominal type identity",
+          "kind": "positive",
+          "platform": "common"
+        }
+      ]
+    },
+    {
+      "id": "conformance.exact-diagnostics",
+      "tests": [
+        {
+          "file": "integration/conformance.test.ts",
+          "case": "CLI conformance compares exact status and diagnostic ranges",
+          "kind": "positive",
+          "platform": "common"
+        }
+      ]
+    },
+    {
+      "id": "entry.async",
+      "tests": [
+        {
+          "file": "integration/cli-api.test.ts",
+          "case": "CLI run creates a task context for async main without user arguments",
+          "kind": "positive",
+          "platform": "common"
+        }
+      ]
+    },
+    {
+      "id": "entry.browser",
+      "tests": [
+        {
+          "file": "integration/browser.test.ts",
+          "case": "browser target executes emitted ESM in Chromium",
+          "kind": "positive",
+          "platform": "browser"
+        }
+      ]
+    },
+    {
+      "id": "entry.diagnostic",
+      "tests": [
+        {
+          "file": "integration/entry-point-invalid.test.ts",
+          "case": "CLI run reports invalid main signatures as user diagnostics",
+          "kind": "positive",
+          "platform": "common"
+        }
+      ]
+    },
+    {
+      "id": "entry.exit",
+      "tests": [
+        {
+          "file": "integration/entry-point-runtime.test.ts",
+          "case": "CLI run accepts args and Result<Unit, E>, and converts panic to exit code 1 without an internal stack",
+          "kind": "positive",
+          "platform": "common"
+        }
+      ]
+    },
+    {
+      "id": "entry.main",
+      "tests": [
+        {
+          "file": "integration/entry-point-invalid.test.ts",
+          "case": "CLI run reports invalid main signatures as user diagnostics",
+          "kind": "positive",
+          "platform": "common"
+        }
+      ]
+    },
+    {
+      "id": "entry.module",
+      "tests": [
+        {
+          "file": "integration/entry-point-invalid.test.ts",
+          "case": "CLI run reports invalid main signatures as user diagnostics",
+          "kind": "positive",
+          "platform": "common"
+        }
+      ]
+    },
+    {
+      "id": "entry.non-generic",
+      "tests": [
+        {
+          "file": "integration/entry-point-invalid.test.ts",
+          "case": "CLI run reports invalid main signatures as user diagnostics",
+          "kind": "positive",
+          "platform": "common"
+        }
+      ]
+    },
+    {
+      "id": "entry.parameters",
+      "tests": [
+        {
+          "file": "integration/entry-point-runtime.test.ts",
+          "case": "CLI run accepts args and Result<Unit, E>, and converts panic to exit code 1 without an internal stack",
+          "kind": "positive",
+          "platform": "common"
+        }
+      ]
+    },
+    {
+      "id": "entry.return",
+      "tests": [
+        {
+          "file": "integration/entry-point-runtime.test.ts",
+          "case": "CLI run accepts args and Result<Unit, E>, and converts panic to exit code 1 without an internal stack",
+          "kind": "positive",
+          "platform": "common"
+        }
+      ]
+    },
+    {
+      "id": "entry.run-only",
+      "tests": [
+        {
+          "file": "integration/entry-point-invalid.test.ts",
+          "case": "CLI run reports invalid main signatures as user diagnostics",
+          "kind": "positive",
+          "platform": "common"
+        }
+      ]
+    },
+    {
+      "id": "eval.defer",
+      "tests": [
+        "conformance/resources/defer-ok.virune"
+      ]
+    },
+    {
+      "id": "eval.integer",
+      "tests": [
+        "conformance/numbers/unsafe-int-literal-error.virune"
+      ]
+    },
+    {
+      "id": "eval.loop-control",
+      "tests": [
+        "conformance/control/break-continue-ok.virune",
+        "conformance/control/break-outside-error.virune"
+      ]
+    },
+    {
+      "id": "eval.match",
+      "tests": [
+        "conformance/patterns/exhaustive-enum-ok.virune",
+        "conformance/patterns/non-exhaustive-enum-error.virune"
+      ]
+    },
+    {
+      "id": "eval.order",
+      "tests": [
+        {
+          "file": "integration/project.test.ts",
+          "case": "build output is deterministic",
+          "kind": "positive",
+          "platform": "common"
+        }
+      ]
+    },
+    {
+      "id": "eval.panic",
+      "tests": [
+        {
+          "file": "integration/project.test.ts",
+          "case": "generated defer aggregates the primary panic and every cleanup panic",
+          "kind": "positive",
+          "platform": "common"
+        }
+      ]
+    },
+    {
+      "id": "eval.reference",
+      "tests": [
+        {
+          "file": "packages/compiler/test/compiler.test.ts",
+          "case": "reference evaluator agrees with the pure language core",
+          "kind": "positive",
+          "platform": "common"
+        }
+      ]
+    },
+    {
+      "id": "eval.return",
+      "tests": [
+        {
+          "file": "packages/compiler/test/compiler.test.ts",
+          "case": "reference evaluator agrees with the pure language core",
+          "kind": "positive",
+          "platform": "common"
+        }
+      ]
+    },
+    {
+      "id": "eval.unit-implicit-return",
+      "tests": [
+        "conformance/functions/unit-implicit-return-ok.virune"
+      ]
+    },
+    {
+      "id": "ffi.binding",
+      "tests": [
+        {
+          "file": "integration/cli.test.ts",
+          "case": "CLI bind generates type-checkable Virune FFI declarations from TypeScript declarations",
+          "kind": "positive",
+          "platform": "common"
+        }
+      ]
+    },
+    {
+      "id": "ffi.bytes",
+      "tests": [
+        {
+          "file": "packages/runtime/test/runtime.test.ts",
+          "case": "Bytes and MutableBytes support binary round-trips without aliasing",
+          "kind": "positive",
+          "platform": "common"
+        }
+      ]
+    },
+    {
+      "id": "ffi.explicit",
+      "tests": [
+        "conformance/ffi/safe-result-ok.virune"
+      ]
+    },
+    {
+      "id": "ffi.export",
+      "tests": [
+        "conformance/attributes/js-export-ok.virune",
+        "conformance/attributes/js-export-private-error.virune"
+      ]
+    },
+    {
+      "id": "ffi.safe",
+      "tests": [
+        "conformance/ffi/safe-result-ok.virune"
+      ]
+    },
+    {
+      "id": "ffi.unsafe",
+      "tests": [
+        "conformance/modules/unsafe-module-ok.virune"
+      ]
+    },
+    {
+      "id": "grammar.complete",
+      "tests": [
+        {
+          "file": "scripts/verify-grammar.mjs",
+          "case": "script",
+          "kind": "positive",
+          "platform": "common"
+        }
+      ]
+    },
+    {
+      "id": "lexical.comments",
+      "tests": [
+        "conformance/syntax/function-ok.virune"
+      ]
+    },
+    {
+      "id": "lexical.encoding",
+      "tests": [
+        {
+          "file": "packages/compiler/test/compiler.test.ts",
+          "case": "compiler fuzz: parser and checker never throw for deterministic malformed input corpus",
+          "kind": "positive",
+          "platform": "common"
+        }
+      ]
+    },
+    {
+      "id": "lexical.number",
+      "tests": [
+        "conformance/numbers/unsafe-int-literal-error.virune"
+      ]
+    },
+    {
+      "id": "lexical.statement-end",
+      "tests": [
+        "conformance/syntax/semicolon-error.virune"
+      ]
+    },
+    {
+      "id": "lexical.string",
+      "tests": [
+        "conformance/string/code-points-ok.virune"
+      ]
+    },
+    {
+      "id": "module.api",
+      "tests": [
+        {
+          "file": "integration/cli-api.test.ts",
+          "case": "CLI api writes a deterministic public API snapshot and detects drift",
+          "kind": "positive",
+          "platform": "common"
+        }
+      ]
+    },
+    {
+      "id": "module.cycle",
+      "tests": [
+        {
+          "file": "integration/project.test.ts",
+          "case": "module cycles are rejected",
+          "kind": "positive",
+          "platform": "common"
+        }
+      ]
+    },
+    {
+      "id": "module.file",
+      "tests": [
+        {
+          "file": "integration/project.test.ts",
+          "case": "buildProject emits an ES module and traceable source map",
+          "kind": "positive",
+          "platform": "common"
+        }
+      ]
+    },
+    {
+      "id": "module.import",
+      "tests": [
+        {
+          "file": "integration/project.test.ts",
+          "case": "public imports re-export values and preserve original type identity",
+          "kind": "positive",
+          "platform": "common"
+        }
+      ]
+    },
+    {
+      "id": "module.package",
+      "tests": [
+        {
+          "file": "integration/project.test.ts",
+          "case": "npm package subpaths use virune declarations for checking and JavaScript exports at runtime",
+          "kind": "positive",
+          "platform": "common"
+        }
+      ]
+    },
+    {
+      "id": "module.visibility",
+      "tests": [
+        {
+          "file": "integration/project.test.ts",
+          "case": "public API cannot expose a private nominal type",
+          "kind": "positive",
+          "platform": "common"
+        }
+      ]
+    },
+    {
+      "id": "platform.browser-runtime",
+      "tests": [
+        {
+          "file": "integration/browser.test.ts",
+          "case": "browser target executes emitted ESM in Chromium",
+          "kind": "positive",
+          "platform": "browser"
+        }
+      ]
+    },
+    {
+      "id": "stdlib.bytes",
+      "tests": [
+        "conformance/bytes/bytes-ok.virune",
+        "conformance/bytes/mutable-bytes-ok.virune"
+      ]
+    },
+    {
+      "id": "stdlib.fixed-integer",
+      "tests": [
+        "conformance/integers/fixed-width-ok.virune"
+      ]
+    },
+    {
+      "id": "stdlib.unicode",
+      "tests": [
+        "conformance/string/grapheme-normalize-ok.virune"
+      ]
+    },
+    {
+      "id": "task.await-propagate-precedence",
+      "tests": [
+        "conformance/async/await-propagate-ok.virune"
+      ]
+    },
+    {
+      "id": "task.future",
+      "tests": [
+        "conformance/async/await-sync-error.virune"
+      ]
+    },
+    {
+      "id": "task.parallel",
+      "tests": [
+        {
+          "file": "packages/runtime/test/runtime.test.ts",
+          "case": "Task.parallel cancels siblings, waits for settlement, and reports the leftmost rejection",
+          "kind": "positive",
+          "platform": "common"
+        }
+      ]
+    },
+    {
+      "id": "task.parallel-try",
+      "tests": [
+        "conformance/async/parallel-try-ok.virune"
+      ]
+    },
+    {
+      "id": "task.race",
+      "tests": [
+        {
+          "file": "packages/runtime/test/runtime.test.ts",
+          "case": "Task.race observes first settlement while Task.firstOk observes first fulfillment",
+          "kind": "positive",
+          "platform": "common"
+        }
+      ]
+    },
+    {
+      "id": "task.scope",
+      "tests": [
+        {
+          "file": "packages/runtime/test/runtime.test.ts",
+          "case": "Task.mapParallel cancels siblings and waits for their cleanup",
+          "kind": "positive",
+          "platform": "common"
+        }
+      ]
+    },
+    {
+      "id": "task.timeout",
+      "tests": [
+        {
+          "file": "packages/runtime/test/runtime.test.ts",
+          "case": "Task.timeout cancels and settles the child before returning",
+          "kind": "positive",
+          "platform": "common"
+        }
+      ]
+    },
+    {
+      "id": "type.alias",
+      "tests": [
+        "conformance/aliases/transparent-ok.virune",
+        "conformance/aliases/newtype-distinct-error.virune"
+      ]
+    },
+    {
+      "id": "type.capabilities",
+      "tests": [
+        "conformance/effects/declared-ok.virune",
+        "conformance/effects/open-effect-set-ok.virune",
+        "conformance/effects/missing-error.virune"
+      ]
+    },
+    {
+      "id": "type.composition",
+      "tests": [
+        "conformance/composition/strategy-record-ok.virune"
+      ]
+    },
+    {
+      "id": "type.generics",
+      "tests": [
+        "conformance/generics/explicit-call-ok.virune",
+        "conformance/generics/wrong-type-arity-error.virune"
+      ]
+    },
+    {
+      "id": "type.inference",
+      "tests": [
+        "conformance/types/empty-list-annotation-ok.virune",
+        "conformance/functions/async-block-lambda-ok.virune"
+      ]
+    },
+    {
+      "id": "type.must-use",
+      "tests": [
+        "conformance/must-use/result-ignored-error.virune",
+        "conformance/must-use/discard-ok.virune",
+        "conformance/must-use/attribute-error.virune"
+      ]
+    },
+    {
+      "id": "type.mutation",
+      "tests": [
+        "conformance/types/mutable-assignment-ok.virune",
+        "conformance/types/immutable-assignment-error.virune"
+      ]
+    },
+    {
+      "id": "type.nominal-identity",
+      "tests": [
+        {
+          "file": "integration/project.test.ts",
+          "case": "same-named records from different modules remain nominally distinct",
+          "kind": "positive",
+          "platform": "common"
+        }
+      ]
+    },
+    {
+      "id": "type.nullability",
+      "tests": [
+        "conformance/types/option-lifting-boundaries-ok.virune",
+        "conformance/types/none-expected-type-ok.virune"
+      ]
+    },
+    {
+      "id": "type.open-effect-nonescaping",
+      "tests": [
+        "conformance/effects/open-effect-escape-error.virune"
+      ]
+    },
+    {
+      "id": "type.result",
+      "tests": [
+        "conformance/errors/result-propagation-ok.virune"
+      ]
+    },
+    {
+      "id": "type.static",
+      "tests": [
+        "conformance/types/implicit-number-conversion-error.virune"
+      ]
+    },
+    {
+      "id": "type.tuple",
+      "tests": [
+        "conformance/tuples/type-and-pattern-ok.virune",
+        "conformance/tuples/pattern-arity-error.virune"
+      ]
+    }
+  ]
+}

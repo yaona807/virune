@@ -1,0 +1,5 @@
+fn swap(pair: (String, Int)) -> (Int, String) {
+	return match pair {
+		(name, age) => (age, name)
+	}
+}

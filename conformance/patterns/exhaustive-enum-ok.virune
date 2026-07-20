@@ -1,0 +1,11 @@
+enum Status {
+	Pending
+	Complete
+}
+
+fn label(status: Status) -> String {
+	return match status {
+		Pending => "pending"
+		Complete => "complete"
+	}
+}

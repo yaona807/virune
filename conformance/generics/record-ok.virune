@@ -1,0 +1,9 @@
+record Box<T> {
+	value: T
+}
+
+fn create() -> Box<Int> {
+	return Box {
+		value: 1,
+	}
+}

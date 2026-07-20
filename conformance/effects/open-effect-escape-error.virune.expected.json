@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "status": "compile-error",
+  "diagnostics": [
+    {
+      "code": "L2113",
+      "severity": "error",
+      "message": "uses * callbacks are non-escaping and cannot be stored in record fields",
+      "start": 17,
+      "end": 42
+    }
+  ],
+  "rules": [
+    "type.open-effect-nonescaping"
+  ]
+}

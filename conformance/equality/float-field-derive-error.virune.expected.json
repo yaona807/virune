@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "status": "compile-error",
+  "diagnostics": [
+    {
+      "severity": "error",
+      "code": "L2061",
+      "line": 1,
+      "column": 20,
+      "endLine": 1,
+      "endColumn": 30
+    }
+  ]
+}

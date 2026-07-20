@@ -1,0 +1,4 @@
+@json(strict)
+record User derives Json {
+	name: String
+}

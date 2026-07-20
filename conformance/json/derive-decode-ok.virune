@@ -1,0 +1,8 @@
+record User derives Json {
+	name: String
+	nickname: String?
+}
+
+fn decode(raw: Unknown) -> Result<User, List<JsonError>> {
+	return Json.decode<User>(raw)
+}

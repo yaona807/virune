@@ -1,0 +1,8 @@
+fn log(value: Int) -> Int uses Console {
+	Console.print("{value}")
+	return value
+}
+
+fn values() -> List<Int> {
+	return List.map([1], log)
+}

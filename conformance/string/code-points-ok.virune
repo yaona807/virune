@@ -1,0 +1,4 @@
+fn count() -> Int {
+	let values = String.codePoints("😀a")
+	return List.length(values)
+}

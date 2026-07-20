@@ -1,0 +1,6 @@
+async fn load() -> Result<Int, String> => Ok(1)
+
+async fn run() -> Result<Int, String> {
+	let value = await load()?
+	return Ok(value)
+}

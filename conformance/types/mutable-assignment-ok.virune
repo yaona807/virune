@@ -1,0 +1,5 @@
+fn value() -> Int {
+	let mut count = 1
+	count = 2
+	return count
+}

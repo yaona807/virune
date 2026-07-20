@@ -1,0 +1,4 @@
+fn text() -> Int {
+	let normalized = String.normalizeNfc("é")
+	return String.graphemeLength(normalized)
+}

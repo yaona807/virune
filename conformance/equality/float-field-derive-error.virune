@@ -1,0 +1,3 @@
+record Measurement derives Eq {
+	value: Float
+}

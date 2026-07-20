@@ -1,0 +1,65 @@
+{
+	"name": "virune-vscode",
+	"displayName": "Virune",
+	"description": "Syntax highlighting and language support for the Virune programming language.",
+	"version": "1.0.0",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/yaona807/virune.git",
+		"directory": "packages/vscode"
+	},
+	"homepage": "https://github.com/yaona807/virune#readme",
+	"bugs": {
+		"url": "https://github.com/yaona807/virune/issues"
+	},
+	"private": true,
+	"publisher": "virune",
+	"license": "MIT",
+	"engines": {
+		"vscode": ">=1.100.0"
+	},
+	"categories": [
+		"Programming Languages"
+	],
+	"keywords": [
+		"virune",
+		"programming-language"
+	],
+	"contributes": {
+		"languages": [
+			{
+				"id": "virune",
+				"aliases": [
+					"Virune",
+					"virune"
+				],
+				"extensions": [
+					".virune"
+				],
+				"configuration": "./language-configuration.json"
+			}
+		],
+		"grammars": [
+			{
+				"language": "virune",
+				"scopeName": "source.virune",
+				"path": "./syntaxes/virune.tmLanguage.json"
+			}
+		]
+	},
+	"scripts": {
+		"test": "node --test test/*.test.mjs"
+	},
+	"type": "module",
+	"main": "./dist/extension.cjs",
+	"activationEvents": [
+		"onLanguage:virune"
+	],
+	"devDependencies": {
+		"@types/vscode": "1.100.0",
+		"vscode-languageclient": "10.1.0"
+	},
+	"extensionKind": [
+		"workspace"
+	]
+}

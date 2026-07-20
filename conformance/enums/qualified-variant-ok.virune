@@ -1,0 +1,12 @@
+enum Status {
+	Pending
+	Failed(String)
+}
+
+fn pending() -> Status {
+	return Status.Pending
+}
+
+fn failed() -> Status {
+	return Status.Failed("error")
+}

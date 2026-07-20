@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "status": "compile-error",
+  "diagnostics": [
+    {
+      "severity": "error",
+      "code": "L2022",
+      "line": 3,
+      "column": 9,
+      "endLine": 3,
+      "endColumn": 21
+    }
+  ],
+  "rules": [
+    "task.future"
+  ]
+}

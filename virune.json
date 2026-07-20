@@ -1,0 +1,10 @@
+{
+  "languageVersion": "1.0",
+  "platform": "node",
+  "sourceDir": "examples",
+  "outDir": "dist-examples",
+  "entry": "examples/hello.virune",
+  "target": "es2022",
+  "sourceMap": true,
+  "sourcesContent": true
+}

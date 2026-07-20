@@ -1,0 +1,11 @@
+record User {
+	name: String
+	nickname: String?
+}
+
+fn create() -> User {
+	return User {
+		name: "Alice",
+		nickname: None,
+	}
+}

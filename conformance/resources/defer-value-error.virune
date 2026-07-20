@@ -1,0 +1,8 @@
+fn value() -> Int {
+	return 1
+}
+
+fn run() -> Unit {
+	defer value()
+	return Unit
+}

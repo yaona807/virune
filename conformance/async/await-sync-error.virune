@@ -1,0 +1,4 @@
+async fn load() -> Int => 1
+fn invalid() -> Int {
+	return await load()
+}

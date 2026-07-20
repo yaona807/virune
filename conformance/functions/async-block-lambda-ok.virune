@@ -1,0 +1,6 @@
+pub async fn run() -> Result<Int, String> uses Task {
+	let action = async fn(value: Int) -> Result<Int, String> uses Task {
+		return Ok(value + 1)
+	}
+	return await action(1)
+}

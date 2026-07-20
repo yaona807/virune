@@ -1,0 +1,76 @@
+{
+	"name": "virune-monorepo",
+	"version": "1.0.0",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/yaona807/virune.git"
+	},
+	"homepage": "https://github.com/yaona807/virune#readme",
+	"bugs": {
+		"url": "https://github.com/yaona807/virune/issues"
+	},
+	"private": true,
+	"type": "module",
+	"engines": {
+		"node": ">=24.0.0"
+	},
+	"workspaces": [
+		"packages/*"
+	],
+	"scripts": {
+		"node:check": "node scripts/verify-node-runtime.mjs",
+		"clean": "node ./scripts/clean.mjs",
+		"build": "tsc -b",
+		"check": "tsc -b --pretty false",
+		"test:unit": "node scripts/run-unit-tests.mjs",
+		"test:integration:browser": "node --test --test-timeout=120000 integration/dist/browser.test.js",
+		"test:integration:cli-workflow": "node --test --test-timeout=120000 integration/dist/cli.test.js",
+		"test:integration:cli-api": "node --test --test-timeout=120000 integration/dist/cli-api.test.js",
+		"test:integration:entry-invalid": "node --test --test-timeout=120000 integration/dist/entry-point-invalid.test.js",
+		"test:integration:entry-runtime": "node --test --test-timeout=120000 integration/dist/entry-point-runtime.test.js",
+		"test:integration:project": "node --test --test-timeout=120000 integration/dist/project.test.js",
+		"test": "npm run build && node scripts/run-tests.mjs",
+		"test:conformance": "npm run build && node packages/cli/dist/src/main.js test-conformance .",
+		"test:integration": "npm run build && node scripts/run-tests.mjs --integration-only",
+		"fmt": "npm run build && node packages/cli/dist/src/main.js fmt examples",
+		"fmt:check": "npm run build && node packages/cli/dist/src/main.js fmt --check examples",
+		"pack:virune": "npm run clean && npm run build && node ./scripts/package.mjs",
+		"verify": "npm run node:check && npm run registry:check && npm run release:check && npm run api:check && npm run check && npm test && npm run test:binding-corpus && npm run test:fuzz:smoke && npm run test:vscode && npm run test:conformance && npm run fmt:check && npm run spec:check && npm run smoke:clone && npm run pack:virune && npm run smoke:release",
+		"virune": "node packages/cli/dist/src/main.js",
+		"example": "npm run build && node packages/cli/dist/src/main.js run .",
+		"smoke:clone": "npm run build && node scripts/smoke-clone.mjs",
+		"spec:check": "node scripts/verify-spec.mjs && node scripts/verify-grammar.mjs",
+		"conformance:update": "npm run build && node scripts/update-conformance-expectations.mjs",
+		"registry:check": "node scripts/verify-public-registry.mjs",
+		"bootstrap": "node scripts/bootstrap.mjs",
+		"bootstrap:check": "node scripts/bootstrap.mjs --check-config",
+		"api:check": "node scripts/verify-compiler-api.mjs",
+		"test:fuzz": "npm run build && node --test --test-timeout=120000 --test-name-pattern=\"fuzz|generated fixtures\" packages/compiler/dist/test/compiler.test.js packages/formatter/dist/test/formatter.test.js",
+		"release:check": "node scripts/verify-release-channel.mjs",
+		"build:vscode": "npm run build && node scripts/build-vscode.mjs",
+		"test:vscode": "npm run build:vscode && npm --workspace virune-vscode test && npm --workspace @virune/language-server test && node scripts/smoke-vscode-server.mjs",
+		"pack:vscode": "npm run build:vscode && node scripts/package-vscode.mjs",
+		"test:binding-corpus": "npm run build && node --expose-gc scripts/run-binding-corpus.mjs",
+		"test:binding-corpus:update": "npm run build && node --expose-gc scripts/run-binding-corpus.mjs --write-report",
+		"test:fuzz:smoke": "npm run build && VIRUNE_FUZZ_ITERATIONS=2000 node scripts/fuzz.mjs",
+		"test:fuzz:long": "npm run build && node scripts/fuzz.mjs",
+		"benchmark:incremental": "npm run build && node scripts/benchmark-incremental.mjs",
+		"test:interop-corpus": "npm run build && node scripts/run-unit-tests.mjs --filter=packages/js-interop/dist/test/corpus-",
+		"smoke:release": "node scripts/smoke-release.mjs"
+	},
+	"devDependencies": {
+		"@types/lodash": "4.17.24",
+		"@types/node": "^24.0.0",
+		"@vscode/vsce": "3.9.2",
+		"axios": "1.18.1",
+		"date-fns": "4.4.0",
+		"esbuild": "0.28.1",
+		"lodash": "4.18.1",
+		"nanoid": "6.0.0",
+		"rxjs": "7.8.2",
+		"typescript": "6.0.3",
+		"zod": "4.4.3"
+	},
+	"description": "Virune programming language monorepo.",
+	"license": "MIT"
+}

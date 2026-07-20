@@ -1,0 +1,9 @@
+unsafe module
+
+unsafe extern js "example" {
+	fn load() -> User = "load"
+}
+
+record User {
+	name: String
+}

@@ -1,0 +1,3 @@
+extern js "node:crypto" {
+	fn randomUuid() -> Result<String, JsError> = "randomUUID"
+}

@@ -1,0 +1,4 @@
+@json(strict)
+record User {
+	name: String
+}

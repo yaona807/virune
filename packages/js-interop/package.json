@@ -1,0 +1,40 @@
+{
+	"name": "@virune/js-interop",
+	"version": "1.0.0",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/yaona807/virune.git",
+		"directory": "packages/js-interop"
+	},
+	"homepage": "https://github.com/yaona807/virune#readme",
+	"bugs": {
+		"url": "https://github.com/yaona807/virune/issues"
+	},
+	"type": "module",
+	"engines": {
+		"node": ">=24.0.0"
+	},
+	"exports": {
+		".": "./dist/src/index.js"
+	},
+	"files": [
+		"LICENSE",
+		"README.md",
+		"README_ja.md",
+		"dist/src"
+	],
+	"dependencies": {
+		"@types/node": "^24.0.0",
+		"@virune/compiler": "1.0.0",
+		"typescript": "6.0.3"
+	},
+	"scripts": {
+		"build": "tsc -b",
+		"test": "node --test dist/test/**/*.test.js"
+	},
+	"license": "MIT",
+	"description": "Versioned TypeScript-backed JavaScript interop provider for Virune.",
+	"publishConfig": {
+		"access": "public"
+	}
+}

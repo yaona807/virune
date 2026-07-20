@@ -1,0 +1,3 @@
+record Large derives Json {
+	value: BigInt
+}

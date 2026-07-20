@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "status": "compile-error",
+  "diagnostics": [
+    {
+      "severity": "error",
+      "code": "L2010",
+      "line": 3,
+      "column": 10,
+      "endLine": 3,
+      "endColumn": 11
+    }
+  ],
+  "rules": [
+    "type.mutation"
+  ]
+}

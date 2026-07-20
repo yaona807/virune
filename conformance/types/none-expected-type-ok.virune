@@ -1,0 +1,3 @@
+fn choose(flag: Bool) -> String? {
+	return if flag then "value" else None
+}

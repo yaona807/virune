@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "status": "compile-error",
+  "diagnostics": [
+    {
+      "severity": "error",
+      "code": "L2043",
+      "line": 2,
+      "column": 15,
+      "endLine": 2,
+      "endColumn": 16
+    }
+  ]
+}

@@ -1,0 +1,7 @@
+record User {
+	name: String
+}
+
+fn decode(raw: Unknown) -> Result<User, List<JsonError>> {
+	return Json.decode<User>(raw)
+}

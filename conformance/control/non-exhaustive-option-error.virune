@@ -1,0 +1,5 @@
+fn label(value: String?) -> String {
+	return match value {
+		Some(text) => text
+	}
+}

@@ -1,0 +1,5 @@
+fn create() -> Int {
+	return 1
+}
+
+const VALUE: Int = create()

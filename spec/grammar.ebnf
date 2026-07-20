@@ -1,0 +1,209 @@
+(* Virune 1.0 normative grammar.
+ * Whitespace is ignored except NewLine. Line comments begin with //.
+ * The lexer normalizes soft line breaks before parsing as specified below.
+ *)
+
+Module                  = NewLine* UnsafeModule? ImportDeclaration* Declaration* EOF ;
+UnsafeModule            = "unsafe" "module" LineEnd NewLine* ;
+
+ImportDeclaration       = ViruneImportDeclaration | JavaScriptImportDeclaration ;
+ViruneImportDeclaration = [ "pub" ] "import" [ "type" ] "{" NewLine* [ ImportItem { "," NewLine* [ ImportItem ] } ] "}" "from" StringLiteral LineEnd ;
+JavaScriptImportDeclaration
+                        = "import" "js" ( [ "type" ] "{" NewLine* [ ImportItem { "," NewLine* [ ImportItem ] } ] "}" "from" StringLiteral
+                                        | Identifier "from" StringLiteral
+                                        | "*" "as" Identifier "from" StringLiteral
+                                        | StringLiteral ) LineEnd ;
+ImportItem              = Identifier [ "as" Identifier ] ;
+
+Declaration             = Attribute* ( FunctionDeclaration
+                                      | RecordDeclaration
+                                      | EnumDeclaration
+                                      | NewtypeDeclaration
+                                      | TypeAliasDeclaration
+                                      | ExternDeclaration
+                                      | TestDeclaration
+                                      | TopLevelValueDeclaration ) ;
+
+Attribute               = "@" Identifier [ "(" [ ArgumentList ] ")" ] NewLine* ;
+
+FunctionDeclaration     = [ "pub" ] [ "async" ] "fn" Identifier [ TypeParameters ]
+                          "(" NewLine* [ ParameterList ] NewLine* ")"
+                          [ "->" TypeReference ] [ UsesClause ]
+                          ( Block | "=>" Expression LineEnd ) ;
+TypeParameters          = "<" Identifier { "," Identifier } ">" ;
+ParameterList           = Parameter { "," NewLine* [ Parameter ] } ;
+Parameter               = Identifier ":" TypeReference ;
+UsesClause              = "uses" EffectName { "," EffectName } ;
+EffectName              = Identifier | "*" ;
+
+RecordDeclaration       = [ "pub" ] "record" Identifier [ TypeParameters ] [ DerivesClause ]
+                          "{" NewLine* { RecordField NewLine* } "}" ;
+RecordField             = Attribute* Identifier ":" TypeReference [ "," ] ;
+DerivesClause           = "derives" Identifier { "," Identifier } ;
+
+EnumDeclaration         = [ "pub" ] "enum" Identifier [ TypeParameters ] [ DerivesClause ]
+                          "{" NewLine* { EnumVariant NewLine* } "}" ;
+EnumVariant             = Identifier [ "(" [ TypeReference { "," TypeReference } ] ")" ] [ "," ] ;
+
+NewtypeDeclaration      = [ "pub" ] "newtype" Identifier "=" TypeReference LineEnd ;
+TypeAliasDeclaration    = [ "pub" ] "type" Identifier [ TypeParameters ] "=" TypeReference LineEnd ;
+
+ExternDeclaration       = [ "unsafe" ] "extern" "js" StringLiteral
+                          "{" NewLine* { ExternFunction NewLine* } "}" ;
+ExternFunction          = [ "async" ] "fn" Identifier "(" [ ExternParameterList ] ")"
+                          "->" TypeReference [ UsesClause ] "=" StringLiteral LineEnd ;
+ExternParameterList     = ExternParameter { "," NewLine* [ ExternParameter ] } ;
+ExternParameter         = Identifier [ "?" ] ":" TypeReference ;
+
+TestDeclaration         = [ "async" ] "test" StringLiteral Block ;
+TopLevelValueDeclaration= [ "pub" ] ( "let" | "const" ) Identifier
+                          [ ":" TypeReference ] "=" Expression LineEnd ;
+
+TypeReference           = ( FunctionTypeReference | TupleTypeReference | NamedTypeReference ) [ "?" ] ;
+NamedTypeReference      = Identifier [ "<" TypeReference { "," TypeReference } ">" ] ;
+TupleTypeReference      = "(" TypeReference "," TypeReference { "," TypeReference } ")" ;
+FunctionTypeReference   = [ "async" ] "fn" "(" [ TypeReference { "," TypeReference } ] ")"
+                          "->" TypeReference [ UsesClause ] ;
+
+Block                   = "{" NewLine* { Statement NewLine* } "}" ;
+Statement               = LetStatement
+                        | ReturnStatement
+                        | IfStatement
+                        | ForStatement
+                        | WhileStatement
+                        | BreakStatement
+                        | ContinueStatement
+                        | DiscardStatement
+                        | DeferStatement
+                        | AssignmentStatement
+                        | ExpressionStatement ;
+LetStatement            = "let" [ "mut" ] Identifier [ ":" TypeReference ] "=" Expression LineEnd ;
+ReturnStatement         = "return" [ Expression ] LineEnd ;
+IfStatement             = "if" Expression Block [ "else" ( Block | IfStatement ) ] ;
+ForStatement            = "for" Identifier "in" Expression Block ;
+WhileStatement          = "while" Expression Block ;
+BreakStatement          = "break" LineEnd ;
+ContinueStatement       = "continue" LineEnd ;
+DiscardStatement        = "discard" Expression LineEnd ;
+DeferStatement          = "defer" Expression LineEnd ;
+AssignmentStatement     = Identifier "=" Expression LineEnd ;
+ExpressionStatement     = Expression LineEnd ;
+LineEnd                 = NewLine { NewLine } ;
+
+Expression              = PipelineExpression ;
+PipelineExpression      = OrExpression { "|>" OrExpression } ;
+OrExpression            = AndExpression { "||" AndExpression } ;
+AndExpression           = EqualityExpression { "&&" EqualityExpression } ;
+EqualityExpression      = ComparisonExpression { ( "==" | "!=" ) ComparisonExpression } ;
+ComparisonExpression    = AdditiveExpression { ( "<" | "<=" | ">" | ">=" ) AdditiveExpression } ;
+AdditiveExpression      = MultiplicativeExpression { ( "+" | "-" ) MultiplicativeExpression } ;
+MultiplicativeExpression= UnaryExpression { ( "*" | "/" | "%" ) UnaryExpression } ;
+UnaryExpression         = ( "!" | "-" | "await" ) UnaryExpression | PostfixExpression ;
+PostfixExpression       = PrimaryExpression { CallSuffix | FieldSuffix | TrySuffix | RecordUpdateSuffix } ;
+CallSuffix              = [ TypeArguments ] "(" [ ArgumentList ] ")" ;
+FieldSuffix             = "." IdentifierName ;
+TrySuffix               = "?" ;
+RecordUpdateSuffix      = "with" RecordFieldBlock ;
+TypeArguments           = "<" TypeReference { "," TypeReference } ">" ;
+ArgumentList            = Expression { "," NewLine* [ Expression ] } ;
+
+PrimaryExpression       = StringLiteral
+                        | BigIntLiteral
+                        | FloatLiteral
+                        | IntLiteral
+                        | "true"
+                        | "false"
+                        | "_"
+                        | RecordExpression
+                        | Identifier
+                        | ListExpression
+                        | ParenthesizedOrTupleExpression
+                        | ConditionalExpression
+                        | MatchExpression
+                        | LambdaExpression
+                        | ParallelExpression ;
+RecordExpression        = Identifier RecordFieldBlock ;
+RecordFieldBlock        = "{" NewLine* [ RecordEntry { "," NewLine* [ RecordEntry ] } ] "}" ;
+RecordEntry             = Identifier [ ":" Expression ] ;
+ListExpression          = "[" NewLine* [ Expression { "," NewLine* [ Expression ] } ] "]" ;
+ParenthesizedOrTupleExpression
+                        = "(" Expression [ "," Expression { "," Expression } ] ")" ;
+ConditionalExpression   = "if" Expression "then" Expression "else" Expression ;
+MatchExpression         = "match" Expression "{" NewLine* MatchArm { NewLine* MatchArm } NewLine* "}" ;
+MatchArm                = Pattern [ "if" Expression ] "=>" Expression [ "," ] ;
+LambdaExpression        = [ "async" ] "fn" "(" [ LambdaParameterList ] ")"
+                          [ "->" TypeReference ] [ UsesClause ] ( "=>" Expression | Block ) ;
+LambdaParameterList     = LambdaParameter { "," LambdaParameter } ;
+LambdaParameter         = Identifier [ ":" TypeReference ] ;
+ParallelExpression      = "parallel" [ "try" ] "{" NewLine* ParallelEntry
+                          { "," NewLine* [ ParallelEntry ] } "}" ;
+ParallelEntry           = Identifier ":" Expression ;
+
+Pattern                 = OrPattern ;
+OrPattern               = PrimaryPattern { "|" PrimaryPattern } ;
+PrimaryPattern          = "_"
+                        | RangePattern
+                        | StringLiteral
+                        | IntLiteral
+                        | "true"
+                        | "false"
+                        | ListPattern
+                        | TuplePattern
+                        | VariantPattern
+                        | RecordPattern
+                        | Identifier ;
+RangePattern            = IntLiteral "..=" IntLiteral ;
+ListPattern             = "[" [ RestPattern
+                              | Pattern { "," Pattern }
+                                [ "," RestPattern ] [ "," ] ] "]" ;
+TuplePattern            = "(" Pattern "," Pattern { "," Pattern } ")" ;
+RestPattern             = "..." ( "_" | Identifier ) ;
+VariantPattern          = Identifier "(" [ Pattern { "," Pattern } ] ")" ;
+RecordPattern           = Identifier "{" [ [ RecordPatternField { "," [ RecordPatternField ] } ] [ "..." ] ] "}" ;
+RecordPatternField      = Identifier [ ":" Pattern ] ;
+
+(* Lexical grammar *)
+Identifier              = ASCII_Letter_Or_Underscore { ASCII_Letter_Or_Digit_Or_Underscore } ;
+IdentifierName          = Identifier | Keyword ;
+IntLiteral              = HexInteger | BinaryInteger | DecimalInteger ;
+BigIntLiteral           = ( HexInteger | BinaryInteger | DecimalInteger ) "n" ;
+FloatLiteral            = DecimalInteger "." DecimalDigits [ Exponent ] | DecimalInteger Exponent ;
+HexInteger              = "0x" HexDigit { [ "_" ] HexDigit } ;
+BinaryInteger           = "0b" BinaryDigit { [ "_" ] BinaryDigit } ;
+DecimalInteger          = "0" | NonZeroDigit { [ "_" ] DecimalDigit } ;
+DecimalDigits           = DecimalDigit { [ "_" ] DecimalDigit } ;
+Exponent                = ( "e" | "E" ) [ "+" | "-" ] DecimalDigits ;
+StringLiteral           = '"' { StringCharacter | EscapeSequence } '"' ;
+EscapeSequence          = "\\\"" | "\\\\" | "\\n" | "\\r" | "\\t" ;
+ASCII_Letter_Or_Underscore
+                        = ASCII_Letter | "_" ;
+ASCII_Letter_Or_Digit_Or_Underscore
+                        = ASCII_Letter | DecimalDigit | "_" ;
+ASCII_Letter            = "A" | "B" | "C" | "D" | "E" | "F" | "G" | "H" | "I" | "J" | "K" | "L" | "M" | "N" | "O" | "P" | "Q" | "R" | "S" | "T" | "U" | "V" | "W" | "X" | "Y" | "Z"
+                        | "a" | "b" | "c" | "d" | "e" | "f" | "g" | "h" | "i" | "j" | "k" | "l" | "m" | "n" | "o" | "p" | "q" | "r" | "s" | "t" | "u" | "v" | "w" | "x" | "y" | "z" ;
+HexDigit                = DecimalDigit | "A" | "B" | "C" | "D" | "E" | "F" | "a" | "b" | "c" | "d" | "e" | "f" ;
+BinaryDigit             = "0" | "1" ;
+NonZeroDigit            = "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" ;
+DecimalDigit            = "0" | NonZeroDigit ;
+StringCharacter         = UnicodeScalarExceptQuoteBackslashCrLf ;
+NewLine                 = "\n" | "\r\n" ;
+EOF                     = end of input ;
+
+Keyword                 = "as" | "async" | "await" | "break" | "const" | "continue"
+                        | "defer" | "derives" | "discard" | "else" | "enum" | "extern"
+                        | "false" | "fn" | "for" | "from" | "if" | "import" | "in"
+                        | "js" | "let" | "match" | "module" | "mut" | "newtype"
+                        | "parallel" | "pub" | "record" | "return" | "test" | "then"
+                        | "true" | "try" | "type" | "unsafe" | "uses" | "while" | "with" ;
+
+(* Newline normalization: a physical NewLine is removed before parsing when it
+ * occurs inside parentheses or brackets, after a continuation token, or before
+ * a continuation token. Braces do not suppress NewLine. The normative token
+ * sets are:
+ *
+ * soft-after  = |> == != <= >= && || = < > + - * / % , ( [
+ * soft-before = |> == != <= >= && || < > + - * / % ) ] else
+ *)
+
+(* Precedence note: the source form "await expression?" is normalized to
+ * Try(Await(expression)); it is equivalent to "(await expression)?". *)

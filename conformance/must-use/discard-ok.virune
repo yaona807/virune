@@ -1,0 +1,8 @@
+fn calculate() -> Int {
+	return 1
+}
+
+fn main() -> Unit {
+	discard calculate()
+	return Unit
+}

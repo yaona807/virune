@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "status": "compile-error",
+  "diagnostics": [
+    {
+      "severity": "error",
+      "code": "L2053",
+      "line": 1,
+      "column": 1,
+      "endLine": 1,
+      "endColumn": 2
+    }
+  ],
+  "rules": [
+    "ffi.export"
+  ]
+}

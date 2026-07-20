@@ -1,0 +1,10 @@
+{
+  "languageVersion": "1.0",
+  "platform": "node",
+  "sourceDir": "src",
+  "outDir": "dist",
+  "entry": "src/main.virune",
+  "target": "es2022",
+  "sourceMap": true,
+  "sourcesContent": true
+}

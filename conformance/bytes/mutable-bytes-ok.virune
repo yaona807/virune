@@ -1,0 +1,7 @@
+fn modify() -> Result<Bytes, BytesError> {
+	let source = Bytes.fromHex("0000")?
+	let byte = Bytes.get(Bytes.fromUtf8("A"), 0)?
+	let mutable = MutableBytes.fromBytes(source)
+	discard MutableBytes.set(mutable, 0, byte)
+	return Ok(MutableBytes.toBytes(mutable))
+}

@@ -1,0 +1,15 @@
+record User {
+	nickname: String?
+}
+
+fn accept(value: String?) -> String? {
+	return value
+}
+
+fn create(flag: Bool) -> String? {
+	let user = User {
+		nickname: "Virune",
+	}
+	let value: String? = "safe"
+	return if flag then accept(user.nickname) else value
+}

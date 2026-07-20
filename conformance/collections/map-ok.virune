@@ -1,0 +1,5 @@
+fn size() -> Int {
+	let users = Map.empty<String, Int>()
+	let updated = Map.set(users, "Alice", 1)
+	return Map.size(updated)
+}

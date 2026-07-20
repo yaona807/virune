@@ -1,0 +1,15 @@
+// expect: ok
+fn apply(action: fn() -> Unit uses *) -> Unit uses * {
+	action()
+	return Unit
+}
+
+fn log() -> Unit uses Console {
+	Console.print("audit")
+	return Unit
+}
+
+fn main() -> Unit uses Console {
+	apply(log)
+	return Unit
+}

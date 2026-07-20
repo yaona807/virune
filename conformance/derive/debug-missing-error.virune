@@ -1,0 +1,7 @@
+record User {
+	name: String
+}
+
+fn display(user: User) -> String {
+	return Debug.format(user)
+}

@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "status": "compile-error",
+  "diagnostics": [
+    {
+      "severity": "error",
+      "code": "L2075",
+      "line": 3,
+      "column": 3,
+      "endLine": 3,
+      "endColumn": 13
+    }
+  ]
+}

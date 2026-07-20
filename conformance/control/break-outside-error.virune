@@ -1,0 +1,4 @@
+fn invalid() -> Unit {
+	break
+	return Unit
+}

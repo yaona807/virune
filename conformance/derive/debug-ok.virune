@@ -1,0 +1,7 @@
+record User derives Debug {
+	name: String
+}
+
+fn debugName(user: User) -> String {
+	return Debug.format(user)
+}

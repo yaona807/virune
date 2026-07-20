@@ -1,0 +1,8 @@
+fn cleanup() -> Unit {
+	return Unit
+}
+
+fn run() -> Unit {
+	defer cleanup()
+	return Unit
+}

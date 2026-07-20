@@ -1,0 +1,17 @@
+node_modules/
+dist/
+packages/*/dist/
+integration/dist/
+.virune-cache/
+.test-tmp/
+release/
+coverage/
+*.tgz
+examples/*.js
+examples/*.js.map
+dist-examples/
+playground/
+.cache/
+
+fuzz-regressions/artifacts/*
+!fuzz-regressions/artifacts/.gitkeep

@@ -1,0 +1,43 @@
+{
+	"name": "@virune/formatter",
+	"version": "1.0.0",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/yaona807/virune.git",
+		"directory": "packages/formatter"
+	},
+	"homepage": "https://github.com/yaona807/virune#readme",
+	"bugs": {
+		"url": "https://github.com/yaona807/virune/issues"
+	},
+	"type": "module",
+	"engines": {
+		"node": ">=24.0.0"
+	},
+	"exports": {
+		".": "./dist/src/index.js"
+	},
+	"files": [
+		"LICENSE",
+		"README.md",
+		"README_ja.md",
+		"dist/src"
+	],
+	"dependencies": {
+		"@virune/compiler": "1.0.0"
+	},
+	"scripts": {
+		"build": "tsc -b",
+		"test": "node --test dist/test/**/*.test.js"
+	},
+	"license": "MIT",
+	"description": "Canonical formatter for the Virune programming language.",
+	"keywords": [
+		"virune",
+		"formatter",
+		"programming-language"
+	],
+	"publishConfig": {
+		"access": "public"
+	}
+}

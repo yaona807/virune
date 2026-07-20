@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "status": "compile-error",
+  "diagnostics": [
+    {
+      "severity": "error",
+      "code": "L2065",
+      "line": 2,
+      "column": 9,
+      "endLine": 2,
+      "endColumn": 25
+    }
+  ],
+  "rules": [
+    "eval.integer",
+    "lexical.number"
+  ]
+}

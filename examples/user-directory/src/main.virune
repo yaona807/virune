@@ -1,0 +1,54 @@
+pub newtype UserId = Int
+
+record User derives Eq, Hash, Debug {
+	id: UserId
+	name: String
+	email: String?
+}
+
+pub enum UserError {
+	NotFound(UserId)
+	InvalidName(String)
+}
+
+fn createUser(id: UserId, name: String, email: String?) -> Result<User, UserError> {
+	if String.trim(name) == "" {
+		return Err(UserError.InvalidName(name))
+	}
+	return Ok(User {
+		id: id,
+		name: String.trim(name),
+		email: email,
+	})
+}
+
+fn displayUser(user: User) -> String {
+	let email = match user.email {
+		Some(value) => value
+		None => "未登録"
+	}
+	return "{user.name} <{email}>"
+}
+
+fn findUser(users: List<User>, targetId: UserId) -> Result<User, UserError> {
+	for user in users {
+		if user.id == targetId {
+			return Ok(user)
+		}
+	}
+	return Err(UserError.NotFound(targetId))
+}
+
+pub fn main(args: List<String>) -> Result<Unit, UserError> uses Console {
+	let alice = createUser(UserId.create(1), " Alice ", Some("alice@example.com"))?
+	let bob = createUser(UserId.create(2), "Bob", None)?
+	let users = [alice, bob]
+	for user in users {
+		Console.print(displayUser(user))
+	}
+	let selected = findUser(users, UserId.create(2))?
+	let argumentCount = List.length(args)
+	Console.print("選択されたユーザー: {selected.name}")
+	Console.print("引数の数: {argumentCount}")
+	return Ok(Unit)
+}

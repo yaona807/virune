@@ -1,0 +1,47 @@
+{
+	"name": "@virune/runtime",
+	"version": "1.0.0",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/yaona807/virune.git",
+		"directory": "packages/runtime"
+	},
+	"homepage": "https://github.com/yaona807/virune#readme",
+	"bugs": {
+		"url": "https://github.com/yaona807/virune/issues"
+	},
+	"type": "module",
+	"engines": {
+		"node": ">=24.0.0"
+	},
+	"exports": {
+		".": "./dist/src/index.js",
+		"./v2/core.js": "./dist/src/core.js",
+		"./v2/int.js": "./dist/src/int.js",
+		"./v2/json.js": "./dist/src/json.js",
+		"./v2/task.js": "./dist/src/task.js",
+		"./v2/ffi.js": "./dist/src/ffi.js",
+		"./v2/index.js": "./dist/src/index.js"
+	},
+	"files": [
+		"LICENSE",
+		"README.md",
+		"README_ja.md",
+		"dist/src"
+	],
+	"scripts": {
+		"build": "tsc -b",
+		"test": "node --test dist/test/**/*.test.js"
+	},
+	"license": "MIT",
+	"description": "Versioned Runtime ABI for JavaScript emitted by the Virune compiler.",
+	"keywords": [
+		"virune",
+		"runtime",
+		"javascript",
+		"structured-concurrency"
+	],
+	"publishConfig": {
+		"access": "public"
+	}
+}

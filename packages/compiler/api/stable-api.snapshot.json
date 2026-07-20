@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "values": [
+    "buildProject",
+    "compileSource",
+    "diagnosticsToJson",
+    "formatDiagnostics",
+    "loadConfig",
+    "renderDiagnostic"
+  ],
+  "types": [
+    "CompileOptions",
+    "CompileResult",
+    "Diagnostic",
+    "DiagnosticFix",
+    "DiagnosticSeverity",
+    "EmitOutput",
+    "FileId",
+    "NodeId",
+    "ProjectBuildResult",
+    "ProjectModuleResult",
+    "RelatedDiagnostic",
+    "SourceFile",
+    "SourcePosition",
+    "SourceSpan",
+    "SymbolId",
+    "TypeId",
+    "ViruneConfig"
+  ]
+}

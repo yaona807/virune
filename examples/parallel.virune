@@ -1,0 +1,11 @@
+async fn loadLeft() -> Result<Int, String> => Ok(1)
+
+async fn loadRight() -> Result<Int, String> => Ok(2)
+
+pub async fn total() -> Result<Int, String> {
+	let values = await (parallel try {
+		left: loadLeft(),
+		right: loadRight(),
+	})?
+	return Ok(values.left + values.right)
+}

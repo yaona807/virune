@@ -1,0 +1,3 @@
+fn same(left: Float, right: Float) -> Bool {
+	return left == right
+}

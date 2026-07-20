@@ -1,0 +1,15 @@
+@mustUse
+record Token {
+	value: String,
+}
+
+fn create() -> Token {
+	return Token {
+		value: "token",
+	}
+}
+
+fn main() -> Unit {
+	create()
+	return Unit
+}

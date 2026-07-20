@@ -1,0 +1,4 @@
+fn value() -> Result<Int, IntegerRangeError> {
+	let small = Int8.fromInt(127)?
+	return Ok(Int8.toInt(small))
+}

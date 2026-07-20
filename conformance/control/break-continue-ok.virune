@@ -1,0 +1,13 @@
+fn countActive(values: List<Bool>) -> Int {
+	let mut count = 0
+	for value in values {
+		if !value {
+			continue
+		}
+		count = count + 1
+		if count == 2 {
+			break
+		}
+	}
+	return count
+}

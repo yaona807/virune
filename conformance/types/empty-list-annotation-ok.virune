@@ -1,0 +1,4 @@
+fn empty() -> List<String> {
+	let values: List<String> = []
+	return values
+}

@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "status": "compile-error",
+  "diagnostics": [
+    {
+      "severity": "error",
+      "code": "L4001",
+      "line": 2,
+      "column": 21,
+      "endLine": 2,
+      "endColumn": 27
+    }
+  ]
+}

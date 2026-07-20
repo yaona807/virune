@@ -1,0 +1,50 @@
+{
+	"schemaVersion": 1,
+	"cases": [
+		{
+			"package": "nanoid",
+			"surface": "named function with a return-only generic brand",
+			"targetTier": 1
+		},
+		{
+			"package": "date-fns",
+			"surface": "non-generic predicates",
+			"targetTier": 1
+		},
+		{
+			"package": "date-fns",
+			"surface": "generic Date-subclass-preserving operations",
+			"targetTier": 2
+		},
+		{
+			"package": "axios",
+			"surface": "default export and primitive properties",
+			"targetTier": 1
+		},
+		{
+			"package": "axios",
+			"surface": "generic request data and structural configuration",
+			"targetTier": 2
+		},
+		{
+			"package": "zod",
+			"surface": "conditional types and control-flow narrowing",
+			"targetTier": 2
+		},
+		{
+			"package": "rxjs",
+			"surface": "callback-heavy method chains and subscription identity",
+			"targetTier": 2
+		},
+		{
+			"package": "lodash",
+			"surface": "CommonJS runtime with separate @types declarations",
+			"targetTier": 2
+		},
+		{
+			"package": "node:fs/promises",
+			"surface": "simple Promise operations without callback or Buffer decoding",
+			"targetTier": 1
+		}
+	]
+}

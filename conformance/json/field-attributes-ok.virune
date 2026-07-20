@@ -1,0 +1,10 @@
+record User derives Json {
+	@jsonName("user_name")
+	name: String
+	@jsonDefault("unknown")
+	nickname: String
+}
+
+fn decode(raw: Unknown) -> Result<User, List<JsonError>> {
+	return Json.decode<User>(raw)
+}

@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "status": "compile-error",
+  "diagnostics": [
+    {
+      "severity": "error",
+      "code": "L2097",
+      "line": 13,
+      "column": 2,
+      "endLine": 13,
+      "endColumn": 10
+    }
+  ],
+  "rules": [
+    "type.must-use"
+  ]
+}

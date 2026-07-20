@@ -1,0 +1,11 @@
+enum Maybe<T> {
+	Just(T)
+	Empty
+}
+
+fn read(value: Maybe<Int>) -> Int {
+	return match value {
+		Just(item) => item
+		Empty => 0
+	}
+}

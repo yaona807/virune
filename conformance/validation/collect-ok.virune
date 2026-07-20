@@ -1,0 +1,6 @@
+fn collect() -> Validation<List<Int>, String> {
+	return Validation.collect<Int, String>([
+		Validation.valid<Int, String>(1),
+		Validation.invalid<Int, String>("error"),
+	])
+}

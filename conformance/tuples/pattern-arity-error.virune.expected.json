@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "status": "compile-error",
+  "diagnostics": [
+    {
+      "severity": "error",
+      "code": "L2112",
+      "line": 3,
+      "column": 4,
+      "endLine": 3,
+      "endColumn": 8
+    }
+  ],
+  "rules": [
+    "type.tuple"
+  ]
+}

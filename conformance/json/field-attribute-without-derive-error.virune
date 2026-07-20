@@ -1,0 +1,4 @@
+record User {
+	@jsonName("user_name")
+	name: String
+}

@@ -1,0 +1,20 @@
+pub newtype UserId = Int
+
+pub record User derives Eq, Debug {
+	id: UserId
+	name: String
+	nickname: String?
+}
+
+pub enum LoadError derives Eq, Debug {
+	NotFound(UserId)
+	Network(String)
+}
+
+pub fn display(result: Result<User, LoadError>) -> String {
+	return match result {
+		Ok(user) => "User: {user.name}"
+		Err(NotFound(id)) => "Missing user"
+		Err(Network(message)) => message
+	}
+}

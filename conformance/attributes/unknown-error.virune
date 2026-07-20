@@ -1,0 +1,4 @@
+@unknown
+record User {
+	name: String
+}

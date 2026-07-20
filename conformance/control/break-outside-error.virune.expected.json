@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "status": "compile-error",
+  "diagnostics": [
+    {
+      "severity": "error",
+      "code": "L2095",
+      "line": 2,
+      "column": 7,
+      "endLine": 2,
+      "endColumn": 8
+    },
+    {
+      "severity": "error",
+      "code": "L3006",
+      "line": 3,
+      "column": 9,
+      "endLine": 3,
+      "endColumn": 13
+    }
+  ],
+  "rules": [
+    "eval.loop-control"
+  ]
+}

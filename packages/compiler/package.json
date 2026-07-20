@@ -1,0 +1,49 @@
+{
+	"name": "@virune/compiler",
+	"version": "1.0.0",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/yaona807/virune.git",
+		"directory": "packages/compiler"
+	},
+	"homepage": "https://github.com/yaona807/virune#readme",
+	"bugs": {
+		"url": "https://github.com/yaona807/virune/issues"
+	},
+	"type": "module",
+	"engines": {
+		"node": ">=24.0.0"
+	},
+	"exports": {
+		".": "./dist/src/index.js",
+		"./experimental": "./dist/src/experimental-api.js"
+	},
+	"files": [
+		"LICENSE",
+		"README.md",
+		"README_ja.md",
+		"dist/src"
+	],
+	"dependencies": {
+		"@jridgewell/gen-mapping": "0.3.13",
+		"@jridgewell/trace-mapping": "0.3.31",
+		"@virune/runtime": "1.0.0",
+		"chevrotain": "12.0.0"
+	},
+	"scripts": {
+		"build": "tsc -b",
+		"test": "node --test dist/test/**/*.test.js"
+	},
+	"license": "MIT",
+	"description": "Virune stable compiler API with an explicitly separated experimental analysis API.",
+	"keywords": [
+		"virune",
+		"compiler",
+		"parser",
+		"type-checker",
+		"javascript"
+	],
+	"publishConfig": {
+		"access": "public"
+	}
+}

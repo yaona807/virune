@@ -1,0 +1,13 @@
+record Box<T> {
+	value: T
+}
+
+fn wrap<T>(value: T) -> Box<List<T>> {
+	return Box {
+		value: [value],
+	}
+}
+
+fn use() -> Box<List<String>> {
+	return wrap("value")
+}

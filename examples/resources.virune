@@ -1,0 +1,15 @@
+async fn close(handle: FileHandle) -> Unit uses File {
+	let result = await File.close(handle)
+	match result {
+		Ok(_) => Unit
+		Err(error) => panic(error.message)
+	}
+	return Unit
+}
+
+pub async fn readPreview(path: String) -> Result<String, JsError> uses File {
+	let handle = await File.open(path, "r")?
+	defer await close(handle)
+	let text = await File.read(handle)?
+	return Ok(String.slice(text, 0, Some(80)))
+}

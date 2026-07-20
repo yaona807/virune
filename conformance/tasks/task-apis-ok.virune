@@ -1,0 +1,24 @@
+async fn load() -> Int {
+	return 1
+}
+
+async fn retryLoad(attempt: Int) -> Result<Int, String> {
+	return Ok(attempt)
+}
+
+async fn mapValue(value: Int, index: Int) -> Int {
+	return value + index
+}
+
+async fn supervised(restart: Int) -> Int {
+	return restart
+}
+
+async fn run() -> Result<Int, String> uses Task {
+	await Task.sleep(Duration.milliseconds(1))
+	let timed = await Task.timeout<Int>(Duration.seconds(1), load)
+	let retried = await Task.retry<Int, String>(3, Duration.milliseconds(1), retryLoad)
+	let values = await Task.mapParallel<Int, Int>([1, 2], 2, mapValue)
+	let watched = await Task.supervise<Int>(3, Duration.seconds(1), Duration.milliseconds(1), supervised)
+	return retried
+}

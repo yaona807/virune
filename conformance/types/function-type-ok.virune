@@ -1,0 +1,14 @@
+fn audit(message: String) -> Unit uses Console {
+	Console.print(message)
+	return Unit
+}
+
+fn invoke(action: fn(String) -> Unit uses Console) -> Unit uses Console {
+	action("event")
+	return Unit
+}
+
+pub fn main() -> Unit uses Console {
+	invoke(audit)
+	return Unit
+}

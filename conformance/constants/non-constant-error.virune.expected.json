@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "status": "compile-error",
+  "diagnostics": [
+    {
+      "severity": "error",
+      "code": "L2082",
+      "line": 5,
+      "column": 20,
+      "endLine": 5,
+      "endColumn": 28
+    }
+  ]
+}

@@ -1,0 +1,9 @@
+fn writeMessage(message: String) -> Unit uses Console {
+	Console.print(message)
+	return Unit
+}
+
+pub fn main() -> Unit uses Console {
+	writeMessage("ok")
+	return Unit
+}

@@ -1,0 +1,3 @@
+fn firstTwo(value: String) -> String {
+	return String.slice(value, 0, Some(2))
+}

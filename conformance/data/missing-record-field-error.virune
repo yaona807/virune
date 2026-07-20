@@ -1,0 +1,7 @@
+record User {
+	name: String
+}
+
+fn create() -> User {
+	return User {}
+}

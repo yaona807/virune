@@ -1,0 +1,5 @@
+fn contains() -> Bool {
+	let values = Set.from(["a", "b"])
+	let updated = Set.add(values, "c")
+	return Set.has(updated, "c")
+}

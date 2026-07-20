@@ -1,0 +1,10 @@
+async fn left() -> Result<Int, String> => Ok(1)
+async fn right() -> Result<Int, String> => Ok(2)
+
+async fn total() -> Result<Int, String> {
+	let values = (await parallel try {
+		left: left(),
+		right: right(),
+	})?
+	return Ok(values.left + values.right)
+}

@@ -1,0 +1,344 @@
+{
+	"schemaVersion": 1,
+	"generatedAt": "2026-07-18T10:53:24.413685Z",
+	"typescriptVersion": "6.0.3",
+	"thresholds": {
+		"minimumGenerationSuccessRate": 0.85,
+		"minimumNonEmptyRate": 0.6
+	},
+	"summary": {
+		"packageCount": 32,
+		"successfulPackages": 32,
+		"nonEmptyPackages": 32,
+		"generationSuccessRate": 1.0,
+		"nonEmptyRate": 1.0,
+		"totalFunctions": 1791,
+		"totalRecords": 1160,
+		"totalWarnings": 8591,
+		"totalUnknownMappings": 7120
+	},
+	"packages": [
+		{
+			"generatedFunctions": 165,
+			"generatedRecords": 74,
+			"warnings": 804,
+			"unknownMappings": 480,
+			"name": "zod",
+			"version": "4.4.3",
+			"status": "success",
+			"outputHash": "65649f2382e58ba79a8e61a5e8dbdfb224eccb92afa77357c3fb68ea326d69f2"
+		},
+		{
+			"generatedFunctions": 0,
+			"generatedRecords": 33,
+			"warnings": 234,
+			"unknownMappings": 61,
+			"name": "fastify",
+			"version": "5.10.0",
+			"status": "success",
+			"outputHash": "8dbe2941f37893423a7f1dede06ee068397979a2ff6a19163789aae06bb284c4"
+		},
+		{
+			"generatedFunctions": 52,
+			"generatedRecords": 121,
+			"warnings": 636,
+			"unknownMappings": 518,
+			"name": "react",
+			"version": "19.2.7",
+			"typesPackage": "@types/react",
+			"typesVersion": "19.2.17",
+			"status": "success",
+			"outputHash": "4d4c0bd3160c7326d0a9e2e56f8c80cadd3aa7fe196a3e29eb3317e357cfa0d0"
+		},
+		{
+			"generatedFunctions": 6,
+			"generatedRecords": 2,
+			"warnings": 17,
+			"unknownMappings": 7,
+			"name": "node-fetch",
+			"version": "3.3.2",
+			"status": "success",
+			"outputHash": "49372aaedc869e53e044a2a7cfa3f06079a9461793940fb231874d55432437f3"
+		},
+		{
+			"generatedFunctions": 9,
+			"generatedRecords": 25,
+			"warnings": 101,
+			"unknownMappings": 65,
+			"name": "axios",
+			"version": "1.18.1",
+			"status": "success",
+			"outputHash": "b3a35c156f789a16a9d60f249314e966c845e03010f19060d763ec3266f5e1e8"
+		},
+		{
+			"generatedFunctions": 249,
+			"generatedRecords": 42,
+			"warnings": 716,
+			"unknownMappings": 659,
+			"name": "date-fns",
+			"version": "4.4.0",
+			"status": "success",
+			"outputHash": "e57cee4c2e0cb82ce10393076304c7a8ca57993db09454dfcf3bd50025463a0a"
+		},
+		{
+			"generatedFunctions": 20,
+			"generatedRecords": 1,
+			"warnings": 40,
+			"unknownMappings": 33,
+			"name": "uuid",
+			"version": "14.0.1",
+			"status": "success",
+			"outputHash": "1ef9028e2dfc8f66de70442a36d40282f2e3309b49507647f5e701b799c66521"
+		},
+		{
+			"generatedFunctions": 3,
+			"generatedRecords": 8,
+			"warnings": 23,
+			"unknownMappings": 4,
+			"name": "commander",
+			"version": "15.0.0",
+			"status": "success",
+			"outputHash": "bcc4f01c9e33ba42a8fbbc51c9fe44ec17d7002aaae9d3695ae3470a2d90bec4"
+		},
+		{
+			"generatedFunctions": 0,
+			"generatedRecords": 6,
+			"warnings": 67,
+			"unknownMappings": 59,
+			"name": "chalk",
+			"version": "5.6.2",
+			"status": "success",
+			"outputHash": "03d2e1d0b7b69a0226cf0f2034a7bf7d792ca3c89092117d178d7a9432d574ea"
+		},
+		{
+			"generatedFunctions": 5,
+			"generatedRecords": 3,
+			"warnings": 9,
+			"unknownMappings": 5,
+			"name": "dotenv",
+			"version": "17.4.2",
+			"status": "success",
+			"outputHash": "c6ad1cb4d041da9b079d549db82d49da80e8f85aaf4f3734c397a6092a74fd52"
+		},
+		{
+			"generatedFunctions": 8,
+			"generatedRecords": 24,
+			"warnings": 51,
+			"unknownMappings": 31,
+			"name": "mysql2",
+			"version": "3.23.0",
+			"status": "success",
+			"outputHash": "64ba4b99f1d5a45de24653553d22fd951d5842fe4c8dbd8a2c1750d7c1c95688"
+		},
+		{
+			"generatedFunctions": 2,
+			"generatedRecords": 17,
+			"warnings": 57,
+			"unknownMappings": 25,
+			"name": "ajv",
+			"version": "8.20.0",
+			"status": "success",
+			"outputHash": "de047169b9092aa88e5f5907e207c431d72d7a40459e21bdb5962b31dafc8959"
+		},
+		{
+			"generatedFunctions": 5,
+			"generatedRecords": 0,
+			"warnings": 34,
+			"unknownMappings": 13,
+			"name": "execa",
+			"version": "10.0.0",
+			"status": "success",
+			"outputHash": "45c7bdf15cf0751f40b06a6a21950d57bd42a0c2960a1b9a0b972809a93256ab"
+		},
+		{
+			"generatedFunctions": 5,
+			"generatedRecords": 26,
+			"warnings": 77,
+			"unknownMappings": 47,
+			"name": "pino",
+			"version": "10.3.1",
+			"status": "success",
+			"outputHash": "c870b5ffb8c18ce002fc1327ec4e0e53cb1994431906c92720aec66798507995"
+		},
+		{
+			"generatedFunctions": 197,
+			"generatedRecords": 143,
+			"warnings": 346,
+			"unknownMappings": 244,
+			"name": "graphql",
+			"version": "17.0.2",
+			"status": "success",
+			"outputHash": "c0cb9f98a1a447ab35aefc9830c8e19e320f0f517d25343d21af1800d202bd29"
+		},
+		{
+			"generatedFunctions": 312,
+			"generatedRecords": 26,
+			"warnings": 1384,
+			"unknownMappings": 1308,
+			"name": "rxjs",
+			"version": "7.8.2",
+			"status": "success",
+			"outputHash": "9ec50721e466121beefecf218d46c76498285366b0fc57d753cc5c39a523ac48"
+		},
+		{
+			"generatedFunctions": 16,
+			"generatedRecords": 2,
+			"warnings": 38,
+			"unknownMappings": 31,
+			"name": "immer",
+			"version": "11.1.15",
+			"status": "success",
+			"outputHash": "5c764127f0373de0e5b40c65963ddde93f3c1d2499b7f735a070f80d8d4a003a"
+		},
+		{
+			"generatedFunctions": 2,
+			"generatedRecords": 1,
+			"warnings": 18,
+			"unknownMappings": 13,
+			"name": "zustand",
+			"version": "5.0.14",
+			"status": "success",
+			"outputHash": "7e7be04f05f2d2f33fb6cecc2085daba25120b1eccdf2c36fcb3280112fb20a6"
+		},
+		{
+			"generatedFunctions": 101,
+			"generatedRecords": 73,
+			"warnings": 352,
+			"unknownMappings": 229,
+			"name": "react-router",
+			"version": "8.2.0",
+			"status": "success",
+			"outputHash": "f873d22c3e91d848f2532c79e663a9cc1cf4d9b91cb762aa54bef863820ee83d"
+		},
+		{
+			"generatedFunctions": 8,
+			"generatedRecords": 27,
+			"warnings": 53,
+			"unknownMappings": 39,
+			"name": "prettier",
+			"version": "3.9.5",
+			"status": "success",
+			"outputHash": "9e116f4133958c87f7856d6697c022e2e56365861c2817796f3d81be380ce25c"
+		},
+		{
+			"generatedFunctions": 51,
+			"generatedRecords": 104,
+			"warnings": 308,
+			"unknownMappings": 201,
+			"name": "vite",
+			"version": "8.1.5",
+			"status": "success",
+			"outputHash": "27d0517ea2f4937a03f3829eb39596631a73775d05c93e84dddfff49466f8e84"
+		},
+		{
+			"generatedFunctions": 0,
+			"generatedRecords": 6,
+			"warnings": 26,
+			"unknownMappings": 12,
+			"name": "hono",
+			"version": "4.12.30",
+			"status": "success",
+			"outputHash": "01774683741f44c8e15d01c090ca49bf1053f87d7b21a0c88ce9bf6d9e8af1ad"
+		},
+		{
+			"generatedFunctions": 6,
+			"generatedRecords": 7,
+			"warnings": 58,
+			"unknownMappings": 35,
+			"name": "ky",
+			"version": "2.0.2",
+			"status": "success",
+			"outputHash": "933673e975127c46187b64536fecd3d2967158f32d0a2e131c93e3fcda73cc20"
+		},
+		{
+			"generatedFunctions": 4,
+			"generatedRecords": 0,
+			"warnings": 6,
+			"unknownMappings": 6,
+			"name": "nanoid",
+			"version": "6.0.0",
+			"status": "success",
+			"outputHash": "8379720e8182a7a68236f5cb356001893a2637f961fd23dc84af6f3ad1827eae"
+		},
+		{
+			"generatedFunctions": 16,
+			"generatedRecords": 2,
+			"warnings": 4,
+			"unknownMappings": 3,
+			"name": "bcryptjs",
+			"version": "3.0.3",
+			"status": "success",
+			"outputHash": "824cdb60ba4c3bdc77aada24a2788ca07ae40eab71948121f5a9bf332ba2c536"
+		},
+		{
+			"generatedFunctions": 8,
+			"generatedRecords": 1,
+			"warnings": 15,
+			"unknownMappings": 11,
+			"name": "superjson",
+			"version": "2.2.6",
+			"status": "success",
+			"outputHash": "dc18285886cda2ee5f9af96808a72c3732035f8afb3bbb5841b2fda6f92f4298"
+		},
+		{
+			"generatedFunctions": 510,
+			"generatedRecords": 373,
+			"warnings": 2959,
+			"unknownMappings": 2867,
+			"name": "valibot",
+			"version": "1.4.2",
+			"status": "success",
+			"outputHash": "ae4a25ce4ec4356ac7f8a521a35298ca4647bd9aa0e93a54418de991ca890ee5"
+		},
+		{
+			"generatedFunctions": 3,
+			"generatedRecords": 0,
+			"warnings": 12,
+			"unknownMappings": 11,
+			"name": "ts-pattern",
+			"version": "5.9.0",
+			"status": "success",
+			"outputHash": "0a864be461de0c7ebe05f0c1e58267aff2f4cca689cc814328be46f37bdfcc6d"
+		},
+		{
+			"generatedFunctions": 13,
+			"generatedRecords": 0,
+			"warnings": 56,
+			"unknownMappings": 51,
+			"name": "neverthrow",
+			"version": "8.2.0",
+			"status": "success",
+			"outputHash": "a22a201e4c9c5fd723844d265c16cac2aac88d2cec1f16b94d8085e925986def"
+		},
+		{
+			"generatedFunctions": 2,
+			"generatedRecords": 0,
+			"warnings": 4,
+			"unknownMappings": 0,
+			"name": "decimal.js",
+			"version": "10.6.0",
+			"status": "success",
+			"outputHash": "2a6ba339935aea3fa6e9077acff48f5c2734f02a98b8196ef13f445b2abf96fe"
+		},
+		{
+			"generatedFunctions": 4,
+			"generatedRecords": 3,
+			"warnings": 27,
+			"unknownMappings": 17,
+			"name": "dayjs",
+			"version": "1.11.21",
+			"status": "success",
+			"outputHash": "7dd50d3c88d5347189ed95282c189d1c99be10f0e11a67907333d1998327328d"
+		},
+		{
+			"generatedFunctions": 9,
+			"generatedRecords": 10,
+			"warnings": 59,
+			"unknownMappings": 35,
+			"name": "marked",
+			"version": "18.0.6",
+			"status": "success",
+			"outputHash": "a695eaffe89d024f933e2730d12f20c3fef0f0a126978603ebd97e9215fff2c7"
+		}
+	]
+}

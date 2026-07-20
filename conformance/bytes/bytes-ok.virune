@@ -1,0 +1,4 @@
+fn encode() -> Result<String, BytesError> {
+	let value = Bytes.fromHex("4869")?
+	return Ok(Bytes.toHex(value))
+}

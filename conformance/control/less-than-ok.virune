@@ -1,0 +1,3 @@
+fn isNegative(value: Int) -> Bool {
+	return value < 0
+}

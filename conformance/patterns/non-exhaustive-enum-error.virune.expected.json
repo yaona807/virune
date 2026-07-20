@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "status": "compile-error",
+  "diagnostics": [
+    {
+      "severity": "error",
+      "code": "L3004",
+      "line": 7,
+      "column": 15,
+      "endLine": 7,
+      "endColumn": 21
+    }
+  ],
+  "rules": [
+    "eval.match"
+  ]
+}

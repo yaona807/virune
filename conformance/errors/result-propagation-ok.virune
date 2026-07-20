@@ -1,0 +1,5 @@
+fn parse() -> Result<Int, String> => Ok(1)
+fn use() -> Result<Int, String> {
+	let value = parse()?
+	return Ok(value + 1)
+}

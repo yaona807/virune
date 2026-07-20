@@ -1,0 +1,5 @@
+fn invalid(pair: (String, Int)) -> String {
+	return match pair {
+		(name, _, _) => name
+	}
+}

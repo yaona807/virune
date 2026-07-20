@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "status": "compile-error",
+  "diagnostics": [
+    {
+      "severity": "error",
+      "code": "L2043",
+      "line": 2,
+      "column": 9,
+      "endLine": 2,
+      "endColumn": 10
+    },
+    {
+      "severity": "error",
+      "code": "L2043",
+      "line": 1,
+      "column": 15,
+      "endLine": 1,
+      "endColumn": 20
+    }
+  ],
+  "rules": [
+    "type.static"
+  ]
+}

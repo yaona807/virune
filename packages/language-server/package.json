@@ -1,0 +1,31 @@
+{
+	"name": "@virune/language-server",
+	"version": "1.0.0",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/yaona807/virune.git",
+		"directory": "packages/language-server"
+	},
+	"homepage": "https://github.com/yaona807/virune#readme",
+	"bugs": {
+		"url": "https://github.com/yaona807/virune/issues"
+	},
+	"private": true,
+	"type": "module",
+	"engines": {
+		"node": ">=24.0.0"
+	},
+	"dependencies": {
+		"@virune/compiler": "1.0.0",
+		"@virune/formatter": "1.0.0",
+		"@virune/js-interop": "1.0.0",
+		"vscode-languageserver": "10.1.0",
+		"vscode-languageserver-textdocument": "1.0.12"
+	},
+	"scripts": {
+		"build": "tsc -b",
+		"test": "node --test dist/test/**/*.test.js"
+	},
+	"license": "MIT",
+	"description": "Virune Language Server used by the official VS Code extension."
+}

@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "status": "compile-error",
+  "diagnostics": [
+    {
+      "severity": "error",
+      "code": "L2043",
+      "line": 4,
+      "column": 9,
+      "endLine": 4,
+      "endColumn": 11
+    },
+    {
+      "severity": "error",
+      "code": "L2043",
+      "line": 3,
+      "column": 11,
+      "endLine": 3,
+      "endColumn": 21
+    },
+    {
+      "severity": "error",
+      "code": "L2043",
+      "line": 8,
+      "column": 16,
+      "endLine": 8,
+      "endColumn": 17
+    }
+  ],
+  "rules": [
+    "type.alias"
+  ]
+}

@@ -1,0 +1,139 @@
+{
+	"schemaVersion": 1,
+	"packages": [
+		{
+			"name": "zod",
+			"version": "4.4.3"
+		},
+		{
+			"name": "fastify",
+			"version": "5.10.0"
+		},
+		{
+			"name": "react",
+			"version": "19.2.7",
+			"typesPackage": "@types/react",
+			"typesVersion": "19.2.17"
+		},
+		{
+			"name": "node-fetch",
+			"version": "3.3.2"
+		},
+		{
+			"name": "axios",
+			"version": "1.18.1"
+		},
+		{
+			"name": "date-fns",
+			"version": "4.4.0"
+		},
+		{
+			"name": "uuid",
+			"version": "14.0.1"
+		},
+		{
+			"name": "commander",
+			"version": "15.0.0"
+		},
+		{
+			"name": "chalk",
+			"version": "5.6.2"
+		},
+		{
+			"name": "dotenv",
+			"version": "17.4.2"
+		},
+		{
+			"name": "mysql2",
+			"version": "3.23.0"
+		},
+		{
+			"name": "ajv",
+			"version": "8.20.0"
+		},
+		{
+			"name": "execa",
+			"version": "10.0.0"
+		},
+		{
+			"name": "pino",
+			"version": "10.3.1"
+		},
+		{
+			"name": "graphql",
+			"version": "17.0.2"
+		},
+		{
+			"name": "rxjs",
+			"version": "7.8.2"
+		},
+		{
+			"name": "immer",
+			"version": "11.1.15"
+		},
+		{
+			"name": "zustand",
+			"version": "5.0.14"
+		},
+		{
+			"name": "react-router",
+			"version": "8.2.0"
+		},
+		{
+			"name": "prettier",
+			"version": "3.9.5"
+		},
+		{
+			"name": "vite",
+			"version": "8.1.5"
+		},
+		{
+			"name": "hono",
+			"version": "4.12.30"
+		},
+		{
+			"name": "ky",
+			"version": "2.0.2"
+		},
+		{
+			"name": "nanoid",
+			"version": "6.0.0"
+		},
+		{
+			"name": "bcryptjs",
+			"version": "3.0.3"
+		},
+		{
+			"name": "superjson",
+			"version": "2.2.6"
+		},
+		{
+			"name": "valibot",
+			"version": "1.4.2"
+		},
+		{
+			"name": "ts-pattern",
+			"version": "5.9.0"
+		},
+		{
+			"name": "neverthrow",
+			"version": "8.2.0"
+		},
+		{
+			"name": "decimal.js",
+			"version": "10.6.0"
+		},
+		{
+			"name": "dayjs",
+			"version": "1.11.21"
+		},
+		{
+			"name": "marked",
+			"version": "18.0.6"
+		}
+	],
+	"thresholds": {
+		"minimumGenerationSuccessRate": 0.85,
+		"minimumNonEmptyRate": 0.6
+	}
+}

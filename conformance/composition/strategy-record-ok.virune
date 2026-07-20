@@ -1,0 +1,17 @@
+record Encoder<T> {
+	encode: fn(T) -> String
+}
+
+record User {
+	name: String
+}
+
+fn encodeUser(user: User) -> String => user.name
+
+fn encode<T>(value: T, encoder: Encoder<T>) -> String {
+	return encoder.encode(value)
+}
+
+fn main() -> String {
+	return encode(User { name: "Virune" }, Encoder<User> { encode: encodeUser })
+}

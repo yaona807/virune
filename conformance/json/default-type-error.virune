@@ -1,0 +1,4 @@
+record User derives Json {
+	@jsonDefault(1)
+	name: String
+}
