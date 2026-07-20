@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
 import { access, mkdtemp, readFile, readdir, rm, writeFile, mkdir } from 'node:fs/promises';
+import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { test } from 'node:test';
@@ -89,14 +90,16 @@ async function findBrowser(): Promise<string | undefined> {
 }
 
 async function executeInBrowser(executable: string, html: string, moduleUrl: string, profile: string): Promise<{ readonly result: string; readonly status: string; readonly timeout: string; readonly parallel: boolean }> {
+	const useExplicitPort = process.platform === 'win32' || process.env.VIRUNE_BROWSER_DEBUG_PORT_MODE === 'explicit';
+	const requestedPort = useExplicitPort ? await availableLoopbackPort() : 0;
 	const child = spawn(executable, [
 		'--headless', '--disable-gpu', '--no-sandbox', '--disable-dev-shm-usage', '--no-first-run', '--no-proxy-server', '--allow-file-access-from-files',
-		'--remote-debugging-address=127.0.0.1', '--remote-debugging-port=0', `--user-data-dir=${profile}`, 'about:blank',
+		'--remote-debugging-address=127.0.0.1', `--remote-debugging-port=${requestedPort}`, `--user-data-dir=${profile}`, 'about:blank',
 	], { stdio: ['ignore', 'ignore', 'pipe'] });
 	let stderr = '';
 	child.stderr.setEncoding('utf8'); child.stderr.on('data', chunk => { stderr += chunk; });
 	try {
-		const port = await waitForDevToolsPort(profile, child, () => stderr);
+		const port = await waitForDevToolsPort(profile, requestedPort, child, () => stderr);
 		const target = await waitForTarget(port, child, () => stderr);
 		const client = await CdpClient.connect(target.webSocketDebuggerUrl);
 		try {
@@ -209,6 +212,7 @@ function isTransientCleanupError(error: unknown): boolean {
 
 async function waitForDevToolsPort(
 	profile: string,
+	requestedPort: number,
 	child: ReturnType<typeof spawn>,
 	readStderr: () => string,
 ): Promise<number> {
@@ -217,6 +221,9 @@ async function waitForDevToolsPort(
 	while (Date.now() < deadline) {
 		const stderr = readStderr();
 		throwIfBrowserExited(child, stderr);
+
+		if (requestedPort > 0 && await devToolsEndpointReady(requestedPort)) return requestedPort;
+
 		try {
 			const [portText] = (await readFile(activePortFile, 'utf8')).split(/\r?\n/u);
 			const port = Number(portText);
@@ -228,7 +235,37 @@ async function waitForDevToolsPort(
 
 		await delay(100);
 	}
-	throw new Error(`Chromium did not expose a DevTools endpoint within 30 seconds\n${readStderr()}`);
+	const requestedPortDetails = requestedPort > 0 ? ` (requested port ${requestedPort})` : '';
+	throw new Error(`Chromium did not expose a DevTools endpoint within 30 seconds${requestedPortDetails}\n${readStderr()}`);
+}
+
+async function devToolsEndpointReady(port: number): Promise<boolean> {
+	try {
+		const response = await fetch(`http://127.0.0.1:${port}/json/version`, { signal: AbortSignal.timeout(500) });
+		return response.ok;
+	} catch {
+		return false;
+	}
+}
+
+function availableLoopbackPort(): Promise<number> {
+	return new Promise((resolvePromise, reject) => {
+		const server = createServer();
+		server.unref();
+		server.once('error', reject);
+		server.listen({ host: '127.0.0.1', port: 0, exclusive: true }, () => {
+			const address = server.address();
+			if (address === null || typeof address === 'string') {
+				server.close(() => { reject(new Error('Unable to reserve a loopback port for Chromium DevTools')); });
+				return;
+			}
+			const port = address.port;
+			server.close(error => {
+				if (error !== undefined) reject(error);
+				else resolvePromise(port);
+			});
+		});
+	});
 }
 
 function devToolsPortFromStderr(stderr: string): number | undefined {
