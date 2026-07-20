@@ -41,7 +41,7 @@ pub fn verify() -> Result<String, JsError> uses Dom {
 		);
 		assert.deepEqual(browserResult, { result: '6f6b', status: 'Virune browser', timeout: 'Err:true', parallel: true });
 	} finally {
-		await rm(root, { recursive: true, force: true });
+		await removeTemporaryDirectory(root);
 	}
 });
 
@@ -137,12 +137,74 @@ async function executeInBrowser(executable: string, html: string, moduleUrl: str
 			const value = typed.result?.value;
 			if (value === undefined) throw new Error(`Browser returned no result: ${typed.result?.description ?? 'unknown'}\n${stderr}`);
 			return { result: value.result ?? '', status: value.status ?? '', timeout: value.timeout ?? '', parallel: value.parallel ?? false };
-		} finally { client.close(); }
+		} finally {
+			await closeBrowserThroughDevTools(client);
+			client.close();
+		}
 	} finally {
-		child.kill('SIGTERM');
-		await Promise.race([new Promise<void>(resolvePromise => child.once('exit', () => resolvePromise())), delay(2_000)]);
-		if (child.exitCode === null) child.kill('SIGKILL');
+		await stopBrowserProcess(child);
 	}
+}
+
+
+async function closeBrowserThroughDevTools(client: CdpClient): Promise<void> {
+	await settleWithin(client.call('Browser.close'), 2_000);
+}
+
+function settleWithin(promise: Promise<unknown>, timeout: number): Promise<void> {
+	return new Promise(resolvePromise => {
+		let settled = false;
+		const finish = (): void => {
+			if (settled) return;
+			settled = true;
+			clearTimeout(timer);
+			resolvePromise();
+		};
+		const timer = setTimeout(finish, timeout);
+		void promise.then(finish, finish);
+	});
+}
+
+async function stopBrowserProcess(child: ReturnType<typeof spawn>): Promise<void> {
+	if (child.exitCode !== null || child.signalCode !== null) return;
+	child.kill('SIGTERM');
+	if (await waitForProcessExit(child, 5_000)) return;
+	child.kill('SIGKILL');
+	await waitForProcessExit(child, 5_000);
+}
+
+function waitForProcessExit(child: ReturnType<typeof spawn>, timeout: number): Promise<boolean> {
+	if (child.exitCode !== null || child.signalCode !== null) return Promise.resolve(true);
+	return new Promise(resolvePromise => {
+		const finish = (exited: boolean): void => {
+			clearTimeout(timer);
+			child.off('exit', onExit);
+			resolvePromise(exited);
+		};
+		const onExit = (): void => { finish(true); };
+		const timer = setTimeout(() => { finish(false); }, timeout);
+		child.once('exit', onExit);
+		if (child.exitCode !== null || child.signalCode !== null) finish(true);
+	});
+}
+
+async function removeTemporaryDirectory(path: string): Promise<void> {
+	try {
+		await rm(path, {
+			recursive: true,
+			force: true,
+			maxRetries: process.platform === 'win32' ? 20 : 5,
+			retryDelay: 250,
+		});
+	} catch (error) {
+		if (!isTransientCleanupError(error)) throw error;
+		process.emitWarning(`Unable to remove browser test directory after retries: ${path}\n${String(error)}`);
+	}
+}
+
+function isTransientCleanupError(error: unknown): boolean {
+	if (!(error instanceof Error) || !('code' in error)) return false;
+	return ['EBUSY', 'ENOTEMPTY', 'EPERM'].includes(String((error as NodeJS.ErrnoException).code));
 }
 
 async function waitForDevToolsPort(
