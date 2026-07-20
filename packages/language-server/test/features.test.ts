@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import { ProjectManager } from '../src/analysis/project-manager.js';
 import { filePathToUri, fullDocumentRange, positionToOffset } from '../src/analysis/position.js';
@@ -10,7 +12,7 @@ import { hoverAt } from '../src/features/hover.js';
 import { inlayHints } from '../src/features/inlay-hints.js';
 import { signatureHelpAt } from '../src/features/signature-help.js';
 
-const path = '/tmp/virune-language-server-features.virune';
+const path = join(tmpdir(), 'virune-language-server-features.virune');
 const text = `record User {
 	name: String
 }
@@ -29,7 +31,7 @@ async function analyzeSource(sourcePath: string, sourceText: string) {
 	const manager = new ProjectManager({ getOpenDocuments: () => [document] });
 	const snapshot = await manager.analyze(document.uri);
 	assert.ok(snapshot);
-	const module = snapshot.modulesByPath.get(sourcePath);
+	const module = snapshot.modulesByPath.get(snapshot.requestedPath);
 	assert.ok(module);
 	return { document, snapshot, module };
 }
@@ -85,7 +87,7 @@ test('definitionAt resolves a function call to its declaration', async () => {
 });
 
 test('inlayHints displays inferred variable, function, lambda, and parameter information', async () => {
-	const sourcePath = '/tmp/virune-language-server-inlay-hints.virune';
+	const sourcePath = join(tmpdir(), 'virune-language-server-inlay-hints.virune');
 	const sourceText = `fn add(left: Int, right: Int) -> Int => left + right
 
 fn apply(callback: fn(Int) -> Int) -> Int => callback(1)
@@ -107,7 +109,7 @@ fn inferred() {
 });
 
 test('signatureHelpAt reports the active function parameter', async () => {
-	const sourcePath = '/tmp/virune-language-server-signature-help.virune';
+	const sourcePath = join(tmpdir(), 'virune-language-server-signature-help.virune');
 	const sourceText = `fn add(left: Int, right: Int) -> Int => left + right
 
 fn use() -> Int => add(1, 2)
@@ -122,7 +124,7 @@ fn use() -> Int => add(1, 2)
 });
 
 test('hoverAt displays record shape and definition source', async () => {
-	const sourcePath = '/tmp/virune-language-server-hover-record.virune';
+	const sourcePath = join(tmpdir(), 'virune-language-server-hover-record.virune');
 	const sourceText = `record User {
 	name: String
 	age: Int

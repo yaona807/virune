@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import type { Diagnostic } from 'vscode-languageserver/node';
 import { ProjectManager, type AnalysisSnapshot } from '../src/analysis/project-manager.js';
@@ -13,13 +15,13 @@ async function analyze(path: string, text: string) {
 	const manager = new ProjectManager({ getOpenDocuments: () => [document] });
 	const snapshot = await manager.analyze(document.uri);
 	assert.ok(snapshot);
-	const module = snapshot.modulesByPath.get(path);
+	const module = snapshot.modulesByPath.get(snapshot.requestedPath);
 	assert.ok(module);
 	return { document, snapshot, module };
 }
 
 test('completionItems limits local variables and parameters to the current function scope', async () => {
-	const path = '/tmp/virune-completion-scope.virune';
+	const path = join(tmpdir(), 'virune-completion-scope.virune');
 	const text = `fn first(a: Int) -> Int {
 	let x = a
 	return x
@@ -41,7 +43,7 @@ fn second(b: Int) -> Int {
 });
 
 test('completionItems offers fields for a typed receiver', async () => {
-	const path = '/tmp/virune-completion-field.virune';
+	const path = join(tmpdir(), 'virune-completion-field.virune');
 	const text = `record User {
 	name: String
 }
@@ -55,7 +57,7 @@ fn read(user: User) -> String => user.name
 });
 
 test('semanticTokens classifies declarations and references', async () => {
-	const path = '/tmp/virune-semantic-tokens.virune';
+	const path = join(tmpdir(), 'virune-semantic-tokens.virune');
 	const text = `record User {
 	name: String
 }
@@ -79,7 +81,7 @@ fn greet(user: User) -> String => user.name
 });
 
 test('codeActionsForDiagnostics converts compiler fixes into workspace edits', async () => {
-	const path = '/tmp/virune-code-action.virune';
+	const path = join(tmpdir(), 'virune-code-action.virune');
 	const text = 'fn value() -> Int => 1\n';
 	const { snapshot, module } = await analyze(path, text);
 	const compilerDiagnostic = {
@@ -106,10 +108,10 @@ test('codeActionsForDiagnostics converts compiler fixes into workspace edits', a
 		message: 'Replace value',
 		range: { start: { line: 0, character: 3 }, end: { line: 0, character: 8 } },
 	};
-	const actions = codeActionsForDiagnostics(modifiedSnapshot, path, [requested]);
+	const actions = codeActionsForDiagnostics(modifiedSnapshot, snapshot.requestedPath, [requested]);
 	assert.equal(actions.length, 1);
 	assert.equal(actions[0]?.title, 'Rename to result');
-	assert.equal(actions[0]?.edit?.changes?.[filePathToUri(path)]?.[0]?.newText, 'result');
+	assert.equal(actions[0]?.edit?.changes?.[filePathToUri(module.source.path)]?.[0]?.newText, 'result');
 });
 
 function decodeTokens(data: readonly number[]): Array<{ line: number; character: number; length: number; type: number; modifiers: number }> {
