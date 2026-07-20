@@ -210,19 +210,21 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 					: request.kind === 'type-only' ? `import type { ${safeTsName(request.importedName ?? '')} as __ViruneType } from ${moduleText};\ntype __ViruneAlias = __ViruneType;`
 						: `import ${moduleText};`;
 		const host = ts.createCompilerHost(compilerOptions, true);
+		const virtualFileKey = canonicalFilePath(virtualPath);
+		const isVirtualFile = (fileName: string): boolean => canonicalFilePath(fileName) === virtualFileKey;
 		const originalFileExists = host.fileExists.bind(host);
 		const originalReadFile = host.readFile.bind(host);
 		const originalGetSourceFile = host.getSourceFile.bind(host);
-		host.fileExists = fileName => fileName === virtualPath || originalFileExists(fileName);
-		host.readFile = fileName => fileName === virtualPath ? sourceText : originalReadFile(fileName);
-		host.getSourceFile = (fileName, languageVersion, onError, shouldCreateNewSourceFile) => fileName === virtualPath
+		host.fileExists = fileName => isVirtualFile(fileName) || originalFileExists(fileName);
+		host.readFile = fileName => isVirtualFile(fileName) ? sourceText : originalReadFile(fileName);
+		host.getSourceFile = (fileName, languageVersion, onError, shouldCreateNewSourceFile) => isVirtualFile(fileName)
 			? ts.createSourceFile(fileName, sourceText, languageVersion, true, ts.ScriptKind.TS)
 			: originalGetSourceFile(fileName, languageVersion, onError, shouldCreateNewSourceFile);
 		const program = ts.createProgram({ rootNames: [virtualPath], options: compilerOptions, host });
 		const diagnostics = ts.getPreEmitDiagnostics(program);
 		const errors = diagnostics.filter(item => item.category === ts.DiagnosticCategory.Error);
 		if (errors.length > 0) throw new Error(errors.map(item => ts.flattenDiagnosticMessageText(item.messageText, '\n')).join('; '));
-		const sourceFile = program.getSourceFile(virtualPath);
+		const sourceFile = program.getSourceFiles().find(item => isVirtualFile(item.fileName));
 		if (sourceFile === undefined) throw new Error('TypeScript interop probe was not created');
 		const checker = program.getTypeChecker();
 		const expression = sourceFile.statements.find(ts.isExpressionStatement)?.expression;
@@ -279,6 +281,12 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 			...(declarationInfo.packageJsonPath === undefined ? {} : { declarationPackageJsonHash: hash(readFileSync(declarationInfo.packageJsonPath)) }),
 		};
 	}
+}
+
+
+function canonicalFilePath(fileName: string): string {
+	const normalized = resolve(fileName).replaceAll('\\', '/');
+	return ts.sys.useCaseSensitiveFileNames ? normalized : normalized.toLowerCase();
 }
 
 function primitiveKind(type: ts.Type): ForeignPrimitiveKind | undefined {

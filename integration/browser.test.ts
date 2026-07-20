@@ -1,6 +1,5 @@
 import { spawn } from 'node:child_process';
 import { access, mkdtemp, readFile, readdir, rm, writeFile, mkdir } from 'node:fs/promises';
-import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { test } from 'node:test';
@@ -85,15 +84,15 @@ async function findBrowser(): Promise<string | undefined> {
 }
 
 async function executeInBrowser(executable: string, html: string, moduleUrl: string, profile: string): Promise<{ readonly result: string; readonly status: string; readonly timeout: string; readonly parallel: boolean }> {
-	const port = await freePort();
 	const child = spawn(executable, [
-		'--headless=new', '--disable-gpu', '--no-sandbox', '--disable-dev-shm-usage', '--no-first-run', '--no-proxy-server', '--allow-file-access-from-files',
-		`--remote-debugging-port=${port}`, `--user-data-dir=${profile}`, 'about:blank',
+		'--headless', '--disable-gpu', '--no-sandbox', '--disable-dev-shm-usage', '--no-first-run', '--no-proxy-server', '--allow-file-access-from-files',
+		'--remote-debugging-address=127.0.0.1', '--remote-debugging-port=0', `--user-data-dir=${profile}`, 'about:blank',
 	], { stdio: ['ignore', 'ignore', 'pipe'] });
 	let stderr = '';
 	child.stderr.setEncoding('utf8'); child.stderr.on('data', chunk => { stderr += chunk; });
 	try {
-		const target = await waitForTarget(port);
+		const port = await waitForDevToolsPort(profile, child, () => stderr);
+		const target = await waitForTarget(port, child, () => stderr);
 		const client = await CdpClient.connect(target.webSocketDebuggerUrl);
 		try {
 			await client.call('Page.enable');
@@ -141,18 +140,33 @@ async function executeInBrowser(executable: string, html: string, moduleUrl: str
 	}
 }
 
-async function freePort(): Promise<number> {
-	const server = createServer();
-	await new Promise<void>(resolvePromise => server.listen(0, '127.0.0.1', resolvePromise));
-	const address = server.address();
-	assert.ok(address !== null && typeof address !== 'string');
-	await new Promise<void>((resolvePromise, reject) => server.close(error => error === undefined ? resolvePromise() : reject(error)));
-	return address.port;
+async function waitForDevToolsPort(
+	profile: string,
+	child: ReturnType<typeof spawn>,
+	readStderr: () => string,
+): Promise<number> {
+	const activePortFile = join(profile, 'DevToolsActivePort');
+	const deadline = Date.now() + 30_000;
+	while (Date.now() < deadline) {
+		throwIfBrowserExited(child, readStderr());
+		try {
+			const [portText] = (await readFile(activePortFile, 'utf8')).split(/\r?\n/u);
+			const port = Number(portText);
+			if (Number.isInteger(port) && port > 0) return port;
+		} catch {}
+		await delay(100);
+	}
+	throw new Error(`Chromium did not publish DevToolsActivePort within 30 seconds\n${readStderr()}`);
 }
 
-async function waitForTarget(port: number): Promise<{ readonly webSocketDebuggerUrl: string }> {
-	const deadline = Date.now() + 10_000;
+async function waitForTarget(
+	port: number,
+	child: ReturnType<typeof spawn>,
+	readStderr: () => string,
+): Promise<{ readonly webSocketDebuggerUrl: string }> {
+	const deadline = Date.now() + 15_000;
 	while (Date.now() < deadline) {
+		throwIfBrowserExited(child, readStderr());
 		try {
 			const response = await fetch(`http://127.0.0.1:${port}/json/list`);
 			if (response.ok) {
@@ -163,7 +177,12 @@ async function waitForTarget(port: number): Promise<{ readonly webSocketDebugger
 		} catch {}
 		await delay(100);
 	}
-	throw new Error('Chromium DevTools endpoint did not become ready');
+	throw new Error(`Chromium DevTools page target did not become ready within 15 seconds\n${readStderr()}`);
+}
+
+function throwIfBrowserExited(child: ReturnType<typeof spawn>, stderr: string): void {
+	if (child.exitCode === null && child.signalCode === null) return;
+	throw new Error(`Chromium exited before DevTools became ready (exit=${String(child.exitCode)}, signal=${String(child.signalCode)})\n${stderr}`);
 }
 
 class CdpClient {
