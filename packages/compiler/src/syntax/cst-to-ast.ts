@@ -230,7 +230,7 @@ export class AstBuilder extends baseCstVisitorConstructor {
 		if (token.tokenType.name === 'Underscore') return { id: this.id(), kind: 'WildcardExpression', span: tokenSpan(this.#fileId, token) };
 		return this.literal(token);
 	}
-	public recordExpression(ctx: Ctx): A.RecordExpression { return { id: this.id(), kind: 'RecordExpression', span: nodeSpan(this.#fileId, this.currentNode(ctx)), name: tokenText(ctx, 'Identifier'), entries: this.visitNode(firstNode(ctx, 'recordFieldBlock')) }; }
+	public recordExpression(ctx: Ctx): A.RecordExpression { const typeArguments = firstNode(ctx, 'typeArguments'); return { id: this.id(), kind: 'RecordExpression', span: nodeSpan(this.#fileId, this.currentNode(ctx)), name: tokenText(ctx, 'Identifier'), typeArguments: typeArguments === undefined ? [] : this.visitNode<A.TypeReferenceNode[]>(typeArguments), entries: this.visitNode<A.RecordEntryNode[]>(firstNode(ctx, 'recordFieldBlock')) }; }
 	public recordFieldBlock(ctx: Ctx): A.RecordEntryNode[] { return this.visitNodes(nodes(ctx, 'recordEntry')); }
 	public recordEntry(ctx: Ctx): A.RecordEntryNode { const name = tokenText(ctx, 'Identifier'); const expression = firstNode(ctx, 'expression'); return { name, value: expression === undefined ? { id: this.id(), kind: 'IdentifierExpression', span: tokenSpan(this.#fileId, firstToken(ctx, 'Identifier')), name } : this.visitNode(expression), span: nodeSpan(this.#fileId, this.currentNode(ctx)) }; }
 	public listExpression(ctx: Ctx): A.ListExpression { return { id: this.id(), kind: 'ListExpression', span: nodeSpan(this.#fileId, this.currentNode(ctx)), items: this.visitNodes(nodes(ctx, 'expression')) }; }

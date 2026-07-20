@@ -76,7 +76,7 @@ export interface PipelineExpression extends ExpressionBase { readonly kind: 'Pip
 export interface TryExpression extends ExpressionBase { readonly kind: 'TryExpression'; readonly operand: Expression; }
 export interface AwaitExpression extends ExpressionBase { readonly kind: 'AwaitExpression'; readonly operand: Expression; }
 export interface RecordEntryNode { readonly name: string; readonly value: Expression; readonly span: SourceSpan; }
-export interface RecordExpression extends ExpressionBase { readonly kind: 'RecordExpression'; readonly name: string; readonly entries: readonly RecordEntryNode[]; symbolId?: SymbolId; }
+export interface RecordExpression extends ExpressionBase { readonly kind: 'RecordExpression'; readonly name: string; readonly typeArguments: readonly TypeReferenceNode[]; readonly entries: readonly RecordEntryNode[]; symbolId?: SymbolId; }
 export interface RecordUpdateExpression extends ExpressionBase { readonly kind: 'RecordUpdateExpression'; readonly base: Expression; readonly entries: readonly RecordEntryNode[]; }
 export interface ListExpression extends ExpressionBase { readonly kind: 'ListExpression'; readonly items: readonly Expression[]; }
 export interface TupleExpression extends ExpressionBase { readonly kind: 'TupleExpression'; readonly items: readonly Expression[]; }

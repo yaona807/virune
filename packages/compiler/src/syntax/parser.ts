@@ -527,7 +527,7 @@ export class ViruneParser extends CstParser {
 				{ ALT: () => $.CONSUME(KwTrue) },
 				{ ALT: () => $.CONSUME(KwFalse) },
 				{ ALT: () => $.CONSUME(Underscore) },
-				{ GATE: () => this.LA(1).tokenType === Identifier && /^[A-Z]/u.test(this.LA(1).image) && this.LA(2).tokenType === LBrace, ALT: () => $.SUBRULE($.recordExpression) },
+				{ GATE: () => this.isRecordExpressionStart(), ALT: () => $.SUBRULE($.recordExpression) },
 				{ ALT: () => $.CONSUME(Identifier) },
 				{ ALT: () => $.SUBRULE($.listExpression) },
 				{ ALT: () => $.SUBRULE($.parenthesizedOrTupleExpression) },
@@ -540,6 +540,7 @@ export class ViruneParser extends CstParser {
 
 		$.RULE('recordExpression', () => {
 			$.CONSUME(Identifier);
+			$.OPTION(() => $.SUBRULE($.typeArguments));
 			$.SUBRULE($.recordFieldBlock);
 		});
 
@@ -755,6 +756,24 @@ export class ViruneParser extends CstParser {
 			else if (token.tokenType === Greater) {
 				depth--;
 				if (depth === 0) return this.tokenAt(offset + 1)?.tokenType === LParen;
+			}
+		}
+		return false;
+	}
+	private isRecordExpressionStart(): boolean {
+		const identifier = this.tokenAt(1);
+		if (identifier?.tokenType !== Identifier || !/^[A-Z]/u.test(identifier.image)) return false;
+		if (this.tokenAt(2)?.tokenType === LBrace) return true;
+		const less = this.tokenAt(2);
+		if (less?.tokenType !== Less || identifier.endOffset === undefined || less.startOffset === undefined || identifier.endOffset + 1 !== less.startOffset) return false;
+		let depth = 0;
+		for (let offset = 2; offset < 128; offset++) {
+			const token = this.tokenAt(offset);
+			if (token === undefined) return false;
+			if (token.tokenType === Less) depth++;
+			else if (token.tokenType === Greater) {
+				depth--;
+				if (depth === 0) return this.tokenAt(offset + 1)?.tokenType === LBrace;
 			}
 		}
 		return false;

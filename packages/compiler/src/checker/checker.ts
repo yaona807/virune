@@ -845,9 +845,23 @@ export class TypeChecker {
 		if (typeId === undefined || type?.kind !== 'named' || type.declarationKind !== 'record' || type.fields === undefined) { this.diagnostics.error('L2024', `Unknown record type ${expression.name}`, expression.span); expression.entries.forEach(entry => this.checkExpression(entry.value, scope)); return this.arena.error; }
 		const declaration = this.#recordDeclarations.get(expression.name);
 		const substitutions = new Map<string, TypeId>();
+		if (declaration !== undefined && expression.typeArguments.length > 0) {
+			if (expression.typeArguments.length !== declaration.typeParameters.length) this.diagnostics.error('L2046', `Expected ${declaration.typeParameters.length} type arguments, received ${expression.typeArguments.length}`, expression.span);
+			expression.typeArguments.forEach((argument, index) => {
+				const parameter = declaration.typeParameters[index];
+				if (parameter !== undefined) substitutions.set(parameter.name, this.resolveTypeReference(argument, this.#currentFunction?.typeParameters ?? new Map()));
+			});
+		}
 		if (expected !== undefined) {
 			const expectedType = this.arena.get(expected);
-			if (expectedType.kind === 'named' && expectedType.name === expression.name && declaration !== undefined) declaration.typeParameters.forEach((parameter, index) => substitutions.set(parameter.name, expectedType.arguments[index] ?? this.arena.error));
+			if (expectedType.kind === 'named' && expectedType.name === expression.name && declaration !== undefined) {
+				declaration.typeParameters.forEach((parameter, index) => {
+					const expectedArgument = expectedType.arguments[index] ?? this.arena.error;
+					const explicitArgument = substitutions.get(parameter.name);
+					if (explicitArgument === undefined) substitutions.set(parameter.name, expectedArgument);
+					else if (!this.arena.equals(explicitArgument, expectedArgument)) this.typeMismatch(explicitArgument, expectedArgument, expression.span);
+				});
+			}
 		}
 		const supplied = new Set<string>();
 		for (const entry of expression.entries) {

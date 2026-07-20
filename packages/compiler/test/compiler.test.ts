@@ -147,6 +147,24 @@ fn encodeValue<T>(value: T, encoder: Encoder<T>) -> String {
 	assert.deepEqual(result.diagnostics.filter(item => item.severity === 'error'), []);
 });
 
+test('generic record construction accepts explicit type arguments', () => {
+	const result = compileSource(source(`record Encoder<T> {
+	encode: fn(T) -> String
+}
+
+record User {
+	name: String
+}
+
+fn encodeUser(user: User) -> String => user.name
+
+fn createEncoder() -> Encoder<User> {
+	return Encoder<User> { encode: encodeUser }
+}
+`), { emit: false });
+	assert.deepEqual(result.diagnostics.filter(item => item.severity === 'error'), []);
+});
+
 test('tuple annotations and tuple patterns preserve element types', () => {
 	const result = compileSource(source(`fn swap(pair: (String, Int)) -> (Int, String) {
 	return match pair {
