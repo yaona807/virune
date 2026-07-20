@@ -192,22 +192,47 @@ function closingParenthesisPosition(
 	node: FunctionDeclaration | LambdaExpression,
 	tokens: ReturnType<typeof lex>['tokens'],
 ): Position | undefined {
-	const start = node.kind === 'FunctionDeclaration'
-		? positionToOffset(source, nameRange(source, node.span, node.name).end)
-		: node.span.start.offset;
-	const end = Math.max(start, node.span.end.offset + 1);
+	const openingIndex = node.kind === 'FunctionDeclaration'
+		? findOpeningParenthesisAfter(tokens, positionToOffset(source, nameRange(source, node.span, node.name).end))
+		: findLambdaOpeningParenthesis(tokens, source, node);
+	if (openingIndex === undefined) return undefined;
 	let depth = 0;
-	let foundOpening = false;
-	for (const token of tokens) {
-		if (token.startOffset < start || token.startOffset >= end) continue;
+	for (let index = openingIndex; index < tokens.length; index++) {
+		const token = tokens[index]!;
 		if (token.tokenType.name === 'LParen') {
 			depth++;
-			foundOpening = true;
 			continue;
 		}
-		if (token.tokenType.name !== 'RParen' || !foundOpening) continue;
+		if (token.tokenType.name !== 'RParen') continue;
 		depth--;
 		if (depth === 0) return offsetToPosition(source, (token.endOffset ?? token.startOffset) + 1);
+	}
+	return undefined;
+}
+
+function findOpeningParenthesisAfter(
+	tokens: ReturnType<typeof lex>['tokens'],
+	startOffset: number,
+): number | undefined {
+	const index = tokens.findIndex(token => token.startOffset >= startOffset && token.tokenType.name === 'LParen');
+	return index < 0 ? undefined : index;
+}
+
+function findLambdaOpeningParenthesis(
+	tokens: ReturnType<typeof lex>['tokens'],
+	source: SourceFile,
+	node: LambdaExpression,
+): number | undefined {
+	const anchor = node.parameters[0] === undefined
+		? positionToOffset(source, sourcePositionToPosition(node.span.start))
+		: positionToOffset(source, sourcePositionToPosition(node.parameters[0].span.start));
+	for (let index = tokens.length - 1; index >= 0; index--) {
+		const token = tokens[index]!;
+		if (token.startOffset > anchor || token.tokenType.name !== 'KwFn') continue;
+		const openingIndex = tokens.findIndex((candidate, candidateIndex) =>
+			candidateIndex > index && candidate.tokenType.name === 'LParen',
+		);
+		if (openingIndex >= 0) return openingIndex;
 	}
 	return undefined;
 }

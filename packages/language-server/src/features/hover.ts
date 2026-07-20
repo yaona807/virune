@@ -16,8 +16,8 @@ import type {
 	TypeReferenceNode,
 } from '@virune/compiler/experimental';
 import { MarkupKind, type Hover } from 'vscode-languageserver/node';
-import { findNodePathAtOffset } from '../analysis/ast.js';
-import { sourceSpanToRange } from '../analysis/position.js';
+import { findNodePathAtOffset, walkAst } from '../analysis/ast.js';
+import { nameRange, positionToOffset, sourceSpanToRange } from '../analysis/position.js';
 import { defaultEditorInformationSettings, type EditorInformationSettings } from '../editor-information.js';
 
 interface SymbolNode extends AstNode {
@@ -50,20 +50,17 @@ export function hoverAt(
 ): Hover | undefined {
 	if (module.ast === undefined || module.semantic === undefined) return undefined;
 	const settings = options.settings ?? defaultEditorInformationSettings;
+	const namedSymbol = namedSymbolAtOffset(module, source, offset);
+	if (namedSymbol !== undefined) {
+		const symbol = module.semantic.symbols.get(namedSymbol.symbolId) as SymbolDetails | undefined;
+		if (symbol !== undefined) return symbolHover(module, symbol, namedSymbol.range, settings, options.sourcesById);
+	}
 	const path = findNodePathAtOffset(module.ast, source, offset);
 	for (const node of [...path].reverse() as SymbolNode[]) {
 		if (node.symbolId !== undefined) {
 			const symbol = module.semantic.symbols.get(node.symbolId) as SymbolDetails | undefined;
 			if (symbol !== undefined) {
-				const label = symbolLabel(module, symbol, settings);
-				const details = symbolDetails(module, symbol, settings, options.sourcesById);
-				return {
-					range: sourceSpanToRange(node.span),
-					contents: {
-						kind: MarkupKind.Markdown,
-						value: markdownHover(label, details),
-					},
-				};
+				return symbolHover(module, symbol, sourceSpanToRange(node.span), settings, options.sourcesById);
 			}
 		}
 		const typeId = node.inferredTypeId ?? node.resolvedTypeId;
@@ -80,6 +77,48 @@ export function hoverAt(
 		}
 	}
 	return undefined;
+}
+
+interface NamedSymbolLocation {
+	readonly symbolId: SymbolId;
+	readonly range: ReturnType<typeof nameRange>;
+}
+
+function namedSymbolAtOffset(
+	module: BuiltModule,
+	source: SourceFile,
+	offset: number,
+): NamedSymbolLocation | undefined {
+	if (module.ast === undefined) return undefined;
+	let match: NamedSymbolLocation | undefined;
+	walkAst(module.ast, node => {
+		if (match !== undefined || node.span.fileId !== source.id) return;
+		const candidate = node as AstNode & { readonly name?: string; readonly symbolId?: SymbolId };
+		if (typeof candidate.name !== 'string' || candidate.symbolId === undefined) return;
+		const range = nameRange(source, candidate.span, candidate.name);
+		const start = positionToOffset(source, range.start);
+		const end = positionToOffset(source, range.end);
+		if (offset >= start && offset <= end) match = { symbolId: candidate.symbolId, range };
+	});
+	return match;
+}
+
+function symbolHover(
+	module: BuiltModule,
+	symbol: SymbolDetails,
+	range: ReturnType<typeof sourceSpanToRange>,
+	settings: EditorInformationSettings,
+	sourcesById: ReadonlyMap<number, SourceFile> | undefined,
+): Hover {
+	const label = symbolLabel(module, symbol, settings);
+	const details = symbolDetails(module, symbol, settings, sourcesById);
+	return {
+		range,
+		contents: {
+			kind: MarkupKind.Markdown,
+			value: markdownHover(label, details),
+		},
+	};
 }
 
 function symbolLabel(module: BuiltModule, symbol: SymbolDetails, settings: EditorInformationSettings): string {
