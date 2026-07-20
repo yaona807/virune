@@ -1,0 +1,16 @@
+{
+	"Documentation comment": {
+		"prefix": "doc",
+		"body": [
+			"/// ${1:Description}"
+		],
+		"description": "Insert a Virune documentation comment"
+	},
+	"Module documentation": {
+		"prefix": "moddoc",
+		"body": [
+			"//! ${1:Module description}"
+		],
+		"description": "Insert Virune module documentation"
+	}
+}

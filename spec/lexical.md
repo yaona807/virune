@@ -6,7 +6,7 @@
 Virune source files are UTF-8. Identifiers use ASCII letters, digits, and underscore; an identifier cannot start with a digit. `$` is reserved for compiler-generated identifiers.
 
 ## `[lexical.comments]` Comments
-`//` starts a line comment. `///` is a documentation comment. Block comments are not part of Virune 1.0.
+`//` starts an ordinary line comment. `///` documents the following declaration, while `//!` documents the current source module. `////` remains an ordinary line comment. Block comments are not part of Virune 1.0. See [Documentation Comments](documentation.md).
 
 ## `[lexical.statement-end]` Statement termination
 Semicolons are not tokens. A hard line break terminates a statement. Line breaks inside parentheses or brackets, after commas, and adjacent to continuation operators are soft. The canonical formatter decides the final layout.

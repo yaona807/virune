@@ -25,6 +25,83 @@
       ]
     },
     {
+      "id": "documentation.declaration",
+      "tests": [
+        {
+          "file": "packages/compiler/test/compiler.test.ts",
+          "case": "documentation comments are classified and attached to supported AST nodes",
+          "kind": "positive",
+          "platform": "common"
+        }
+      ]
+    },
+    {
+      "id": "documentation.diagnostics",
+      "tests": [
+        {
+          "file": "packages/compiler/test/compiler.test.ts",
+          "case": "documentation diagnostics reject orphan, misplaced, unsupported, and duplicate groups",
+          "kind": "positive",
+          "platform": "common"
+        }
+      ]
+    },
+    {
+      "id": "documentation.kinds",
+      "tests": [
+        {
+          "file": "packages/compiler/test/compiler.test.ts",
+          "case": "documentation comments are classified and attached to supported AST nodes",
+          "kind": "positive",
+          "platform": "common"
+        }
+      ]
+    },
+    {
+      "id": "documentation.markdown",
+      "tests": [
+        {
+          "file": "packages/language-server/test/features.test.ts",
+          "case": "Hover escapes raw HTML outside fenced documentation code blocks",
+          "kind": "positive",
+          "platform": "common"
+        }
+      ]
+    },
+    {
+      "id": "documentation.module",
+      "tests": [
+        {
+          "file": "packages/compiler/test/compiler.test.ts",
+          "case": "documentation diagnostics reject orphan, misplaced, unsupported, and duplicate groups",
+          "kind": "positive",
+          "platform": "common"
+        }
+      ]
+    },
+    {
+      "id": "documentation.normalization",
+      "tests": [
+        {
+          "file": "packages/formatter/test/formatter.test.ts",
+          "case": "formatter normalizes and preserves documentation comment markers",
+          "kind": "positive",
+          "platform": "common"
+        }
+      ]
+    },
+    {
+      "id": "documentation.semantics",
+      "tests": [
+        {
+          "file": "packages/compiler/test/compiler.test.ts",
+          "case": "ordinary comments break documentation association and documentation never changes emitted JavaScript",
+          "kind": "positive",
+          "platform": "common"
+        }
+      ]
+    },
+    {
       "id": "entry.async",
       "tests": [
         {
@@ -271,7 +348,12 @@
     {
       "id": "lexical.comments",
       "tests": [
-        "conformance/syntax/function-ok.virune"
+        {
+          "file": "packages/compiler/test/compiler.test.ts",
+          "case": "documentation comments are classified and attached to supported AST nodes",
+          "kind": "positive",
+          "platform": "common"
+        }
       ]
     },
     {

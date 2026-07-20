@@ -5,8 +5,9 @@ import {
 	type SourceFile,
 	type SemanticModel,
 } from '@virune/compiler/experimental';
-import { CompletionItemKind, type CompletionItem } from 'vscode-languageserver/node';
+import { CompletionItemKind, MarkupKind, type CompletionItem } from 'vscode-languageserver/node';
 import { nameRange, positionToOffset } from '../analysis/position.js';
+import { documentationSummary, recordFieldDocumentation, symbolDocumentationSummary } from './documentation.js';
 
 type SymbolInfo = SemanticModel['symbols'] extends ReadonlyMap<number, infer Value> ? Value : never;
 
@@ -60,7 +61,13 @@ function completeFieldAccess(
 	if (type.kind !== 'named') return [];
 	const items: CompletionItem[] = [];
 	for (const [name, typeId] of type.fields ?? []) {
-		items.push({ label: name, kind: CompletionItemKind.Field, detail: module.semantic.arena.display(typeId) });
+		const documentation = documentationSummary(recordFieldDocumentation(module, symbol.typeId, name));
+		items.push({
+			label: name,
+			kind: CompletionItemKind.Field,
+			detail: module.semantic.arena.display(typeId),
+			...(documentation === undefined ? {} : { documentation: { kind: MarkupKind.Markdown, value: documentation } }),
+		});
 	}
 	return items.sort((left, right) => left.label.localeCompare(right.label));
 }
@@ -178,6 +185,8 @@ function symbolCompletion(symbol: SymbolInfo, module: BuiltModule): CompletionIt
 	};
 	if (module.semantic !== undefined) item.detail = module.semantic.arena.display(symbol.typeId);
 	if (symbol.kind === 'function' || symbol.kind === 'extern' || symbol.kind === 'builtin') item.insertText = `${symbol.name}()`;
+	const documentation = symbolDocumentationSummary(symbol);
+	if (documentation !== undefined) item.documentation = { kind: MarkupKind.Markdown, value: documentation };
 	return item;
 }
 

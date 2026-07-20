@@ -6,7 +6,7 @@ import { TextDocument } from 'vscode-languageserver-textdocument';
 import type { Diagnostic } from 'vscode-languageserver/node';
 import { ProjectManager, type AnalysisSnapshot } from '../src/analysis/project-manager.js';
 import { filePathToUri } from '../src/analysis/position.js';
-import { codeActionsForDiagnostics } from '../src/features/code-actions.js';
+import { codeActionsForDiagnostics, documentationCodeActions } from '../src/features/code-actions.js';
 import { completionItems } from '../src/features/completion.js';
 import { semanticTokens, semanticTokenTypes } from '../src/features/semantic-tokens.js';
 
@@ -133,3 +133,56 @@ function decodeTokens(data: readonly number[]): Array<{ line: number; character:
 	}
 	return result;
 }
+
+test('completionItems exposes the first documentation paragraph as a summary', async () => {
+	const path = join(tmpdir(), 'virune-completion-documentation.virune');
+	const text = `/// Computes a stable value.
+///
+/// This detail is intentionally omitted from completion.
+fn documented() -> Int => 1
+
+fn use() -> Int => documented()
+`;
+	const { module } = await analyze(path, text);
+	const items = completionItems(module, module.source, text.lastIndexOf('documented'));
+	const documented = items.find(item => item.label === 'documented');
+	assert.ok(documented);
+	assert.match(JSON.stringify(documented.documentation), /Computes a stable value/u);
+	assert.doesNotMatch(JSON.stringify(documented.documentation), /intentionally omitted/u);
+});
+
+test('documentationCodeActions generate declaration and module comments', async () => {
+	const path = join(tmpdir(), 'virune-documentation-code-action.virune');
+	const text = 'fn value() -> Int => 1\n';
+	const { module } = await analyze(path, text);
+	const declarationActions = documentationCodeActions(module, module.source, 0);
+	const declaration = declarationActions.find(action => action.title === 'Generate documentation comment');
+	const moduleAction = declarationActions.find(action => action.title === 'Generate module documentation');
+	assert.equal(declaration?.edit?.changes?.[filePathToUri(path)]?.[0]?.newText, '/// TODO: Describe `value`.\n');
+	assert.equal(moduleAction?.edit?.changes?.[filePathToUri(path)]?.[0]?.newText, '//! TODO: Describe this module.\n\n');
+});
+
+test('documentationCodeActions omit comments for already documented declarations', async () => {
+	const path = join(tmpdir(), 'virune-existing-documentation-code-action.virune');
+	const text = '/// Existing documentation.\nfn value() -> Int => 1\n';
+	const { module } = await analyze(path, text);
+	const actions = documentationCodeActions(module, module.source, 1);
+	assert.equal(actions.some(action => action.title === 'Generate documentation comment'), false);
+});
+
+
+test('record field completion exposes documentation summaries', async () => {
+	const path = join(tmpdir(), 'virune-field-completion-documentation.virune');
+	const text = `record User {
+	/// Stable display name.
+	name: String
+}
+
+fn read(user: User) -> String => user.name
+`;
+	const { module } = await analyze(path, text);
+	const items = completionItems(module, module.source, text.lastIndexOf('name'));
+	const name = items.find(item => item.label === 'name');
+	assert.ok(name);
+	assert.match(JSON.stringify(name.documentation), /Stable display name/u);
+});

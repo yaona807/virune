@@ -119,3 +119,37 @@ test('formatter preserves tuple type annotations and tuple patterns', () => {
 	assert.match(formatted.text, /pair: \(String, Int\)/u);
 	assert.match(formatted.text, /\(name, age\) => \(age, name\)/u);
 });
+
+test('formatter normalizes and preserves documentation comment markers', async () => {
+	const { lex } = await import('@virune/compiler/experimental');
+	const source = `//!Module documentation
+//!
+//! Details
+//!${'   '}
+
+///Function documentation
+///
+/// Details
+///${' '}
+fn value() -> Int => 1
+
+//// ordinary separator
+`;
+	const first = formatSource(source);
+	assert.deepEqual(first.errors, []);
+	assert.match(first.text, /^\/\/! Module documentation\n\/\/!\n\/\/! Details\n\/\/!$/mu);
+	assert.match(first.text, /\/\/\/ Function documentation\n\/\/\/\n\/\/\/ Details\n\/\/\/$/mu);
+	assert.match(first.text, /\/\/\/\/ ordinary separator/u);
+	assert.equal(formatSource(first.text).text, first.text);
+	assert.deepEqual(lex(first.text).comments.map(comment => comment.tokenType.name), [
+		'ModuleDocumentationComment',
+		'ModuleDocumentationComment',
+		'ModuleDocumentationComment',
+		'ModuleDocumentationComment',
+		'DocumentationComment',
+		'DocumentationComment',
+		'DocumentationComment',
+		'DocumentationComment',
+		'LineComment',
+	]);
+});

@@ -26,5 +26,15 @@
   "folding": {
     "offSide": false
   },
-  "wordPattern": "(-?\\d*\\.?\\d\\w*)|([A-Za-z_][A-Za-z0-9_]*)"
+  "wordPattern": "(-?\\d*\\.?\\d\\w*)|([A-Za-z_][A-Za-z0-9_]*)",
+  "onEnterRules": [
+    {
+      "beforeText": "^\\s*///[ \\t]*\\S.*$",
+      "action": { "indent": "none", "appendText": "/// " }
+    },
+    {
+      "beforeText": "^\\s*//![ \\t]*\\S.*$",
+      "action": { "indent": "none", "appendText": "//! " }
+    }
+  ]
 }

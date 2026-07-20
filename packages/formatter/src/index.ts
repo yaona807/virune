@@ -87,7 +87,19 @@ function locateComment(
 	const prefix = source.slice(lineStart, comment.startOffset);
 	const previousToken = previousOriginal === undefined ? undefined : tokens[previousOriginal];
 	const trailing = /\S/u.test(prefix) && previousToken?.endLine === comment.startLine;
-	return { offset: comment.startOffset, text: comment.image, trailing, ...(previous === undefined ? {} : { previous }), ...(next === undefined ? {} : { next }) };
+	return { offset: comment.startOffset, text: normalizeCommentText(comment), trailing, ...(previous === undefined ? {} : { previous }), ...(next === undefined ? {} : { next }) };
+}
+
+function normalizeCommentText(comment: CommentLike): string {
+	const marker = comment.tokenType.name === 'DocumentationComment'
+		? '///'
+		: comment.tokenType.name === 'ModuleDocumentationComment'
+			? '//!'
+			: undefined;
+	if (marker === undefined) return comment.image;
+	const body = comment.image.slice(marker.length);
+	if (body.trim().length === 0) return marker;
+	return body.startsWith(' ') ? comment.image : `${marker} ${body}`;
 }
 
 function nearestMapped(

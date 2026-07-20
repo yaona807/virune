@@ -160,3 +160,22 @@ import js { nanoid } from "nanoid"
 ```
 
 JavaScript値はdescriptorで検証します。安全に検証できないTypeScript型は`Unknown`となり、明示decodeまたはAdapterが必要です。[JavaScript連携](js-interop_ja.md)を参照してください。
+
+## 13. ドキュメントコメント
+
+通常コメントには`//`、直後の宣言には`///`、現在のソースモジュールには`//!`を使用します。
+
+```virune
+//! ユーザー検索サービス。
+
+/// `id`で識別されるユーザーを返す。
+///
+/// # エラー
+///
+/// ユーザーが存在しない場合は`UserError.NotFound`を返す。
+pub fn findUser(id: UserId) -> Result<User, UserError> {
+	return Err(UserError.NotFound(id))
+}
+```
+
+本文はCommonMark互換Markdownです。`////`は通常コメントとして扱い、Virune 1.0にblock commentはありません。詳細は[規範的なドキュメントコメント仕様](../spec/documentation_ja.md)を参照してください。

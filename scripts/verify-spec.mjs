@@ -59,7 +59,7 @@ for (const file of await collectFiles(resolve('conformance'), '.expected.json'))
 
 const normativeDocuments = [
 	'spec/lexical.md', 'spec/types.md', 'spec/evaluation.md', 'spec/modules.md', 'spec/entry-point.md',
-	'spec/tasks.md', 'spec/ffi.md', 'spec/standard-library.md',
+	'spec/tasks.md', 'spec/ffi.md', 'spec/standard-library.md', 'spec/documentation.md',
 ];
 const unmapped = [];
 for (const document of normativeDocuments) {

@@ -3,6 +3,8 @@ import { Lexer, createToken, type IToken, type TokenType } from 'chevrotain';
 const keyword = (name: string, pattern: RegExp): TokenType => createToken({ name, pattern, longer_alt: Identifier, categories: [IdentifierName] });
 
 export const WhiteSpace = createToken({ name: 'WhiteSpace', pattern: /[ \t\f]+/, group: Lexer.SKIPPED });
+export const ModuleDocumentationComment = createToken({ name: 'ModuleDocumentationComment', pattern: /\/\/![^\r\n]*/, group: 'comments' });
+export const DocumentationComment = createToken({ name: 'DocumentationComment', pattern: /\/\/\/(?!\/)[^\r\n]*/, group: 'comments' });
 export const LineComment = createToken({ name: 'LineComment', pattern: /\/\/[^\r\n]*/, group: 'comments' });
 export const NewLine = createToken({ name: 'NewLine', pattern: /\r?\n/ });
 
@@ -88,7 +90,7 @@ export const Bang = createToken({ name: 'Bang', pattern: /!/ });
 export const Underscore = createToken({ name: 'Underscore', pattern: /_/, longer_alt: Identifier });
 
 export const allTokens: TokenType[] = [
-	WhiteSpace, LineComment, NewLine,
+	WhiteSpace, ModuleDocumentationComment, DocumentationComment, LineComment, NewLine,
 	FatArrow, ThinArrow, Pipe, EqualEqual, BangEqual, LessEqual, GreaterEqual, AndAnd, OrOr, RangeInclusive, Spread, Bar,
 	IdentifierName,
 	KwAs, KwAsync, KwAwait, KwBreak, KwConst, KwContinue, KwDefer, KwDerives, KwDiscard, KwElse, KwEnum, KwExtern, KwFalse, KwFn, KwFor,

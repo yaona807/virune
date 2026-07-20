@@ -26,7 +26,7 @@ export function walkAst(module: ModuleNode, visitor: (node: AstNode) => void): v
 		if (!isObject(value) || isSourceSpan(value)) return;
 		if (isAstNode(value)) visitor(value);
 		for (const [key, child] of Object.entries(value)) {
-			if (key === 'span' || key === 'symbolId' || key === 'inferredTypeId' || key === 'resolvedTypeId') continue;
+			if (key === 'span' || key === 'documentation' || key === 'symbolId' || key === 'inferredTypeId' || key === 'resolvedTypeId') continue;
 			visit(child);
 		}
 	};

@@ -28,6 +28,9 @@ The extension is not distributed through the Visual Studio Marketplace. Updates 
 - Go to Definition
 - Completion for keywords, declarations, imports, parameters, local variables, and fields
 - Quick Fix conversion for diagnostics that include compiler fixes
+- Documentation comments in Hover, completion, and Signature Help
+- `doc` / `moddoc` snippets and automatic continuation of non-empty `///` / `//!` lines on Enter
+- **Virune: Generate Documentation Comment** and **Virune: Generate Module Documentation** commands
 - Incremental parse, type-check, and emit reuse per project root
 
 ## Editor information settings

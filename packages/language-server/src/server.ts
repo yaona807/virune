@@ -11,7 +11,7 @@ import { TextDocument } from 'vscode-languageserver-textdocument';
 import { ProjectManager } from './analysis/project-manager.js';
 import { diagnosticsForPath } from './features/diagnostics.js';
 import { completionItems } from './features/completion.js';
-import { codeActionsForDiagnostics } from './features/code-actions.js';
+import { codeActionsForDiagnostics, documentationCodeActions } from './features/code-actions.js';
 import { definitionAt } from './features/definition.js';
 import { documentSymbols } from './features/document-symbols.js';
 import { formattingEdits } from './features/formatting.js';
@@ -173,7 +173,13 @@ connection.onCodeAction(async params => {
 	const path = uriToFilePath(params.textDocument.uri);
 	if (path === undefined) return [];
 	const snapshot = await projectManager.analyze(params.textDocument.uri);
-	return snapshot === undefined ? [] : [...codeActionsForDiagnostics(snapshot, path, params.context.diagnostics)];
+	const module = snapshot?.modulesByPath.get(path);
+	return snapshot === undefined || module === undefined
+		? []
+		: [
+			...codeActionsForDiagnostics(snapshot, path, params.context.diagnostics),
+			...documentationCodeActions(module, module.source, params.range.start.line),
+		];
 });
 
 connection.onDidChangeConfiguration(params => {

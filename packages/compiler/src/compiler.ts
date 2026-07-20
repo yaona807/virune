@@ -1,5 +1,6 @@
 import type { IRecognitionException } from 'chevrotain';
 import { buildAst } from './syntax/cst-to-ast.js';
+import { attachDocumentation } from './syntax/documentation.js';
 import { lex } from './syntax/tokens.js';
 import { parse } from './syntax/parser.js';
 import { checkModule, type SemanticModel } from './checker/checker.js';
@@ -43,13 +44,14 @@ export function compileSource(source: SourceFile, options: CompileOptions = {}):
 	for (const error of parseResult.errors) diagnostics.add(parserDiagnostic(source, error));
 	if (diagnostics.hasErrors) return { source, diagnostics: diagnostics.items };
 	let ast: ModuleNode;
-	try { ast = buildAst(source.id, parseResult.cst); }
+	try { ast = attachDocumentation(buildAst(source.id, parseResult.cst), source, lexResult.comments, lexResult.tokens, diagnostics); }
 	catch (error) {
 		diagnostics.error('L9001', `AST construction failed: ${error instanceof Error ? error.message : String(error)}`, {
 			fileId: source.id, start: { offset: 0, line: 1, column: 1 }, end: { offset: 0, line: 1, column: 1 },
 		});
 		return { source, diagnostics: diagnostics.items };
 	}
+	if (diagnostics.hasErrors) return { source, diagnostics: diagnostics.items, ast };
 	const semantic = checkModule(ast, { ...(options.platform === undefined ? {} : { platform: options.platform }), containingFile: source.path, ...(options.jsInteropProvider === undefined ? {} : { jsInteropProvider: options.jsInteropProvider }) });
 	for (const diagnostic of semantic.diagnostics.items) diagnostics.add(diagnostic);
 	if (diagnostics.hasErrors || options.emit === false) return { source, diagnostics: diagnostics.items, ast, semantic };

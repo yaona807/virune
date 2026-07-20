@@ -28,6 +28,9 @@ Visual Studio Marketplaceでは配布しません。更新時は、GitHub Releas
 - Go to Definition
 - キーワード、宣言、import、引数、ローカル変数、フィールドの補完
 - コンパイラ診断にfixが含まれる場合のQuick Fix変換
+- Hover、補完、Signature Helpへのドキュメントコメント表示
+- `doc`／`moddoc` snippetと、本文がある`///`／`//!`行でEnterを押したときの自動継続
+- **Virune: Generate Documentation Comment**および**Virune: Generate Module Documentation**コマンド
 
 ## エディタ情報の設定
 

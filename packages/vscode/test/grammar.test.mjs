@@ -58,3 +58,34 @@ test('extension manifest exposes configurable editor type information', async ()
 	assert.equal(properties?.['virune.hover.showEffects']?.default, true);
 	assert.equal(properties?.['virune.hover.showModule']?.default, true);
 });
+
+test('TextMate grammar distinguishes module, declaration, and ordinary comments', async () => {
+	const grammarText = await readFile(grammarUrl, 'utf8');
+	assert.match(grammarText, /comment\.line\.documentation\.module\.virune/u);
+	assert.match(grammarText, /comment\.line\.documentation\.virune/u);
+	assert.match(grammarText, /\/\/\/\(\?!\/\)/u);
+});
+
+test('language configuration continues non-empty documentation comments on Enter', async () => {
+	const configuration = await readJson(languageConfigurationUrl);
+	assert.ok(Array.isArray(configuration.onEnterRules));
+	const declarationRule = configuration.onEnterRules.find(rule => rule.action?.appendText === '/// ');
+	const moduleRule = configuration.onEnterRules.find(rule => rule.action?.appendText === '//! ');
+	assert.ok(declarationRule);
+	assert.ok(moduleRule);
+	assert.match('///   - Markdown item', new RegExp(declarationRule.beforeText, 'u'));
+	assert.doesNotMatch('///   ', new RegExp(declarationRule.beforeText, 'u'));
+	assert.match('//!   Module detail', new RegExp(moduleRule.beforeText, 'u'));
+	assert.doesNotMatch('//!', new RegExp(moduleRule.beforeText, 'u'));
+});
+
+test('extension manifest contributes documentation snippets and generation commands', async () => {
+	const manifest = await readJson(packageUrl);
+	assert.deepEqual(manifest.contributes?.snippets, [{ language: 'virune', path: './snippets/virune.json' }]);
+	const commands = new Set(manifest.contributes?.commands?.map(command => command.command));
+	assert.equal(commands.has('virune.generateDocumentationComment'), true);
+	assert.equal(commands.has('virune.generateModuleDocumentation'), true);
+	const snippets = await readJson(new URL('../snippets/virune.json', import.meta.url));
+	assert.equal(snippets['Documentation comment']?.prefix, 'doc');
+	assert.equal(snippets['Module documentation']?.prefix, 'moddoc');
+});

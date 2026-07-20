@@ -12,6 +12,7 @@ For a learning-oriented introduction, see the [language guide](../docs/language-
 
 - `grammar.ebnf` — complete normative grammar and newline-normalization contract
 - `lexical.md` — source encoding, tokens, comments, line termination
+- `documentation.md` — documentation comment association, Markdown, and diagnostics
 - `types.md` — type identity, inference, generics, nullability, capabilities
 - `evaluation.md` — evaluation order, control flow, errors, cleanup
 - `modules.md` — modules, imports, visibility, re-exports, and platform targets

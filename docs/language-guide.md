@@ -160,3 +160,22 @@ import js { nanoid } from "nanoid"
 ```
 
 JavaScript values are validated through descriptors. Unsupported or semantically unsafe TypeScript shapes become `Unknown` and require explicit decoding or an adapter. See [JavaScript interoperability](js-interop.md).
+
+## 13. Documentation comments
+
+Use `//` for ordinary comments, `///` for the following declaration, and `//!` for the current source module.
+
+```virune
+//! User lookup services.
+
+/// Returns the user identified by `id`.
+///
+/// # Errors
+///
+/// Returns `UserError.NotFound` when the user does not exist.
+pub fn findUser(id: UserId) -> Result<User, UserError> {
+	return Err(UserError.NotFound(id))
+}
+```
+
+Documentation text is CommonMark-compatible Markdown. `////` remains an ordinary comment, and Virune 1.0 has no block comments. See the [normative documentation-comment specification](../spec/documentation.md).

@@ -35,8 +35,12 @@
     "comments": {
       "patterns": [
         {
+          "name": "comment.line.documentation.module.virune",
+          "match": "//!.*$"
+        },
+        {
           "name": "comment.line.documentation.virune",
-          "match": "///.*$"
+          "match": "///(?!/).*$"
         },
         {
           "name": "comment.line.double-slash.virune",

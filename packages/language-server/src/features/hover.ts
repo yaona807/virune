@@ -3,6 +3,7 @@ import type {
 	BuiltModule,
 	EnumDeclaration,
 	ExternFunctionNode,
+	FieldExpression,
 	FunctionDeclaration,
 	LambdaExpression,
 	LetStatement,
@@ -19,6 +20,7 @@ import { MarkupKind, type Hover } from 'vscode-languageserver/node';
 import { findNodePathAtOffset, walkAst } from '../analysis/ast.js';
 import { nameRange, positionToOffset, sourceSpanToRange } from '../analysis/position.js';
 import { defaultEditorInformationSettings, type EditorInformationSettings } from '../editor-information.js';
+import { documentationText, recordFieldDocumentation, symbolDocumentationText } from './documentation.js';
 
 interface SymbolNode extends AstNode {
 	readonly symbolId?: SymbolId;
@@ -57,6 +59,10 @@ export function hoverAt(
 	}
 	const path = findNodePathAtOffset(module.ast, source, offset);
 	for (const node of [...path].reverse() as SymbolNode[]) {
+		if (node.kind === 'FieldExpression') {
+			const hover = recordFieldHover(module, source, node as FieldExpression);
+			if (hover !== undefined) return hover;
+		}
 		if (node.symbolId !== undefined) {
 			const symbol = module.semantic.symbols.get(node.symbolId) as SymbolDetails | undefined;
 			if (symbol !== undefined) {
@@ -77,6 +83,23 @@ export function hoverAt(
 		}
 	}
 	return undefined;
+}
+
+
+function recordFieldHover(module: BuiltModule, source: SourceFile, expression: FieldExpression): Hover | undefined {
+	const receiverTypeId = expression.target.inferredTypeId;
+	const fieldTypeId = expression.inferredTypeId;
+	if (receiverTypeId === undefined || fieldTypeId === undefined || module.semantic === undefined) return undefined;
+	const field = recordFieldDocumentation(module, receiverTypeId, expression.field);
+	const documentation = documentationText(field);
+	if (documentation === undefined) return undefined;
+	return {
+		range: nameRange(source, expression.span, expression.field),
+		contents: {
+			kind: MarkupKind.Markdown,
+			value: markdownHover(`${expression.field}: ${module.semantic.arena.display(fieldTypeId)}`, [], documentation),
+		},
+	};
 }
 
 interface NamedSymbolLocation {
@@ -112,11 +135,12 @@ function symbolHover(
 ): Hover {
 	const label = symbolLabel(module, symbol, settings);
 	const details = symbolDetails(module, symbol, settings, sourcesById);
+	const documentation = symbolDocumentationText(symbol);
 	return {
 		range,
 		contents: {
 			kind: MarkupKind.Markdown,
-			value: markdownHover(label, details),
+			value: markdownHover(label, details, documentation),
 		},
 	};
 }
@@ -232,9 +256,11 @@ function isInferredSymbol(symbol: SymbolDetails): boolean {
 	return false;
 }
 
-function markdownHover(label: string, details: readonly string[]): string {
-	const code = `\`\`\`virune\n${label}\n\`\`\``;
-	return details.length === 0 ? code : `${code}\n\n${details.join('  \n')}`;
+function markdownHover(label: string, details: readonly string[], documentation?: string): string {
+	const sections = [`\`\`\`virune\n${label}\n\`\`\``];
+	if (documentation !== undefined) sections.push(documentation);
+	if (details.length > 0) sections.push(details.join('  \n'));
+	return sections.join('\n\n');
 }
 
 function escapeInlineCode(value: string): string {

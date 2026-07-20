@@ -6,7 +6,7 @@
 ViruneソースはUTF-8です。識別子はASCII英字・数字・underscoreを使用し、数字から開始できません。`$`はコンパイラ生成識別子用に予約します。
 
 ## `[lexical.comments]` コメント
-`//`は行コメント、`///`はドキュメントコメントです。Virune 1.0にblock commentはありません。
+`//`は通常の行コメント、`///`は直後の宣言、`//!`は現在のソースモジュールのドキュメントコメントです。`////`は通常コメントとして扱います。Virune 1.0にblock commentはありません。詳細は[ドキュメントコメント](documentation_ja.md)を参照してください。
 
 ## `[lexical.statement-end]` 文の終端
 セミコロンはtokenではありません。hard line breakが文を終了します。丸括弧・角括弧内、comma後、継続演算子に隣接する改行はsoftです。最終レイアウトは正式formatterが決定します。

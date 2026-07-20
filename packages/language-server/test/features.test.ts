@@ -138,3 +138,51 @@ test('hoverAt displays record shape and definition source', async () => {
 	assert.match(contents, /name: String/u);
 	assert.match(contents, /Defined in/u);
 });
+
+test('Hover and Signature Help expose declaration documentation', async () => {
+	const sourcePath = join(tmpdir(), 'virune-language-server-documentation.virune');
+	const sourceText = `/// Adds two integers.
+///
+/// The result is exact within the Int range.
+fn add(left: Int, right: Int) -> Int => left + right
+
+fn use() -> Int => add(1, 2)
+`;
+	const { module } = await analyzeSource(sourcePath, sourceText);
+	const hover = hoverAt(module, module.source, sourceText.lastIndexOf('add'));
+	assert.ok(hover);
+	assert.match(JSON.stringify(hover.contents), /Adds two integers/u);
+	assert.match(JSON.stringify(hover.contents), /The result is exact/u);
+	const signature = signatureHelpAt(module, module.source, sourceText.lastIndexOf('2'));
+	assert.ok(signature);
+	assert.match(JSON.stringify(signature.signatures[0]?.documentation), /Adds two integers/u);
+});
+
+test('Hover escapes raw HTML outside fenced documentation code blocks', async () => {
+	const sourcePath = join(tmpdir(), 'virune-language-server-documentation-html.virune');
+	const sourceText = `/// Returns <script>alert(1)</script> as text.
+fn value() -> Int => 1
+`;
+	const { module } = await analyzeSource(sourcePath, sourceText);
+	const hover = hoverAt(module, module.source, sourceText.indexOf('value'));
+	assert.ok(hover);
+	const contents = JSON.stringify(hover.contents);
+	assert.doesNotMatch(contents, /<script>/u);
+	assert.match(contents, /&lt;script&gt;/u);
+});
+
+
+test('Hover exposes record field documentation', async () => {
+	const sourcePath = join(tmpdir(), 'virune-language-server-field-documentation.virune');
+	const sourceText = `record User {
+	/// Stable display name.
+	name: String
+}
+
+fn read(user: User) -> String => user.name
+`;
+	const { module } = await analyzeSource(sourcePath, sourceText);
+	const hover = hoverAt(module, module.source, sourceText.lastIndexOf('name'));
+	assert.ok(hover);
+	assert.match(JSON.stringify(hover.contents), /Stable display name/u);
+});

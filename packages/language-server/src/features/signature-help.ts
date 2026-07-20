@@ -10,6 +10,7 @@ import type {
 } from '@virune/compiler/experimental';
 import { MarkupKind, type ParameterInformation, type SignatureHelp, type SignatureInformation } from 'vscode-languageserver/node';
 import { findSmallestNode } from '../analysis/ast.js';
+import { documentationText } from './documentation.js';
 
 export function signatureHelpAt(module: BuiltModule, source: SourceFile, offset: number): SignatureHelp | undefined {
 	if (module.ast === undefined || module.semantic === undefined) return undefined;
@@ -37,6 +38,7 @@ interface CallableInformation {
 	readonly parameters: readonly { readonly name: string; readonly optional: boolean; readonly type: string }[];
 	readonly result: string;
 	readonly effects: readonly string[];
+	readonly documentation?: string;
 }
 
 function resolveCallable(module: BuiltModule, call: CallExpression): CallableInformation | undefined {
@@ -47,6 +49,7 @@ function resolveCallable(module: BuiltModule, call: CallExpression): CallableInf
 	if (type.kind !== 'function') return undefined;
 	const declaration = callableDeclaration(module, call);
 	const parameterNodes = declaration?.parameters ?? [];
+	const documentation = documentationText(declaration);
 	return {
 		name: callableName(call, declaration),
 		public: declaration?.kind === 'FunctionDeclaration' ? declaration.public : false,
@@ -59,6 +62,7 @@ function resolveCallable(module: BuiltModule, call: CallExpression): CallableInf
 		})),
 		result: module.semantic.arena.display(type.result),
 		effects: type.effects,
+		...(documentation === undefined ? {} : { documentation }),
 	};
 }
 
@@ -72,12 +76,13 @@ function signatureInformation(module: BuiltModule, callable: CallableInformation
 	const effects = callable.effects.length === 0 ? '' : ` uses ${callable.effects.join(', ')}`;
 	const label = `${callable.public ? 'pub ' : ''}${callable.async ? 'async ' : ''}fn ${callable.name}${typeParameters}(${parameters.join(', ')}) -> ${callable.result}${effects}`;
 	const parameterInformation: ParameterInformation[] = parameters.map(parameter => ({ label: parameter }));
+	const details = `Defined in \`${module.source.path.replaceAll('`', '\\`')}\``;
 	return {
 		label,
 		parameters: parameterInformation,
 		documentation: {
 			kind: MarkupKind.Markdown,
-			value: `Defined in \`${module.source.path}\``,
+			value: callable.documentation === undefined ? details : `${callable.documentation}\n\n${details}`,
 		},
 	};
 }

@@ -231,3 +231,98 @@ test('Validation is a transparent Result with a List error', () => {
 `), { emit: false });
 	assert.deepEqual(result.diagnostics.filter(item => item.severity === 'error'), []);
 });
+
+test('documentation comments are classified and attached to supported AST nodes', async () => {
+	const { lex } = await import('../src/syntax/tokens.js');
+	const lexical = lex('//! module\n/// function\n//// ordinary\n// ordinary\n');
+	assert.deepEqual(lexical.comments.map(comment => comment.tokenType.name), [
+		'ModuleDocumentationComment',
+		'DocumentationComment',
+		'LineComment',
+		'LineComment',
+	]);
+
+	const result = compileSource(source(`//! User services.
+//!
+//! Provides lookup operations.
+
+/// A user record.
+record User {
+	/// Stable user name.
+	name: String
+}
+
+/// Lookup state.
+enum Status {
+	/// The request is pending.
+	Pending
+	/// The request failed.
+	Failed(String)
+}
+
+/// Finds a user.
+///
+/// Returns a placeholder user.
+fn findUser(id: Int) -> User {
+	return User { name: "Virune" }
+}
+
+/// JavaScript bindings.
+extern js "example" {
+	/// Reads a value.
+	fn read() -> Result<String, JsError> = "read"
+}
+`), { emit: false });
+	assert.deepEqual(result.diagnostics.filter(item => item.severity === 'error'), []);
+	assert.equal(result.ast?.documentation?.text, 'User services.\n\nProvides lookup operations.');
+	const user = result.ast?.declarations.find(item => item.kind === 'RecordDeclaration');
+	assert.equal(user?.documentation?.text, 'A user record.');
+	assert.equal(user?.kind === 'RecordDeclaration' ? user.fields[0]?.documentation?.text : undefined, 'Stable user name.');
+	const status = result.ast?.declarations.find(item => item.kind === 'EnumDeclaration');
+	assert.equal(status?.kind === 'EnumDeclaration' ? status.variants[0]?.documentation?.text : undefined, 'The request is pending.');
+	assert.equal(status?.kind === 'EnumDeclaration' ? status.variants[1]?.documentation?.text : undefined, 'The request failed.');
+	const findUser = result.ast?.declarations.find(item => item.kind === 'FunctionDeclaration' && item.name === 'findUser');
+	assert.equal(findUser?.kind === 'FunctionDeclaration' ? findUser.documentation?.text : undefined, 'Finds a user.\n\nReturns a placeholder user.');
+	const extern = result.ast?.declarations.find(item => item.kind === 'ExternDeclaration');
+	assert.equal(extern?.documentation?.text, 'JavaScript bindings.');
+	assert.equal(extern?.kind === 'ExternDeclaration' ? extern.functions[0]?.documentation?.text : undefined, 'Reads a value.');
+});
+
+test('documentation comments allow blank lines and attributes before declarations', () => {
+	const result = compileSource(source(`/// Operation result.
+
+@mustUse
+record Operation {
+	value: String
+}
+`), { emit: false });
+	assert.deepEqual(result.diagnostics.filter(item => item.severity === 'error'), []);
+	const operation = result.ast?.declarations[0];
+	assert.equal(operation?.kind === 'RecordDeclaration' ? operation.documentation?.text : undefined, 'Operation result.');
+});
+
+test('documentation diagnostics reject orphan, misplaced, unsupported, and duplicate groups', () => {
+	const cases = [
+		{ code: 'L0010', text: '/// orphan\n' },
+		{ code: 'L0010', text: 'fn first() -> Int => 1 /// trailing\nfn second() -> Int => 2\n' },
+		{ code: 'L0011', text: 'fn value() -> Int => 1\n//! misplaced\n' },
+		{ code: 'L0012', text: '/// import docs\nimport { User } from "./user.virune"\n' },
+		{ code: 'L0012', text: 'fn run() -> Unit {\n\t/// local docs\n\tlet value = 1\n}\n' },
+		{ code: 'L0013', text: '/// first\n\n/// second\nfn value() -> Int => 1\n' },
+		{ code: 'L0013', text: '//! first\n\n//! second\nfn value() -> Int => 1\n' },
+	];
+	for (const item of cases) {
+		const result = compileSource(source(item.text), { emit: false });
+		assert.equal(result.diagnostics.some(diagnostic => diagnostic.code === item.code), true, `${item.code}: ${item.text}`);
+	}
+});
+
+test('ordinary comments break documentation association and documentation never changes emitted JavaScript', () => {
+	const separated = compileSource(source('/// docs\n// ordinary\nfn value() -> Int => 1\n'), { emit: false });
+	assert.equal(separated.diagnostics.some(item => item.code === 'L0010'), true);
+
+	const withoutDocumentation = compileSource(source('fn value() -> Int => 1\n'));
+	const withDocumentation = compileSource(source('/// Value.\nfn value() -> Int => 1\n'));
+	assert.deepEqual(withDocumentation.diagnostics.filter(item => item.severity === 'error'), []);
+	assert.equal(withDocumentation.output?.code, withoutDocumentation.output?.code);
+});

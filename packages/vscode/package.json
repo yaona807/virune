@@ -95,7 +95,23 @@
 					"description": "Show the defining source file in hover information."
 				}
 			}
-		}
+		},
+		"snippets": [
+			{
+				"language": "virune",
+				"path": "./snippets/virune.json"
+			}
+		],
+		"commands": [
+			{
+				"command": "virune.generateDocumentationComment",
+				"title": "Virune: Generate Documentation Comment"
+			},
+			{
+				"command": "virune.generateModuleDocumentation",
+				"title": "Virune: Generate Module Documentation"
+			}
+		]
 	},
 	"scripts": {
 		"test": "node --test test/*.test.mjs"
@@ -103,7 +119,9 @@
 	"type": "module",
 	"main": "./dist/extension.cjs",
 	"activationEvents": [
-		"onLanguage:virune"
+		"onLanguage:virune",
+		"onCommand:virune.generateDocumentationComment",
+		"onCommand:virune.generateModuleDocumentation"
 	],
 	"devDependencies": {
 		"@types/vscode": "1.100.0",

@@ -7,6 +7,7 @@ import { emitJavaScript, type EmitResult } from '../codegen/emitter.js';
 import { DiagnosticBag, type Diagnostic } from '../diagnostics/diagnostic.js';
 import { lowerToHir } from '../hir/lower.js';
 import { buildAst } from '../syntax/cst-to-ast.js';
+import { attachDocumentation } from '../syntax/documentation.js';
 import { parse } from '../syntax/parser.js';
 import { lex } from '../syntax/tokens.js';
 import type { JsInteropProvider } from '../interop/types.js';
@@ -161,7 +162,10 @@ export function parseSource(source: SourceFile): ParsedModule {
 		diagnostics.error('L0002', error.message, spanAt(source.id, offset, endOffset - offset, line, column));
 	}
 	if (diagnostics.hasErrors) return { source, diagnostics: diagnostics.items };
-	try { return { source, ast: buildAst(source.id, parsed.cst), diagnostics: diagnostics.items }; }
+	try {
+		const ast = attachDocumentation(buildAst(source.id, parsed.cst), source, lexed.comments, lexed.tokens, diagnostics);
+		return { source, ast, diagnostics: diagnostics.items };
+	}
 	catch (error) { diagnostics.error('L9001', `AST construction failed: ${error instanceof Error ? error.message : String(error)}`, spanAt(source.id, 0, 1, 1, 1)); return { source, diagnostics: diagnostics.items }; }
 }
 
@@ -325,7 +329,7 @@ function canonicalAst(value: unknown): unknown {
 	if (value === null || typeof value !== 'object') return value;
 	const result: Record<string, unknown> = {};
 	for (const [key, child] of Object.entries(value as Record<string, unknown>).sort(([left], [right]) => left.localeCompare(right))) {
-		if (['id', 'span', 'symbolId', 'inferredTypeId', 'resolvedTypeId'].includes(key)) continue;
+		if (['id', 'span', 'documentation', 'symbolId', 'inferredTypeId', 'resolvedTypeId'].includes(key)) continue;
 		result[key] = canonicalAst(child);
 	}
 	return result;

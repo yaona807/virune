@@ -12,6 +12,7 @@
 
 - `grammar.ebnf` — 完全な規範文法と改行正規化契約
 - `lexical.md`／`lexical_ja.md` — 文字コード、token、comment、文終端
+- `documentation.md`／`documentation_ja.md` — ドキュメントコメントの関連付け、Markdown、診断
 - `types.md`／`types_ja.md` — 型同一性、推論、generic、nullability、effect、関数record合成
 - `evaluation.md`／`evaluation_ja.md` — 評価順、制御フロー、error、cleanup
 - `modules.md`／`modules_ja.md` — module、import、可視性、re-export、platform

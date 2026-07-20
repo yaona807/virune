@@ -15,6 +15,8 @@ Official VS Code language support for Virune.
 - Keyword, symbol, local-variable, and field completion
 - Semantic highlighting
 - Compiler-provided Quick Fixes
+- Documentation comments in Hover, completion, and Signature Help
+- `doc` and `moddoc` snippets, Enter continuation, and documentation-generation commands
 
 ## Installation
 
