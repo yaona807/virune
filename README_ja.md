@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/virune-logo.svg" alt="Virune" width="520">
+</p>
+
 # Virune
 
 Viruneは、読みやすいES2022 moduleへコンパイルする静的型付きアプリケーション言語です。

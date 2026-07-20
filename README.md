@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/virune-logo.svg" alt="Virune" width="520">
+</p>
+
 # Virune
 
 Virune is a statically typed application language that compiles to readable ES2022 modules.
