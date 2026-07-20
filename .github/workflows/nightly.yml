@@ -56,6 +56,11 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: binding-corpus-report
-          path: .cache/binding-corpus/report.current.json
+          name: binding-corpus-diagnostics
+          path: |
+            .cache/binding-corpus/report.current.json
+            .cache/binding-corpus/generated/
+            .cache/binding-corpus/package-lock.json
+            .cache/binding-corpus/baseline-diff.json
+          if-no-files-found: ignore
           retention-days: 30

@@ -1,14 +1,13 @@
-import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { copyFileSync, cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { execNpmSync } from './npm-cli.mjs';
 import { writeReleaseIntegrityFiles } from './release-manifest.mjs';
 
 const rootPackage = JSON.parse(readFileSync(resolve('package.json'), 'utf8'));
 const version = rootPackage.version;
 const out = resolve('release');
-const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
 rmSync(out, { recursive: true, force: true });
 mkdirSync(out, { recursive: true });
 
@@ -23,7 +22,7 @@ const cliPackage = { directory: 'cli', name: 'virune', file: `virune-${version}.
 const packages = [...internalPackages, cliPackage];
 
 const pack = directory => {
-	execFileSync(npmCommand, ['pack', directory, '--pack-destination', out], { stdio: 'inherit' });
+	execNpmSync(['pack', directory, '--pack-destination', out], { stdio: 'inherit' });
 };
 
 for (const item of internalPackages) {
@@ -44,8 +43,7 @@ try {
 	writeFileSync(stagingManifestPath, `${JSON.stringify(stagingManifest, null, '\t')}\n`);
 
 	const internalTarballs = internalPackages.map(item => resolve(out, item.file));
-	execFileSync(
-		npmCommand,
+	execNpmSync(
 		[
 			'install',
 			'--no-save',

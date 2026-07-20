@@ -25,7 +25,6 @@ function runNodeTest(files) {
 			cwd: process.cwd(),
 			env,
 			stdio: 'inherit',
-			shell: process.platform === 'win32',
 		});
 		child.once('error', reject);
 		child.once('exit', code => resolve(code ?? 1));

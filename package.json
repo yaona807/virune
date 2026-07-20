@@ -35,7 +35,7 @@
 		"fmt": "npm run build && node packages/cli/dist/src/main.js fmt examples",
 		"fmt:check": "npm run build && node packages/cli/dist/src/main.js fmt --check examples",
 		"pack:virune": "npm run clean && npm run build && node ./scripts/package.mjs",
-		"verify": "npm run node:check && npm run registry:check && npm run release:check && npm run api:check && npm run check && npm test && npm run test:binding-corpus && npm run test:fuzz:smoke && npm run test:vscode && npm run test:conformance && npm run fmt:check && npm run spec:check && npm run smoke:clone && npm run pack:virune && npm run smoke:release",
+		"verify": "npm run verify:metadata && npm run verify:quality",
 		"virune": "node packages/cli/dist/src/main.js",
 		"example": "npm run build && node packages/cli/dist/src/main.js run .",
 		"smoke:clone": "npm run build && node scripts/smoke-clone.mjs",
@@ -52,11 +52,14 @@
 		"pack:vscode": "npm run build:vscode && node scripts/package-vscode.mjs",
 		"test:binding-corpus": "npm run build && node --expose-gc scripts/run-binding-corpus.mjs",
 		"test:binding-corpus:update": "npm run build && node --expose-gc scripts/run-binding-corpus.mjs --write-report",
-		"test:fuzz:smoke": "npm run build && VIRUNE_FUZZ_ITERATIONS=2000 node scripts/fuzz.mjs",
+		"test:fuzz:smoke": "npm run build && node scripts/fuzz.mjs",
 		"test:fuzz:long": "npm run build && node scripts/fuzz.mjs",
 		"benchmark:incremental": "npm run build && node scripts/benchmark-incremental.mjs",
 		"test:interop-corpus": "npm run build && node scripts/run-unit-tests.mjs --filter=packages/js-interop/dist/test/corpus-",
-		"smoke:release": "node scripts/smoke-release.mjs"
+		"smoke:release": "node scripts/smoke-release.mjs",
+		"verify:metadata": "npm run node:check && npm run registry:check && npm run release:check && npm run api:check && npm run spec:check",
+		"verify:quality": "npm run check && npm test && npm run test:binding-corpus && npm run test:fuzz:smoke && npm run test:vscode && npm run test:conformance && npm run fmt:check && npm run smoke:clone",
+		"verify:release": "npm run pack:virune && npm run pack:vscode && npm run smoke:release"
 	},
 	"devDependencies": {
 		"@types/lodash": "4.17.24",

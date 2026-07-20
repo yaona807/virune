@@ -4,11 +4,11 @@ import { gunzipSync } from 'node:zlib';
 import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { execNpmSync } from './npm-cli.mjs';
 
 const releaseDirectory = resolve('release');
 const rootPackage = JSON.parse(readFileSync(resolve('package.json'), 'utf8'));
 const version = rootPackage.version;
-const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
 const expectedPackages = [
 	`virune-runtime-${version}.tgz`,
 	`virune-compiler-${version}.tgz`,
@@ -149,9 +149,21 @@ for (const packageName of internalPackageFiles.keys()) {
 const smokeRoot = mkdtempSync(join(tmpdir(), 'virune-release-smoke-'));
 try {
 	const globalPrefix = resolve(smokeRoot, 'global');
-	execFileSync(
-		npmCommand,
-		['install', '--global', '--offline', '--ignore-scripts', '--no-audit', '--no-fund', '--prefix', globalPrefix, resolve(releaseDirectory, cliFile)],
+	const npmCache = resolve(smokeRoot, 'npm-cache');
+	execNpmSync(
+		[
+			'install',
+			'--global',
+			'--offline',
+			'--ignore-scripts',
+			'--no-audit',
+			'--no-fund',
+			'--cache',
+			npmCache,
+			'--prefix',
+			globalPrefix,
+			resolve(releaseDirectory, cliFile),
+		],
 		{ stdio: 'inherit' },
 	);
 	const globalPackageRoot = process.platform === 'win32'
@@ -161,7 +173,7 @@ try {
 	if (!existsSync(globalBin)) throw new Error(`Global virune executable was not created: ${globalBin}`);
 	const cliEntry = resolve(globalPackageRoot, 'dist/src/main.js');
 	if (!existsSync(cliEntry)) throw new Error(`Installed CLI entry point is missing: ${cliEntry}`);
-	const runCli = args => execFileSync(process.execPath, [cliEntry, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+	const runCli = (args, cwd = smokeRoot) => runInstalledCli(globalBin, args, cwd);
 	const versionOutput = runCli(['--version']).trim();
 	if (versionOutput !== `virune ${version}`) throw new Error(`Unexpected version output: ${versionOutput}`);
 
@@ -173,16 +185,31 @@ try {
 	projectManifest.dependencies['@virune/stdlib'] = `file:${resolve(releaseDirectory, internalPackageFiles.get('@virune/stdlib'))}`;
 	projectManifest.devDependencies.virune = `file:${resolve(releaseDirectory, cliFile)}`;
 	writeFileSync(projectManifestPath, `${JSON.stringify(projectManifest, null, 2)}\n`);
-	execFileSync(
-		npmCommand,
-		['install', '--offline', '--ignore-scripts', '--no-audit', '--no-fund'],
+	execNpmSync(
+		['install', '--offline', '--ignore-scripts', '--no-audit', '--no-fund', '--cache', npmCache],
 		{ cwd: projectRoot, stdio: 'inherit' },
 	);
-	if (!/Checked 1 module/u.test(runCli(['check', projectRoot]))) throw new Error('Installed release failed to check the generated project.');
-	if (!/Built 1 module/u.test(runCli(['build', projectRoot]))) throw new Error('Installed release failed to build the generated project.');
-	if (!/Hello from Virune/u.test(runCli(['run', projectRoot]))) throw new Error('Installed release failed to run the generated project.');
+	if (!/Checked 1 module/u.test(runCli(['check', projectRoot], projectRoot))) throw new Error('Installed release failed to check the generated project.');
+	if (!/Built 1 module/u.test(runCli(['build', projectRoot], projectRoot))) throw new Error('Installed release failed to build the generated project.');
+	if (!/Hello from Virune/u.test(runCli(['run', projectRoot], projectRoot))) throw new Error('Installed release failed to run the generated project.');
 } finally {
 	rmSync(smokeRoot, { recursive: true, force: true });
 }
 
 console.log(`Release smoke passed: ${manifest.files.length} files, ${expectedPackages.length} npm packages, offline clean install.`);
+
+function runInstalledCli(bin, argumentsList, cwd) {
+	if (process.platform !== 'win32') {
+		return execFileSync(bin, argumentsList, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+	}
+	const command = [bin, ...argumentsList].map(quoteWindowsCommandArgument).join(' ');
+	return execFileSync(process.env.ComSpec ?? 'cmd.exe', ['/d', '/s', '/c', command], {
+		cwd,
+		encoding: 'utf8',
+		stdio: ['ignore', 'pipe', 'pipe'],
+	});
+}
+
+function quoteWindowsCommandArgument(value) {
+	return `"${String(value).replaceAll('"', '""')}"`;
+}
