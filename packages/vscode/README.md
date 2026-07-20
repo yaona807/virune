@@ -7,7 +7,9 @@ Official VS Code language support for Virune.
 - Virune TextMate syntax highlighting
 - Syntax, type, import, and project diagnostics
 - Document formatting
-- Hover type information
+- Rich hover information for functions, inferred types, records, enums, and source locations
+- Inlay hints for inferred types and call-site parameter names
+- Signature Help with active-parameter highlighting
 - Document symbols and Outline support
 - Go to Definition
 - Keyword, symbol, local-variable, and field completion

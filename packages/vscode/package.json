@@ -45,7 +45,57 @@
 				"scopeName": "source.virune",
 				"path": "./syntaxes/virune.tmLanguage.json"
 			}
-		]
+		],
+		"configuration": {
+			"title": "Virune",
+			"properties": {
+				"virune.inlayHints.variableTypes.enabled": {
+					"type": "boolean",
+					"default": true,
+					"description": "Show inferred types for local and top-level variables."
+				},
+				"virune.inlayHints.functionReturnTypes.enabled": {
+					"type": "boolean",
+					"default": true,
+					"description": "Show inferred return types for functions and lambdas without an explicit return type."
+				},
+				"virune.inlayHints.parameterNames": {
+					"type": "string",
+					"enum": [
+						"none",
+						"literals",
+						"all"
+					],
+					"enumDescriptions": [
+						"Do not show parameter name hints.",
+						"Show parameter names for literal-like arguments.",
+						"Show parameter names for all arguments except matching identifiers."
+					],
+					"default": "literals",
+					"description": "Controls parameter name hints at function call sites."
+				},
+				"virune.inlayHints.forLoopVariableTypes.enabled": {
+					"type": "boolean",
+					"default": true,
+					"description": "Show inferred types for for-loop variables."
+				},
+				"virune.inlayHints.lambdaParameterTypes.enabled": {
+					"type": "boolean",
+					"default": true,
+					"description": "Show inferred types for lambda parameters."
+				},
+				"virune.hover.showEffects": {
+					"type": "boolean",
+					"default": true,
+					"description": "Show uses capabilities in function hover information."
+				},
+				"virune.hover.showModule": {
+					"type": "boolean",
+					"default": true,
+					"description": "Show the defining source file in hover information."
+				}
+			}
+		}
 	},
 	"scripts": {
 		"test": "node --test test/*.test.mjs"

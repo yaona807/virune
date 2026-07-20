@@ -5,6 +5,7 @@ import test from 'node:test';
 const grammarUrl = new URL('../syntaxes/virune.tmLanguage.json', import.meta.url);
 const languageConfigurationUrl = new URL('../language-configuration.json', import.meta.url);
 const tokensUrl = new URL('../../compiler/src/syntax/tokens.ts', import.meta.url);
+const packageUrl = new URL('../package.json', import.meta.url);
 
 const readJson = async url => JSON.parse(await readFile(url, 'utf8'));
 
@@ -45,4 +46,15 @@ test('TextMate grammar recognizes Virune string interpolation', async () => {
 	assert.match(grammarText, /meta\.interpolation\.virune/u);
 	assert.match(grammarText, /punctuation\.section\.interpolation\.begin\.virune/u);
 	assert.match(grammarText, /constant\.character\.escape\.brace\.virune/u);
+});
+
+
+test('extension manifest exposes configurable editor type information', async () => {
+	const manifest = await readJson(packageUrl);
+	const properties = manifest.contributes?.configuration?.properties;
+	assert.equal(properties?.['virune.inlayHints.variableTypes.enabled']?.default, true);
+	assert.equal(properties?.['virune.inlayHints.functionReturnTypes.enabled']?.default, true);
+	assert.deepEqual(properties?.['virune.inlayHints.parameterNames']?.enum, ['none', 'literals', 'all']);
+	assert.equal(properties?.['virune.hover.showEffects']?.default, true);
+	assert.equal(properties?.['virune.hover.showModule']?.default, true);
 });

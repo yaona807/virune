@@ -62,11 +62,14 @@ try {
 	assert.equal(capabilities?.hoverProvider, true);
 	assert.equal(capabilities?.definitionProvider, true);
 	assert.equal(capabilities?.documentSymbolProvider, true);
+	assert.equal(capabilities?.inlayHintProvider, true);
+	assert.deepEqual(capabilities?.signatureHelpProvider?.triggerCharacters, ['(', ',']);
 	assert.equal(capabilities?.documentFormattingProvider, true);
 	assert.equal(capabilities?.semanticTokensProvider?.full, true);
 	assert.equal(capabilities?.codeActionProvider, true);
 	send({ jsonrpc: '2.0', method: 'initialized', params: {} });
 	const documentUri = 'file:///tmp/virune-vscode-smoke.virune';
+	const documentText = 'fn add(left: Int, right: Int) -> Int => left + right\n\nfn inferred() {\n\tlet total = add(1, 2)\n\treturn total\n}\n';
 	send({
 		jsonrpc: '2.0',
 		method: 'textDocument/didOpen',
@@ -75,7 +78,7 @@ try {
 				uri: documentUri,
 				languageId: 'virune',
 				version: 1,
-				text: 'extern "node:fs" {}\nfn actual() -> Int => 1\n',
+				text: documentText,
 			},
 		},
 	});
@@ -86,7 +89,36 @@ try {
 	assert.ok(Array.isArray(documentSymbols.result));
 	for (const symbol of documentSymbols.result) assertDocumentSymbolRanges(symbol);
 
-	const shutdown = await request(3, 'shutdown', null);
+	const inlayHintResponse = await request(3, 'textDocument/inlayHint', {
+		textDocument: { uri: documentUri },
+		range: { start: { line: 0, character: 0 }, end: offsetToPosition(documentText, documentText.length) },
+	});
+	assert.equal(inlayHintResponse.error, undefined);
+	assert.ok(Array.isArray(inlayHintResponse.result));
+	const inlayLabels = inlayHintResponse.result.map(hint => typeof hint.label === 'string' ? hint.label : JSON.stringify(hint.label));
+	assert.ok(inlayLabels.includes(': Int'));
+	assert.ok(inlayLabels.includes(' -> Int'));
+	assert.ok(inlayLabels.includes('left:'));
+	assert.ok(inlayLabels.includes('right:'));
+
+	const secondArgumentOffset = documentText.lastIndexOf('2');
+	const signatureHelp = await request(4, 'textDocument/signatureHelp', {
+		textDocument: { uri: documentUri },
+		position: offsetToPosition(documentText, secondArgumentOffset),
+		context: { triggerKind: 1, isRetrigger: false },
+	});
+	assert.equal(signatureHelp.error, undefined);
+	assert.match(signatureHelp.result?.signatures?.[0]?.label ?? '', /fn add\(left: Int, right: Int\) -> Int/u);
+	assert.equal(signatureHelp.result?.activeParameter, 1);
+
+	const hover = await request(5, 'textDocument/hover', {
+		textDocument: { uri: documentUri },
+		position: offsetToPosition(documentText, documentText.lastIndexOf('add')),
+	});
+	assert.equal(hover.error, undefined);
+	assert.match(JSON.stringify(hover.result?.contents), /fn add\(left: Int, right: Int\) -> Int/u);
+
+	const shutdown = await request(6, 'shutdown', null);
 	assert.equal(shutdown.error, undefined);
 	send({ jsonrpc: '2.0', method: 'exit', params: null });
 	await new Promise((resolveExit, reject) => {
@@ -104,7 +136,6 @@ try {
 	server.kill();
 	throw error;
 }
-
 function assertDocumentSymbolRanges(symbol) {
 	assert.ok(rangeContains(symbol.range, symbol.selectionRange));
 	for (const child of symbol.children ?? []) assertDocumentSymbolRanges(child);
@@ -116,4 +147,17 @@ function rangeContains(parent, child) {
 
 function comparePosition(left, right) {
 	return left.line === right.line ? left.character - right.character : left.line - right.line;
+}
+
+function offsetToPosition(text, targetOffset) {
+	const offset = Math.max(0, Math.min(text.length, targetOffset));
+	let line = 0;
+	let lineStart = 0;
+	for (let index = 0; index < offset; index++) {
+		if (text.charCodeAt(index) === 10) {
+			line++;
+			lineStart = index + 1;
+		}
+	}
+	return { line, character: offset - lineStart };
 }

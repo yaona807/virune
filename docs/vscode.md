@@ -20,12 +20,33 @@ The extension is not distributed through the Visual Studio Marketplace. Updates 
 - Syntax and semantic highlighting
 - Diagnostics for lexer, parser, type, import, and project errors
 - Document formatting
-- Hover information
+- Rich hover information for functions, inferred types, records, enums, and source locations
+- Inlay hints for inferred variable, function return, loop variable, and lambda parameter types
+- Configurable parameter-name inlay hints at call sites
+- Signature Help with the active parameter, return type, and `uses` capabilities
 - Document symbols
 - Go to Definition
 - Completion for keywords, declarations, imports, parameters, local variables, and fields
 - Quick Fix conversion for diagnostics that include compiler fixes
 - Incremental parse, type-check, and emit reuse per project root
+
+## Editor information settings
+
+The extension enables type-oriented editor information by default. These settings can be changed in VS Code settings:
+
+```json
+{
+	"virune.inlayHints.variableTypes.enabled": true,
+	"virune.inlayHints.functionReturnTypes.enabled": true,
+	"virune.inlayHints.parameterNames": "literals",
+	"virune.inlayHints.forLoopVariableTypes.enabled": true,
+	"virune.inlayHints.lambdaParameterTypes.enabled": true,
+	"virune.hover.showEffects": true,
+	"virune.hover.showModule": true
+}
+```
+
+`virune.inlayHints.parameterNames` accepts `none`, `literals`, or `all`. Inlay hints are visual annotations only and do not modify the Virune source file.
 
 ## Development
 

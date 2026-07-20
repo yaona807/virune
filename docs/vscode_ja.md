@@ -20,11 +20,32 @@ Visual Studio Marketplaceでは配布しません。更新時は、GitHub Releas
 - シンタックスハイライトとSemantic Tokens
 - 字句解析・構文解析・型・import・プロジェクト診断
 - ドキュメントフォーマット
-- Hover情報
+- 関数、推論型、record、enum、定義元を表示する詳細なHover情報
+- 変数、関数戻り値、ループ変数、lambda引数の推論型を表示するInlay Hints
+- 関数呼び出し時の設定可能な引数名Inlay Hints
+- 現在の引数、戻り値、`uses` capabilityを表示するSignature Help
 - Document Symbols
 - Go to Definition
 - キーワード、宣言、import、引数、ローカル変数、フィールドの補完
 - コンパイラ診断にfixが含まれる場合のQuick Fix変換
+
+## エディタ情報の設定
+
+型情報を中心としたエディタ表示はデフォルトで有効です。VS Codeの設定から次を変更できます。
+
+```json
+{
+	"virune.inlayHints.variableTypes.enabled": true,
+	"virune.inlayHints.functionReturnTypes.enabled": true,
+	"virune.inlayHints.parameterNames": "literals",
+	"virune.inlayHints.forLoopVariableTypes.enabled": true,
+	"virune.inlayHints.lambdaParameterTypes.enabled": true,
+	"virune.hover.showEffects": true,
+	"virune.hover.showModule": true
+}
+```
+
+`virune.inlayHints.parameterNames`には`none`、`literals`、`all`を指定できます。Inlay Hintsは表示上の注釈であり、Viruneソースファイル自体は変更しません。
 
 ## 開発
 

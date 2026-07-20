@@ -17,6 +17,9 @@ import { documentSymbols } from './features/document-symbols.js';
 import { formattingEdits } from './features/formatting.js';
 import { hoverAt } from './features/hover.js';
 import { semanticTokenModifiers, semanticTokens, semanticTokenTypes } from './features/semantic-tokens.js';
+import { inlayHints } from './features/inlay-hints.js';
+import { signatureHelpAt } from './features/signature-help.js';
+import { defaultEditorInformationSettings, resolveEditorInformationSettings } from './editor-information.js';
 import { filePathToUri, positionToOffset, uriToFilePath } from './analysis/position.js';
 
 const connection = createConnection(ProposedFeatures.all);
@@ -26,8 +29,10 @@ const pending = new Map<string, ReturnType<typeof setTimeout>>();
 const generations = new Map<string, number>();
 const publishedDiagnostics = new Map<string, Set<string>>();
 const documentRoots = new Map<string, string>();
+let editorInformationSettings = defaultEditorInformationSettings;
 
 connection.onInitialize((params: InitializeParams): InitializeResult => {
+	editorInformationSettings = resolveEditorInformationSettings(params.initializationOptions);
 	const workspaceFolders = params.workspaceFolders
 		?.map(folder => uriToFilePath(folder.uri))
 		.filter((path): path is string => path !== undefined);
@@ -40,6 +45,8 @@ connection.onInitialize((params: InitializeParams): InitializeResult => {
 			textDocumentSync: TextDocumentSyncKind.Incremental,
 			documentFormattingProvider: true,
 			hoverProvider: true,
+			inlayHintProvider: true,
+			signatureHelpProvider: { triggerCharacters: ['(', ','], retriggerCharacters: [','] },
 			documentSymbolProvider: true,
 			definitionProvider: true,
 			completionProvider: { triggerCharacters: ['.', '@'] },
@@ -117,7 +124,23 @@ connection.onDocumentFormatting(async params => {
 
 connection.onHover(async params => {
 	const analysis = await analyzePosition(params);
-	return analysis === undefined ? undefined : hoverAt(analysis.module, analysis.module.source, analysis.offset);
+	return analysis === undefined ? undefined : hoverAt(analysis.module, analysis.module.source, analysis.offset, {
+		settings: editorInformationSettings,
+		sourcesById: analysis.snapshot.sourcesById,
+	});
+});
+
+connection.languages.inlayHint.on(async params => {
+	const path = uriToFilePath(params.textDocument.uri);
+	if (path === undefined) return [];
+	const snapshot = await projectManager.analyze(params.textDocument.uri);
+	const module = snapshot?.modulesByPath.get(path);
+	return module === undefined ? [] : [...inlayHints(module, params.range, editorInformationSettings)];
+});
+
+connection.onSignatureHelp(async params => {
+	const analysis = await analyzePosition(params);
+	return analysis === undefined ? undefined : signatureHelpAt(analysis.module, analysis.module.source, analysis.offset);
 });
 
 connection.onDocumentSymbol(async params => {
@@ -153,6 +176,9 @@ connection.onCodeAction(async params => {
 	return snapshot === undefined ? [] : [...codeActionsForDiagnostics(snapshot, path, params.context.diagnostics)];
 });
 
+connection.onDidChangeConfiguration(params => {
+	editorInformationSettings = resolveEditorInformationSettings(params.settings);
+});
 
 connection.onDidChangeWatchedFiles(() => {
 	projectManager.invalidate();
