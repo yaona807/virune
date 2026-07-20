@@ -2,6 +2,7 @@ import type { CstNode, IToken } from 'chevrotain';
 import type * as A from '../ast/nodes.js';
 import { IdGenerator, type FileId, type SourceSpan, zeroSpan } from '../source.js';
 import { baseCstVisitorConstructor } from './parser.js';
+import { setSyntaxStart } from './syntax-metadata.js';
 
 type Ctx = Record<string, Array<CstNode | IToken>>;
 const isToken = (value: CstNode | IToken): value is IToken => 'image' in value;
@@ -69,7 +70,7 @@ export class AstBuilder extends baseCstVisitorConstructor {
 		const namespace = firstToken(ctx, 'Star') !== undefined;
 		const namedClause = firstToken(ctx, 'LBrace') !== undefined;
 		const sideEffect = !namedClause && !namespace && identifiers.length === 0;
-		return {
+		return setSyntaxStart({
 			id: this.id(), kind: 'ImportDeclaration', span: nodeSpan(this.#fileId, this.currentNode(ctx)),
 			public: firstToken(ctx, 'KwPub') !== undefined,
 			sourceKind: firstToken(ctx, 'KwJs') === undefined ? 'virune' : 'javascript',
@@ -78,7 +79,7 @@ export class AstBuilder extends baseCstVisitorConstructor {
 			...(!sideEffect && !namedClause && !namespace ? { defaultImport: identifiers[0]?.image ?? '' } : {}),
 			...(namespace ? { namespaceImport: identifiers[0]?.image ?? '' } : {}),
 			source: unquote(tokenText(ctx, 'StringLiteral')),
-		};
+		}, contextSpan(this.#fileId, ctx).start.offset);
 	}
 
 	public importItem(ctx: Ctx): A.ImportItem {
@@ -91,7 +92,8 @@ export class AstBuilder extends baseCstVisitorConstructor {
 		const name = Object.keys(ctx).find(key => key !== 'attribute');
 		const child = name === undefined ? undefined : firstNode(ctx, name);
 		const declaration = this.visitNode<A.Declaration>(child);
-		return { ...declaration, attributes } as A.Declaration;
+		const result = { ...declaration, attributes } as A.Declaration;
+		return setSyntaxStart(result, nodeSpan(this.#fileId, child).start.offset);
 	}
 
 	public attribute(ctx: Ctx): A.AttributeNode {
@@ -114,20 +116,20 @@ export class AstBuilder extends baseCstVisitorConstructor {
 
 	public typeParameters(ctx: Ctx): A.TypeParameterNode[] { return tokens(ctx, 'Identifier').map(token => ({ name: token.image, span: tokenSpan(this.#fileId, token) })); }
 	public parameterList(ctx: Ctx): A.ParameterNode[] { return this.visitNodes<A.ParameterNode>(nodes(ctx, 'parameter')); }
-	public parameter(ctx: Ctx): A.ParameterNode { return { name: tokenText(ctx, 'Identifier'), optional: firstToken(ctx, 'Question') !== undefined, type: this.visitNode(firstNode(ctx, 'typeReference')), span: nodeSpan(this.#fileId, this.currentNode(ctx)) }; }
+	public parameter(ctx: Ctx): A.ParameterNode { return setSyntaxStart({ name: tokenText(ctx, 'Identifier'), optional: firstToken(ctx, 'Question') !== undefined, type: this.visitNode(firstNode(ctx, 'typeReference')), span: nodeSpan(this.#fileId, this.currentNode(ctx)) }, contextSpan(this.#fileId, ctx).start.offset); }
 	public usesClause(ctx: Ctx): string[] { return [...tokens(ctx, 'Identifier'), ...tokens(ctx, 'Star')].sort((left, right) => left.startOffset - right.startOffset).map(token => token.image); }
 
 	public recordDeclaration(ctx: Ctx): A.RecordDeclaration {
 		return { id: this.id(), kind: 'RecordDeclaration', span: nodeSpan(this.#fileId, this.currentNode(ctx)), name: tokenText(ctx, 'Identifier'), public: firstToken(ctx, 'KwPub') !== undefined, attributes: [], typeParameters: firstNode(ctx, 'typeParameters') === undefined ? [] : this.visitNode(firstNode(ctx, 'typeParameters')), fields: this.visitNodes(nodes(ctx, 'recordField')), derives: firstNode(ctx, 'derivesClause') === undefined ? [] : this.visitNode(firstNode(ctx, 'derivesClause')) };
 	}
-	public recordField(ctx: Ctx): A.RecordFieldNode { return { name: tokenText(ctx, 'Identifier'), type: this.visitNode(firstNode(ctx, 'typeReference')), attributes: this.visitNodes<A.AttributeNode>(nodes(ctx, 'attribute')), span: nodeSpan(this.#fileId, this.currentNode(ctx)) }; }
+	public recordField(ctx: Ctx): A.RecordFieldNode { return setSyntaxStart({ name: tokenText(ctx, 'Identifier'), type: this.visitNode(firstNode(ctx, 'typeReference')), attributes: this.visitNodes<A.AttributeNode>(nodes(ctx, 'attribute')), span: nodeSpan(this.#fileId, this.currentNode(ctx)) }, contextSpan(this.#fileId, ctx).start.offset); }
 	public derivesClause(ctx: Ctx): string[] { return tokens(ctx, 'Identifier').map(token => token.image); }
 	public enumDeclaration(ctx: Ctx): A.EnumDeclaration { return { id: this.id(), kind: 'EnumDeclaration', span: nodeSpan(this.#fileId, this.currentNode(ctx)), name: tokenText(ctx, 'Identifier'), public: firstToken(ctx, 'KwPub') !== undefined, attributes: [], typeParameters: firstNode(ctx, 'typeParameters') === undefined ? [] : this.visitNode(firstNode(ctx, 'typeParameters')), variants: this.visitNodes(nodes(ctx, 'enumVariant')), derives: firstNode(ctx, 'derivesClause') === undefined ? [] : this.visitNode(firstNode(ctx, 'derivesClause')) }; }
-	public enumVariant(ctx: Ctx): A.EnumVariantNode { return { name: tokenText(ctx, 'Identifier'), values: this.visitNodes(nodes(ctx, 'typeReference')), span: nodeSpan(this.#fileId, this.currentNode(ctx)) }; }
+	public enumVariant(ctx: Ctx): A.EnumVariantNode { return setSyntaxStart({ name: tokenText(ctx, 'Identifier'), values: this.visitNodes(nodes(ctx, 'typeReference')), span: nodeSpan(this.#fileId, this.currentNode(ctx)) }, contextSpan(this.#fileId, ctx).start.offset); }
 	public newtypeDeclaration(ctx: Ctx): A.NewtypeDeclaration { return { id: this.id(), kind: 'NewtypeDeclaration', span: nodeSpan(this.#fileId, this.currentNode(ctx)), name: tokenText(ctx, 'Identifier'), public: firstToken(ctx, 'KwPub') !== undefined, attributes: [], underlying: this.visitNode(firstNode(ctx, 'typeReference')) }; }
 	public typeAliasDeclaration(ctx: Ctx): A.TypeAliasDeclaration { return { id: this.id(), kind: 'TypeAliasDeclaration', span: nodeSpan(this.#fileId, this.currentNode(ctx)), name: tokenText(ctx, 'Identifier'), public: firstToken(ctx, 'KwPub') !== undefined, attributes: [], typeParameters: firstNode(ctx, 'typeParameters') === undefined ? [] : this.visitNode(firstNode(ctx, 'typeParameters')), target: this.visitNode(firstNode(ctx, 'typeReference')) }; }
 	public externDeclaration(ctx: Ctx): A.ExternDeclaration { return { id: this.id(), kind: 'ExternDeclaration', span: nodeSpan(this.#fileId, this.currentNode(ctx)), module: unquote(tokenText(ctx, 'StringLiteral')), unsafe: firstToken(ctx, 'KwUnsafe') !== undefined, attributes: [], functions: this.visitNodes(nodes(ctx, 'externFunction')) }; }
-	public externFunction(ctx: Ctx): A.ExternFunctionNode { const strings = tokens(ctx, 'StringLiteral'); return { id: this.id(), kind: 'ExternFunction', span: nodeSpan(this.#fileId, this.currentNode(ctx)), name: tokenText(ctx, 'Identifier'), async: firstToken(ctx, 'KwAsync') !== undefined, parameters: firstNode(ctx, 'parameterList') === undefined ? [] : this.visitNode(firstNode(ctx, 'parameterList')), returnType: this.visitNode(firstNode(ctx, 'typeReference')), effects: firstNode(ctx, 'usesClause') === undefined ? [] : this.visitNode<string[]>(firstNode(ctx, 'usesClause')), jsName: unquote(strings[0]?.image ?? '""') }; }
+	public externFunction(ctx: Ctx): A.ExternFunctionNode { const strings = tokens(ctx, 'StringLiteral'); return setSyntaxStart({ id: this.id(), kind: 'ExternFunction', span: nodeSpan(this.#fileId, this.currentNode(ctx)), name: tokenText(ctx, 'Identifier'), async: firstToken(ctx, 'KwAsync') !== undefined, parameters: firstNode(ctx, 'parameterList') === undefined ? [] : this.visitNode(firstNode(ctx, 'parameterList')), returnType: this.visitNode(firstNode(ctx, 'typeReference')), effects: firstNode(ctx, 'usesClause') === undefined ? [] : this.visitNode<string[]>(firstNode(ctx, 'usesClause')), jsName: unquote(strings[0]?.image ?? '""') }, contextSpan(this.#fileId, ctx).start.offset); }
 	public testDeclaration(ctx: Ctx): A.TestDeclaration { return { id: this.id(), kind: 'TestDeclaration', span: nodeSpan(this.#fileId, this.currentNode(ctx)), name: unquote(tokenText(ctx, 'StringLiteral')), async: firstToken(ctx, 'KwAsync') !== undefined, attributes: [], body: this.visitNode(firstNode(ctx, 'block')) }; }
 	public topLevelLetDeclaration(ctx: Ctx): A.TopLevelLetDeclaration { return { id: this.id(), kind: 'TopLevelLetDeclaration', span: nodeSpan(this.#fileId, this.currentNode(ctx)), name: tokenText(ctx, 'Identifier'), attributes: [], constant: firstToken(ctx, 'KwConst') !== undefined, public: firstToken(ctx, 'KwPub') !== undefined, ...(firstNode(ctx, 'typeReference') === undefined ? {} : { annotation: this.visitNode<A.TypeReferenceNode>(firstNode(ctx, 'typeReference')) }), value: this.visitNode(firstNode(ctx, 'expression')) }; }
 
@@ -149,7 +151,7 @@ export class AstBuilder extends baseCstVisitorConstructor {
 	}
 
 	public block(ctx: Ctx): A.BlockStatement { return { id: this.id(), kind: 'BlockStatement', span: nodeSpan(this.#fileId, this.currentNode(ctx)), statements: this.visitNodes(nodes(ctx, 'statement')) }; }
-	public statement(ctx: Ctx): A.Statement { const key = Object.keys(ctx)[0]; return this.visitNode(firstNode(ctx, key ?? '')); }
+	public statement(ctx: Ctx): A.Statement { const key = Object.keys(ctx)[0]; const child = firstNode(ctx, key ?? ''); return setSyntaxStart(this.visitNode<A.Statement>(child), nodeSpan(this.#fileId, child).start.offset); }
 	public letStatement(ctx: Ctx): A.LetStatement { return { id: this.id(), kind: 'LetStatement', span: nodeSpan(this.#fileId, this.currentNode(ctx)), name: tokenText(ctx, 'Identifier'), mutable: firstToken(ctx, 'KwMut') !== undefined, ...(firstNode(ctx, 'typeReference') === undefined ? {} : { annotation: this.visitNode<A.TypeReferenceNode>(firstNode(ctx, 'typeReference')) }), value: this.visitNode(firstNode(ctx, 'expression')) }; }
 	public returnStatement(ctx: Ctx): A.ReturnStatement { const expression = firstNode(ctx, 'expression'); return { id: this.id(), kind: 'ReturnStatement', span: nodeSpan(this.#fileId, this.currentNode(ctx)), ...(expression === undefined ? {} : { value: this.visitNode<A.Expression>(expression) }) }; }
 	public ifStatement(ctx: Ctx): A.IfStatement { const blocks = nodes(ctx, 'block'); const nested = firstNode(ctx, 'ifStatement'); return { id: this.id(), kind: 'IfStatement', span: nodeSpan(this.#fileId, this.currentNode(ctx)), condition: this.visitNode(firstNode(ctx, 'expression')), thenBlock: this.visitNode(blocks[0]), ...(blocks[1] === undefined && nested === undefined ? {} : { elseBranch: blocks[1] === undefined ? this.visitNode<A.IfStatement>(nested) : this.visitNode<A.BlockStatement>(blocks[1]) }) }; }

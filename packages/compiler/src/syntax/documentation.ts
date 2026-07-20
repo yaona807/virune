@@ -2,6 +2,7 @@ import type { IToken } from 'chevrotain';
 import type * as A from '../ast/nodes.js';
 import type { DiagnosticBag } from '../diagnostics/diagnostic.js';
 import type { SourceFile, SourceSpan } from '../source.js';
+import { syntaxStartOf } from './syntax-metadata.js';
 
 interface DocumentationTarget {
 	readonly node: A.DocumentedNode;
@@ -137,19 +138,19 @@ function collectTargets(module: A.ModuleNode): DocumentationTarget[] {
 			}
 		} else if (declaration.kind === 'EnumDeclaration') {
 			for (const variant of declaration.variants) {
-				targets.push({ node: variant, anchor: variant.span.start.offset, label: 'an enum variant', supported: true });
+				targets.push({ node: variant, anchor: syntaxStartOf(variant) ?? variant.span.start.offset, label: 'an enum variant', supported: true });
 			}
 		} else if (declaration.kind === 'ExternDeclaration') {
 			for (const fn of declaration.functions) {
-				targets.push({ node: fn, anchor: fn.span.start.offset, label: 'an extern function', supported: true });
-				for (const parameter of fn.parameters) targets.push({ node: {}, anchor: parameter.span.start.offset, label: 'a function parameter', supported: false });
+				targets.push({ node: fn, anchor: syntaxStartOf(fn) ?? fn.span.start.offset, label: 'an extern function', supported: true });
+				for (const parameter of fn.parameters) targets.push({ node: {}, anchor: syntaxStartOf(parameter) ?? parameter.span.start.offset, label: 'a function parameter', supported: false });
 			}
 		} else if (declaration.kind === 'FunctionDeclaration') {
-			for (const parameter of declaration.parameters) targets.push({ node: {}, anchor: parameter.span.start.offset, label: 'a function parameter', supported: false });
+			for (const parameter of declaration.parameters) targets.push({ node: {}, anchor: syntaxStartOf(parameter) ?? parameter.span.start.offset, label: 'a function parameter', supported: false });
 		}
 	}
 	for (const declaration of module.imports) {
-		targets.push({ node: {}, anchor: declaration.span.start.offset, label: 'an import declaration', supported: false });
+		targets.push({ node: {}, anchor: syntaxStartOf(declaration) ?? declaration.span.start.offset, label: 'an import declaration', supported: false });
 		for (const item of declaration.items) targets.push({ node: {}, anchor: item.span.start.offset, label: 'an import item', supported: false });
 	}
 	collectUnsupportedAstTargets(module, targets);
@@ -167,7 +168,7 @@ function collectUnsupportedAstTargets(module: A.ModuleNode, targets: Documentati
 		const kind = object.kind;
 		const span = object.span;
 		if (typeof kind === 'string' && statementKinds.has(kind) && isSourceSpan(span)) {
-			targets.push({ node: {}, anchor: span.start.offset, label: 'a statement', supported: false });
+			targets.push({ node: {}, anchor: syntaxStartOf(object) ?? span.start.offset, label: 'a statement', supported: false });
 		}
 		for (const [key, child] of Object.entries(object)) {
 			if (key === 'span' || key === 'documentation' || key === 'symbolId' || key === 'inferredTypeId' || key === 'resolvedTypeId') continue;
@@ -256,11 +257,11 @@ function normalizeDocumentationLine(image: string, marker: '///' | '//!'): strin
 
 function declarationAnchor(declaration: A.Declaration): number {
 	const attributes = 'attributes' in declaration ? declaration.attributes : [];
-	return Math.min(declaration.span.start.offset, ...attributes.map(attribute => attribute.span.start.offset));
+	return Math.min(syntaxStartOf(declaration) ?? declaration.span.start.offset, ...attributes.map(attribute => attribute.span.start.offset));
 }
 
 function memberAnchor(field: A.RecordFieldNode): number {
-	return Math.min(field.span.start.offset, ...field.attributes.map(attribute => attribute.span.start.offset));
+	return Math.min(syntaxStartOf(field) ?? field.span.start.offset, ...field.attributes.map(attribute => attribute.span.start.offset));
 }
 
 function declarationLabel(declaration: Exclude<A.Declaration, A.TestDeclaration>): string {
