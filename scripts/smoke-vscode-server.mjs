@@ -1,6 +1,16 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { resolve } from 'node:path';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
+
+const documentText = 'fn add(left: Int, right: Int) -> Int => left + right\n\nfn inferred() {\n\tlet total = add(1, 2)\n\treturn total\n}\n';
+const workspaceRoot = await mkdtemp(join(tmpdir(), 'virune-vscode-smoke-'));
+const workspaceUri = pathToFileURL(workspaceRoot).href;
+const documentPath = join(workspaceRoot, 'main.virune');
+const documentUri = pathToFileURL(documentPath).href;
+await writeFile(documentPath, documentText, 'utf8');
 
 const server = spawn(process.execPath, [resolve('packages/vscode/dist/server.cjs'), '--stdio'], {
 	cwd: process.cwd(),
@@ -53,9 +63,21 @@ function request(id, method, params) {
 try {
 	const initialized = await request(1, 'initialize', {
 		processId: null,
-		rootUri: null,
+		rootUri: workspaceUri,
 		capabilities: {},
-		workspaceFolders: null,
+		workspaceFolders: [{ uri: workspaceUri, name: 'virune-vscode-smoke' }],
+		initializationOptions: {
+			virune: {
+				inlayHints: {
+					variableTypes: { enabled: true },
+					functionReturnTypes: { enabled: true },
+					parameterNames: 'literals',
+					forLoopVariableTypes: { enabled: true },
+					lambdaParameterTypes: { enabled: true },
+				},
+				hover: { showEffects: true, showModule: true },
+			},
+		},
 	});
 	assert.equal(initialized.error, undefined);
 	const capabilities = initialized.result?.capabilities;
@@ -68,8 +90,6 @@ try {
 	assert.equal(capabilities?.semanticTokensProvider?.full, true);
 	assert.equal(capabilities?.codeActionProvider, true);
 	send({ jsonrpc: '2.0', method: 'initialized', params: {} });
-	const documentUri = 'file:///tmp/virune-vscode-smoke.virune';
-	const documentText = 'fn add(left: Int, right: Int) -> Int => left + right\n\nfn inferred() {\n\tlet total = add(1, 2)\n\treturn total\n}\n';
 	send({
 		jsonrpc: '2.0',
 		method: 'textDocument/didOpen',
@@ -87,6 +107,7 @@ try {
 	});
 	assert.equal(documentSymbols.error, undefined);
 	assert.ok(Array.isArray(documentSymbols.result));
+	assert.deepEqual(documentSymbols.result.map(symbol => symbol.name), ['add', 'inferred']);
 	for (const symbol of documentSymbols.result) assertDocumentSymbolRanges(symbol);
 
 	const inlayHintResponse = await request(3, 'textDocument/inlayHint', {
@@ -96,10 +117,10 @@ try {
 	assert.equal(inlayHintResponse.error, undefined);
 	assert.ok(Array.isArray(inlayHintResponse.result));
 	const inlayLabels = inlayHintResponse.result.map(hint => typeof hint.label === 'string' ? hint.label : JSON.stringify(hint.label));
-	assert.ok(inlayLabels.includes(': Int'));
-	assert.ok(inlayLabels.includes(' -> Int'));
-	assert.ok(inlayLabels.includes('left:'));
-	assert.ok(inlayLabels.includes('right:'));
+	assert.ok(inlayLabels.includes(': Int'), `Expected inferred variable type hint; received ${JSON.stringify(inlayLabels)}`);
+	assert.ok(inlayLabels.includes(' -> Int'), `Expected inferred return type hint; received ${JSON.stringify(inlayLabels)}`);
+	assert.ok(inlayLabels.includes('left:'), `Expected left parameter hint; received ${JSON.stringify(inlayLabels)}`);
+	assert.ok(inlayLabels.includes('right:'), `Expected right parameter hint; received ${JSON.stringify(inlayLabels)}`);
 
 	const secondArgumentOffset = documentText.lastIndexOf('2');
 	const signatureHelp = await request(4, 'textDocument/signatureHelp', {
@@ -135,6 +156,8 @@ try {
 } catch (error) {
 	server.kill();
 	throw error;
+} finally {
+	await rm(workspaceRoot, { recursive: true, force: true });
 }
 function assertDocumentSymbolRanges(symbol) {
 	assert.ok(rangeContains(symbol.range, symbol.selectionRange));
