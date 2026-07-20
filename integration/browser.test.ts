@@ -45,6 +45,11 @@ pub fn verify() -> Result<String, JsError> uses Dom {
 	}
 });
 
+test('extracts the DevTools port from Chromium stderr when the active port file is unavailable', () => {
+	const stderr = 'DevTools listening on ws://127.0.0.1:45067/devtools/browser/example-id\n';
+	assert.equal(devToolsPortFromStderr(stderr), 45067);
+});
+
 async function browserImportMap(projectRoot: string): Promise<Record<string, string>> {
 	const imports: Record<string, string> = {};
 	const runtimeDirectory = join(repositoryRoot, 'packages/runtime/dist/src');
@@ -148,15 +153,31 @@ async function waitForDevToolsPort(
 	const activePortFile = join(profile, 'DevToolsActivePort');
 	const deadline = Date.now() + 30_000;
 	while (Date.now() < deadline) {
-		throwIfBrowserExited(child, readStderr());
+		const stderr = readStderr();
+		throwIfBrowserExited(child, stderr);
 		try {
 			const [portText] = (await readFile(activePortFile, 'utf8')).split(/\r?\n/u);
 			const port = Number(portText);
 			if (Number.isInteger(port) && port > 0) return port;
 		} catch {}
+
+		const stderrPort = devToolsPortFromStderr(stderr);
+		if (stderrPort !== undefined) return stderrPort;
+
 		await delay(100);
 	}
-	throw new Error(`Chromium did not publish DevToolsActivePort within 30 seconds\n${readStderr()}`);
+	throw new Error(`Chromium did not expose a DevTools endpoint within 30 seconds\n${readStderr()}`);
+}
+
+function devToolsPortFromStderr(stderr: string): number | undefined {
+	const match = /DevTools listening on (ws:\/\/\S+)/u.exec(stderr);
+	if (match?.[1] === undefined) return undefined;
+	try {
+		const port = Number(new URL(match[1]).port);
+		return Number.isInteger(port) && port > 0 ? port : undefined;
+	} catch {
+		return undefined;
+	}
 }
 
 async function waitForTarget(
