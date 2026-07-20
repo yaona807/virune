@@ -1,5 +1,15 @@
 import { join } from 'node:path';
-import { CodeActionKind, Range, commands, window, workspace, type CodeAction, type Command, type ExtensionContext, type Position } from 'vscode';
+import {
+	CodeActionKind,
+	Position,
+	Range,
+	commands,
+	window,
+	workspace,
+	type CodeAction,
+	type Command,
+	type ExtensionContext,
+} from 'vscode';
 import {
 	LanguageClient,
 	TransportKind,
@@ -23,7 +33,7 @@ export async function activate(context: ExtensionContext): Promise<void> {
 	context.subscriptions.push(
 		...fileWatchers,
 		commands.registerCommand('virune.generateDocumentationComment', () => applyDocumentationAction('Generate documentation comment')),
-		commands.registerCommand('virune.generateModuleDocumentation', () => applyDocumentationAction('Generate module documentation', { line: 0, character: 0 })),
+		commands.registerCommand('virune.generateModuleDocumentation', () => applyDocumentationAction('Generate module documentation', new Position(0, 0))),
 	);
 	const clientOptions: LanguageClientOptions = {
 		documentSelector: [{ scheme: 'file', language: 'virune' }],
