@@ -1,5 +1,5 @@
-import type { BuiltModule, Declaration, SourceFile } from '@virune/compiler/experimental';
-import { SymbolKind, type DocumentSymbol } from 'vscode-languageserver/node';
+import type { BuiltModule, Declaration, SourceFile, SourceSpan } from '@virune/compiler/experimental';
+import { SymbolKind, type DocumentSymbol, type Range } from 'vscode-languageserver/node';
 import { nameRange, sourceSpanToRange } from '../analysis/position.js';
 
 export function documentSymbols(module: BuiltModule): readonly DocumentSymbol[] {
@@ -10,11 +10,11 @@ export function documentSymbols(module: BuiltModule): readonly DocumentSymbol[] 
 function declarationSymbol(source: SourceFile, declaration: Declaration): DocumentSymbol {
 	const name = declarationName(declaration);
 	const children = [...declarationChildren(source, declaration)];
+	const ranges = documentSymbolRanges(source, declaration.span, name);
 	const symbol: DocumentSymbol = {
 		name,
 		kind: declarationKind(declaration),
-		range: sourceSpanToRange(declaration.span),
-		selectionRange: nameRange(source, declaration.span, name),
+		...ranges,
 	};
 	if (children.length > 0) symbol.children = children;
 	return symbol;
@@ -44,24 +44,46 @@ function declarationChildren(source: SourceFile, declaration: Declaration): read
 			return declaration.fields.map(field => ({
 				name: field.name,
 				kind: SymbolKind.Field,
-				range: sourceSpanToRange(field.span),
-				selectionRange: nameRange(source, field.span, field.name),
+				...documentSymbolRanges(source, field.span, field.name),
 			}));
 		case 'EnumDeclaration':
 			return declaration.variants.map(variant => ({
 				name: variant.name,
 				kind: SymbolKind.EnumMember,
-				range: sourceSpanToRange(variant.span),
-				selectionRange: nameRange(source, variant.span, variant.name),
+				...documentSymbolRanges(source, variant.span, variant.name),
 			}));
 		case 'ExternDeclaration':
 			return declaration.functions.map(fn => ({
 				name: fn.name,
 				kind: SymbolKind.Function,
-				range: sourceSpanToRange(fn.span),
-				selectionRange: nameRange(source, fn.span, fn.name),
+				...documentSymbolRanges(source, fn.span, fn.name),
 			}));
 		default:
 			return [];
 	}
+}
+
+function documentSymbolRanges(
+	source: SourceFile,
+	span: SourceSpan,
+	name: string,
+): Pick<DocumentSymbol, 'range' | 'selectionRange'> {
+	const range = normalizeRange(sourceSpanToRange(span));
+	const candidate = normalizeRange(nameRange(source, span, name));
+	return {
+		range,
+		selectionRange: rangeContains(range, candidate) ? candidate : range,
+	};
+}
+
+function normalizeRange(range: Range): Range {
+	return comparePosition(range.start, range.end) <= 0 ? range : { start: range.start, end: range.start };
+}
+
+function rangeContains(parent: Range, child: Range): boolean {
+	return comparePosition(parent.start, child.start) <= 0 && comparePosition(child.end, parent.end) <= 0;
+}
+
+function comparePosition(left: Range['start'], right: Range['start']): number {
+	return left.line === right.line ? left.character - right.character : left.line - right.line;
 }

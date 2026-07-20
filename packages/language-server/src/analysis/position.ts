@@ -64,7 +64,8 @@ export function nameRange(source: SourceFile, span: SourceSpan, name: string): R
 	const start = positionToOffset(source, sourcePositionToPosition(span.start));
 	const end = positionToOffset(source, sourcePositionToPosition(span.end));
 	const escaped = name.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
-	const pattern = new RegExp(`\\b${escaped}\\b`, 'u');
+	const identifier = /^[A-Za-z_][A-Za-z0-9_]*$/u.test(name);
+	const pattern = new RegExp(identifier ? `\\b${escaped}\\b` : escaped, 'u');
 	const spanText = source.text.slice(start, Math.max(start, end));
 	const spanMatch = pattern.exec(spanText);
 	if (spanMatch !== null) return rangeFromOffsets(source, start + spanMatch.index, start + spanMatch.index + name.length);
@@ -82,7 +83,7 @@ export function nameRange(source: SourceFile, span: SourceSpan, name: string): R
 		return rangeFromOffsets(source, lineStart + index, lineStart + index + declarationMatch[1].length);
 	}
 
-	const matches = [...source.text.matchAll(new RegExp(`\\b${escaped}\\b`, 'gu'))];
+	const matches = [...source.text.matchAll(new RegExp(identifier ? `\\b${escaped}\\b` : escaped, 'gu'))];
 	const nearest = matches.sort((left, right) => {
 		const leftIndex = left.index ?? 0;
 		const rightIndex = right.index ?? 0;

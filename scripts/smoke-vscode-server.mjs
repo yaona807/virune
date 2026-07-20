@@ -61,11 +61,32 @@ try {
 	const capabilities = initialized.result?.capabilities;
 	assert.equal(capabilities?.hoverProvider, true);
 	assert.equal(capabilities?.definitionProvider, true);
+	assert.equal(capabilities?.documentSymbolProvider, true);
 	assert.equal(capabilities?.documentFormattingProvider, true);
 	assert.equal(capabilities?.semanticTokensProvider?.full, true);
 	assert.equal(capabilities?.codeActionProvider, true);
 	send({ jsonrpc: '2.0', method: 'initialized', params: {} });
-	const shutdown = await request(2, 'shutdown', null);
+	const documentUri = 'file:///tmp/virune-vscode-smoke.virune';
+	send({
+		jsonrpc: '2.0',
+		method: 'textDocument/didOpen',
+		params: {
+			textDocument: {
+				uri: documentUri,
+				languageId: 'virune',
+				version: 1,
+				text: 'extern "node:fs" {}\nfn actual() -> Int => 1\n',
+			},
+		},
+	});
+	const documentSymbols = await request(2, 'textDocument/documentSymbol', {
+		textDocument: { uri: documentUri },
+	});
+	assert.equal(documentSymbols.error, undefined);
+	assert.ok(Array.isArray(documentSymbols.result));
+	for (const symbol of documentSymbols.result) assertDocumentSymbolRanges(symbol);
+
+	const shutdown = await request(3, 'shutdown', null);
 	assert.equal(shutdown.error, undefined);
 	send({ jsonrpc: '2.0', method: 'exit', params: null });
 	await new Promise((resolveExit, reject) => {
@@ -82,4 +103,17 @@ try {
 } catch (error) {
 	server.kill();
 	throw error;
+}
+
+function assertDocumentSymbolRanges(symbol) {
+	assert.ok(rangeContains(symbol.range, symbol.selectionRange));
+	for (const child of symbol.children ?? []) assertDocumentSymbolRanges(child);
+}
+
+function rangeContains(parent, child) {
+	return comparePosition(parent.start, child.start) <= 0 && comparePosition(child.end, parent.end) <= 0;
+}
+
+function comparePosition(left, right) {
+	return left.line === right.line ? left.character - right.character : left.line - right.line;
 }

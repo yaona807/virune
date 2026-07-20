@@ -41,6 +41,25 @@ test('documentSymbols exposes top-level declarations and record fields', async (
 	assert.equal(symbols[0]?.children?.[0]?.name, 'name');
 });
 
+test('documentSymbols keeps selection ranges inside recovery spans', () => {
+	const source = { id: 1, path, text: 'fn actual() -> Int => 1\n' };
+	const recoverySpan = {
+		fileId: source.id,
+		start: { offset: 0, line: 1, column: 1 },
+		end: { offset: 1, line: 1, column: 2 },
+	};
+	const module = {
+		source,
+		ast: {
+			declarations: [{ kind: 'FunctionDeclaration', name: 'actual', span: recoverySpan }],
+		},
+	} as unknown as Parameters<typeof documentSymbols>[0];
+
+	const [symbol] = documentSymbols(module);
+	assert.ok(symbol);
+	assert.deepEqual(symbol.selectionRange, symbol.range);
+});
+
 test('hoverAt reports an inferred function type', async () => {
 	const { module } = await analyze();
 	const offset = text.lastIndexOf('value');
