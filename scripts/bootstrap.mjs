@@ -1,6 +1,4 @@
-import { spawnSync } from 'node:child_process';
-
-const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+import { spawnNpmSync } from './npm-cli.mjs';
 const environment = { ...process.env };
 for (const key of Object.keys(environment)) {
 	const normalized = key.toLowerCase();
@@ -16,8 +14,7 @@ const commonArguments = [
 
 if (process.argv.includes('--check-config')) {
 	for (const name of ['registry', 'replace-registry-host']) {
-		const result = spawnSync(
-			npmCommand,
+		const result = spawnNpmSync(
 			['config', 'get', name, ...commonArguments],
 			{ env: environment, encoding: 'utf8', stdio: ['ignore', 'pipe', 'inherit'] },
 		);
@@ -29,8 +26,7 @@ if (process.argv.includes('--check-config')) {
 	process.exit(0);
 }
 
-const result = spawnSync(
-	npmCommand,
+const result = spawnNpmSync(
 	['ci', '--no-audit', ...commonArguments],
 	{ env: environment, stdio: 'inherit' },
 );

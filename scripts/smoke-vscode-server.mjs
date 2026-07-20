@@ -144,7 +144,6 @@ try {
 	send({ jsonrpc: '2.0', method: 'exit', params: null });
 	await new Promise((resolveExit, reject) => {
 		const timer = setTimeout(() => {
-			server.kill();
 			reject(new Error(`Language Server did not exit. stderr: ${stderr}`));
 		}, 10_000);
 		server.once('exit', code => {
@@ -154,11 +153,62 @@ try {
 		});
 	});
 } catch (error) {
-	server.kill();
+	await stopServerProcess(server);
 	throw error;
 } finally {
-	await rm(workspaceRoot, { recursive: true, force: true });
+	await removeWorkspace(workspaceRoot);
 }
+
+async function removeWorkspace(path) {
+	try {
+		await rm(path, {
+			recursive: true,
+			force: true,
+			maxRetries: process.platform === 'win32' ? 10 : 3,
+			retryDelay: 200,
+		});
+	} catch (error) {
+		const code = error instanceof Error && 'code' in error ? String(error.code) : '';
+		if (!['EBUSY', 'ENOTEMPTY', 'EPERM'].includes(code)) throw error;
+		process.emitWarning(`Unable to remove VS Code smoke workspace after retries: ${path}\n${String(error)}`);
+	}
+}
+
+async function stopServerProcess(child) {
+	if (child.exitCode !== null || child.signalCode !== null) return;
+	if (process.platform === 'win32' && child.pid !== undefined) {
+		await new Promise(resolveStop => {
+			const killer = spawn('taskkill', ['/pid', String(child.pid), '/t', '/f'], {
+				stdio: 'ignore',
+				windowsHide: true,
+			});
+			killer.once('error', resolveStop);
+			killer.once('exit', resolveStop);
+		});
+		await waitForExit(child, 5_000);
+		return;
+	}
+	child.kill('SIGTERM');
+	if (await waitForExit(child, 5_000)) return;
+	child.kill('SIGKILL');
+	await waitForExit(child, 5_000);
+}
+
+function waitForExit(child, timeout) {
+	if (child.exitCode !== null || child.signalCode !== null) return Promise.resolve(true);
+	return new Promise(resolveExit => {
+		const finish = exited => {
+			clearTimeout(timer);
+			child.off('exit', onExit);
+			resolveExit(exited);
+		};
+		const onExit = () => { finish(true); };
+		const timer = setTimeout(() => { finish(false); }, timeout);
+		child.once('exit', onExit);
+		if (child.exitCode !== null || child.signalCode !== null) finish(true);
+	});
+}
+
 function assertDocumentSymbolRanges(symbol) {
 	assert.ok(rangeContains(symbol.range, symbol.selectionRange));
 	for (const child of symbol.children ?? []) assertDocumentSymbolRanges(child);

@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process';
 
 const integrationOnly = process.argv.includes('--integration-only');
+const excludeBrowser = process.argv.includes('--exclude-browser');
 const groups = [
 	...(!integrationOnly ? [{ name: 'unit', command: ['scripts/run-unit-tests.mjs'] }] : []),
 	{ name: 'CLI workflow', files: ['integration/dist/cli.test.js'] },
@@ -9,7 +10,7 @@ const groups = [
 	{ name: 'entry-point diagnostics', files: ['integration/dist/entry-point-invalid.test.js'] },
 	{ name: 'entry-point runtime', files: ['integration/dist/entry-point-runtime.test.js'] },
 	{ name: 'project integration', files: ['integration/dist/project.test.js'] },
-	{ name: 'browser runtime', files: ['integration/dist/browser.test.js'] },
+	...(!excludeBrowser ? [{ name: 'browser runtime', files: ['integration/dist/browser.test.js'] }] : []),
 ];
 
 for (const group of groups) {

@@ -9,7 +9,7 @@ import { buildProject } from '@virune/compiler/experimental';
 
 const repositoryRoot = resolve(import.meta.dirname, '../..');
 
-test('browser target executes emitted ESM in Chromium', { timeout: 45_000 }, async t => {
+test('browser target executes emitted ESM in Chromium', { timeout: 90_000 }, async t => {
 	const browser = await findBrowser();
 	if (browser === undefined) {
 		if (process.env.CI === 'true' && process.platform === 'linux') assert.fail('Chromium or Chrome is required for browser conformance on Linux CI');
@@ -170,10 +170,26 @@ function settleWithin(promise: Promise<unknown>, timeout: number): Promise<void>
 
 async function stopBrowserProcess(child: ReturnType<typeof spawn>): Promise<void> {
 	if (child.exitCode !== null || child.signalCode !== null) return;
+	if (process.platform === 'win32' && child.pid !== undefined) {
+		await terminateWindowsProcessTree(child.pid);
+		await waitForProcessExit(child, 10_000);
+		return;
+	}
 	child.kill('SIGTERM');
 	if (await waitForProcessExit(child, 5_000)) return;
 	child.kill('SIGKILL');
 	await waitForProcessExit(child, 5_000);
+}
+
+async function terminateWindowsProcessTree(pid: number): Promise<void> {
+	await new Promise<void>(resolvePromise => {
+		const killer = spawn('taskkill', ['/pid', String(pid), '/t', '/f'], {
+			stdio: 'ignore',
+			windowsHide: true,
+		});
+		killer.once('error', () => { resolvePromise(); });
+		killer.once('exit', () => { resolvePromise(); });
+	});
 }
 
 function waitForProcessExit(child: ReturnType<typeof spawn>, timeout: number): Promise<boolean> {

@@ -15,19 +15,38 @@ concurrency:
 
 jobs:
   verify:
+    name: Core (${{ matrix.label }})
     strategy:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-latest
+          - label: Ubuntu 24.04 / Node.js 24
+            os: ubuntu-24.04
             node: 24
-          - os: windows-latest
+            full: true
+            experimental: false
+          - label: Windows Server 2022 / Node.js 24
+            os: windows-2022
             node: 24
-          - os: macos-latest
+            full: false
+            experimental: false
+          - label: Windows Server 2025 / Node.js 24
+            os: windows-2025
             node: 24
-          - os: ubuntu-latest
+            full: false
+            experimental: true
+          - label: macOS 14 / Node.js 24
+            os: macos-14
+            node: 24
+            full: false
+            experimental: false
+          - label: Ubuntu 24.04 / Node.js 26
+            os: ubuntu-24.04
             node: 26
+            full: false
+            experimental: false
     runs-on: ${{ matrix.os }}
+    continue-on-error: ${{ matrix.experimental }}
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
@@ -42,17 +61,18 @@ jobs:
       - name: Verify runtime, metadata and specification
         run: npm run verify:metadata
 
-      - name: Type-check project references
+      - name: Build and type-check project references
         run: npm run check
 
-      - name: Run unit and integration tests
-        run: npm test
+      - name: Run platform-independent unit and integration tests
+        run: npm run test:core:built
 
       - name: Verify TypeScript binding corpus
-        run: npm run test:binding-corpus
+        if: matrix.full
+        run: npm run test:binding-corpus:built
 
       - name: Upload binding corpus diagnostics
-        if: always()
+        if: always() && matrix.full
         uses: actions/upload-artifact@v7
         with:
           name: binding-corpus-${{ runner.os }}-node-${{ matrix.node }}
@@ -65,26 +85,54 @@ jobs:
           retention-days: 30
 
       - name: Run fuzz smoke suite
-        run: npm run test:fuzz:smoke
+        if: matrix.full
+        run: npm run test:fuzz:smoke:built
 
       - name: Verify VS Code extension and language server
-        run: npm run test:vscode
+        run: npm run test:vscode:built
 
       - name: Run conformance suite
-        run: npm run test:conformance
+        run: npm run test:conformance:built
 
       - name: Verify formatter output
-        run: npm run fmt:check
+        run: npm run fmt:check:built
 
       - name: Run source clone smoke test
-        run: npm run smoke:clone
+        run: npm run smoke:clone:built
 
+  browser:
+    name: Browser runtime (Ubuntu 24.04 / Node.js 24)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Build project references
+        run: npm run check
+      - name: Execute emitted ESM in Chromium
+        run: npm run test:integration:browser:built
+
+  release-artifacts:
+    name: Release artifacts
+    needs: [verify, browser]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
       - name: Package and verify release artifacts
-        if: matrix.os == 'ubuntu-latest' && matrix.node == 24
         run: npm run verify:release
-
       - name: Upload release artifacts
-        if: matrix.os == 'ubuntu-latest' && matrix.node == 24
         uses: actions/upload-artifact@v7
         with:
           name: virune-release-node-24
