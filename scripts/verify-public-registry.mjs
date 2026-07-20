@@ -30,4 +30,4 @@ if (environmentRegistry && environmentRegistry !== 'https://registry.npmjs.org/'
 	);
 }
 
-console.log('Verified public npm registry configuration and package-lock.json URLs.');
+console.log('Verified public npm registry configuration for third-party dependencies and package-lock.json URLs.');

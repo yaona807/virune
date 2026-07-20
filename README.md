@@ -26,7 +26,7 @@
 </p>
 
 > [!IMPORTANT]
-> **Release status:** The Virune 1.0.0 source tree is prepared, but the first GitHub Release and npm publication have not been completed. Use the source-based setup below. The VS Code extension is distributed as a VSIX rather than through the Visual Studio Marketplace.
+> **Distribution policy:** Virune is not published to the npm Registry. Versioned npm-compatible tarballs and the VS Code VSIX are distributed through GitHub Releases. The first v1.0.0 GitHub Release has not been published yet, so use the source-based setup until that release is available.
 
 ## Why Virune?
 
@@ -99,9 +99,39 @@ pub fn main(args: List<String>) -> Result<Unit, UserError> uses Console {
 
 - Node.js 24 or later
 - npm included with Node.js
-- Git
+
+### Install from GitHub Releases
+
+After the v1.0.0 release is published, install the CLI directly from its release tarball:
+
+```bash
+npm install --global https://github.com/yaona807/virune/releases/download/v1.0.0/virune-1.0.0.tgz
+virune --version
+```
+
+The tarball contains the complete CLI dependency tree. The `virune` package and the internal `@virune/*` packages are not published to the npm Registry.
+
+### Create a project
+
+```bash
+virune init hello
+cd hello
+npm install
+npm run check
+npm run start
+```
+
+`virune init` pins the CLI, Runtime, and standard library to the same GitHub Release assets. The project-level `npm install` makes generated ES modules independently executable by installing `@virune/runtime` and `@virune/stdlib` into the project.
+
+Program arguments follow `--`:
+
+```bash
+npm run start -- Alice Bob
+```
 
 ### Build and run from source
+
+Use this path before the first GitHub Release or when contributing:
 
 ```bash
 git clone https://github.com/yaona807/virune.git
@@ -119,22 +149,7 @@ virune 1.0.0
 Hello from Virune
 ```
 
-`npm run bootstrap` installs the locked dependencies from the public npm registry. See the [clone guide](docs/getting-started-from-clone.md) for registry troubleshooting and environment details.
-
-### Create a project
-
-```bash
-npm run virune -- init playground/hello
-npm run virune -- check playground/hello
-npm run virune -- build playground/hello
-npm run virune -- run playground/hello
-```
-
-Program arguments follow `--`:
-
-```bash
-npm run virune -- run examples/user-directory -- Alice Bob
-```
+`npm run bootstrap` installs the locked third-party dependencies from the public npm registry. It does not publish or install Virune packages from that registry. See the [clone guide](docs/getting-started-from-clone.md) for registry troubleshooting and environment details.
 
 ## JavaScript and TypeScript interoperability
 
@@ -196,7 +211,7 @@ npm run pack:virune
 npm run pack:vscode
 ```
 
-Artifacts, SHA-256 manifests, npm tarballs, and the VSIX are written to `release/`.
+Artifacts, SHA-256 manifests, npm tarballs, and the VSIX are written to `release/`. The CLI tarball bundles its complete dependency tree and is tested with an offline clean install before release.
 
 ## Repository layout
 

@@ -1,6 +1,7 @@
 {
 	"name": "@virune/formatter",
 	"version": "1.0.0",
+	"private": true,
 	"repository": {
 		"type": "git",
 		"url": "git+https://github.com/yaona807/virune.git",
@@ -36,8 +37,5 @@
 		"virune",
 		"formatter",
 		"programming-language"
-	],
-	"publishConfig": {
-		"access": "public"
-	}
+	]
 }

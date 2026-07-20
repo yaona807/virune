@@ -1,6 +1,7 @@
 {
 	"name": "@virune/compiler",
 	"version": "1.0.0",
+	"private": true,
 	"repository": {
 		"type": "git",
 		"url": "git+https://github.com/yaona807/virune.git",
@@ -42,8 +43,5 @@
 		"parser",
 		"type-checker",
 		"javascript"
-	],
-	"publishConfig": {
-		"access": "public"
-	}
+	]
 }

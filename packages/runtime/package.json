@@ -1,6 +1,7 @@
 {
 	"name": "@virune/runtime",
 	"version": "1.0.0",
+	"private": true,
 	"repository": {
 		"type": "git",
 		"url": "git+https://github.com/yaona807/virune.git",
@@ -40,8 +41,5 @@
 		"runtime",
 		"javascript",
 		"structured-concurrency"
-	],
-	"publishConfig": {
-		"access": "public"
-	}
+	]
 }

@@ -14,6 +14,8 @@ class InteropAdapterBuildError extends Error {
 }
 
 const VERSION = '1.0.0';
+const RELEASE_ASSET_BASE = `https://github.com/yaona807/virune/releases/download/v${VERSION}`;
+const releaseAsset = (file: string): string => `${RELEASE_ASSET_BASE}/${file}`;
 const args = process.argv.slice(2);
 const command = args[0] ?? 'help';
 
@@ -48,7 +50,7 @@ async function initProject(root: string): Promise<void> {
 	await mkdir(join(root, 'src'), { recursive: true });
 	await writeFile(join(root, 'virune.json'), JSON.stringify({ languageVersion: '1.0', platform: 'node', sourceDir: 'src', outDir: 'dist', entry: 'src/main.virune', target: 'es2022', sourceMap: true, sourcesContent: true }, null, 2) + '\n', { flag: 'wx' }).catch(ignoreExisting);
 	await writeFile(join(root, 'src/main.virune'), 'pub fn main() -> Unit uses Console {\n\tConsole.print("Hello from Virune")\n\treturn Unit\n}\n', { flag: 'wx' }).catch(ignoreExisting);
-	await writeFile(join(root, 'package.json'), JSON.stringify({ name: basename(root), private: true, type: 'module', scripts: { build: 'virune build', start: 'virune run', test: 'virune test', check: 'virune check', fmt: 'virune fmt .' }, dependencies: { '@virune/runtime': '1.0.0', '@virune/stdlib': '1.0.0' }, devDependencies: { virune: '1.0.0' } }, null, 2) + '\n', { flag: 'wx' }).catch(ignoreExisting);
+	await writeFile(join(root, 'package.json'), JSON.stringify({ name: basename(root), private: true, type: 'module', scripts: { build: 'virune build', start: 'virune run', test: 'virune test', check: 'virune check', fmt: 'virune fmt .' }, dependencies: { '@virune/runtime': releaseAsset(`virune-runtime-${VERSION}.tgz`), '@virune/stdlib': releaseAsset(`virune-stdlib-${VERSION}.tgz`) }, devDependencies: { virune: releaseAsset(`virune-${VERSION}.tgz`) } }, null, 2) + '\n', { flag: 'wx' }).catch(ignoreExisting);
 	console.log(`Initialized Virune project in ${root}`);
 }
 

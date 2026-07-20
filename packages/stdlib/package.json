@@ -1,6 +1,7 @@
 {
 	"name": "@virune/stdlib",
 	"version": "1.0.0",
+	"private": true,
 	"repository": {
 		"type": "git",
 		"url": "git+https://github.com/yaona807/virune.git",
@@ -49,8 +50,5 @@
 		"standard-library",
 		"nodejs",
 		"browser"
-	],
-	"publishConfig": {
-		"access": "public"
-	}
+	]
 }

@@ -1,6 +1,7 @@
 {
 	"name": "@virune/js-interop",
 	"version": "1.0.0",
+	"private": true,
 	"repository": {
 		"type": "git",
 		"url": "git+https://github.com/yaona807/virune.git",
@@ -33,8 +34,5 @@
 		"test": "node --test dist/test/**/*.test.js"
 	},
 	"license": "MIT",
-	"description": "Versioned TypeScript-backed JavaScript interop provider for Virune.",
-	"publishConfig": {
-		"access": "public"
-	}
+	"description": "Versioned TypeScript-backed JavaScript interop provider for Virune."
 }

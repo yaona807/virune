@@ -26,7 +26,7 @@
 </p>
 
 > [!IMPORTANT]
-> **リリース状況:** Virune 1.0.0のソース一式は準備済みですが、最初のGitHub Releaseとnpm公開はまだ実施していません。現時点では、以下の手順でソースから利用してください。VS Code拡張はVisual Studio MarketplaceではなくVSIXで配布します。
+> **配布方針:** Viruneはnpm Registryへ公開しません。バージョン固定されたnpm互換tarballとVS Code用VSIXをGitHub Releasesで配布します。最初のv1.0.0 GitHub Releaseはまだ公開されていないため、それまではソースから利用してください。
 
 ## Viruneが解決する課題
 
@@ -99,9 +99,39 @@ pub fn main(args: List<String>) -> Result<Unit, UserError> uses Console {
 
 - Node.js 24以上
 - Node.jsに同梱されるnpm
-- Git
+
+### GitHub Releasesからインストールする
+
+v1.0.0を公開した後は、リリースtarballからCLIを直接インストールできます。
+
+```bash
+npm install --global https://github.com/yaona807/virune/releases/download/v1.0.0/virune-1.0.0.tgz
+virune --version
+```
+
+このtarballにはCLIの依存関係一式が含まれます。`virune`および内部の`@virune/*` packageはnpm Registryへ公開しません。
+
+### プロジェクトを作成する
+
+```bash
+virune init hello
+cd hello
+npm install
+npm run check
+npm run start
+```
+
+`virune init`はCLI、Runtime、標準ライブラリを同じGitHub Releaseの成果物へ固定します。プロジェクト内で`npm install`を実行すると、生成されたES moduleから利用する`@virune/runtime`と`@virune/stdlib`がプロジェクトへ導入され、単独で実行できる状態になります。
+
+プログラム引数は`--`の後ろへ指定します。
+
+```bash
+npm run start -- Alice Bob
+```
 
 ### ソースからビルドして実行する
+
+最初のGitHub Releaseを公開する前、または開発へ参加する場合は次の手順を使用します。
 
 ```bash
 git clone https://github.com/yaona807/virune.git
@@ -119,22 +149,7 @@ virune 1.0.0
 Hello from Virune
 ```
 
-`npm run bootstrap`は、lockfileに固定された依存関係を公開npmレジストリからインストールします。レジストリ設定や環境構築の詳細は[クローン後の導入手順](docs/getting-started-from-clone_ja.md)を参照してください。
-
-### プロジェクトを作成する
-
-```bash
-npm run virune -- init playground/hello
-npm run virune -- check playground/hello
-npm run virune -- build playground/hello
-npm run virune -- run playground/hello
-```
-
-プログラム引数は`--`の後ろへ指定します。
-
-```bash
-npm run virune -- run examples/user-directory -- Alice Bob
-```
+`npm run bootstrap`は、lockfileに固定された第三者依存関係を公開npm Registryからインストールします。Virune packageをnpm Registryへ公開または同Registryからインストールする処理ではありません。レジストリ設定や環境構築の詳細は[クローン後の導入手順](docs/getting-started-from-clone_ja.md)を参照してください。
 
 ## JavaScript／TypeScript連携
 
@@ -196,7 +211,7 @@ npm run pack:virune
 npm run pack:vscode
 ```
 
-npm tarball、VSIX、SHA-256 manifestなどの成果物は`release/`へ出力されます。
+npm tarball、VSIX、SHA-256 manifestなどの成果物は`release/`へ出力されます。CLI tarballには依存関係一式を同梱し、リリース前にoffline clean installを検証します。
 
 ## リポジトリ構成
 
