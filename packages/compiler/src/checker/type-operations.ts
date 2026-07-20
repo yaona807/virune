@@ -110,7 +110,7 @@ export class TypeOperations {
 	public supportsDerivedEq(typeId: TypeId, owner: TypeId, seen = new Set<TypeId>()): boolean {
 		if (typeId === owner || seen.has(typeId)) return true; seen.add(typeId);
 		const type = this.#arena.get(typeId);
-		if (type.kind === 'primitive') return ['Bool', 'Int', 'Float', 'BigInt', 'String', 'Unit'].includes(type.name);
+		if (type.kind === 'primitive') return ['Bool', 'Int', 'BigInt', 'String', 'Unit'].includes(type.name);
 		if (type.kind === 'list' || type.kind === 'set' || type.kind === 'option') return this.supportsDerivedEq(type.kind === 'list' ? type.element : type.kind === 'set' ? type.element : type.value, owner, seen);
 		if (type.kind === 'map') return this.supportsDerivedEq(type.key, owner, seen) && this.supportsDerivedEq(type.value, owner, seen);
 		if (type.kind === 'result') return this.supportsDerivedEq(type.value, owner, seen) && this.supportsDerivedEq(type.error, owner, seen);

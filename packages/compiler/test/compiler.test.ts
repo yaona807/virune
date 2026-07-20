@@ -165,6 +165,54 @@ fn createEncoder() -> Encoder<User> {
 	assert.deepEqual(result.diagnostics.filter(item => item.severity === 'error'), []);
 });
 
+test('explicit generic record construction participates in call inference', () => {
+	const result = compileSource(source(`record Encoder<T> {
+	encode: fn(T) -> String
+}
+
+record User {
+	name: String
+}
+
+fn encodeUser(user: User) -> String => user.name
+
+fn encode<T>(value: T, encoder: Encoder<T>) -> String {
+	return encoder.encode(value)
+}
+
+fn main() -> String {
+	return encode(User { name: "Virune" }, Encoder<User> { encode: encodeUser })
+}
+`), { emit: false });
+	assert.deepEqual(result.diagnostics.filter(item => item.severity === 'error'), []);
+});
+
+test('explicit generic record construction remains checked against its expected type', () => {
+	const result = compileSource(source(`record Encoder<T> {
+	encode: fn(T) -> String
+}
+
+record User {
+	name: String
+}
+
+fn encodeUser(user: User) -> String => user.name
+
+fn createEncoder() -> Encoder<Int> {
+	return Encoder<User> { encode: encodeUser }
+}
+`), { emit: false });
+	assert.ok(result.diagnostics.some(item => item.code === 'L2043'));
+});
+
+test('records containing Float cannot derive structural Eq', () => {
+	const result = compileSource(source(`record Measurement derives Eq {
+	value: Float
+}
+`), { emit: false });
+	assert.ok(result.diagnostics.some(item => item.code === 'L2061'));
+});
+
 test('tuple annotations and tuple patterns preserve element types', () => {
 	const result = compileSource(source(`fn swap(pair: (String, Int)) -> (Int, String) {
 	return match pair {

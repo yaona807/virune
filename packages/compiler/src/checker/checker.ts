@@ -859,7 +859,6 @@ export class TypeChecker {
 					const expectedArgument = expectedType.arguments[index] ?? this.arena.error;
 					const explicitArgument = substitutions.get(parameter.name);
 					if (explicitArgument === undefined) substitutions.set(parameter.name, expectedArgument);
-					else if (!this.arena.equals(explicitArgument, expectedArgument)) this.typeMismatch(explicitArgument, expectedArgument, expression.span);
 				});
 			}
 		}

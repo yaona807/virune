@@ -3,11 +3,12 @@
   "status": "compile-error",
   "diagnostics": [
     {
-      "code": "L2113",
       "severity": "error",
-      "message": "uses * callbacks are non-escaping and cannot be stored in record fields",
-      "start": 17,
-      "end": 42
+      "code": "L2113",
+      "line": 2,
+      "column": 7,
+      "endLine": 2,
+      "endColumn": 26
     }
   ],
   "rules": [
