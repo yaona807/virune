@@ -69,6 +69,19 @@ fn run() -> Int {
 	assert.match(first.text, /\/\/ file end\n$/u);
 });
 
+test('formatter preserves comment text while trimming trailing horizontal whitespace', async () => {
+	const { lex } = await import('@virune/compiler/experimental');
+	const source = 'fn run() -> Unit {\n\t// leading\t\n\tlet values = [\n\t\t1, // first\t\t\n\t\t// second \t\n\t\t2,\n\t]\n\treturn Unit\n}\n// file end\t\n';
+	const result = formatSource(source);
+	assert.deepEqual(result.errors, []);
+	assert.doesNotMatch(result.text, /[ \t]+\n/u);
+	assert.deepEqual(
+		lex(result.text).comments.map(comment => comment.image),
+		lex(source).comments.map(comment => comment.image.replace(/[ \t]+$/u, '')),
+	);
+	assert.equal(formatSource(result.text).text, result.text);
+});
+
 test('formatter comment restoration is stable across deterministic generated fixtures', async () => {
 	const { lex } = await import('@virune/compiler/experimental');
 	const iterations = Number.parseInt(process.env.VIRUNE_FUZZ_ITERATIONS ?? '100', 10);

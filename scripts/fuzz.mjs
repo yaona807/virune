@@ -106,11 +106,15 @@ async function verifyCase(text, iteration) {
 	if (reparsed.ast === undefined || reparsed.diagnostics.some(item => item.severity === 'error')) {
 		throw new FuzzFailure('formatter-preserves-parseability', text, iteration, new Error(JSON.stringify(reparsed.diagnostics)));
 	}
-	const beforeComments = lex(text).comments.map(comment => comment.image);
-	const afterComments = lex(formatted.text).comments.map(comment => comment.image);
+	const beforeComments = lex(text).comments.map(comment => normalizeCommentImage(comment.image));
+	const afterComments = lex(formatted.text).comments.map(comment => normalizeCommentImage(comment.image));
 	if (JSON.stringify(beforeComments) !== JSON.stringify(afterComments)) {
 		throw new FuzzFailure('formatter-preserves-comments', text, iteration, new Error(`${JSON.stringify(beforeComments)} != ${JSON.stringify(afterComments)}`));
 	}
+}
+
+function normalizeCommentImage(image) {
+	return image.replace(/[ \t]+$/u, '');
 }
 
 function generateCase(next, iteration) {
