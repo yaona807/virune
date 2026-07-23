@@ -176,7 +176,7 @@ npm run pack:vscode
 code --install-extension release/virune-vscode-1.0.0.vsix
 ```
 
-The extension includes syntax and semantic highlighting, diagnostics, formatting, documentation-comment Hover and completion, symbols, go to definition, quick fixes, documentation snippets and generation commands, and the bundled Virune Language Server. See [VS Code support](docs/vscode.md) for details.
+The extension includes syntax and semantic highlighting, diagnostics, formatting, documentation-comment Hover and completion, project-wide symbol navigation, references, call hierarchy, rename, CodeLens, auto imports, JavaScript/TypeScript declaration navigation, quick fixes, documentation snippets and generation commands, and the bundled Virune Language Server. See [VS Code support](docs/vscode.md) for details.
 
 ## Documentation
 

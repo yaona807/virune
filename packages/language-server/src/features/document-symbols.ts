@@ -1,6 +1,7 @@
 import type { BuiltModule, Declaration, SourceFile, SourceSpan } from '@virune/compiler/experimental';
 import { SymbolKind, type DocumentSymbol, type Range } from 'vscode-languageserver/node';
 import { nameRange, sourceSpanToRange } from '../analysis/position.js';
+import { enumVariantRange } from '../analysis/semantic-index.js';
 
 export function documentSymbols(module: BuiltModule): readonly DocumentSymbol[] {
 	if (module.ast === undefined) return [];
@@ -47,11 +48,10 @@ function declarationChildren(source: SourceFile, declaration: Declaration): read
 				...documentSymbolRanges(source, field.span, field.name),
 			}));
 		case 'EnumDeclaration':
-			return declaration.variants.map(variant => ({
-				name: variant.name,
-				kind: SymbolKind.EnumMember,
-				...documentSymbolRanges(source, variant.span, variant.name),
-			}));
+			return declaration.variants.map(variant => {
+				const range = enumVariantRange(source, declaration.name, declaration.span, variant.name);
+				return { name: variant.name, kind: SymbolKind.EnumMember, range, selectionRange: range };
+			});
 		case 'ExternDeclaration':
 			return declaration.functions.map(fn => ({
 				name: fn.name,

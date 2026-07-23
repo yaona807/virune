@@ -12,6 +12,11 @@ export interface EditorInformationSettings {
 		readonly showEffects: boolean;
 		readonly showModule: boolean;
 	};
+	readonly codeLens: {
+		readonly references: boolean;
+		readonly callers: boolean;
+		readonly visibility: 'public' | 'all';
+	};
 }
 
 export const defaultEditorInformationSettings: EditorInformationSettings = {
@@ -26,6 +31,11 @@ export const defaultEditorInformationSettings: EditorInformationSettings = {
 		showEffects: true,
 		showModule: true,
 	},
+	codeLens: {
+		references: true,
+		callers: true,
+		visibility: 'public',
+	},
 };
 
 export function resolveEditorInformationSettings(value: unknown): EditorInformationSettings {
@@ -33,6 +43,7 @@ export function resolveEditorInformationSettings(value: unknown): EditorInformat
 	const virune = objectValue(root?.virune) ?? root;
 	const inlayHints = objectValue(virune?.inlayHints);
 	const hover = objectValue(virune?.hover);
+	const codeLens = objectValue(virune?.codeLens);
 	return {
 		inlayHints: {
 			variableTypes: enabledValue(inlayHints?.variableTypes, defaultEditorInformationSettings.inlayHints.variableTypes),
@@ -44,6 +55,11 @@ export function resolveEditorInformationSettings(value: unknown): EditorInformat
 		hover: {
 			showEffects: booleanValue(hover?.showEffects, defaultEditorInformationSettings.hover.showEffects),
 			showModule: booleanValue(hover?.showModule, defaultEditorInformationSettings.hover.showModule),
+		},
+		codeLens: {
+			references: enabledValue(codeLens?.references, defaultEditorInformationSettings.codeLens.references),
+			callers: enabledValue(codeLens?.callers, defaultEditorInformationSettings.codeLens.callers),
+			visibility: codeLens?.visibility === 'all' ? 'all' : 'public',
 		},
 	};
 }

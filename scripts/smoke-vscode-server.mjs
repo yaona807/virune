@@ -5,12 +5,14 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-const documentText = 'fn add(left: Int, right: Int) -> Int => left + right\n\nfn inferred() {\n\tlet total = add(1, 2)\n\treturn total\n}\n';
+const documentText = 'pub fn add(left: Int, right: Int) -> Int => left + right\n\nfn inferred() {\n\tlet total = add(1, 2)\n\treturn total\n}\n';
 const workspaceRoot = await mkdtemp(join(tmpdir(), 'virune-vscode-smoke-'));
 const workspaceUri = pathToFileURL(workspaceRoot).href;
 const documentPath = join(workspaceRoot, 'main.virune');
 const documentUri = pathToFileURL(documentPath).href;
+const utilityPath = join(workspaceRoot, 'utility.virune');
 await writeFile(documentPath, documentText, 'utf8');
+await writeFile(utilityPath, 'pub fn multiply(left: Int, right: Int) -> Int => left * right\n', 'utf8');
 
 const server = spawn(process.execPath, [resolve('packages/vscode/dist/server.cjs'), '--stdio'], {
 	cwd: process.cwd(),
@@ -76,19 +78,28 @@ try {
 					lambdaParameterTypes: { enabled: true },
 				},
 				hover: { showEffects: true, showModule: true },
+				codeLens: { references: { enabled: true }, callers: { enabled: true }, visibility: 'public' },
 			},
 		},
 	});
 	assert.equal(initialized.error, undefined);
 	const capabilities = initialized.result?.capabilities;
 	assert.equal(capabilities?.hoverProvider, true);
+	assert.equal(capabilities?.declarationProvider, true);
 	assert.equal(capabilities?.definitionProvider, true);
+	assert.equal(capabilities?.typeDefinitionProvider, true);
+	assert.equal(capabilities?.referencesProvider, true);
+	assert.equal(capabilities?.documentHighlightProvider, true);
+	assert.deepEqual(capabilities?.renameProvider, { prepareProvider: true });
+	assert.equal(capabilities?.callHierarchyProvider, true);
+	assert.equal(capabilities?.workspaceSymbolProvider, true);
+	assert.deepEqual(capabilities?.codeLensProvider, { resolveProvider: false });
 	assert.equal(capabilities?.documentSymbolProvider, true);
 	assert.equal(capabilities?.inlayHintProvider, true);
 	assert.deepEqual(capabilities?.signatureHelpProvider?.triggerCharacters, ['(', ',']);
 	assert.equal(capabilities?.documentFormattingProvider, true);
 	assert.equal(capabilities?.semanticTokensProvider?.full, true);
-	assert.equal(capabilities?.codeActionProvider, true);
+	assert.deepEqual(capabilities?.codeActionProvider?.codeActionKinds, ['quickfix', 'refactor', 'source.organizeImports']);
 	send({ jsonrpc: '2.0', method: 'initialized', params: {} });
 	send({
 		jsonrpc: '2.0',
@@ -139,7 +150,56 @@ try {
 	assert.equal(hover.error, undefined);
 	assert.match(JSON.stringify(hover.result?.contents), /fn add\(left: Int, right: Int\) -> Int/u);
 
-	const shutdown = await request(6, 'shutdown', null);
+	const callPosition = offsetToPosition(documentText, documentText.lastIndexOf('add'));
+	const definition = await request(6, 'textDocument/definition', { textDocument: { uri: documentUri }, position: callPosition });
+	assert.equal(definition.error, undefined);
+	assert.equal(definition.result?.[0]?.targetUri, documentUri);
+
+	const references = await request(7, 'textDocument/references', {
+		textDocument: { uri: documentUri },
+		position: callPosition,
+		context: { includeDeclaration: true },
+	});
+	assert.equal(references.error, undefined);
+	assert.ok(references.result.length >= 2);
+
+	const hierarchy = await request(8, 'textDocument/prepareCallHierarchy', {
+		textDocument: { uri: documentUri },
+		position: offsetToPosition(documentText, documentText.indexOf('add')),
+	});
+	assert.equal(hierarchy.error, undefined);
+	assert.equal(hierarchy.result?.[0]?.name, 'add');
+	const incoming = await request(9, 'callHierarchy/incomingCalls', { item: hierarchy.result[0] });
+	assert.equal(incoming.error, undefined);
+	assert.deepEqual(incoming.result.map(call => call.from.name), ['inferred']);
+
+	const workspaceSymbol = await request(10, 'workspace/symbol', { query: 'multiply' });
+	assert.equal(workspaceSymbol.error, undefined);
+	assert.equal(workspaceSymbol.result?.some(symbol => symbol.name === 'multiply'), true);
+
+	const completion = await request(11, 'textDocument/completion', {
+		textDocument: { uri: documentUri },
+		position: offsetToPosition(documentText, documentText.length),
+	});
+	assert.equal(completion.error, undefined);
+	const completionItems = Array.isArray(completion.result) ? completion.result : completion.result?.items ?? [];
+	const autoImport = completionItems.find(item => item.label === 'multiply');
+	assert.ok(autoImport);
+	assert.match(autoImport.additionalTextEdits?.[0]?.newText ?? '', /import \{ multiply \}/u);
+
+	const lenses = await request(12, 'textDocument/codeLens', { textDocument: { uri: documentUri } });
+	assert.equal(lenses.error, undefined);
+	assert.equal(lenses.result?.some(lens => lens.command?.title.includes('references')), true);
+	assert.equal(lenses.result?.some(lens => lens.command?.title.includes('callers')), true);
+
+	const preparedRename = await request(13, 'textDocument/prepareRename', { textDocument: { uri: documentUri }, position: callPosition });
+	assert.equal(preparedRename.error, undefined);
+	assert.equal(preparedRename.result?.placeholder, 'add');
+	const rename = await request(14, 'textDocument/rename', { textDocument: { uri: documentUri }, position: callPosition, newName: 'sum' });
+	assert.equal(rename.error, undefined);
+	assert.ok(rename.result?.changes?.[documentUri]?.length >= 2);
+
+	const shutdown = await request(15, 'shutdown', null);
 	assert.equal(shutdown.error, undefined);
 	send({ jsonrpc: '2.0', method: 'exit', params: null });
 	await new Promise((resolveExit, reject) => {

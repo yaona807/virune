@@ -93,6 +93,25 @@
 					"type": "boolean",
 					"default": true,
 					"description": "Show the defining source file in hover information."
+				},
+				"virune.codeLens.references.enabled": {
+					"type": "boolean",
+					"default": true,
+					"description": "Show reference counts above Virune declarations."
+				},
+				"virune.codeLens.callers.enabled": {
+					"type": "boolean",
+					"default": true,
+					"description": "Show caller counts above Virune functions."
+				},
+				"virune.codeLens.visibility": {
+					"type": "string",
+					"enum": [
+						"public",
+						"all"
+					],
+					"default": "public",
+					"description": "Controls which top-level declarations display CodeLens information."
 				}
 			}
 		},

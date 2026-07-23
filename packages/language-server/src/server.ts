@@ -6,19 +6,34 @@ import {
 	type InitializeParams,
 	type InitializeResult,
 	type TextDocumentPositionParams,
+	CodeActionKind,
 } from 'vscode-languageserver/node';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import { ProjectManager } from './analysis/project-manager.js';
 import { diagnosticsForPath } from './features/diagnostics.js';
 import { completionItems } from './features/completion.js';
 import { codeActionsForDiagnostics, documentationCodeActions } from './features/code-actions.js';
-import { definitionAt } from './features/definition.js';
+import {
+	declarationAt,
+	definitionAt as indexedDefinitionAt,
+	documentHighlightsAt,
+	incomingCalls,
+	outgoingCalls,
+	prepareCallHierarchyAt,
+	prepareRenameAt,
+	referencesAt,
+	renameAt,
+	typeDefinitionAt,
+} from './features/navigation.js';
 import { documentSymbols } from './features/document-symbols.js';
 import { formattingEdits } from './features/formatting.js';
 import { hoverAt } from './features/hover.js';
 import { semanticTokenModifiers, semanticTokens, semanticTokenTypes } from './features/semantic-tokens.js';
 import { inlayHints } from './features/inlay-hints.js';
 import { signatureHelpAt } from './features/signature-help.js';
+import { workspaceSymbols } from './features/workspace-symbols.js';
+import { codeLenses } from './features/code-lens.js';
+import { organizeImportsAction } from './features/imports.js';
 import { defaultEditorInformationSettings, resolveEditorInformationSettings } from './editor-information.js';
 import { filePathToUri, positionToOffset, uriToFilePath } from './analysis/position.js';
 
@@ -48,13 +63,23 @@ connection.onInitialize((params: InitializeParams): InitializeResult => {
 			inlayHintProvider: true,
 			signatureHelpProvider: { triggerCharacters: ['(', ','], retriggerCharacters: [','] },
 			documentSymbolProvider: true,
+			declarationProvider: true,
 			definitionProvider: true,
+			typeDefinitionProvider: true,
+			referencesProvider: true,
+			documentHighlightProvider: true,
+			renameProvider: { prepareProvider: true },
+			callHierarchyProvider: true,
+			workspaceSymbolProvider: true,
+			codeLensProvider: { resolveProvider: false },
 			completionProvider: { triggerCharacters: ['.', '@'] },
 			semanticTokensProvider: {
 				legend: { tokenTypes: [...semanticTokenTypes], tokenModifiers: [...semanticTokenModifiers] },
 				full: true,
 			},
-			codeActionProvider: true,
+			codeActionProvider: {
+				codeActionKinds: [CodeActionKind.QuickFix, CodeActionKind.Refactor, CodeActionKind.SourceOrganizeImports],
+			},
 		},
 		serverInfo: {
 			name: 'Virune Language Server',
@@ -151,14 +176,75 @@ connection.onDocumentSymbol(async params => {
 	return module === undefined ? [] : [...documentSymbols(module)];
 });
 
+connection.onDeclaration(async params => {
+	const snapshot = await projectManager.analyze(params.textDocument.uri);
+	const result = snapshot === undefined ? undefined : declarationAt(snapshot, params.textDocument.uri, params.position);
+	return result === undefined ? undefined : [result];
+});
+
 connection.onDefinition(async params => {
-	const analysis = await analyzePosition(params);
-	return analysis === undefined ? undefined : definitionAt(analysis.snapshot, analysis.module, analysis.module.source, analysis.offset);
+	const snapshot = await projectManager.analyze(params.textDocument.uri);
+	const result = snapshot === undefined ? undefined : indexedDefinitionAt(snapshot, params.textDocument.uri, params.position);
+	return result === undefined ? undefined : [result];
+});
+
+connection.onTypeDefinition(async params => {
+	const snapshot = await projectManager.analyze(params.textDocument.uri);
+	const result = snapshot === undefined ? undefined : typeDefinitionAt(snapshot, params.textDocument.uri, params.position);
+	return result === undefined ? undefined : [result];
+});
+
+connection.onReferences(async params => {
+	const snapshot = await projectManager.analyze(params.textDocument.uri);
+	return snapshot === undefined ? [] : [...referencesAt(snapshot, params.textDocument.uri, params.position, params.context.includeDeclaration)];
+});
+
+connection.onDocumentHighlight(async params => {
+	const snapshot = await projectManager.analyze(params.textDocument.uri);
+	return snapshot === undefined ? [] : [...documentHighlightsAt(snapshot, params.textDocument.uri, params.position)];
+});
+
+connection.onPrepareRename(async params => {
+	const snapshot = await projectManager.analyze(params.textDocument.uri);
+	return snapshot === undefined ? undefined : prepareRenameAt(snapshot, params.textDocument.uri, params.position);
+});
+
+connection.onRenameRequest(async params => {
+	const snapshot = await projectManager.analyze(params.textDocument.uri);
+	return snapshot === undefined ? undefined : renameAt(snapshot, params.textDocument.uri, params.position, params.newName);
+});
+
+connection.languages.callHierarchy.onPrepare(async params => {
+	const snapshot = await projectManager.analyze(params.textDocument.uri);
+	return snapshot === undefined ? [] : [...prepareCallHierarchyAt(snapshot, params.textDocument.uri, params.position)];
+});
+
+connection.languages.callHierarchy.onIncomingCalls(async params => {
+	const snapshot = await projectManager.analyze(params.item.uri);
+	return snapshot === undefined ? [] : [...incomingCalls(snapshot, params.item)];
+});
+
+connection.languages.callHierarchy.onOutgoingCalls(async params => {
+	const snapshot = await projectManager.analyze(params.item.uri);
+	return snapshot === undefined ? [] : [...outgoingCalls(snapshot, params.item)];
 });
 
 connection.onCompletion(async params => {
 	const analysis = await analyzePosition(params);
-	return analysis === undefined ? [] : [...completionItems(analysis.module, analysis.module.source, analysis.offset)];
+	return analysis === undefined ? [] : [...completionItems(analysis.module, analysis.module.source, analysis.offset, analysis.snapshot)];
+});
+
+connection.onWorkspaceSymbol(async params => {
+	const snapshots = await projectManager.analyzeWorkspace();
+	return [...workspaceSymbols(snapshots, params.query)];
+});
+
+connection.onCodeLens(async params => {
+	const path = uriToFilePath(params.textDocument.uri);
+	if (path === undefined) return [];
+	const snapshot = await projectManager.analyze(params.textDocument.uri);
+	const module = snapshot?.modulesByPath.get(path);
+	return snapshot === undefined || module === undefined ? [] : [...codeLenses(snapshot, module, editorInformationSettings)];
 });
 
 connection.languages.semanticTokens.on(async params => {
@@ -174,12 +260,13 @@ connection.onCodeAction(async params => {
 	if (path === undefined) return [];
 	const snapshot = await projectManager.analyze(params.textDocument.uri);
 	const module = snapshot?.modulesByPath.get(path);
-	return snapshot === undefined || module === undefined
-		? []
-		: [
-			...codeActionsForDiagnostics(snapshot, path, params.context.diagnostics),
-			...documentationCodeActions(module, module.source, params.range.start.line),
-		];
+	if (snapshot === undefined || module === undefined) return [];
+	const organizeImports = organizeImportsAction(module);
+	return [
+		...codeActionsForDiagnostics(snapshot, path, params.context.diagnostics),
+		...documentationCodeActions(module, module.source, params.range.start.line),
+		...(organizeImports === undefined ? [] : [organizeImports]),
+	];
 });
 
 connection.onDidChangeConfiguration(params => {

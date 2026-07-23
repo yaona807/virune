@@ -24,9 +24,17 @@ The extension is not distributed through the Visual Studio Marketplace. Updates 
 - Inlay hints for inferred variable, function return, loop variable, and lambda parameter types
 - Configurable parameter-name inlay hints at call sites
 - Signature Help with the active parameter, return type, and `uses` capabilities
-- Document symbols
-- Go to Definition
+- Document symbols, Outline, and Breadcrumbs
+- Go to Declaration, Go to Definition, Peek Definition, and Go to Type Definition
+- Project-wide Find All References and document highlights
+- Incoming and outgoing Call Hierarchy
+- Safe workspace rename with import-alias awareness
+- Workspace symbol search
+- Reference and caller CodeLens for top-level declarations
 - Completion for keywords, declarations, imports, parameters, local variables, and fields
+- Auto-import completion for public Virune symbols
+- **Organize Imports** source action
+- JavaScript and TypeScript definition navigation through interop declaration metadata
 - Quick Fix conversion for diagnostics that include compiler fixes
 - Documentation comments in Hover, completion, and Signature Help
 - `doc` / `moddoc` snippets and automatic continuation of non-empty `///` / `//!` lines on Enter
@@ -45,11 +53,20 @@ The extension enables type-oriented editor information by default. These setting
 	"virune.inlayHints.forLoopVariableTypes.enabled": true,
 	"virune.inlayHints.lambdaParameterTypes.enabled": true,
 	"virune.hover.showEffects": true,
-	"virune.hover.showModule": true
+	"virune.hover.showModule": true,
+	"virune.codeLens.references.enabled": true,
+	"virune.codeLens.callers.enabled": true,
+	"virune.codeLens.visibility": "public"
 }
 ```
 
-`virune.inlayHints.parameterNames` accepts `none`, `literals`, or `all`. Inlay hints are visual annotations only and do not modify the Virune source file.
+`virune.inlayHints.parameterNames` accepts `none`, `literals`, or `all`. `virune.codeLens.visibility` accepts `public` or `all`. Inlay hints and CodeLens are visual annotations only and do not modify the Virune source file.
+
+## Semantic navigation
+
+The Language Server builds a project-wide semantic index from every `.virune` source file under the project root. The index stores canonical declaration identities, import aliases, re-exports, reference roles, call relationships, and type-definition links. Unsaved editor buffers are treated as the current source of truth.
+
+Virune import aliases remain local during rename. Renaming an original declaration updates canonical references across the workspace, while explicitly aliased local names remain unchanged. JavaScript and TypeScript imports are read-only from Virune rename operations, but definition navigation can open their declaration source when the interop provider exposes a declaration path.
 
 ## Development
 
@@ -63,4 +80,4 @@ The packaged extension is written to `release/virune-vscode-<version>.vsix`.
 
 ## Incremental analysis
 
-The server owns one `IncrementalProjectBuilder` per project root. Overlay buffer text participates in source hashing, so unchanged modules and implementation-independent dependents reuse compiler state across edits.
+The server owns one `IncrementalProjectBuilder` per project root. Overlay buffer text participates in source hashing, so unchanged modules and implementation-independent dependents reuse compiler state across edits. All project `.virune` files are editor-analysis entries, which keeps workspace symbols and auto imports complete without disabling compiler-level reuse.

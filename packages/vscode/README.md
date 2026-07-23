@@ -10,9 +10,15 @@ Official VS Code language support for Virune.
 - Rich hover information for functions, inferred types, records, enums, and source locations
 - Inlay hints for inferred types and call-site parameter names
 - Signature Help with active-parameter highlighting
-- Document symbols and Outline support
-- Go to Definition
+- Document symbols, Outline, and Breadcrumbs
+- Declaration, definition, Peek Definition, and type-definition navigation
+- Project-wide references, document highlights, and symbol search
+- Incoming and outgoing call hierarchy
+- Alias-aware workspace rename
+- Reference and caller CodeLens
 - Keyword, symbol, local-variable, and field completion
+- Auto imports and Organize Imports
+- JavaScript and TypeScript declaration navigation for interop imports
 - Semantic highlighting
 - Compiler-provided Quick Fixes
 - Documentation comments in Hover, completion, and Signature Help

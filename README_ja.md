@@ -176,7 +176,7 @@ npm run pack:vscode
 code --install-extension release/virune-vscode-1.0.0.vsix
 ```
 
-拡張機能には、構文・Semantic Highlight、診断、Formatter、Hover、Document Symbol、補完、定義ジャンプ、Quick Fix、Virune Language Serverが含まれます。詳細は[VS Code対応](docs/vscode_ja.md)を参照してください。
+拡張機能には、構文・Semantic Highlight、診断、Formatter、Hover、プロジェクト横断の定義・参照追跡、Call Hierarchy、Rename、CodeLens、Auto Import、JavaScript／TypeScript定義ジャンプ、Quick Fix、Virune Language Serverが含まれます。詳細は[VS Code対応](docs/vscode_ja.md)を参照してください。
 
 ## ドキュメント
 
