@@ -5,11 +5,11 @@ import {
 	type CodeAction,
 	type Diagnostic,
 } from 'vscode-languageserver/node';
-import type { AnalysisSnapshot } from '../analysis/project-manager.js';
+import type { DocumentAnalysisSnapshot } from '../analysis/project-manager.js';
 import { filePathToUri, sourceSpanToRange } from '../analysis/position.js';
 
 export function codeActionsForDiagnostics(
-	snapshot: AnalysisSnapshot,
+	snapshot: DocumentAnalysisSnapshot,
 	path: string,
 	requestedDiagnostics: readonly Diagnostic[],
 ): readonly CodeAction[] {

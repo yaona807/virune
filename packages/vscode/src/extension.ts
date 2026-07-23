@@ -64,8 +64,8 @@ function editorInformationSettings(): object {
 			showModule: configuration.get('hover.showModule', true),
 		},
 		codeLens: {
-			references: { enabled: configuration.get('codeLens.references.enabled', true) },
-			callers: { enabled: configuration.get('codeLens.callers.enabled', true) },
+			references: { enabled: configuration.get('codeLens.references.enabled', false) },
+			callers: { enabled: configuration.get('codeLens.callers.enabled', false) },
 			visibility: configuration.get('codeLens.visibility', 'public'),
 		},
 	};

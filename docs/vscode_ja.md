@@ -42,7 +42,7 @@ Visual Studio Marketplaceでは配布しません。更新時は、GitHub Releas
 
 ## エディタ情報の設定
 
-型情報を中心としたエディタ表示はデフォルトで有効です。VS Codeの設定から次を変更できます。
+応答速度を重視する型情報表示はデフォルトで有効です。ワークスペース全体の索引が必要な参照数・呼び出し元CodeLensはデフォルトで無効のため、必要な場合だけ明示的に有効化します。
 
 ```json
 {
@@ -53,8 +53,8 @@ Visual Studio Marketplaceでは配布しません。更新時は、GitHub Releas
 	"virune.inlayHints.lambdaParameterTypes.enabled": true,
 	"virune.hover.showEffects": true,
 	"virune.hover.showModule": true,
-	"virune.codeLens.references.enabled": true,
-	"virune.codeLens.callers.enabled": true,
+	"virune.codeLens.references.enabled": false,
+	"virune.codeLens.callers.enabled": false,
 	"virune.codeLens.visibility": "public"
 }
 ```
@@ -63,7 +63,7 @@ Visual Studio Marketplaceでは配布しません。更新時は、GitHub Releas
 
 ## Semantic Navigation
 
-Language Serverは、project root配下にあるすべての`.virune`ソースからプロジェクト横断のSemantic Indexを構築します。Indexには、正規化された宣言ID、import alias、re-export、参照種別、呼び出し関係、型定義リンクを保持します。未保存のeditor bufferを最新状態として扱います。
+Hover、Diagnostics、Inlay Hints、Semantic Tokens、Document Symbolsは、現在のファイル、そのVirune import先、開いているeditor bufferだけを解析します。DefinitionとDocument Highlightは、その依存グラフに限定したSemantic Indexを利用します。References、Rename、Call Hierarchy、Workspace Symbols、Auto Import、有効化されたCodeLensなどのプロジェクト横断操作でのみ、project root配下の全`.virune`ソースを索引化します。未保存のeditor bufferを最新状態として扱います。
 
 import aliasに対するRenameは、そのaliasが存在するファイル内だけを変更します。元の宣言をRenameした場合はワークスペース全体の正規参照を変更し、明示的なalias名は維持します。JavaScript／TypeScript importはVirune側からRenameしませんが、interop providerが宣言パスを返す場合は定義元ソースへ移動できます。
 

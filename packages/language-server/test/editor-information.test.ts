@@ -38,8 +38,8 @@ test('resolveEditorInformationSettings reads VS Code nested settings', () => {
 			showModule: false,
 		},
 		codeLens: {
-			references: true,
-			callers: true,
+			references: false,
+			callers: false,
 			visibility: 'public',
 		},
 	});

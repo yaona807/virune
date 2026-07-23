@@ -101,7 +101,7 @@ function scheduleDiagnostics(uri: string): void {
 
 async function publishDiagnostics(uri: string, generation: number): Promise<void> {
 	try {
-		const snapshot = await projectManager.analyze(uri);
+		const snapshot = await projectManager.analyzeDocument(uri);
 		if (snapshot === undefined || generations.get(uri) !== generation) return;
 		const openVersions = new Map<string, number>();
 		for (const document of documents.all()) {
@@ -130,7 +130,16 @@ async function publishDiagnostics(uri: string, generation: number): Promise<void
 	}
 }
 
-async function analyzePosition(params: TextDocumentPositionParams) {
+async function analyzeDocumentPosition(params: TextDocumentPositionParams) {
+	const path = uriToFilePath(params.textDocument.uri);
+	if (path === undefined) return undefined;
+	const snapshot = await projectManager.analyzeDocument(params.textDocument.uri);
+	const module = snapshot?.modulesByPath.get(path);
+	if (snapshot === undefined || module === undefined) return undefined;
+	return { snapshot, module, offset: positionToOffset(module.source, params.position) };
+}
+
+async function analyzeIndexedPosition(params: TextDocumentPositionParams) {
 	const path = uriToFilePath(params.textDocument.uri);
 	if (path === undefined) return undefined;
 	const snapshot = await projectManager.analyze(params.textDocument.uri);
@@ -142,13 +151,13 @@ async function analyzePosition(params: TextDocumentPositionParams) {
 connection.onDocumentFormatting(async params => {
 	const path = uriToFilePath(params.textDocument.uri);
 	if (path === undefined) return [];
-	const snapshot = await projectManager.analyze(params.textDocument.uri);
+	const snapshot = await projectManager.analyzeDocument(params.textDocument.uri);
 	const module = snapshot?.modulesByPath.get(path);
 	return module === undefined ? [] : [...formattingEdits(module.source)];
 });
 
 connection.onHover(async params => {
-	const analysis = await analyzePosition(params);
+	const analysis = await analyzeDocumentPosition(params);
 	return analysis === undefined ? undefined : hoverAt(analysis.module, analysis.module.source, analysis.offset, {
 		settings: editorInformationSettings,
 		sourcesById: analysis.snapshot.sourcesById,
@@ -158,38 +167,38 @@ connection.onHover(async params => {
 connection.languages.inlayHint.on(async params => {
 	const path = uriToFilePath(params.textDocument.uri);
 	if (path === undefined) return [];
-	const snapshot = await projectManager.analyze(params.textDocument.uri);
+	const snapshot = await projectManager.analyzeDocument(params.textDocument.uri);
 	const module = snapshot?.modulesByPath.get(path);
 	return module === undefined ? [] : [...inlayHints(module, params.range, editorInformationSettings)];
 });
 
 connection.onSignatureHelp(async params => {
-	const analysis = await analyzePosition(params);
+	const analysis = await analyzeDocumentPosition(params);
 	return analysis === undefined ? undefined : signatureHelpAt(analysis.module, analysis.module.source, analysis.offset);
 });
 
 connection.onDocumentSymbol(async params => {
 	const path = uriToFilePath(params.textDocument.uri);
 	if (path === undefined) return [];
-	const snapshot = await projectManager.analyze(params.textDocument.uri);
+	const snapshot = await projectManager.analyzeDocument(params.textDocument.uri);
 	const module = snapshot?.modulesByPath.get(path);
 	return module === undefined ? [] : [...documentSymbols(module)];
 });
 
 connection.onDeclaration(async params => {
-	const snapshot = await projectManager.analyze(params.textDocument.uri);
+	const snapshot = await projectManager.analyzeDocumentIndexed(params.textDocument.uri);
 	const result = snapshot === undefined ? undefined : declarationAt(snapshot, params.textDocument.uri, params.position);
 	return result === undefined ? undefined : [result];
 });
 
 connection.onDefinition(async params => {
-	const snapshot = await projectManager.analyze(params.textDocument.uri);
+	const snapshot = await projectManager.analyzeDocumentIndexed(params.textDocument.uri);
 	const result = snapshot === undefined ? undefined : indexedDefinitionAt(snapshot, params.textDocument.uri, params.position);
 	return result === undefined ? undefined : [result];
 });
 
 connection.onTypeDefinition(async params => {
-	const snapshot = await projectManager.analyze(params.textDocument.uri);
+	const snapshot = await projectManager.analyzeDocumentIndexed(params.textDocument.uri);
 	const result = snapshot === undefined ? undefined : typeDefinitionAt(snapshot, params.textDocument.uri, params.position);
 	return result === undefined ? undefined : [result];
 });
@@ -200,7 +209,7 @@ connection.onReferences(async params => {
 });
 
 connection.onDocumentHighlight(async params => {
-	const snapshot = await projectManager.analyze(params.textDocument.uri);
+	const snapshot = await projectManager.analyzeDocumentIndexed(params.textDocument.uri);
 	return snapshot === undefined ? [] : [...documentHighlightsAt(snapshot, params.textDocument.uri, params.position)];
 });
 
@@ -230,7 +239,7 @@ connection.languages.callHierarchy.onOutgoingCalls(async params => {
 });
 
 connection.onCompletion(async params => {
-	const analysis = await analyzePosition(params);
+	const analysis = await analyzeIndexedPosition(params);
 	return analysis === undefined ? [] : [...completionItems(analysis.module, analysis.module.source, analysis.offset, analysis.snapshot)];
 });
 
@@ -240,6 +249,7 @@ connection.onWorkspaceSymbol(async params => {
 });
 
 connection.onCodeLens(async params => {
+	if (!editorInformationSettings.codeLens.references && !editorInformationSettings.codeLens.callers) return [];
 	const path = uriToFilePath(params.textDocument.uri);
 	if (path === undefined) return [];
 	const snapshot = await projectManager.analyze(params.textDocument.uri);
@@ -250,7 +260,7 @@ connection.onCodeLens(async params => {
 connection.languages.semanticTokens.on(async params => {
 	const path = uriToFilePath(params.textDocument.uri);
 	if (path === undefined) return { data: [] };
-	const snapshot = await projectManager.analyze(params.textDocument.uri);
+	const snapshot = await projectManager.analyzeDocument(params.textDocument.uri);
 	const module = snapshot?.modulesByPath.get(path);
 	return module === undefined ? { data: [] } : semanticTokens(module);
 });
@@ -258,7 +268,7 @@ connection.languages.semanticTokens.on(async params => {
 connection.onCodeAction(async params => {
 	const path = uriToFilePath(params.textDocument.uri);
 	if (path === undefined) return [];
-	const snapshot = await projectManager.analyze(params.textDocument.uri);
+	const snapshot = await projectManager.analyzeDocument(params.textDocument.uri);
 	const module = snapshot?.modulesByPath.get(path);
 	if (snapshot === undefined || module === undefined) return [];
 	const organizeImports = organizeImportsAction(module);

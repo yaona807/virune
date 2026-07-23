@@ -32,8 +32,8 @@ export const defaultEditorInformationSettings: EditorInformationSettings = {
 		showModule: true,
 	},
 	codeLens: {
-		references: true,
-		callers: true,
+		references: false,
+		callers: false,
 		visibility: 'public',
 	},
 };

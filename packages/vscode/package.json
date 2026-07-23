@@ -96,12 +96,12 @@
 				},
 				"virune.codeLens.references.enabled": {
 					"type": "boolean",
-					"default": true,
+					"default": false,
 					"description": "Show reference counts above Virune declarations."
 				},
 				"virune.codeLens.callers.enabled": {
 					"type": "boolean",
-					"default": true,
+					"default": false,
 					"description": "Show caller counts above Virune functions."
 				},
 				"virune.codeLens.visibility": {

@@ -47,3 +47,34 @@ test('ProjectManager.invalidate reloads changed files outside the editor overlay
 	assert.equal(refreshed.result.stats.reusedParsedModules, 1);
 	assert.equal(refreshed.result.stats.checkedModules, 2);
 });
+
+test('ProjectManager keeps latency-sensitive document analysis focused and deduplicated', async t => {
+	const root = await mkdtemp(join(tmpdir(), 'virune-lsp-focused-'));
+	t.after(() => rm(root, { recursive: true, force: true }));
+	const mainPath = join(root, 'main.virune');
+	const unrelatedPath = join(root, 'unrelated.virune');
+	const mainText = 'fn main() -> Int => 1\n';
+	await writeFile(mainPath, mainText);
+	await writeFile(unrelatedPath, 'pub fn unrelated() -> Int => 2\n');
+	const document = TextDocument.create(filePathToUri(mainPath), 'virune', 1, mainText);
+	const manager = new ProjectManager({
+		getOpenDocuments: () => [document],
+		workspaceFolders: [root],
+	});
+
+	const [first, second] = await Promise.all([
+		manager.analyzeDocument(document.uri),
+		manager.analyzeDocument(document.uri),
+	]);
+	assert.ok(first);
+	assert.equal(second, first);
+	assert.equal(first.modulesByPath.has(unrelatedPath), false);
+
+	const focusedIndex = await manager.analyzeDocumentIndexed(document.uri);
+	assert.ok(focusedIndex);
+	assert.equal(focusedIndex.modulesByPath.has(unrelatedPath), false);
+
+	const workspace = await manager.analyze(document.uri);
+	assert.ok(workspace);
+	assert.equal(workspace.modulesByPath.has(unrelatedPath), true);
+});

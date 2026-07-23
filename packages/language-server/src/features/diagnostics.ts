@@ -4,10 +4,10 @@ import {
 	type Diagnostic,
 	type DiagnosticRelatedInformation,
 } from 'vscode-languageserver/node';
-import type { AnalysisSnapshot } from '../analysis/project-manager.js';
+import type { DocumentAnalysisSnapshot } from '../analysis/project-manager.js';
 import { filePathToUri, sourceSpanToRange } from '../analysis/position.js';
 
-export function diagnosticsForPath(snapshot: AnalysisSnapshot, path: string): readonly Diagnostic[] {
+export function diagnosticsForPath(snapshot: DocumentAnalysisSnapshot, path: string): readonly Diagnostic[] {
 	const target = snapshot.modulesByPath.get(path)?.source;
 	if (target === undefined) return [];
 	return snapshot.result.diagnostics

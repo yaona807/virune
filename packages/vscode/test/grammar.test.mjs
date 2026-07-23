@@ -57,8 +57,8 @@ test('extension manifest exposes configurable editor type information', async ()
 	assert.deepEqual(properties?.['virune.inlayHints.parameterNames']?.enum, ['none', 'literals', 'all']);
 	assert.equal(properties?.['virune.hover.showEffects']?.default, true);
 	assert.equal(properties?.['virune.hover.showModule']?.default, true);
-	assert.equal(properties?.['virune.codeLens.references.enabled']?.default, true);
-	assert.equal(properties?.['virune.codeLens.callers.enabled']?.default, true);
+	assert.equal(properties?.['virune.codeLens.references.enabled']?.default, false);
+	assert.equal(properties?.['virune.codeLens.callers.enabled']?.default, false);
 	assert.deepEqual(properties?.['virune.codeLens.visibility']?.enum, ['public', 'all']);
 });
 

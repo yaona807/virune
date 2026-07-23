@@ -15,7 +15,7 @@ Official VS Code language support for Virune.
 - Project-wide references, document highlights, and symbol search
 - Incoming and outgoing call hierarchy
 - Alias-aware workspace rename
-- Reference and caller CodeLens
+- Optional reference and caller CodeLens (disabled by default for responsiveness)
 - Keyword, symbol, local-variable, and field completion
 - Auto imports and Organize Imports
 - JavaScript and TypeScript declaration navigation for interop imports

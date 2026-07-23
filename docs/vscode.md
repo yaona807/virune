@@ -43,7 +43,7 @@ The extension is not distributed through the Visual Studio Marketplace. Updates 
 
 ## Editor information settings
 
-The extension enables type-oriented editor information by default. These settings can be changed in VS Code settings:
+The extension enables latency-sensitive type information by default. Project-wide reference and caller CodeLens are disabled by default because they require a workspace index; enable them explicitly when needed:
 
 ```json
 {
@@ -54,8 +54,8 @@ The extension enables type-oriented editor information by default. These setting
 	"virune.inlayHints.lambdaParameterTypes.enabled": true,
 	"virune.hover.showEffects": true,
 	"virune.hover.showModule": true,
-	"virune.codeLens.references.enabled": true,
-	"virune.codeLens.callers.enabled": true,
+	"virune.codeLens.references.enabled": false,
+	"virune.codeLens.callers.enabled": false,
 	"virune.codeLens.visibility": "public"
 }
 ```
@@ -64,7 +64,7 @@ The extension enables type-oriented editor information by default. These setting
 
 ## Semantic navigation
 
-The Language Server builds a project-wide semantic index from every `.virune` source file under the project root. The index stores canonical declaration identities, import aliases, re-exports, reference roles, call relationships, and type-definition links. Unsaved editor buffers are treated as the current source of truth.
+Hover, diagnostics, inlay hints, semantic tokens, and document symbols analyze only the active document, its Virune imports, and open editor overlays. Definition navigation and document highlights use a focused semantic index for that graph. Project-wide operations such as references, rename, call hierarchy, workspace symbols, auto import, and enabled CodeLens build an index from every `.virune` source file under the project root. Unsaved editor buffers are treated as the current source of truth.
 
 Virune import aliases remain local during rename. Renaming an original declaration updates canonical references across the workspace, while explicitly aliased local names remain unchanged. JavaScript and TypeScript imports are read-only from Virune rename operations, but definition navigation can open their declaration source when the interop provider exposes a declaration path.
 
