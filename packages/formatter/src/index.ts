@@ -168,13 +168,16 @@ function groupEdits(edits: readonly TextEdit[]): TextEdit[] {
 		const ordered = [...group].sort((left, right) => left.order - right.order);
 		if (ordered.length === 1) return ordered[0]!;
 		const first = ordered[0]!;
-		const text = ordered.map((item, index) => index === 0 ? item.text : mergeEditText(item.text)).join('');
+		const text = ordered.slice(1).reduce((merged, item) => mergeEditText(merged, item.text), first.text);
 		return { start: first.start, end: first.end, text, order: first.order };
 	});
 }
 
-function mergeEditText(text: string): string {
-	return text.startsWith(' ') ? `\n${text.trimStart()}` : text;
+function mergeEditText(merged: string, text: string): string {
+	if (text.startsWith('\n')) return `${merged}${text.replace(/^\n[ \t]*/u, '')}`;
+	const trailingIndent = /(?:^|\n)([ \t]+)$/u.exec(merged)?.[1];
+	if (trailingIndent !== undefined && text.startsWith(trailingIndent)) return `${merged}${text.slice(trailingIndent.length)}`;
+	return `${merged}${text.startsWith(' ') ? text.slice(1) : text}`;
 }
 
 function alignTokens(original: readonly TokenLike[], formatted: readonly TokenLike[]): ReadonlyMap<number, number> {

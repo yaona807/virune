@@ -82,6 +82,26 @@ test('formatter preserves comment text while trimming trailing horizontal whites
 	assert.equal(formatSource(result.text).text, result.text);
 });
 
+test('formatter is idempotent when comments collapse onto the same token boundary', () => {
+	const source = `fn commented() -> Unit {
+	// leading
+	let seulav = [
+		1, // first
+	,	// secon2Y,
+	]
+	return Unit
+
+}
+`;
+	const first = formatSource(source);
+	const second = formatSource(first.text);
+	assert.deepEqual(first.errors, []);
+	assert.deepEqual(second.errors, []);
+	assert.equal(second.text, first.text);
+	assert.match(first.text, /1 \/\/ first\n\t\/\/ secon2Y,\n\t\]/u);
+	assert.doesNotMatch(first.text, /\/\/ first\n\n/u);
+});
+
 test('formatter comment restoration is stable across deterministic generated fixtures', async () => {
 	const { lex } = await import('@virune/compiler/experimental');
 	const iterations = Number.parseInt(process.env.VIRUNE_FUZZ_ITERATIONS ?? '100', 10);
