@@ -3,6 +3,7 @@ import {
 	ProposedFeatures,
 	TextDocumentSyncKind,
 	TextDocuments,
+	type CancellationToken,
 	type InitializeParams,
 	type InitializeResult,
 	type TextDocumentPositionParams,
@@ -135,12 +136,18 @@ async function publishDiagnostics(uri: string, generation: number): Promise<void
 	}
 }
 
-async function analyzeDocumentPosition(params: TextDocumentPositionParams) {
+function isCancelled(token: CancellationToken | undefined): boolean {
+	return token?.isCancellationRequested === true;
+}
+
+async function analyzeDocumentPosition(params: TextDocumentPositionParams, token?: CancellationToken) {
+	if (isCancelled(token)) return undefined;
 	const path = uriToFilePath(params.textDocument.uri);
 	if (path === undefined) return undefined;
-	const snapshot = await projectManager.analyzeDocument(params.textDocument.uri);
-	const module = snapshot?.modulesByPath.get(path);
-	if (snapshot === undefined || module === undefined) return undefined;
+	const snapshot = await projectManager.analyzeDocument(params.textDocument.uri, token);
+	if (snapshot === undefined || isCancelled(token)) return undefined;
+	const module = snapshot.modulesByPath.get(path);
+	if (module === undefined) return undefined;
 	return { snapshot, module, offset: positionToOffset(module.source, params.position) };
 }
 
@@ -153,26 +160,33 @@ async function analyzeIndexedPosition(params: TextDocumentPositionParams) {
 	return { snapshot, module, offset: positionToOffset(module.source, params.position) };
 }
 
-async function analyzeCompletionPosition(params: TextDocumentPositionParams) {
-	const analysis = await analyzeDocumentPosition(params);
-	if (analysis === undefined) return undefined;
-	const workspaceExports = await workspaceExportsFor(params.textDocument.uri, analysis.snapshot.root);
+async function analyzeCompletionPosition(params: TextDocumentPositionParams, token?: CancellationToken) {
+	const analysis = await analyzeDocumentPosition(params, token);
+	if (analysis === undefined || isCancelled(token)) return undefined;
+	const workspaceExports = await workspaceExportsFor(params.textDocument.uri, analysis.snapshot.root, token);
+	if (isCancelled(token)) return undefined;
 	return { ...analysis, workspaceExports };
 }
 
-async function workspaceExportsFor(uri: string, root: string): Promise<readonly WorkspaceExport[]> {
+async function workspaceExportsFor(uri: string, root: string, token?: CancellationToken): Promise<readonly WorkspaceExport[]> {
+	if (isCancelled(token)) return [];
 	const existing = completionExports.get(root);
 	if (existing !== undefined) return existing;
 	const pendingExports = completionExportPromises.get(root);
-	if (pendingExports !== undefined) return pendingExports;
+	if (pendingExports !== undefined) {
+		const exports = await pendingExports;
+		return isCancelled(token) ? [] : exports;
+	}
 	const revision = completionExportRevision;
-	const promise = projectManager.analyzeWorkspaceDocument(uri)
+	const promise = projectManager.analyzeWorkspaceDocument(uri, token)
 		.then(snapshot => snapshot === undefined ? [] : collectWorkspaceExports(snapshot.modulesByPath));
 	completionExportPromises.set(root, promise);
 	try {
 		const exports = await promise;
-		if (completionExportRevision === revision && completionExportPromises.get(root) === promise) completionExports.set(root, exports);
-		return exports;
+		if (!isCancelled(token) && completionExportRevision === revision && completionExportPromises.get(root) === promise) {
+			completionExports.set(root, exports);
+		}
+		return isCancelled(token) ? [] : exports;
 	} finally {
 		if (completionExportPromises.get(root) === promise) completionExportPromises.delete(root);
 	}
@@ -192,25 +206,28 @@ connection.onDocumentFormatting(async params => {
 	return module === undefined ? [] : [...formattingEdits(module.source)];
 });
 
-connection.onHover(async params => {
-	const analysis = await analyzeDocumentPosition(params);
-	return analysis === undefined ? undefined : hoverAt(analysis.module, analysis.module.source, analysis.offset, {
+connection.onHover(async (params, token) => {
+	const analysis = await analyzeDocumentPosition(params, token);
+	if (analysis === undefined || isCancelled(token)) return undefined;
+	return hoverAt(analysis.module, analysis.module.source, analysis.offset, {
 		settings: editorInformationSettings,
 		sourcesById: analysis.snapshot.sourcesById,
 	});
 });
 
-connection.languages.inlayHint.on(async params => {
+connection.languages.inlayHint.on(async (params, token) => {
+	if (isCancelled(token)) return [];
 	const path = uriToFilePath(params.textDocument.uri);
 	if (path === undefined) return [];
-	const snapshot = await projectManager.analyzeDocument(params.textDocument.uri);
-	const module = snapshot?.modulesByPath.get(path);
+	const snapshot = await projectManager.analyzeDocument(params.textDocument.uri, token);
+	if (snapshot === undefined || isCancelled(token)) return [];
+	const module = snapshot.modulesByPath.get(path);
 	return module === undefined ? [] : [...inlayHints(module, params.range, editorInformationSettings)];
 });
 
-connection.onSignatureHelp(async params => {
-	const analysis = await analyzeDocumentPosition(params);
-	return analysis === undefined ? undefined : signatureHelpAt(analysis.module, analysis.module.source, analysis.offset);
+connection.onSignatureHelp(async (params, token) => {
+	const analysis = await analyzeDocumentPosition(params, token);
+	return analysis === undefined || isCancelled(token) ? undefined : signatureHelpAt(analysis.module, analysis.module.source, analysis.offset);
 });
 
 connection.onDocumentSymbol(async params => {
@@ -274,9 +291,10 @@ connection.languages.callHierarchy.onOutgoingCalls(async params => {
 	return snapshot === undefined ? [] : [...outgoingCalls(snapshot, params.item)];
 });
 
-connection.onCompletion(async params => {
-	const analysis = await analyzeCompletionPosition(params);
-	return analysis === undefined ? [] : [...completionItems(analysis.module, analysis.module.source, analysis.offset, analysis.workspaceExports)];
+connection.onCompletion(async (params, token) => {
+	const analysis = await analyzeCompletionPosition(params, token);
+	if (analysis === undefined || isCancelled(token)) return [];
+	return [...completionItems(analysis.module, analysis.module.source, analysis.offset, analysis.workspaceExports)];
 });
 
 connection.onWorkspaceSymbol(async params => {
@@ -293,11 +311,13 @@ connection.onCodeLens(async params => {
 	return snapshot === undefined || module === undefined ? [] : [...codeLenses(snapshot, module, editorInformationSettings)];
 });
 
-connection.languages.semanticTokens.on(async params => {
+connection.languages.semanticTokens.on(async (params, token) => {
+	if (isCancelled(token)) return { data: [] };
 	const path = uriToFilePath(params.textDocument.uri);
 	if (path === undefined) return { data: [] };
-	const snapshot = await projectManager.analyzeDocument(params.textDocument.uri);
-	const module = snapshot?.modulesByPath.get(path);
+	const snapshot = await projectManager.analyzeDocument(params.textDocument.uri, token);
+	if (snapshot === undefined || isCancelled(token)) return { data: [] };
+	const module = snapshot.modulesByPath.get(path);
 	return module === undefined ? { data: [] } : semanticTokens(module);
 });
 
