@@ -157,19 +157,19 @@ function indentationForToken(tokens: readonly TokenLike[], tokenIndex: number): 
 }
 
 function groupEdits(edits: readonly TextEdit[]): TextEdit[] {
-	const groups = new Map<string, TextEdit[]>();
+	const groups = new Map<number, TextEdit[]>();
 	for (const edit of edits) {
-		const key = `${edit.start}:${edit.end}`;
-		const group = groups.get(key) ?? [];
+		const group = groups.get(edit.start) ?? [];
 		group.push(edit);
-		groups.set(key, group);
+		groups.set(edit.start, group);
 	}
 	return [...groups.values()].map(group => {
 		const ordered = [...group].sort((left, right) => left.order - right.order);
 		if (ordered.length === 1) return ordered[0]!;
 		const first = ordered[0]!;
 		const text = ordered.slice(1).reduce((merged, item) => mergeEditText(merged, item.text), first.text);
-		return { start: first.start, end: first.end, text, order: first.order };
+		const end = Math.max(...ordered.map(item => item.end));
+		return { start: first.start, end, text, order: first.order };
 	});
 }
 
