@@ -375,7 +375,7 @@ function hash(value: string | NodeJS.ArrayBufferView): string {
 	return createHash('sha256').update(value).digest('hex');
 }
 
-function nodeTypeRoots(configured: readonly string[] | undefined): readonly string[] | undefined {
+function nodeTypeRoots(configured: readonly string[] | undefined): string[] | undefined {
 	const roots = new Set(configured ?? []);
 	try {
 		const packageJson = createRequire(import.meta.url).resolve('@types/node/package.json');
