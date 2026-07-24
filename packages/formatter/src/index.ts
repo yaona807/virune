@@ -126,9 +126,10 @@ function placementToEdit(
 		const previous = tokens[placement.previous]!;
 		const start = (previous.endOffset ?? previous.startOffset) + 1;
 		const next = placement.next === undefined ? undefined : tokens[placement.next];
+		const end = next?.startOffset ?? start;
 		const indent = placement.next === undefined ? '' : indentationForToken(tokens, placement.next);
 		const separator = next === undefined ? '' : `\n${indent}`;
-		return { start, end: start, text: ` ${placement.text}${separator}`, order };
+		return { start, end, text: ` ${placement.text}${separator}`, order };
 	}
 	if (placement.next !== undefined) {
 		const next = tokens[placement.next]!;
