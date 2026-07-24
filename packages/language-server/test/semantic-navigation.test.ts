@@ -121,7 +121,6 @@ test('type definition resolves imported record types', async t => {
 });
 
 
-
 test('local variables expose definitions, read/write highlights, and safe rename edits', async t => {
 	const fixture = await projectFixture(t);
 	const returnOffset = fixture.mainText.lastIndexOf('total');
@@ -219,7 +218,14 @@ test('workspace symbols, CodeLens, and auto imports use the semantic index', asy
 	assert.equal(symbols.some(symbol => symbol.name === 'helper'), true);
 	const orphanSymbols = workspaceSymbols([fixture.snapshot], 'orphan');
 	assert.equal(orphanSymbols.some(symbol => symbol.name === 'orphanUtility'), true);
-	const lenses = codeLenses(fixture.snapshot, fixture.utility, defaultEditorInformationSettings);
+	const lenses = codeLenses(fixture.snapshot, fixture.utility, {
+		...defaultEditorInformationSettings,
+		codeLens: {
+			...defaultEditorInformationSettings.codeLens,
+			references: true,
+			callers: true,
+		},
+	});
 	assert.equal(lenses.some(lens => lens.command?.title.includes('references') === true), true);
 	assert.equal(lenses.some(lens => lens.command?.title.includes('callers') === true), true);
 	const completions = completionItems(fixture.consumer, fixture.consumer.source, fixture.consumerText.length - 1, fixture.snapshot);

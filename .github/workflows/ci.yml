@@ -49,7 +49,7 @@ jobs:
     continue-on-error: ${{ matrix.experimental }}
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v6
       - uses: actions/setup-node@v6
         with:
           node-version: ${{ matrix.node }}
@@ -65,7 +65,16 @@ jobs:
         run: npm run check
 
       - name: Run platform-independent unit and integration tests
-        run: npm run test:core:built
+        run: node scripts/run-tests.mjs --exclude-browser --failure-output-only
+
+      - name: Upload unit test failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: unit-test-failure-${{ matrix.os }}-node-${{ matrix.node }}
+          path: .cache/unit-test-failure.log
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Verify TypeScript binding corpus
         if: matrix.full
@@ -105,7 +114,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v6
       - uses: actions/setup-node@v6
         with:
           node-version: 24
@@ -123,7 +132,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v6
       - uses: actions/setup-node@v6
         with:
           node-version: 24
