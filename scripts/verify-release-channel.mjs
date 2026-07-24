@@ -17,11 +17,18 @@ for (const pkg of packages) {
 				throw new Error(`${pkg.name} depends on ${name}@${version}; expected ${root.version}`);
 			}
 		}
-}
+	}
 }
 const channel = root.version.includes('-nightly.') ? 'nightly' : root.version.includes('-') ? 'next' : 'stable';
 if (channel === 'stable') {
-	const gate = await readFile(resolve('docs/stable-release-gate.md'), 'utf8');
-	if (!gate.includes('Stable release gate')) throw new Error('Stable release gate document is missing');
+	const gateDocument = await readFile(resolve('docs/stable-release-gate.md'), 'utf8');
+	const gate = JSON.parse(await readFile(resolve('.github/stable-release-gate.json'), 'utf8'));
+	if (!gateDocument.includes('release-evidence.json')) throw new Error('Stable release gate evidence is not documented.');
+	if (gate.schemaVersion !== 1 || !Array.isArray(gate.checks) || !Array.isArray(gate.requirements)) throw new Error('Stable release gate policy is invalid.');
+	const required = ['public-abi', 'nightly-evidence', 'clean-install', 'node-browser-conformance'];
+	const configured = new Set(gate.requirements.map(item => item.id));
+	for (const id of required) if (!configured.has(id)) throw new Error(`Stable release gate requirement is missing: ${id}`);
 }
-console.log(`Verified ${packages.length} package versions for npm channel ${channel} (${root.version}).`);
+const releaseChannels = await readFile(resolve('docs/release-channels.md'), 'utf8');
+if (/npm distribution channels|npm tag/iu.test(releaseChannels)) throw new Error('Release channel documentation must describe GitHub Releases rather than npm Registry dist-tags.');
+console.log(`Verified ${packages.length} package versions for GitHub Release channel ${channel} (${root.version}).`);

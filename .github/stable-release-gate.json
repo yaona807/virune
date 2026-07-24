@@ -1,0 +1,37 @@
+{
+	"schemaVersion": 1,
+	"nightly": {
+		"workflow": "nightly.yml",
+		"branch": "main",
+		"maxAgeHours": 36
+	},
+	"checks": [
+		{
+			"id": "quality",
+			"command": ["npm", "run", "verify"]
+		},
+		{
+			"id": "release-artifacts",
+			"command": ["npm", "run", "verify:release"]
+		},
+		{
+			"id": "installed-vsix",
+			"command": ["xvfb-run", "-a", "npm", "run", "smoke:vscode-release"]
+		}
+	],
+	"requirements": [
+		{"id": "formatter", "evidence": ["quality"]},
+		{"id": "structured-concurrency", "evidence": ["quality"]},
+		{"id": "compiler-api", "evidence": ["quality"]},
+		{"id": "public-abi", "evidence": ["quality"]},
+		{"id": "specification", "evidence": ["quality"]},
+		{"id": "node-browser-conformance", "evidence": ["quality"]},
+		{"id": "ffi-boundaries", "evidence": ["quality"]},
+		{"id": "crash-fuzz", "evidence": ["quality"]},
+		{"id": "binding-corpus", "evidence": ["quality"]},
+		{"id": "clean-install", "evidence": ["release-artifacts"]},
+		{"id": "release-packages", "evidence": ["release-artifacts"]},
+		{"id": "installed-vsix", "evidence": ["installed-vsix"]},
+		{"id": "nightly-evidence", "evidence": ["nightly"]}
+	]
+}

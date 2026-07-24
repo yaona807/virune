@@ -1,23 +1,22 @@
-import { spawn } from 'node:child_process';
-import { access, mkdtemp, readFile, readdir, rm, writeFile, mkdir } from 'node:fs/promises';
-import { createServer } from 'node:net';
+import assert from 'node:assert/strict';
+import { createServer, type Server } from 'node:http';
+import { access, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { test } from 'node:test';
-import assert from 'node:assert/strict';
+import { chromium, firefox, webkit, type BrowserType } from 'playwright';
 import { buildProject } from '@virune/compiler/experimental';
 
 const repositoryRoot = resolve(import.meta.dirname, '../..');
+const engine = browserEngine(process.env.VIRUNE_BROWSER_ENGINE ?? 'chromium');
+const artifactDirectory = process.env.VIRUNE_BROWSER_ARTIFACT_DIR === undefined
+	? undefined
+	: resolve(process.env.VIRUNE_BROWSER_ARTIFACT_DIR);
 
-test('browser target executes emitted ESM in Chromium', { timeout: 90_000 }, async t => {
-	const browser = await findBrowser();
-	if (browser === undefined) {
-		if (process.env.CI === 'true' && process.platform === 'linux') assert.fail('Chromium or Chrome is required for browser conformance on Linux CI');
-		t.skip('Chromium or Chrome is not installed');
-		return;
-	}
-
-	const root = await mkdtemp(join(tmpdir(), 'virune-browser-'));
+test('browser target executes emitted ESM in Chromium', { timeout: 120_000 }, async () => {
+	const root = await mkdtemp(join(tmpdir(), `virune-${engine.name()}-`));
+	const browserLogs: string[] = [];
+	let server: Server | undefined;
 	try {
 		await mkdir(join(root, 'src'), { recursive: true });
 		await writeFile(join(root, 'virune.json'), JSON.stringify({
@@ -34,22 +33,96 @@ pub fn verify() -> Result<String, JsError> uses Dom {
 
 		const imports = await browserImportMap(root);
 		const html = `<!doctype html><html><head><meta charset="utf-8"><script type="importmap">${JSON.stringify({ imports })}</script></head><body><div id="status">pending</div></body></html>`;
-		const browserResult = await executeInBrowser(
-			browser,
-			html,
-			'virune_app_main',
-			join(root, 'chromium-profile'),
-		);
-		assert.deepEqual(browserResult, { result: '6f6b', status: 'Virune browser', timeout: 'Err:true', parallel: true });
+		const started = await serveHtml(html);
+		server = started.server;
+		const launchOptions = await browserLaunchOptions(engine.name());
+		const browser = await engine.launch(launchOptions);
+		const context = await browser.newContext();
+		if (artifactDirectory !== undefined) {
+			await mkdir(artifactDirectory, { recursive: true });
+			await context.tracing.start({ screenshots: true, snapshots: true, sources: true });
+		}
+		const page = await context.newPage();
+		page.on('console', message => browserLogs.push(`[console:${message.type()}] ${message.text()}`));
+		page.on('pageerror', error => browserLogs.push(`[pageerror] ${error.stack ?? error.message}`));
+		try {
+			await page.goto(started.url, { waitUntil: 'load' });
+			const browserResult = await page.evaluate(async () => {
+				const applicationSpecifier = 'virune_app_main';
+				const module = await import(applicationSpecifier);
+				const runtime = await import('@virune/runtime/v2/index.js');
+				const storage = await import('@virune/stdlib/browser/storage');
+				const result = module.verify();
+				storage.clear();
+				storage.set('virune', 'browser');
+				const stored = storage.get('virune');
+				let timeoutSettled = false;
+				const timeoutResult = await runtime.taskTimeout(runtime.rootTaskContext(), runtime.durationMilliseconds(1), async context => {
+					try { await runtime.sleep(context, runtime.durationMilliseconds(100)); }
+					finally { timeoutSettled = true; }
+				});
+				let siblingSettled = false;
+				try {
+					await runtime.mapParallel(runtime.rootTaskContext(), [0, 1], 2, async (value, _index, context) => {
+						if (value === 0) { await runtime.sleep(context, runtime.durationMilliseconds(1)); throw new Error('failed'); }
+						try { await runtime.sleep(context, runtime.durationMilliseconds(100)); }
+						finally { siblingSettled = true; }
+					});
+				} catch {}
+				return {
+					result: result.$tag === 'Ok' ? result.$values[0] : 'error',
+					status: document.querySelector('#status')?.textContent ?? '',
+					stored: stored.$tag === 'Some' ? stored.$values[0] : 'missing',
+					timeout: timeoutResult.$tag + ':' + String(timeoutSettled),
+					parallel: siblingSettled,
+				};
+			});
+			assert.deepEqual(browserResult, { result: '6f6b', status: 'Virune browser', stored: 'browser', timeout: 'Err:true', parallel: true });
+			await persistBrowserReport(engine.name(), { browserResult, logs: browserLogs, version: browser.version() });
+		} finally {
+			if (artifactDirectory !== undefined) await context.tracing.stop({ path: join(artifactDirectory, `${engine.name()}-trace.zip`) });
+			await context.close();
+			await browser.close();
+		}
+	} catch (error) {
+		await persistBrowserReport(engine.name(), { error: error instanceof Error ? { name: error.name, message: error.message, stack: error.stack } : String(error), logs: browserLogs });
+		throw error;
 	} finally {
-		await removeTemporaryDirectory(root);
+		await new Promise<void>(resolveClose => server?.close(() => resolveClose()) ?? resolveClose());
+		await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 250 });
 	}
 });
 
-test('extracts the DevTools port from Chromium stderr when the active port file is unavailable', () => {
-	const stderr = 'DevTools listening on ws://127.0.0.1:45067/devtools/browser/example-id\n';
-	assert.equal(devToolsPortFromStderr(stderr), 45067);
-});
+function browserEngine(name: string): BrowserType {
+	if (name === 'chromium') return chromium;
+	if (name === 'firefox') return firefox;
+	if (name === 'webkit') return webkit;
+	throw new Error(`Unsupported browser engine: ${name}`);
+}
+
+async function browserLaunchOptions(name: string): Promise<{ executablePath?: string; args?: string[] }> {
+	if (name !== 'chromium' || process.env.VIRUNE_PLAYWRIGHT_MANAGED === 'true') return {};
+	const candidates = ['/usr/bin/chromium', '/usr/bin/chromium-browser', '/usr/bin/google-chrome', '/usr/bin/google-chrome-stable'];
+	for (const candidate of candidates) {
+		try { await access(candidate); return { executablePath: candidate, args: ['--no-sandbox', '--disable-dev-shm-usage'] }; }
+		catch {}
+	}
+	throw new Error('A system Chromium executable is required unless VIRUNE_PLAYWRIGHT_MANAGED=true.');
+}
+
+async function serveHtml(html: string): Promise<{ server: Server; url: string }> {
+	const server = createServer((_request, response) => {
+		response.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
+		response.end(html);
+	});
+	await new Promise<void>((resolveListen, reject) => {
+		server.once('error', reject);
+		server.listen(0, '127.0.0.1', () => resolveListen());
+	});
+	const address = server.address();
+	if (address === null || typeof address === 'string') throw new Error('Browser test server did not expose a TCP port.');
+	return { server, url: `http://127.0.0.1:${address.port}/` };
+}
 
 async function browserImportMap(projectRoot: string): Promise<Record<string, string>> {
 	const imports: Record<string, string> = {};
@@ -67,299 +140,10 @@ async function browserImportMap(projectRoot: string): Promise<Record<string, str
 	return imports;
 }
 
+async function persistBrowserReport(name: string, report: unknown): Promise<void> {
+	if (artifactDirectory === undefined) return;
+	await mkdir(artifactDirectory, { recursive: true });
+	await writeFile(join(artifactDirectory, `${name}-report.json`), `${JSON.stringify(report, null, '\t')}\n`, 'utf8');
+}
+
 function dataUrl(type: string, value: string): string { return `data:${type};base64,${Buffer.from(value).toString('base64')}`; }
-
-async function findBrowser(): Promise<string | undefined> {
-	const explicit = process.env.VIRUNE_BROWSER_EXECUTABLE;
-	const candidates = [
-		explicit,
-		'/usr/bin/chromium', '/usr/bin/chromium-browser', '/usr/bin/google-chrome', '/usr/bin/google-chrome-stable',
-		'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', '/Applications/Chromium.app/Contents/MacOS/Chromium',
-		process.env.PROGRAMFILES === undefined ? undefined : join(process.env.PROGRAMFILES, 'Google/Chrome/Application/chrome.exe'),
-		process.env['PROGRAMFILES(X86)'] === undefined ? undefined : join(process.env['PROGRAMFILES(X86)'], 'Google/Chrome/Application/chrome.exe'),
-	].filter((value): value is string => value !== undefined && value.length > 0);
-	for (const candidate of candidates) {
-		try { await access(candidate); return candidate; } catch {}
-	}
-	for (const name of ['chromium', 'chromium-browser', 'google-chrome', 'google-chrome-stable']) {
-		const resolved = await run(process.platform === 'win32' ? 'where' : 'which', [name]).catch(() => undefined);
-		const path = resolved?.stdout.trim().split(/\r?\n/u)[0];
-		if (resolved?.code === 0 && path) return path;
-	}
-	return undefined;
-}
-
-async function executeInBrowser(executable: string, html: string, moduleUrl: string, profile: string): Promise<{ readonly result: string; readonly status: string; readonly timeout: string; readonly parallel: boolean }> {
-	const useExplicitPort = process.platform === 'win32' || process.env.VIRUNE_BROWSER_DEBUG_PORT_MODE === 'explicit';
-	const requestedPort = useExplicitPort ? await availableLoopbackPort() : 0;
-	const child = spawn(executable, [
-		'--headless', '--disable-gpu', '--no-sandbox', '--disable-dev-shm-usage', '--no-first-run', '--no-proxy-server', '--allow-file-access-from-files',
-		'--remote-debugging-address=127.0.0.1', `--remote-debugging-port=${requestedPort}`, `--user-data-dir=${profile}`, 'about:blank',
-	], { stdio: ['ignore', 'ignore', 'pipe'] });
-	let stderr = '';
-	child.stderr.setEncoding('utf8'); child.stderr.on('data', chunk => { stderr += chunk; });
-	try {
-		const port = await waitForDevToolsPort(profile, requestedPort, child, () => stderr);
-		const target = await waitForTarget(port, child, () => stderr);
-		const client = await CdpClient.connect(target.webSocketDebuggerUrl);
-		try {
-			await client.call('Page.enable');
-			await client.call('Runtime.enable');
-			const frameTree = await client.call('Page.getFrameTree') as { frameTree: { frame: { id: string } } };
-			await client.call('Page.setDocumentContent', { frameId: frameTree.frameTree.frame.id, html });
-			const evaluation = await client.call('Runtime.evaluate', {
-				expression: `(async () => {
-					const module = await import(${JSON.stringify(moduleUrl)});
-					const runtime = await import('@virune/runtime/v2/index.js');
-					const result = module.verify();
-					let timeoutSettled = false;
-					const timeoutResult = await runtime.taskTimeout(runtime.rootTaskContext(), runtime.durationMilliseconds(1), async context => {
-						try { await runtime.sleep(context, runtime.durationMilliseconds(100)); }
-						finally { timeoutSettled = true; }
-					});
-					let siblingSettled = false;
-					try {
-						await runtime.mapParallel(runtime.rootTaskContext(), [0, 1], 2, async (value, _index, context) => {
-							if (value === 0) { await runtime.sleep(context, runtime.durationMilliseconds(1)); throw new Error('failed'); }
-							try { await runtime.sleep(context, runtime.durationMilliseconds(100)); }
-							finally { siblingSettled = true; }
-						});
-					} catch {}
-					return {
-						result: result.$tag === 'Ok' ? result.$values[0] : 'error',
-						status: document.querySelector('#status')?.textContent ?? '',
-						timeout: timeoutResult.$tag + ':' + String(timeoutSettled),
-						parallel: siblingSettled,
-					};
-				})()`,
-				awaitPromise: true,
-				returnByValue: true,
-			});
-			const typed = evaluation as { result?: { value?: { result?: string; status?: string; timeout?: string; parallel?: boolean }; description?: string }; exceptionDetails?: { text?: string; exception?: { description?: string } } };
-			if (typed.exceptionDetails !== undefined) throw new Error(typed.exceptionDetails.exception?.description ?? typed.exceptionDetails.text ?? 'Browser evaluation failed');
-			const value = typed.result?.value;
-			if (value === undefined) throw new Error(`Browser returned no result: ${typed.result?.description ?? 'unknown'}\n${stderr}`);
-			return { result: value.result ?? '', status: value.status ?? '', timeout: value.timeout ?? '', parallel: value.parallel ?? false };
-		} finally {
-			await closeBrowserThroughDevTools(client);
-			client.close();
-		}
-	} finally {
-		await stopBrowserProcess(child);
-	}
-}
-
-
-async function closeBrowserThroughDevTools(client: CdpClient): Promise<void> {
-	await settleWithin(client.call('Browser.close'), 2_000);
-}
-
-function settleWithin(promise: Promise<unknown>, timeout: number): Promise<void> {
-	return new Promise(resolvePromise => {
-		let settled = false;
-		const finish = (): void => {
-			if (settled) return;
-			settled = true;
-			clearTimeout(timer);
-			resolvePromise();
-		};
-		const timer = setTimeout(finish, timeout);
-		void promise.then(finish, finish);
-	});
-}
-
-async function stopBrowserProcess(child: ReturnType<typeof spawn>): Promise<void> {
-	if (child.exitCode !== null || child.signalCode !== null) return;
-	if (process.platform === 'win32' && child.pid !== undefined) {
-		await terminateWindowsProcessTree(child.pid);
-		await waitForProcessExit(child, 10_000);
-		return;
-	}
-	child.kill('SIGTERM');
-	if (await waitForProcessExit(child, 5_000)) return;
-	child.kill('SIGKILL');
-	await waitForProcessExit(child, 5_000);
-}
-
-async function terminateWindowsProcessTree(pid: number): Promise<void> {
-	await new Promise<void>(resolvePromise => {
-		const killer = spawn('taskkill', ['/pid', String(pid), '/t', '/f'], {
-			stdio: 'ignore',
-			windowsHide: true,
-		});
-		killer.once('error', () => { resolvePromise(); });
-		killer.once('exit', () => { resolvePromise(); });
-	});
-}
-
-function waitForProcessExit(child: ReturnType<typeof spawn>, timeout: number): Promise<boolean> {
-	if (child.exitCode !== null || child.signalCode !== null) return Promise.resolve(true);
-	return new Promise(resolvePromise => {
-		const finish = (exited: boolean): void => {
-			clearTimeout(timer);
-			child.off('exit', onExit);
-			resolvePromise(exited);
-		};
-		const onExit = (): void => { finish(true); };
-		const timer = setTimeout(() => { finish(false); }, timeout);
-		child.once('exit', onExit);
-		if (child.exitCode !== null || child.signalCode !== null) finish(true);
-	});
-}
-
-async function removeTemporaryDirectory(path: string): Promise<void> {
-	try {
-		await rm(path, {
-			recursive: true,
-			force: true,
-			maxRetries: process.platform === 'win32' ? 20 : 5,
-			retryDelay: 250,
-		});
-	} catch (error) {
-		if (!isTransientCleanupError(error)) throw error;
-		process.emitWarning(`Unable to remove browser test directory after retries: ${path}\n${String(error)}`);
-	}
-}
-
-function isTransientCleanupError(error: unknown): boolean {
-	if (!(error instanceof Error) || !('code' in error)) return false;
-	return ['EBUSY', 'ENOTEMPTY', 'EPERM'].includes(String((error as NodeJS.ErrnoException).code));
-}
-
-async function waitForDevToolsPort(
-	profile: string,
-	requestedPort: number,
-	child: ReturnType<typeof spawn>,
-	readStderr: () => string,
-): Promise<number> {
-	const activePortFile = join(profile, 'DevToolsActivePort');
-	const deadline = Date.now() + 30_000;
-	while (Date.now() < deadline) {
-		const stderr = readStderr();
-		throwIfBrowserExited(child, stderr);
-
-		if (requestedPort > 0 && await devToolsEndpointReady(requestedPort)) return requestedPort;
-
-		try {
-			const [portText] = (await readFile(activePortFile, 'utf8')).split(/\r?\n/u);
-			const port = Number(portText);
-			if (Number.isInteger(port) && port > 0) return port;
-		} catch {}
-
-		const stderrPort = devToolsPortFromStderr(stderr);
-		if (stderrPort !== undefined) return stderrPort;
-
-		await delay(100);
-	}
-	const requestedPortDetails = requestedPort > 0 ? ` (requested port ${requestedPort})` : '';
-	throw new Error(`Chromium did not expose a DevTools endpoint within 30 seconds${requestedPortDetails}\n${readStderr()}`);
-}
-
-async function devToolsEndpointReady(port: number): Promise<boolean> {
-	try {
-		const response = await fetch(`http://127.0.0.1:${port}/json/version`, { signal: AbortSignal.timeout(500) });
-		return response.ok;
-	} catch {
-		return false;
-	}
-}
-
-function availableLoopbackPort(): Promise<number> {
-	return new Promise((resolvePromise, reject) => {
-		const server = createServer();
-		server.unref();
-		server.once('error', reject);
-		server.listen({ host: '127.0.0.1', port: 0, exclusive: true }, () => {
-			const address = server.address();
-			if (address === null || typeof address === 'string') {
-				server.close(() => { reject(new Error('Unable to reserve a loopback port for Chromium DevTools')); });
-				return;
-			}
-			const port = address.port;
-			server.close(error => {
-				if (error !== undefined) reject(error);
-				else resolvePromise(port);
-			});
-		});
-	});
-}
-
-function devToolsPortFromStderr(stderr: string): number | undefined {
-	const match = /DevTools listening on (ws:\/\/\S+)/u.exec(stderr);
-	if (match?.[1] === undefined) return undefined;
-	try {
-		const port = Number(new URL(match[1]).port);
-		return Number.isInteger(port) && port > 0 ? port : undefined;
-	} catch {
-		return undefined;
-	}
-}
-
-async function waitForTarget(
-	port: number,
-	child: ReturnType<typeof spawn>,
-	readStderr: () => string,
-): Promise<{ readonly webSocketDebuggerUrl: string }> {
-	const deadline = Date.now() + 15_000;
-	while (Date.now() < deadline) {
-		throwIfBrowserExited(child, readStderr());
-		try {
-			const response = await fetch(`http://127.0.0.1:${port}/json/list`);
-			if (response.ok) {
-				const targets = await response.json() as readonly { readonly type: string; readonly webSocketDebuggerUrl: string }[];
-				const page = targets.find(target => target.type === 'page');
-				if (page !== undefined) return page;
-			}
-		} catch {}
-		await delay(100);
-	}
-	throw new Error(`Chromium DevTools page target did not become ready within 15 seconds\n${readStderr()}`);
-}
-
-function throwIfBrowserExited(child: ReturnType<typeof spawn>, stderr: string): void {
-	if (child.exitCode === null && child.signalCode === null) return;
-	throw new Error(`Chromium exited before DevTools became ready (exit=${String(child.exitCode)}, signal=${String(child.signalCode)})\n${stderr}`);
-}
-
-class CdpClient {
-	readonly #socket: WebSocket;
-	readonly #pending = new Map<number, { resolve(value: unknown): void; reject(error: Error): void }>();
-	#nextId = 1;
-	private constructor(socket: WebSocket) {
-		this.#socket = socket;
-		socket.addEventListener('message', event => {
-			const message = JSON.parse(String(event.data)) as { id?: number; result?: unknown; error?: { message: string } };
-			if (message.id === undefined) return;
-			const pending = this.#pending.get(message.id); if (pending === undefined) return;
-			this.#pending.delete(message.id);
-			if (message.error !== undefined) pending.reject(new Error(message.error.message)); else pending.resolve(message.result);
-		});
-	}
-	public static connect(url: string): Promise<CdpClient> {
-		return new Promise((resolvePromise, reject) => {
-			const socket = new WebSocket(url);
-			socket.addEventListener('open', () => resolvePromise(new CdpClient(socket)), { once: true });
-			socket.addEventListener('error', () => reject(new Error('Failed to connect to Chromium DevTools')), { once: true });
-		});
-	}
-	public call(method: string, params: Readonly<Record<string, unknown>> = {}): Promise<unknown> {
-		const id = this.#nextId++;
-		return new Promise((resolvePromise, reject) => {
-			this.#pending.set(id, { resolve: resolvePromise, reject });
-			this.#socket.send(JSON.stringify({ id, method, params }));
-		});
-	}
-	public close(): void { this.#socket.close(); }
-}
-
-const delay = (milliseconds: number): Promise<void> => new Promise(resolvePromise => setTimeout(resolvePromise, milliseconds));
-
-function run(command: string, args: readonly string[]): Promise<{ readonly code: number; readonly stdout: string; readonly stderr: string }> {
-	return new Promise((resolvePromise, reject) => {
-		const child = spawn(command, args, { stdio: ['ignore', 'pipe', 'pipe'] });
-		let stdout = ''; let stderr = '';
-		child.stdout.setEncoding('utf8'); child.stderr.setEncoding('utf8');
-		child.stdout.on('data', chunk => { stdout += chunk; }); child.stderr.on('data', chunk => { stderr += chunk; });
-		child.once('error', reject); child.once('exit', code => resolvePromise({ code: code ?? 1, stdout, stderr }));
-	});
-}
