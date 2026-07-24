@@ -24,7 +24,7 @@ jobs:
       - name: Extract implementation
         shell: bash
         run: |
-          base64 --decode .github/patches/browser-vsix.b64 > /tmp/browser-vsix.tar.gz
+          cat .github/patches/browser-vsix.* | base64 --decode > /tmp/browser-vsix.tar.gz
           gzip --test /tmp/browser-vsix.tar.gz
           tar -xzf /tmp/browser-vsix.tar.gz
       - name: Update locked dependencies
