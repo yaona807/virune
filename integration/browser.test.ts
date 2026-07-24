@@ -13,7 +13,7 @@ const artifactDirectory = process.env.VIRUNE_BROWSER_ARTIFACT_DIR === undefined
 	? undefined
 	: resolve(process.env.VIRUNE_BROWSER_ARTIFACT_DIR);
 
-test(`browser target executes emitted ESM in ${engine.name()}`, { timeout: 120_000 }, async () => {
+test('browser target executes emitted ESM in Chromium', { timeout: 120_000 }, async () => {
 	const root = await mkdtemp(join(tmpdir(), `virune-${engine.name()}-`));
 	const browserLogs: string[] = [];
 	let server: Server | undefined;
