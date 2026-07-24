@@ -70,7 +70,7 @@ export class CachedTypeScriptInteropProvider implements JsInteropProvider {
 		const provider = this.#provider;
 		this.#provider = undefined;
 		this.#cache.clear();
-		provider?.dispose();
+		provider?.dispose?.();
 	}
 
 	public get cachedImportCount(): number {
