@@ -1,9 +1,9 @@
 name: Apply release hardening patch
 
 on:
-  push:
+  pull_request:
     branches:
-      - agent/stable-release-hardening
+      - main
 
 permissions:
   contents: write
