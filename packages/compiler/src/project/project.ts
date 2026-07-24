@@ -254,8 +254,7 @@ export async function buildProject(
 		const dependencySignature = contentHash((dependenciesByPath.get(path) ?? []).map(dependency => `${dependency}:${interfaceHashes.get(dependency) ?? ''}`).sort().join('|'));
 		const buildFingerprint = contentHash(`${sourceHashes.get(path) ?? ''}|${dependencySignature}|${configFingerprint}`);
 		const cached = cache?.get(path);
-		const hasJavaScriptImports = parsed.ast?.imports.some(item => item.sourceKind === 'javascript') === true;
-		if (cached?.buildFingerprint === buildFingerprint && !hasJavaScriptImports) {
+		if (cached?.buildFingerprint === buildFingerprint) {
 			builtByPath.set(path, cached.built);
 			mutableStats.reusedCheckedModules++;
 			if (cached.built.output !== undefined) {
