@@ -17,5 +17,18 @@ jobs:
           show-progress: false
       - name: Install dependencies quietly
         run: npm ci --silent >/dev/null
-      - name: Print type-check errors
-        run: npm run check --silent
+      - name: Capture type-check errors
+        run: |
+          set +e
+          npm run check --silent > typecheck.log 2>&1
+          echo "$?" > typecheck.status
+          exit 0
+      - name: Upload type-check errors
+        uses: actions/upload-artifact@v7
+        with:
+          name: typecheck-errors
+          path: |
+            typecheck.log
+            typecheck.status
+      - name: Fail when type-checking failed
+        run: exit "$(cat typecheck.status)"
