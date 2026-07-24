@@ -1,0 +1,42 @@
+name: Fix TypeScript language service host
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.event.pull_request.head.ref == 'agent/ts-language-service-reuse'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+      - name: Add virtual files to host filesystem overlay
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('packages/js-interop/src/index.ts')
+          text = path.read_text()
+          old = """\t\t\tgetDefaultLibFileName: options => ts.getDefaultLibFilePath(options),
+          \t\t\tfileExists: ts.sys.fileExists,
+          \t\t\treadFile: ts.sys.readFile,
+          \t\t\treadDirectory: ts.sys.readDirectory,"""
+          new = """\t\t\tgetDefaultLibFileName: options => ts.getDefaultLibFilePath(options),
+          \t\t\tfileExists: fileName => virtualFiles.has(canonicalFilePath(fileName)) || ts.sys.fileExists(fileName),
+          \t\t\treadFile: fileName => virtualFiles.get(canonicalFilePath(fileName))?.text ?? ts.sys.readFile(fileName),
+          \t\t\treadDirectory: ts.sys.readDirectory,"""
+          if old not in text:
+              raise SystemExit('Language service filesystem host block not found')
+          path.write_text(text.replace(old, new, 1))
+          PY
+          git rm .github/workflows/fix-language-service-host.yml
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add packages/js-interop/src/index.ts
+          git commit -m "fix(interop): expose virtual probes to TypeScript host"
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}
