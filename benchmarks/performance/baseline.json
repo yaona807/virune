@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "environment": {
+    "runner": "ubuntu-24.04",
+    "node": "24"
+  },
+  "lsp": {
+    "thresholds": {
+      "relativeMultiplier": 1.5,
+      "initialAbsoluteIncreaseMs": 100,
+      "editedAbsoluteIncreaseMs": 20
+    },
+    "modules": [
+      {
+        "modules": 100,
+        "initialCompletionMs": 52.35,
+        "editedCompletionMs": 2.53
+      },
+      {
+        "modules": 500,
+        "initialCompletionMs": 194.93,
+        "editedCompletionMs": 2.03
+      },
+      {
+        "modules": 1000,
+        "initialCompletionMs": 373.94,
+        "editedCompletionMs": 8.75
+      }
+    ]
+  },
+  "interop": {
+    "maxDriftBytes": 33554432,
+    "expectedCacheEntriesBeforeDispose": 1,
+    "expectedCacheEntriesAfterDispose": 0
+  }
+}

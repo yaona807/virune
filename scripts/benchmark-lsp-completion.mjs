@@ -7,11 +7,52 @@ import { ProjectManager } from '../packages/language-server/dist/src/analysis/pr
 import { filePathToUri } from '../packages/language-server/dist/src/analysis/position.js';
 import { collectWorkspaceExports } from '../packages/language-server/dist/src/features/auto-import.js';
 import { completionItems } from '../packages/language-server/dist/src/features/completion.js';
+import {
+	median,
+	parseCliArguments,
+	positiveIntegerOption,
+	writeJsonFile,
+} from './performance-benchmark-utils.mjs';
 
+const options = parseCliArguments(process.argv.slice(2));
+const runs = positiveIntegerOption(options, 'runs', 1);
+const outputPath = options.get('output');
 const moduleCounts = [100, 500, 1_000];
 const report = [];
 
 for (const moduleCount of moduleCounts) {
+	const samples = [];
+	for (let run = 0; run < runs; run++) samples.push(await benchmarkCompletion(moduleCount));
+	report.push({
+		modules: moduleCount,
+		runs,
+		initialCompletionMs: median(samples.map(sample => sample.initialCompletionMs)),
+		editedCompletionMs: median(samples.map(sample => sample.editedCompletionMs)),
+		samples,
+	});
+}
+
+const result = {
+	schemaVersion: 1,
+	generatedAt: new Date().toISOString(),
+	environment: {
+		node: process.version,
+		platform: process.platform,
+		arch: process.arch,
+	},
+	runs,
+	report,
+};
+
+console.table(report.map(({ modules, initialCompletionMs, editedCompletionMs }) => ({
+	modules,
+	initialCompletionMs,
+	editedCompletionMs,
+})));
+console.log(JSON.stringify(result, null, 2));
+if (outputPath !== undefined) await writeJsonFile(outputPath, result);
+
+async function benchmarkCompletion(moduleCount) {
 	const root = await mkdtemp(join(tmpdir(), `virune-lsp-completion-${moduleCount}-`));
 	try {
 		const sourceDirectory = join(root, 'src');
@@ -47,7 +88,7 @@ for (const moduleCount of moduleCounts) {
 		if (module === undefined) throw new Error('LSP benchmark main module missing');
 		const exports = collectWorkspaceExports(workspace.modulesByPath);
 		completionItems(module, module.source, mainText.lastIndexOf('val') + 3, exports);
-		const coldMs = performance.now() - coldStart;
+		const initialCompletionMs = performance.now() - coldStart;
 
 		document = TextDocument.create(document.uri, 'virune', 2, mainText.replace('val', 'valu'));
 		const editStart = performance.now();
@@ -56,13 +97,10 @@ for (const moduleCount of moduleCounts) {
 		const editedModule = edited.modulesByPath.get(mainPath);
 		if (editedModule === undefined) throw new Error('LSP benchmark edited module missing');
 		completionItems(editedModule, editedModule.source, editedModule.source.text.lastIndexOf('valu') + 4, exports);
-		const editedMs = performance.now() - editStart;
+		const editedCompletionMs = performance.now() - editStart;
 
-		report.push({ modules: moduleCount, initialCompletionMs: coldMs, editedCompletionMs: editedMs });
+		return { initialCompletionMs, editedCompletionMs };
 	} finally {
 		await rm(root, { recursive: true, force: true });
 	}
 }
-
-console.table(report);
-console.log(JSON.stringify({ generatedAt: new Date().toISOString(), report }, null, 2));
