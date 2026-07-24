@@ -13,18 +13,18 @@
     "modules": [
       {
         "modules": 100,
-        "initialCompletionMs": 62.1,
-        "editedCompletionMs": 1.14
+        "initialCompletionMs": 52.35,
+        "editedCompletionMs": 2.53
       },
       {
         "modules": 500,
-        "initialCompletionMs": 147.57,
-        "editedCompletionMs": 8.93
+        "initialCompletionMs": 194.93,
+        "editedCompletionMs": 2.03
       },
       {
         "modules": 1000,
-        "initialCompletionMs": 258.46,
-        "editedCompletionMs": 3.18
+        "initialCompletionMs": 373.94,
+        "editedCompletionMs": 8.75
       }
     ]
   },
