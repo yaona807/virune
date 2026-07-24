@@ -264,7 +264,12 @@ type __ViruneAlias = __ViruneType;`
 	private probeWorkspace(platform: JsImportRequest['platform']): ProbeWorkspace {
 		const existing = this.#workspaces.get(platform);
 		if (existing !== undefined) return existing;
-		const compilerOptions: ts.CompilerOptions = { ...this.#compilerOptions, types: platform === 'node' ? ['node'] : [] };
+		const typeRoots = platform === 'node' ? nodeTypeRoots(this.#compilerOptions.typeRoots) : this.#compilerOptions.typeRoots;
+		const compilerOptions: ts.CompilerOptions = {
+			...this.#compilerOptions,
+			types: platform === 'node' ? ['node'] : [],
+			...(typeRoots === undefined ? {} : { typeRoots }),
+		};
 		const virtualFiles = new Map<string, VirtualProbeFile>();
 		let workspace!: ProbeWorkspace;
 		const host: ts.LanguageServiceHost = {
@@ -368,6 +373,15 @@ function safeTsName(value: string): string {
 
 function hash(value: string | NodeJS.ArrayBufferView): string {
 	return createHash('sha256').update(value).digest('hex');
+}
+
+function nodeTypeRoots(configured: readonly string[] | undefined): readonly string[] | undefined {
+	const roots = new Set(configured ?? []);
+	try {
+		const packageJson = createRequire(import.meta.url).resolve('@types/node/package.json');
+		roots.add(dirname(dirname(packageJson)));
+	} catch { /* Node declarations may be supplied by the project instead. */ }
+	return roots.size === 0 ? undefined : [...roots];
 }
 
 function findPackageInfo(resolvedFile: string | undefined): { readonly name?: string; readonly version?: string; readonly packageJsonPath?: string; readonly type?: string } {
