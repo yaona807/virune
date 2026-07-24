@@ -7,6 +7,10 @@ import type { TextDocument } from 'vscode-languageserver-textdocument';
 import { filePathToUri, uriToFilePath } from './position.js';
 import { createProjectSemanticIndex, type ProjectSemanticIndex } from './semantic-index.js';
 
+export interface AnalysisCancellationToken {
+	readonly isCancellationRequested: boolean;
+}
+
 export interface DocumentAnalysisSnapshot {
 	readonly root: string;
 	readonly requestedPath: string;
@@ -19,9 +23,14 @@ export interface AnalysisSnapshot extends DocumentAnalysisSnapshot {
 	readonly index: ProjectSemanticIndex;
 }
 
+type ProjectBuilder = Pick<IncrementalProjectBuilder, 'build'>;
+type SemanticIndexFactory = typeof createProjectSemanticIndex;
+
 export interface ProjectManagerOptions {
 	readonly getOpenDocuments: () => readonly TextDocument[];
 	readonly workspaceFolders?: readonly string[];
+	readonly createBuilder?: () => ProjectBuilder;
+	readonly createSemanticIndex?: SemanticIndexFactory;
 }
 
 type AnalysisScope = 'document' | 'workspace';
@@ -42,9 +51,20 @@ interface CachedProject {
 	indexPromise?: Promise<ProjectSemanticIndex>;
 }
 
-interface PendingBuild {
+interface BuildRequest {
 	readonly key: string;
-	readonly promise: Promise<ProjectCore>;
+	readonly root: string;
+	readonly includeConfigEntry: boolean;
+	readonly additionalEntries: readonly string[];
+	readonly overlays: ReadonlyMap<string, string>;
+	readonly promise: Promise<ProjectCore | undefined>;
+	readonly resolve: (core: ProjectCore | undefined) => void;
+	readonly reject: (error: unknown) => void;
+}
+
+interface BuildLane {
+	running: BuildRequest | undefined;
+	queued: BuildRequest | undefined;
 }
 
 interface ResolvedAnalysis {
@@ -57,10 +77,12 @@ interface ResolvedAnalysis {
 export class ProjectManager {
 	readonly #getOpenDocuments: () => readonly TextDocument[];
 	readonly #workspaceFolders: readonly string[];
+	readonly #createBuilder: () => ProjectBuilder;
+	readonly #createSemanticIndex: SemanticIndexFactory;
 	readonly #cache = new Map<string, CachedProject>();
-	readonly #pendingBuilds = new Map<string, PendingBuild>();
-	readonly #builders = new Map<string, IncrementalProjectBuilder>();
-	readonly #buildTails = new Map<string, Promise<void>>();
+	readonly #builders = new Map<string, ProjectBuilder>();
+	readonly #buildLanes = new Map<string, BuildLane>();
+	readonly #latestBuildKeys = new Map<string, string>();
 	readonly #interopProviders = new Map<string, TypeScriptInteropProvider>();
 	readonly #workspaceEntries = new Map<string, readonly string[]>();
 	#revision = 0;
@@ -68,89 +90,101 @@ export class ProjectManager {
 	public constructor(options: ProjectManagerOptions) {
 		this.#getOpenDocuments = options.getOpenDocuments;
 		this.#workspaceFolders = (options.workspaceFolders ?? []).map(folder => resolve(folder));
+		this.#createBuilder = options.createBuilder ?? (() => new IncrementalProjectBuilder());
+		this.#createSemanticIndex = options.createSemanticIndex ?? createProjectSemanticIndex;
 	}
 
 	public invalidate(): void {
 		this.#revision++;
 		this.#cache.clear();
-		this.#pendingBuilds.clear();
+		this.#latestBuildKeys.clear();
 		this.#workspaceEntries.clear();
+		for (const lane of this.#buildLanes.values()) {
+			lane.queued?.resolve(undefined);
+			lane.queued = undefined;
+		}
 	}
 
 	/**
 	 * Analyze only the requested document, its imports, and open overlays. This path intentionally skips the project-wide semantic
 	 * index so latency-sensitive editor requests such as Hover remain responsive.
 	 */
-	public async analyzeDocument(uri: string): Promise<DocumentAnalysisSnapshot | undefined> {
-		const analysis = await this.#analyzeCore(uri, 'document');
-		return analysis === undefined ? undefined : this.#documentSnapshot(analysis);
+	public async analyzeDocument(uri: string, token?: AnalysisCancellationToken): Promise<DocumentAnalysisSnapshot | undefined> {
+		const analysis = await this.#analyzeCore(uri, 'document', token);
+		return analysis === undefined || isCancelled(token) ? undefined : this.#documentSnapshot(analysis);
 	}
 
 	/**
 	 * Analyze the requested document graph and create a focused semantic index.
 	 */
-	public async analyzeDocumentIndexed(uri: string): Promise<AnalysisSnapshot | undefined> {
-		return this.#analyzeIndexed(uri, 'document');
+	public async analyzeDocumentIndexed(uri: string, token?: AnalysisCancellationToken): Promise<AnalysisSnapshot | undefined> {
+		return this.#analyzeIndexed(uri, 'document', token);
 	}
 
 	/**
 	 * Analyze the complete workspace without constructing the project-wide semantic index.
 	 * Completion uses this path to build a lightweight public export catalog.
 	 */
-	public async analyzeWorkspaceDocument(uri: string): Promise<DocumentAnalysisSnapshot | undefined> {
-		const analysis = await this.#analyzeCore(uri, 'workspace');
-		return analysis === undefined ? undefined : this.#documentSnapshot(analysis);
+	public async analyzeWorkspaceDocument(uri: string, token?: AnalysisCancellationToken): Promise<DocumentAnalysisSnapshot | undefined> {
+		const analysis = await this.#analyzeCore(uri, 'workspace', token);
+		return analysis === undefined || isCancelled(token) ? undefined : this.#documentSnapshot(analysis);
 	}
 
 	/**
 	 * Analyze the complete workspace and create the project-wide semantic index.
 	 * Navigation, references, rename, CodeLens, and workspace symbols use this path.
 	 */
-	public async analyze(uri: string): Promise<AnalysisSnapshot | undefined> {
-		return this.#analyzeIndexed(uri, 'workspace');
+	public async analyze(uri: string, token?: AnalysisCancellationToken): Promise<AnalysisSnapshot | undefined> {
+		return this.#analyzeIndexed(uri, 'workspace', token);
 	}
 
-	public async analyzeWorkspace(): Promise<readonly AnalysisSnapshot[]> {
+	public async analyzeWorkspace(token?: AnalysisCancellationToken): Promise<readonly AnalysisSnapshot[]> {
 		const snapshots = new Map<string, AnalysisSnapshot>();
 		for (const folder of this.#workspaceFolders) {
+			if (isCancelled(token)) break;
 			const entry = await findViruneEntry(folder);
-			if (entry === undefined) continue;
-			const snapshot = await this.analyze(filePathToUri(entry));
+			if (entry === undefined || isCancelled(token)) continue;
+			const snapshot = await this.analyze(filePathToUri(entry), token);
 			if (snapshot !== undefined) snapshots.set(snapshot.root, snapshot);
 		}
 		for (const cached of this.#cache.values()) {
+			if (isCancelled(token)) break;
 			if (snapshots.has(cached.core.root)) continue;
 			const entry = cached.core.modulesByPath.keys().next().value as string | undefined;
 			if (entry === undefined) continue;
-			const snapshot = await this.analyze(filePathToUri(entry));
+			const snapshot = await this.analyze(filePathToUri(entry), token);
 			if (snapshot !== undefined) snapshots.set(snapshot.root, snapshot);
 		}
 		return [...snapshots.values()];
 	}
 
-	async #analyzeIndexed(uri: string, scope: AnalysisScope): Promise<AnalysisSnapshot | undefined> {
-		const analysis = await this.#analyzeCore(uri, scope);
-		if (analysis === undefined) return undefined;
+	async #analyzeIndexed(uri: string, scope: AnalysisScope, token?: AnalysisCancellationToken): Promise<AnalysisSnapshot | undefined> {
+		const analysis = await this.#analyzeCore(uri, scope, token);
+		if (analysis === undefined || isCancelled(token)) return undefined;
 		const cached = this.#cache.get(analysis.cacheId);
 		if (cached === undefined || cached.key !== analysis.cacheKey) return undefined;
 		const existing = cached.snapshots.get(analysis.requestedPath);
 		if (existing !== undefined) return existing;
-		const index = await this.#semanticIndex(analysis, cached);
+		const index = await this.#semanticIndex(analysis, cached, token);
+		if (index === undefined || isCancelled(token)) return undefined;
 		const snapshot = { ...this.#documentSnapshot(analysis), index } satisfies AnalysisSnapshot;
 		cached.snapshots.set(analysis.requestedPath, snapshot);
 		return snapshot;
 	}
 
-	async #analyzeCore(uri: string, scope: AnalysisScope): Promise<ResolvedAnalysis | undefined> {
+	async #analyzeCore(uri: string, scope: AnalysisScope, token?: AnalysisCancellationToken): Promise<ResolvedAnalysis | undefined> {
+		if (isCancelled(token)) return undefined;
 		const requestedPath = uriToFilePath(uri);
 		if (requestedPath === undefined) return undefined;
 		const normalizedPath = resolve(requestedPath);
 		const { root, hasConfig } = await this.#findProjectRoot(normalizedPath);
+		if (isCancelled(token)) return undefined;
 		const openDocuments = this.#getOpenDocuments();
 		const overlays = new Map<string, string>();
 		const additionalEntries = new Set<string>([normalizedPath]);
 		if (scope === 'workspace' && (hasConfig || this.#workspaceFolders.includes(root))) {
 			for (const entry of await this.#projectEntries(root)) additionalEntries.add(entry);
+			if (isCancelled(token)) return undefined;
 		}
 		const documentVersions: string[] = [];
 		for (const document of openDocuments) {
@@ -166,50 +200,85 @@ export class ProjectManager {
 		const cacheKey = `${hasConfig ? 'config' : 'standalone'}|${[...additionalEntries].sort().join('|')}|${documentVersions.sort().join('|')}`;
 		const cached = this.#cache.get(cacheId);
 		if (cached?.key === cacheKey) return { cacheId, cacheKey, requestedPath: normalizedPath, core: cached.core };
-		const pending = this.#pendingBuilds.get(cacheId);
-		if (pending?.key === cacheKey) {
-			const core = await pending.promise;
-			return { cacheId, cacheKey, requestedPath: normalizedPath, core };
-		}
+		if (isCancelled(token)) return undefined;
 
 		const revision = this.#revision;
-		const promise = this.#buildCore(cacheId, root, scope === 'workspace' && hasConfig, additionalEntries, overlays);
-		this.#pendingBuilds.set(cacheId, { key: cacheKey, promise });
-		try {
-			const core = await promise;
-			const current = this.#pendingBuilds.get(cacheId);
-			if (this.#revision === revision && current?.key === cacheKey) {
-				this.#cache.set(cacheId, {
-					key: cacheKey,
-					core,
-					documentSnapshots: new Map(),
-					snapshots: new Map(),
-				});
-			}
-			return { cacheId, cacheKey, requestedPath: normalizedPath, core };
-		} finally {
-			if (this.#pendingBuilds.get(cacheId)?.key === cacheKey) this.#pendingBuilds.delete(cacheId);
+		const core = await this.#scheduleBuild(cacheId, cacheKey, root, scope === 'workspace' && hasConfig, additionalEntries, overlays);
+		if (core === undefined || isCancelled(token) || this.#latestBuildKeys.get(cacheId) !== cacheKey) return undefined;
+		if (this.#revision === revision) {
+			this.#cache.set(cacheId, {
+				key: cacheKey,
+				core,
+				documentSnapshots: new Map(),
+				snapshots: new Map(),
+			});
 		}
+		return { cacheId, cacheKey, requestedPath: normalizedPath, core };
 	}
 
-	async #buildCore(
+	#scheduleBuild(
 		cacheId: string,
+		key: string,
 		root: string,
 		includeConfigEntry: boolean,
 		additionalEntries: ReadonlySet<string>,
 		overlays: ReadonlyMap<string, string>,
-	): Promise<ProjectCore> {
-		const previous = this.#buildTails.get(cacheId) ?? Promise.resolve();
-		const promise = previous.then(
-			() => this.#performBuild(cacheId, root, includeConfigEntry, additionalEntries, overlays),
-			() => this.#performBuild(cacheId, root, includeConfigEntry, additionalEntries, overlays),
-		);
-		const tail = promise.then(() => undefined, () => undefined);
-		this.#buildTails.set(cacheId, tail);
-		void tail.then(() => {
-			if (this.#buildTails.get(cacheId) === tail) this.#buildTails.delete(cacheId);
+	): Promise<ProjectCore | undefined> {
+		this.#latestBuildKeys.set(cacheId, key);
+		const lane = this.#buildLanes.get(cacheId) ?? { running: undefined, queued: undefined };
+		this.#buildLanes.set(cacheId, lane);
+		if (lane.running?.key === key) return lane.running.promise;
+		if (lane.queued?.key === key) return lane.queued.promise;
+
+		let resolveRequest!: (core: ProjectCore | undefined) => void;
+		let rejectRequest!: (error: unknown) => void;
+		const promise = new Promise<ProjectCore | undefined>((resolvePromise, rejectPromise) => {
+			resolveRequest = resolvePromise;
+			rejectRequest = rejectPromise;
 		});
+		const request: BuildRequest = {
+			key,
+			root,
+			includeConfigEntry,
+			additionalEntries: [...additionalEntries],
+			overlays: new Map(overlays),
+			promise,
+			resolve: resolveRequest,
+			reject: rejectRequest,
+		};
+		if (lane.running === undefined) {
+			lane.running = request;
+			void this.#runBuild(cacheId, lane, request);
+		} else {
+			lane.queued?.resolve(undefined);
+			lane.queued = request;
+		}
 		return promise;
+	}
+
+	async #runBuild(cacheId: string, lane: BuildLane, request: BuildRequest): Promise<void> {
+		try {
+			const core = await this.#performBuild(
+				cacheId,
+				request.root,
+				request.includeConfigEntry,
+				new Set(request.additionalEntries),
+				request.overlays,
+			);
+			request.resolve(core);
+		} catch (error) {
+			request.reject(error);
+		} finally {
+			if (lane.running === request) lane.running = undefined;
+			const next = lane.queued;
+			lane.queued = undefined;
+			if (next !== undefined) {
+				lane.running = next;
+				void this.#runBuild(cacheId, lane, next);
+			} else if (this.#buildLanes.get(cacheId) === lane) {
+				this.#buildLanes.delete(cacheId);
+			}
+		}
 	}
 
 	async #performBuild(
@@ -222,7 +291,7 @@ export class ProjectManager {
 		const host: ProjectHost = {
 			readFile: async path => overlays.get(resolve(path)) ?? readFile(path, 'utf8'),
 		};
-		const builder = this.#builders.get(cacheId) ?? new IncrementalProjectBuilder();
+		const builder = this.#builders.get(cacheId) ?? this.#createBuilder();
 		this.#builders.set(cacheId, builder);
 		const jsInteropProvider = this.#interopProviders.get(root) ?? new TypeScriptInteropProvider({ projectRoot: root });
 		this.#interopProviders.set(root, jsInteropProvider);
@@ -242,10 +311,18 @@ export class ProjectManager {
 		return { root, result, modulesByPath, sourcesById };
 	}
 
-	async #semanticIndex(analysis: ResolvedAnalysis, cached: CachedProject): Promise<ProjectSemanticIndex> {
+	async #semanticIndex(
+		analysis: ResolvedAnalysis,
+		cached: CachedProject,
+		token?: AnalysisCancellationToken,
+	): Promise<ProjectSemanticIndex | undefined> {
+		if (isCancelled(token)) return undefined;
 		if (cached.index !== undefined) return cached.index;
-		if (cached.indexPromise !== undefined) return cached.indexPromise;
-		const promise = createProjectSemanticIndex({
+		if (cached.indexPromise !== undefined) {
+			const index = await cached.indexPromise;
+			return isCancelled(token) ? undefined : index;
+		}
+		const promise = this.#createSemanticIndex({
 			root: analysis.core.root,
 			modulesByPath: analysis.core.modulesByPath,
 			sourcesById: analysis.core.sourcesById,
@@ -253,6 +330,7 @@ export class ProjectManager {
 		cached.indexPromise = promise;
 		try {
 			const index = await promise;
+			if (isCancelled(token)) return undefined;
 			const current = this.#cache.get(analysis.cacheId);
 			if (current?.key === analysis.cacheKey) {
 				current.index = index;
@@ -302,6 +380,10 @@ export class ProjectManager {
 			.sort((left, right) => right.length - left.length)[0];
 		return { root: workspace ?? dirname(path), hasConfig: false };
 	}
+}
+
+function isCancelled(token: AnalysisCancellationToken | undefined): boolean {
+	return token?.isCancellationRequested === true;
 }
 
 function createDocumentSnapshot(analysis: ResolvedAnalysis): DocumentAnalysisSnapshot {
