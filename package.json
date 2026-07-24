@@ -83,17 +83,21 @@
 		"abi:update": "node scripts/verify-public-abi.mjs --write",
 		"test:public-abi": "node --test scripts/verify-public-abi.test.mjs",
 		"release:gate": "node scripts/stable-release-gate.mjs",
-		"test:release-gate": "node --test scripts/stable-release-gate.test.mjs"
+		"test:release-gate": "node --test scripts/stable-release-gate.test.mjs",
+		"test:browser-conformance:built": "node --test --test-timeout=120000 integration/dist/browser.test.js",
+		"smoke:vscode-release": "node scripts/vsix-smoke.mjs"
 	},
 	"devDependencies": {
 		"@types/lodash": "4.17.24",
 		"@types/node": "^24.0.0",
+		"@vscode/test-electron": "3.0.0",
 		"@vscode/vsce": "3.9.2",
 		"axios": "1.18.1",
 		"date-fns": "4.4.0",
 		"esbuild": "0.28.1",
 		"lodash": "4.18.1",
 		"nanoid": "6.0.0",
+		"playwright": "1.61.1",
 		"rxjs": "7.8.2",
 		"typescript": "6.0.3",
 		"zod": "4.4.3"

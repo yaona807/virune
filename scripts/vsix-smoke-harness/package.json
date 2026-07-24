@@ -1,0 +1,11 @@
+{
+  "name": "virune-vsix-smoke-harness",
+  "displayName": "Virune VSIX Smoke Harness",
+  "version": "0.0.0",
+  "publisher": "virune-tests",
+  "private": true,
+  "engines": { "vscode": ">=1.100.0" },
+  "main": "./extension.cjs",
+  "activationEvents": ["*"],
+  "extensionKind": ["workspace"]
+}
