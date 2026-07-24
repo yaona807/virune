@@ -41,6 +41,8 @@ test('TypeScriptInteropProvider reuses one language service per project platform
 	assert.ok(resolveResolution.type);
 	assert.equal(services, 1);
 
+	// Disposing a generation must release both the shared service and every
+	// TypeScript type handle retained by that service.
 	provider.dispose();
 	assert.equal(disposals, 1);
 	assert.throws(() => provider.display(joinResolution.type!.ref), /Unknown JavaScript type handle/u);
