@@ -66,6 +66,7 @@
 		"test:fuzz:long": "npm run build && node scripts/fuzz.mjs",
 		"benchmark:incremental": "npm run build && node scripts/benchmark-incremental.mjs",
 		"benchmark:lsp": "npm run build && node scripts/benchmark-lsp-completion.mjs",
+		"benchmark:interop-heap": "npm run build && node --expose-gc scripts/benchmark-js-interop-heap.mjs",
 		"test:interop-corpus": "npm run build && node scripts/run-unit-tests.mjs --filter=packages/js-interop/dist/test/corpus-",
 		"smoke:release": "node scripts/smoke-release.mjs",
 		"verify:metadata": "npm run node:check && npm run registry:check && npm run release:check && npm run api:check && npm run spec:check",
