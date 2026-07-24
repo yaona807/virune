@@ -87,14 +87,25 @@ export class ProjectManager {
 	}
 
 	/**
-	 * Analyze the complete workspace and create the project-wide semantic index.
-	 * Navigation, references, rename, CodeLens, workspace symbols, and auto-import
-	 * use this path because they require symbols from files outside the import graph.
+	 * Analyze the requested document graph and create a focused semantic index.
 	 */
 	public async analyzeDocumentIndexed(uri: string): Promise<AnalysisSnapshot | undefined> {
 		return this.#analyzeIndexed(uri, 'document');
 	}
 
+	/**
+	 * Analyze the complete workspace without constructing the project-wide semantic index.
+	 * Completion uses this path to build a lightweight public export catalog.
+	 */
+	public async analyzeWorkspaceDocument(uri: string): Promise<DocumentAnalysisSnapshot | undefined> {
+		const analysis = await this.#analyzeCore(uri, 'workspace');
+		return analysis === undefined ? undefined : this.#documentSnapshot(analysis);
+	}
+
+	/**
+	 * Analyze the complete workspace and create the project-wide semantic index.
+	 * Navigation, references, rename, CodeLens, and workspace symbols use this path.
+	 */
 	public async analyze(uri: string): Promise<AnalysisSnapshot | undefined> {
 		return this.#analyzeIndexed(uri, 'workspace');
 	}
