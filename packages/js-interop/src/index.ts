@@ -21,6 +21,7 @@ export interface TypeScriptInteropProviderOptions {
 	readonly compilerOptions?: ts.CompilerOptions;
 	readonly providerId?: string;
 	readonly generation?: number;
+	readonly createLanguageService?: (host: ts.LanguageServiceHost) => ts.LanguageService;
 }
 
 interface StoredType {
@@ -39,6 +40,19 @@ interface Probe {
 	readonly resolvedModule?: ts.ResolvedModuleFull;
 }
 
+interface VirtualProbeFile {
+	readonly path: string;
+	readonly text: string;
+	readonly version: number;
+}
+
+interface ProbeWorkspace {
+	readonly compilerOptions: ts.CompilerOptions;
+	readonly virtualFiles: Map<string, VirtualProbeFile>;
+	readonly languageService: ts.LanguageService;
+	projectVersion: number;
+}
+
 /**
  * Conservative provider: complex overloads, callbacks, and contextual typing
  * deliberately return undefined so the compiler can request an interop adapter.
@@ -49,6 +63,8 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 	readonly generation: number;
 	readonly #projectRoot: string;
 	readonly #compilerOptions: ts.CompilerOptions;
+	readonly #createLanguageService: (host: ts.LanguageServiceHost) => ts.LanguageService;
+	readonly #workspaces = new Map<JsImportRequest['platform'], ProbeWorkspace>();
 	readonly #types = new Map<string, StoredType>();
 	#nextTypeId = 1;
 
@@ -72,6 +88,13 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 			types: [],
 			...options.compilerOptions,
 		};
+		this.#createLanguageService = options.createLanguageService ?? (host => ts.createLanguageService(host));
+	}
+
+	public dispose(): void {
+		this.#types.clear();
+		for (const workspace of this.#workspaces.values()) workspace.languageService.dispose();
+		this.#workspaces.clear();
 	}
 
 	public resolveImport(request: JsImportRequest): JsImportResolution {
@@ -200,37 +223,79 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 	}
 
 	private createProbe(request: JsImportRequest): Probe {
-		const compilerOptions: ts.CompilerOptions = { ...this.#compilerOptions, types: request.platform === 'node' ? ['node'] : [] };
+		const workspace = this.probeWorkspace(request.platform);
 		const virtualPath = join(dirname(request.containingFile), `.virune-interop-${hash(`${request.moduleSpecifier}:${request.kind}:${request.importedName ?? ''}`)}.ts`);
 		const moduleText = JSON.stringify(request.moduleSpecifier);
 		const sourceText = request.kind === 'named'
-			? `import { ${safeTsName(request.importedName ?? '')} as __viruneValue } from ${moduleText};\n__viruneValue;`
-			: request.kind === 'default' ? `import __viruneValue from ${moduleText};\n__viruneValue;`
-				: request.kind === 'namespace' ? `import * as __viruneValue from ${moduleText};\n__viruneValue;`
-					: request.kind === 'type-only' ? `import type { ${safeTsName(request.importedName ?? '')} as __ViruneType } from ${moduleText};\ntype __ViruneAlias = __ViruneType;`
+			? `import { ${safeTsName(request.importedName ?? '')} as __viruneValue } from ${moduleText};
+__viruneValue;`
+			: request.kind === 'default' ? `import __viruneValue from ${moduleText};
+__viruneValue;`
+				: request.kind === 'namespace' ? `import * as __viruneValue from ${moduleText};
+__viruneValue;`
+					: request.kind === 'type-only' ? `import type { ${safeTsName(request.importedName ?? '')} as __ViruneType } from ${moduleText};
+type __ViruneAlias = __ViruneType;`
 						: `import ${moduleText};`;
-		const host = ts.createCompilerHost(compilerOptions, true);
 		const virtualFileKey = canonicalFilePath(virtualPath);
-		const isVirtualFile = (fileName: string): boolean => canonicalFilePath(fileName) === virtualFileKey;
-		const originalFileExists = host.fileExists.bind(host);
-		const originalReadFile = host.readFile.bind(host);
-		const originalGetSourceFile = host.getSourceFile.bind(host);
-		host.fileExists = fileName => isVirtualFile(fileName) || originalFileExists(fileName);
-		host.readFile = fileName => isVirtualFile(fileName) ? sourceText : originalReadFile(fileName);
-		host.getSourceFile = (fileName, languageVersion, onError, shouldCreateNewSourceFile) => isVirtualFile(fileName)
-			? ts.createSourceFile(fileName, sourceText, languageVersion, true, ts.ScriptKind.TS)
-			: originalGetSourceFile(fileName, languageVersion, onError, shouldCreateNewSourceFile);
-		const program = ts.createProgram({ rootNames: [virtualPath], options: compilerOptions, host });
-		const diagnostics = ts.getPreEmitDiagnostics(program);
+		const existing = workspace.virtualFiles.get(virtualFileKey);
+		if (existing?.text !== sourceText) {
+			workspace.virtualFiles.set(virtualFileKey, { path: virtualPath, text: sourceText, version: (existing?.version ?? 0) + 1 });
+			workspace.projectVersion++;
+		}
+		const program = workspace.languageService.getProgram();
+		if (program === undefined) throw new Error('TypeScript interop language service did not create a program');
+		const diagnostics = [
+			...workspace.languageService.getCompilerOptionsDiagnostics(),
+			...workspace.languageService.getSyntacticDiagnostics(virtualPath),
+			...workspace.languageService.getSemanticDiagnostics(virtualPath),
+		];
 		const errors = diagnostics.filter(item => item.category === ts.DiagnosticCategory.Error);
 		if (errors.length > 0) throw new Error(errors.map(item => ts.flattenDiagnosticMessageText(item.messageText, '\n')).join('; '));
-		const sourceFile = program.getSourceFiles().find(item => isVirtualFile(item.fileName));
+		const sourceFile = program.getSourceFile(virtualPath)
+			?? program.getSourceFiles().find(item => canonicalFilePath(item.fileName) === virtualFileKey);
 		if (sourceFile === undefined) throw new Error('TypeScript interop probe was not created');
 		const checker = program.getTypeChecker();
 		const expression = sourceFile.statements.find(ts.isExpressionStatement)?.expression;
 		const alias = sourceFile.statements.find(ts.isTypeAliasDeclaration)?.type;
-		const resolved = ts.resolveModuleName(request.moduleSpecifier, virtualPath, compilerOptions, ts.sys).resolvedModule;
+		const resolved = ts.resolveModuleName(request.moduleSpecifier, virtualPath, workspace.compilerOptions, ts.sys).resolvedModule;
 		return { program, checker, sourceFile, ...(expression === undefined ? {} : { valueNode: expression }), ...(alias === undefined ? {} : { typeNode: alias }), ...(resolved === undefined ? {} : { resolvedModule: resolved }) };
+	}
+
+	private probeWorkspace(platform: JsImportRequest['platform']): ProbeWorkspace {
+		const existing = this.#workspaces.get(platform);
+		if (existing !== undefined) return existing;
+		const typeRoots = platform === 'node' ? nodeTypeRoots(this.#compilerOptions.typeRoots) : this.#compilerOptions.typeRoots;
+		const compilerOptions: ts.CompilerOptions = {
+			...this.#compilerOptions,
+			types: platform === 'node' ? ['node'] : [],
+			...(typeRoots === undefined ? {} : { typeRoots }),
+		};
+		const virtualFiles = new Map<string, VirtualProbeFile>();
+		let workspace!: ProbeWorkspace;
+		const host: ts.LanguageServiceHost = {
+			getCompilationSettings: () => compilerOptions,
+			getScriptFileNames: () => [...virtualFiles.values()].map(file => file.path),
+			getScriptVersion: fileName => String(virtualFiles.get(canonicalFilePath(fileName))?.version ?? 0),
+			getScriptSnapshot: fileName => {
+				const text = virtualFiles.get(canonicalFilePath(fileName))?.text ?? ts.sys.readFile(fileName);
+				return text === undefined ? undefined : ts.ScriptSnapshot.fromString(text);
+			},
+			getProjectVersion: () => String(workspace.projectVersion),
+			getCurrentDirectory: () => this.#projectRoot,
+			getDefaultLibFileName: options => ts.getDefaultLibFilePath(options),
+			fileExists: fileName => virtualFiles.has(canonicalFilePath(fileName)) || ts.sys.fileExists(fileName),
+			readFile: fileName => virtualFiles.get(canonicalFilePath(fileName))?.text ?? ts.sys.readFile(fileName),
+			readDirectory: ts.sys.readDirectory,
+			useCaseSensitiveFileNames: () => ts.sys.useCaseSensitiveFileNames,
+			getNewLine: () => ts.sys.newLine,
+			...(ts.sys.directoryExists === undefined ? {} : { directoryExists: ts.sys.directoryExists }),
+			...(ts.sys.getDirectories === undefined ? {} : { getDirectories: ts.sys.getDirectories }),
+			...(ts.sys.realpath === undefined ? {} : { realpath: ts.sys.realpath }),
+		};
+		const languageService = this.#createLanguageService(host);
+		workspace = { compilerOptions, virtualFiles, languageService, projectVersion: 0 };
+		this.#workspaces.set(platform, workspace);
+		return workspace;
 	}
 
 	private store(type: ts.Type, checker: ts.TypeChecker, location: ts.Node, origin: ForeignTypeSnapshot['origin']): ForeignTypeSnapshot {
@@ -308,6 +373,15 @@ function safeTsName(value: string): string {
 
 function hash(value: string | NodeJS.ArrayBufferView): string {
 	return createHash('sha256').update(value).digest('hex');
+}
+
+function nodeTypeRoots(configured: readonly string[] | undefined): string[] | undefined {
+	const roots = new Set(configured ?? []);
+	try {
+		const packageJson = createRequire(import.meta.url).resolve('@types/node/package.json');
+		roots.add(dirname(dirname(packageJson)));
+	} catch { /* Node declarations may be supplied by the project instead. */ }
+	return roots.size === 0 ? undefined : [...roots];
 }
 
 function findPackageInfo(resolvedFile: string | undefined): { readonly name?: string; readonly version?: string; readonly packageJsonPath?: string; readonly type?: string } {
