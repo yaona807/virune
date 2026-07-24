@@ -48,7 +48,7 @@
 		"spec:check": "node scripts/verify-spec.mjs && node scripts/verify-grammar.mjs",
 		"conformance:update": "npm run build && node scripts/update-conformance-expectations.mjs",
 		"registry:check": "node scripts/verify-public-registry.mjs",
-		"bootstrap": "node scripts/bootstrap.mjs --check-config",
+		"bootstrap": "node scripts/bootstrap.mjs",
 		"bootstrap:check": "node scripts/bootstrap.mjs --check-config",
 		"api:check": "node scripts/verify-compiler-api.mjs",
 		"test:fuzz": "npm run build && node --test --test-timeout=120000 --test-name-pattern=\"fuzz|generated fixtures\" packages/compiler/dist/test/compiler.test.js packages/formatter/dist/test/formatter.test.js",
