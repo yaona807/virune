@@ -16,7 +16,8 @@
 		"node": ">=24.0.0"
 	},
 	"exports": {
-		".": "./dist/src/index.js"
+		".": "./dist/src/index.js",
+		"./cached-provider": "./dist/src/cached-provider.js"
 	},
 	"files": [
 		"LICENSE",
