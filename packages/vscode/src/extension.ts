@@ -29,6 +29,9 @@ export async function activate(context: ExtensionContext): Promise<void> {
 		workspace.createFileSystemWatcher('**/*.virune'),
 		workspace.createFileSystemWatcher('**/virune.json'),
 		workspace.createFileSystemWatcher('**/package.json'),
+		workspace.createFileSystemWatcher('**/tsconfig*.json'),
+		workspace.createFileSystemWatcher('**/*.d.ts'),
+		workspace.createFileSystemWatcher('**/*.interop.{ts,tsx,mts,cts}'),
 	];
 	context.subscriptions.push(
 		...fileWatchers,
