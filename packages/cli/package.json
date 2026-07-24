@@ -33,7 +33,7 @@
 		"@virune/js-interop": "1.0.0",
 		"@virune/runtime": "1.0.0",
 		"@virune/stdlib": "1.0.0",
-		"typescript": "6.0.3"
+		"typescript": "7.0.2"
 	},
 	"scripts": {
 		"build": "tsc -b",

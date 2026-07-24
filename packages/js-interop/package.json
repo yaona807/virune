@@ -28,7 +28,7 @@
 	"dependencies": {
 		"@types/node": "^24.0.0",
 		"@virune/compiler": "1.0.0",
-		"typescript": "6.0.3"
+		"typescript": "7.0.2"
 	},
 	"scripts": {
 		"build": "tsc -b",
