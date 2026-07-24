@@ -1,0 +1,21 @@
+name: PR typecheck diagnostic
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  typecheck:
+    name: TypeScript diagnostic
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          show-progress: false
+      - name: Install dependencies quietly
+        run: npm ci --silent >/dev/null
+      - name: Print type-check errors
+        run: npm run check --silent
