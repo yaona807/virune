@@ -1,11 +1,11 @@
-import { access, readFile, readdir } from 'node:fs/promises';
-import type { Dirent } from 'node:fs';
-import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
+import { readFile } from 'node:fs/promises';
+import { resolve } from 'node:path';
 import { IncrementalProjectBuilder, type BuiltModule, type ProjectBuildResult, type ProjectHost, type SourceFile } from '@virune/compiler/experimental';
-import { TypeScriptInteropProvider } from '@virune/js-interop';
+import { CachedTypeScriptInteropProvider } from '@virune/js-interop/cached-provider';
 import type { TextDocument } from 'vscode-languageserver-textdocument';
 import { filePathToUri, uriToFilePath } from './position.js';
 import { createProjectSemanticIndex, type ProjectSemanticIndex } from './semantic-index.js';
+import { findProjectRoot, findViruneEntries, findViruneEntry, isWithin, type ResolvedProjectRoot } from './workspace-discovery.js';
 
 export interface AnalysisCancellationToken {
 	readonly isCancellationRequested: boolean;
@@ -25,12 +25,20 @@ export interface AnalysisSnapshot extends DocumentAnalysisSnapshot {
 
 type ProjectBuilder = Pick<IncrementalProjectBuilder, 'build'>;
 type SemanticIndexFactory = typeof createProjectSemanticIndex;
+type InteropProviderFactory = (root: string, generation: number) => CachedTypeScriptInteropProvider;
 
 export interface ProjectManagerOptions {
 	readonly getOpenDocuments: () => readonly TextDocument[];
 	readonly workspaceFolders?: readonly string[];
 	readonly createBuilder?: () => ProjectBuilder;
 	readonly createSemanticIndex?: SemanticIndexFactory;
+	readonly createInteropProvider?: InteropProviderFactory;
+}
+
+export interface ProjectInvalidationOptions {
+	readonly workspaceEntries?: boolean;
+	readonly interop?: boolean;
+	readonly projectRoots?: boolean;
 }
 
 type AnalysisScope = 'document' | 'workspace';
@@ -79,12 +87,15 @@ export class ProjectManager {
 	readonly #workspaceFolders: readonly string[];
 	readonly #createBuilder: () => ProjectBuilder;
 	readonly #createSemanticIndex: SemanticIndexFactory;
+	readonly #createInteropProvider: InteropProviderFactory;
 	readonly #cache = new Map<string, CachedProject>();
 	readonly #builders = new Map<string, ProjectBuilder>();
 	readonly #buildLanes = new Map<string, BuildLane>();
 	readonly #latestBuildKeys = new Map<string, string>();
-	readonly #interopProviders = new Map<string, TypeScriptInteropProvider>();
+	readonly #interopProviders = new Map<string, CachedTypeScriptInteropProvider>();
+	readonly #interopGenerations = new Map<string, number>();
 	readonly #workspaceEntries = new Map<string, readonly string[]>();
+	readonly #projectRoots = new Map<string, ResolvedProjectRoot>();
 	#revision = 0;
 
 	public constructor(options: ProjectManagerOptions) {
@@ -92,6 +103,8 @@ export class ProjectManager {
 		this.#workspaceFolders = (options.workspaceFolders ?? []).map(folder => resolve(folder));
 		this.#createBuilder = options.createBuilder ?? (() => new IncrementalProjectBuilder());
 		this.#createSemanticIndex = options.createSemanticIndex ?? createProjectSemanticIndex;
+		this.#createInteropProvider = options.createInteropProvider
+			?? ((root, generation) => new CachedTypeScriptInteropProvider({ projectRoot: root, generation }));
 	}
 
 	public invalidate(): void {
@@ -99,41 +112,73 @@ export class ProjectManager {
 		this.#cache.clear();
 		this.#latestBuildKeys.clear();
 		this.#workspaceEntries.clear();
+		this.#projectRoots.clear();
 		for (const lane of this.#buildLanes.values()) {
 			lane.queued?.resolve(undefined);
 			lane.queued = undefined;
 		}
+		for (const [root, provider] of this.#interopProviders) {
+			provider.dispose();
+			this.#interopGenerations.set(root, provider.generation + 1);
+		}
+		this.#interopProviders.clear();
 	}
 
-	/**
-	 * Analyze only the requested document, its imports, and open overlays. This path intentionally skips the project-wide semantic
-	 * index so latency-sensitive editor requests such as Hover remain responsive.
-	 */
+	public invalidateProject(root: string, options: ProjectInvalidationOptions = {}): void {
+		const normalizedRoot = resolve(root);
+		this.#revision++;
+		for (const cacheId of [...this.#cache.keys()]) {
+			if (cacheId.startsWith(`${normalizedRoot}\0`)) this.#cache.delete(cacheId);
+		}
+		for (const cacheId of [...this.#latestBuildKeys.keys()]) {
+			if (cacheId.startsWith(`${normalizedRoot}\0`)) this.#latestBuildKeys.delete(cacheId);
+		}
+		for (const [cacheId, lane] of this.#buildLanes) {
+			if (!cacheId.startsWith(`${normalizedRoot}\0`)) continue;
+			lane.queued?.resolve(undefined);
+			lane.queued = undefined;
+		}
+		if (options.workspaceEntries === true) this.#workspaceEntries.delete(normalizedRoot);
+		if (options.projectRoots === true) {
+			for (const [path, resolvedRoot] of this.#projectRoots) {
+				if (resolvedRoot.root === normalizedRoot || isWithin(normalizedRoot, path)) this.#projectRoots.delete(path);
+			}
+		}
+		if (options.interop === true) this.#rotateInteropGeneration(normalizedRoot);
+	}
+
+	public async projectRootForUri(uri: string): Promise<string | undefined> {
+		const path = uriToFilePath(uri);
+		return path === undefined ? undefined : this.projectRootForPath(path);
+	}
+
+	public async projectRootForPath(path: string): Promise<string> {
+		return (await this.#findProjectRoot(resolve(path))).root;
+	}
+
+	public hasInteropProvider(root: string): boolean {
+		return this.#interopProviders.has(resolve(root));
+	}
+
+	public interopGeneration(root: string): number {
+		const normalizedRoot = resolve(root);
+		return this.#interopProviders.get(normalizedRoot)?.generation ?? this.#interopGenerations.get(normalizedRoot) ?? 1;
+	}
+
 	public async analyzeDocument(uri: string, token?: AnalysisCancellationToken): Promise<DocumentAnalysisSnapshot | undefined> {
 		const analysis = await this.#analyzeCore(uri, 'document', token);
 		return analysis === undefined || isCancelled(token) ? undefined : this.#documentSnapshot(analysis);
 	}
 
-	/**
-	 * Analyze the requested document graph and create a focused semantic index.
-	 */
 	public async analyzeDocumentIndexed(uri: string, token?: AnalysisCancellationToken): Promise<AnalysisSnapshot | undefined> {
 		return this.#analyzeIndexed(uri, 'document', token);
 	}
 
-	/**
-	 * Analyze the complete workspace without constructing the project-wide semantic index.
-	 * Completion uses this path to build a lightweight public export catalog.
-	 */
 	public async analyzeWorkspaceDocument(uri: string, token?: AnalysisCancellationToken): Promise<DocumentAnalysisSnapshot | undefined> {
 		const analysis = await this.#analyzeCore(uri, 'workspace', token);
 		return analysis === undefined || isCancelled(token) ? undefined : this.#documentSnapshot(analysis);
 	}
 
-	/**
-	 * Analyze the complete workspace and create the project-wide semantic index.
-	 * Navigation, references, rename, CodeLens, and workspace symbols use this path.
-	 */
 	public async analyze(uri: string, token?: AnalysisCancellationToken): Promise<AnalysisSnapshot | undefined> {
 		return this.#analyzeIndexed(uri, 'workspace', token);
 	}
@@ -197,7 +242,7 @@ export class ProjectManager {
 			documentVersions.push(`${normalizedDocumentPath}:${document.version}`);
 		}
 		const cacheId = `${root}\0${scope}`;
-		const cacheKey = `${hasConfig ? 'config' : 'standalone'}|${[...additionalEntries].sort().join('|')}|${documentVersions.sort().join('|')}`;
+		const cacheKey = `${hasConfig ? 'config' : 'standalone'}|${this.interopGeneration(root)}|${[...additionalEntries].sort().join('|')}|${documentVersions.sort().join('|')}`;
 		const cached = this.#cache.get(cacheId);
 		if (cached?.key === cacheKey) return { cacheId, cacheKey, requestedPath: normalizedPath, core: cached.core };
 		if (isCancelled(token)) return undefined;
@@ -229,7 +274,6 @@ export class ProjectManager {
 		this.#buildLanes.set(cacheId, lane);
 		if (lane.running?.key === key) return lane.running.promise;
 		if (lane.queued?.key === key) return lane.queued.promise;
-
 		let resolveRequest!: (core: ProjectCore | undefined) => void;
 		let rejectRequest!: (error: unknown) => void;
 		const promise = new Promise<ProjectCore | undefined>((resolvePromise, rejectPromise) => {
@@ -293,8 +337,10 @@ export class ProjectManager {
 		};
 		const builder = this.#builders.get(cacheId) ?? this.#createBuilder();
 		this.#builders.set(cacheId, builder);
-		const jsInteropProvider = this.#interopProviders.get(root) ?? new TypeScriptInteropProvider({ projectRoot: root });
-		this.#interopProviders.set(root, jsInteropProvider);
+		const normalizedRoot = resolve(root);
+		const generation = this.#interopGenerations.get(normalizedRoot) ?? 1;
+		const jsInteropProvider = this.#interopProviders.get(normalizedRoot) ?? this.#createInteropProvider(normalizedRoot, generation);
+		this.#interopProviders.set(normalizedRoot, jsInteropProvider);
 		const result = await builder.build(root, {
 			write: false,
 			additionalEntries: [...additionalEntries],
@@ -356,29 +402,29 @@ export class ProjectManager {
 	}
 
 	async #projectEntries(root: string): Promise<readonly string[]> {
-		const cached = this.#workspaceEntries.get(root);
+		const normalizedRoot = resolve(root);
+		const cached = this.#workspaceEntries.get(normalizedRoot);
 		if (cached !== undefined) return cached;
-		const entries = await findViruneEntries(root);
-		this.#workspaceEntries.set(root, entries);
+		const entries = await findViruneEntries(normalizedRoot);
+		this.#workspaceEntries.set(normalizedRoot, entries);
 		return entries;
 	}
 
-	async #findProjectRoot(path: string): Promise<{ readonly root: string; readonly hasConfig: boolean }> {
-		let current = dirname(path);
-		while (true) {
-			try {
-				await access(join(current, 'virune.json'));
-				return { root: current, hasConfig: true };
-			} catch {
-				const parent = dirname(current);
-				if (parent === current) break;
-				current = parent;
-			}
-		}
-		const workspace = this.#workspaceFolders
-			.filter(folder => isWithin(folder, path))
-			.sort((left, right) => right.length - left.length)[0];
-		return { root: workspace ?? dirname(path), hasConfig: false };
+	async #findProjectRoot(path: string): Promise<ResolvedProjectRoot> {
+		const normalizedPath = resolve(path);
+		const cached = this.#projectRoots.get(normalizedPath);
+		if (cached !== undefined) return cached;
+		const result = await findProjectRoot(normalizedPath, this.#workspaceFolders);
+		this.#projectRoots.set(normalizedPath, result);
+		return result;
+	}
+
+	#rotateInteropGeneration(root: string): void {
+		const provider = this.#interopProviders.get(root);
+		const generation = provider?.generation ?? this.#interopGenerations.get(root) ?? 1;
+		provider?.dispose();
+		this.#interopProviders.delete(root);
+		this.#interopGenerations.set(root, generation + 1);
 	}
 }
 
@@ -394,31 +440,4 @@ function createDocumentSnapshot(analysis: ResolvedAnalysis): DocumentAnalysisSna
 		modulesByPath: analysis.core.modulesByPath,
 		sourcesById: analysis.core.sourcesById,
 	};
-}
-
-function isWithin(parent: string, child: string): boolean {
-	const value = relative(parent, child);
-	return value === '' || (!value.startsWith('..') && !isAbsolute(value));
-}
-
-async function findViruneEntry(root: string): Promise<string | undefined> {
-	return (await findViruneEntries(root))[0];
-}
-
-async function findViruneEntries(root: string): Promise<readonly string[]> {
-	const result: string[] = [];
-	const queue = [root];
-	while (queue.length > 0) {
-		const directory = queue.shift()!;
-		let entries: Dirent[];
-		try { entries = await readdir(directory, { withFileTypes: true }); }
-		catch { continue; }
-		for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name))) {
-			if (entry.name === 'node_modules' || entry.name === '.git' || entry.name === 'dist' || entry.name === 'release') continue;
-			const path = join(directory, entry.name);
-			if (entry.isFile() && entry.name.endsWith('.virune')) result.push(resolve(path));
-			if (entry.isDirectory()) queue.push(path);
-		}
-	}
-	return result;
 }
