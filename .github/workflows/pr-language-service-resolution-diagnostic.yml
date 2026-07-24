@@ -1,0 +1,50 @@
+name: PR language service resolution diagnostic
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    name: Local declaration resolution
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          show-progress: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --silent
+      - run: npm run build --silent
+      - name: Reproduce local declaration import
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE' > resolution-diagnostic.txt 2>&1
+          import { mkdir, mkdtemp, writeFile } from 'node:fs/promises';
+          import { tmpdir } from 'node:os';
+          import { join } from 'node:path';
+          import { TypeScriptInteropProvider } from './packages/js-interop/dist/src/index.js';
+          const root = await mkdtemp(join(tmpdir(), 'virune-ls-resolution-'));
+          await mkdir(join(root, 'src'));
+          await writeFile(join(root, 'src/library.d.ts'), 'export interface Handle { readonly value: string }\nexport declare function greet(name: string): string;\n');
+          const provider = new TypeScriptInteropProvider({ projectRoot: root });
+          for (const [kind, importedName] of [['named', 'greet'], ['type-only', 'Handle']]) {
+            try {
+              const result = provider.resolveImport({ containingFile: join(root, 'src/main.virune'), moduleSpecifier: './library.js', kind, importedName, platform: 'node' });
+              console.log(kind, JSON.stringify(result, null, 2));
+            } catch (error) {
+              console.error(kind, error instanceof Error ? error.stack ?? error.message : String(error));
+            }
+          }
+          NODE
+          cat resolution-diagnostic.txt
+      - uses: actions/upload-artifact@v7
+        with:
+          name: resolution-diagnostic
+          path: resolution-diagnostic.txt
+          retention-days: 7
