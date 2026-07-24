@@ -29,10 +29,18 @@ jobs:
           tar -xzf /tmp/browser-vsix.tar.gz
           python3 - <<'PY'
           from pathlib import Path
-          path = Path('integration/browser.test.ts')
-          source = path.read_text()
+          browser = Path('integration/browser.test.ts')
+          source = browser.read_text()
           source = source.replace("const module = await import('virune_app_main');", "const applicationSpecifier = 'virune_app_main';\n\t\t\t\tconst module = await import(applicationSpecifier);")
-          path.write_text(source)
+          browser.write_text(source)
+
+          suite = Path('scripts/vsix-smoke-suite.mjs')
+          source = suite.read_text()
+          source = source.replace(
+              "const source = 'pub fn add(left: Int, right: Int) -> Int => left + right\\n\\nfn main() {\\n\\tlet total = add(1, 2)\\n\\treturn total\\n}\\n';",
+              "const source = 'pub fn add(left: Int,right: Int)->Int => left+right\\n\\nfn main() {\\nlet total=add(1,2)\\nreturn total\\n}\\n';",
+          )
+          suite.write_text(source)
           PY
       - name: Update locked dependencies
         run: npm install --save-dev --save-exact playwright@1.61.1 @vscode/test-electron@3.0.0
