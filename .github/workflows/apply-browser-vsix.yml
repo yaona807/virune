@@ -1,0 +1,39 @@
+name: Apply browser and VSIX implementation
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: agent/stable-release-hardening
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+      - name: Apply implementation and update lockfile
+        shell: bash
+        run: |
+          base64 --decode .github/patches/browser-vsix.b64 > /tmp/browser-vsix.tar.gz
+          gzip --test /tmp/browser-vsix.tar.gz
+          tar -xzf /tmp/browser-vsix.tar.gz
+          npm install --save-dev --save-exact playwright@1.61.1 @vscode/test-electron@3.0.0
+          npm run build
+          VIRUNE_BROWSER_ENGINE=chromium VIRUNE_BROWSER_ARTIFACT_DIR=.cache/browser/chromium npm run test:browser-conformance:built
+          npm run pack:vscode
+          xvfb-run -a npm run smoke:vscode-release
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add integration/browser.test.ts package.json package-lock.json scripts/vsix-smoke.mjs scripts/vsix-smoke-suite.mjs scripts/vsix-smoke-harness
+          git commit -m "test: add browser matrix and installed VSIX smoke"
+          git push origin HEAD:agent/stable-release-hardening
