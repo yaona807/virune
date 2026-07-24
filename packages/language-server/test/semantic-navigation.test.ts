@@ -6,6 +6,7 @@ import test, { type TestContext } from 'node:test';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import { ProjectManager } from '../src/analysis/project-manager.js';
 import { filePathToUri, offsetToPosition } from '../src/analysis/position.js';
+import { collectWorkspaceExports } from '../src/features/auto-import.js';
 import { completionItems } from '../src/features/completion.js';
 import { codeLenses } from '../src/features/code-lens.js';
 import { defaultEditorInformationSettings } from '../src/editor-information.js';
@@ -212,7 +213,7 @@ test('rename keeps import aliases local and renames canonical declarations acros
 	assert.equal((definitionEdit.changes[filePathToUri(fixture.mainPath)]?.length ?? 0) > 0, true);
 });
 
-test('workspace symbols, CodeLens, and auto imports use the semantic index', async t => {
+test('workspace symbols and CodeLens use the semantic index while auto imports use the export catalog', async t => {
 	const fixture = await projectFixture(t);
 	const symbols = workspaceSymbols([fixture.snapshot], 'help');
 	assert.equal(symbols.some(symbol => symbol.name === 'helper'), true);
@@ -228,7 +229,8 @@ test('workspace symbols, CodeLens, and auto imports use the semantic index', asy
 	});
 	assert.equal(lenses.some(lens => lens.command?.title.includes('references') === true), true);
 	assert.equal(lenses.some(lens => lens.command?.title.includes('callers') === true), true);
-	const completions = completionItems(fixture.consumer, fixture.consumer.source, fixture.consumerText.length - 1, fixture.snapshot);
+	const workspaceExports = collectWorkspaceExports(fixture.snapshot.modulesByPath);
+	const completions = completionItems(fixture.consumer, fixture.consumer.source, fixture.consumerText.length - 1, workspaceExports);
 	const helper = completions.find(item => item.label === 'helper');
 	assert.ok(helper);
 	assert.match(helper.detail ?? '', /Auto import/u);
