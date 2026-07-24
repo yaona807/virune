@@ -57,7 +57,18 @@ jobs:
       - name: Package VSIX
         run: npm run pack:vscode
       - name: Verify installed VSIX
-        run: xvfb-run -a npm run smoke:vscode-release
+        shell: bash
+        run: |
+          set -o pipefail
+          xvfb-run -a npm run smoke:vscode-release 2>&1 | tee /tmp/vsix-smoke.log
+      - name: Upload VSIX smoke diagnostics
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: vsix-smoke-diagnostics
+          path: /tmp/vsix-smoke.log
+          if-no-files-found: ignore
+          retention-days: 1
       - name: Commit implementation
         shell: bash
         run: |
