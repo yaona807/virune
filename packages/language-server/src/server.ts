@@ -12,6 +12,7 @@ import { TextDocument } from 'vscode-languageserver-textdocument';
 import { ProjectManager } from './analysis/project-manager.js';
 import { diagnosticsForPath } from './features/diagnostics.js';
 import { completionItems } from './features/completion.js';
+import { collectWorkspaceExports, type WorkspaceExport } from './features/auto-import.js';
 import { codeActionsForDiagnostics, documentationCodeActions } from './features/code-actions.js';
 import {
 	declarationAt,
@@ -44,6 +45,9 @@ const pending = new Map<string, ReturnType<typeof setTimeout>>();
 const generations = new Map<string, number>();
 const publishedDiagnostics = new Map<string, Set<string>>();
 const documentRoots = new Map<string, string>();
+const completionExports = new Map<string, readonly WorkspaceExport[]>();
+const completionExportPromises = new Map<string, Promise<readonly WorkspaceExport[]>>();
+let completionExportRevision = 0;
 let editorInformationSettings = defaultEditorInformationSettings;
 
 connection.onInitialize((params: InitializeParams): InitializeResult => {
@@ -55,6 +59,7 @@ connection.onInitialize((params: InitializeParams): InitializeResult => {
 		getOpenDocuments: () => documents.all(),
 		...(workspaceFolders === undefined ? {} : { workspaceFolders }),
 	});
+	invalidateCompletionExports();
 	return {
 		capabilities: {
 			textDocumentSync: TextDocumentSyncKind.Incremental,
@@ -148,6 +153,37 @@ async function analyzeIndexedPosition(params: TextDocumentPositionParams) {
 	return { snapshot, module, offset: positionToOffset(module.source, params.position) };
 }
 
+async function analyzeCompletionPosition(params: TextDocumentPositionParams) {
+	const analysis = await analyzeDocumentPosition(params);
+	if (analysis === undefined) return undefined;
+	const workspaceExports = await workspaceExportsFor(params.textDocument.uri, analysis.snapshot.root);
+	return { ...analysis, workspaceExports };
+}
+
+async function workspaceExportsFor(uri: string, root: string): Promise<readonly WorkspaceExport[]> {
+	const existing = completionExports.get(root);
+	if (existing !== undefined) return existing;
+	const pendingExports = completionExportPromises.get(root);
+	if (pendingExports !== undefined) return pendingExports;
+	const revision = completionExportRevision;
+	const promise = projectManager.analyzeWorkspaceDocument(uri)
+		.then(snapshot => snapshot === undefined ? [] : collectWorkspaceExports(snapshot.modulesByPath));
+	completionExportPromises.set(root, promise);
+	try {
+		const exports = await promise;
+		if (completionExportRevision === revision && completionExportPromises.get(root) === promise) completionExports.set(root, exports);
+		return exports;
+	} finally {
+		if (completionExportPromises.get(root) === promise) completionExportPromises.delete(root);
+	}
+}
+
+function invalidateCompletionExports(): void {
+	completionExportRevision++;
+	completionExports.clear();
+	completionExportPromises.clear();
+}
+
 connection.onDocumentFormatting(async params => {
 	const path = uriToFilePath(params.textDocument.uri);
 	if (path === undefined) return [];
@@ -239,8 +275,8 @@ connection.languages.callHierarchy.onOutgoingCalls(async params => {
 });
 
 connection.onCompletion(async params => {
-	const analysis = await analyzeIndexedPosition(params);
-	return analysis === undefined ? [] : [...completionItems(analysis.module, analysis.module.source, analysis.offset, analysis.snapshot)];
+	const analysis = await analyzeCompletionPosition(params);
+	return analysis === undefined ? [] : [...completionItems(analysis.module, analysis.module.source, analysis.offset, analysis.workspaceExports)];
 });
 
 connection.onWorkspaceSymbol(async params => {
@@ -284,13 +320,17 @@ connection.onDidChangeConfiguration(params => {
 });
 
 connection.onDidChangeWatchedFiles(() => {
+	invalidateCompletionExports();
 	projectManager.invalidate();
 	for (const document of documents.all()) scheduleDiagnostics(document.uri);
 });
 
 documents.onDidOpen(event => scheduleDiagnostics(event.document.uri));
 documents.onDidChangeContent(event => scheduleDiagnostics(event.document.uri));
-documents.onDidSave(event => scheduleDiagnostics(event.document.uri));
+documents.onDidSave(event => {
+	invalidateCompletionExports();
+	scheduleDiagnostics(event.document.uri);
+});
 documents.onDidClose(event => {
 	const timer = pending.get(event.document.uri);
 	if (timer !== undefined) clearTimeout(timer);
