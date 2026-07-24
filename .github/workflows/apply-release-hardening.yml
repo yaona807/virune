@@ -31,13 +31,14 @@ jobs:
         run: npm ci
       - name: Generate public ABI snapshot
         run: node scripts/verify-public-abi.mjs --write
-      - name: Commit implementation and remove transport files
+      - name: Commit non-workflow implementation
         shell: bash
         run: |
-          rm -rf .github/patches .github/workflows/apply-release-hardening.yml
+          git checkout -- .github/workflows/release.yml
+          rm -f .github/workflows/release-dry-run.yml
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add -A
+          git add .github/stable-release-gate.json docs package.json packages/public-abi.snapshot.json scripts
           git diff --cached --stat
           git commit -m "release: enforce stable gate and public ABI"
           git push origin HEAD:agent/stable-release-hardening
