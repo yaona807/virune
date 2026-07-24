@@ -1,0 +1,68 @@
+name: Performance
+
+on:
+  schedule:
+    - cron: '17 3 * * 1'
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - '.github/workflows/performance.yml'
+      - 'benchmarks/performance/**'
+      - 'docs/performance-benchmarks.md'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'tsconfig.json'
+      - 'packages/compiler/**'
+      - 'packages/js-interop/**'
+      - 'packages/language-server/**'
+      - 'scripts/benchmark-js-interop-heap.mjs'
+      - 'scripts/benchmark-lsp-completion.mjs'
+      - 'scripts/check-performance-regression.mjs'
+      - 'scripts/performance-benchmark-utils.mjs'
+      - 'scripts/performance-regression.test.mjs'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: performance-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  benchmark:
+    name: LSP and JS Interop regression
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build and type-check project references
+        run: npm run check
+
+      - name: Test performance regression policy
+        run: npm run test:performance-regression
+
+      - name: Run LSP completion benchmark
+        run: npm run benchmark:lsp:built -- --runs=5 --output=.cache/performance/lsp.json
+
+      - name: Run JS Interop heap benchmark
+        run: npm run benchmark:interop-heap:built -- --output=.cache/performance/interop.json
+
+      - name: Check performance regression thresholds
+        run: npm run check:performance -- --baseline=benchmarks/performance/baseline.json --lsp=.cache/performance/lsp.json --interop=.cache/performance/interop.json --output=.cache/performance/comparison.json
+
+      - name: Upload performance reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: performance-node-24
+          path: .cache/performance/
+          if-no-files-found: warn
+          retention-days: 30
