@@ -24,6 +24,7 @@ export async function runStableReleaseGate({
 			passed: result.status === 0,
 			status: result.status,
 			durationMs: Date.now() - startedAt,
+			...(result.outputTail === undefined ? {} : { outputTail: result.outputTail }),
 		});
 	}
 
@@ -100,9 +101,18 @@ async function latestNightlyRun(policy) {
 
 function runCommand(command, cwd) {
 	const executable = process.platform === 'win32' && command[0] === 'npm' ? 'npm.cmd' : command[0];
-	const result = spawnSync(executable, command.slice(1), { cwd, env: process.env, stdio: 'inherit' });
+	const result = spawnSync(executable, command.slice(1), {
+		cwd,
+		env: process.env,
+		encoding: 'utf8',
+		maxBuffer: 64 * 1024 * 1024,
+	});
 	if (result.error !== undefined) throw result.error;
-	return { status: result.status ?? 1 };
+	if (result.stdout) process.stdout.write(result.stdout);
+	if (result.stderr) process.stderr.write(result.stderr);
+	const combined = `${result.stdout ?? ''}\n${result.stderr ?? ''}`.trim();
+	const outputTail = combined.split(/\r?\n/u).slice(-80).join('\n');
+	return { status: result.status ?? 1, ...(outputTail.length === 0 ? {} : { outputTail }) };
 }
 
 function validatePolicy(policy) {
