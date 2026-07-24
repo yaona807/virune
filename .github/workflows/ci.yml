@@ -97,6 +97,22 @@ jobs:
         if: matrix.full
         run: npm run test:fuzz:smoke:built
 
+      - name: Run semantic differential fuzz smoke
+        if: matrix.full
+        run: npm run test:semantic-fuzz-policy && npm run test:semantic-fuzz:smoke:built
+        env:
+          VIRUNE_SEMANTIC_FUZZ_ITERATIONS: 12
+          VIRUNE_SEMANTIC_FUZZ_ARTIFACT_DIR: fuzz-regressions/semantic-artifacts/smoke
+
+      - name: Upload semantic fuzz diagnostics
+        if: always() && matrix.full
+        uses: actions/upload-artifact@v7
+        with:
+          name: semantic-fuzz-smoke-${{ runner.os }}-node-${{ matrix.node }}
+          path: fuzz-regressions/semantic-artifacts/smoke
+          if-no-files-found: ignore
+          retention-days: 30
+
       - name: Verify VS Code extension and language server
         run: npm run test:vscode:built
 
