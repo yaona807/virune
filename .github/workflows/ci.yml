@@ -67,6 +67,15 @@ jobs:
       - name: Run platform-independent unit and integration tests
         run: node scripts/run-tests.mjs --exclude-browser --failure-output-only
 
+      - name: Upload unit test failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: unit-test-failure-${{ matrix.os }}-node-${{ matrix.node }}
+          path: .cache/unit-test-failure.log
+          if-no-files-found: ignore
+          retention-days: 7
+
       - name: Verify TypeScript binding corpus
         if: matrix.full
         run: npm run test:binding-corpus:built
