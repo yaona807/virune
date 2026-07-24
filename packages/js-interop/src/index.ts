@@ -250,8 +250,7 @@ type __ViruneAlias = __ViruneType;`
 			...workspace.languageService.getSemanticDiagnostics(virtualPath),
 		];
 		const errors = diagnostics.filter(item => item.category === ts.DiagnosticCategory.Error);
-		if (errors.length > 0) throw new Error(errors.map(item => ts.flattenDiagnosticMessageText(item.messageText, '
-')).join('; '));
+		if (errors.length > 0) throw new Error(errors.map(item => ts.flattenDiagnosticMessageText(item.messageText, '\n')).join('; '));
 		const sourceFile = program.getSourceFile(virtualPath)
 			?? program.getSourceFiles().find(item => canonicalFilePath(item.fileName) === virtualFileKey);
 		if (sourceFile === undefined) throw new Error('TypeScript interop probe was not created');
