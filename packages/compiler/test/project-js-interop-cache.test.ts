@@ -63,6 +63,8 @@ fn main() -> Int => 1
 	assert.equal(second.stats.checkedModules, 0);
 	assert.equal(second.stats.reusedCheckedModules, 1);
 
+	// The provider generation is part of the build fingerprint, so stale
+	// TypeScript handles cannot cross an invalidation boundary.
 	const nextGeneration = await buildProject(root, { write: false, incrementalCache: cache, jsInteropProvider: interopProvider(2) });
 	assert.equal(nextGeneration.stats.checkedModules, 1);
 	assert.equal(nextGeneration.stats.reusedCheckedModules, 0);
