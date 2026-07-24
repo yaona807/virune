@@ -13,6 +13,10 @@
 		{
 			"id": "release-artifacts",
 			"command": ["npm", "run", "verify:release"]
+		},
+		{
+			"id": "installed-vsix",
+			"command": ["xvfb-run", "-a", "npm", "run", "smoke:vscode-release"]
 		}
 	],
 	"requirements": [
@@ -27,6 +31,7 @@
 		{"id": "binding-corpus", "evidence": ["quality"]},
 		{"id": "clean-install", "evidence": ["release-artifacts"]},
 		{"id": "release-packages", "evidence": ["release-artifacts"]},
+		{"id": "installed-vsix", "evidence": ["installed-vsix"]},
 		{"id": "nightly-evidence", "evidence": ["nightly"]}
 	]
 }
