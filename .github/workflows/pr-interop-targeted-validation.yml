@@ -1,0 +1,28 @@
+name: PR interop targeted validation
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Typecheck and JS interop tests
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          show-progress: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --silent
+      - name: Typecheck all project references
+        run: npm run check
+      - name: Run JavaScript interop tests
+        run: npm --workspace @virune/js-interop test
+      - name: Run heap benchmark
+        run: npm run benchmark:interop-heap
