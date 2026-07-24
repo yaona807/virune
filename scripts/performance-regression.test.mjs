@@ -49,3 +49,14 @@ test('heap drift and dispose cache state are enforced', () => {
 	assert.equal(evaluatePerformanceRegression(baseline, lsp(100, 10), interop({ driftBytes: 1_001 })).passed, false);
 	assert.equal(evaluatePerformanceRegression(baseline, lsp(100, 10), interop({ cacheEntriesAfterDispose: 1 })).passed, false);
 });
+
+test('malformed reports fail closed instead of passing comparisons', () => {
+	assert.throws(
+		() => evaluatePerformanceRegression(baseline, lsp(undefined, 10), interop()),
+		/must be a finite number/u,
+	);
+	assert.throws(
+		() => evaluatePerformanceRegression(baseline, lsp(100, 10), interop({ driftBytes: undefined })),
+		/must be a finite number/u,
+	);
+});
