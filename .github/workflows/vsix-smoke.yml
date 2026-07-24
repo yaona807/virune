@@ -1,0 +1,48 @@
+name: VSIX smoke
+
+on:
+  schedule:
+    - cron: '17 5 * * 3'
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - '.github/workflows/vsix-smoke.yml'
+      - 'packages/vscode/**'
+      - 'packages/language-server/**'
+      - 'scripts/build-vscode.mjs'
+      - 'scripts/package-vscode.mjs'
+      - 'scripts/vsix-smoke*.mjs'
+      - 'scripts/vsix-smoke-harness/**'
+      - 'package.json'
+      - 'package-lock.json'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: vsix-smoke-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  smoke:
+    name: Linux clean install
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run pack:vscode
+      - name: Run installed VSIX smoke
+        run: xvfb-run -a npm run smoke:vscode-release
+      - name: Upload VS Code logs
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: vsix-smoke-linux
+          path: .cache/vsix-smoke
+          if-no-files-found: ignore
+          retention-days: 30
