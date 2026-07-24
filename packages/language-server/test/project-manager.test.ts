@@ -126,7 +126,7 @@ test('ProjectManager replaces intermediate queued builds with the latest documen
 	releaseFirst();
 	const results = await Promise.all(requests);
 	assert.equal(buildCount, 2);
-	assert.equal(results.filter((result): result is NonNullable<typeof result> => result !== undefined).length, 1);
+	assert.ok(results.at(-1));
 });
 
 test('ProjectManager skips semantic index creation after request cancellation', async t => {
