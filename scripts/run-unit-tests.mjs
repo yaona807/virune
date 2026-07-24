@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { readdir } from 'node:fs/promises';
+import { mkdir, readdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 const filter = process.argv.find(item => item.startsWith('--filter='))?.slice('--filter='.length);
@@ -24,7 +24,11 @@ for (const file of files) {
 	const result = await runNodeTest(file, failureOutputOnly);
 	if (result.code === 0) continue;
 	if (failureOutputOnly) {
-		console.error(`\n--- ${file} ---`);
+		const header = Buffer.from(`--- ${file} ---\n`);
+		const diagnostic = Buffer.concat([header, result.stdout, result.stderr]);
+		await mkdir('.cache', { recursive: true });
+		await writeFile('.cache/unit-test-failure.log', diagnostic);
+		process.stderr.write(`\n--- ${file} ---\n`);
 		if (result.stdout.length > 0) process.stdout.write(result.stdout);
 		if (result.stderr.length > 0) process.stderr.write(result.stderr);
 	}
