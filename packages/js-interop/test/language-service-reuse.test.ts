@@ -39,6 +39,7 @@ test('TypeScriptInteropProvider reuses one language service per project platform
 	const resolveResolution = provider.resolveImport(request('resolve'));
 	assert.ok(joinResolution.type);
 	assert.ok(resolveResolution.type);
+	// Distinct imports in the same project/platform share the same service.
 	assert.equal(services, 1);
 
 	// Disposing a generation must release both the shared service and every
