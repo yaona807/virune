@@ -1,0 +1,54 @@
+name: Fix TypeScript language service patch
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.event.pull_request.head.ref == 'agent/ts-language-service-reuse'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+      - name: Correct diagnostics escaping and provider disposal
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          index = Path('packages/js-interop/src/index.ts')
+          text = index.read_text()
+          broken = "ts.flattenDiagnosticMessageText(item.messageText, '\n')"
+          # The generated source currently contains a literal line break between
+          # the quotes. Normalize both possible forms to an escaped newline.
+          text = text.replace("ts.flattenDiagnosticMessageText(item.messageText, '\n')", "ts.flattenDiagnosticMessageText(item.messageText, '\\n')")
+          text = text.replace("ts.flattenDiagnosticMessageText(item.messageText, '" + "\n" + "')", "ts.flattenDiagnosticMessageText(item.messageText, '\\n')")
+          index.write_text(text)
+
+          cached = Path('packages/js-interop/src/cached-provider.ts')
+          text = cached.read_text()
+          old = """\tpublic dispose(): void {
+          \t\tthis.#cache.clear();
+          \t\tthis.#provider = undefined;
+          \t}"""
+          new = """\tpublic dispose(): void {
+          \t\tconst provider = this.#provider;
+          \t\tthis.#provider = undefined;
+          \t\tthis.#cache.clear();
+          \t\tprovider?.dispose();
+          \t}"""
+          if old not in text:
+              raise SystemExit('Cached provider dispose block not found')
+          cached.write_text(text.replace(old, new, 1))
+          PY
+          git rm .github/workflows/fix-language-service-patch.yml
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add packages/js-interop/src/index.ts packages/js-interop/src/cached-provider.ts
+          git commit -m "fix(interop): dispose reused language services"
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}
