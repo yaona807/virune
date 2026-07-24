@@ -2,13 +2,12 @@ import {
 	lex,
 	type AstNode,
 	type BuiltModule,
-	type SourceFile,
 	type SemanticModel,
+	type SourceFile,
 } from '@virune/compiler/experimental';
 import { CompletionItemKind, MarkupKind, type CompletionItem } from 'vscode-languageserver/node';
 import { nameRange, positionToOffset } from '../analysis/position.js';
-import type { AnalysisSnapshot } from '../analysis/project-manager.js';
-import { autoImportItems } from './auto-import.js';
+import { autoImportItems, type WorkspaceExport } from './auto-import.js';
 import { documentationSummary, recordFieldDocumentation, symbolDocumentationSummary } from './documentation.js';
 
 type SymbolInfo = SemanticModel['symbols'] extends ReadonlyMap<number, infer Value> ? Value : never;
@@ -25,7 +24,12 @@ interface BraceScope {
 	readonly end: number;
 }
 
-export function completionItems(module: BuiltModule, source: SourceFile, offset: number, snapshot?: AnalysisSnapshot): readonly CompletionItem[] {
+export function completionItems(
+	module: BuiltModule,
+	source: SourceFile,
+	offset: number,
+	workspaceExports: readonly WorkspaceExport[] = [],
+): readonly CompletionItem[] {
 	const semantic = module.semantic;
 	if (semantic === undefined) return keywordItems();
 	const globalIds = new Set(semantic.globalScope.values().map(symbol => symbol.id));
@@ -43,10 +47,8 @@ export function completionItems(module: BuiltModule, source: SourceFile, offset:
 		.map(symbol => symbolCompletion(symbol, module))
 		.sort((left, right) => left.label.localeCompare(right.label));
 	const existing = new Set(items.map(item => item.label));
-	if (snapshot !== undefined) {
-		for (const item of autoImportItems(snapshot, module, source, existing)) {
-			if (!existing.has(item.label)) items.push(item);
-		}
+	for (const item of autoImportItems(workspaceExports, module, source, existing)) {
+		if (!existing.has(item.label)) items.push(item);
 	}
 	for (const item of keywordItems()) if (!existing.has(item.label)) items.push(item);
 	return items;
