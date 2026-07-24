@@ -118,8 +118,10 @@ test('ProjectManager replaces intermediate queued builds with the latest documen
 	for (let version = 2; version <= 20; version++) {
 		document = TextDocument.create(uri, 'virune', version, text);
 		requests.push(manager.analyzeDocument(uri));
-		await new Promise<void>(resolve => setImmediate(resolve));
 	}
+	// Root discovery is asynchronous. Keep the first build gated until every
+	// rapid request has had enough time to reach the latest-only build lane.
+	await new Promise<void>(resolve => setTimeout(resolve, 500));
 	assert.equal(buildCount, 1);
 	releaseFirst();
 	const results = await Promise.all(requests);
