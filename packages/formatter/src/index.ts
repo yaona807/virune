@@ -126,9 +126,10 @@ function placementToEdit(
 		const previous = tokens[placement.previous]!;
 		const start = (previous.endOffset ?? previous.startOffset) + 1;
 		const next = placement.next === undefined ? undefined : tokens[placement.next];
+		const end = next?.startOffset ?? start;
 		const indent = placement.next === undefined ? '' : indentationForToken(tokens, placement.next);
 		const separator = next === undefined ? '' : `\n${indent}`;
-		return { start, end: start, text: ` ${placement.text}${separator}`, order };
+		return { start, end, text: ` ${placement.text}${separator}`, order };
 	}
 	if (placement.next !== undefined) {
 		const next = tokens[placement.next]!;
@@ -157,19 +158,19 @@ function indentationForToken(tokens: readonly TokenLike[], tokenIndex: number): 
 }
 
 function groupEdits(edits: readonly TextEdit[]): TextEdit[] {
-	const groups = new Map<number, TextEdit[]>();
+	const groups = new Map<string, TextEdit[]>();
 	for (const edit of edits) {
-		const group = groups.get(edit.start) ?? [];
+		const key = `${edit.start}:${edit.end}`;
+		const group = groups.get(key) ?? [];
 		group.push(edit);
-		groups.set(edit.start, group);
+		groups.set(key, group);
 	}
 	return [...groups.values()].map(group => {
 		const ordered = [...group].sort((left, right) => left.order - right.order);
 		if (ordered.length === 1) return ordered[0]!;
 		const first = ordered[0]!;
 		const text = ordered.slice(1).reduce((merged, item) => mergeEditText(merged, item.text), first.text);
-		const end = Math.max(...ordered.map(item => item.end));
-		return { start: first.start, end, text, order: first.order };
+		return { start: first.start, end: first.end, text, order: first.order };
 	});
 }
 
