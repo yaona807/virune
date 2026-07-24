@@ -64,3 +64,32 @@ jobs:
             .cache/binding-corpus/baseline-diff.json
           if-no-files-found: ignore
           retention-days: 30
+
+  semantic-fuzz:
+    name: Semantic fuzz shard ${{ matrix.shard }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run test:semantic-fuzz:long
+        env:
+          VIRUNE_SEMANTIC_FUZZ_DURATION_MS: 900000
+          VIRUNE_SEMANTIC_FUZZ_SHARD: ${{ matrix.shard }}
+          VIRUNE_SEMANTIC_FUZZ_ARTIFACT_DIR: fuzz-regressions/semantic-artifacts/shard-${{ matrix.shard }}
+      - name: Upload semantic fuzz regressions
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: semantic-fuzz-regressions-${{ matrix.shard }}
+          path: fuzz-regressions/semantic-artifacts/shard-${{ matrix.shard }}
+          if-no-files-found: ignore
+          retention-days: 30
