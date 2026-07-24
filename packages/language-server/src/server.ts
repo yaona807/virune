@@ -1,16 +1,19 @@
+import { basename } from 'node:path';
 import {
 	createConnection,
 	ProposedFeatures,
 	TextDocumentSyncKind,
 	TextDocuments,
+	FileChangeType,
 	type CancellationToken,
+	type FileEvent,
 	type InitializeParams,
 	type InitializeResult,
 	type TextDocumentPositionParams,
 	CodeActionKind,
 } from 'vscode-languageserver/node';
 import { TextDocument } from 'vscode-languageserver-textdocument';
-import { ProjectManager } from './analysis/project-manager.js';
+import { ProjectManager, type ProjectInvalidationOptions } from './analysis/project-manager.js';
 import { diagnosticsForPath } from './features/diagnostics.js';
 import { completionItems } from './features/completion.js';
 import { collectWorkspaceExports, type WorkspaceExport } from './features/auto-import.js';
@@ -42,8 +45,8 @@ import { filePathToUri, positionToOffset, uriToFilePath } from './analysis/posit
 const connection = createConnection(ProposedFeatures.all);
 const documents = new TextDocuments(TextDocument);
 let projectManager = new ProjectManager({ getOpenDocuments: () => documents.all() });
-const pending = new Map<string, ReturnType<typeof setTimeout>>();
-const generations = new Map<string, number>();
+const pendingDiagnostics = new Map<string, ReturnType<typeof setTimeout>>();
+const diagnosticGenerations = new Map<string, number>();
 const publishedDiagnostics = new Map<string, Set<string>>();
 const documentRoots = new Map<string, string>();
 const completionExports = new Map<string, readonly WorkspaceExport[]>();
@@ -95,20 +98,33 @@ connection.onInitialize((params: InitializeParams): InitializeResult => {
 });
 
 function scheduleDiagnostics(uri: string): void {
-	const previous = pending.get(uri);
+	void scheduleDiagnosticsForUri(uri);
+}
+
+async function scheduleDiagnosticsForUri(uri: string): Promise<void> {
+	const root = await projectManager.projectRootForUri(uri);
+	if (root === undefined) return;
+	documentRoots.set(uri, root);
+	scheduleProjectDiagnostics(root);
+}
+
+function scheduleProjectDiagnostics(root: string): void {
+	const previous = pendingDiagnostics.get(root);
 	if (previous !== undefined) clearTimeout(previous);
-	const generation = (generations.get(uri) ?? 0) + 1;
-	generations.set(uri, generation);
-	pending.set(uri, setTimeout(() => {
-		pending.delete(uri);
-		void publishDiagnostics(uri, generation);
+	const generation = (diagnosticGenerations.get(root) ?? 0) + 1;
+	diagnosticGenerations.set(root, generation);
+	pendingDiagnostics.set(root, setTimeout(() => {
+		pendingDiagnostics.delete(root);
+		void publishProjectDiagnostics(root, generation);
 	}, 150));
 }
 
-async function publishDiagnostics(uri: string, generation: number): Promise<void> {
+async function publishProjectDiagnostics(root: string, generation: number): Promise<void> {
 	try {
-		const snapshot = await projectManager.analyzeDocument(uri);
-		if (snapshot === undefined || generations.get(uri) !== generation) return;
+		const entry = documents.all().find(document => documentRoots.get(document.uri) === root);
+		if (entry === undefined) return;
+		const snapshot = await projectManager.analyzeWorkspaceDocument(entry.uri);
+		if (snapshot === undefined || snapshot.root !== root || diagnosticGenerations.get(root) !== generation) return;
 		const openVersions = new Map<string, number>();
 		for (const document of documents.all()) {
 			const documentPath = uriToFilePath(document.uri);
@@ -127,10 +143,10 @@ async function publishDiagnostics(uri: string, generation: number): Promise<void
 				? { uri: moduleUri, diagnostics: moduleDiagnostics }
 				: { uri: moduleUri, version, diagnostics: moduleDiagnostics });
 		}
-		for (const previousUri of publishedDiagnostics.get(snapshot.root) ?? []) {
+		for (const previousUri of publishedDiagnostics.get(root) ?? []) {
 			if (!currentUris.has(previousUri)) connection.sendDiagnostics({ uri: previousUri, diagnostics: [] });
 		}
-		publishedDiagnostics.set(snapshot.root, currentUris);
+		publishedDiagnostics.set(root, currentUris);
 	} catch (error) {
 		connection.console.error(`Virune analysis failed: ${error instanceof Error ? error.stack ?? error.message : String(error)}`);
 	}
@@ -148,15 +164,6 @@ async function analyzeDocumentPosition(params: TextDocumentPositionParams, token
 	if (snapshot === undefined || isCancelled(token)) return undefined;
 	const module = snapshot.modulesByPath.get(path);
 	if (module === undefined) return undefined;
-	return { snapshot, module, offset: positionToOffset(module.source, params.position) };
-}
-
-async function analyzeIndexedPosition(params: TextDocumentPositionParams) {
-	const path = uriToFilePath(params.textDocument.uri);
-	if (path === undefined) return undefined;
-	const snapshot = await projectManager.analyze(params.textDocument.uri);
-	const module = snapshot?.modulesByPath.get(path);
-	if (snapshot === undefined || module === undefined) return undefined;
 	return { snapshot, module, offset: positionToOffset(module.source, params.position) };
 }
 
@@ -192,10 +199,15 @@ async function workspaceExportsFor(uri: string, root: string, token?: Cancellati
 	}
 }
 
-function invalidateCompletionExports(): void {
+function invalidateCompletionExports(root?: string): void {
 	completionExportRevision++;
-	completionExports.clear();
-	completionExportPromises.clear();
+	if (root === undefined) {
+		completionExports.clear();
+		completionExportPromises.clear();
+		return;
+	}
+	completionExports.delete(root);
+	completionExportPromises.delete(root);
 }
 
 connection.onDocumentFormatting(async params => {
@@ -339,32 +351,73 @@ connection.onDidChangeConfiguration(params => {
 	editorInformationSettings = resolveEditorInformationSettings(params.settings);
 });
 
-connection.onDidChangeWatchedFiles(() => {
-	invalidateCompletionExports();
-	projectManager.invalidate();
-	for (const document of documents.all()) scheduleDiagnostics(document.uri);
+connection.onDidChangeWatchedFiles(params => {
+	void handleWatchedFiles(params.changes);
 });
 
-documents.onDidOpen(event => scheduleDiagnostics(event.document.uri));
+async function handleWatchedFiles(changes: readonly FileEvent[]): Promise<void> {
+	const affected = new Map<string, ProjectInvalidationOptions>();
+	for (const change of changes) {
+		const path = uriToFilePath(change.uri);
+		if (path === undefined) continue;
+		if (documents.get(change.uri) !== undefined && change.type === FileChangeType.Changed && path.endsWith('.virune')) continue;
+		const root = await projectManager.projectRootForPath(path);
+		const previous = affected.get(root) ?? {};
+		const name = basename(path);
+		const workspaceEntries = previous.workspaceEntries === true
+			|| (path.endsWith('.virune') && change.type !== FileChangeType.Changed);
+		const projectRoots = previous.projectRoots === true || name === 'virune.json';
+		const interop = previous.interop === true || (projectManager.hasInteropProvider(root) && isInteropDependency(path));
+		affected.set(root, { workspaceEntries, projectRoots, interop });
+	}
+	for (const [root, options] of affected) {
+		projectManager.invalidateProject(root, options);
+		invalidateCompletionExports(root);
+		if ([...documentRoots.values()].includes(root)) scheduleProjectDiagnostics(root);
+	}
+}
+
+function isInteropDependency(path: string): boolean {
+	const name = basename(path);
+	return name === 'package.json'
+		|| /^tsconfig(?:\..+)?\.json$/u.test(name)
+		|| path.endsWith('.d.ts')
+		|| path.endsWith('.interop.ts')
+		|| path.endsWith('.interop.tsx')
+		|| path.endsWith('.interop.mts')
+		|| path.endsWith('.interop.cts');
+}
+
+documents.onDidOpen(event => {
+	void projectManager.projectRootForUri(event.document.uri).then(root => {
+		if (root !== undefined) invalidateCompletionExports(root);
+	});
+	scheduleDiagnostics(event.document.uri);
+});
 documents.onDidChangeContent(event => scheduleDiagnostics(event.document.uri));
 documents.onDidSave(event => {
-	invalidateCompletionExports();
+	void projectManager.projectRootForUri(event.document.uri).then(root => {
+		if (root !== undefined) invalidateCompletionExports(root);
+	});
 	scheduleDiagnostics(event.document.uri);
 });
 documents.onDidClose(event => {
-	const timer = pending.get(event.document.uri);
-	if (timer !== undefined) clearTimeout(timer);
-	pending.delete(event.document.uri);
-	generations.delete(event.document.uri);
 	const root = documentRoots.get(event.document.uri);
 	documentRoots.delete(event.document.uri);
 	connection.sendDiagnostics({ uri: event.document.uri, diagnostics: [] });
-	if (root !== undefined && ![...documentRoots.values()].includes(root)) {
-		for (const publishedUri of publishedDiagnostics.get(root) ?? []) {
-			connection.sendDiagnostics({ uri: publishedUri, diagnostics: [] });
-		}
-		publishedDiagnostics.delete(root);
+	if (root === undefined) return;
+	if ([...documentRoots.values()].includes(root)) {
+		scheduleProjectDiagnostics(root);
+		return;
 	}
+	const timer = pendingDiagnostics.get(root);
+	if (timer !== undefined) clearTimeout(timer);
+	pendingDiagnostics.delete(root);
+	diagnosticGenerations.delete(root);
+	for (const publishedUri of publishedDiagnostics.get(root) ?? []) {
+		connection.sendDiagnostics({ uri: publishedUri, diagnostics: [] });
+	}
+	publishedDiagnostics.delete(root);
 });
 
 documents.listen(connection);
