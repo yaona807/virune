@@ -49,3 +49,11 @@ Safe descriptors do not claim callback validation, arbitrary object-keyed JavaSc
 ## JavaScript exports
 
 `@jsExport` wrappers validate inbound values, convert outbound values, omit optional trailing arguments when required, and defensively copy native aggregate values exposed to JavaScript. Foreign handles remain foreign and are never presented as validated native values.
+
+## Public ABI snapshot
+
+The reviewed snapshot at `packages/public-abi.snapshot.json` records package export maps and public declaration surfaces for Runtime v2, Interop v2, and Stdlib entry points. It also records every Runtime v2 symbol imported by generated JavaScript.
+
+Run `npm run abi:check` to verify compatibility. Public symbol removal, rename, signature changes, package export-map changes, or an emitter reference outside the Runtime v2 surface fail CI. Additive changes are reported separately but still require review and an intentional snapshot update with `npm run abi:update`.
+
+Breaking changes require a new versioned ABI path and migration documentation; updating the snapshot alone does not make a breaking change compatible.

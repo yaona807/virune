@@ -1,14 +1,30 @@
 # Stable release gate
 
-Virune can be promoted to the `stable` channel only when all of the following are true.
+[English](stable-release-gate.md) | [日本語](stable-release-gate_ja.md)
 
-- Formatter comments preserve their semantic anchor, formatting is idempotent, and the formatter regression/fuzz suites pass.
-- Every child task is cancelled and settled before its scope completes; timeout and sibling-failure paths pass on Node.js and browser runtimes.
-- The stable Compiler API snapshot and package export map pass compatibility checks.
-- Normative rule coverage is 100%, with no documentation file counted as a test.
-- Node.js and browser conformance suites pass from a clean install.
-- FFI Unknown fallbacks and unsafe boundaries are reported and documented.
-- Parser, formatter, and checker crash-fuzz suites pass.
-- Public packages install and execute in a clean environment.
-- The pinned npm binding corpus reproduces its reviewed hashes and meets its success/non-empty thresholds.
-- Scheduled long fuzz runs have accumulated reviewed evidence without unresolved crash regressions.
+Virune can be promoted to the `stable` channel only when all requirements in `.github/stable-release-gate.json` pass.
+
+The gate is executed by the same `npm run release:gate` command in both the tag-driven Release workflow and the manual Release dry-run workflow. It writes `.cache/release/release-evidence.json`, containing the version, commit, individual check results, requirement-to-evidence mapping, durations, and the latest accepted Nightly run.
+
+The machine-readable requirements cover:
+
+- Formatter comment anchoring, idempotence, regression tests, and fuzz smoke.
+- Structured-concurrency cancellation and settlement on Node.js and browser runtimes.
+- Stable Compiler API and Runtime v2, Interop v2, and Stdlib public ABI snapshots.
+- Normative specification and grammar coverage.
+- Node.js and browser conformance from a clean checkout.
+- FFI Unknown fallbacks, unsafe boundaries, and the reviewed binding corpus.
+- Parser, formatter, checker, and semantic fuzz suites.
+- Public release packages, manifests, checksums, VSIX packaging, offline clean installation, and generated-project execution.
+- A successful Nightly quality run on `main` within the maximum age defined by policy.
+
+Run a local structural check with:
+
+```bash
+npm run release:check
+npm run abi:check
+```
+
+The complete gate requires GitHub Actions credentials to verify recent Nightly evidence. Start **Release dry run** from the Actions tab. A stable tag must not be created until that workflow succeeds for the exact commit to be tagged.
+
+Intentional ABI changes require updating the reviewed snapshot with `npm run abi:update`, documenting compatibility impact, and changing the versioned ABI path when the change is breaking.

@@ -49,3 +49,11 @@ Safe descriptorはcallback検証、object keyを持つ任意JavaScript Map／Set
 ## JavaScript export
 
 `@jsExport` wrapperは入力を検証し、出力を変換し、必要なoptional末尾引数を省略し、JavaScriptへ公開するNative aggregateを防御的copyします。Foreign handleを検証済みNative値として扱いません。
+
+## 公開ABI snapshot
+
+`packages/public-abi.snapshot.json`は、Runtime v2、Interop v2、Stdlib entry pointのpackage export mapと公開宣言surfaceをreview可能な形で記録します。また、生成JavaScriptがimportする全Runtime v2 symbolも記録します。
+
+互換性は`npm run abi:check`で確認します。公開symbolの削除・rename・signature変更、package export map変更、Runtime v2 surface外のsymbolをEmitterが参照した場合はCIが失敗します。追加変更は別種としてreportしますが、`npm run abi:update`による意図的なsnapshot更新とreviewが必要です。
+
+破壊的変更では新しいversion付きABI pathとmigration文書が必要です。snapshot更新だけで破壊的変更が互換になるわけではありません。
