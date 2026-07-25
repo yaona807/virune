@@ -85,7 +85,7 @@ pub fn main(args: List<String>) -> Result<Unit, UserError> uses Console {
 	let user = User {
 		id: UserId(1),
 		name: "Alice",
-		nickname: None
+		nickname: None,
 	}
 	Console.print(display(user))
 	Console.print("引数の数: {List.length(args)}")
