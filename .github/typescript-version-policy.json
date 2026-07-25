@@ -17,8 +17,18 @@
 		"allowedSourceRoots": [
 			"packages/js-interop/"
 		],
+		"allowedSourcePaths": [
+			"packages/cli/src/bind.ts",
+			"scripts/run-binding-corpus.mjs",
+			"scripts/verify-public-abi.mjs"
+		],
+		"apiPackageManifests": [
+			"packages/cli/package.json",
+			"packages/js-interop/package.json"
+		],
 		"allowedPackageManifests": [
 			"package.json",
+			"packages/cli/package.json",
 			"packages/js-interop/package.json"
 		]
 	},
