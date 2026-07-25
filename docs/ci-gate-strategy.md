@@ -31,18 +31,16 @@ Documentation-only pull requests additionally build and execute the documentatio
 
 For a full gate, the Ubuntu 24.04 / Node.js 24 `build` job starts in parallel with metadata validation. It performs the repository's only PR project-reference build and type check, then packages the generated `dist` trees into a short-lived artifact.
 
-The core-test, compatibility, and browser jobs start as soon as this artifact is available. They do not wait for each other, so artifact reuse removes duplicate builds without serializing the supported platform matrix behind the full core suite.
+The core-test, compiler-quality, compatibility, and browser jobs start as soon as this artifact is available. They do not wait for each other, so artifact reuse removes duplicate builds without serializing the supported platform matrix or the two longest platform-independent suites.
 
-### Platform-independent core
+### Platform-independent gates
 
-The Ubuntu 24.04 / Node.js 24 `verify` job restores the canonical build and owns:
+The canonical build is consumed by two Ubuntu 24.04 / Node.js 24 jobs that run concurrently:
 
-- unit and integration tests excluding the browser runtime;
-- TypeScript binding corpus;
-- fuzz and semantic differential fuzz smoke suites;
-- language-server and VS Code tests;
-- conformance and formatter checks;
-- source-clone smoke tests.
+- `verify` owns the complete unit and integration suite excluding the browser runtime;
+- `quality` owns the TypeScript binding corpus, fuzz and semantic differential fuzz smoke suites, language-server and VS Code tests, conformance, formatter checks, and source-clone smoke tests.
+
+Separating these jobs preserves every core check while preventing the roughly one-minute unit suite and roughly 45-second binding corpus from extending the critical path sequentially.
 
 ### Platform-sensitive compatibility
 
@@ -59,9 +57,9 @@ They do not repeat metadata validation, type checking, the complete unit suite, 
 
 ### Browser and release
 
-The browser job restores the canonical build and executes emitted ESM in Chromium in parallel with core and compatibility testing.
+The browser job restores the canonical build and executes emitted ESM in Chromium in parallel with core, quality, and compatibility testing.
 
-The release-artifacts job runs only after metadata, build, core, compatibility, and browser jobs succeed. It performs a clean production release build and release smoke verification rather than trusting a PR build artifact for publishing decisions.
+The release-artifacts job runs only after metadata, build, core tests, compiler quality, compatibility, and browser jobs succeed. It performs a clean production release build and release smoke verification rather than trusting a PR build artifact for publishing decisions.
 
 ## Artifact and cache safety
 
@@ -85,6 +83,7 @@ Representative commands:
 npm run verify:metadata
 npm run check
 npm run test:core:built -- --failure-output-only
+npm run test:binding-corpus:built
 npm run test:platform-smoke:built
 npm run test:vscode:built
 npm run test:conformance:built
