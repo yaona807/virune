@@ -15,6 +15,10 @@
 			"command": ["npm", "run", "verify:release"]
 		},
 		{
+			"id": "reproducible-release",
+			"command": ["npm", "run", "verify:reproducible-release"]
+		},
+		{
 			"id": "installed-vsix",
 			"command": ["xvfb-run", "-a", "npm", "run", "smoke:vscode-release"]
 		}
@@ -31,6 +35,7 @@
 		{"id": "binding-corpus", "evidence": ["quality"]},
 		{"id": "clean-install", "evidence": ["release-artifacts"]},
 		{"id": "release-packages", "evidence": ["release-artifacts"]},
+		{"id": "reproducible-release", "evidence": ["reproducible-release"]},
 		{"id": "installed-vsix", "evidence": ["installed-vsix"]},
 		{"id": "nightly-evidence", "evidence": ["nightly"]}
 	]
