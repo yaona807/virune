@@ -1,0 +1,49 @@
+name: TypeScript 7 prototype
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - '.github/typescript-version-policy.json'
+      - '.github/workflows/typescript-7-prototype.yml'
+      - 'docs/adr-typescript-7-migration*.md'
+      - 'package.json'
+      - 'packages/*/package.json'
+      - 'packages/*/tsconfig.json'
+      - 'packages/js-interop/**'
+      - 'packages/language-server/**'
+      - 'packages/vscode/**'
+      - 'scripts/probe-typescript-7.mjs'
+      - 'scripts/verify-typescript-boundary*.mjs'
+      - 'tsconfig*.json'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: typescript-7-prototype-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  prototype:
+    name: Build compiler 7 / Compiler API 6
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install current dependencies
+        run: npm ci
+      - name: Verify the migration prototype
+        run: npm run prototype:typescript7
+      - name: Upload prototype evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: typescript-7-prototype-${{ github.sha }}
+          path: .cache/typescript-7-prototype/
+          if-no-files-found: error
+          retention-days: 30
