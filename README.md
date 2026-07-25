@@ -83,7 +83,7 @@ fn display(user: User) -> String {
 
 pub fn main(args: List<String>) -> Result<Unit, UserError> uses Console {
 	let user = User {
-		id: UserId.create(1)
+		id: UserId(1)
 		name: "Alice"
 		nickname: None
 	}
