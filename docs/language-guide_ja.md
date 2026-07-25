@@ -166,6 +166,16 @@ JavaScript値はdescriptorで検証します。安全に検証できないTypeSc
 ```virune
 //! ユーザー検索サービス。
 
+pub newtype UserId = Int
+
+pub record User {
+	id: UserId
+}
+
+pub enum UserError {
+	NotFound(UserId)
+}
+
 /// `id`で識別されるユーザーを返す。
 ///
 /// # エラー
