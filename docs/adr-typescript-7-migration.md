@@ -38,6 +38,7 @@ Production API consumers are:
 
 Repository tooling consumers are restricted to:
 
+- `scripts/probe-typescript-7.mjs`, which uses the compatibility API to compare declaration output semantically;
 - `scripts/run-binding-corpus.mjs`, which records the TypeScript version in corpus evidence;
 - `scripts/verify-public-abi.mjs`, which analyzes declaration output while enforcing the public ABI snapshot.
 
@@ -90,14 +91,16 @@ It installs the exact TypeScript 7 compiler into an isolated temporary tool dire
 1. the TypeScript 6 Compiler API inventory, boundary, and version;
 2. a forced clean build with TypeScript 6;
 3. a forced clean build with TypeScript 7;
-4. byte-for-byte equality of emitted JavaScript and declarations, excluding `.tsbuildinfo`;
+4. byte-for-byte equality of emitted JavaScript and semantic equality of emitted declarations, excluding `.tsbuildinfo`;
 5. source-map equality for version, output file, source root, source files, and embedded source content, while recording reviewed name or mapping differences;
 6. an incremental TypeScript 7 build that does not mutate emitted output;
 7. `@virune/js-interop` tests and the binding corpus;
 8. language-server and VS Code extension tests;
 9. VSIX packaging.
 
-The initial prototype produced identical JavaScript and declaration output across 512 emitted files. It identified 88 source maps whose source structure was unchanged but whose generated name or mapping encoding differed. These mapping-only differences are retained as explicit evidence rather than treated as an unreviewed code-output change.
+The prototype compares declaration files through the TypeScript 6 compatibility AST. It normalizes string-literal quote style, redundant `undefined` in optional `unknown` members or parameters, and a local `typeof` reference when it resolves to the same declared function type. Any other declaration difference remains blocking.
+
+The initial prototype produced identical JavaScript across 512 emitted files. Four declarations differed textually but were semantically equivalent: two quote-style changes, optional `unknown | undefined` simplified to `unknown`, and inferred aliases printed as `typeof` references to the same local function declarations. It also identified 84 source maps whose source structure was unchanged but whose generated mapping encoding differed. These reviewed differences are retained as explicit evidence rather than treated as unreviewed code-output changes.
 
 Evidence is written to `.cache/typescript-7-prototype/` as JSON, Markdown, and per-command logs. The dedicated GitHub Actions workflow uploads the evidence on success or failure.
 
@@ -107,7 +110,7 @@ Evidence is written to `.cache/typescript-7-prototype/` as JSON, Markdown, and p
 2. Review prototype output and diagnostic parity on Linux.
 3. Open the implementation PR that applies the native compiler alias and compatibility aliases to the root, CLI, and JavaScript interop manifests, then updates the lockfile.
 4. Run the normal operating-system matrix, browser conformance, performance, VSIX smoke, binding corpus, release dry run, and reproducible release gate.
-5. Review compiler output, diagnostics, clean and incremental timings, package size, startup behavior, and the source-map mapping evidence.
+5. Review compiler output, diagnostics, clean and incremental timings, package size, startup behavior, declaration evidence, and source-map mapping evidence.
 6. Merge only if all existing release gates and the TypeScript 7 prototype pass.
 7. Remove the prototype-only installation step after the committed toolchain uses TypeScript 7; retain the boundary policy and parity checks.
 
@@ -121,5 +124,5 @@ Rollback removes `@typescript/native`, restores the root, CLI, and JavaScript in
 - Compiler build performance and Compiler API compatibility can be upgraded independently.
 - The repository temporarily carries two TypeScript implementations.
 - Package size and install time may increase because native platform packages and the compatibility API coexist.
-- Source-map mapping encodings change under the native compiler even when generated code, declarations, and source references are stable.
+- Declaration formatting and source-map mapping encodings can change under the native compiler even when generated code, public types, and source references are stable.
 - The boundary policy prevents accidental coupling to the legacy API outside the reviewed production and tooling consumers.
