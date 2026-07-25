@@ -85,6 +85,8 @@
 		"check:performance": "node scripts/check-performance-regression.mjs",
 		"test:performance-regression": "node --test scripts/performance-regression.test.mjs",
 		"docs:check": "node scripts/verify-documentation.mjs",
+		"docs:examples:check": "node scripts/verify-documentation-examples.mjs",
+		"test:docs-examples": "node --test scripts/verify-documentation-examples.test.mjs",
 		"abi:check": "node scripts/verify-public-abi.mjs",
 		"abi:update": "node scripts/verify-public-abi.mjs --write",
 		"test:public-abi": "node --test scripts/verify-public-abi.test.mjs",
