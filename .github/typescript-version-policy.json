@@ -19,6 +19,7 @@
 		],
 		"allowedSourcePaths": [
 			"packages/cli/src/bind.ts",
+			"scripts/probe-typescript-7.mjs",
 			"scripts/run-binding-corpus.mjs",
 			"scripts/verify-public-abi.mjs"
 		],
@@ -33,6 +34,7 @@
 		]
 	},
 	"prototype": {
+		"allowSemanticallyEquivalentDeclarationDifferences": true,
 		"allowSourceMapMappingDifferences": true,
 		"checks": [
 			"clean-build",
