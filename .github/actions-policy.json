@@ -2,7 +2,9 @@
 	"schemaVersion": 1,
 	"allowedReferences": {
 		"actions/checkout": ["v7"],
+		"actions/dependency-review-action": ["v5"],
 		"actions/setup-node": ["v7"],
-		"actions/upload-artifact": ["v7"]
+		"actions/upload-artifact": ["v7"],
+		"github/codeql-action": ["v4"]
 	}
 }
