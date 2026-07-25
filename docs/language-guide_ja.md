@@ -27,7 +27,7 @@ Arrow bodyは単一式、block bodyはstatementと早期returnに使用します
 ```virune
 pub newtype UserId = Int
 
-type Headers = Map<String, List<String>>
+type Headers = Map<String, String>
 
 record User derives Eq, Hash, Debug, Json {
 	id: UserId
