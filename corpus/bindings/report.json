@@ -1,6 +1,6 @@
 {
 	"schemaVersion": 1,
-	"generatedAt": "2026-07-20T10:39:28.658Z",
+	"generatedAt": "2026-07-25T06:22:33.397Z",
 	"typescriptVersion": "6.0.3",
 	"thresholds": {
 		"minimumGenerationSuccessRate": 0.85,
@@ -13,8 +13,8 @@
 		"generationSuccessRate": 1,
 		"nonEmptyRate": 1,
 		"totalFunctions": 1791,
-		"totalRecords": 1050,
-		"totalWarnings": 8886,
+		"totalRecords": 1159,
+		"totalWarnings": 8777,
 		"totalUnknownMappings": 7305
 	},
 	"packages": [
@@ -23,20 +23,20 @@
 			"version": "4.4.3",
 			"status": "success",
 			"generatedFunctions": 165,
-			"generatedRecords": 73,
-			"warnings": 811,
+			"generatedRecords": 77,
+			"warnings": 807,
 			"unknownMappings": 486,
-			"outputHash": "5ffdc48dcc4471ea0b6507a91c9ada2698a4d2d510a28a1fca57482ee3ddcf3f"
+			"outputHash": "e2c2f91be6a31bf090fdd70aa13be99549bfdf23dde3e64ced9b16405658fd2e"
 		},
 		{
 			"name": "fastify",
 			"version": "5.10.0",
 			"status": "success",
 			"generatedFunctions": 0,
-			"generatedRecords": 25,
-			"warnings": 271,
+			"generatedRecords": 26,
+			"warnings": 270,
 			"unknownMappings": 90,
-			"outputHash": "5316ceff8851ba5f1a5cdccab48c585b2efae4fed3ab7f11a928fd674d0ef815"
+			"outputHash": "17840857be9d57603760f88fd798e04d488c7349d38fffc6a725213320149257"
 		},
 		{
 			"name": "react",
@@ -45,10 +45,10 @@
 			"typesVersion": "19.2.17",
 			"status": "success",
 			"generatedFunctions": 52,
-			"generatedRecords": 108,
-			"warnings": 653,
+			"generatedRecords": 135,
+			"warnings": 626,
 			"unknownMappings": 522,
-			"outputHash": "99a76d1cf22262e1d79291e04abd785c642f0d5667c467b9bbbe51a105869b56"
+			"outputHash": "f2853e42d25f403c5fb7e42696bd5a8c136fb85b4c42ab37845990a5975fad6d"
 		},
 		{
 			"name": "node-fetch",
@@ -65,40 +65,40 @@
 			"version": "1.18.1",
 			"status": "success",
 			"generatedFunctions": 9,
-			"generatedRecords": 23,
-			"warnings": 111,
+			"generatedRecords": 27,
+			"warnings": 107,
 			"unknownMappings": 73,
-			"outputHash": "be436a64a4e2c6903f44222b43a44c8b6d0accb8d2c2eca21f12438678085195"
+			"outputHash": "6a99f0040bc245dd72e317a939bf436d66245820a75de259f199f17c39de4e07"
 		},
 		{
 			"name": "date-fns",
 			"version": "4.4.0",
 			"status": "success",
 			"generatedFunctions": 249,
-			"generatedRecords": 32,
-			"warnings": 735,
+			"generatedRecords": 43,
+			"warnings": 724,
 			"unknownMappings": 668,
-			"outputHash": "e7b3f8addeffb138f1d0c7ec66d96e2288ef6463f8a92fb974ce675bb6eaa06a"
+			"outputHash": "72c74a67b8e8fb46157adf42e2ea6e7e27cc95c3b5847353bd7ada44f4a93881"
 		},
 		{
 			"name": "uuid",
 			"version": "14.0.1",
 			"status": "success",
 			"generatedFunctions": 20,
-			"generatedRecords": 1,
-			"warnings": 40,
+			"generatedRecords": 2,
+			"warnings": 39,
 			"unknownMappings": 33,
-			"outputHash": "3ede608926d208704e9973dd9191d736b98131afa799139fb02a7795b4e3554b"
+			"outputHash": "b23c24cbd90a7e76aedd70bc00c8e74476e932cdc779abe2cd673ebd01794619"
 		},
 		{
 			"name": "commander",
 			"version": "15.0.0",
 			"status": "success",
 			"generatedFunctions": 3,
-			"generatedRecords": 8,
-			"warnings": 24,
+			"generatedRecords": 9,
+			"warnings": 23,
 			"unknownMappings": 5,
-			"outputHash": "0f1b8a2c2ef450e08659df3092a4bca4785943d890f740bf3d5cf039e62bef7a"
+			"outputHash": "28a86e82f7a61be1a22f53bce639e4eba125be7fba3b7bb25e6c66b3365c1340"
 		},
 		{
 			"name": "chalk",
@@ -135,20 +135,20 @@
 			"version": "8.20.0",
 			"status": "success",
 			"generatedFunctions": 2,
-			"generatedRecords": 17,
-			"warnings": 61,
+			"generatedRecords": 20,
+			"warnings": 58,
 			"unknownMappings": 29,
-			"outputHash": "144dd36fd3829922df251a44d09ca4bc12faf5ae3aad71d1253f6063e7416aa2"
+			"outputHash": "ce8ae13bfc233a13e0c8762f62bb1b84c0a24e9381900650c588c72fc0d86bda"
 		},
 		{
 			"name": "execa",
 			"version": "10.0.0",
 			"status": "success",
 			"generatedFunctions": 5,
-			"generatedRecords": 0,
-			"warnings": 34,
+			"generatedRecords": 7,
+			"warnings": 27,
 			"unknownMappings": 13,
-			"outputHash": "86807f192abb861a6ff84e629e6629da6fc9471f2d3b2c792c59acda359a810d"
+			"outputHash": "73a99e6d2e2af8da7a73be49073d6077a903778324ec9262b415e3369dd1e8ee"
 		},
 		{
 			"name": "pino",
@@ -165,20 +165,20 @@
 			"version": "17.0.2",
 			"status": "success",
 			"generatedFunctions": 197,
-			"generatedRecords": 136,
-			"warnings": 366,
+			"generatedRecords": 142,
+			"warnings": 360,
 			"unknownMappings": 257,
-			"outputHash": "b50982b68e8d6a67a0b4311971153f958e7521fbbbdbdc5d1cfc6fd29bf587a6"
+			"outputHash": "83743fe444a1b1239494469c0c72234941f022d1e51e312e9df5f847e9558f09"
 		},
 		{
 			"name": "rxjs",
 			"version": "7.8.2",
 			"status": "success",
 			"generatedFunctions": 312,
-			"generatedRecords": 25,
-			"warnings": 1317,
+			"generatedRecords": 27,
+			"warnings": 1315,
 			"unknownMappings": 1240,
-			"outputHash": "19e4b0b6282b2fb320e523d95d2521d88a4d5179cc0f859c112174a0ceec2c07"
+			"outputHash": "488bf6733fcedffe8e573400c0f0fb2174bc7bf27ca1b488e3f6e42224a828ed"
 		},
 		{
 			"name": "immer",
@@ -205,40 +205,40 @@
 			"version": "8.2.0",
 			"status": "success",
 			"generatedFunctions": 101,
-			"generatedRecords": 56,
-			"warnings": 424,
+			"generatedRecords": 59,
+			"warnings": 421,
 			"unknownMappings": 284,
-			"outputHash": "781f11d673ecdd04a50c694920cab4542349b6a6140ca0c14683aaf144eb2634"
+			"outputHash": "473e5667dc2ef2ddd8e505512abdee325b5227fdd63da7967c76453955f5371d"
 		},
 		{
 			"name": "prettier",
 			"version": "3.9.5",
 			"status": "success",
 			"generatedFunctions": 8,
-			"generatedRecords": 26,
-			"warnings": 74,
+			"generatedRecords": 27,
+			"warnings": 73,
 			"unknownMappings": 59,
-			"outputHash": "1af9bdf37b64b3a2b1b8e4a40f2ec003cd38d4251a2abe1597f100ec56c78e2d"
+			"outputHash": "bfe24961cdc8ea28278c79ca1e26f4d4e31a05e75837c480130f4d66abeeec70"
 		},
 		{
 			"name": "vite",
 			"version": "8.1.5",
 			"status": "success",
 			"generatedFunctions": 51,
-			"generatedRecords": 90,
-			"warnings": 359,
+			"generatedRecords": 96,
+			"warnings": 353,
 			"unknownMappings": 238,
-			"outputHash": "f2198713284f570942519e8e34e46a451438f4fc913fb92eb8654306c8fc2e12"
+			"outputHash": "d1d030d158f470ef3fb980c340e52e73bfd17baf2df61a61dffc4a69a2cd816a"
 		},
 		{
 			"name": "hono",
 			"version": "4.12.30",
 			"status": "success",
 			"generatedFunctions": 0,
-			"generatedRecords": 1,
-			"warnings": 32,
+			"generatedRecords": 2,
+			"warnings": 31,
 			"unknownMappings": 13,
-			"outputHash": "6312b64087f0becd6096c86b07ea95c9dfb1299ce999366619b06bcf957f4820"
+			"outputHash": "5599df7216800cc308af6539790e5e347708d33f22bd9013d82b657703bd5bba"
 		},
 		{
 			"name": "ky",
@@ -285,10 +285,10 @@
 			"version": "1.4.2",
 			"status": "success",
 			"generatedFunctions": 510,
-			"generatedRecords": 367,
-			"warnings": 2999,
+			"generatedRecords": 394,
+			"warnings": 2972,
 			"unknownMappings": 2901,
-			"outputHash": "db827777578202e65b6d4079598bbacfd99960a9603c38a2fd4b93bc58149b40"
+			"outputHash": "1614de011754ec5cc20312083221cc4415f076db5da5a171bd65e5b97554c029"
 		},
 		{
 			"name": "ts-pattern",
@@ -325,20 +325,20 @@
 			"version": "1.11.21",
 			"status": "success",
 			"generatedFunctions": 4,
-			"generatedRecords": 2,
-			"warnings": 27,
+			"generatedRecords": 3,
+			"warnings": 26,
 			"unknownMappings": 16,
-			"outputHash": "cb3e4f3f70cd85002ca87c250b0b717833f8f329d51fa9b17aecac3a6171b3e3"
+			"outputHash": "014b8abdd378ed58b1987f2835552f47f4c0189c425a4490168da3a856916dbc"
 		},
 		{
 			"name": "marked",
 			"version": "18.0.6",
 			"status": "success",
 			"generatedFunctions": 9,
-			"generatedRecords": 7,
-			"warnings": 71,
+			"generatedRecords": 10,
+			"warnings": 68,
 			"unknownMappings": 44,
-			"outputHash": "860674dd440e4410e80c9d38b6a6e3af7a6ed8857ac437529025a51c0e5009d4"
+			"outputHash": "13df0d3acb9d3721d2b11ba94dfd8460d45cb5f9239edb68b0c862eea79d74eb"
 		}
 	]
 }
