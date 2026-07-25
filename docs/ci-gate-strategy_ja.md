@@ -4,7 +4,7 @@
 
 ## 目的
 
-ViruneのPull Request CIでは、platform-independentな検証とplatform-sensitiveなsmoke testを分離します。対応OS／Node.js matrixは維持しつつ、metadata検証、TypeScript full build、unit suite、fuzz、conformance、formatter checkを各runnerで重複実行しない構成にします。
+ViruneのPull Request CIでは、platform-independentな検証とplatform-sensitiveなsmoke testを分離します。対応OS／Node.js matrixは維持しつつ、metadata検証、TypeScript build、unit suite、fuzz、conformance、formatter checkを各runnerで重複実行しない構成にします。
 
 ## Pull Request CIの責務
 
@@ -27,11 +27,16 @@ Ubuntu 24.04／Node.js 24の`metadata` jobだけが`npm run verify:metadata`を�
 
 Documentation-only Pull Requestでは、追加でdocumentation exampleをbuild・実行します。この経路ではその他のjobをskipします。
 
+### Canonical build
+
+Full gateでは、Ubuntu 24.04／Node.js 24の`build` jobをmetadata検証と並列で開始します。このjobだけがPull Request用のproject reference buildとtype checkを実行し、生成した`dist` treeを短期artifactへpackageします。
+
+Core test、compatibility、browserの各jobはartifactが利用可能になり次第、互いを待たずに開始します。これによりbuildの重複を除去しつつ、対応platform matrixをfull core suiteの後ろへ直列化しません。
+
 ### Platform-independent core
 
-Ubuntu 24.04／Node.js 24の`verify` jobが次を担当します。
+Ubuntu 24.04／Node.js 24の`verify` jobはcanonical buildをrestoreし、次を担当します。
 
-- project reference buildとtype check
 - browser runtimeを除くunit／integration test
 - TypeScript binding corpus
 - fuzz／semantic differential fuzz smoke suite
@@ -39,11 +44,9 @@ Ubuntu 24.04／Node.js 24の`verify` jobが次を担当します。
 - conformance／formatter check
 - source clone smoke test
 
-完全なcore gateが成功した後だけ、jobはcompiled `dist` treeを短期artifactとしてpackageします。
-
 ### Platform-sensitive compatibility
 
-Windows Server 2022、Windows Server 2025、macOS 14、Ubuntu Node.js 26は、信頼済みUbuntu core jobが生成したcompiled-output artifactをdownloadします。Native／platform固有dependencyを対象runnerへinstallするため、各jobは引き続きローカルで`npm ci`を実行します。
+Windows Server 2022、Windows Server 2025、macOS 14、Ubuntu Node.js 26は、canonical build jobが生成したcompiled-output artifactをdownloadします。Native／platform固有dependencyを対象runnerへinstallするため、各jobは引き続きローカルで`npm ci`を実行します。
 
 Compatibility jobは、OS、filesystem、path処理、process生成、Node.js version、VS Code host、CLI実行に依存する可能性があるtestだけを実行します。
 
@@ -56,9 +59,9 @@ Metadata検証、type check、全unit suite、binding corpus、fuzz、formatter�
 
 ### Browserとrelease
 
-Browser jobは同じ成功済みcore buildをrestoreし、Chromiumでemitted ESMを実行します。
+Browser jobはcanonical buildをrestoreし、core／compatibility testと並列でChromium上のemitted ESMを実行します。
 
-Release-artifacts jobはmetadata、core、compatibility、browserの全jobが成功した場合だけ実行します。公開判断にPR build artifactを流用せず、cleanなproduction release buildとrelease smoke verificationを実行します。
+Release-artifacts jobはmetadata、build、core、compatibility、browserの全jobが成功した場合だけ実行します。公開判断にPull Request build artifactを流用せず、cleanなproduction release buildとrelease smoke verificationを実行します。
 
 ## Artifactとcacheの安全性
 
@@ -74,7 +77,7 @@ Release packagingはclean checkoutとinstall後に必ずsourceからrebuildし�
 
 Wrapperを通した各CI commandは、command、duration、exit status、OS、Node.js version、local reproduction commandを含むJSON timing recordを保存します。Job summaryには遅いcommandから順番に表示します。
 
-失敗時はstdout／stderrを`.cache/ci-failures/`へ保持し、timing evidenceとともにuploadします。Local reproduction commandはGitHub annotationにも出力します。
+失敗時はstream表示したstdout／stderrを`.cache/ci-failures/`へ保持し、timing evidenceとともにuploadします。Local reproduction commandはGitHub annotationにも出力します。
 
 代表的なcommandは次のとおりです。
 
