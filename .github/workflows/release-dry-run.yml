@@ -7,7 +7,9 @@ on:
       - '.github/stable-release-gate.json'
       - '.github/workflows/release.yml'
       - '.github/workflows/release-dry-run.yml'
+      - '.github/workflows/nightly.yml'
       - 'docs/release-channels*.md'
+      - 'docs/reproducible-builds*.md'
       - 'docs/runtime-abi*.md'
       - 'docs/stable-release-gate*.md'
       - 'package.json'
@@ -21,6 +23,7 @@ on:
       - 'scripts/verify-documentation.mjs'
       - 'scripts/verify-public-abi*.mjs'
       - 'scripts/verify-release-channel.mjs'
+      - 'scripts/verify-reproducible-release*.mjs'
 
 permissions:
   contents: read
@@ -34,7 +37,7 @@ jobs:
   verify:
     name: Stable release gate
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -46,6 +49,7 @@ jobs:
       - name: Execute production release path without publishing
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          SOURCE_DATE_EPOCH: '0'
         run: npm run release:gate
       - name: Upload release evidence and candidate artifacts
         if: always()
@@ -54,6 +58,7 @@ jobs:
           name: stable-release-dry-run-${{ github.sha }}
           path: |
             .cache/release/release-evidence.json
+            .cache/reproducible-release/
             release/
           if-no-files-found: error
           retention-days: 30
