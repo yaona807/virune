@@ -64,7 +64,7 @@
         "id": "javascript-boundary",
         "reason": "The imported nanoid package is not installed as a documentation fixture dependency."
       },
-      { "index": 11, "mode": "compile", "id": "documentation-comments", "include": [1], "sync": "structure" }
+      { "index": 11, "mode": "compile", "id": "documentation-comments", "sync": "structure" }
     ],
     "docs/language-guide_ja.md": [
       { "index": 0, "mode": "compile", "id": "functions" },
@@ -93,7 +93,7 @@
         "id": "javascript-boundary",
         "reason": "documentation fixtureにはnanoid packageをインストールしません。"
       },
-      { "index": 11, "mode": "compile", "id": "documentation-comments", "include": [1], "sync": "structure" }
+      { "index": 11, "mode": "compile", "id": "documentation-comments", "sync": "structure" }
     ],
     "docs/standard-library.md": [],
     "docs/standard-library_ja.md": [],
