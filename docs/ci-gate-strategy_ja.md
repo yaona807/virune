@@ -31,18 +31,16 @@ Documentation-only Pull Requestでは、追加でdocumentation exampleをbuild�
 
 Full gateでは、Ubuntu 24.04／Node.js 24の`build` jobをmetadata検証と並列で開始します。このjobだけがPull Request用のproject reference buildとtype checkを実行し、生成した`dist` treeを短期artifactへpackageします。
 
-Core test、compatibility、browserの各jobはartifactが利用可能になり次第、互いを待たずに開始します。これによりbuildの重複を除去しつつ、対応platform matrixをfull core suiteの後ろへ直列化しません。
+Core test、compiler quality、compatibility、browserの各jobはartifactが利用可能になり次第、互いを待たずに開始します。これによりbuildの重複を除去しつつ、対応platform matrixと時間の長い2つのplatform-independent suiteを直列化しません。
 
-### Platform-independent core
+### Platform-independent gate
 
-Ubuntu 24.04／Node.js 24の`verify` jobはcanonical buildをrestoreし、次を担当します。
+Canonical buildを使用するUbuntu 24.04／Node.js 24の2 jobを並列実行します。
 
-- browser runtimeを除くunit／integration test
-- TypeScript binding corpus
-- fuzz／semantic differential fuzz smoke suite
-- language server／VS Code test
-- conformance／formatter check
-- source clone smoke test
+- `verify`はbrowser runtimeを除く完全なunit／integration suiteを担当します。
+- `quality`はTypeScript binding corpus、fuzz／semantic differential fuzz smoke suite、language server／VS Code test、conformance、formatter check、source clone smoke testを担当します。
+
+この分離により、約1分のunit suiteと約45秒のbinding corpusを直列実行せず、全core検証を維持したままcritical pathを短縮します。
 
 ### Platform-sensitive compatibility
 
@@ -59,9 +57,9 @@ Metadata検証、type check、全unit suite、binding corpus、fuzz、formatter�
 
 ### Browserとrelease
 
-Browser jobはcanonical buildをrestoreし、core／compatibility testと並列でChromium上のemitted ESMを実行します。
+Browser jobはcanonical buildをrestoreし、core、quality、compatibility testと並列でChromium上のemitted ESMを実行します。
 
-Release-artifacts jobはmetadata、build、core、compatibility、browserの全jobが成功した場合だけ実行します。公開判断にPull Request build artifactを流用せず、cleanなproduction release buildとrelease smoke verificationを実行します。
+Release-artifacts jobはmetadata、build、core test、compiler quality、compatibility、browserの全jobが成功した場合だけ実行します。公開判断にPull Request build artifactを流用せず、cleanなproduction release buildとrelease smoke verificationを実行します。
 
 ## Artifactとcacheの安全性
 
@@ -85,6 +83,7 @@ Wrapperを通した各CI commandは、command、duration、exit status、OS、No
 npm run verify:metadata
 npm run check
 npm run test:core:built -- --failure-output-only
+npm run test:binding-corpus:built
 npm run test:platform-smoke:built
 npm run test:vscode:built
 npm run test:conformance:built
