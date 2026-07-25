@@ -5,7 +5,17 @@ import { dirname } from 'node:path';
 const integrationOnly = process.argv.includes('--integration-only');
 const excludeBrowser = process.argv.includes('--exclude-browser');
 const failureOutputOnly = process.argv.includes('--failure-output-only');
-const groups = [
+const platformSmoke = process.argv.includes('--platform-smoke');
+const integrationGroups = [
+	{ name: 'CLI workflow', files: ['integration/dist/cli.test.js'] },
+	{ name: 'CLI API', files: ['integration/dist/cli-api.test.js'] },
+	{ name: 'conformance expectation validation', files: ['integration/dist/conformance.test.js'] },
+	{ name: 'entry-point diagnostics', files: ['integration/dist/entry-point-invalid.test.js'] },
+	{ name: 'entry-point runtime', files: ['integration/dist/entry-point-runtime.test.js'] },
+	{ name: 'project integration', files: ['integration/dist/project.test.js'] },
+];
+const platformGroups = integrationGroups.filter(group => group.name !== 'conformance expectation validation');
+const groups = platformSmoke ? platformGroups : [
 	...(!integrationOnly ? [
 		{
 			name: 'unit',
@@ -18,12 +28,7 @@ const groups = [
 			failureOutput: '.cache/unit-test-failure.log',
 		},
 	] : []),
-	{ name: 'CLI workflow', files: ['integration/dist/cli.test.js'] },
-	{ name: 'CLI API', files: ['integration/dist/cli-api.test.js'] },
-	{ name: 'conformance expectation validation', files: ['integration/dist/conformance.test.js'] },
-	{ name: 'entry-point diagnostics', files: ['integration/dist/entry-point-invalid.test.js'] },
-	{ name: 'entry-point runtime', files: ['integration/dist/entry-point-runtime.test.js'] },
-	{ name: 'project integration', files: ['integration/dist/project.test.js'] },
+	...integrationGroups,
 	...(!excludeBrowser ? [{ name: 'browser runtime', files: ['integration/dist/browser.test.js'] }] : []),
 ];
 
