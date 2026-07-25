@@ -17,7 +17,26 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
-      - name: Review dependency changes
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Review dependency changes with GitHub
+        id: github-dependency-review
+        continue-on-error: true
         uses: actions/dependency-review-action@v5
         with:
           fail-on-severity: moderate
+
+      - name: Audit locked npm dependencies
+        run: npm audit --audit-level=moderate
+
+      - name: Report GitHub dependency review fallback
+        if: steps.github-dependency-review.outcome == 'failure'
+        shell: bash
+        run: echo '::warning::GitHub dependency review did not pass. npm audit was used as the blocking fallback. Enable Dependency Graph to activate change-level review.'
