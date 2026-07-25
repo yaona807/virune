@@ -157,6 +157,7 @@ async function describeEmittedTree(root) {
 					mode: metadata.mode & 0o777,
 				};
 				if (path.endsWith('.map')) descriptor.sourceMap = describeSourceMap(bytes);
+				if (path.endsWith('.d.ts')) descriptor.text = bytes.toString('utf8');
 				files.set(path, descriptor);
 			}
 		}
@@ -186,7 +187,7 @@ function compareTrees(left, right) {
 		const a = left.get(path);
 		const b = right.get(path);
 		if (a === undefined || b === undefined) {
-			differences.push({ kind: 'missing-file', path, typescript6: a ?? null, typescript7: b ?? null });
+			differences.push({ kind: 'missing-file', path, typescript6: summarizeFile(a), typescript7: summarizeFile(b) });
 			continue;
 		}
 		if (a.mode !== b.mode) {
@@ -209,7 +210,35 @@ function compareTrees(left, right) {
 			}
 			continue;
 		}
-		differences.push({ kind: 'file-difference', path, typescript6: a, typescript7: b });
+		differences.push({
+			kind: 'file-difference',
+			path,
+			typescript6: summarizeFile(a),
+			typescript7: summarizeFile(b),
+			lineDifferences: compareTextLines(a.text, b.text),
+		});
+	}
+	return differences;
+}
+
+function summarizeFile(file) {
+	if (file === undefined) return null;
+	return { sha256: file.sha256, bytes: file.bytes, mode: file.mode };
+}
+
+function compareTextLines(left, right) {
+	if (typeof left !== 'string' || typeof right !== 'string') return [];
+	const leftLines = left.split('\n');
+	const rightLines = right.split('\n');
+	const differences = [];
+	for (let index = 0; index < Math.max(leftLines.length, rightLines.length); index++) {
+		if (leftLines[index] === rightLines[index]) continue;
+		differences.push({
+			line: index + 1,
+			typescript6: leftLines[index] ?? null,
+			typescript7: rightLines[index] ?? null,
+		});
+		if (differences.length >= 200) break;
 	}
 	return differences;
 }
