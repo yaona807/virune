@@ -1,0 +1,48 @@
+{
+	"schemaVersion": 1,
+	"current": {
+		"buildCompiler": "6.0.3",
+		"compilerApi": "6.0.3"
+	},
+	"target": {
+		"buildPackage": "@typescript/native",
+		"buildSpecifier": "npm:typescript@7.0.2",
+		"buildVersion": "7.0.2",
+		"apiImportSpecifier": "typescript",
+		"apiPackage": "@typescript/typescript6",
+		"apiSpecifier": "npm:@typescript/typescript6@6.0.3",
+		"apiVersion": "6.0.3"
+	},
+	"compilerApiBoundary": {
+		"allowedSourceRoots": [
+			"packages/js-interop/"
+		],
+		"allowedSourcePaths": [
+			"packages/cli/src/bind.ts",
+			"scripts/probe-typescript-7.mjs",
+			"scripts/run-binding-corpus.mjs",
+			"scripts/verify-public-abi.mjs"
+		],
+		"apiPackageManifests": [
+			"packages/cli/package.json",
+			"packages/js-interop/package.json"
+		],
+		"allowedPackageManifests": [
+			"package.json",
+			"packages/cli/package.json",
+			"packages/js-interop/package.json"
+		]
+	},
+	"prototype": {
+		"allowSemanticallyEquivalentDeclarationDifferences": true,
+		"allowSourceMapMappingDifferences": true,
+		"checks": [
+			"clean-build",
+			"incremental-build",
+			"js-interop-tests",
+			"binding-corpus",
+			"language-server-and-vscode",
+			"vsix-package"
+		]
+	}
+}
