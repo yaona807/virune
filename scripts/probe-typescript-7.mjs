@@ -4,12 +4,14 @@ import { lstat, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs
 import { tmpdir } from 'node:os';
 import { relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import ts from 'typescript';
 import { verifyTypeScriptBoundary } from './verify-typescript-boundary.mjs';
 
 const repositoryRoot = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const policyPath = resolve(repositoryRoot, '.github/typescript-version-policy.json');
 const outputDirectory = resolve(repositoryRoot, '.cache/typescript-7-prototype');
 const excludedDirectories = new Set(['.git', '.cache', '.vscode-test', 'coverage', 'node_modules', 'release']);
+const declarationPrinter = ts.createPrinter({ newLine: ts.NewLineKind.LineFeed, removeComments: true });
 
 export async function probeTypeScript7({ root = repositoryRoot, output = outputDirectory } = {}) {
 	await rm(output, { recursive: true, force: true });
@@ -40,7 +42,12 @@ export async function probeTypeScript7({ root = repositoryRoot, output = outputD
 		const typescript7Output = await describeEmittedTree(root);
 		const outputDifferences = compareTrees(typescript6Output, typescript7Output);
 		const sourceMapMappingDifferences = outputDifferences.filter(item => item.kind === 'source-map-mapping-difference');
-		const blockingOutputDifferences = outputDifferences.filter(item => item.kind !== 'source-map-mapping-difference' || !policy.prototype.allowSourceMapMappingDifferences);
+		const declarationTextDifferences = outputDifferences.filter(item => item.kind === 'declaration-text-difference');
+		const blockingOutputDifferences = outputDifferences.filter(item => {
+			if (item.kind === 'source-map-mapping-difference' && policy.prototype.allowSourceMapMappingDifferences) return false;
+			if (item.kind === 'declaration-text-difference' && policy.prototype.allowSemanticallyEquivalentDeclarationDifferences) return false;
+			return true;
+		});
 
 		const beforeIncremental = await describeEmittedTree(root);
 		await runCommand('typescript7-incremental-build', nativeCompiler, ['-b', '--pretty', 'false', '--singleThreaded'], root, commands, output);
@@ -66,6 +73,7 @@ export async function probeTypeScript7({ root = repositoryRoot, output = outputD
 				typescript6Files: typescript6Output.size,
 				typescript7Files: typescript7Output.size,
 				blockingOutputDifferences,
+				declarationTextDifferences,
 				sourceMapMappingDifferences,
 				outputDifferences,
 				incrementalDifferences,
@@ -79,6 +87,7 @@ export async function probeTypeScript7({ root = repositoryRoot, output = outputD
 			commands,
 			emit: {
 				blockingOutputDifferences: [],
+				declarationTextDifferences: [],
 				sourceMapMappingDifferences: [],
 				outputDifferences: [],
 				incrementalDifferences: [],
@@ -210,6 +219,18 @@ function compareTrees(left, right) {
 			}
 			continue;
 		}
+		if (path.endsWith('.d.ts') && typeof a.text === 'string' && typeof b.text === 'string') {
+			const normalizedA = normalizeDeclarationText(a.text, path);
+			const normalizedB = normalizeDeclarationText(b.text, path);
+			differences.push({
+				kind: normalizedA === normalizedB ? 'declaration-text-difference' : 'declaration-semantic-difference',
+				path,
+				typescript6: { ...summarizeFile(a), normalizedSha256: digest(Buffer.from(normalizedA)) },
+				typescript7: { ...summarizeFile(b), normalizedSha256: digest(Buffer.from(normalizedB)) },
+				lineDifferences: compareTextLines(a.text, b.text),
+			});
+			continue;
+		}
 		differences.push({
 			kind: 'file-difference',
 			path,
@@ -219,6 +240,38 @@ function compareTrees(left, right) {
 		});
 	}
 	return differences;
+}
+
+export function normalizeDeclarationText(text, fileName = 'output.d.ts') {
+	const sourceFile = ts.createSourceFile(fileName, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+	const variableTypes = new Map();
+	for (const statement of sourceFile.statements) {
+		if (!ts.isVariableStatement(statement)) continue;
+		for (const declaration of statement.declarationList.declarations) {
+			if (ts.isIdentifier(declaration.name) && declaration.type !== undefined) variableTypes.set(declaration.name.text, declaration.type);
+		}
+	}
+	const transformer = context => {
+		const visit = node => {
+			if (ts.isStringLiteral(node)) return ts.factory.createStringLiteral(node.text);
+			if (ts.isTypeQueryNode(node) && ts.isIdentifier(node.exprName)) {
+				const replacement = variableTypes.get(node.exprName.text);
+				if (replacement !== undefined) return ts.visitNode(replacement, visit);
+			}
+			return ts.visitEachChild(node, visit, context);
+		};
+		return node => ts.visitNode(node, visit);
+	};
+	const result = ts.transform(sourceFile, [transformer]);
+	try {
+		return declarationPrinter
+			.printFile(result.transformed[0])
+			.replace(/(\?\s*:\s*)unknown\s*\|\s*undefined\b/gu, '$1unknown')
+			.replace(/\s+/gu, ' ')
+			.trim();
+	} finally {
+		result.dispose();
+	}
 }
 
 function summarizeFile(file) {
@@ -263,6 +316,7 @@ async function writeSummary(output, report) {
 		`Compiler API version: ${report.versions?.compilerApi ?? 'unknown'}`,
 		`Build compiler version: ${report.versions?.buildCompiler ?? 'unknown'}`,
 		`Blocking emit differences: ${report.emit.blockingOutputDifferences.length}`,
+		`Reviewed declaration text differences: ${report.emit.declarationTextDifferences.length}`,
 		`Reviewed source-map mapping differences: ${report.emit.sourceMapMappingDifferences.length}`,
 		`Incremental emit differences: ${report.emit.incrementalDifferences.length}`,
 		'',
