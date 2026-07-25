@@ -4,10 +4,14 @@ const integrationOnly = process.argv.includes('--integration-only');
 const excludeBrowser = process.argv.includes('--exclude-browser');
 const failureOutputOnly = process.argv.includes('--failure-output-only');
 const groups = [
-	...(!integrationOnly ? [{
-		name: 'unit',
-		command: ['scripts/run-unit-tests.mjs', ...(failureOutputOnly ? ['--failure-output-only'] : [])],
-	}] : []),
+	...(!integrationOnly ? [
+		{
+			name: 'unit',
+			command: ['scripts/run-unit-tests.mjs', ...(failureOutputOnly ? ['--failure-output-only'] : [])],
+		},
+		{ name: 'documentation example policy', files: ['scripts/verify-documentation-examples.test.mjs'] },
+		{ name: 'documentation examples', command: ['scripts/verify-documentation-examples.mjs'] },
+	] : []),
 	{ name: 'CLI workflow', files: ['integration/dist/cli.test.js'] },
 	{ name: 'CLI API', files: ['integration/dist/cli-api.test.js'] },
 	{ name: 'conformance expectation validation', files: ['integration/dist/conformance.test.js'] },
