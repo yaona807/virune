@@ -27,8 +27,6 @@ Arrow bodyは単一式、block bodyはstatementと早期returnに使用します
 ```virune
 pub newtype UserId = Int
 
-type Headers = Map<String, String>
-
 record User derives Eq, Hash, Debug, Json {
 	id: UserId
 	name: String
@@ -179,3 +177,11 @@ pub fn findUser(id: UserId) -> Result<User, UserError> {
 ```
 
 本文はCommonMark互換Markdownです。`////`は通常コメントとして扱い、Virune 1.0にblock commentはありません。詳細は[規範的なドキュメントコメント仕様](../spec/documentation_ja.md)を参照してください。
+
+## 14. Type alias
+
+Type aliasは名前的型を作らず、別名だけを割り当てます。
+
+```virune compile id="type-alias"
+type Headers = Map<String, List<String>>
+```
