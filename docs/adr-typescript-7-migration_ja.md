@@ -36,8 +36,9 @@ Production API consumerは次のとおりです。
 - `packages/js-interop/`: runtime provider、adapter、制御されたtestを含みます。Providerは`Program`、`TypeChecker`、`LanguageService`、module resolution、diagnostic、AST predicateを使用します。
 - `packages/cli/src/bind.ts`: TypeScript declarationをparseし、対応するfunction、interface、alias、variableをVirune bindingへ変換します。
 
-Repository toolingのconsumerは次の2つへ限定します。
+Repository toolingのconsumerは次へ限定します。
 
+- `scripts/probe-typescript-7.mjs`: compatibility APIを使ってdeclaration outputを意味的に比較します。
 - `scripts/run-binding-corpus.mjs`: corpus証跡へTypeScript versionを記録します。
 - `scripts/verify-public-abi.mjs`: declaration outputを解析しながらpublic ABI snapshotを検証します。
 
@@ -90,14 +91,16 @@ Exact TypeScript 7 compilerを隔離した一時tool directoryへinstallし、�
 1. TypeScript 6 Compiler API inventory、境界、version
 2. TypeScript 6によるforced clean build
 3. TypeScript 7によるforced clean build
-4. `.tsbuildinfo`を除くJavaScriptとdeclarationのbit-for-bit一致
+4. `.tsbuildinfo`を除くJavaScriptのbit-for-bit一致とdeclarationの意味的一致
 5. Source mapのversion、output file、source root、source file、埋め込みsource内容の一致、およびreview対象となるname／mapping差分の記録
 6. emitted outputを変更しないTypeScript 7 incremental build
 7. `@virune/js-interop` testとbinding corpus
 8. language server／VS Code extension test
 9. VSIX package生成
 
-初回prototypeではTypeScript 6／7とも512個のfileを出力し、JavaScriptとdeclarationは一致しました。Source構造は同一のまま、88個のsource mapで生成nameまたはmapping encodingだけが異なることを確認しました。このmapping-only差分はcode outputの未review変更として扱わず、明示的な証跡として保持します。
+PrototypeはTypeScript 6 compatibility ASTを使用してdeclaration fileを比較します。String literalのquote style、optionalな`unknown` member／parameterに含まれる冗長な`undefined`、同じlocal function typeへ解決される`typeof`参照だけを正規化します。それ以外のdeclaration差分はblockingのままです。
+
+初回prototypeではTypeScript 6／7とも512個のfileを出力し、JavaScriptは一致しました。4個のdeclarationにはtext差分がありましたが、2件のquote style変更、optionalな`unknown | undefined`から`unknown`への簡略化、同一local function declarationへの`typeof`参照であり、意味的に同一でした。また、source構造は同一のまま84個のsource mapで生成mapping encodingが異なることを確認しました。これらのreview済み差分は未reviewのcode output変更として扱わず、明示的な証跡として保持します。
 
 証跡は`.cache/typescript-7-prototype/`へJSON、Markdown、command別logとして保存します。専用GitHub Actions workflowは成功時・失敗時の両方で証跡をuploadします。
 
@@ -107,7 +110,7 @@ Exact TypeScript 7 compilerを隔離した一時tool directoryへinstallし、�
 2. Linux上のprototype outputとdiagnostic parityをreviewする。
 3. Native compiler aliasとcompatibility aliasをroot、CLI、JavaScript interop manifestへ適用し、lockfileを更新する実装PRを作成する。
 4. 通常OS matrix、browser conformance、performance、VSIX smoke、binding corpus、release dry run、reproducible release gateを実行する。
-5. Compiler output、diagnostic、clean／incremental timing、package size、startup behavior、source-map mapping証跡をreviewする。
+5. Compiler output、diagnostic、clean／incremental timing、package size、startup behavior、declaration証跡、source-map mapping証跡をreviewする。
 6. 既存release gateとTypeScript 7 prototypeがすべて成功した場合だけmergeする。
 7. Commit済みtoolchainがTypeScript 7を使用した後はprototype専用installを削除し、boundary policyとparity checkは維持する。
 
@@ -121,5 +124,5 @@ Rollbackでは`@typescript/native`を削除し、root、CLI、JavaScript interop
 - Compiler build性能とCompiler API互換性を独立して更新できる。
 - 一時的に2つのTypeScript実装を保持する。
 - Native platform packageとcompatibility APIが共存するため、package sizeとinstall時間が増加する可能性がある。
-- Generated code、declaration、source参照が安定していても、native compilerではsource-map mapping encodingが変化する。
+- Generated code、public type、source参照が安定していても、native compilerではdeclaration表記とsource-map mapping encodingが変化する場合がある。
 - Boundary policyによりreview済みproduction／tooling consumer外からlegacy APIへ偶発的に依存することを防止できる。
