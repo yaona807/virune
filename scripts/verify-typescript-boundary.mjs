@@ -1,11 +1,15 @@
-import { readFile, readdir, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import { dirname, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const repositoryRoot = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const policyPath = resolve(repositoryRoot, '.github/typescript-version-policy.json');
 const excludedDirectories = new Set(['.git', '.cache', '.vscode-test', 'coverage', 'dist', 'node_modules', 'release']);
-const importPattern = /(?:\bfrom\s*|\bimport\s*\(|\brequire\s*\()\s*['"]typescript['"]/g;
+const importPatterns = [
+	/^\s*import(?:\s+[^'"\n]+?\s+from\s*|\s*\()\s*['"]typescript['"]/gm,
+	/^\s*export\s+[^'"\n]+?\s+from\s*['"]typescript['"]/gm,
+	/^\s*(?:const|let|var)\s+[^=]+?=\s*require\(\s*['"]typescript['"]\s*\)/gm,
+];
 
 export async function verifyTypeScriptBoundary({ root = repositoryRoot, policyFile = policyPath, reportPath } = {}) {
 	const policy = JSON.parse(await readFile(policyFile, 'utf8'));
@@ -14,10 +18,12 @@ export async function verifyTypeScriptBoundary({ root = repositoryRoot, policyFi
 	await scanDirectory(root, root, imports, manifests);
 
 	const allowedRoots = policy.compilerApiBoundary.allowedSourceRoots;
+	const allowedPaths = new Set(policy.compilerApiBoundary.allowedSourcePaths ?? []);
+	const apiManifests = new Set(policy.compilerApiBoundary.apiPackageManifests ?? []);
 	const allowedManifests = new Set(policy.compilerApiBoundary.allowedPackageManifests);
 	const violations = [];
 	for (const item of imports) {
-		if (!allowedRoots.some(prefix => item.path.startsWith(prefix))) {
+		if (!allowedPaths.has(item.path) && !allowedRoots.some(prefix => item.path.startsWith(prefix))) {
 			violations.push({ kind: 'compiler-api-import-outside-boundary', ...item });
 		}
 	}
@@ -28,7 +34,6 @@ export async function verifyTypeScriptBoundary({ root = repositoryRoot, policyFi
 	}
 
 	const rootManifest = manifests.find(item => item.path === 'package.json');
-	const interopManifest = manifests.find(item => item.path === 'packages/js-interop/package.json');
 	if (rootManifest?.dependencies.typescript !== policy.current.buildCompiler) {
 		violations.push({
 			kind: 'current-build-compiler-version',
@@ -37,13 +42,16 @@ export async function verifyTypeScriptBoundary({ root = repositoryRoot, policyFi
 			actual: rootManifest?.dependencies.typescript ?? null,
 		});
 	}
-	if (interopManifest?.dependencies.typescript !== policy.current.compilerApi) {
-		violations.push({
-			kind: 'current-compiler-api-version',
-			path: 'packages/js-interop/package.json',
-			expected: policy.current.compilerApi,
-			actual: interopManifest?.dependencies.typescript ?? null,
-		});
+	for (const manifestPath of apiManifests) {
+		const manifest = manifests.find(item => item.path === manifestPath);
+		if (manifest?.dependencies.typescript !== policy.current.compilerApi) {
+			violations.push({
+				kind: 'current-compiler-api-version',
+				path: manifestPath,
+				expected: policy.current.compilerApi,
+				actual: manifest?.dependencies.typescript ?? null,
+			});
+		}
 	}
 
 	const report = {
@@ -56,7 +64,9 @@ export async function verifyTypeScriptBoundary({ root = repositoryRoot, policyFi
 		passed: violations.length === 0,
 	};
 	if (reportPath !== undefined) {
-		await writeFile(resolve(root, reportPath), `${JSON.stringify(report, null, '\t')}\n`, 'utf8');
+		const absoluteReport = resolve(root, reportPath);
+		await mkdir(dirname(absoluteReport), { recursive: true });
+		await writeFile(absoluteReport, `${JSON.stringify(report, null, '\t')}\n`, 'utf8');
 	}
 	if (!report.passed) {
 		throw new Error(`TypeScript boundary verification failed:\n${violations.map(item => `- ${item.kind}: ${item.path}`).join('\n')}`);
@@ -89,10 +99,12 @@ async function scanDirectory(root, directory, imports, manifests) {
 		}
 		if (!/\.[cm]?[jt]sx?$/.test(entry.name)) continue;
 		const text = await readFile(absolute, 'utf8');
-		for (const match of text.matchAll(importPattern)) {
-			const offset = match.index ?? 0;
-			const line = text.slice(0, offset).split('\n').length;
-			imports.push({ path, line });
+		for (const pattern of importPatterns) {
+			for (const match of text.matchAll(pattern)) {
+				const offset = match.index ?? 0;
+				const line = text.slice(0, offset).split('\n').length;
+				imports.push({ path, line });
+			}
 		}
 	}
 }
