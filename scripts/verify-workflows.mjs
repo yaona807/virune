@@ -4,13 +4,14 @@ import { fileURLToPath } from 'node:url';
 
 const WORKFLOW_SUFFIX = /\.ya?ml$/u;
 const USES_LINE = /^\s*(?:-\s*)?uses:\s*(.+?)\s*$/u;
-const REQUIRED_TOP_LEVEL_KEYS = ['name', 'on', 'jobs'];
+const PERMISSION_LINE = /^  ([a-z][a-z0-9-]*):\s*(read|write|none)\s*$/u;
+const REQUIRED_TOP_LEVEL_KEYS = ['name', 'on', 'permissions', 'jobs'];
 
 export async function verifyWorkflows(root = process.cwd()) {
 	const workflowDirectory = resolve(root, '.github/workflows');
 	const policyPath = resolve(root, '.github/actions-policy.json');
 	const policy = JSON.parse(await readFile(policyPath, 'utf8'));
-	if (policy.schemaVersion !== 1 || !isRecord(policy.allowedReferences)) {
+	if (policy.schemaVersion !== 2 || !isRecord(policy.allowedReferences) || !validPermissionPolicy(policy.workflowPermissions)) {
 		throw new Error('Invalid .github/actions-policy.json');
 	}
 
@@ -23,6 +24,7 @@ export async function verifyWorkflows(root = process.cwd()) {
 	for (const file of workflowFiles) {
 		const source = await readFile(resolve(workflowDirectory, file), 'utf8');
 		verifyWorkflowStructure(file, source);
+		verifyWorkflowPermissions(file, source, policy.workflowPermissions);
 		for (const [index, line] of source.split(/\r?\n/u).entries()) {
 			const trimmed = line.trim();
 			if (trimmed.length === 0 || trimmed.startsWith('#') || !trimmed.includes('uses:')) continue;
@@ -47,7 +49,10 @@ export async function verifyWorkflows(root = process.cwd()) {
 	for (const action of Object.keys(policy.allowedReferences)) {
 		if (!observed.has(action)) throw new Error(`Unused action policy entry: ${action}`);
 	}
-	console.log(`Verified ${workflowFiles.length} workflows and ${observed.size} external actions.`);
+	for (const file of Object.keys(policy.workflowPermissions.exceptions)) {
+		if (!workflowFiles.includes(file)) throw new Error(`Unused workflow permission exception: ${file}`);
+	}
+	console.log(`Verified ${workflowFiles.length} workflows, ${observed.size} external actions, and least-privilege permissions.`);
 }
 
 function verifyWorkflowStructure(file, source) {
@@ -57,6 +62,44 @@ function verifyWorkflowStructure(file, source) {
 		if (!expression.test(source)) throw new Error(`${file}: missing top-level ${key}: key`);
 	}
 	if (!source.endsWith('\n')) throw new Error(`${file}: workflow must end with a newline`);
+}
+
+function verifyWorkflowPermissions(file, source, policy) {
+	const lines = source.split(/\r?\n/u);
+	for (const [index, line] of lines.entries()) {
+		if (/^\s+permissions:/u.test(line)) {
+			throw new Error(`${file}:${index + 1}: job-level permissions are not permitted; declare the workflow grant at top level`);
+		}
+	}
+	const start = lines.findIndex(line => line === 'permissions:');
+	if (start === -1) throw new Error(`${file}: missing explicit top-level permissions block`);
+	const actual = {};
+	for (let index = start + 1; index < lines.length; index++) {
+		const line = lines[index];
+		if (line.trim() === '' || line.trimStart().startsWith('#')) continue;
+		if (!line.startsWith(' ')) break;
+		const match = PERMISSION_LINE.exec(line);
+		if (match === null) throw new Error(`${file}:${index + 1}: unsupported permissions syntax`);
+		actual[match[1]] = match[2];
+	}
+	if (Object.keys(actual).length === 0) throw new Error(`${file}: permissions block must declare explicit scopes`);
+	const expected = policy.exceptions[file] ?? policy.default;
+	if (JSON.stringify(sortedRecord(actual)) !== JSON.stringify(sortedRecord(expected))) {
+		throw new Error(`${file}: permissions ${JSON.stringify(sortedRecord(actual))} do not match policy ${JSON.stringify(sortedRecord(expected))}`);
+	}
+}
+
+function validPermissionPolicy(value) {
+	if (!isRecord(value) || !validPermissionRecord(value.default) || !isRecord(value.exceptions)) return false;
+	return Object.values(value.exceptions).every(validPermissionRecord);
+}
+
+function validPermissionRecord(value) {
+	return isRecord(value) && Object.keys(value).length > 0 && Object.values(value).every(item => ['read', 'write', 'none'].includes(item));
+}
+
+function sortedRecord(value) {
+	return Object.fromEntries(Object.entries(value).sort(([left], [right]) => left.localeCompare(right)));
 }
 
 function unquote(value) {
