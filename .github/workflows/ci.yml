@@ -83,9 +83,50 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
+  build:
+    name: Canonical build (Ubuntu 24.04 / Node.js 24)
+    needs: classify
+    if: needs.classify.outputs.docs_only != 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      VIRUNE_CI_JOB: build-ubuntu-node24
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install dependencies
+        run: node scripts/run-ci-command.mjs --id install -- npm ci
+      - name: Build and type-check project references
+        run: node scripts/run-ci-command.mjs --id build -- npm run check
+      - name: Package compiled output
+        run: node scripts/run-ci-command.mjs --id package-compiled-output -- bash -lc "tar -czf .cache/compiled-output.tgz packages/*/dist integration/dist"
+      - name: Upload compiled output
+        uses: actions/upload-artifact@v7
+        with:
+          name: compiled-node-24-${{ github.sha }}
+          path: .cache/compiled-output.tgz
+          if-no-files-found: error
+          retention-days: 2
+      - name: Write timing summary
+        if: always()
+        run: node scripts/write-ci-summary.mjs
+      - name: Upload build evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ci-evidence-build-ubuntu-node24
+          path: |
+            .cache/ci-timings/
+            .cache/ci-failures/
+          if-no-files-found: warn
+          retention-days: 14
+
   verify:
-    name: Core (Ubuntu 24.04 / Node.js 24)
-    needs: [classify, metadata]
+    name: Core tests (Ubuntu 24.04 / Node.js 24)
+    needs: [classify, build]
     if: needs.classify.outputs.docs_only != 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 40
@@ -99,8 +140,13 @@ jobs:
           cache: npm
       - name: Install dependencies
         run: node scripts/run-ci-command.mjs --id install -- npm ci
-      - name: Build and type-check project references
-        run: node scripts/run-ci-command.mjs --id build -- npm run check
+      - name: Download compiled output
+        uses: actions/download-artifact@v8
+        with:
+          name: compiled-node-24-${{ github.sha }}
+          path: .cache
+      - name: Restore compiled output
+        run: node scripts/run-ci-command.mjs --id restore-compiled-output -- tar -xzf .cache/compiled-output.tgz -C .
       - name: Run platform-independent unit and integration tests
         run: node scripts/run-ci-command.mjs --id core-tests -- npm run test:core:built -- --failure-output-only
         env:
@@ -129,15 +175,6 @@ jobs:
         run: node scripts/run-ci-command.mjs --id formatter -- npm run fmt:check:built
       - name: Run source clone smoke test
         run: node scripts/run-ci-command.mjs --id clone-smoke -- npm run smoke:clone:built
-      - name: Package compiled output for compatibility jobs
-        run: node scripts/run-ci-command.mjs --id package-compiled-output -- bash -lc "tar -czf .cache/compiled-output.tgz packages/*/dist integration/dist"
-      - name: Upload compiled output
-        uses: actions/upload-artifact@v7
-        with:
-          name: compiled-node-24-${{ github.sha }}
-          path: .cache/compiled-output.tgz
-          if-no-files-found: error
-          retention-days: 2
       - name: Write timing summary
         if: always()
         run: node scripts/write-ci-summary.mjs
@@ -169,7 +206,7 @@ jobs:
 
   compatibility:
     name: Core (${{ matrix.label }})
-    needs: [classify, verify]
+    needs: [classify, build]
     if: needs.classify.outputs.docs_only != 'true'
     runs-on: ${{ matrix.os }}
     timeout-minutes: 25
@@ -239,7 +276,7 @@ jobs:
 
   browser:
     name: Browser runtime (Ubuntu 24.04 / Node.js 24)
-    needs: [classify, verify]
+    needs: [classify, build]
     if: needs.classify.outputs.docs_only != 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -278,11 +315,12 @@ jobs:
 
   release-artifacts:
     name: Release artifacts
-    needs: [classify, metadata, verify, compatibility, browser]
+    needs: [classify, metadata, build, verify, compatibility, browser]
     if: >-
       always() &&
       needs.classify.outputs.docs_only != 'true' &&
       needs.metadata.result == 'success' &&
+      needs.build.result == 'success' &&
       needs.verify.result == 'success' &&
       needs.compatibility.result == 'success' &&
       needs.browser.result == 'success'
