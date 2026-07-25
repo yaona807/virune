@@ -87,8 +87,9 @@ pub fn main(args: List<String>) -> Result<Unit, UserError> uses Console {
 		name: "Alice",
 		nickname: None,
 	}
+	let argumentCount = List.length(args)
 	Console.print(display(user))
-	Console.print("argument count: {List.length(args)}")
+	Console.print("argument count: {argumentCount}")
 	return Ok(Unit)
 }
 ```
