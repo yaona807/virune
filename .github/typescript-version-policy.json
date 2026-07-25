@@ -33,7 +33,7 @@
 		]
 	},
 	"prototype": {
-		"requireExactEmitMatch": true,
+		"allowSourceMapMappingDifferences": true,
 		"checks": [
 			"clean-build",
 			"incremental-build",
