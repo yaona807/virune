@@ -1,7 +1,7 @@
 {
 	"schemaVersion": 1,
 	"allowedReferences": {
-		"actions/checkout": ["v6"],
+		"actions/checkout": ["v7"],
 		"actions/setup-node": ["v6"],
 		"actions/upload-artifact": ["v7"]
 	}
