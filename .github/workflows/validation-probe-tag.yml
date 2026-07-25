@@ -1,0 +1,19 @@
+name: Workflow validation probe tag
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    name: Validate tagged action scheduling
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout with major tag
+        uses: actions/checkout@v7
+      - name: Confirm tagged action
+        run: echo 'Tagged action scheduling succeeded.'
