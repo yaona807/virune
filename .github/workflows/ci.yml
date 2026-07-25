@@ -4,163 +4,313 @@ on:
   push:
     branches: [main]
   pull_request:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  classify:
+    name: Classify changed files
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      docs_only: ${{ steps.changes.outputs.docs_only }}
+      changed_count: ${{ steps.changes.outputs.changed_count }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - name: Select the required gate
+        id: changes
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            node scripts/classify-ci-changes.mjs --base "$BASE_SHA" --head "$HEAD_SHA"
+          else
+            node scripts/classify-ci-changes.mjs --force-full
+          fi
+
+  metadata:
+    name: Metadata and policy
+    needs: classify
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      VIRUNE_CI_JOB: metadata
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install dependencies
+        run: node scripts/run-ci-command.mjs --id install -- npm ci
+      - name: Verify metadata, policy and specifications
+        run: node scripts/run-ci-command.mjs --id metadata -- npm run verify:metadata
+      - name: Build documentation examples
+        if: needs.classify.outputs.docs_only == 'true'
+        run: node scripts/run-ci-command.mjs --id docs-build -- npm run check
+      - name: Verify documentation example policy
+        if: needs.classify.outputs.docs_only == 'true'
+        run: node scripts/run-ci-command.mjs --id docs-example-policy -- npm run test:docs-examples
+      - name: Compile and execute documentation examples
+        if: needs.classify.outputs.docs_only == 'true'
+        run: node scripts/run-ci-command.mjs --id docs-examples -- npm run docs:examples:check
+      - name: Write timing summary
+        if: always()
+        run: node scripts/write-ci-summary.mjs
+      - name: Upload metadata evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ci-metadata-evidence-${{ github.sha }}
+          path: |
+            .cache/ci-timings/
+            .cache/ci-failures/
+          if-no-files-found: warn
+          retention-days: 14
+
   verify:
+    name: Core (Ubuntu 24.04 / Node.js 24)
+    needs: [classify, metadata]
+    if: needs.classify.outputs.docs_only != 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    env:
+      VIRUNE_CI_JOB: core-ubuntu-node24
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install dependencies
+        run: node scripts/run-ci-command.mjs --id install -- npm ci
+      - name: Build and type-check project references
+        run: node scripts/run-ci-command.mjs --id build -- npm run check
+      - name: Run platform-independent unit and integration tests
+        run: node scripts/run-ci-command.mjs --id core-tests -- npm run test:core:built -- --failure-output-only
+        env:
+          VIRUNE_TEST_ROLE: full
+      - name: Verify TypeScript binding corpus
+        run: node scripts/run-ci-command.mjs --id binding-corpus -- npm run test:binding-corpus:built
+        env:
+          VIRUNE_BINDING_CORPUS_REPORT: .cache/binding-corpus/report.current.json
+      - name: Run fuzz smoke suite
+        run: node scripts/run-ci-command.mjs --id fuzz-smoke -- npm run test:fuzz:smoke:built
+        env:
+          VIRUNE_FUZZ_DURATION_MS: 2000
+          VIRUNE_FUZZ_ARTIFACT_DIR: fuzz-regressions/artifacts/smoke
+      - name: Run semantic differential fuzz policy
+        run: node scripts/run-ci-command.mjs --id semantic-fuzz-policy -- npm run test:semantic-fuzz-policy
+      - name: Run semantic differential fuzz smoke
+        run: node scripts/run-ci-command.mjs --id semantic-fuzz-smoke -- npm run test:semantic-fuzz:smoke:built
+        env:
+          VIRUNE_SEMANTIC_FUZZ_DURATION_MS: 4000
+          VIRUNE_SEMANTIC_FUZZ_ARTIFACT_DIR: fuzz-regressions/semantic-artifacts/smoke
+      - name: Verify VS Code extension and language server
+        run: node scripts/run-ci-command.mjs --id vscode-and-lsp -- npm run test:vscode:built
+      - name: Run conformance suite
+        run: node scripts/run-ci-command.mjs --id conformance -- npm run test:conformance:built
+      - name: Verify formatter output
+        run: node scripts/run-ci-command.mjs --id formatter -- npm run fmt:check:built
+      - name: Run source clone smoke test
+        run: node scripts/run-ci-command.mjs --id clone-smoke -- npm run smoke:clone:built
+      - name: Package compiled output for compatibility jobs
+        run: node scripts/run-ci-command.mjs --id package-compiled-output -- bash -lc "tar -czf .cache/compiled-output.tgz packages/*/dist integration/dist"
+      - name: Upload compiled output
+        uses: actions/upload-artifact@v7
+        with:
+          name: compiled-node-24-${{ github.sha }}
+          path: .cache/compiled-output.tgz
+          if-no-files-found: error
+          retention-days: 2
+      - name: Write timing summary
+        if: always()
+        run: node scripts/write-ci-summary.mjs
+      - name: Upload core failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: core-failure-ubuntu-24.04-node-24
+          path: |
+            .cache/unit-test-failure.log
+            .cache/binding-corpus/report.current.json
+            .cache/binding-corpus/baseline-diff.json
+            .cache/semantic-fuzz-smoke.json
+            .cache/ci-failures/
+            fuzz-regressions/artifacts/smoke/
+            fuzz-regressions/semantic-artifacts/smoke/
+          if-no-files-found: warn
+          retention-days: 7
+      - name: Upload core timing evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ci-timings-ubuntu-24.04-node-24
+          path: |
+            .cache/ci-timings/
+            .cache/ci-failures/
+          if-no-files-found: warn
+          retention-days: 14
+
+  compatibility:
     name: Core (${{ matrix.label }})
+    needs: [classify, verify]
+    if: needs.classify.outputs.docs_only != 'true'
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    continue-on-error: ${{ matrix.experimental }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          - label: Ubuntu 24.04 / Node.js 24
-            os: ubuntu-24.04
-            node: 24
-            full: true
-            experimental: false
-          - label: Windows Server 2022 / Node.js 24
+          - id: windows-2022-node-24
+            label: Windows Server 2022 / Node.js 24
             os: windows-2022
             node: 24
-            full: false
             experimental: false
-          - label: Windows Server 2025 / Node.js 24
+          - id: windows-2025-node-24
+            label: Windows Server 2025 / Node.js 24
             os: windows-2025
             node: 24
-            full: false
             experimental: true
-          - label: macOS 14 / Node.js 24
+          - id: macos-14-node-24
+            label: macOS 14 / Node.js 24
             os: macos-14
             node: 24
-            full: false
             experimental: false
-          - label: Ubuntu 24.04 / Node.js 26
+          - id: ubuntu-24.04-node-26
+            label: Ubuntu 24.04 / Node.js 26
             os: ubuntu-24.04
             node: 26
-            full: false
             experimental: false
-    runs-on: ${{ matrix.os }}
-    continue-on-error: ${{ matrix.experimental }}
-    timeout-minutes: 45
+    env:
+      VIRUNE_CI_JOB: compatibility-${{ matrix.id }}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:
           node-version: ${{ matrix.node }}
           cache: npm
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Verify runtime, metadata and specification
-        run: npm run verify:metadata
-
-      - name: Build and type-check project references
-        run: npm run check
-
-      - name: Run platform-independent unit and integration tests
-        run: node scripts/run-tests.mjs --exclude-browser --failure-output-only
-
-      - name: Upload unit test failure diagnostics
-        if: failure()
-        uses: actions/upload-artifact@v7
+      - name: Install platform dependencies
+        run: node scripts/run-ci-command.mjs --id install -- npm ci
+      - name: Download compiled output
+        uses: actions/download-artifact@v8
         with:
-          name: unit-test-failure-${{ matrix.os }}-node-${{ matrix.node }}
-          path: .cache/unit-test-failure.log
-          if-no-files-found: ignore
-          retention-days: 7
-
-      - name: Verify TypeScript binding corpus
-        if: matrix.full
-        run: npm run test:binding-corpus:built
-
-      - name: Upload binding corpus diagnostics
-        if: always() && matrix.full
-        uses: actions/upload-artifact@v7
-        with:
-          name: binding-corpus-${{ runner.os }}-node-${{ matrix.node }}
-          path: |
-            .cache/binding-corpus/report.current.json
-            .cache/binding-corpus/generated/
-            .cache/binding-corpus/package-lock.json
-            .cache/binding-corpus/baseline-diff.json
-          if-no-files-found: ignore
-          retention-days: 30
-
-      - name: Run fuzz smoke suite
-        if: matrix.full
-        run: npm run test:fuzz:smoke:built
-
-      - name: Run semantic differential fuzz smoke
-        if: matrix.full
-        run: npm run test:semantic-fuzz-policy && npm run test:semantic-fuzz:smoke:built
-        env:
-          VIRUNE_SEMANTIC_FUZZ_ITERATIONS: 12
-          VIRUNE_SEMANTIC_FUZZ_ARTIFACT_DIR: fuzz-regressions/semantic-artifacts/smoke
-
-      - name: Upload semantic fuzz diagnostics
-        if: always() && matrix.full
-        uses: actions/upload-artifact@v7
-        with:
-          name: semantic-fuzz-smoke-${{ runner.os }}-node-${{ matrix.node }}
-          path: fuzz-regressions/semantic-artifacts/smoke
-          if-no-files-found: ignore
-          retention-days: 30
-
+          name: compiled-node-24-${{ github.sha }}
+          path: .cache
+      - name: Restore compiled output
+        run: node scripts/run-ci-command.mjs --id restore-compiled-output -- tar -xzf .cache/compiled-output.tgz -C .
+      - name: Run platform-sensitive CLI and filesystem smoke tests
+        run: node scripts/run-ci-command.mjs --id platform-smoke -- npm run test:platform-smoke:built
       - name: Verify VS Code extension and language server
-        run: npm run test:vscode:built
-
-      - name: Run conformance suite
-        run: npm run test:conformance:built
-
-      - name: Verify formatter output
-        run: npm run fmt:check:built
-
-      - name: Run source clone smoke test
-        run: npm run smoke:clone:built
+        run: node scripts/run-ci-command.mjs --id vscode-and-lsp -- npm run test:vscode:built
+      - name: Run conformance path smoke
+        run: node scripts/run-ci-command.mjs --id conformance -- npm run test:conformance:built
+      - name: Run clone and process smoke
+        run: node scripts/run-ci-command.mjs --id clone-smoke -- npm run smoke:clone:built
+      - name: Write timing summary
+        if: always()
+        run: node scripts/write-ci-summary.mjs
+      - name: Upload compatibility evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ci-evidence-${{ matrix.id }}
+          path: |
+            .cache/ci-timings/
+            .cache/ci-failures/
+          if-no-files-found: warn
+          retention-days: 14
 
   browser:
     name: Browser runtime (Ubuntu 24.04 / Node.js 24)
+    needs: [classify, verify]
+    if: needs.classify.outputs.docs_only != 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    env:
+      VIRUNE_CI_JOB: browser-ubuntu-node24
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm
-      - name: Install dependencies
-        run: npm ci
-      - name: Build project references
-        run: npm run check
+      - name: Install browser dependencies
+        run: node scripts/run-ci-command.mjs --id install -- npm ci
+      - name: Download compiled output
+        uses: actions/download-artifact@v8
+        with:
+          name: compiled-node-24-${{ github.sha }}
+          path: .cache
+      - name: Restore compiled output
+        run: node scripts/run-ci-command.mjs --id restore-compiled-output -- tar -xzf .cache/compiled-output.tgz -C .
       - name: Execute emitted ESM in Chromium
-        run: npm run test:integration:browser:built
+        run: node scripts/run-ci-command.mjs --id browser-runtime -- npm run test:integration:browser:built
+      - name: Write timing summary
+        if: always()
+        run: node scripts/write-ci-summary.mjs
+      - name: Upload browser evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ci-evidence-browser-ubuntu-node24
+          path: |
+            .cache/ci-timings/
+            .cache/ci-failures/
+          if-no-files-found: warn
+          retention-days: 14
 
   release-artifacts:
     name: Release artifacts
-    needs: [verify, browser]
+    needs: [classify, metadata, verify, compatibility, browser]
+    if: >-
+      always() &&
+      needs.classify.outputs.docs_only != 'true' &&
+      needs.metadata.result == 'success' &&
+      needs.verify.result == 'success' &&
+      needs.compatibility.result == 'success' &&
+      needs.browser.result == 'success'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    env:
+      VIRUNE_CI_JOB: release-artifacts
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm
-      - name: Install dependencies
-        run: npm ci
+      - name: Install release dependencies
+        run: node scripts/run-ci-command.mjs --id install -- npm ci
       - name: Package and verify release artifacts
-        run: npm run verify:release
+        run: node scripts/run-ci-command.mjs --id verify-release -- npm run verify:release
+      - name: Write timing summary
+        if: always()
+        run: node scripts/write-ci-summary.mjs
       - name: Upload release artifacts
+        if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: virune-release-node-24
-          path: release/
+          name: release-artifacts
+          path: |
+            release/
+            .cache/ci-timings/
+            .cache/ci-failures/
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 30
