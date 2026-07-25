@@ -51,7 +51,8 @@ pub fn double(value: Int) -> Int => value * 2
 import { double } from "./math.virune"
 
 pub fn main(args: List<String>) -> Unit uses Console {
-	Console.print("{double(2)}")
+	let result = double(2)
+	Console.print("{result}")
 }
 ```
 
