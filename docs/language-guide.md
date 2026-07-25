@@ -27,8 +27,6 @@ Arrow bodies are for a single expression. Block bodies are for statements and ea
 ```virune
 pub newtype UserId = Int
 
-type Headers = Map<String, List<String>>
-
 record User derives Eq, Hash, Debug, Json {
 	id: UserId
 	name: String
@@ -63,9 +61,9 @@ fn load(id: UserId) -> Result<User, UserError> {
 ```virune
 fn message(error: UserError) -> String {
 	return match error {
-		UserError.NotFound(_) => "missing"
-		UserError.InvalidName(value) if value == "" => "empty"
-		UserError.InvalidName(value) => value
+		NotFound(_) => "missing"
+		InvalidName(value) if value == "" => "empty"
+		InvalidName(value) => value
 	}
 }
 ```
@@ -168,6 +166,16 @@ Use `//` for ordinary comments, `///` for the following declaration, and `//!` f
 ```virune
 //! User lookup services.
 
+pub newtype UserId = Int
+
+pub record User {
+	id: UserId
+}
+
+pub enum UserError {
+	NotFound(UserId)
+}
+
 /// Returns the user identified by `id`.
 ///
 /// # Errors
@@ -179,3 +187,13 @@ pub fn findUser(id: UserId) -> Result<User, UserError> {
 ```
 
 Documentation text is CommonMark-compatible Markdown. `////` remains an ordinary comment, and Virune 1.0 has no block comments. See the [normative documentation-comment specification](../spec/documentation.md).
+
+## 14. Type aliases
+
+A type alias assigns another name without creating a nominal type.
+
+```virune ignore id="type-alias" reason="The current parser rejects declarations after a type alias; tracked in issue #42."
+type Headers = Map<String, List<String>>
+
+fn preserveHeaders(headers: Headers) -> Headers => headers
+```

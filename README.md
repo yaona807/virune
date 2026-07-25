@@ -83,12 +83,13 @@ fn display(user: User) -> String {
 
 pub fn main(args: List<String>) -> Result<Unit, UserError> uses Console {
 	let user = User {
-		id: UserId.create(1)
-		name: "Alice"
-		nickname: None
+		id: UserId.create(1),
+		name: "Alice",
+		nickname: None,
 	}
+	let argumentCount = List.length(args)
 	Console.print(display(user))
-	Console.print("argument count: {List.length(args)}")
+	Console.print("argument count: {argumentCount}")
 	return Ok(Unit)
 }
 ```

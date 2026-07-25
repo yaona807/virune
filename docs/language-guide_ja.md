@@ -27,8 +27,6 @@ Arrow bodyは単一式、block bodyはstatementと早期returnに使用します
 ```virune
 pub newtype UserId = Int
 
-type Headers = Map<String, List<String>>
-
 record User derives Eq, Hash, Debug, Json {
 	id: UserId
 	name: String
@@ -63,9 +61,9 @@ fn load(id: UserId) -> Result<User, UserError> {
 ```virune
 fn message(error: UserError) -> String {
 	return match error {
-		UserError.NotFound(_) => "missing"
-		UserError.InvalidName(value) if value == "" => "empty"
-		UserError.InvalidName(value) => value
+		NotFound(_) => "missing"
+		InvalidName(value) if value == "" => "empty"
+		InvalidName(value) => value
 	}
 }
 ```
@@ -168,6 +166,16 @@ JavaScript値はdescriptorで検証します。安全に検証できないTypeSc
 ```virune
 //! ユーザー検索サービス。
 
+pub newtype UserId = Int
+
+pub record User {
+	id: UserId
+}
+
+pub enum UserError {
+	NotFound(UserId)
+}
+
 /// `id`で識別されるユーザーを返す。
 ///
 /// # エラー
@@ -179,3 +187,13 @@ pub fn findUser(id: UserId) -> Result<User, UserError> {
 ```
 
 本文はCommonMark互換Markdownです。`////`は通常コメントとして扱い、Virune 1.0にblock commentはありません。詳細は[規範的なドキュメントコメント仕様](../spec/documentation_ja.md)を参照してください。
+
+## 14. Type alias
+
+Type aliasは名前的型を作らず、別名だけを割り当てます。
+
+```virune ignore id="type-alias" reason="現行Parserがtype alias後の宣言を拒否するため、Issue #42で追跡しています。"
+type Headers = Map<String, List<String>>
+
+fn preserveHeaders(headers: Headers) -> Headers => headers
+```

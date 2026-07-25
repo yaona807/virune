@@ -1,13 +1,23 @@
 import { spawn } from 'node:child_process';
+import { mkdir, writeFile } from 'node:fs/promises';
+import { dirname } from 'node:path';
 
 const integrationOnly = process.argv.includes('--integration-only');
 const excludeBrowser = process.argv.includes('--exclude-browser');
 const failureOutputOnly = process.argv.includes('--failure-output-only');
 const groups = [
-	...(!integrationOnly ? [{
-		name: 'unit',
-		command: ['scripts/run-unit-tests.mjs', ...(failureOutputOnly ? ['--failure-output-only'] : [])],
-	}] : []),
+	...(!integrationOnly ? [
+		{
+			name: 'unit',
+			command: ['scripts/run-unit-tests.mjs', ...(failureOutputOnly ? ['--failure-output-only'] : [])],
+		},
+		{ name: 'documentation example policy', files: ['scripts/verify-documentation-examples.test.mjs'] },
+		{
+			name: 'documentation examples',
+			command: ['scripts/verify-documentation-examples.mjs'],
+			failureOutput: '.cache/unit-test-failure.log',
+		},
+	] : []),
 	{ name: 'CLI workflow', files: ['integration/dist/cli.test.js'] },
 	{ name: 'CLI API', files: ['integration/dist/cli-api.test.js'] },
 	{ name: 'conformance expectation validation', files: ['integration/dist/conformance.test.js'] },
@@ -19,7 +29,7 @@ const groups = [
 
 for (const group of groups) {
 	console.log(`\n=== ${group.name} ===`);
-	const code = group.command === undefined ? await runNodeTest(group.files) : await runCommand(group.command);
+	const code = group.command === undefined ? await runNodeTest(group.files) : await runCommand(group.command, group.failureOutput);
 	if (code !== 0) process.exit(code);
 }
 
@@ -36,11 +46,30 @@ function runNodeTest(files) {
 	});
 }
 
-function runCommand(argumentsList) {
+function runCommand(argumentsList, failureOutput) {
 	const { NODE_TEST_CONTEXT: _ignored, ...env } = process.env;
 	return new Promise((resolve, reject) => {
-		const child = spawn(process.execPath, argumentsList, { cwd: process.cwd(), env, stdio: 'inherit' });
+		const capture = typeof failureOutput === 'string';
+		const child = spawn(process.execPath, argumentsList, {
+			cwd: process.cwd(),
+			env,
+			stdio: capture ? ['ignore', 'pipe', 'pipe'] : 'inherit',
+		});
+		let output = '';
+		if (capture) {
+			child.stdout.setEncoding('utf8');
+			child.stderr.setEncoding('utf8');
+			child.stdout.on('data', chunk => { output += chunk; process.stdout.write(chunk); });
+			child.stderr.on('data', chunk => { output += chunk; process.stderr.write(chunk); });
+		}
 		child.once('error', reject);
-		child.once('exit', code => resolve(code ?? 1));
+		child.once('exit', async code => {
+			const exitCode = code ?? 1;
+			if (capture && exitCode !== 0) {
+				await mkdir(dirname(failureOutput), { recursive: true });
+				await writeFile(failureOutput, output);
+			}
+			resolve(exitCode);
+		});
 	});
 }

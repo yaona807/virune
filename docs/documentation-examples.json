@@ -1,0 +1,123 @@
+{
+  "schemaVersion": 1,
+  "documents": {
+    "README.md": [
+      {
+        "index": 0,
+        "mode": "run",
+        "id": "language-example",
+        "stdout": "Alice (not set)\nargument count: 0\n",
+        "stderr": "",
+        "exit": 0,
+        "sync": "structure"
+      },
+      {
+        "index": 1,
+        "mode": "ignore",
+        "id": "javascript-import-forms",
+        "reason": "The overview intentionally combines local and external JavaScript imports without providing the referenced modules.",
+        "sync": "structure"
+      }
+    ],
+    "README_ja.md": [
+      {
+        "index": 0,
+        "mode": "run",
+        "id": "language-example",
+        "stdout": "Alice (未設定)\n引数の数: 0\n",
+        "stderr": "",
+        "exit": 0,
+        "sync": "structure"
+      },
+      {
+        "index": 1,
+        "mode": "ignore",
+        "id": "javascript-import-forms",
+        "reason": "概要説明のため、参照先を用意せずlocal moduleと外部JavaScript importをまとめて示しています。",
+        "sync": "structure"
+      }
+    ],
+    "docs/language-guide.md": [
+      { "index": 0, "mode": "compile", "id": "functions" },
+      { "index": 1, "mode": "compile", "id": "data-models" },
+      { "index": 2, "mode": "compile", "id": "option-result", "include": [1] },
+      { "index": 3, "mode": "compile", "id": "pattern-matching", "include": [1] },
+      { "index": 4, "mode": "compile", "id": "explicit-composition" },
+      { "index": 5, "mode": "compile", "id": "equality-hashing" },
+      { "index": 6, "mode": "compile", "id": "effects" },
+      { "index": 7, "mode": "compile", "id": "effect-forwarding" },
+      {
+        "index": 8,
+        "mode": "ignore",
+        "id": "structured-concurrency",
+        "reason": "The excerpt focuses on parallel syntax and deliberately omits the User, Settings, LoadError, loadUser, and loadSettings declarations."
+      },
+      {
+        "index": 9,
+        "mode": "ignore",
+        "id": "resource-cleanup",
+        "reason": "The excerpt demonstrates defer ordering and deliberately omits the surrounding FileError and resource ownership declarations."
+      },
+      {
+        "index": 10,
+        "mode": "ignore",
+        "id": "javascript-boundary",
+        "reason": "The imported nanoid package is not installed as a documentation fixture dependency."
+      },
+      { "index": 11, "mode": "compile", "id": "documentation-comments", "sync": "structure" }
+    ],
+    "docs/language-guide_ja.md": [
+      { "index": 0, "mode": "compile", "id": "functions" },
+      { "index": 1, "mode": "compile", "id": "data-models" },
+      { "index": 2, "mode": "compile", "id": "option-result", "include": [1] },
+      { "index": 3, "mode": "compile", "id": "pattern-matching", "include": [1] },
+      { "index": 4, "mode": "compile", "id": "explicit-composition" },
+      { "index": 5, "mode": "compile", "id": "equality-hashing" },
+      { "index": 6, "mode": "compile", "id": "effects" },
+      { "index": 7, "mode": "compile", "id": "effect-forwarding" },
+      {
+        "index": 8,
+        "mode": "ignore",
+        "id": "structured-concurrency",
+        "reason": "parallel構文に焦点を当てるため、User、Settings、LoadError、loadUser、loadSettings宣言を省略しています。"
+      },
+      {
+        "index": 9,
+        "mode": "ignore",
+        "id": "resource-cleanup",
+        "reason": "defer順序に焦点を当てるため、FileErrorとresource ownership宣言を省略しています。"
+      },
+      {
+        "index": 10,
+        "mode": "ignore",
+        "id": "javascript-boundary",
+        "reason": "documentation fixtureにはnanoid packageをインストールしません。"
+      },
+      { "index": 11, "mode": "compile", "id": "documentation-comments", "sync": "structure" }
+    ],
+    "docs/standard-library.md": [],
+    "docs/standard-library_ja.md": [],
+    "docs/js-interop.md": [
+      {
+        "index": 0,
+        "mode": "ignore",
+        "id": "javascript-import-forms",
+        "reason": "The import syntax overview references npm packages and a side-effect module that are intentionally absent from the fixture.",
+        "sync": "structure"
+      }
+    ],
+    "docs/js-interop_ja.md": [
+      {
+        "index": 0,
+        "mode": "ignore",
+        "id": "javascript-import-forms",
+        "reason": "import構文の一覧は、fixtureに含めないnpm packageとside-effect moduleを参照します。",
+        "sync": "structure"
+      }
+    ]
+  },
+  "inlineDocuments": [
+    "docs/documentation-example-format.md",
+    "docs/documentation-example-format_ja.md"
+  ]
+}
