@@ -23,10 +23,10 @@ jobs:
       docs_only: ${{ steps.changes.outputs.docs_only }}
       changed_count: ${{ steps.changes.outputs.changed_count }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: 24
       - name: Select the required gate
@@ -51,8 +51,8 @@ jobs:
     env:
       VIRUNE_CI_JOB: metadata
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: 24
           cache: npm
@@ -74,7 +74,7 @@ jobs:
         run: node scripts/write-ci-summary.mjs
       - name: Upload metadata evidence
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: ci-metadata-evidence-${{ github.sha }}
           path: |
@@ -92,8 +92,8 @@ jobs:
     env:
       VIRUNE_CI_JOB: build-ubuntu-node24
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: 24
           cache: npm
@@ -104,7 +104,7 @@ jobs:
       - name: Package compiled output
         run: node scripts/run-ci-command.mjs --id package-compiled-output -- bash -lc "tar -czf .cache/compiled-output.tgz packages/*/dist integration/dist"
       - name: Upload compiled output
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: compiled-node-24-${{ github.sha }}
           path: .cache/compiled-output.tgz
@@ -115,7 +115,7 @@ jobs:
         run: node scripts/write-ci-summary.mjs
       - name: Upload build evidence
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: ci-evidence-build-ubuntu-node24
           path: |
@@ -133,15 +133,15 @@ jobs:
     env:
       VIRUNE_CI_JOB: core-tests-ubuntu-node24
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: 24
           cache: npm
       - name: Install dependencies
         run: node scripts/run-ci-command.mjs --id install -- npm ci
       - name: Download compiled output
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           name: compiled-node-24-${{ github.sha }}
           path: .cache
@@ -156,7 +156,7 @@ jobs:
         run: node scripts/write-ci-summary.mjs
       - name: Upload core-test evidence
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: ci-evidence-core-tests-ubuntu-node24
           path: |
@@ -175,15 +175,15 @@ jobs:
     env:
       VIRUNE_CI_JOB: quality-ubuntu-node24
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: 24
           cache: npm
       - name: Install dependencies
         run: node scripts/run-ci-command.mjs --id install -- npm ci
       - name: Download compiled output
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           name: compiled-node-24-${{ github.sha }}
           path: .cache
@@ -218,7 +218,7 @@ jobs:
         run: node scripts/write-ci-summary.mjs
       - name: Upload quality evidence
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: ci-evidence-quality-ubuntu-node24
           path: |
@@ -266,15 +266,15 @@ jobs:
     env:
       VIRUNE_CI_JOB: compatibility-${{ matrix.id }}
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: ${{ matrix.node }}
           cache: npm
       - name: Install platform dependencies
         run: node scripts/run-ci-command.mjs --id install -- npm ci
       - name: Download compiled output
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           name: compiled-node-24-${{ github.sha }}
           path: .cache
@@ -293,7 +293,7 @@ jobs:
         run: node scripts/write-ci-summary.mjs
       - name: Upload compatibility evidence
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: ci-evidence-${{ matrix.id }}
           path: |
@@ -311,15 +311,15 @@ jobs:
     env:
       VIRUNE_CI_JOB: browser-ubuntu-node24
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: 24
           cache: npm
       - name: Install browser dependencies
         run: node scripts/run-ci-command.mjs --id install -- npm ci
       - name: Download compiled output
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           name: compiled-node-24-${{ github.sha }}
           path: .cache
@@ -332,7 +332,7 @@ jobs:
         run: node scripts/write-ci-summary.mjs
       - name: Upload browser evidence
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: ci-evidence-browser-ubuntu-node24
           path: |
@@ -358,8 +358,8 @@ jobs:
     env:
       VIRUNE_CI_JOB: release-artifacts
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: 24
           cache: npm
@@ -372,7 +372,7 @@ jobs:
         run: node scripts/write-ci-summary.mjs
       - name: Upload release artifacts
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: release-artifacts
           path: |

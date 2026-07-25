@@ -1,12 +1,31 @@
 {
-	"schemaVersion": 1,
+	"schemaVersion": 2,
 	"allowedReferences": {
-		"actions/checkout": ["v7"],
-		"actions/dependency-review-action": ["v5"],
-		"actions/download-artifact": ["v8"],
-		"actions/setup-node": ["v7"],
-		"actions/upload-artifact": ["v7"],
-		"github/codeql-action/analyze": ["v4"],
-		"github/codeql-action/init": ["v4"]
+		"actions/checkout": ["v7", "3d3c42e5aac5ba805825da76410c181273ba90b1"],
+		"actions/dependency-review-action": ["v5", "a1d282b36b6f3519aa1f3fc636f609c47dddb294"],
+		"actions/download-artifact": ["v8", "3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c"],
+		"actions/setup-node": ["v7", "820762786026740c76f36085b0efc47a31fe5020"],
+		"actions/upload-artifact": ["v7", "043fb46d1a93c77aae656e7c1c64a875d1fc6a0a"],
+		"github/codeql-action/analyze": ["v4", "e4fba868fa4b1b91e1fdab776edc8cfbe6e9fb81"],
+		"github/codeql-action/init": ["v4", "e4fba868fa4b1b91e1fdab776edc8cfbe6e9fb81"]
+	},
+	"workflowPermissions": {
+		"default": {
+			"contents": "read"
+		},
+		"exceptions": {
+			"codeql.yml": {
+				"contents": "read",
+				"security-events": "write"
+			},
+			"release-dry-run.yml": {
+				"actions": "read",
+				"contents": "read"
+			},
+			"release.yml": {
+				"actions": "read",
+				"contents": "write"
+			}
+		}
 	}
 }
