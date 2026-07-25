@@ -129,9 +129,9 @@ jobs:
     needs: [classify, build]
     if: needs.classify.outputs.docs_only != 'true'
     runs-on: ubuntu-24.04
-    timeout-minutes: 40
+    timeout-minutes: 25
     env:
-      VIRUNE_CI_JOB: core-ubuntu-node24
+      VIRUNE_CI_JOB: core-tests-ubuntu-node24
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -151,6 +151,44 @@ jobs:
         run: node scripts/run-ci-command.mjs --id core-tests -- npm run test:core:built -- --failure-output-only
         env:
           VIRUNE_TEST_ROLE: full
+      - name: Write timing summary
+        if: always()
+        run: node scripts/write-ci-summary.mjs
+      - name: Upload core-test evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ci-evidence-core-tests-ubuntu-node24
+          path: |
+            .cache/unit-test-failure.log
+            .cache/ci-timings/
+            .cache/ci-failures/
+          if-no-files-found: warn
+          retention-days: 14
+
+  quality:
+    name: Compiler quality gates (Ubuntu 24.04 / Node.js 24)
+    needs: [classify, build]
+    if: needs.classify.outputs.docs_only != 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      VIRUNE_CI_JOB: quality-ubuntu-node24
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install dependencies
+        run: node scripts/run-ci-command.mjs --id install -- npm ci
+      - name: Download compiled output
+        uses: actions/download-artifact@v8
+        with:
+          name: compiled-node-24-${{ github.sha }}
+          path: .cache
+      - name: Restore compiled output
+        run: node scripts/run-ci-command.mjs --id restore-compiled-output -- tar -xzf .cache/compiled-output.tgz -C .
       - name: Verify TypeScript binding corpus
         run: node scripts/run-ci-command.mjs --id binding-corpus -- npm run test:binding-corpus:built
         env:
@@ -178,29 +216,19 @@ jobs:
       - name: Write timing summary
         if: always()
         run: node scripts/write-ci-summary.mjs
-      - name: Upload core failure diagnostics
-        if: failure()
-        uses: actions/upload-artifact@v7
-        with:
-          name: core-failure-ubuntu-24.04-node-24
-          path: |
-            .cache/unit-test-failure.log
-            .cache/binding-corpus/report.current.json
-            .cache/binding-corpus/baseline-diff.json
-            .cache/semantic-fuzz-smoke.json
-            .cache/ci-failures/
-            fuzz-regressions/artifacts/smoke/
-            fuzz-regressions/semantic-artifacts/smoke/
-          if-no-files-found: warn
-          retention-days: 7
-      - name: Upload core timing evidence
+      - name: Upload quality evidence
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: ci-timings-ubuntu-24.04-node-24
+          name: ci-evidence-quality-ubuntu-node24
           path: |
+            .cache/binding-corpus/report.current.json
+            .cache/binding-corpus/baseline-diff.json
+            .cache/semantic-fuzz-smoke.json
             .cache/ci-timings/
             .cache/ci-failures/
+            fuzz-regressions/artifacts/smoke/
+            fuzz-regressions/semantic-artifacts/smoke/
           if-no-files-found: warn
           retention-days: 14
 
@@ -315,13 +343,14 @@ jobs:
 
   release-artifacts:
     name: Release artifacts
-    needs: [classify, metadata, build, verify, compatibility, browser]
+    needs: [classify, metadata, build, verify, quality, compatibility, browser]
     if: >-
       always() &&
       needs.classify.outputs.docs_only != 'true' &&
       needs.metadata.result == 'success' &&
       needs.build.result == 'success' &&
       needs.verify.result == 'success' &&
+      needs.quality.result == 'success' &&
       needs.compatibility.result == 'success' &&
       needs.browser.result == 'success'
     runs-on: ubuntu-24.04
