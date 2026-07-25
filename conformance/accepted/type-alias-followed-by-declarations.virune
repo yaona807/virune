@@ -1,0 +1,11 @@
+type Headers = Map<String, List<String>>
+
+fn preserveHeaders(headers: Headers) -> Headers => headers
+
+record HeaderBox {
+	headers: Headers
+}
+
+enum HeaderState {
+	Ready
+}

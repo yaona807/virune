@@ -112,24 +112,33 @@ export interface LexResult {
 
 const softAfter = new Set(['Pipe', 'EqualEqual', 'BangEqual', 'LessEqual', 'GreaterEqual', 'AndAnd', 'OrOr', 'Equals', 'Less', 'Greater', 'Plus', 'Minus', 'Star', 'Slash', 'Percent', 'Comma', 'LParen', 'LBracket']);
 const softBefore = new Set(['Pipe', 'EqualEqual', 'BangEqual', 'LessEqual', 'GreaterEqual', 'AndAnd', 'OrOr', 'Less', 'Greater', 'Plus', 'Minus', 'Star', 'Slash', 'Percent', 'RParen', 'RBracket', 'KwElse']);
+const topLevelDeclarationStarts = new Set(['At', 'KwPub', 'KwAsync', 'KwFn', 'KwRecord', 'KwEnum', 'KwNewtype', 'KwType', 'KwExtern', 'KwUnsafe', 'KwTest', 'KwLet', 'KwConst']);
 
 function normalizeNewLines(input: readonly IToken[]): IToken[] {
 	const output: IToken[] = [];
 	let parenDepth = 0;
 	let bracketDepth = 0;
+	let braceDepth = 0;
 	for (let index = 0; index < input.length; index++) {
 		const token = input[index]!;
 		const name = token.tokenType.name;
 		if (name === 'NewLine') {
 			const previous = output.at(-1);
 			const next = input.slice(index + 1).find(item => item.tokenType.name !== 'NewLine');
-			const soft = parenDepth > 0 || bracketDepth > 0 || (previous !== undefined && softAfter.has(previous.tokenType.name)) || (next !== undefined && softBefore.has(next.tokenType.name));
+			const topLevelDeclarationBoundary = braceDepth === 0
+				&& previous?.tokenType.name === 'Greater'
+				&& (next === undefined || topLevelDeclarationStarts.has(next.tokenType.name));
+			const soft = parenDepth > 0
+				|| bracketDepth > 0
+				|| (!topLevelDeclarationBoundary && previous !== undefined && softAfter.has(previous.tokenType.name))
+				|| (next !== undefined && softBefore.has(next.tokenType.name));
 			if (!soft && previous?.tokenType.name !== 'NewLine') output.push(token);
 			continue;
 		}
 		output.push(token);
 		if (name === 'LParen') parenDepth++; else if (name === 'RParen') parenDepth = Math.max(0, parenDepth - 1);
 		if (name === 'LBracket') bracketDepth++; else if (name === 'RBracket') bracketDepth = Math.max(0, bracketDepth - 1);
+		if (name === 'LBrace') braceDepth++; else if (name === 'RBrace') braceDepth = Math.max(0, braceDepth - 1);
 	}
 	return output;
 }

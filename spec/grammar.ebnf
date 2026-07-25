@@ -203,6 +203,10 @@ Keyword                 = "as" | "async" | "await" | "break" | "const" | "contin
  *
  * soft-after  = |> == != <= >= && || = < > + - * / % , ( [
  * soft-before = |> == != <= >= && || < > + - * / % ) ] else
+ *
+ * Exception: at brace depth zero, a NewLine after ">" is retained before EOF
+ * or a token that begins a Declaration or Attribute. This lets a generic
+ * TypeReference satisfy the required LineEnd of a top-level declaration.
  *)
 
 (* Precedence note: the source form "await expression?" is normalized to
