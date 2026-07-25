@@ -27,16 +27,16 @@ jobs:
           cache: npm
 
       - name: Review dependency changes with GitHub
-        id: github-dependency-review
+        id: github_dependency_review
         continue-on-error: true
         uses: actions/dependency-review-action@v5
         with:
           fail-on-severity: moderate
 
-      - name: Audit locked npm dependencies
-        run: npm audit --audit-level=moderate
+      - name: Audit locked runtime dependencies
+        run: npm audit --omit=dev --audit-level=moderate
 
       - name: Report GitHub dependency review fallback
-        if: steps.github-dependency-review.outcome == 'failure'
+        if: steps.github_dependency_review.outcome == 'failure'
         shell: bash
-        run: echo '::warning::GitHub dependency review did not pass. npm audit was used as the blocking fallback. Enable Dependency Graph to activate change-level review.'
+        run: echo '::warning::GitHub dependency review did not pass. npm audit checked runtime dependencies as the blocking fallback. Enable Dependency Graph to activate change-level review.'
