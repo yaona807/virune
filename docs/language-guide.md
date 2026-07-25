@@ -166,6 +166,16 @@ Use `//` for ordinary comments, `///` for the following declaration, and `//!` f
 ```virune
 //! User lookup services.
 
+pub newtype UserId = Int
+
+pub record User {
+	id: UserId
+}
+
+pub enum UserError {
+	NotFound(UserId)
+}
+
 /// Returns the user identified by `id`.
 ///
 /// # Errors
