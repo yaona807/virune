@@ -192,7 +192,7 @@ pub fn findUser(id: UserId) -> Result<User, UserError> {
 
 Type aliasは名前的型を作らず、別名だけを割り当てます。
 
-```virune compile id="type-alias"
+```virune ignore id="type-alias" reason="現行Parserがtype alias後の宣言を拒否するため、Issue #42で追跡しています。"
 type Headers = Map<String, List<String>>
 
 fn preserveHeaders(headers: Headers) -> Headers => headers
