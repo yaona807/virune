@@ -61,9 +61,9 @@ fn load(id: UserId) -> Result<User, UserError> {
 ```virune
 fn message(error: UserError) -> String {
 	return match error {
-		UserError.NotFound(_) => "missing"
-		UserError.InvalidName(value) if value == "" => "empty"
-		UserError.InvalidName(value) => value
+		NotFound(_) => "missing"
+		InvalidName(value) if value == "" => "empty"
+		InvalidName(value) => value
 	}
 }
 ```
