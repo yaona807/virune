@@ -90,11 +90,14 @@ Exact TypeScript 7 compilerを隔離した一時tool directoryへinstallし、�
 1. TypeScript 6 Compiler API inventory、境界、version
 2. TypeScript 6によるforced clean build
 3. TypeScript 7によるforced clean build
-4. `.tsbuildinfo`を除くJavaScript、declaration、mapのbit-for-bit一致
-5. emitted outputを変更しないTypeScript 7 incremental build
-6. `@virune/js-interop` testとbinding corpus
-7. language server／VS Code extension test
-8. VSIX package生成
+4. `.tsbuildinfo`を除くJavaScriptとdeclarationのbit-for-bit一致
+5. Source mapのversion、output file、source root、source file、埋め込みsource内容の一致、およびreview対象となるname／mapping差分の記録
+6. emitted outputを変更しないTypeScript 7 incremental build
+7. `@virune/js-interop` testとbinding corpus
+8. language server／VS Code extension test
+9. VSIX package生成
+
+初回prototypeではTypeScript 6／7とも512個のfileを出力し、JavaScriptとdeclarationは一致しました。Source構造は同一のまま、88個のsource mapで生成nameまたはmapping encodingだけが異なることを確認しました。このmapping-only差分はcode outputの未review変更として扱わず、明示的な証跡として保持します。
 
 証跡は`.cache/typescript-7-prototype/`へJSON、Markdown、command別logとして保存します。専用GitHub Actions workflowは成功時・失敗時の両方で証跡をuploadします。
 
@@ -104,7 +107,7 @@ Exact TypeScript 7 compilerを隔離した一時tool directoryへinstallし、�
 2. Linux上のprototype outputとdiagnostic parityをreviewする。
 3. Native compiler aliasとcompatibility aliasをroot、CLI、JavaScript interop manifestへ適用し、lockfileを更新する実装PRを作成する。
 4. 通常OS matrix、browser conformance、performance、VSIX smoke、binding corpus、release dry run、reproducible release gateを実行する。
-5. Compiler output、diagnostic、clean／incremental timing、package size、startup behaviorをreviewする。
+5. Compiler output、diagnostic、clean／incremental timing、package size、startup behavior、source-map mapping証跡をreviewする。
 6. 既存release gateとTypeScript 7 prototypeがすべて成功した場合だけmergeする。
 7. Commit済みtoolchainがTypeScript 7を使用した後はprototype専用installを削除し、boundary policyとparity checkは維持する。
 
@@ -118,4 +121,5 @@ Rollbackでは`@typescript/native`を削除し、root、CLI、JavaScript interop
 - Compiler build性能とCompiler API互換性を独立して更新できる。
 - 一時的に2つのTypeScript実装を保持する。
 - Native platform packageとcompatibility APIが共存するため、package sizeとinstall時間が増加する可能性がある。
+- Generated code、declaration、source参照が安定していても、native compilerではsource-map mapping encodingが変化する。
 - Boundary policyによりreview済みproduction／tooling consumer外からlegacy APIへ偶発的に依存することを防止できる。
