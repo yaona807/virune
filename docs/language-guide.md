@@ -194,4 +194,6 @@ A type alias assigns another name without creating a nominal type.
 
 ```virune compile id="type-alias"
 type Headers = Map<String, List<String>>
+
+fn preserveHeaders(headers: Headers) -> Headers => headers
 ```
