@@ -51,7 +51,7 @@
 		"workflow:check": "node scripts/verify-workflows.mjs",
 		"test:workflow-policy": "node --test scripts/verify-workflows.test.mjs",
 		"typescript:boundary:check": "node scripts/verify-typescript-boundary.mjs",
-		"test:typescript-boundary": "node --test scripts/verify-typescript-boundary.test.mjs",
+		"test:typescript-boundary": "node --test scripts/verify-typescript-boundary.test.mjs scripts/probe-typescript-7.test.mjs",
 		"prototype:typescript7": "node scripts/probe-typescript-7.mjs",
 		"vscode:api-baseline:check": "node scripts/verify-vscode-api-baseline.mjs",
 		"test:vscode-api-baseline": "node --test scripts/verify-vscode-api-baseline.test.mjs",
