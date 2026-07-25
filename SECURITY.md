@@ -72,6 +72,19 @@ Maintainers must verify the following settings before a stable release and revie
 
 Repository settings are not fully represented in Git, so this checklist must be confirmed in **Settings → Security and analysis**, **Settings → Actions**, and the branch ruleset configuration.
 
+## Automated repository controls
+
+The following controls are enforced from the repository and fail pull-request metadata validation when weakened:
+
+- `.github/dependabot.yml` monitors npm and GitHub Actions dependencies;
+- `.github/workflows/codeql.yml` analyzes JavaScript and TypeScript on pull requests, pushes, a weekly schedule, and manual runs;
+- `.github/workflows/dependency-review.yml` reviews dependency changes and blocks moderate-or-higher runtime audit findings;
+- `.github/actions-policy.json` allowlists external Action identities and revisions;
+- `scripts/verify-workflows.mjs` requires every workflow to declare exact top-level permissions, defaults workflows to `contents: read`, and permits write scopes only through reviewed per-file exceptions;
+- job-level permission overrides are prohibited so a job cannot silently escalate beyond the reviewed workflow grant.
+
+Git-managed validation cannot prove the current state of private vulnerability reporting, secret scanning, push protection, repository-wide Actions defaults, or branch rulesets. An administrator must confirm those controls in GitHub settings during the quarterly review. A successful GitHub Dependency Review step provides operational evidence that the dependency graph is available for the pull request, while the runtime `npm audit` remains an independent blocking check.
+
 ## Public security discussions
 
 After a coordinated disclosure, use the GitHub Security Advisory and release notes as the canonical public record. Public issues may track follow-up hardening work only after exploit-sensitive details are safe to disclose.
