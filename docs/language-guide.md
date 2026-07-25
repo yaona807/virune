@@ -27,8 +27,6 @@ Arrow bodies are for a single expression. Block bodies are for statements and ea
 ```virune
 pub newtype UserId = Int
 
-type Headers = Map<String, String>
-
 record User derives Eq, Hash, Debug, Json {
 	id: UserId
 	name: String
@@ -179,3 +177,11 @@ pub fn findUser(id: UserId) -> Result<User, UserError> {
 ```
 
 Documentation text is CommonMark-compatible Markdown. `////` remains an ordinary comment, and Virune 1.0 has no block comments. See the [normative documentation-comment specification](../spec/documentation.md).
+
+## 14. Type aliases
+
+A type alias assigns another name without creating a nominal type.
+
+```virune compile id="type-alias"
+type Headers = Map<String, List<String>>
+```
