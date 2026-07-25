@@ -4,7 +4,7 @@
 
 ## Goals
 
-Virune's pull-request CI separates platform-independent validation from platform-sensitive smoke tests. The design preserves the supported operating-system and Node.js matrix while avoiding repeated metadata validation, full TypeScript builds, unit suites, fuzzing, conformance, and formatter checks on every runner.
+Virune's pull-request CI separates platform-independent validation from platform-sensitive smoke tests. The design preserves the supported operating-system and Node.js matrix while avoiding repeated metadata validation, TypeScript builds, unit suites, fuzzing, conformance, and formatter checks on every runner.
 
 ## Pull-request responsibilities
 
@@ -27,11 +27,16 @@ The Ubuntu 24.04 / Node.js 24 `metadata` job is the only PR job that runs `npm r
 
 Documentation-only pull requests additionally build and execute the documentation examples. Other jobs are skipped for this path.
 
+### Canonical build
+
+For a full gate, the Ubuntu 24.04 / Node.js 24 `build` job starts in parallel with metadata validation. It performs the repository's only PR project-reference build and type check, then packages the generated `dist` trees into a short-lived artifact.
+
+The core-test, compatibility, and browser jobs start as soon as this artifact is available. They do not wait for each other, so artifact reuse removes duplicate builds without serializing the supported platform matrix behind the full core suite.
+
 ### Platform-independent core
 
-The Ubuntu 24.04 / Node.js 24 `verify` job owns:
+The Ubuntu 24.04 / Node.js 24 `verify` job restores the canonical build and owns:
 
-- project-reference build and type checking;
 - unit and integration tests excluding the browser runtime;
 - TypeScript binding corpus;
 - fuzz and semantic differential fuzz smoke suites;
@@ -39,11 +44,9 @@ The Ubuntu 24.04 / Node.js 24 `verify` job owns:
 - conformance and formatter checks;
 - source-clone smoke tests.
 
-The job packages the compiled `dist` trees into a short-lived artifact only after the complete core gate succeeds.
-
 ### Platform-sensitive compatibility
 
-Windows Server 2022, Windows Server 2025, macOS 14, and Ubuntu Node.js 26 download the compiled-output artifact produced by the trusted Ubuntu core job. They still run `npm ci` locally so native and platform-specific dependencies are installed for the target runner.
+Windows Server 2022, Windows Server 2025, macOS 14, and Ubuntu Node.js 26 download the compiled-output artifact produced by the canonical build job. They still run `npm ci` locally so native and platform-specific dependencies are installed for the target runner.
 
 Compatibility jobs execute only tests whose behavior may depend on the operating system, filesystem, path handling, process creation, Node.js version, VS Code host, or CLI execution:
 
@@ -56,9 +59,9 @@ They do not repeat metadata validation, type checking, the complete unit suite, 
 
 ### Browser and release
 
-The browser job restores the same successful core build and executes emitted ESM in Chromium.
+The browser job restores the canonical build and executes emitted ESM in Chromium in parallel with core and compatibility testing.
 
-The release-artifacts job runs only after metadata, core, compatibility, and browser jobs succeed. It performs a clean production release build and release smoke verification rather than trusting a PR build artifact for publishing decisions.
+The release-artifacts job runs only after metadata, build, core, compatibility, and browser jobs succeed. It performs a clean production release build and release smoke verification rather than trusting a PR build artifact for publishing decisions.
 
 ## Artifact and cache safety
 
@@ -74,7 +77,7 @@ Release packaging always rebuilds from source after a clean checkout and install
 
 Every wrapped CI command writes a JSON timing record containing the command, duration, exit status, operating system, Node.js version, and local reproduction command. The job summary lists commands from slowest to fastest.
 
-On failure, stdout and stderr are retained under `.cache/ci-failures/` and uploaded with timing evidence. The local reproduction command is also emitted as a GitHub annotation.
+On failure, streamed stdout and stderr are retained under `.cache/ci-failures/` and uploaded with timing evidence. The local reproduction command is also emitted as a GitHub annotation.
 
 Representative commands:
 
