@@ -11,10 +11,32 @@ export const writeReleaseIntegrityFiles = (releaseDirectory, version) => {
 	const releaseFiles = readdirSync(releaseDirectory)
 		.filter(file => file !== 'RELEASE-MANIFEST.json' && file !== 'SHA256SUMS')
 		.sort();
+	const sbomFile = 'SBOM.cdx.json';
+	if (!releaseFiles.includes(sbomFile)) throw new Error(`${sbomFile} must exist before release integrity files are generated.`);
+	const sbom = JSON.parse(readFileSync(resolve(releaseDirectory, sbomFile), 'utf8'));
+	if (sbom.bomFormat !== 'CycloneDX' || typeof sbom.specVersion !== 'string' || typeof sbom.serialNumber !== 'string') {
+		throw new Error('Invalid CycloneDX release SBOM.');
+	}
 	const releaseManifest = {
-		schemaVersion: 1,
+		schemaVersion: 2,
 		version,
 		generatedBy: 'scripts/release-manifest.mjs',
+		sbom: {
+			...digest(sbomFile),
+			format: sbom.bomFormat,
+			specVersion: sbom.specVersion,
+			serialNumber: sbom.serialNumber,
+		},
+		provenance: {
+			provider: 'GitHub Artifact Attestations',
+			subjects: 'SHA256SUMS',
+			verificationCommand: 'gh attestation verify <asset> --repo yaona807/virune',
+			sbomVerificationCommand: 'gh attestation verify <asset> --repo yaona807/virune --predicate-type https://cyclonedx.org/bom',
+		},
+		verification: {
+			checksums: 'sha256sum --check SHA256SUMS',
+			manifest: 'Verify each file size and SHA-256 digest against RELEASE-MANIFEST.json.',
+		},
 		files: releaseFiles.map(digest),
 	};
 	writeFileSync(resolve(releaseDirectory, 'RELEASE-MANIFEST.json'), `${JSON.stringify(releaseManifest, null, 2)}\n`);
