@@ -1,5 +1,5 @@
 {
-	"schemaVersion": 1,
+	"schemaVersion": 2,
 	"allowedReferences": {
 		"actions/checkout": ["v7"],
 		"actions/dependency-review-action": ["v5"],
@@ -8,5 +8,20 @@
 		"actions/upload-artifact": ["v7"],
 		"github/codeql-action/analyze": ["v4"],
 		"github/codeql-action/init": ["v4"]
+	},
+	"workflowPermissions": {
+		"default": {
+			"contents": "read"
+		},
+		"exceptions": {
+			"codeql.yml": {
+				"contents": "read",
+				"security-events": "write"
+			},
+			"release.yml": {
+				"actions": "read",
+				"contents": "write"
+			}
+		}
 	}
 }
