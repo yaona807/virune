@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { lstat, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { dirname, relative, resolve, sep } from 'node:path';
+import { relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { verifyTypeScriptBoundary } from './verify-typescript-boundary.mjs';
 
@@ -39,6 +39,8 @@ export async function probeTypeScript7({ root = repositoryRoot, output = outputD
 		await runCommand('typescript7-clean-build', nativeCompiler, ['-b', '--force', '--pretty', 'false', '--singleThreaded'], root, commands, output);
 		const typescript7Output = await describeEmittedTree(root);
 		const outputDifferences = compareTrees(typescript6Output, typescript7Output);
+		const sourceMapMappingDifferences = outputDifferences.filter(item => item.kind === 'source-map-mapping-difference');
+		const blockingOutputDifferences = outputDifferences.filter(item => item.kind !== 'source-map-mapping-difference' || !policy.prototype.allowSourceMapMappingDifferences);
 
 		const beforeIncremental = await describeEmittedTree(root);
 		await runCommand('typescript7-incremental-build', nativeCompiler, ['-b', '--pretty', 'false', '--singleThreaded'], root, commands, output);
@@ -53,9 +55,7 @@ export async function probeTypeScript7({ root = repositoryRoot, output = outputD
 		await runCommand('vsix-package', process.execPath, ['scripts/package-vscode.mjs'], root, commands, output);
 
 		const failures = commands.filter(item => item.status !== 0);
-		if (policy.prototype.requireExactEmitMatch && outputDifferences.length > 0) {
-			failures.push({ id: 'typescript6-typescript7-output', status: 1 });
-		}
+		if (blockingOutputDifferences.length > 0) failures.push({ id: 'typescript6-typescript7-output', status: 1 });
 		if (incrementalDifferences.length > 0) failures.push({ id: 'typescript7-incremental-output', status: 1 });
 		report = {
 			schemaVersion: 1,
@@ -65,6 +65,8 @@ export async function probeTypeScript7({ root = repositoryRoot, output = outputD
 			emit: {
 				typescript6Files: typescript6Output.size,
 				typescript7Files: typescript7Output.size,
+				blockingOutputDifferences,
+				sourceMapMappingDifferences,
 				outputDifferences,
 				incrementalDifferences,
 			},
@@ -75,7 +77,12 @@ export async function probeTypeScript7({ root = repositoryRoot, output = outputD
 			schemaVersion: 1,
 			generatedAt: new Date().toISOString(),
 			commands,
-			emit: { outputDifferences: [], incrementalDifferences: [] },
+			emit: {
+				blockingOutputDifferences: [],
+				sourceMapMappingDifferences: [],
+				outputDifferences: [],
+				incrementalDifferences: [],
+			},
 			passed: false,
 			error: error instanceof Error ? error.stack ?? error.message : String(error),
 		};
@@ -143,13 +150,33 @@ async function describeEmittedTree(root) {
 			else if (entry.isFile() && !entry.name.endsWith('.tsbuildinfo')) {
 				const bytes = await readFile(absolute);
 				const metadata = await lstat(absolute);
-				files.set(relative(root, absolute).split(sep).join('/'), {
-					sha256: createHash('sha256').update(bytes).digest('hex'),
+				const path = relative(root, absolute).split(sep).join('/');
+				const descriptor = {
+					sha256: digest(bytes),
 					bytes: bytes.byteLength,
 					mode: metadata.mode & 0o777,
-				});
+				};
+				if (path.endsWith('.map')) descriptor.sourceMap = describeSourceMap(bytes);
+				files.set(path, descriptor);
 			}
 		}
+	}
+}
+
+function describeSourceMap(bytes) {
+	try {
+		const map = JSON.parse(bytes.toString('utf8'));
+		return {
+			version: map.version ?? null,
+			file: map.file ?? null,
+			sourceRoot: map.sourceRoot ?? null,
+			sources: map.sources ?? [],
+			sourcesContentHashes: (map.sourcesContent ?? []).map(value => value === null ? null : digest(Buffer.from(value))),
+			namesHash: digest(Buffer.from(JSON.stringify(map.names ?? []))),
+			mappingsHash: digest(Buffer.from(map.mappings ?? '')),
+		};
+	} catch (error) {
+		return { parseError: error instanceof Error ? error.message : String(error) };
 	}
 }
 
@@ -158,10 +185,44 @@ function compareTrees(left, right) {
 	for (const path of [...new Set([...left.keys(), ...right.keys()])].sort()) {
 		const a = left.get(path);
 		const b = right.get(path);
-		if (a === undefined || b === undefined) differences.push({ kind: 'missing-file', path, typescript6: a ?? null, typescript7: b ?? null });
-		else if (a.sha256 !== b.sha256 || a.mode !== b.mode) differences.push({ kind: 'file-difference', path, typescript6: a, typescript7: b });
+		if (a === undefined || b === undefined) {
+			differences.push({ kind: 'missing-file', path, typescript6: a ?? null, typescript7: b ?? null });
+			continue;
+		}
+		if (a.mode !== b.mode) {
+			differences.push({ kind: 'file-mode-difference', path, typescript6: a.mode, typescript7: b.mode });
+			continue;
+		}
+		if (a.sha256 === b.sha256) continue;
+		if (path.endsWith('.map') && a.sourceMap !== undefined && b.sourceMap !== undefined) {
+			const aStructure = sourceMapStructure(a.sourceMap);
+			const bStructure = sourceMapStructure(b.sourceMap);
+			if (JSON.stringify(aStructure) === JSON.stringify(bStructure)) {
+				differences.push({
+					kind: 'source-map-mapping-difference',
+					path,
+					typescript6: { namesHash: a.sourceMap.namesHash, mappingsHash: a.sourceMap.mappingsHash, bytes: a.bytes },
+					typescript7: { namesHash: b.sourceMap.namesHash, mappingsHash: b.sourceMap.mappingsHash, bytes: b.bytes },
+				});
+			} else {
+				differences.push({ kind: 'source-map-structure-difference', path, typescript6: aStructure, typescript7: bStructure });
+			}
+			continue;
+		}
+		differences.push({ kind: 'file-difference', path, typescript6: a, typescript7: b });
 	}
 	return differences;
+}
+
+function sourceMapStructure(map) {
+	return {
+		parseError: map.parseError ?? null,
+		version: map.version ?? null,
+		file: map.file ?? null,
+		sourceRoot: map.sourceRoot ?? null,
+		sources: map.sources ?? [],
+		sourcesContentHashes: map.sourcesContentHashes ?? [],
+	};
 }
 
 async function writeSummary(output, report) {
@@ -172,7 +233,8 @@ async function writeSummary(output, report) {
 		'',
 		`Compiler API version: ${report.versions?.compilerApi ?? 'unknown'}`,
 		`Build compiler version: ${report.versions?.buildCompiler ?? 'unknown'}`,
-		`Emit differences: ${report.emit.outputDifferences.length}`,
+		`Blocking emit differences: ${report.emit.blockingOutputDifferences.length}`,
+		`Reviewed source-map mapping differences: ${report.emit.sourceMapMappingDifferences.length}`,
 		`Incremental emit differences: ${report.emit.incrementalDifferences.length}`,
 		'',
 		'## Commands',
@@ -183,6 +245,7 @@ async function writeSummary(output, report) {
 	await writeFile(resolve(output, 'summary.md'), `${lines.join('\n')}\n`, 'utf8');
 }
 
+function digest(bytes) { return createHash('sha256').update(bytes).digest('hex'); }
 function npmCommand() { return process.platform === 'win32' ? 'npm.cmd' : 'npm'; }
 
 const entry = process.argv[1] === undefined ? undefined : resolve(process.argv[1]);
