@@ -192,7 +192,7 @@ Documentation text is CommonMark-compatible Markdown. `////` remains an ordinary
 
 A type alias assigns another name without creating a nominal type.
 
-```virune ignore id="type-alias" reason="The current parser rejects declarations after a type alias; tracked in issue #42."
+```virune compile id="type-alias" sync="exact"
 type Headers = Map<String, List<String>>
 
 fn preserveHeaders(headers: Headers) -> Headers => headers
