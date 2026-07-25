@@ -93,3 +93,26 @@ jobs:
           path: fuzz-regressions/semantic-artifacts/shard-${{ matrix.shard }}
           if-no-files-found: ignore
           retention-days: 30
+
+  reproducible-release:
+    name: Reproducible release artifacts
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - name: Build the release independently twice and compare outputs
+        run: npm run verify:reproducible-release
+        env:
+          SOURCE_DATE_EPOCH: '0'
+      - name: Upload reproducibility evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: reproducible-release-evidence
+          path: .cache/reproducible-release/
+          if-no-files-found: error
+          retention-days: 30
