@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 const MINIMUM_RUNTIME_MAJOR = 24;
 const MINIMUM_ENGINE = /^>=\s*(\d+)\.(\d+)\.(\d+)$/u;
 const TYPES_VERSION = /^(?:\^|~)?(\d+)\.(\d+)\.(\d+)$/u;
+// Packages that compile against Node.js APIs must share the declared runtime baseline.
 const PACKAGE_PATHS = ['package.json', 'packages/js-interop/package.json'];
 
 export async function verifyNodeRuntime(root = process.cwd(), runtimeVersion = process.versions.node) {
