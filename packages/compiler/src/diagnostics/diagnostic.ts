@@ -26,7 +26,7 @@ export interface Diagnostic {
 export class DiagnosticBag {
 	readonly #diagnostics: Diagnostic[] = [];
 	public add(diagnostic: Diagnostic): void {
-		if (this.#diagnostics.length < 100) this.#diagnostics.push(diagnostic);
+		if (this.#diagnostics.length < 100) this.#diagnostics.push({ ...diagnostic, span: normalizeSpan(diagnostic.span) });
 	}
 	public error(code: string, message: string, span: SourceSpan, options: Omit<Diagnostic, 'code' | 'message' | 'span' | 'severity'> = {}): void {
 		this.add({ code, severity: 'error', message, span, ...options });
@@ -36,4 +36,23 @@ export class DiagnosticBag {
 	}
 	public get items(): readonly Diagnostic[] { return this.#diagnostics; }
 	public get hasErrors(): boolean { return this.#diagnostics.some(item => item.severity === 'error'); }
+}
+
+function normalizeSpan(span: SourceSpan): SourceSpan {
+	const startOffset = finiteAtLeast(span.start.offset, 0);
+	const startLine = finiteAtLeast(span.start.line, 1);
+	const startColumn = finiteAtLeast(span.start.column, 1);
+	return {
+		fileId: span.fileId,
+		start: { offset: startOffset, line: startLine, column: startColumn },
+		end: {
+			offset: finiteAtLeast(span.end.offset, startOffset),
+			line: finiteAtLeast(span.end.line, startLine),
+			column: finiteAtLeast(span.end.column, startColumn),
+		},
+	};
+}
+
+function finiteAtLeast(value: number, minimum: number): number {
+	return Number.isFinite(value) && value >= minimum ? value : minimum;
 }
