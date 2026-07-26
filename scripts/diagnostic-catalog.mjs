@@ -1,5 +1,6 @@
 import { readFile, readdir } from 'node:fs/promises';
 import { resolve, relative } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const roots = ['packages/compiler/src', 'packages/cli/src'];
 const ranges = [
@@ -18,11 +19,9 @@ export async function collectDiagnosticCatalog(repositoryRoot = process.cwd()) {
 	for (const root of roots) {
 		for (const file of await collectTypeScriptFiles(resolve(repositoryRoot, root))) {
 			const source = await readFile(file, 'utf8');
-			const candidates = [
-				...source.matchAll(/\.(?:error|warning|information|hint)\(\s*['"`]([^'"`]+)['"`]/gu),
-				...source.matchAll(/\bcode:\s*['"`]([^'"`]+)['"`]/gu),
-			];
-			for (const match of candidates) {
+			const callCandidates = source.matchAll(/\.(?:error|warning|information|hint)\(\s*['"`]([^'"`]+)['"`]/gu);
+			const objectCandidates = source.matchAll(/\bcode:\s*['"`](L[^'"`]+)['"`]/gu);
+			for (const match of [...callCandidates, ...objectCandidates]) {
 				const code = match[1];
 				if (code === undefined) continue;
 				if (!/^L\d{4}$/u.test(code) || categoryFor(code) === undefined) {
@@ -70,7 +69,7 @@ async function collectTypeScriptFiles(directory) {
 	return output;
 }
 
-if (resolve(process.argv[1] ?? '') === resolve(new URL(import.meta.url).pathname)) {
+if (resolve(process.argv[1] ?? '') === resolve(fileURLToPath(import.meta.url))) {
 	const catalog = await collectDiagnosticCatalog();
 	if (process.argv.includes('--json')) console.log(JSON.stringify({ schemaVersion: 1, source: 'virune', diagnostics: catalog }, null, 2));
 	else console.log(renderMarkdown(catalog));
