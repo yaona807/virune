@@ -1,0 +1,35 @@
+name: Verification run probe
+
+on:
+  push:
+    branches:
+      - 'release-verification/v1.0.0-rc.1'
+    paths:
+      - '.github/verification-run-probe-request.json'
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+      - name: Query verification runs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          gh api "repos/$GITHUB_REPOSITORY/actions/workflows/release-public-verify.yml/runs?branch=release-verification/v1.0.0-rc.1&per_page=5" > .github/verification-run-probe-result.json
+      - name: Commit probe result
+        shell: bash
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add .github/verification-run-probe-result.json
+          git commit -m "ci: record public verification run status"
+          git push origin HEAD
