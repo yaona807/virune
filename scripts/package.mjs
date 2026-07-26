@@ -42,6 +42,12 @@ try {
 	stagingManifest.bundledDependencies = Object.keys(stagingManifest.dependencies ?? {}).sort();
 	writeFileSync(stagingManifestPath, `${JSON.stringify(stagingManifest, null, '\t')}\n`);
 
+	const stagingCliEntryPath = resolve(stagingPackage, 'dist/src/main.js');
+	const stagingCliEntry = readFileSync(stagingCliEntryPath, 'utf8');
+	const versionDeclaration = /const VERSION = ['"][^'"]+['"];/u;
+	if (!versionDeclaration.test(stagingCliEntry)) throw new Error('Packaged CLI version declaration was not found.');
+	writeFileSync(stagingCliEntryPath, stagingCliEntry.replace(versionDeclaration, `const VERSION = ${JSON.stringify(version)};`));
+
 	const internalTarballs = internalPackages.map(item => resolve(out, item.file));
 	execNpmSync(
 		[
