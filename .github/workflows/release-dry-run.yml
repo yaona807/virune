@@ -4,6 +4,7 @@ on:
   workflow_dispatch:
   pull_request:
     paths:
+      - '.github/actions-policy.json'
       - '.github/stable-release-gate.json'
       - '.github/workflows/release.yml'
       - '.github/workflows/release-dry-run.yml'
@@ -13,17 +14,23 @@ on:
       - 'docs/runtime-abi*.md'
       - 'docs/stable-release-gate*.md'
       - 'package.json'
+      - 'package-lock.json'
       - 'packages/*/package.json'
       - 'packages/public-abi.snapshot.json'
       - 'packages/runtime/src/**'
       - 'packages/js-interop/src/**'
       - 'packages/stdlib/src/**'
       - 'packages/compiler/src/codegen/runtime-imports.ts'
+      - 'scripts/generate-release-sbom*.mjs'
+      - 'scripts/package.mjs'
+      - 'scripts/release-manifest.mjs'
+      - 'scripts/smoke-release.mjs'
       - 'scripts/stable-release-gate*.mjs'
       - 'scripts/verify-documentation.mjs'
       - 'scripts/verify-public-abi*.mjs'
       - 'scripts/verify-release-channel.mjs'
       - 'scripts/verify-reproducible-release*.mjs'
+      - 'scripts/verify-workflows*.mjs'
 
 permissions:
   contents: read
@@ -39,8 +46,8 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: 24
           cache: npm
@@ -53,7 +60,7 @@ jobs:
         run: npm run release:gate
       - name: Upload release evidence and candidate artifacts
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: stable-release-dry-run-${{ github.sha }}
           path: |
