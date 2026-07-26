@@ -8,7 +8,7 @@
 	"attestations": {
 		"action": "actions/attest",
 		"reference": "59d89421af93a897026c735860bf21b6eb4f7b26",
-		"subjects": "release/SHA256SUMS",
+		"subjects": "release/*",
 		"provenance": true,
 		"sbom": true
 	},
