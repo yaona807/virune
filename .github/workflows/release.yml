@@ -6,8 +6,11 @@ on:
       - 'v*'
 
 permissions:
-  contents: write
   actions: read
+  attestations: write
+  artifact-metadata: write
+  contents: write
+  id-token: write
 
 concurrency:
   group: release-${{ github.ref }}
@@ -18,8 +21,8 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: 24
           cache: npm
@@ -36,12 +39,26 @@ jobs:
         run: npm run release:gate
       - name: Upload release evidence
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: release-evidence-${{ github.ref_name }}
-          path: .cache/release/release-evidence.json
+          path: |
+            .cache/release/release-evidence.json
+            .cache/reproducible-release/
+            release/
           if-no-files-found: error
           retention-days: 90
+      - name: Attest release build provenance
+        id: provenance
+        uses: actions/attest@59d89421af93a897026c735860bf21b6eb4f7b26 # v4.1.0
+        with:
+          subject-checksums: release/SHA256SUMS
+      - name: Attest release SBOM
+        id: sbom-attestation
+        uses: actions/attest@59d89421af93a897026c735860bf21b6eb4f7b26 # v4.1.0
+        with:
+          subject-checksums: release/SHA256SUMS
+          sbom-path: release/SBOM.cdx.json
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
