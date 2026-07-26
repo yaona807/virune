@@ -35,8 +35,14 @@ for (const file of expectedPackages) {
 const manifestPath = resolve(releaseDirectory, 'RELEASE-MANIFEST.json');
 if (!existsSync(manifestPath)) throw new Error('RELEASE-MANIFEST.json is missing.');
 const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
-if (manifest.schemaVersion !== 1 || manifest.version !== version || !Array.isArray(manifest.files)) {
+if (manifest.schemaVersion !== 2 || manifest.version !== version || !Array.isArray(manifest.files)) {
 	throw new Error('Invalid release manifest header.');
+}
+if (manifest.provenance?.provider !== 'GitHub Artifact Attestations' || manifest.provenance?.subjects !== 'SHA256SUMS') {
+	throw new Error('Release manifest must describe GitHub Artifact Attestation provenance.');
+}
+if (typeof manifest.provenance?.verificationCommand !== 'string' || typeof manifest.provenance?.sbomVerificationCommand !== 'string') {
+	throw new Error('Release manifest is missing provenance verification commands.');
 }
 
 const listed = new Set();
@@ -59,6 +65,15 @@ const actualManifestFiles = readdirSync(releaseDirectory)
 for (const file of actualManifestFiles) {
 	if (!listed.has(file)) throw new Error(`Unlisted release file: ${file}`);
 }
+
+const sbomFile = 'SBOM.cdx.json';
+if (!listed.has(sbomFile)) throw new Error(`${sbomFile} is not listed in the release manifest.`);
+const sbomBytes = bytesFor(sbomFile);
+if (manifest.sbom?.file !== sbomFile || manifest.sbom?.sha256 !== sha256(sbomBytes) || manifest.sbom?.bytes !== sbomBytes.byteLength) {
+	throw new Error('Release manifest SBOM digest does not match SBOM.cdx.json.');
+}
+const sbom = JSON.parse(sbomBytes.toString('utf8'));
+validateSbom(sbom, manifest.sbom, version);
 
 const checksumPath = resolve(releaseDirectory, 'SHA256SUMS');
 if (!existsSync(checksumPath)) throw new Error('SHA256SUMS is missing.');
@@ -196,7 +211,40 @@ try {
 	rmSync(smokeRoot, { recursive: true, force: true });
 }
 
-console.log(`Release smoke passed: ${manifest.files.length} files, ${expectedPackages.length} npm packages, offline clean install.`);
+console.log(`Release smoke passed: ${manifest.files.length} files, ${expectedPackages.length} npm packages, ${sbom.components.length} SBOM components, offline clean install.`);
+
+function validateSbom(sbom, summary, expectedVersion) {
+	if (sbom?.bomFormat !== 'CycloneDX' || sbom.specVersion !== '1.6' || sbom.version !== 1) {
+		throw new Error('SBOM.cdx.json must be CycloneDX 1.6.');
+	}
+	if (sbom.serialNumber !== summary.serialNumber || summary.format !== 'CycloneDX' || summary.specVersion !== '1.6') {
+		throw new Error('Release manifest SBOM metadata does not match SBOM.cdx.json.');
+	}
+	if (!/^urn:uuid:[0-9a-f-]{36}$/u.test(sbom.serialNumber)) throw new Error('SBOM serialNumber must be a UUID URN.');
+	if (sbom.metadata?.component?.name !== rootPackage.name || sbom.metadata?.component?.version !== expectedVersion) {
+		throw new Error('SBOM root component does not match the release package.');
+	}
+	if (!Array.isArray(sbom.components) || sbom.components.length === 0 || !Array.isArray(sbom.dependencies)) {
+		throw new Error('SBOM must contain components and a dependency graph.');
+	}
+	const rootRef = sbom.metadata.component['bom-ref'];
+	const componentRefs = sbom.components.map(component => component?.['bom-ref']);
+	if (componentRefs.some(ref => typeof ref !== 'string') || new Set(componentRefs).size !== componentRefs.length) {
+		throw new Error('SBOM component bom-ref values must be unique strings.');
+	}
+	const validRefs = new Set([rootRef, ...componentRefs]);
+	const dependencyRefs = new Set();
+	for (const dependency of sbom.dependencies) {
+		if (!validRefs.has(dependency?.ref) || dependencyRefs.has(dependency.ref) || !Array.isArray(dependency.dependsOn)) {
+			throw new Error('SBOM dependency graph contains an invalid or duplicate ref.');
+		}
+		dependencyRefs.add(dependency.ref);
+		if (dependency.dependsOn.some(ref => !validRefs.has(ref))) throw new Error(`SBOM dependency ${dependency.ref} references an unknown component.`);
+	}
+	if (!dependencyRefs.has(rootRef)) throw new Error('SBOM dependency graph is missing the root component.');
+	const commitProperty = sbom.metadata.component.properties?.find(property => property.name === 'virune:release:commit');
+	if (typeof commitProperty?.value !== 'string' || commitProperty.value.length === 0) throw new Error('SBOM is missing release commit provenance.');
+}
 
 function runInstalledCli(bin, argumentsList, cwd) {
 	if (process.platform !== 'win32') {

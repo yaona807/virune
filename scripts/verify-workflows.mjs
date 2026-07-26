@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 
 const WORKFLOW_SUFFIX = /\.ya?ml$/u;
 const USES_LINE = /^\s*(?:-\s*)?uses:\s*(.+?)\s*$/u;
+const FULL_COMMIT_SHA = /^[0-9a-f]{40}$/u;
 const PERMISSION_LINE = /^  ([a-z][a-z0-9-]*):\s*(read|write|none)\s*$/u;
 const REQUIRED_TOP_LEVEL_KEYS = ['name', 'on', 'permissions', 'jobs'];
 
@@ -11,7 +12,7 @@ export async function verifyWorkflows(root = process.cwd()) {
 	const workflowDirectory = resolve(root, '.github/workflows');
 	const policyPath = resolve(root, '.github/actions-policy.json');
 	const policy = JSON.parse(await readFile(policyPath, 'utf8'));
-	if (policy.schemaVersion !== 2 || !isRecord(policy.allowedReferences) || !validPermissionPolicy(policy.workflowPermissions)) {
+	if (policy.schemaVersion !== 3 || !validActionPolicy(policy.allowedReferences) || !validPermissionPolicy(policy.workflowPermissions)) {
 		throw new Error('Invalid .github/actions-policy.json');
 	}
 
@@ -38,6 +39,9 @@ export async function verifyWorkflows(root = process.cwd()) {
 			}
 			const action = target.slice(0, separator);
 			const reference = target.slice(separator + 1);
+			if (!FULL_COMMIT_SHA.test(reference)) {
+				throw new Error(`${file}:${index + 1}: ${action}@${reference} must use a full 40-character commit SHA`);
+			}
 			const allowed = policy.allowedReferences[action];
 			if (!Array.isArray(allowed) || !allowed.includes(reference)) {
 				throw new Error(`${file}:${index + 1}: ${action}@${reference} is not permitted by .github/actions-policy.json`);
@@ -52,7 +56,7 @@ export async function verifyWorkflows(root = process.cwd()) {
 	for (const file of Object.keys(policy.workflowPermissions.exceptions)) {
 		if (!workflowFiles.includes(file)) throw new Error(`Unused workflow permission exception: ${file}`);
 	}
-	console.log(`Verified ${workflowFiles.length} workflows, ${observed.size} external actions, and least-privilege permissions.`);
+	console.log(`Verified ${workflowFiles.length} workflows, ${observed.size} immutable external actions, and least-privilege permissions.`);
 }
 
 function verifyWorkflowStructure(file, source) {
@@ -87,6 +91,13 @@ function verifyWorkflowPermissions(file, source, policy) {
 	if (JSON.stringify(sortedRecord(actual)) !== JSON.stringify(sortedRecord(expected))) {
 		throw new Error(`${file}: permissions ${JSON.stringify(sortedRecord(actual))} do not match policy ${JSON.stringify(sortedRecord(expected))}`);
 	}
+}
+
+function validActionPolicy(value) {
+	if (!isRecord(value) || Object.keys(value).length === 0) return false;
+	return Object.values(value).every(references => Array.isArray(references)
+		&& references.length > 0
+		&& references.every(reference => typeof reference === 'string' && FULL_COMMIT_SHA.test(reference)));
 }
 
 function validPermissionPolicy(value) {

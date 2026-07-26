@@ -76,11 +76,11 @@ const localPackage = {
 writeFileSync(resolve(out, 'package.json'), `${JSON.stringify(localPackage, null, 2)}\n`);
 writeFileSync(
 	resolve(out, 'README.md'),
-	`# Virune v${version} release packages\n\nVirune is not published to the npm Registry. The CLI tarball contains its complete dependency tree and can be installed directly with npm.\n\nInstall from this directory:\n\n\`\`\`bash\nnpm install --global ./${cliPackage.file}\nvirune --version\n\`\`\`\n\nInstall from GitHub Releases:\n\n\`\`\`bash\nnpm install --global ${releaseAssetBase}/${cliPackage.file}\n\`\`\`\n\nFor a project-local installation, omit \`--global\` and add \`--save-dev\`. Node.js 24 or later is required.\n`,
+	`# Virune v${version} release packages\n\nVirune is not published to the npm Registry. The CLI tarball contains its complete dependency tree and can be installed directly with npm.\n\nInstall from this directory:\n\n\`\`\`bash\nnpm install --global ./${cliPackage.file}\nvirune --version\n\`\`\`\n\nInstall from GitHub Releases:\n\n\`\`\`bash\nnpm install --global ${releaseAssetBase}/${cliPackage.file}\n\`\`\`\n\nFor a project-local installation, omit \`--global\` and add \`--save-dev\`. Node.js 24 or later is required. Verify downloaded files with \`SHA256SUMS\`, \`RELEASE-MANIFEST.json\`, and the GitHub artifact attestation before installation.\n`,
 );
 writeFileSync(
 	resolve(out, 'README_ja.md'),
-	`# Virune v${version} リリースパッケージ\n\nViruneはnpm Registryへ公開しません。CLI tarballには依存関係一式が含まれており、npmから直接インストールできます。\n\nこのディレクトリからインストールします。\n\n\`\`\`bash\nnpm install --global ./${cliPackage.file}\nvirune --version\n\`\`\`\n\nGitHub Releasesからインストールします。\n\n\`\`\`bash\nnpm install --global ${releaseAssetBase}/${cliPackage.file}\n\`\`\`\n\nプロジェクト単位で導入する場合は\`--global\`を外し、\`--save-dev\`を指定します。Node.js 24以上が必要です。\n`,
+	`# Virune v${version} リリースパッケージ\n\nViruneはnpm Registryへ公開しません。CLI tarballには依存関係一式が含まれており、npmから直接インストールできます。\n\nこのディレクトリからインストールします。\n\n\`\`\`bash\nnpm install --global ./${cliPackage.file}\nvirune --version\n\`\`\`\n\nGitHub Releasesからインストールします。\n\n\`\`\`bash\nnpm install --global ${releaseAssetBase}/${cliPackage.file}\n\`\`\`\n\nプロジェクト単位で導入する場合は\`--global\`を外し、\`--save-dev\`を指定します。Node.js 24以上が必要です。インストール前に\`SHA256SUMS\`、\`RELEASE-MANIFEST.json\`、GitHub artifact attestationを使用してdownload fileを検証してください。\n`,
 );
 copyFileSync(resolve('THIRD_PARTY_NOTICES.md'), resolve(out, 'THIRD_PARTY_NOTICES.md'));
 copyFileSync(resolve('THIRD_PARTY_NOTICES_ja.md'), resolve(out, 'THIRD_PARTY_NOTICES_ja.md'));
