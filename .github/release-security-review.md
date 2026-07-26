@@ -1,0 +1,7 @@
+- [x] Deterministic CycloneDX SBOM
+- [x] Release manifest schema v2
+- [x] SHA-only external Actions
+- [x] Build and SBOM attestations
+- [x] Stable asset immutability
+- [x] Audited manual repair path
+- [ ] Pull request CI validation
