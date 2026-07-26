@@ -53,7 +53,7 @@ sha256sum --check SHA256SUMS
 
 ## Build provenanceとSBOM attestation
 
-Stable release workflowは、`SHA256SUMS`に記載したsubjectに対して2種類のGitHub Artifact Attestationを生成します。
+Stable release workflowは、`SHA256SUMS`自身を含むrelease directory内の全fileに対して2種類のGitHub Artifact Attestationを生成します。
 
 1. 各assetをrepository、commit、workflow、runner identityへ結び付けるSLSA build provenance
 2. 同じassetを`SBOM.cdx.json`へ結び付けるCycloneDX SBOM attestation
