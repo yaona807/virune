@@ -1,0 +1,17 @@
+Verify published release	Download and verify public release assets and clean CLI installation	﻿2026-07-26T11:03:55.0652812Z ##[group]Run node scripts/verify-public-release.mjs --version=1.0.0-rc.1 --expected-commit=2a3dad2803ac63b3957d9eef5e70cf01a0a94396
+Verify published release	Download and verify public release assets and clean CLI installation	2026-07-26T11:03:55.0653873Z ^[[36;1mnode scripts/verify-public-release.mjs --version=1.0.0-rc.1 --expected-commit=2a3dad2803ac63b3957d9eef5e70cf01a0a94396^[[0m
+Verify published release	Download and verify public release assets and clean CLI installation	2026-07-26T11:03:55.0699628Z shell: /usr/bin/bash -e {0}
+Verify published release	Download and verify public release assets and clean CLI installation	2026-07-26T11:03:55.0699973Z env:
+Verify published release	Download and verify public release assets and clean CLI installation	2026-07-26T11:03:55.0703791Z   GITHUB_TOKEN: ***
+Verify published release	Download and verify public release assets and clean CLI installation	2026-07-26T11:03:55.0704071Z ##[endgroup]
+Verify published release	Download and verify public release assets and clean CLI installation	2026-07-26T11:03:55.7517928Z file:///home/runner/work/virune/virune/scripts/verify-public-release.mjs:31
+Verify published release	Download and verify public release assets and clean CLI installation	2026-07-26T11:03:55.7520303Z 	if (expectedCommit !== undefined && tagCommit !== expectedCommit) throw new Error(`Tag ${tag} points to ${tagCommit}, expected ${expectedCommit}.`);
+Verify published release	Download and verify public release assets and clean CLI installation	2026-07-26T11:03:55.7522202Z 	                                                                        ^
+Verify published release	Download and verify public release assets and clean CLI installation	2026-07-26T11:03:55.7522781Z 
+Verify published release	Download and verify public release assets and clean CLI installation	2026-07-26T11:03:55.7524081Z Error: Tag v1.0.0-rc.1 points to 1d346528485155c545a6cf2e4a24252e791674d5, expected 2a3dad2803ac63b3957d9eef5e70cf01a0a94396.
+Verify published release	Download and verify public release assets and clean CLI installation	2026-07-26T11:03:55.7526338Z     at verifyPublicRelease (file:///home/runner/work/virune/virune/scripts/verify-public-release.mjs:31:74)
+Verify published release	Download and verify public release assets and clean CLI installation	2026-07-26T11:03:55.7527536Z     at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+Verify published release	Download and verify public release assets and clean CLI installation	2026-07-26T11:03:55.7528604Z     at async file:///home/runner/work/virune/virune/scripts/verify-public-release.mjs:205:2
+Verify published release	Download and verify public release assets and clean CLI installation	2026-07-26T11:03:55.7529194Z 
+Verify published release	Download and verify public release assets and clean CLI installation	2026-07-26T11:03:55.7529344Z Node.js v24.18.0
+Verify published release	Download and verify public release assets and clean CLI installation	2026-07-26T11:03:55.7613831Z ##[error]Process completed with exit code 1.
