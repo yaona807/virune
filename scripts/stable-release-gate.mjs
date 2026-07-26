@@ -59,13 +59,14 @@ export async function runStableReleaseGate({
 	return report;
 }
 
-export function evaluateNightlyRun(run, { maxAgeHours }, now = Date.now()) {
-	if (run === undefined) return { passed: false, reason: 'No completed Nightly run was found.' };
+export function evaluateNightlyRun(run, { maxAgeHours, branch }, now = Date.now()) {
+	if (run === undefined) return { passed: false, branch: branch ?? null, reason: 'No completed Nightly run was found.' };
 	const completedAt = run.updated_at ?? run.created_at;
 	const ageHours = completedAt === undefined ? Number.POSITIVE_INFINITY : (now - Date.parse(completedAt)) / 3_600_000;
 	const passed = run.conclusion === 'success' && Number.isFinite(ageHours) && ageHours <= maxAgeHours;
 	return {
 		passed,
+		branch: branch ?? null,
 		conclusion: run.conclusion ?? null,
 		runId: run.id ?? null,
 		headSha: run.head_sha ?? null,
@@ -77,14 +78,20 @@ export function evaluateNightlyRun(run, { maxAgeHours }, now = Date.now()) {
 	};
 }
 
+export function resolveNightlyBranch(policyBranch, environment = process.env) {
+	const pullRequestBranch = environment.GITHUB_EVENT_NAME === 'pull_request' ? environment.GITHUB_HEAD_REF : undefined;
+	return typeof pullRequestBranch === 'string' && pullRequestBranch.length > 0 ? pullRequestBranch : policyBranch;
+}
+
 async function latestNightlyRun(policy) {
 	const repository = process.env.GITHUB_REPOSITORY;
 	const token = process.env.GITHUB_TOKEN;
 	if (repository === undefined || token === undefined) {
 		return { passed: false, reason: 'GITHUB_REPOSITORY and GITHUB_TOKEN are required to verify Nightly evidence.' };
 	}
+	const branch = resolveNightlyBranch(policy.branch);
 	const url = new URL(`https://api.github.com/repos/${repository}/actions/workflows/${policy.workflow}/runs`);
-	url.searchParams.set('branch', policy.branch);
+	url.searchParams.set('branch', branch);
 	url.searchParams.set('status', 'completed');
 	url.searchParams.set('per_page', '1');
 	const response = await fetch(url, {
@@ -94,9 +101,9 @@ async function latestNightlyRun(policy) {
 			'X-GitHub-Api-Version': '2022-11-28',
 		},
 	});
-	if (!response.ok) return { passed: false, reason: `GitHub Actions API returned ${response.status}.` };
+	if (!response.ok) return { passed: false, branch, reason: `GitHub Actions API returned ${response.status}.` };
 	const payload = await response.json();
-	return evaluateNightlyRun(payload.workflow_runs?.[0], policy);
+	return evaluateNightlyRun(payload.workflow_runs?.[0], { ...policy, branch });
 }
 
 function runCommand(command, cwd) {
