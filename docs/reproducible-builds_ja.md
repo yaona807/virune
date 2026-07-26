@@ -89,7 +89,7 @@ Nightly workflowはこのdirectoryを`reproducible-release-evidence`としてupl
 
 通常のtag起動release workflowは、同じGitHub Releaseが既に存在する場合に停止し、`--clobber`を使用しません。したがって、通常の公開経路からstable assetを置換できません。
 
-例外的なintegrity修復は、手動起動専用の`Release asset repair` workflowへ分離します。`main`からの実行、完全一致する確認文字列、incident理由、保護対象`release-repair` environmentが必要です。元tagを再buildし、asset名の集合が同一であることを要求し、置換前後のSHA-256 inventoryを記録し、365日保持するaudit artifactをuploadします。新しいprovenanceとSBOM attestationを作成した後にのみbyteを置換します。Assetの追加・削除が必要な場合は、新しいrelease versionを作成します。
+例外的なintegrity修復は、手動起動専用の`Release asset repair` workflowへ分離します。`main`からの実行、完全一致する確認文字列、incident理由、`release-repair` environmentが必要です。Repository管理者はGitHub設定で、このenvironmentにrequired reviewerなどのdeployment protectionを設定する必要があります。Workflowは元tagを再buildし、asset名の集合が同一であることを要求し、置換前後のSHA-256 inventoryを記録し、365日保持するaudit artifactをuploadします。新しいprovenanceとSBOM attestationを作成した後にのみbyteを置換します。Assetの追加・削除が必要な場合は、新しいrelease versionを作成します。
 
 ## Release要件
 
