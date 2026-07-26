@@ -89,7 +89,7 @@ The Nightly workflow uploads this directory as `reproducible-release-evidence`. 
 
 The normal tag-triggered release workflow refuses to run when the GitHub Release already exists and never uses `--clobber`. Stable assets therefore cannot be replaced by the normal publishing path.
 
-An exceptional integrity repair is isolated in the manually dispatched `Release asset repair` workflow. It requires execution from `main`, the exact confirmation phrase, a written incident reason, and the protected `release-repair` environment. It rebuilds the original tag, requires an identical asset-name set, records before and after SHA-256 inventories, uploads a 365-day audit artifact, creates new provenance and SBOM attestations, and only then replaces bytes. Additions or removals require a new release version.
+An exceptional integrity repair is isolated in the manually dispatched `Release asset repair` workflow. It requires execution from `main`, the exact confirmation phrase, a written incident reason, and the `release-repair` environment. Repository administrators must configure required reviewers or equivalent deployment protection for that environment in GitHub settings. The workflow rebuilds the original tag, requires an identical asset-name set, records before and after SHA-256 inventories, uploads a 365-day audit artifact, creates new provenance and SBOM attestations, and only then replaces bytes. Additions or removals require a new release version.
 
 ## Release requirement
 
