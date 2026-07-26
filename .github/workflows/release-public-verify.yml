@@ -1,0 +1,100 @@
+name: Public release verification
+
+on:
+  push:
+    branches:
+      - 'release-verification/v*'
+    paths:
+      - '.github/release-verification-request.json'
+
+permissions:
+  attestations: read
+  contents: write
+
+concurrency:
+  group: public-release-verification-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: Verify published release
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 24
+          cache: npm
+      - name: Resolve verification request
+        id: request
+        shell: bash
+        run: |
+          version="$(node -p 'require("./.github/release-verification-request.json").version')"
+          expected_commit="$(node -p 'require("./.github/release-verification-request.json").expectedCommit')"
+          expected_branch="release-verification/v${version}"
+          test "$GITHUB_REF_NAME" = "$expected_branch" || { echo "Expected branch $expected_branch, got $GITHUB_REF_NAME" >&2; exit 1; }
+          [[ "$version" == *-* ]] || { echo "Public prerelease verification requires a prerelease version." >&2; exit 1; }
+          [[ "$expected_commit" =~ ^[0-9a-f]{40}$ ]] || { echo "expectedCommit must be a full commit SHA." >&2; exit 1; }
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "expected_commit=$expected_commit" >> "$GITHUB_OUTPUT"
+      - name: Install repository dependencies
+        run: npm ci
+      - name: Test public release verifier
+        run: node --test scripts/verify-public-release.test.mjs
+      - name: Download and verify public release assets and clean CLI installation
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node scripts/verify-public-release.mjs --version=${{ steps.request.outputs.version }} --expected-commit=${{ steps.request.outputs.expected_commit }}
+      - name: Verify provenance and CycloneDX attestations
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          for asset in .cache/public-release/*; do
+            test "$(basename "$asset")" = "public-release-report.json" && continue
+            gh attestation verify "$asset" --repo "$GITHUB_REPOSITORY"
+          done
+          gh attestation verify .cache/public-release/SBOM.cdx.json --repo "$GITHUB_REPOSITORY" --predicate-type https://cyclonedx.org/bom
+      - name: Verify public VSIX in a clean profile
+        shell: bash
+        run: |
+          rm -rf release
+          mkdir -p release
+          cp ".cache/public-release/virune-vscode-${{ steps.request.outputs.version }}.vsix" release/
+          node scripts/vsix-smoke.mjs
+      - name: Finalize verification report
+        env:
+          VERSION: ${{ steps.request.outputs.version }}
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFile, writeFile } from 'node:fs/promises';
+          const path = '.cache/public-release/public-release-report.json';
+          const report = JSON.parse(await readFile(path, 'utf8'));
+          report.attestations = { provenance: 'passed', cyclonedx: 'passed' };
+          report.vsix = { file: `virune-vscode-${process.env.VERSION}.vsix`, cleanInstall: 'passed', activation: 'passed', languageServer: 'passed', uninstall: 'passed' };
+          report.passed = true;
+          await writeFile(path, `${JSON.stringify(report, null, '\t')}\n`);
+          NODE
+      - name: Upload public verification evidence
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: public-release-verification-v${{ steps.request.outputs.version }}
+          path: .cache/public-release/
+          if-no-files-found: error
+          retention-days: 365
+      - name: Commit verification record
+        env:
+          VERSION: ${{ steps.request.outputs.version }}
+        shell: bash
+        run: |
+          mkdir -p .github/release-verification
+          cp .cache/public-release/public-release-report.json ".github/release-verification/v${VERSION}.json"
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add ".github/release-verification/v${VERSION}.json"
+          git commit -m "release: record v${VERSION} public verification"
+          git push origin HEAD
