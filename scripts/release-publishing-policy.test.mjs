@@ -16,7 +16,7 @@ test('normal release path cannot overwrite an existing release', async () => {
 
 test('release-candidate branches are restricted to matching prerelease versions', async () => {
 	const source = await readWorkflow('release.yml');
-	assert.match(source, /branches:\s+\n\s+- 'release-candidate\/v\*'/u);
+	assert.match(source, /branches:\n\s+- 'release-candidate\/v\*'/u);
 	assert.match(source, /expected_branch="release-candidate\/\$\{tag\}"/u);
 	assert.match(source, /Release-candidate branches may publish prerelease versions only/u);
 	assert.match(source, /gh api --method POST .*refs\/tags\/\$TAG/u);
