@@ -5,8 +5,10 @@ on:
   pull_request:
     paths:
       - '.github/actions-policy.json'
+      - '.github/release-security-policy.json'
       - '.github/stable-release-gate.json'
       - '.github/workflows/release.yml'
+      - '.github/workflows/release-repair.yml'
       - '.github/workflows/release-dry-run.yml'
       - '.github/workflows/nightly.yml'
       - 'docs/release-channels*.md'
@@ -24,6 +26,8 @@ on:
       - 'scripts/generate-release-sbom*.mjs'
       - 'scripts/package.mjs'
       - 'scripts/release-manifest.mjs'
+      - 'scripts/release-publishing-policy.test.mjs'
+      - 'scripts/release-security-policy.test.mjs'
       - 'scripts/smoke-release.mjs'
       - 'scripts/stable-release-gate*.mjs'
       - 'scripts/verify-documentation.mjs'
@@ -31,6 +35,7 @@ on:
       - 'scripts/verify-release-channel.mjs'
       - 'scripts/verify-reproducible-release*.mjs'
       - 'scripts/verify-workflows*.mjs'
+      - 'scripts/write-release-repair-audit*.mjs'
 
 permissions:
   contents: read
