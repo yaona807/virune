@@ -23,6 +23,13 @@
 				"actions": "read",
 				"contents": "read"
 			},
+			"release-repair.yml": {
+				"actions": "read",
+				"attestations": "write",
+				"artifact-metadata": "write",
+				"contents": "write",
+				"id-token": "write"
+			},
 			"release.yml": {
 				"actions": "read",
 				"attestations": "write",
