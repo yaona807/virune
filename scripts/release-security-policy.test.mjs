@@ -4,6 +4,7 @@ import test from 'node:test';
 
 test('release security policy matches the implemented artifact controls', async () => {
 	const policy = JSON.parse(await readFile('.github/release-security-policy.json', 'utf8'));
+	const actionPolicy = JSON.parse(await readFile('.github/actions-policy.json', 'utf8'));
 	assert.equal(policy.schemaVersion, 1);
 	assert.deepEqual(policy.sbom, {
 		file: 'release/SBOM.cdx.json',
@@ -12,6 +13,7 @@ test('release security policy matches the implemented artifact controls', async 
 	});
 	assert.equal(policy.attestations.action, 'actions/attest');
 	assert.match(policy.attestations.reference, /^[0-9a-f]{40}$/u);
+	assert.deepEqual(actionPolicy.allowedReferences['actions/attest'], [policy.attestations.reference]);
 	assert.equal(policy.attestations.subjects, 'release/SHA256SUMS');
 	assert.equal(policy.attestations.provenance, true);
 	assert.equal(policy.attestations.sbom, true);
