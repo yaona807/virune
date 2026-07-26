@@ -57,6 +57,7 @@ jobs:
           expected="v$(node -p 'require("./package.json").version')"
           [[ "$TAG" == "$expected" ]] || { echo "Expected package tag $expected, got $TAG" >&2; exit 1; }
           target_commit="$(git rev-list -n 1 "$TAG")"
+          [[ "$(git rev-parse HEAD)" == "$target_commit" ]] || { echo 'Checked out source does not match the requested tag commit.' >&2; exit 1; }
           echo "TARGET_COMMIT=$target_commit" >> "$GITHUB_ENV"
       - name: Download the existing immutable asset set
         shell: bash
@@ -68,9 +69,9 @@ jobs:
       - name: Rebuild and verify the tagged release
         env:
           GITHUB_TOKEN: ${{ github.token }}
-          VIRUNE_RELEASE_COMMIT: ${{ env.TARGET_COMMIT }}
           SOURCE_DATE_EPOCH: '0'
-        run: npm run release:gate
+        shell: bash
+        run: GITHUB_SHA="$TARGET_COMMIT" npm run release:gate
       - name: Require the replacement asset names to remain identical
         shell: bash
         run: |
