@@ -6,15 +6,24 @@ import './release-security-policy.test.mjs';
 
 const readWorkflow = name => readFile(resolve('.github/workflows', name), 'utf8');
 
-test('normal stable release path cannot overwrite an existing release', async () => {
+test('normal release path cannot overwrite an existing release', async () => {
 	const source = await readWorkflow('release.yml');
-	assert.match(source, /gh release view "\$GITHUB_REF_NAME"/u);
-	assert.match(source, /stable assets are immutable/u);
-	assert.match(source, /gh release create "\$GITHUB_REF_NAME" release\/\*/u);
+	assert.match(source, /gh release view "\$TAG"/u);
+	assert.match(source, /release assets are immutable/u);
+	assert.match(source, /gh release create "\$\{release_args\[@\]\}"/u);
 	assert.doesNotMatch(source, /--clobber/u);
 });
 
-test('stable releases generate provenance and SBOM attestations for every asset', async () => {
+test('release-candidate branches are restricted to matching prerelease versions', async () => {
+	const source = await readWorkflow('release.yml');
+	assert.match(source, /branches:\s+\n\s+- 'release-candidate\/v\*'/u);
+	assert.match(source, /expected_branch="release-candidate\/\$\{tag\}"/u);
+	assert.match(source, /Release-candidate branches may publish prerelease versions only/u);
+	assert.match(source, /gh api --method POST .*refs\/tags\/\$TAG/u);
+	assert.match(source, /release_args\+=\(--prerelease\)/u);
+});
+
+test('releases generate provenance and SBOM attestations for every asset', async () => {
 	const source = await readWorkflow('release.yml');
 	assert.match(source, /attestations:\s+write/u);
 	assert.match(source, /artifact-metadata:\s+write/u);
