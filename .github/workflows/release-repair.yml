@@ -1,0 +1,112 @@
+name: Release asset repair
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing stable release tag to rebuild and repair
+        required: true
+        type: string
+      reason:
+        description: Incident or integrity reason for replacing the assets
+        required: true
+        type: string
+      confirm:
+        description: Type REPLACE_STABLE_ASSETS to authorize an exceptional replacement
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  attestations: write
+  artifact-metadata: write
+  contents: write
+  id-token: write
+
+concurrency:
+  group: release-repair-${{ inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    name: Audit and replace stable assets
+    if: ${{ github.ref == 'refs/heads/main' && inputs.confirm == 'REPLACE_STABLE_ASSETS' }}
+    environment: release-repair
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      TAG: ${{ inputs.tag }}
+      REASON: ${{ inputs.reason }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout the tagged source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ inputs.tag }}
+          fetch-depth: 0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 24
+          cache: npm
+      - name: Validate the repair request
+        shell: bash
+        run: |
+          [[ "$TAG" == v* ]] || { echo 'The repair tag must start with v.' >&2; exit 1; }
+          [[ ${#REASON} -ge 20 ]] || { echo 'The repair reason must contain at least 20 characters.' >&2; exit 1; }
+          gh release view "$TAG" >/dev/null
+          expected="v$(node -p 'require("./package.json").version')"
+          [[ "$TAG" == "$expected" ]] || { echo "Expected package tag $expected, got $TAG" >&2; exit 1; }
+          target_commit="$(git rev-list -n 1 "$TAG")"
+          echo "TARGET_COMMIT=$target_commit" >> "$GITHUB_ENV"
+      - name: Download the existing immutable asset set
+        shell: bash
+        run: |
+          mkdir -p .cache/release-repair/before
+          gh release download "$TAG" --dir .cache/release-repair/before
+      - name: Install dependencies
+        run: npm ci
+      - name: Rebuild and verify the tagged release
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          VIRUNE_RELEASE_COMMIT: ${{ env.TARGET_COMMIT }}
+          SOURCE_DATE_EPOCH: '0'
+        run: npm run release:gate
+      - name: Require the replacement asset names to remain identical
+        shell: bash
+        run: |
+          find .cache/release-repair/before -maxdepth 1 -type f -printf '%f\n' | sort > .cache/release-repair/before-files.txt
+          find release -maxdepth 1 -type f -printf '%f\n' | sort > .cache/release-repair/after-files.txt
+          if ! diff -u .cache/release-repair/before-files.txt .cache/release-repair/after-files.txt; then
+            echo 'A repair may replace bytes only. Additions or removals require a new release version.' >&2
+            exit 1
+          fi
+      - name: Write the immutable repair audit
+        env:
+          VIRUNE_REPAIR_TAG: ${{ inputs.tag }}
+          VIRUNE_REPAIR_REASON: ${{ inputs.reason }}
+          VIRUNE_REPAIR_COMMIT: ${{ env.TARGET_COMMIT }}
+          VIRUNE_REPAIR_RUN: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: node scripts/write-release-repair-audit.mjs
+      - name: Upload repair evidence before replacement
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: release-repair-${{ inputs.tag }}-${{ github.run_id }}
+          path: |
+            .cache/release-repair/
+            .cache/release/release-evidence.json
+            .cache/reproducible-release/
+            release/
+          if-no-files-found: error
+          retention-days: 365
+      - name: Attest repaired asset provenance
+        uses: actions/attest@59d89421af93a897026c735860bf21b6eb4f7b26 # v4.1.0
+        with:
+          subject-checksums: release/SHA256SUMS
+      - name: Attest repaired asset SBOM
+        uses: actions/attest@59d89421af93a897026c735860bf21b6eb4f7b26 # v4.1.0
+        with:
+          subject-checksums: release/SHA256SUMS
+          sbom-path: release/SBOM.cdx.json
+      - name: Replace the stable assets
+        shell: bash
+        run: gh release upload "$TAG" release/* --clobber
