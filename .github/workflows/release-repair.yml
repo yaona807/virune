@@ -102,11 +102,11 @@ jobs:
       - name: Attest repaired asset provenance
         uses: actions/attest@59d89421af93a897026c735860bf21b6eb4f7b26 # v4.1.0
         with:
-          subject-checksums: release/SHA256SUMS
+          subject-path: release/*
       - name: Attest repaired asset SBOM
         uses: actions/attest@59d89421af93a897026c735860bf21b6eb4f7b26 # v4.1.0
         with:
-          subject-checksums: release/SHA256SUMS
+          subject-path: release/*
           sbom-path: release/SBOM.cdx.json
       - name: Replace the stable assets
         shell: bash
