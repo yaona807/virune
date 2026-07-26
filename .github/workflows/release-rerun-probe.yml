@@ -24,7 +24,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
-          gh api "repos/$GITHUB_REPOSITORY/actions/workflows/release.yml/runs?branch=release-candidate/v1.0.0-rc.1&per_page=5" > .github/release-rerun-probe-result.json
+          gh api "repos/$GITHUB_REPOSITORY/actions/workflows/release.yml/runs?branch=release-candidate/v1.0.0-rc.1&per_page=5" \
+            --jq '{schemaVersion: 1, runs: [.workflow_runs[] | {id, runNumber: .run_number, event, status, conclusion, headSha: .head_sha, title: .display_title, createdAt: .created_at, updatedAt: .updated_at}]}' \
+            > .github/release-rerun-probe-result.json
       - name: Commit probe result
         shell: bash
         run: |
