@@ -23,6 +23,10 @@
 				"actions": "read",
 				"contents": "read"
 			},
+			"release-public-verify.yml": {
+				"attestations": "read",
+				"contents": "write"
+			},
 			"release-repair.yml": {
 				"actions": "read",
 				"attestations": "write",
