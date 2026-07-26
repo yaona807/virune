@@ -1,0 +1,36 @@
+name: Release rerun probe
+
+on:
+  push:
+    branches:
+      - 'release-verification/v1.0.0-rc.1'
+    paths:
+      - '.github/release-rerun-probe-request.json'
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+      - name: Query release rerun
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          gh api "repos/$GITHUB_REPOSITORY/actions/workflows/release.yml/runs?branch=release-candidate/v1.0.0-rc.1&per_page=5" > .github/release-rerun-probe-result.json
+      - name: Commit probe result
+        shell: bash
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add .github/release-rerun-probe-result.json
+          git commit -m "release: record immutable rerun status"
+          git pull --rebase origin "$GITHUB_REF_NAME"
+          git push origin "HEAD:$GITHUB_REF_NAME"
