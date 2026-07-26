@@ -6,7 +6,7 @@ import { parse } from './syntax/parser.js';
 import { checkModule, type SemanticModel } from './checker/checker.js';
 import { lowerToHir } from './hir/lower.js';
 import { emitJavaScript, type EmitResult } from './codegen/emitter.js';
-import { DiagnosticBag, type Diagnostic } from './diagnostics/diagnostic.js';
+import { DiagnosticBag, diagnosticCause, type Diagnostic } from './diagnostics/diagnostic.js';
 import type { ModuleNode } from './ast/nodes.js';
 import type { JsInteropProvider } from './interop/types.js';
 import type { SourceFile, SourceSpan } from './source.js';
@@ -46,8 +46,11 @@ export function compileSource(source: SourceFile, options: CompileOptions = {}):
 	let ast: ModuleNode;
 	try { ast = attachDocumentation(buildAst(source.id, parseResult.cst), source, lexResult.comments, lexResult.tokens, diagnostics); }
 	catch (error) {
-		diagnostics.error('L9001', `AST construction failed: ${error instanceof Error ? error.message : String(error)}`, {
+		diagnostics.error('L9001', 'AST construction failed after parsing completed', {
 			fileId: source.id, start: { offset: 0, line: 1, column: 1 }, end: { offset: 0, line: 1, column: 1 },
+		}, {
+			help: 'Report this diagnostic with the source file and compiler version.',
+			cause: diagnosticCause(error),
 		});
 		return { source, diagnostics: diagnostics.items };
 	}
