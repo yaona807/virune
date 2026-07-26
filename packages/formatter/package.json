@@ -1,6 +1,6 @@
 {
 	"name": "@virune/formatter",
-	"version": "1.0.0",
+	"version": "1.0.0-rc.1",
 	"private": true,
 	"repository": {
 		"type": "git",
@@ -25,7 +25,7 @@
 		"dist/src"
 	],
 	"dependencies": {
-		"@virune/compiler": "1.0.0"
+		"@virune/compiler": "1.0.0-rc.1"
 	},
 	"scripts": {
 		"build": "tsc -b",
