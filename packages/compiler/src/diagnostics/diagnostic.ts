@@ -1,8 +1,16 @@
 import type { SourceSpan } from '../source.js';
 
-export type DiagnosticSeverity = 'error' | 'warning' | 'info';
+export type DiagnosticSeverity = 'error' | 'warning' | 'information' | 'hint';
+
+export interface DiagnosticCause {
+	readonly kind: 'unknown' | 'internal';
+	readonly message: string;
+	readonly name?: string;
+	readonly stack?: string;
+}
 
 export interface DiagnosticFix {
+	readonly id?: string;
 	readonly title: string;
 	readonly kind: 'insert' | 'replace' | 'remove' | 'rewrite';
 	readonly span?: SourceSpan;
@@ -20,7 +28,9 @@ export interface Diagnostic {
 	readonly message: string;
 	readonly span: SourceSpan;
 	readonly related?: readonly RelatedDiagnostic[];
+	readonly help?: string;
 	readonly fixes?: readonly DiagnosticFix[];
+	readonly cause?: DiagnosticCause;
 }
 
 export class DiagnosticBag {
@@ -34,6 +44,24 @@ export class DiagnosticBag {
 	public warning(code: string, message: string, span: SourceSpan, options: Omit<Diagnostic, 'code' | 'message' | 'span' | 'severity'> = {}): void {
 		this.add({ code, severity: 'warning', message, span, ...options });
 	}
+	public information(code: string, message: string, span: SourceSpan, options: Omit<Diagnostic, 'code' | 'message' | 'span' | 'severity'> = {}): void {
+		this.add({ code, severity: 'information', message, span, ...options });
+	}
+	public hint(code: string, message: string, span: SourceSpan, options: Omit<Diagnostic, 'code' | 'message' | 'span' | 'severity'> = {}): void {
+		this.add({ code, severity: 'hint', message, span, ...options });
+	}
 	public get items(): readonly Diagnostic[] { return this.#diagnostics; }
 	public get hasErrors(): boolean { return this.#diagnostics.some(item => item.severity === 'error'); }
+}
+
+export function diagnosticCause(error: unknown, kind: DiagnosticCause['kind'] = 'internal'): DiagnosticCause {
+	if (error instanceof Error) {
+		return {
+			kind,
+			message: error.message,
+			...(error.name === '' ? {} : { name: error.name }),
+			...(error.stack === undefined ? {} : { stack: error.stack }),
+		};
+	}
+	return { kind, message: String(error) };
 }
