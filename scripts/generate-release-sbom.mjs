@@ -15,12 +15,19 @@ export function buildCycloneDxSbom({ lock, manifest, commit = null }) {
 
 	const packageEntries = new Map(Object.entries(lock.packages));
 	const componentsByPath = new Map();
+	const componentsByRef = new Map();
 	for (const [path, entry] of packageEntries) {
 		if (path === '' || !entry || typeof entry.version !== 'string') continue;
 		const name = packageName(path, entry);
 		if (name === undefined) continue;
 		const purl = npmPurl(name, entry.version);
-		const component = {
+		const properties = [
+			{ name: 'virune:package-lock:path', value: path },
+			...(typeof entry.resolved === 'string' ? [{ name: 'virune:package-lock:resolved', value: entry.resolved }] : []),
+			...(typeof entry.integrity === 'string' ? [{ name: 'virune:package-lock:integrity', value: entry.integrity }] : []),
+		];
+		const existing = componentsByRef.get(purl);
+		const component = existing ?? {
 			type: name === 'virune' ? 'application' : 'library',
 			'bom-ref': purl,
 			name,
@@ -28,37 +35,39 @@ export function buildCycloneDxSbom({ lock, manifest, commit = null }) {
 			purl,
 			scope: entry.dev === true ? 'optional' : 'required',
 			...(typeof entry.license === 'string' ? { licenses: [{ license: { id: entry.license } }] } : {}),
-			properties: [
-				{ name: 'virune:package-lock:path', value: path },
-				...(typeof entry.resolved === 'string' ? [{ name: 'virune:package-lock:resolved', value: entry.resolved }] : []),
-				...(typeof entry.integrity === 'string' ? [{ name: 'virune:package-lock:integrity', value: entry.integrity }] : []),
-			].sort((left, right) => left.name.localeCompare(right.name)),
+			properties: [],
 		};
+		if (entry.dev !== true) component.scope = 'required';
+		if (component.licenses === undefined && typeof entry.license === 'string') component.licenses = [{ license: { id: entry.license } }];
+		component.properties = uniqueProperties([...component.properties, ...properties]);
+		componentsByRef.set(purl, component);
 		componentsByPath.set(path, component);
 	}
 
 	const rootRef = npmPurl(manifest.name, manifest.version);
-	const dependencies = [{
-		ref: rootRef,
-		dependsOn: dependencyNames(manifest)
-			.map(name => resolveDependencyReference('', name, packageEntries, componentsByPath))
-			.filter(Boolean)
-			.sort(),
-	}];
+	const dependencyGraph = new Map([[rootRef, new Set()]]);
+	for (const name of dependencyNames(manifest)) {
+		const reference = resolveDependencyReference('', name, packageEntries, componentsByPath);
+		if (reference !== undefined) dependencyGraph.get(rootRef).add(reference);
+	}
 	for (const [path, component] of [...componentsByPath.entries()].sort(([left], [right]) => left.localeCompare(right))) {
-		const entry = packageEntries.get(path);
-		const dependsOn = dependencyNames(entry)
-			.map(name => resolveDependencyReference(path, name, packageEntries, componentsByPath))
-			.filter(Boolean)
-			.sort();
-		dependencies.push({ ref: component['bom-ref'], dependsOn: [...new Set(dependsOn)] });
+		const dependsOn = dependencyGraph.get(component['bom-ref']) ?? new Set();
+		for (const name of dependencyNames(packageEntries.get(path))) {
+			const reference = resolveDependencyReference(path, name, packageEntries, componentsByPath);
+			if (reference !== undefined && reference !== component['bom-ref']) dependsOn.add(reference);
+		}
+		dependencyGraph.set(component['bom-ref'], dependsOn);
 	}
 
+	const normalizedCommit = commit ?? 'unknown';
 	const identity = createHash('sha256')
-		.update(JSON.stringify({ lock, version: manifest.version }))
+		.update(JSON.stringify({ commit: normalizedCommit, lock, version: manifest.version }))
 		.digest('hex');
 	const serialNumber = deterministicUuidUrn(identity);
-	const components = [...componentsByPath.values()].sort((left, right) => left['bom-ref'].localeCompare(right['bom-ref']));
+	const components = [...componentsByRef.values()].sort((left, right) => left['bom-ref'].localeCompare(right['bom-ref']));
+	const dependencies = [...dependencyGraph.entries()]
+		.map(([ref, dependsOn]) => ({ ref, dependsOn: [...dependsOn].sort() }))
+		.sort((left, right) => left.ref.localeCompare(right.ref));
 	return {
 		bomFormat: 'CycloneDX',
 		specVersion: '1.6',
@@ -76,7 +85,7 @@ export function buildCycloneDxSbom({ lock, manifest, commit = null }) {
 					url: 'https://github.com/yaona807/virune',
 				}],
 				properties: [
-					{ name: 'virune:release:commit', value: commit ?? 'unknown' },
+					{ name: 'virune:release:commit', value: normalizedCommit },
 					{ name: 'virune:release:lockfileVersion', value: String(lock.lockfileVersion) },
 				],
 			},
@@ -142,8 +151,10 @@ function resolveDependencyReference(fromPath, name, packageEntries, componentsBy
 		}
 		return componentsByPath.get(candidate)?.['bom-ref'];
 	}
-	const matches = [...componentsByPath.values()].filter(component => component.name === name);
-	return matches.length === 1 ? matches[0]['bom-ref'] : undefined;
+	const matches = [...new Set([...componentsByPath.values()
+		.filter(component => component.name === name)
+		.map(component => component['bom-ref'])])];
+	return matches.length === 1 ? matches[0] : undefined;
 }
 
 function dependencyCandidates(fromPath, name) {
@@ -154,10 +165,14 @@ function dependencyCandidates(fromPath, name) {
 		if (current === '') break;
 		const nested = current.lastIndexOf('/node_modules/');
 		if (nested !== -1) current = current.slice(0, nested);
-		else if (current.startsWith('node_modules/')) current = '';
 		else current = '';
 	}
 	return candidates;
+}
+
+function uniqueProperties(properties) {
+	const byIdentity = new Map(properties.map(property => [`${property.name}\u0000${property.value}`, property]));
+	return [...byIdentity.values()].sort((left, right) => left.name.localeCompare(right.name) || left.value.localeCompare(right.value));
 }
 
 function deterministicUuidUrn(hex) {
