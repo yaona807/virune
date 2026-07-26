@@ -1,7 +1,7 @@
 {
 	"schemaVersion": 1,
 	"version": "1.0.0-rc.1",
-	"expectedCommit": "2a3dad2803ac63b3957d9eef5e70cf01a0a94396",
+	"expectedCommit": "1d346528485155c545a6cf2e4a24252e791674d5",
 	"issue": 35,
-	"attempt": 2
+	"attempt": 3
 }
