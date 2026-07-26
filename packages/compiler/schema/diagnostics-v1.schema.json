@@ -1,0 +1,75 @@
+{
+	"$schema": "https://json-schema.org/draft/2020-12/schema",
+	"$id": "https://github.com/yaona807/virune/blob/main/packages/compiler/schema/diagnostics-v1.schema.json",
+	"title": "Virune diagnostics document v1",
+	"type": "object",
+	"additionalProperties": false,
+	"required": ["schemaVersion", "diagnostics"],
+	"properties": {
+		"schemaVersion": { "const": 1 },
+		"diagnostics": {
+			"type": "array",
+			"items": { "$ref": "#/$defs/diagnostic" }
+		}
+	},
+	"$defs": {
+		"position": {
+			"type": "object",
+			"additionalProperties": false,
+			"required": ["line", "column"],
+			"properties": {
+				"line": { "type": "integer", "minimum": 1 },
+				"column": { "type": "integer", "minimum": 1 }
+			}
+		},
+		"range": {
+			"type": "object",
+			"additionalProperties": false,
+			"required": ["start", "end"],
+			"properties": {
+				"start": { "$ref": "#/$defs/position" },
+				"end": { "$ref": "#/$defs/position" }
+			}
+		},
+		"related": {
+			"type": "object",
+			"additionalProperties": false,
+			"required": ["message", "file", "range"],
+			"properties": {
+				"message": { "type": "string" },
+				"file": { "type": "string" },
+				"range": { "$ref": "#/$defs/range" }
+			}
+		},
+		"cause": {
+			"type": "object",
+			"additionalProperties": false,
+			"required": ["kind", "message"],
+			"properties": {
+				"kind": { "enum": ["unknown", "internal"] },
+				"message": { "type": "string" },
+				"name": { "type": "string" },
+				"stack": { "type": "string" }
+			}
+		},
+		"diagnostic": {
+			"type": "object",
+			"additionalProperties": false,
+			"required": ["source", "code", "qualifiedCode", "category", "severity", "message", "file", "range", "related", "help", "fixIds", "cause"],
+			"properties": {
+				"source": { "const": "virune" },
+				"code": { "type": "string", "pattern": "^L[0-9]{4}$" },
+				"qualifiedCode": { "type": "string", "pattern": "^virune/L[0-9]{4}$" },
+				"category": { "enum": ["syntax", "binding", "type-system", "control-flow", "module", "entry-point", "internal"] },
+				"severity": { "enum": ["error", "warning", "information", "hint"] },
+				"message": { "type": "string" },
+				"file": { "type": "string" },
+				"range": { "$ref": "#/$defs/range" },
+				"related": { "type": "array", "items": { "$ref": "#/$defs/related" } },
+				"help": { "type": ["string", "null"] },
+				"fixIds": { "type": "array", "items": { "type": "string", "minLength": 1 }, "uniqueItems": true },
+				"cause": { "oneOf": [{ "$ref": "#/$defs/cause" }, { "type": "null" }] }
+			}
+		}
+	}
+}

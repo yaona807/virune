@@ -17,13 +17,15 @@
 	},
 	"exports": {
 		".": "./dist/src/index.js",
-		"./experimental": "./dist/src/experimental-api.js"
+		"./experimental": "./dist/src/experimental-api.js",
+		"./diagnostics.schema.json": "./schema/diagnostics-v1.schema.json"
 	},
 	"files": [
 		"LICENSE",
 		"README.md",
 		"README_ja.md",
-		"dist/src"
+		"dist/src",
+		"schema/diagnostics-v1.schema.json"
 	],
 	"dependencies": {
 		"@jridgewell/gen-mapping": "0.3.13",

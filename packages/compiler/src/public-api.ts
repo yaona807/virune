@@ -1,6 +1,6 @@
 import { compileSource as compileSourceDetailed } from './compiler.js';
 import { buildProject as buildProjectDetailed, loadConfig, type ViruneConfig } from './project/project.js';
-import { diagnosticsToJson, renderDiagnostic } from './diagnostics/render.js';
+import { diagnosticsToDocument, diagnosticsToJson, renderDiagnostic } from './diagnostics/render.js';
 import type { Diagnostic } from './diagnostics/diagnostic.js';
 import type { SourceFile } from './source.js';
 
@@ -78,7 +78,11 @@ export function formatDiagnostics(
 	}).join('\n\n');
 }
 
-export { loadConfig, diagnosticsToJson, renderDiagnostic };
+export { loadConfig, diagnosticsToDocument, diagnosticsToJson, renderDiagnostic };
+export { DIAGNOSTIC_CODE_RANGES, DIAGNOSTIC_SCHEMA_VERSION, DIAGNOSTIC_SOURCE, diagnosticCategory, diagnosticCategoryDescription, explainDiagnosticCode, isDiagnosticCode, qualifyDiagnosticCode } from './diagnostics/codes.js';
+export { diagnosticCause } from './diagnostics/diagnostic.js';
 export type { ViruneConfig } from './project/project.js';
-export type { Diagnostic, DiagnosticFix, DiagnosticSeverity, RelatedDiagnostic } from './diagnostics/diagnostic.js';
+export type { Diagnostic, DiagnosticCause, DiagnosticFix, DiagnosticSeverity, RelatedDiagnostic } from './diagnostics/diagnostic.js';
+export type { DiagnosticCategory, DiagnosticCode } from './diagnostics/codes.js';
+export type { JsonDiagnostic, JsonDiagnosticCause, JsonDiagnosticDocument, JsonDiagnosticPosition, JsonDiagnosticRange, JsonRelatedDiagnostic } from './diagnostics/render.js';
 export type { FileId, NodeId, SourceFile, SourcePosition, SourceSpan, SymbolId, TypeId } from './source.js';

@@ -8,14 +8,18 @@ on:
     paths:
       - '.github/workflows/nightly.yml'
       - 'package.json'
-      - 'scripts/semantic-fuzz*.mjs'
+      - 'packages/**'
+      - 'integration/**'
+      - 'scripts/**'
   push:
     branches:
       - main
     paths:
       - '.github/workflows/nightly.yml'
       - 'package.json'
-      - 'scripts/semantic-fuzz*.mjs'
+      - 'packages/**'
+      - 'integration/**'
+      - 'scripts/**'
 
 permissions:
   contents: read

@@ -32,6 +32,30 @@ test('CLI conformance compares exact status and diagnostic ranges', async () => 
 	assert.match((await runCli(['test-conformance', root])).stdout, /1\/1 conformance files passed/u);
 });
 
+test('CLI check emits schema-versioned structured JSON diagnostics', async () => {
+	const root = await makeCliProject();
+	await runCli(['init', root]);
+	await writeFile(join(root, 'src/main.virune'), 'fn main() -> String {\n\treturn 1\n}\n');
+	await assert.rejects(runCli(['check', root, '--diagnostic-format=json']), error => {
+		const stdout = (error as { stdout?: string }).stdout ?? '';
+		const document = JSON.parse(stdout) as {
+			schemaVersion: number;
+			diagnostics: Array<Record<string, unknown>>;
+		};
+		assert.equal(document.schemaVersion, 1);
+		assert.ok(document.diagnostics.length > 0);
+		const diagnostic = document.diagnostics[0]!;
+		assert.equal(diagnostic.source, 'virune');
+		assert.match(String(diagnostic.code), /^L\d{4}$/u);
+		assert.equal(diagnostic.qualifiedCode, `virune/${String(diagnostic.code)}`);
+		assert.equal(diagnostic.category, 'type-system');
+		assert.equal(diagnostic.severity, 'error');
+		assert.equal(typeof diagnostic.file, 'string');
+		assert.deepEqual(Object.keys(diagnostic).sort(), ['category', 'cause', 'code', 'file', 'fixIds', 'help', 'message', 'qualifiedCode', 'range', 'related', 'severity', 'source'].sort());
+		return true;
+	});
+});
+
 function normalizeDiagnostic(item: Diagnostic) {
 	return {
 		severity: item.severity,
