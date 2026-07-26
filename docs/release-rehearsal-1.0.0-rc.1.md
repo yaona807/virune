@@ -2,13 +2,15 @@
 
 [English](release-rehearsal-1.0.0-rc.1.md) | [日本語](release-rehearsal-1.0.0-rc.1_ja.md)
 
-This document is the execution record for Issue #35. The release candidate is published from the reviewed `release-candidate/v1.0.0-rc.1` branch through the production `Release` workflow.
+This document is the execution record for Issue #35. The release candidate was published from the reviewed `release-candidate/v1.0.0-rc.1` branch through the production `Release` workflow.
 
 ## Candidate identity
 
 - Version: `1.0.0-rc.1`
 - Git tag: `v1.0.0-rc.1`
+- Tag commit: `1d346528485155c545a6cf2e4a24252e791674d5`
 - Release type: GitHub prerelease
+- Release URL: `https://github.com/yaona807/virune/releases/tag/v1.0.0-rc.1`
 - CLI asset: `virune-1.0.0-rc.1.tgz`
 - VSIX asset: `virune-vscode-1.0.0-rc.1.vsix`
 
@@ -19,7 +21,7 @@ npm install --global https://github.com/yaona807/virune/releases/download/v1.0.0
 virune --version
 ```
 
-Expected version output:
+Verified version output:
 
 ```text
 virune 1.0.0-rc.1
@@ -36,35 +38,45 @@ npm run build
 npm run start
 ```
 
-The generated `package.json` must reference only assets under the `v1.0.0-rc.1` GitHub Release.
+The generated `package.json` referenced only assets under the `v1.0.0-rc.1` GitHub Release. Dependency installation, `check`, `build`, and `start` all passed.
 
 ## Integrity and provenance
 
-From a directory containing the downloaded release assets:
+The public verification workflow downloaded every published asset and validated:
 
-```bash
-sha256sum --check SHA256SUMS
-gh attestation verify virune-1.0.0-rc.1.tgz --repo yaona807/virune
-gh attestation verify SBOM.cdx.json --repo yaona807/virune
-```
+- `SHA256SUMS` against the downloaded bytes
+- `RELEASE-MANIFEST.json` schema version 2, version identity, file set, byte lengths, and SHA-256 values
+- CycloneDX 1.6 SBOM identity and manifest digest
+- GitHub build provenance attestations for every release asset
+- the CycloneDX attestation for `SBOM.cdx.json`
 
-Confirm that `RELEASE-MANIFEST.json` uses schema version 2, lists every asset, and records the same SHA-256 and byte length as the downloaded files. Confirm that `SBOM.cdx.json` is CycloneDX 1.6 and identifies version `1.0.0-rc.1`.
+The recorded SBOM contains 382 components. The machine-readable evidence is retained at `.github/release-verification/v1.0.0-rc.1.json` on the dedicated verification branch.
 
 ## VS Code validation
 
-Use a clean VS Code profile and install `virune-vscode-1.0.0-rc.1.vsix`. Confirm extension activation, Language Server startup, diagnostics, completion, hover, navigation, formatting, rename, and code actions.
+The published `virune-vscode-1.0.0-rc.1.vsix` was installed into a clean VS Code profile under Xvfb. Extension installation, activation, Language Server startup, and uninstall all passed.
 
 ## Failure and rollback rehearsal
 
-- A second normal publication attempt for `v1.0.0-rc.1` must fail because release assets are immutable.
-- Partial or incorrect publication must not be repaired by rerunning the normal workflow.
-- Byte-for-byte repair uses only the manually confirmed `release-repair` workflow, with identical asset names and retained before/after digest evidence.
-- A semantic or asset-set correction uses a new version such as `v1.0.0-rc.2`.
+A second normal publication attempt was executed through the production `Release` workflow after all release gates, packaging, provenance, and SBOM attestation steps passed. The final publication step rejected the existing release with:
 
-## Stable promotion decision
+```text
+Release v1.0.0-rc.1 already exists; release assets are immutable.
+```
 
-Promotion to `v1.0.0` requires all checks above to pass, no unresolved P0 release defect, a successful recent Nightly run, and a recorded review of rollback and repair evidence. RC assets remain immutable and are not renamed into the stable release.
+This confirms that normal reruns cannot replace published assets. Byte-for-byte repair remains restricted to the manually confirmed `release-repair` workflow. Semantic or asset-set changes require a new version such as `v1.0.0-rc.2`.
 
 ## Execution results
 
-The publication workflow run, release URL, downloaded-asset verification, clean-install result, VSIX result, and promotion decision are recorded here after the candidate is published.
+| Check | Result | Evidence |
+| --- | --- | --- |
+| Production RC publication | Passed | Release workflow run `30198292259` |
+| Public asset and CLI verification | Passed | Public release verification run `30202064774` |
+| Public VSIX clean-profile verification | Passed | Public release verification run `30202064774` |
+| Provenance and CycloneDX attestations | Passed | Public release verification run `30202064774` |
+| Machine-readable verification record | Passed | `.github/release-verification/v1.0.0-rc.1.json` |
+| Immutable normal rerun | Passed by expected rejection | Release workflow run `30202190907` |
+
+## Stable promotion decision
+
+The technical release-candidate rehearsal is complete: publication, public installation, generated-project execution, asset integrity, SBOM, attestations, VSIX activation, and immutable-rerun behavior all passed. No stable `v1.0.0` release was created as part of this issue. Stable promotion remains a separate decision and must use a newly reviewed stable-version commit and tag.
