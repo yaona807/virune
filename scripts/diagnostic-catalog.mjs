@@ -19,12 +19,15 @@ export async function collectDiagnosticCatalog(repositoryRoot = process.cwd()) {
 	for (const root of roots) {
 		for (const file of await collectTypeScriptFiles(resolve(repositoryRoot, root))) {
 			const source = await readFile(file, 'utf8');
-			const callCandidates = source.matchAll(/\.(?:error|warning|information|hint)\(\s*['"`]([^'"`]+)['"`]/gu);
-			const objectCandidates = source.matchAll(/\bcode:\s*['"`](L[^'"`]+)['"`]/gu);
-			for (const match of [...callCandidates, ...objectCandidates]) {
+			for (const match of source.matchAll(/\b(?:this\.)?diagnostics\.(?:error|warning|information|hint)\(\s*['"`]([^'"`]+)['"`]/gu)) {
 				const code = match[1];
-				if (code === undefined) continue;
-				if (!/^L\d{4}$/u.test(code) || categoryFor(code) === undefined) {
+				if (code !== undefined && (!/^L\d{4}$/u.test(code) || categoryFor(code) === undefined)) {
+					invalid.push({ code, file: relative(repositoryRoot, file).replaceAll('\\', '/') });
+				}
+			}
+			for (const match of source.matchAll(/\bL\d{4}\b/gu)) {
+				const code = match[0];
+				if (categoryFor(code) === undefined) {
 					invalid.push({ code, file: relative(repositoryRoot, file).replaceAll('\\', '/') });
 					continue;
 				}
