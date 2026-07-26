@@ -64,7 +64,7 @@ jobs:
           rm -rf release
           mkdir -p release
           cp ".cache/public-release/virune-vscode-${{ steps.request.outputs.version }}.vsix" release/
-          node scripts/vsix-smoke.mjs
+          xvfb-run -a node scripts/vsix-smoke.mjs
       - name: Finalize verification report
         env:
           VERSION: ${{ steps.request.outputs.version }}
