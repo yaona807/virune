@@ -3,7 +3,6 @@ import { copyFileSync, cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, sta
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { execNpmSync } from './npm-cli.mjs';
-import { writeReleaseSbom } from './generate-release-sbom.mjs';
 import { writeReleaseIntegrityFiles } from './release-manifest.mjs';
 
 const rootPackage = JSON.parse(readFileSync(resolve('package.json'), 'utf8'));
@@ -85,7 +84,6 @@ writeFileSync(
 );
 copyFileSync(resolve('THIRD_PARTY_NOTICES.md'), resolve(out, 'THIRD_PARTY_NOTICES.md'));
 copyFileSync(resolve('THIRD_PARTY_NOTICES_ja.md'), resolve(out, 'THIRD_PARTY_NOTICES_ja.md'));
-writeReleaseSbom({ root: resolve('.'), output: resolve(out, 'SBOM.cdx.json') });
 
 const packageEntries = packages.map(item => {
 	const bytes = readFileSync(resolve(out, item.file));
