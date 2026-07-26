@@ -1,6 +1,7 @@
 export * from './compiler.js';
 export * from './project/project.js';
 export * from './ast/nodes.js';
+export * from './diagnostics/codes.js';
 export * from './diagnostics/diagnostic.js';
 export * from './diagnostics/render.js';
 export * from './checker/checker.js';
