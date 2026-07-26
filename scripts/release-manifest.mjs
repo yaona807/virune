@@ -30,7 +30,7 @@ export const writeReleaseIntegrityFiles = (releaseDirectory, version, { root = r
 		},
 		provenance: {
 			provider: 'GitHub Artifact Attestations',
-			subjects: 'SHA256SUMS',
+			subjects: 'release/*',
 			verificationCommand: 'gh attestation verify <asset> --repo yaona807/virune',
 			sbomVerificationCommand: 'gh attestation verify <asset> --repo yaona807/virune --predicate-type https://cyclonedx.org/bom',
 		},
