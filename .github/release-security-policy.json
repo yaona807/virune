@@ -1,0 +1,22 @@
+{
+	"schemaVersion": 1,
+	"sbom": {
+		"file": "release/SBOM.cdx.json",
+		"format": "CycloneDX",
+		"specVersion": "1.6"
+	},
+	"attestations": {
+		"action": "actions/attest",
+		"reference": "59d89421af93a897026c735860bf21b6eb4f7b26",
+		"subjects": "release/SHA256SUMS",
+		"provenance": true,
+		"sbom": true
+	},
+	"stableAssets": {
+		"normalReplacementAllowed": false,
+		"repairWorkflow": "release-repair.yml",
+		"confirmation": "REPLACE_STABLE_ASSETS",
+		"assetSetMustMatch": true,
+		"auditRetentionDays": 365
+	}
+}
