@@ -24,7 +24,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
-          gh run view 30199414354 --repo "$GITHUB_REPOSITORY" --log-failed > .github/verification-failed-log.txt 2>&1 || true
+          run_id="$(node -p 'require("./.github/verification-log-probe-request.json").runId')"
+          gh run view "$run_id" --repo "$GITHUB_REPOSITORY" --log-failed > .github/verification-failed-log.txt 2>&1 || true
       - name: Commit failed log
         shell: bash
         run: |
