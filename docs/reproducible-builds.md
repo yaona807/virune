@@ -53,7 +53,7 @@ Inspect `RELEASE-MANIFEST.json` when only selected assets were downloaded. The r
 
 ## Build provenance and SBOM attestations
 
-The stable release workflow creates two GitHub Artifact Attestations for the subjects listed in `SHA256SUMS`:
+The stable release workflow creates two GitHub Artifact Attestations for every file in the release directory, including `SHA256SUMS`:
 
 1. SLSA build provenance that binds each asset to the repository, commit, workflow and runner identity;
 2. a CycloneDX SBOM attestation that binds the same assets to `SBOM.cdx.json`.
