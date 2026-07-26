@@ -1,17 +1,34 @@
-Verify published release	Download and verify public release assets and clean CLI installation	﻿2026-07-26T11:03:55.0652812Z ##[group]Run node scripts/verify-public-release.mjs --version=1.0.0-rc.1 --expected-commit=2a3dad2803ac63b3957d9eef5e70cf01a0a94396
-Verify published release	Download and verify public release assets and clean CLI installation	2026-07-26T11:03:55.0653873Z ^[[36;1mnode scripts/verify-public-release.mjs --version=1.0.0-rc.1 --expected-commit=2a3dad2803ac63b3957d9eef5e70cf01a0a94396^[[0m
-Verify published release	Download and verify public release assets and clean CLI installation	2026-07-26T11:03:55.0699628Z shell: /usr/bin/bash -e {0}
-Verify published release	Download and verify public release assets and clean CLI installation	2026-07-26T11:03:55.0699973Z env:
-Verify published release	Download and verify public release assets and clean CLI installation	2026-07-26T11:03:55.0703791Z   GITHUB_TOKEN: ***
-Verify published release	Download and verify public release assets and clean CLI installation	2026-07-26T11:03:55.0704071Z ##[endgroup]
-Verify published release	Download and verify public release assets and clean CLI installation	2026-07-26T11:03:55.7517928Z file:///home/runner/work/virune/virune/scripts/verify-public-release.mjs:31
-Verify published release	Download and verify public release assets and clean CLI installation	2026-07-26T11:03:55.7520303Z 	if (expectedCommit !== undefined && tagCommit !== expectedCommit) throw new Error(`Tag ${tag} points to ${tagCommit}, expected ${expectedCommit}.`);
-Verify published release	Download and verify public release assets and clean CLI installation	2026-07-26T11:03:55.7522202Z 	                                                                        ^
-Verify published release	Download and verify public release assets and clean CLI installation	2026-07-26T11:03:55.7522781Z 
-Verify published release	Download and verify public release assets and clean CLI installation	2026-07-26T11:03:55.7524081Z Error: Tag v1.0.0-rc.1 points to 1d346528485155c545a6cf2e4a24252e791674d5, expected 2a3dad2803ac63b3957d9eef5e70cf01a0a94396.
-Verify published release	Download and verify public release assets and clean CLI installation	2026-07-26T11:03:55.7526338Z     at verifyPublicRelease (file:///home/runner/work/virune/virune/scripts/verify-public-release.mjs:31:74)
-Verify published release	Download and verify public release assets and clean CLI installation	2026-07-26T11:03:55.7527536Z     at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
-Verify published release	Download and verify public release assets and clean CLI installation	2026-07-26T11:03:55.7528604Z     at async file:///home/runner/work/virune/virune/scripts/verify-public-release.mjs:205:2
-Verify published release	Download and verify public release assets and clean CLI installation	2026-07-26T11:03:55.7529194Z 
-Verify published release	Download and verify public release assets and clean CLI installation	2026-07-26T11:03:55.7529344Z Node.js v24.18.0
-Verify published release	Download and verify public release assets and clean CLI installation	2026-07-26T11:03:55.7613831Z ##[error]Process completed with exit code 1.
+Verify published release	Verify public VSIX in a clean profile	﻿2026-07-26T11:11:38.3010644Z ##[group]Run rm -rf release
+Verify published release	Verify public VSIX in a clean profile	2026-07-26T11:11:38.3010979Z ^[[36;1mrm -rf release^[[0m
+Verify published release	Verify public VSIX in a clean profile	2026-07-26T11:11:38.3011225Z ^[[36;1mmkdir -p release^[[0m
+Verify published release	Verify public VSIX in a clean profile	2026-07-26T11:11:38.3011576Z ^[[36;1mcp ".cache/public-release/virune-vscode-1.0.0-rc.1.vsix" release/^[[0m
+Verify published release	Verify public VSIX in a clean profile	2026-07-26T11:11:38.3012007Z ^[[36;1mnode scripts/vsix-smoke.mjs^[[0m
+Verify published release	Verify public VSIX in a clean profile	2026-07-26T11:11:38.3056743Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+Verify published release	Verify public VSIX in a clean profile	2026-07-26T11:11:38.3057137Z ##[endgroup]
+Verify published release	Verify public VSIX in a clean profile	2026-07-26T11:11:38.4124395Z - Resolving version...
+Verify published release	Verify public VSIX in a clean profile	2026-07-26T11:11:38.5115576Z ✔ Validated version: 1.130.0
+Verify published release	Verify public VSIX in a clean profile	2026-07-26T11:11:38.5127304Z - Found at https://update.code.visualstudio.com/1.130.0/linux-x64/stable?released=true
+Verify published release	Verify public VSIX in a clean profile	2026-07-26T11:11:38.6045225Z ✔ Found at https://update.code.visualstudio.com/1.130.0/linux-x64/stable?released=true
+Verify published release	Verify public VSIX in a clean profile	2026-07-26T11:11:38.6051006Z - Downloading (340.39 MB)
+Verify published release	Verify public VSIX in a clean profile	2026-07-26T11:11:46.4573476Z ✔ Downloaded VS Code (07b4ff1883f94da91f6d698744fc7c3638b59720) into /home/runner/work/virune/virune/.vscode-test/vscode-linux-x64-1.130.0
+Verify published release	Verify public VSIX in a clean profile	2026-07-26T11:11:47.0415700Z Installing extensions...
+Verify published release	Verify public VSIX in a clean profile	2026-07-26T11:11:47.3107574Z Extension 'virune-vscode-1.0.0-rc.1.vsix' was successfully installed.
+Verify published release	Verify public VSIX in a clean profile	2026-07-26T11:11:47.3456950Z (node:2663) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.
+Verify published release	Verify public VSIX in a clean profile	2026-07-26T11:11:47.3459911Z (Use `code --trace-deprecation ...` to show where the warning was created)
+Verify published release	Verify public VSIX in a clean profile	2026-07-26T11:11:47.9179845Z [2695:0726/111147.917397:ERROR:ui/ozone/platform/x11/ozone_platform_x11.cc:257] Missing X server or $DISPLAY
+Verify published release	Verify public VSIX in a clean profile	2026-07-26T11:11:47.9180732Z [2695:0726/111147.917443:ERROR:ui/aura/env.cc:246] The platform failed to initialize.  Exiting.
+Verify published release	Verify public VSIX in a clean profile	2026-07-26T11:14:38.0962294Z Exit code:   SIGSEGV
+Verify published release	Verify public VSIX in a clean profile	2026-07-26T11:14:38.1015032Z /home/runner/work/virune/virune/node_modules/@vscode/test-electron/out/runTest.js:125
+Verify published release	Verify public VSIX in a clean profile	2026-07-26T11:14:38.1020235Z                 reject(new TestRunFailedError(code ?? undefined, signal ?? undefined));
+Verify published release	Verify public VSIX in a clean profile	2026-07-26T11:14:38.1021474Z                        ^
+Verify published release	Verify public VSIX in a clean profile	2026-07-26T11:14:38.1022380Z 
+Verify published release	Verify public VSIX in a clean profile	2026-07-26T11:14:38.1023633Z TestRunFailedError: Test run terminated with signal SIGSEGV
+Verify published release	Verify public VSIX in a clean profile	2026-07-26T11:14:38.1026923Z     at ChildProcess.onProcessClosed (/home/runner/work/virune/virune/node_modules/@vscode/test-electron/out/runTest.js:125:24)
+Verify published release	Verify public VSIX in a clean profile	2026-07-26T11:14:38.1028254Z     at ChildProcess.emit (node:events:509:28)
+Verify published release	Verify public VSIX in a clean profile	2026-07-26T11:14:38.1031331Z     at ChildProcess._handle.onexit (node:internal/child_process:295:12) {
+Verify published release	Verify public VSIX in a clean profile	2026-07-26T11:14:38.1032105Z   code: undefined,
+Verify published release	Verify public VSIX in a clean profile	2026-07-26T11:14:38.1032432Z   signal: 'SIGSEGV'
+Verify published release	Verify public VSIX in a clean profile	2026-07-26T11:14:38.1032758Z }
+Verify published release	Verify public VSIX in a clean profile	2026-07-26T11:14:38.1032921Z 
+Verify published release	Verify public VSIX in a clean profile	2026-07-26T11:14:38.1033065Z Node.js v24.18.0
+Verify published release	Verify public VSIX in a clean profile	2026-07-26T11:14:38.1214034Z ##[error]Process completed with exit code 1.
