@@ -98,7 +98,7 @@
 		"test:public-abi": "node --test scripts/verify-public-abi.test.mjs",
 		"release:gate": "node scripts/stable-release-gate.mjs",
 		"test:release-gate": "node --test scripts/stable-release-gate.test.mjs",
-		"test:release-sbom": "node --test scripts/generate-release-sbom.test.mjs",
+		"test:release-sbom": "node --test scripts/generate-release-sbom.test.mjs scripts/write-release-repair-audit.test.mjs scripts/release-publishing-policy.test.mjs",
 		"test:browser-conformance:built": "node --test --test-timeout=120000 integration/dist/browser.test.js",
 		"smoke:vscode-release": "node scripts/vsix-smoke.mjs"
 	},
