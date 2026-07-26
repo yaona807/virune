@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { chmod, mkdtemp, mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
+import { chmod, mkdtemp, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -9,6 +9,7 @@ const repositoryRoot = resolve(fileURLToPath(new URL('..', import.meta.url)));
 
 export async function verifyPublicRelease({
 	version,
+	expectedCommit,
 	repository = process.env.GITHUB_REPOSITORY ?? 'yaona807/virune',
 	token = process.env.GITHUB_TOKEN,
 	outputDirectory = resolve(repositoryRoot, '.cache/public-release'),
@@ -17,19 +18,21 @@ export async function verifyPublicRelease({
 	fetchImpl = fetch,
 	runCommand = execute,
 } = {}) {
-	if (typeof version !== 'string' || !/^\d+\.\d+\.\d+-[0-9A-Za-z.-]+$/u.test(version)) {
-		throw new Error('A prerelease semantic version is required.');
-	}
+	if (typeof version !== 'string' || !/^\d+\.\d+\.\d+-[0-9A-Za-z.-]+$/u.test(version)) throw new Error('A prerelease semantic version is required.');
+	if (expectedCommit !== undefined && !/^[0-9a-f]{40}$/u.test(expectedCommit)) throw new Error('expectedCommit must be a full commit SHA.');
 	await rm(outputDirectory, { recursive: true, force: true });
 	await mkdir(outputDirectory, { recursive: true });
 	const tag = `v${version}`;
 	const release = await waitForRelease({ repository, tag, token, attempts: waitAttempts, intervalMs: waitIntervalMs, fetchImpl });
 	validateReleaseRecord(release, { tag, version });
+	const tagRef = await fetchJson(`https://api.github.com/repos/${repository}/git/ref/tags/${encodeURIComponent(tag)}`, { token, fetchImpl });
+	const tagCommit = tagRef?.object?.sha;
+	if (typeof tagCommit !== 'string' || !/^[0-9a-f]{40}$/u.test(tagCommit)) throw new Error(`Tag ${tag} did not resolve to a commit SHA.`);
+	if (expectedCommit !== undefined && tagCommit !== expectedCommit) throw new Error(`Tag ${tag} points to ${tagCommit}, expected ${expectedCommit}.`);
 	for (const asset of release.assets) {
 		const response = await fetchImpl(asset.browser_download_url, { headers: requestHeaders(token) });
 		if (!response.ok) throw new Error(`Failed to download ${asset.name}: HTTP ${response.status}`);
-		const bytes = Buffer.from(await response.arrayBuffer());
-		await writeFile(resolve(outputDirectory, asset.name), bytes);
+		await writeFile(resolve(outputDirectory, asset.name), Buffer.from(await response.arrayBuffer()));
 	}
 	const integrity = await validateDownloadedRelease(outputDirectory, version);
 	const installation = await validatePublicInstallation({ version, repository, runCommand });
@@ -37,6 +40,8 @@ export async function verifyPublicRelease({
 		schemaVersion: 1,
 		version,
 		tag,
+		tagCommit,
+		expectedCommit: expectedCommit ?? null,
 		repository,
 		release: {
 			id: release.id,
@@ -64,9 +69,7 @@ export function validateReleaseRecord(release, { tag, version }) {
 	if (release.prerelease !== true) throw new Error('Release candidate must be a prerelease.');
 	if (!Array.isArray(release.assets) || release.assets.length === 0) throw new Error('Release has no uploaded assets.');
 	const names = new Set(release.assets.map(asset => asset.name));
-	for (const required of requiredAssetNames(version)) {
-		if (!names.has(required)) throw new Error(`Release is missing ${required}.`);
-	}
+	for (const required of requiredAssetNames(version)) if (!names.has(required)) throw new Error(`Release is missing ${required}.`);
 }
 
 export async function validateDownloadedRelease(directory, version) {
@@ -76,8 +79,7 @@ export async function validateDownloadedRelease(directory, version) {
 	assertSameSet([...checksums.keys()].sort(), expectedChecksumFiles, 'SHA256SUMS file set');
 	const assets = [];
 	for (const file of expectedChecksumFiles) {
-		const path = resolve(directory, file);
-		const bytes = await readFile(path);
+		const bytes = await readFile(resolve(directory, file));
 		const sha256 = createHash('sha256').update(bytes).digest('hex');
 		if (checksums.get(file) !== sha256) throw new Error(`SHA-256 mismatch for ${file}.`);
 		assets.push({ file, sha256, bytes: bytes.byteLength });
@@ -129,16 +131,21 @@ async function validatePublicInstallation({ version, repository, runCommand }) {
 		runCommand(executable, ['init', project], { cwd: root });
 		const generated = JSON.parse(await readFile(resolve(project, 'package.json'), 'utf8'));
 		for (const url of [...Object.values(generated.dependencies ?? {}), ...Object.values(generated.devDependencies ?? {})]) {
-			if (typeof url !== 'string' || !url.includes(`/releases/download/v${version}/`) || !url.includes(version)) {
-				throw new Error(`Generated project contains a non-candidate dependency: ${String(url)}`);
-			}
+			if (typeof url !== 'string' || !url.includes(`/releases/download/v${version}/`) || !url.includes(version)) throw new Error(`Generated project contains a non-candidate dependency: ${String(url)}`);
 		}
 		runCommand('npm', ['install', '--no-audit', '--no-fund'], { cwd: project });
 		runCommand('npm', ['run', 'check'], { cwd: project });
 		runCommand('npm', ['run', 'build'], { cwd: project });
 		const run = runCommand('npm', ['run', 'start'], { cwd: project, capture: true });
 		if (!run.stdout.includes('Hello from Virune')) throw new Error('Generated project did not run successfully.');
-		return { cliUrl, versionOutput: versionResult.stdout.trim(), generatedProject: { dependencyCount: Object.keys(generated.dependencies ?? {}).length + Object.keys(generated.devDependencies ?? {}).length, check: 'passed', build: 'passed', run: 'passed' } };
+		return {
+			cliUrl,
+			versionOutput: versionResult.stdout.trim(),
+			generatedProject: {
+				dependencyCount: Object.keys(generated.dependencies ?? {}).length + Object.keys(generated.devDependencies ?? {}).length,
+				check: 'passed', build: 'passed', run: 'passed',
+			},
+		};
 	} finally {
 		await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 250 });
 	}
@@ -147,12 +154,22 @@ async function validatePublicInstallation({ version, repository, runCommand }) {
 async function waitForRelease({ repository, tag, token, attempts, intervalMs, fetchImpl }) {
 	const url = `https://api.github.com/repos/${repository}/releases/tags/${encodeURIComponent(tag)}`;
 	for (let attempt = 1; attempt <= attempts; attempt++) {
-		const response = await fetchImpl(url, { headers: { ...requestHeaders(token), Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' } });
+		const response = await fetchImpl(url, { headers: apiHeaders(token) });
 		if (response.ok) return response.json();
 		if (response.status !== 404 || attempt === attempts) throw new Error(`Release API returned HTTP ${response.status} for ${tag}.`);
 		await new Promise(resolvePromise => setTimeout(resolvePromise, intervalMs));
 	}
 	throw new Error(`Release ${tag} was not published.`);
+}
+
+async function fetchJson(url, { token, fetchImpl }) {
+	const response = await fetchImpl(url, { headers: apiHeaders(token) });
+	if (!response.ok) throw new Error(`GitHub API returned HTTP ${response.status} for ${url}.`);
+	return response.json();
+}
+
+function apiHeaders(token) {
+	return { ...requestHeaders(token), Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' };
 }
 
 function requestHeaders(token) {
@@ -172,7 +189,9 @@ function assertSameSet(actual, expected, label) {
 
 function execute(command, args, { cwd, capture = false } = {}) {
 	const executable = process.platform === 'win32' && command === 'npm' ? 'npm.cmd' : command;
-	const result = spawnSync(executable, args, { cwd, env: process.env, encoding: 'utf8', stdio: capture ? ['ignore', 'pipe', 'pipe'] : 'inherit', timeout: 10 * 60 * 1000, maxBuffer: 64 * 1024 * 1024 });
+	const result = spawnSync(executable, args, {
+		cwd, env: process.env, encoding: 'utf8', stdio: capture ? ['ignore', 'pipe', 'pipe'] : 'inherit', timeout: 10 * 60 * 1000, maxBuffer: 64 * 1024 * 1024,
+	});
 	if (result.error !== undefined) throw result.error;
 	if ((result.status ?? 1) !== 0) throw new Error(`${basename(command)} ${args.join(' ')} exited with ${result.status}${capture ? `\n${result.stdout}\n${result.stderr}` : ''}`);
 	return { status: result.status, stdout: result.stdout ?? '', stderr: result.stderr ?? '' };
@@ -181,6 +200,7 @@ function execute(command, args, { cwd, capture = false } = {}) {
 const entry = process.argv[1] === undefined ? undefined : resolve(process.argv[1]);
 if (entry === fileURLToPath(import.meta.url)) {
 	const version = process.argv.find(argument => argument.startsWith('--version='))?.slice('--version='.length);
+	const expectedCommit = process.argv.find(argument => argument.startsWith('--expected-commit='))?.slice('--expected-commit='.length);
 	const outputDirectory = process.argv.find(argument => argument.startsWith('--output='))?.slice('--output='.length);
-	await verifyPublicRelease({ version, ...(outputDirectory === undefined ? {} : { outputDirectory: resolve(outputDirectory) }) });
+	await verifyPublicRelease({ version, expectedCommit, ...(outputDirectory === undefined ? {} : { outputDirectory: resolve(outputDirectory) }) });
 }
