@@ -9,7 +9,7 @@ const experimental = await readFile(resolve('packages/compiler/src/experimental-
 
 if (index !== "export * from './public-api.js';") throw new Error('Compiler root entry point must export only public-api.ts');
 const exportKeys = Object.keys(packageJson.exports ?? {}).sort();
-if (JSON.stringify(exportKeys) !== JSON.stringify(['.', './experimental'])) {
+if (JSON.stringify(exportKeys) !== JSON.stringify(['.', './diagnostics.schema.json', './experimental'])) {
 	throw new Error(`Compiler package exports changed: ${exportKeys.join(', ')}`);
 }
 for (const forbidden of ['./mir/', './hir/lower.js', './reference/']) {
@@ -20,7 +20,7 @@ const values = new Set();
 const types = new Set();
 for (const match of source.matchAll(/export\s+(?:async\s+)?function\s+([A-Za-z_$][\w$]*)/gu)) values.add(match[1]);
 for (const match of source.matchAll(/export\s+(?:interface|type)\s+([A-Za-z_$][\w$]*)/gu)) types.add(match[1]);
-for (const match of source.matchAll(/export\s*\{([^}]+)\}\s*;/gu)) {
+for (const match of source.matchAll(/export\s*\{([^}]+)\}(?:\s+from\s+['"][^'"]+['"])?\s*;/gu)) {
 	for (const item of match[1].split(',')) values.add(item.trim().split(/\s+as\s+/u).at(-1));
 }
 for (const match of source.matchAll(/export\s+type\s*\{([^}]+)\}/gu)) {
