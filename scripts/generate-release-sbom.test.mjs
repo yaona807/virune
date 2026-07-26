@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import test from 'node:test';
-import { buildCycloneDxSbom } from './generate-release-sbom.mjs';
+import { buildCycloneDxSbom, normalizeWorkspaceLockVersions } from './generate-release-sbom.mjs';
 
 const manifest = {
 	name: 'virune-monorepo',
@@ -60,6 +63,27 @@ test('deduplicates identical package identities while preserving lockfile paths'
 	);
 	assert.equal(new Set(sbom.components.map(component => component['bom-ref'])).size, sbom.components.length);
 	assert.equal(new Set(sbom.dependencies.map(dependency => dependency.ref)).size, sbom.dependencies.length);
+});
+
+test('normalizes stale lockfile workspace versions from release manifests', async t => {
+	const root = await mkdtemp(join(tmpdir(), 'virune-sbom-workspaces-'));
+	t.after(() => rm(root, { recursive: true, force: true }));
+	await mkdir(join(root, 'packages/cli'), { recursive: true });
+	await writeFile(join(root, 'package.json'), JSON.stringify({ name: 'virune-monorepo', version: '1.0.0-rc.1' }));
+	await writeFile(join(root, 'packages/cli/package.json'), JSON.stringify({ name: 'virune', version: '1.0.0-rc.1' }));
+	const normalized = normalizeWorkspaceLockVersions({
+		version: '1.0.0',
+		lockfileVersion: 3,
+		packages: {
+			'': { name: 'virune-monorepo', version: '1.0.0' },
+			'packages/cli': { name: 'virune', version: '1.0.0' },
+			'node_modules/example': { version: '2.0.0' },
+		},
+	}, root);
+	assert.equal(normalized.version, '1.0.0-rc.1');
+	assert.equal(normalized.packages[''].version, '1.0.0-rc.1');
+	assert.equal(normalized.packages['packages/cli'].version, '1.0.0-rc.1');
+	assert.equal(normalized.packages['node_modules/example'].version, '2.0.0');
 });
 
 test('rejects unsupported lockfiles', () => {

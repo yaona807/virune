@@ -47,10 +47,22 @@ async function verifyVersionReferences() {
 	const manifest = JSON.parse(await readFile(resolve(root, 'package.json'), 'utf8'));
 	const version = manifest.version;
 	const expectedUrl = `https://github.com/yaona807/virune/releases/download/v${version}/virune-${version}.tgz`;
-	for (const name of ['README.md', 'README_ja.md']) {
-		const source = await readFile(resolve(root, name), 'utf8');
-		if (!source.includes(expectedUrl)) errors.push(`${name} must contain ${expectedUrl}`);
-		if (!source.includes(`version-${version}-`)) errors.push(`${name} version badge does not match ${version}`);
+	if (version.includes('-')) {
+		for (const suffix of ['', '_ja']) {
+			const name = `docs/release-rehearsal-${version}${suffix}.md`;
+			if (!await exists(resolve(root, name))) {
+				errors.push(`${name} is required for prerelease ${version}`);
+				continue;
+			}
+			const source = await readFile(resolve(root, name), 'utf8');
+			if (!source.includes(expectedUrl)) errors.push(`${name} must contain ${expectedUrl}`);
+		}
+	} else {
+		for (const name of ['README.md', 'README_ja.md']) {
+			const source = await readFile(resolve(root, name), 'utf8');
+			if (!source.includes(expectedUrl)) errors.push(`${name} must contain ${expectedUrl}`);
+			if (!source.includes(`version-${version}-`)) errors.push(`${name} version badge does not match ${version}`);
+		}
 	}
 	const cliSource = await readFile(resolve(root, 'packages/cli/src/main.ts'), 'utf8');
 	if (!cliSource.includes(`const VERSION = '${version}';`)) errors.push(`packages/cli/src/main.ts VERSION does not match ${version}`);

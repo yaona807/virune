@@ -12,16 +12,17 @@ test('CLI init, check, build and run form a complete workflow', async () => {
 		dependencies: Record<string, string>;
 		devDependencies: Record<string, string>;
 	};
-	const releaseBase = 'https://github.com/yaona807/virune/releases/download/v1.0.0';
-	assert.equal(manifest.dependencies['@virune/runtime'], `${releaseBase}/virune-runtime-1.0.0.tgz`);
-	assert.equal(manifest.dependencies['@virune/stdlib'], `${releaseBase}/virune-stdlib-1.0.0.tgz`);
-	assert.equal(manifest.devDependencies.virune, `${releaseBase}/virune-1.0.0.tgz`);
+	const repositoryManifest = JSON.parse(await readFile(join(repositoryRoot, 'package.json'), 'utf8')) as { version: string };
+	const version = repositoryManifest.version;
+	const releaseBase = `https://github.com/yaona807/virune/releases/download/v${version}`;
+	assert.equal(manifest.dependencies['@virune/runtime'], `${releaseBase}/virune-runtime-${version}.tgz`);
+	assert.equal(manifest.dependencies['@virune/stdlib'], `${releaseBase}/virune-stdlib-${version}.tgz`);
+	assert.equal(manifest.devDependencies.virune, `${releaseBase}/virune-${version}.tgz`);
 	assert.match((await runCli(['check', root])).stdout, /Checked 1 module/u);
 	assert.match((await runCli(['build', root])).stdout, /Built 1 module/u);
 	assert.match(await readFile(join(root, 'dist/main.js'), 'utf8'), /export function main/u);
 	assert.match((await runCli(['run', root])).stdout, /Hello from Virune/u);
 });
-
 
 
 test('official sample compiles, runs, and strips the argument separator', async () => {

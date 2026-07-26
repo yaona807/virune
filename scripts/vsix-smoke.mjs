@@ -1,10 +1,12 @@
 import { execFileSync } from 'node:child_process';
-import { mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { downloadAndUnzipVSCode, runTests } from '@vscode/test-electron';
 
 const releaseDirectory = resolve('release');
+const rootManifest = JSON.parse(await readFile(resolve('package.json'), 'utf8'));
+const version = rootManifest.version;
 const vsix = resolve(releaseDirectory, (await readdir(releaseDirectory)).find(file => /^virune-vscode-.*\.vsix$/u.test(file)) ?? 'missing.vsix');
 const root = await mkdtemp(join(tmpdir(), 'virune-vsix-smoke-'));
 const extensionsDirectory = resolve(root, 'extensions');
@@ -20,7 +22,8 @@ try {
 	const common = ['--extensions-dir', extensionsDirectory, '--user-data-dir', userDataDirectory];
 	execFileSync(cli, ['--install-extension', vsix, '--force', ...common], { stdio: 'inherit' });
 	const installed = execFileSync(cli, ['--list-extensions', '--show-versions', ...common], { encoding: 'utf8' });
-	if (!/^virune\.virune-vscode@1\.0\.0$/mu.test(installed)) throw new Error(`Installed extension was not listed:\n${installed}`);
+	const escapedVersion = version.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
+	if (!new RegExp(`^virune\\.virune-vscode@${escapedVersion}$`, 'mu').test(installed)) throw new Error(`Installed extension was not listed:\n${installed}`);
 	await writeFile(resolve(workspace, 'virune.json'), `${JSON.stringify({ languageVersion: '1.0', platform: 'node', sourceDir: 'src', outDir: 'dist', entry: 'src/main.virune', target: 'es2022' }, null, 2)}\n`, { encoding: 'utf8', flag: 'w' }).catch(async error => {
 		if (error?.code !== 'ENOENT') throw error;
 		const { mkdir } = await import('node:fs/promises');

@@ -4,6 +4,8 @@ on:
   push:
     tags:
       - 'v*'
+    branches:
+      - 'release-candidate/v*'
 
 permissions:
   actions: read
@@ -26,11 +28,21 @@ jobs:
         with:
           node-version: 24
           cache: npm
-      - name: Verify release tag matches package version
+      - name: Resolve and verify release identity
+        id: release
         shell: bash
         run: |
-          expected="v$(node -p 'require("./package.json").version')"
-          test "$GITHUB_REF_NAME" = "$expected" || { echo "Expected tag $expected, got $GITHUB_REF_NAME" >&2; exit 1; }
+          version="$(node -p 'require("./package.json").version')"
+          tag="v${version}"
+          if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
+            test "$GITHUB_REF_NAME" = "$tag" || { echo "Expected tag $tag, got $GITHUB_REF_NAME" >&2; exit 1; }
+          else
+            expected_branch="release-candidate/${tag}"
+            test "$GITHUB_REF_NAME" = "$expected_branch" || { echo "Expected RC branch $expected_branch, got $GITHUB_REF_NAME" >&2; exit 1; }
+            [[ "$version" == *-* ]] || { echo "Release-candidate branches may publish prerelease versions only." >&2; exit 1; }
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          if [[ "$version" == *-* ]]; then echo "prerelease=true" >> "$GITHUB_OUTPUT"; else echo "prerelease=false" >> "$GITHUB_OUTPUT"; fi
       - name: Install dependencies
         run: npm ci
       - name: Execute stable release gate
@@ -41,7 +53,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: release-evidence-${{ github.ref_name }}
+          name: release-evidence-${{ steps.release.outputs.tag }}
           path: |
             .cache/release/release-evidence.json
             .cache/reproducible-release/
@@ -59,13 +71,20 @@ jobs:
         with:
           subject-path: release/*
           sbom-path: release/SBOM.cdx.json
-      - name: Create GitHub Release
+      - name: Create immutable GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.release.outputs.tag }}
+          PRERELEASE: ${{ steps.release.outputs.prerelease }}
         shell: bash
         run: |
-          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
-            echo "Release $GITHUB_REF_NAME already exists; stable assets are immutable." >&2
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists; release assets are immutable." >&2
             exit 1
           fi
-          gh release create "$GITHUB_REF_NAME" release/* --generate-notes --verify-tag
+          if ! gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG" >/dev/null 2>&1; then
+            gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/tags/$TAG" -f sha="$GITHUB_SHA" >/dev/null
+          fi
+          release_args=("$TAG" release/* --generate-notes --verify-tag)
+          if [[ "$PRERELEASE" == "true" ]]; then release_args+=(--prerelease); fi
+          gh release create "${release_args[@]}"

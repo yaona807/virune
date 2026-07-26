@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -102,12 +102,32 @@ export function buildCycloneDxSbom({ lock, manifest, commit = null }) {
 	};
 }
 
+export function normalizeWorkspaceLockVersions(lock, root = repositoryRoot) {
+	const normalized = structuredClone(lock);
+	if (typeof normalized?.packages !== 'object' || normalized.packages === null) return normalized;
+	for (const [path, entry] of Object.entries(normalized.packages)) {
+		if (typeof entry !== 'object' || entry === null) continue;
+		const manifestPath = path === ''
+			? resolve(root, 'package.json')
+			: /^packages\/[^/]+$/u.test(path)
+				? resolve(root, path, 'package.json')
+				: undefined;
+		if (manifestPath === undefined || !existsSync(manifestPath)) continue;
+		const workspaceManifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+		if (typeof workspaceManifest.version !== 'string') continue;
+		entry.version = workspaceManifest.version;
+		if (path === '') normalized.version = workspaceManifest.version;
+	}
+	return normalized;
+}
+
 export function writeReleaseSbom({
 	root = repositoryRoot,
 	output = resolve(root, 'release/SBOM.cdx.json'),
 	commit = process.env.GITHUB_SHA ?? process.env.VIRUNE_RELEASE_COMMIT ?? null,
 } = {}) {
-	const lock = JSON.parse(readFileSync(resolve(root, 'package-lock.json'), 'utf8'));
+	const rawLock = JSON.parse(readFileSync(resolve(root, 'package-lock.json'), 'utf8'));
+	const lock = normalizeWorkspaceLockVersions(rawLock, root);
 	const manifest = JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf8'));
 	const sbom = buildCycloneDxSbom({ lock, manifest, commit });
 	writeFileSync(output, `${JSON.stringify(sbom, null, 2)}\n`, 'utf8');
