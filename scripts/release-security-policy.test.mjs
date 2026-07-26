@@ -14,7 +14,7 @@ test('release security policy matches the implemented artifact controls', async 
 	assert.equal(policy.attestations.action, 'actions/attest');
 	assert.match(policy.attestations.reference, /^[0-9a-f]{40}$/u);
 	assert.deepEqual(actionPolicy.allowedReferences['actions/attest'], [policy.attestations.reference]);
-	assert.equal(policy.attestations.subjects, 'release/SHA256SUMS');
+	assert.equal(policy.attestations.subjects, 'release/*');
 	assert.equal(policy.attestations.provenance, true);
 	assert.equal(policy.attestations.sbom, true);
 	assert.equal(policy.stableAssets.normalReplacementAllowed, false);
