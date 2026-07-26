@@ -3,19 +3,26 @@ import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { evaluateNightlyRun, runStableReleaseGate } from './stable-release-gate.mjs';
+import { evaluateNightlyRun, resolveNightlyBranch, runStableReleaseGate } from './stable-release-gate.mjs';
 
 test('accepts a successful recent Nightly run', () => {
 	const now = Date.parse('2026-07-25T00:00:00Z');
-	const result = evaluateNightlyRun({ id: 1, conclusion: 'success', updated_at: '2026-07-24T18:00:00Z' }, { maxAgeHours: 36 }, now);
+	const result = evaluateNightlyRun({ id: 1, conclusion: 'success', updated_at: '2026-07-24T18:00:00Z' }, { maxAgeHours: 36, branch: 'main' }, now);
 	assert.equal(result.passed, true);
 	assert.equal(result.ageHours, 6);
+	assert.equal(result.branch, 'main');
 });
 
 test('rejects failed and stale Nightly evidence', () => {
 	const now = Date.parse('2026-07-25T12:00:00Z');
 	assert.equal(evaluateNightlyRun({ conclusion: 'failure', updated_at: '2026-07-25T11:00:00Z' }, { maxAgeHours: 36 }, now).passed, false);
 	assert.equal(evaluateNightlyRun({ conclusion: 'success', updated_at: '2026-07-23T00:00:00Z' }, { maxAgeHours: 36 }, now).passed, false);
+});
+
+test('uses pull-request head Nightly evidence without weakening tag releases', () => {
+	assert.equal(resolveNightlyBranch('main', { GITHUB_EVENT_NAME: 'pull_request', GITHUB_HEAD_REF: 'agent/fix' }), 'agent/fix');
+	assert.equal(resolveNightlyBranch('main', { GITHUB_EVENT_NAME: 'push', GITHUB_HEAD_REF: 'agent/fix' }), 'main');
+	assert.equal(resolveNightlyBranch('main', { GITHUB_EVENT_NAME: 'pull_request', GITHUB_HEAD_REF: '' }), 'main');
 });
 
 test('writes evidence and rejects any failed requirement', async t => {
