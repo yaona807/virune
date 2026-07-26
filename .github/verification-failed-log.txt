@@ -1,34 +1,19 @@
-Verify published release	Verify public VSIX in a clean profile	﻿2026-07-26T11:11:38.3010644Z ##[group]Run rm -rf release
-Verify published release	Verify public VSIX in a clean profile	2026-07-26T11:11:38.3010979Z ^[[36;1mrm -rf release^[[0m
-Verify published release	Verify public VSIX in a clean profile	2026-07-26T11:11:38.3011225Z ^[[36;1mmkdir -p release^[[0m
-Verify published release	Verify public VSIX in a clean profile	2026-07-26T11:11:38.3011576Z ^[[36;1mcp ".cache/public-release/virune-vscode-1.0.0-rc.1.vsix" release/^[[0m
-Verify published release	Verify public VSIX in a clean profile	2026-07-26T11:11:38.3012007Z ^[[36;1mnode scripts/vsix-smoke.mjs^[[0m
-Verify published release	Verify public VSIX in a clean profile	2026-07-26T11:11:38.3056743Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
-Verify published release	Verify public VSIX in a clean profile	2026-07-26T11:11:38.3057137Z ##[endgroup]
-Verify published release	Verify public VSIX in a clean profile	2026-07-26T11:11:38.4124395Z - Resolving version...
-Verify published release	Verify public VSIX in a clean profile	2026-07-26T11:11:38.5115576Z ✔ Validated version: 1.130.0
-Verify published release	Verify public VSIX in a clean profile	2026-07-26T11:11:38.5127304Z - Found at https://update.code.visualstudio.com/1.130.0/linux-x64/stable?released=true
-Verify published release	Verify public VSIX in a clean profile	2026-07-26T11:11:38.6045225Z ✔ Found at https://update.code.visualstudio.com/1.130.0/linux-x64/stable?released=true
-Verify published release	Verify public VSIX in a clean profile	2026-07-26T11:11:38.6051006Z - Downloading (340.39 MB)
-Verify published release	Verify public VSIX in a clean profile	2026-07-26T11:11:46.4573476Z ✔ Downloaded VS Code (07b4ff1883f94da91f6d698744fc7c3638b59720) into /home/runner/work/virune/virune/.vscode-test/vscode-linux-x64-1.130.0
-Verify published release	Verify public VSIX in a clean profile	2026-07-26T11:11:47.0415700Z Installing extensions...
-Verify published release	Verify public VSIX in a clean profile	2026-07-26T11:11:47.3107574Z Extension 'virune-vscode-1.0.0-rc.1.vsix' was successfully installed.
-Verify published release	Verify public VSIX in a clean profile	2026-07-26T11:11:47.3456950Z (node:2663) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.
-Verify published release	Verify public VSIX in a clean profile	2026-07-26T11:11:47.3459911Z (Use `code --trace-deprecation ...` to show where the warning was created)
-Verify published release	Verify public VSIX in a clean profile	2026-07-26T11:11:47.9179845Z [2695:0726/111147.917397:ERROR:ui/ozone/platform/x11/ozone_platform_x11.cc:257] Missing X server or $DISPLAY
-Verify published release	Verify public VSIX in a clean profile	2026-07-26T11:11:47.9180732Z [2695:0726/111147.917443:ERROR:ui/aura/env.cc:246] The platform failed to initialize.  Exiting.
-Verify published release	Verify public VSIX in a clean profile	2026-07-26T11:14:38.0962294Z Exit code:   SIGSEGV
-Verify published release	Verify public VSIX in a clean profile	2026-07-26T11:14:38.1015032Z /home/runner/work/virune/virune/node_modules/@vscode/test-electron/out/runTest.js:125
-Verify published release	Verify public VSIX in a clean profile	2026-07-26T11:14:38.1020235Z                 reject(new TestRunFailedError(code ?? undefined, signal ?? undefined));
-Verify published release	Verify public VSIX in a clean profile	2026-07-26T11:14:38.1021474Z                        ^
-Verify published release	Verify public VSIX in a clean profile	2026-07-26T11:14:38.1022380Z 
-Verify published release	Verify public VSIX in a clean profile	2026-07-26T11:14:38.1023633Z TestRunFailedError: Test run terminated with signal SIGSEGV
-Verify published release	Verify public VSIX in a clean profile	2026-07-26T11:14:38.1026923Z     at ChildProcess.onProcessClosed (/home/runner/work/virune/virune/node_modules/@vscode/test-electron/out/runTest.js:125:24)
-Verify published release	Verify public VSIX in a clean profile	2026-07-26T11:14:38.1028254Z     at ChildProcess.emit (node:events:509:28)
-Verify published release	Verify public VSIX in a clean profile	2026-07-26T11:14:38.1031331Z     at ChildProcess._handle.onexit (node:internal/child_process:295:12) {
-Verify published release	Verify public VSIX in a clean profile	2026-07-26T11:14:38.1032105Z   code: undefined,
-Verify published release	Verify public VSIX in a clean profile	2026-07-26T11:14:38.1032432Z   signal: 'SIGSEGV'
-Verify published release	Verify public VSIX in a clean profile	2026-07-26T11:14:38.1032758Z }
-Verify published release	Verify public VSIX in a clean profile	2026-07-26T11:14:38.1032921Z 
-Verify published release	Verify public VSIX in a clean profile	2026-07-26T11:14:38.1033065Z Node.js v24.18.0
-Verify published release	Verify public VSIX in a clean profile	2026-07-26T11:14:38.1214034Z ##[error]Process completed with exit code 1.
+release	Create immutable GitHub Release	﻿2026-07-26T12:34:01.2131931Z ##[group]Run if gh release view "$TAG" >/dev/null 2>&1; then
+release	Create immutable GitHub Release	2026-07-26T12:34:01.2132584Z ^[[36;1mif gh release view "$TAG" >/dev/null 2>&1; then^[[0m
+release	Create immutable GitHub Release	2026-07-26T12:34:01.2133036Z ^[[36;1m  echo "Release $TAG already exists; release assets are immutable." >&2^[[0m
+release	Create immutable GitHub Release	2026-07-26T12:34:01.2133439Z ^[[36;1m  exit 1^[[0m
+release	Create immutable GitHub Release	2026-07-26T12:34:01.2133720Z ^[[36;1mfi^[[0m
+release	Create immutable GitHub Release	2026-07-26T12:34:01.2134081Z ^[[36;1mif ! gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG" >/dev/null 2>&1; then^[[0m
+release	Create immutable GitHub Release	2026-07-26T12:34:01.2134698Z ^[[36;1m  gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/tags/$TAG" -f sha="$GITHUB_SHA" >/dev/null^[[0m
+release	Create immutable GitHub Release	2026-07-26T12:34:01.2135222Z ^[[36;1mfi^[[0m
+release	Create immutable GitHub Release	2026-07-26T12:34:01.2135561Z ^[[36;1mrelease_args=("$TAG" release/* --generate-notes --verify-tag)^[[0m
+release	Create immutable GitHub Release	2026-07-26T12:34:01.2136056Z ^[[36;1mif [[ "$PRERELEASE" == "true" ]]; then release_args+=(--prerelease); fi^[[0m
+release	Create immutable GitHub Release	2026-07-26T12:34:01.2136455Z ^[[36;1mgh release create "${release_args[@]}"^[[0m
+release	Create immutable GitHub Release	2026-07-26T12:34:01.2161462Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+release	Create immutable GitHub Release	2026-07-26T12:34:01.2162235Z env:
+release	Create immutable GitHub Release	2026-07-26T12:34:01.2164662Z   GH_TOKEN: ***
+release	Create immutable GitHub Release	2026-07-26T12:34:01.2164935Z   TAG: v1.0.0-rc.1
+release	Create immutable GitHub Release	2026-07-26T12:34:01.2165214Z   PRERELEASE: true
+release	Create immutable GitHub Release	2026-07-26T12:34:01.2165489Z ##[endgroup]
+release	Create immutable GitHub Release	2026-07-26T12:34:01.8186218Z Release v1.0.0-rc.1 already exists; release assets are immutable.
+release	Create immutable GitHub Release	2026-07-26T12:34:01.8192240Z ##[error]Process completed with exit code 1.
