@@ -1,18 +1,19 @@
 import { createHash } from 'node:crypto';
 import { readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { writeReleaseSbom } from './generate-release-sbom.mjs';
 
-export const writeReleaseIntegrityFiles = (releaseDirectory, version) => {
+export const writeReleaseIntegrityFiles = (releaseDirectory, version, { root = resolve('.') } = {}) => {
 	const digest = file => {
 		const bytes = readFileSync(resolve(releaseDirectory, file));
 		return { file, sha256: createHash('sha256').update(bytes).digest('hex'), bytes: bytes.byteLength };
 	};
 
+	const sbomFile = 'SBOM.cdx.json';
+	writeReleaseSbom({ root, output: resolve(releaseDirectory, sbomFile) });
 	const releaseFiles = readdirSync(releaseDirectory)
 		.filter(file => file !== 'RELEASE-MANIFEST.json' && file !== 'SHA256SUMS')
 		.sort();
-	const sbomFile = 'SBOM.cdx.json';
-	if (!releaseFiles.includes(sbomFile)) throw new Error(`${sbomFile} must exist before release integrity files are generated.`);
 	const sbom = JSON.parse(readFileSync(resolve(releaseDirectory, sbomFile), 'utf8'));
 	if (sbom.bomFormat !== 'CycloneDX' || typeof sbom.specVersion !== 'string' || typeof sbom.serialNumber !== 'string') {
 		throw new Error('Invalid CycloneDX release SBOM.');
