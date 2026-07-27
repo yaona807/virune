@@ -70,12 +70,12 @@ export function compileSource(source: SourceFile, options: CompileOptions = {}):
 
 function parserDiagnostic(source: SourceFile, error: IRecognitionException): Diagnostic {
 	const token = error.token;
-	const startOffset = finitePosition(token.startOffset, source.text.length);
-	const endOffset = Math.min(source.text.length, Math.max(startOffset, finitePosition(token.endOffset, startOffset)));
-	const startLine = finitePosition(token.startLine, lineAt(source.text, startOffset));
-	const startColumn = finitePosition(token.startColumn, columnAt(source.text, startOffset));
-	const endLine = finitePosition(token.endLine, startLine);
-	const endColumn = finitePosition(token.endColumn, startColumn) + (endOffset === startOffset ? 0 : 1);
+	const startOffset = finitePosition(token.startOffset, source.text.length, 0);
+	const endOffset = Math.min(source.text.length, Math.max(startOffset, finitePosition(token.endOffset, startOffset, 0)));
+	const startLine = finitePosition(token.startLine, lineAt(source.text, startOffset), 1);
+	const startColumn = finitePosition(token.startColumn, columnAt(source.text, startOffset), 1);
+	const endLine = finitePosition(token.endLine, startLine, 1);
+	const endColumn = finitePosition(token.endColumn, startColumn, 1) + (endOffset === startOffset ? 0 : 1);
 	return {
 		code: 'L0002', severity: 'error', message: error.message,
 		span: {
@@ -86,8 +86,8 @@ function parserDiagnostic(source: SourceFile, error: IRecognitionException): Dia
 	};
 }
 
-function finitePosition(value: number | undefined, fallback: number): number {
-	return value !== undefined && Number.isFinite(value) ? value : fallback;
+function finitePosition(value: number | undefined, fallback: number, minimum: number): number {
+	return value !== undefined && Number.isFinite(value) && value >= minimum ? value : fallback;
 }
 
 function lineAt(text: string, offset: number): number {
