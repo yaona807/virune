@@ -38,6 +38,7 @@ export class DiagnosticBag {
 	public get hasErrors(): boolean { return this.#diagnostics.some(item => item.severity === 'error'); }
 }
 
+// External parsers may use negative or non-finite sentinel positions at EOF.
 function normalizeSpan(span: SourceSpan): SourceSpan {
 	const startOffset = finiteAtLeast(span.start.offset, 0);
 	const startLine = finiteAtLeast(span.start.line, 1);
