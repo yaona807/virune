@@ -26,6 +26,7 @@ export async function verifyWorkflows(root = process.cwd()) {
 		const source = await readFile(resolve(workflowDirectory, file), 'utf8');
 		verifyWorkflowStructure(file, source);
 		verifyWorkflowPermissions(file, source, policy.workflowPermissions);
+		verifySecurityWorkflowPolicy(file, source);
 		for (const [index, line] of source.split(/\r?\n/u).entries()) {
 			const trimmed = line.trim();
 			if (trimmed.length === 0 || trimmed.startsWith('#') || !trimmed.includes('uses:')) continue;
@@ -93,6 +94,19 @@ function verifyWorkflowPermissions(file, source, policy) {
 	}
 }
 
+function verifySecurityWorkflowPolicy(file, source) {
+	if (file !== 'dependency-review.yml') return;
+	if (!source.includes('uses: actions/dependency-review-action@')) {
+		throw new Error(`${file}: must run actions/dependency-review-action`);
+	}
+	if (/^\s+continue-on-error:\s*true\s*$/mu.test(source)) {
+		throw new Error(`${file}: dependency review must remain a blocking gate`);
+	}
+	if (!/^\s+fail-on-severity:\s*moderate\s*$/mu.test(source)) {
+		throw new Error(`${file}: dependency review must fail on moderate-or-higher findings`);
+	}
+}
+
 function validActionPolicy(value) {
 	if (!isRecord(value) || Object.keys(value).length === 0) return false;
 	return Object.values(value).every(references => Array.isArray(references)
@@ -101,8 +115,9 @@ function validActionPolicy(value) {
 }
 
 function validPermissionPolicy(value) {
-	if (!isRecord(value) || !validPermissionRecord(value.default) || !isRecord(value.exceptions)) return false;
-	return Object.values(value.exceptions).every(validPermissionRecord);
+	return isRecord(value) && !validPermissionRecord(value.default) || !isRecord(value.exceptions)
+		? false
+		: Object.values(value.exceptions).every(validPermissionRecord);
 }
 
 function validPermissionRecord(value) {
