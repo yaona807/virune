@@ -16,7 +16,7 @@ tag起点のRelease workflowと手動のRelease dry-run workflowは、同じ`npm
 - FFIのUnknown fallback、unsafe boundary、review済みbinding corpus。
 - Parser、Formatter、Checker、semantic fuzz suite。
 - 公開用package、manifest、checksum、VSIX packaging、offline clean install、生成projectの実行。
-- policyで定義した有効期間内に`main`で成功したNightly quality run。
+- policyで定義した有効期間内に成功し、`head_sha`がrelease対象commitと完全に一致するNightly quality run。
 
 ローカルで構造を確認する場合は次を実行します。
 
