@@ -1,6 +1,6 @@
 {
 	"name": "virune",
-	"version": "1.0.0-rc.2",
+	"version": "1.0.0",
 	"private": true,
 	"repository": {
 		"type": "git",
@@ -28,11 +28,11 @@
 		"dist/src"
 	],
 	"dependencies": {
-		"@virune/compiler": "1.0.0-rc.2",
-		"@virune/formatter": "1.0.0-rc.2",
-		"@virune/js-interop": "1.0.0-rc.2",
-		"@virune/runtime": "1.0.0-rc.2",
-		"@virune/stdlib": "1.0.0-rc.2",
+		"@virune/compiler": "1.0.0",
+		"@virune/formatter": "1.0.0",
+		"@virune/js-interop": "1.0.0",
+		"@virune/runtime": "1.0.0",
+		"@virune/stdlib": "1.0.0",
 		"typescript": "6.0.3"
 	},
 	"scripts": {
