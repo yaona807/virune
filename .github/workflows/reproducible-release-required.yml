@@ -1,0 +1,58 @@
+name: Reproducible release required check
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: reproducible-release-required-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  reproducible-release:
+    name: Reproducible release artifacts
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Classify changed files
+        id: changes
+        shell: bash
+        run: node scripts/classify-ci-changes.mjs --base '${{ github.event.pull_request.base.sha }}' --head '${{ github.event.pull_request.head.sha }}'
+
+      - name: Confirm documentation-only changes do not affect release artifacts
+        if: steps.changes.outputs.docs_only == 'true'
+        shell: bash
+        run: echo 'All changed files are reviewed Markdown documentation paths; reproducible release artifacts are unchanged.'
+
+      - name: Install dependencies
+        if: steps.changes.outputs.docs_only != 'true'
+        run: npm ci
+
+      - name: Build the release independently twice and compare outputs
+        if: steps.changes.outputs.docs_only != 'true'
+        run: npm run verify:reproducible-release
+        env:
+          SOURCE_DATE_EPOCH: '0'
+
+      - name: Upload reproducibility evidence
+        if: always() && steps.changes.outcome == 'success' && steps.changes.outputs.docs_only != 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: required-reproducible-release-${{ github.sha }}
+          path: .cache/reproducible-release/
+          if-no-files-found: error
+          retention-days: 30
