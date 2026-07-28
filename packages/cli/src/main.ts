@@ -13,7 +13,7 @@ class InteropAdapterBuildError extends Error {
 	public constructor(readonly diagnostics: readonly string[]) { super('TypeScript interop adapter validation failed'); }
 }
 
-const VERSION = '1.0.0-rc.1';
+const VERSION = '1.0.0-rc.2';
 const RELEASE_ASSET_BASE = `https://github.com/yaona807/virune/releases/download/v${VERSION}`;
 const releaseAsset = (file: string): string => `${RELEASE_ASSET_BASE}/${file}`;
 const args = process.argv.slice(2);
