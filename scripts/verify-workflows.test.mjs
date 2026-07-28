@@ -7,6 +7,7 @@ import { verifyWorkflows } from './verify-workflows.mjs';
 
 const CHECKOUT_SHA = '3d3c42e5aac5ba805825da76410c181273ba90b1';
 const UNKNOWN_SHA = '0000000000000000000000000000000000000000';
+const DEPENDENCY_REVIEW_SHA = 'a1d282b36b6f3519aa1f3fc636f609c47dddb294';
 
 async function fixture(reference, { permissions = { contents: 'read' }, exception } = {}) {
 	const root = await mkdtemp(join(tmpdir(), 'virune-workflow-policy-'));
@@ -30,6 +31,22 @@ async function writeWorkflow(root, reference, permissions, comment = '') {
 	await writeFile(join(root, '.github/workflows/test.yml'), `name: Test\n\non:\n  workflow_dispatch:\n${permissionBlock}\njobs:\n  test:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@${reference}${comment}\n`);
 }
 
+async function dependencyReviewFixture({ continueOnError = false, severity = 'moderate' } = {}) {
+	const root = await mkdtemp(join(tmpdir(), 'virune-dependency-review-policy-'));
+	await mkdir(join(root, '.github/workflows'), { recursive: true });
+	await writeFile(join(root, '.github/actions-policy.json'), `${JSON.stringify({
+		schemaVersion: 3,
+		allowedReferences: { 'actions/dependency-review-action': [DEPENDENCY_REVIEW_SHA] },
+		workflowPermissions: {
+			default: { contents: 'read' },
+			exceptions: {},
+		},
+	}, null, '\t')}\n`);
+	const continueOnErrorLine = continueOnError ? '        continue-on-error: true\n' : '';
+	await writeFile(join(root, '.github/workflows/dependency-review.yml'), `name: Dependency review\n\non:\n  workflow_dispatch:\n\npermissions:\n  contents: read\n\njobs:\n  dependency-review:\n    runs-on: ubuntu-latest\n    steps:\n      - name: Review dependency changes\n${continueOnErrorLine}        uses: actions/dependency-review-action@${DEPENDENCY_REVIEW_SHA}\n        with:\n          fail-on-severity: ${severity}\n`);
+	return root;
+}
+
 test('accepts a reviewed full-SHA action and least-privilege permissions', async t => {
 	const root = await fixture(CHECKOUT_SHA);
 	t.after(() => rm(root, { recursive: true, force: true }));
@@ -48,6 +65,24 @@ test('accepts an explicitly reviewed workflow permission exception', async t => 
 	const root = await fixture(CHECKOUT_SHA, { permissions, exception: permissions });
 	t.after(() => rm(root, { recursive: true, force: true }));
 	await assert.doesNotReject(verifyWorkflows(root));
+});
+
+test('accepts a blocking dependency review gate at moderate severity', async t => {
+	const root = await dependencyReviewFixture();
+	t.after(() => rm(root, { recursive: true, force: true }));
+	await assert.doesNotReject(verifyWorkflows(root));
+});
+
+test('rejects a non-blocking dependency review gate', async t => {
+	const root = await dependencyReviewFixture({ continueOnError: true });
+	t.after(() => rm(root, { recursive: true, force: true }));
+	await assert.rejects(verifyWorkflows(root), /must remain a blocking gate/u);
+});
+
+test('rejects a dependency review threshold weaker than moderate', async t => {
+	const root = await dependencyReviewFixture({ severity: 'high' });
+	t.after(() => rm(root, { recursive: true, force: true }));
+	await assert.rejects(verifyWorkflows(root), /must fail on moderate-or-higher findings/u);
 });
 
 test('rejects a mutable major-version action reference', async t => {
