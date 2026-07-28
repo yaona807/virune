@@ -24,9 +24,15 @@ This document tracks Issue #61. The release candidate is prepared from the revie
 
 The preparation pull request must pass all required checks, the current Nightly suites, release dry run, reproducible build, package and VSIX smoke tests, CodeQL, and Dependency Review.
 
-After publication, the public verification must confirm:
+After publication, install the CLI from the immutable release asset:
 
-- CLI installation from the immutable GitHub Release URL
+```bash
+npm install --global https://github.com/yaona807/virune/releases/download/v1.0.0-rc.2/virune-1.0.0-rc.2.tgz
+virune --version
+```
+
+The public verification must confirm:
+
 - `virune --version` reports `1.0.0-rc.2`
 - `virune init` generates dependencies that reference only `v1.0.0-rc.2` assets
 - generated-project dependency installation, `check`, `build`, and `start`
