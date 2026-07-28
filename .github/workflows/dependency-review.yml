@@ -12,32 +12,33 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  audit-diagnostic:
-    name: Diagnose locked dependency audit
+  audit-fix-preview:
+    name: Generate audited lockfile
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
-      - name: Summarize audit findings
-        shell: bash
-        run: |
-          curl --fail --silent --show-error --location --retry 3 \
-            --output package.json \
-            "https://raw.githubusercontent.com/${{ github.repository }}/${{ github.event.pull_request.head.sha }}/package.json"
-          curl --fail --silent --show-error --location --retry 3 \
-            --output package-lock.json \
-            "https://raw.githubusercontent.com/${{ github.repository }}/${{ github.event.pull_request.head.sha }}/package-lock.json"
-          status=0
-          npm audit --json > audit.json || status=$?
-          node --input-type=module <<'NODE'
-          import { readFileSync } from 'node:fs';
-          const report = JSON.parse(readFileSync('audit.json', 'utf8'));
-          console.log(`Audit totals: ${JSON.stringify(report.metadata?.vulnerabilities ?? {})}`);
-          for (const [name, finding] of Object.entries(report.vulnerabilities ?? {})) {
-            const via = (finding.via ?? []).map(item => typeof item === 'string' ? item : `${item.source}:${item.title}`).join(', ');
-            console.log(`${name}: severity=${finding.severity}; range=${finding.range}; via=${via}; fixAvailable=${JSON.stringify(finding.fixAvailable)}`);
-          }
-          NODE
-          exit "$status"
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Apply lockfile-only audit fixes
+        run: npm audit fix --package-lock-only
+
+      - name: Verify fixed lockfile
+        run: npm audit --audit-level=moderate
+
+      - name: Upload fixed lockfile
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v4
+        with:
+          name: dependency-audit-lockfile
+          path: package-lock.json
+          if-no-files-found: error
+          retention-days: 1
 
   dependency-review:
     name: Review dependency changes
