@@ -24,9 +24,15 @@
 
 準備Pull Requestでは、全required check、最新Nightly、release dry run、再現可能build、package／VSIX smoke、CodeQL、Dependency Reviewを成功させます。
 
-公開後は次を確認します。
+公開後は、不変なrelease assetからCLIをinstallします。
 
-- 不変なGitHub Release URLからのCLI install
+```bash
+npm install --global https://github.com/yaona807/virune/releases/download/v1.0.0-rc.2/virune-1.0.0-rc.2.tgz
+virune --version
+```
+
+Public verificationでは次を確認します。
+
 - `virune --version`が`1.0.0-rc.2`を返すこと
 - `virune init`が`v1.0.0-rc.2`配下のassetだけを参照すること
 - 生成projectのdependency install、`check`、`build`、`start`
