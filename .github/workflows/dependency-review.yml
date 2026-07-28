@@ -40,3 +40,21 @@ jobs:
         if: steps.github_dependency_review.outcome == 'failure'
         shell: bash
         run: echo '::warning::GitHub change-level dependency review is unavailable because Dependency Graph is disabled. The blocking npm audit covered all locked runtime and development dependencies. Enable Dependency Graph before requiring the GitHub review result.'
+
+  ruleset-compatibility:
+    name: Diagnose dependency review API
+    needs: dependency-review
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Require dependency review success
+        shell: bash
+        env:
+          DEPENDENCY_REVIEW_RESULT: ${{ needs.dependency-review.result }}
+        run: |
+          if [[ "$DEPENDENCY_REVIEW_RESULT" != "success" ]]; then
+            echo "::error::Review dependency changes concluded with $DEPENDENCY_REVIEW_RESULT."
+            exit 1
+          fi
+          echo 'Dependency review required-check compatibility context passed.'
