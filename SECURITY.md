@@ -78,12 +78,12 @@ The following controls are enforced from the repository and fail pull-request me
 
 - `.github/dependabot.yml` monitors npm and GitHub Actions dependencies;
 - `.github/workflows/codeql.yml` analyzes JavaScript and TypeScript on pull requests, pushes, a weekly schedule, and manual runs;
-- `.github/workflows/dependency-review.yml` reviews dependency changes and blocks moderate-or-higher runtime audit findings;
+- `.github/workflows/dependency-review.yml` blocks moderate-or-higher findings from GitHub Dependency Review and independently blocks moderate-or-higher runtime `npm audit` findings;
 - `.github/actions-policy.json` allowlists external Action identities and revisions;
 - `scripts/verify-workflows.mjs` requires every workflow to declare exact top-level permissions, defaults workflows to `contents: read`, and permits write scopes only through reviewed per-file exceptions;
 - job-level permission overrides are prohibited so a job cannot silently escalate beyond the reviewed workflow grant.
 
-Git-managed validation cannot prove the current state of private vulnerability reporting, secret scanning, push protection, repository-wide Actions defaults, or branch rulesets. An administrator must confirm those controls in GitHub settings during the quarterly review. A successful GitHub Dependency Review step provides operational evidence that the dependency graph is available for the pull request, while the runtime `npm audit` remains an independent blocking check.
+Git-managed validation cannot prove the current state of private vulnerability reporting, secret scanning, push protection, repository-wide Actions defaults, or branch rulesets. An administrator must confirm those controls in GitHub settings during the quarterly review. The Dependency Review workflow intentionally fails when GitHub change-level review is unavailable, while the blocking runtime `npm audit` remains an independent check.
 
 ## Public security discussions
 
