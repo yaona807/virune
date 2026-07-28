@@ -31,7 +31,12 @@ async function writeWorkflow(root, reference, permissions, comment = '') {
 	await writeFile(join(root, '.github/workflows/test.yml'), `name: Test\n\non:\n  workflow_dispatch:\n${permissionBlock}\njobs:\n  test:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@${reference}${comment}\n`);
 }
 
-async function dependencyReviewFixture({ continueOnError = false, severity = 'moderate' } = {}) {
+async function dependencyReviewFixture({
+	continueOnError = false,
+	severity = 'moderate',
+	auditCommand = 'npm audit --audit-level=moderate',
+	reportFailure = continueOnError,
+} = {}) {
 	const root = await mkdtemp(join(tmpdir(), 'virune-dependency-review-policy-'));
 	await mkdir(join(root, '.github/workflows'), { recursive: true });
 	await writeFile(join(root, '.github/actions-policy.json'), `${JSON.stringify({
@@ -42,8 +47,13 @@ async function dependencyReviewFixture({ continueOnError = false, severity = 'mo
 			exceptions: {},
 		},
 	}, null, '\t')}\n`);
-	const continueOnErrorLine = continueOnError ? '        continue-on-error: true\n' : '';
-	await writeFile(join(root, '.github/workflows/dependency-review.yml'), `name: Dependency review\n\non:\n  workflow_dispatch:\n\npermissions:\n  contents: read\n\njobs:\n  dependency-review:\n    runs-on: ubuntu-latest\n    steps:\n      - name: Review dependency changes\n${continueOnErrorLine}        uses: actions/dependency-review-action@${DEPENDENCY_REVIEW_SHA}\n        with:\n          fail-on-severity: ${severity}\n`);
+	const reviewFallback = continueOnError
+		? '        id: github_dependency_review\n        continue-on-error: true\n'
+		: '';
+	const failureReport = reportFailure
+		? "\n      - name: Report unavailable review\n        if: steps.github_dependency_review.outcome == 'failure'\n        run: echo unavailable\n"
+		: '';
+	await writeFile(join(root, '.github/workflows/dependency-review.yml'), `name: Dependency review\n\non:\n  workflow_dispatch:\n\npermissions:\n  contents: read\n\njobs:\n  dependency-review:\n    runs-on: ubuntu-latest\n    steps:\n      - name: Review dependency changes\n${reviewFallback}        uses: actions/dependency-review-action@${DEPENDENCY_REVIEW_SHA}\n        with:\n          fail-on-severity: ${severity}\n\n      - name: Audit all locked dependencies\n        run: ${auditCommand}\n${failureReport}`);
 	return root;
 }
 
@@ -67,16 +77,28 @@ test('accepts an explicitly reviewed workflow permission exception', async t => 
 	await assert.doesNotReject(verifyWorkflows(root));
 });
 
-test('accepts a blocking dependency review gate at moderate severity', async t => {
+test('accepts a blocking dependency review with a complete locked-dependency audit', async t => {
 	const root = await dependencyReviewFixture();
 	t.after(() => rm(root, { recursive: true, force: true }));
 	await assert.doesNotReject(verifyWorkflows(root));
 });
 
-test('rejects a non-blocking dependency review gate', async t => {
+test('accepts an explicit fallback when GitHub dependency review is unavailable', async t => {
 	const root = await dependencyReviewFixture({ continueOnError: true });
 	t.after(() => rm(root, { recursive: true, force: true }));
-	await assert.rejects(verifyWorkflows(root), /must remain a blocking gate/u);
+	await assert.doesNotReject(verifyWorkflows(root));
+});
+
+test('rejects a dependency audit that omits development dependencies', async t => {
+	const root = await dependencyReviewFixture({ auditCommand: 'npm audit --omit=dev --audit-level=moderate' });
+	t.after(() => rm(root, { recursive: true, force: true }));
+	await assert.rejects(verifyWorkflows(root), /must block on a full locked-dependency npm audit/u);
+});
+
+test('rejects an unavailable GitHub review without an explicit report', async t => {
+	const root = await dependencyReviewFixture({ continueOnError: true, reportFailure: false });
+	t.after(() => rm(root, { recursive: true, force: true }));
+	await assert.rejects(verifyWorkflows(root), /must be reported explicitly/u);
 });
 
 test('rejects a dependency review threshold weaker than moderate', async t => {
