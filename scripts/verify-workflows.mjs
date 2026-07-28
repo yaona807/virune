@@ -115,9 +115,8 @@ function validActionPolicy(value) {
 }
 
 function validPermissionPolicy(value) {
-	return isRecord(value) && !validPermissionRecord(value.default) || !isRecord(value.exceptions)
-		? false
-		: Object.values(value.exceptions).every(validPermissionRecord);
+	if (!isRecord(value) || !validPermissionRecord(value.default) || !isRecord(value.exceptions)) return false;
+	return Object.values(value.exceptions).every(validPermissionRecord);
 }
 
 function validPermissionRecord(value) {
