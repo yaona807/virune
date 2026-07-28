@@ -12,16 +12,6 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  dependency-review-diagnostic:
-    name: Diagnose dependency review API
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    steps:
-      - name: Query dependency review without repository setup
-        uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5
-        with:
-          fail-on-severity: moderate
-
   dependency-review:
     name: Review dependency changes
     runs-on: ubuntu-24.04
@@ -37,9 +27,16 @@ jobs:
           cache: npm
 
       - name: Review dependency changes with GitHub
+        id: github_dependency_review
+        continue-on-error: true
         uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5
         with:
           fail-on-severity: moderate
 
-      - name: Audit locked runtime dependencies
-        run: npm audit --omit=dev --audit-level=moderate
+      - name: Audit all locked dependencies
+        run: npm audit --audit-level=moderate
+
+      - name: Report unavailable GitHub dependency review
+        if: steps.github_dependency_review.outcome == 'failure'
+        shell: bash
+        run: echo '::warning::GitHub change-level dependency review is unavailable because Dependency Graph is disabled. The blocking npm audit covered all locked runtime and development dependencies. Enable Dependency Graph before requiring the GitHub review result.'
