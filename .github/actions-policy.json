@@ -19,9 +19,6 @@
 				"contents": "read",
 				"security-events": "write"
 			},
-			"dependency-review.yml": {
-				"contents": "write"
-			},
 			"release-dry-run.yml": {
 				"actions": "read",
 				"contents": "read"
