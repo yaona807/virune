@@ -2,13 +2,16 @@
 
 [English](release-rehearsal-1.0.0-rc.2.md) | [日本語](release-rehearsal-1.0.0-rc.2_ja.md)
 
-This document tracks Issue #61. The release candidate is prepared from the reviewed `main` commit and published through the production `Release` workflow from `release-candidate/v1.0.0-rc.2`.
+This document is the execution record for Issue #61. The release candidate was prepared from the reviewed `main` commit and published through the production `Release` workflow from `release-candidate/v1.0.0-rc.2`.
 
 ## Candidate identity
 
 - Version: `1.0.0-rc.2`
 - Git tag: `v1.0.0-rc.2`
+- Tag commit: `3a6698ed9003f1d9e3324736cb2c100b6aa0609a`
 - Release type: GitHub prerelease
+- Release URL: `https://github.com/yaona807/virune/releases/tag/v1.0.0-rc.2`
+- Published at: `2026-07-28T14:56:36Z`
 - CLI asset: `virune-1.0.0-rc.2.tgz`
 - VSIX asset: `virune-vscode-1.0.0-rc.2.vsix`
 
@@ -20,30 +23,48 @@ This document tracks Issue #61. The release candidate is prepared from the revie
 - complete locked-dependency audit and GitHub Dependency Review
 - security workflow and least-privilege hardening
 
-## Required validation
-
-The preparation pull request must pass all required checks, the current Nightly suites, release dry run, reproducible build, package and VSIX smoke tests, CodeQL, and Dependency Review.
-
-After publication, install the CLI from the immutable release asset:
+## Public installation
 
 ```bash
 npm install --global https://github.com/yaona807/virune/releases/download/v1.0.0-rc.2/virune-1.0.0-rc.2.tgz
 virune --version
 ```
 
-The public verification must confirm:
+Verified version output:
 
-- `virune --version` reports `1.0.0-rc.2`
-- `virune init` generates dependencies that reference only `v1.0.0-rc.2` assets
-- generated-project dependency installation, `check`, `build`, and `start`
-- clean-profile VSIX installation and Language Server activation
-- `SHA256SUMS`, `RELEASE-MANIFEST.json`, CycloneDX SBOM, and provenance attestations
-- published assets remain immutable
+```text
+virune 1.0.0-rc.2
+```
 
-## Stable promotion decision
+The generated project referenced only `v1.0.0-rc.2` assets. Dependency installation, `check`, `build`, and `start` all passed.
 
-Stable `v1.0.0` remains a separate reviewed decision. Promotion requires successful public verification of this candidate and no unresolved P0 or P1 release defect.
+## Integrity, provenance, and VS Code validation
+
+The public verification downloaded all 15 published assets and confirmed their byte lengths and SHA-256 digests against `RELEASE-MANIFEST.json` schema version 2. The CycloneDX 1.6 SBOM contained 382 components. Provenance and CycloneDX attestations passed.
+
+The published `virune-vscode-1.0.0-rc.2.vsix` passed clean-profile installation, activation, Language Server startup, and uninstall.
+
+The machine-readable public verification record is retained at `.github/release-verification/v1.0.0-rc.2.json` on `release-verification/v1.0.0-rc.2`.
 
 ## Execution results
 
-Publication and public-verification evidence will be recorded after the production workflow completes.
+| Check | Result | Evidence |
+| --- | --- | --- |
+| Preparation pull request | Passed and squash-merged | PR #62 / commit `3a6698ed9003f1d9e3324736cb2c100b6aa0609a` |
+| CI | Passed | run `338` |
+| Nightly quality suites | Passed | run `60` |
+| Release dry run | Passed | run `182` |
+| CodeQL | Passed | run `159` |
+| Dependency Review and ruleset compatibility context | Passed | run `142` |
+| Browser conformance | Passed | run `148` |
+| VSIX smoke | Passed | run `144` |
+| Performance | Passed | run `197` |
+| TypeScript 7 prototype | Passed | run `79` |
+| Production prerelease publication | Passed | release `v1.0.0-rc.2` |
+| Public CLI and generated-project verification | Passed | `.github/release-verification/v1.0.0-rc.2.json` |
+| Public VSIX verification | Passed | `.github/release-verification/v1.0.0-rc.2.json` |
+| Provenance and CycloneDX attestations | Passed | `.github/release-verification/v1.0.0-rc.2.json` |
+
+## Stable promotion decision
+
+The technical release-candidate cycle is complete. Stable `v1.0.0` remains a separate reviewed decision and requires no unresolved P0 or P1 release defect at promotion time. RC2 assets remain immutable and are not renamed or modified for the stable release.
