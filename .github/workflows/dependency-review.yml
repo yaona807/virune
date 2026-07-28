@@ -12,6 +12,33 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  audit-diagnostic:
+    name: Diagnose locked dependency audit
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Summarize audit findings
+        shell: bash
+        run: |
+          curl --fail --silent --show-error --location --retry 3 \
+            --output package.json \
+            "https://raw.githubusercontent.com/${{ github.repository }}/${{ github.event.pull_request.head.sha }}/package.json"
+          curl --fail --silent --show-error --location --retry 3 \
+            --output package-lock.json \
+            "https://raw.githubusercontent.com/${{ github.repository }}/${{ github.event.pull_request.head.sha }}/package-lock.json"
+          status=0
+          npm audit --json > audit.json || status=$?
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          const report = JSON.parse(readFileSync('audit.json', 'utf8'));
+          console.log(`Audit totals: ${JSON.stringify(report.metadata?.vulnerabilities ?? {})}`);
+          for (const [name, finding] of Object.entries(report.vulnerabilities ?? {})) {
+            const via = (finding.via ?? []).map(item => typeof item === 'string' ? item : `${item.source}:${item.title}`).join(', ');
+            console.log(`${name}: severity=${finding.severity}; range=${finding.range}; via=${via}; fixAvailable=${JSON.stringify(finding.fixAvailable)}`);
+          }
+          NODE
+          exit "$status"
+
   dependency-review:
     name: Review dependency changes
     runs-on: ubuntu-24.04
