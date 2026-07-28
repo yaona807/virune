@@ -1,6 +1,6 @@
 {
 	"name": "@virune/stdlib",
-	"version": "1.0.0-rc.2",
+	"version": "1.0.0",
 	"private": true,
 	"repository": {
 		"type": "git",
@@ -37,7 +37,7 @@
 		"dist/src"
 	],
 	"dependencies": {
-		"@virune/runtime": "1.0.0-rc.2"
+		"@virune/runtime": "1.0.0"
 	},
 	"scripts": {
 		"build": "tsc -b",
