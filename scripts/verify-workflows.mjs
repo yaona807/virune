@@ -99,11 +99,22 @@ function verifySecurityWorkflowPolicy(file, source) {
 	if (!source.includes('uses: actions/dependency-review-action@')) {
 		throw new Error(`${file}: must run actions/dependency-review-action`);
 	}
-	if (/^\s+continue-on-error:\s*true\s*$/mu.test(source)) {
-		throw new Error(`${file}: dependency review must remain a blocking gate`);
-	}
 	if (!/^\s+fail-on-severity:\s*moderate\s*$/mu.test(source)) {
-		throw new Error(`${file}: dependency review must fail on moderate-or-higher findings`);
+		throw new Error(`${file}: dependency review must fail on moderate-or-higher findings when available`);
+	}
+	if (!/^\s+run:\s*npm audit --audit-level=moderate\s*$/mu.test(source)) {
+		throw new Error(`${file}: must block on a full locked-dependency npm audit at moderate severity`);
+	}
+	if (/^\s+run:\s*npm audit\b.*\s--omit(?:=|\s)/mu.test(source)) {
+		throw new Error(`${file}: the blocking npm audit must not omit dependency scopes`);
+	}
+	if (/^\s+continue-on-error:\s*true\s*$/mu.test(source)) {
+		if (!/^\s+id:\s*github_dependency_review\s*$/mu.test(source)) {
+			throw new Error(`${file}: a non-blocking GitHub review must expose the github_dependency_review outcome`);
+		}
+		if (!/^\s+if:\s*steps\.github_dependency_review\.outcome == 'failure'\s*$/mu.test(source)) {
+			throw new Error(`${file}: an unavailable GitHub review must be reported explicitly`);
+		}
 	}
 }
 
