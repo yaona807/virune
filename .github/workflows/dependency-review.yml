@@ -33,10 +33,10 @@ jobs:
         with:
           fail-on-severity: moderate
 
-      - name: Audit locked runtime dependencies
-        run: npm audit --omit=dev --audit-level=moderate
+      - name: Audit all locked dependencies
+        run: npm audit --audit-level=moderate
 
-      - name: Report GitHub dependency review fallback
+      - name: Report unavailable GitHub dependency review
         if: steps.github_dependency_review.outcome == 'failure'
         shell: bash
-        run: echo '::warning::GitHub dependency review did not pass. npm audit checked runtime dependencies as the blocking fallback. Enable Dependency Graph to activate change-level review.'
+        run: echo '::warning::GitHub change-level dependency review is unavailable because Dependency Graph is disabled. The blocking npm audit covered all locked runtime and development dependencies. Enable Dependency Graph before requiring the GitHub review result.'

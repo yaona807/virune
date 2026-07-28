@@ -26,6 +26,7 @@ export async function verifyWorkflows(root = process.cwd()) {
 		const source = await readFile(resolve(workflowDirectory, file), 'utf8');
 		verifyWorkflowStructure(file, source);
 		verifyWorkflowPermissions(file, source, policy.workflowPermissions);
+		verifySecurityWorkflowPolicy(file, source);
 		for (const [index, line] of source.split(/\r?\n/u).entries()) {
 			const trimmed = line.trim();
 			if (trimmed.length === 0 || trimmed.startsWith('#') || !trimmed.includes('uses:')) continue;
@@ -90,6 +91,30 @@ function verifyWorkflowPermissions(file, source, policy) {
 	const expected = policy.exceptions[file] ?? policy.default;
 	if (JSON.stringify(sortedRecord(actual)) !== JSON.stringify(sortedRecord(expected))) {
 		throw new Error(`${file}: permissions ${JSON.stringify(sortedRecord(actual))} do not match policy ${JSON.stringify(sortedRecord(expected))}`);
+	}
+}
+
+function verifySecurityWorkflowPolicy(file, source) {
+	if (file !== 'dependency-review.yml') return;
+	if (!source.includes('uses: actions/dependency-review-action@')) {
+		throw new Error(`${file}: must run actions/dependency-review-action`);
+	}
+	if (!/^\s+fail-on-severity:\s*moderate\s*$/mu.test(source)) {
+		throw new Error(`${file}: dependency review must fail on moderate-or-higher findings when available`);
+	}
+	if (!/^\s+run:\s*npm audit --audit-level=moderate\s*$/mu.test(source)) {
+		throw new Error(`${file}: must block on a full locked-dependency npm audit at moderate severity`);
+	}
+	if (/^\s+run:\s*npm audit\b.*\s--omit(?:=|\s)/mu.test(source)) {
+		throw new Error(`${file}: the blocking npm audit must not omit dependency scopes`);
+	}
+	if (/^\s+continue-on-error:\s*true\s*$/mu.test(source)) {
+		if (!/^\s+id:\s*github_dependency_review\s*$/mu.test(source)) {
+			throw new Error(`${file}: a non-blocking GitHub review must expose the github_dependency_review outcome`);
+		}
+		if (!/^\s+if:\s*steps\.github_dependency_review\.outcome == 'failure'\s*$/mu.test(source)) {
+			throw new Error(`${file}: an unavailable GitHub review must be reported explicitly`);
+		}
 	}
 }
 
