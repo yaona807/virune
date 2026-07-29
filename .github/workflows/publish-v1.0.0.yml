@@ -1,11 +1,11 @@
 name: Publish v1.0.0
 
 on:
-  push:
+  pull_request:
     branches:
       - main
     paths:
-      - '.github/workflows/publish-v1.0.0.yml'
+      - '.github/release-v1.0.0-trigger'
 
 permissions:
   actions: read
@@ -20,6 +20,7 @@ env:
 
 jobs:
   release:
+    if: github.event.pull_request.head.ref == 'ops/trigger-v1.0.0-release' && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
@@ -92,10 +93,3 @@ jobs:
             exit 1
           fi
           gh release create "$TAG" release/* --generate-notes --verify-tag
-      - name: Remove source branch
-        if: success()
-        env:
-          GH_TOKEN: ${{ github.token }}
-        shell: bash
-        run: |
-          gh api --method DELETE "repos/$GITHUB_REPOSITORY/git/refs/heads/ops/publish-v1.0.0" || true
