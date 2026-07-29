@@ -2,47 +2,13 @@ name: Release dry run
 
 on:
   workflow_dispatch:
-  pull_request:
-    paths:
-      - '.github/actions-policy.json'
-      - '.github/release-security-policy.json'
-      - '.github/stable-release-gate.json'
-      - '.github/workflows/release.yml'
-      - '.github/workflows/release-repair.yml'
-      - '.github/workflows/release-dry-run.yml'
-      - '.github/workflows/nightly.yml'
-      - 'docs/release-channels*.md'
-      - 'docs/reproducible-builds*.md'
-      - 'docs/runtime-abi*.md'
-      - 'docs/stable-release-gate*.md'
-      - 'package.json'
-      - 'package-lock.json'
-      - 'packages/*/package.json'
-      - 'packages/public-abi.snapshot.json'
-      - 'packages/runtime/src/**'
-      - 'packages/js-interop/src/**'
-      - 'packages/stdlib/src/**'
-      - 'packages/compiler/src/codegen/runtime-imports.ts'
-      - 'scripts/generate-release-sbom*.mjs'
-      - 'scripts/package.mjs'
-      - 'scripts/release-manifest.mjs'
-      - 'scripts/release-publishing-policy.test.mjs'
-      - 'scripts/release-security-policy.test.mjs'
-      - 'scripts/smoke-release.mjs'
-      - 'scripts/stable-release-gate*.mjs'
-      - 'scripts/verify-documentation.mjs'
-      - 'scripts/verify-public-abi*.mjs'
-      - 'scripts/verify-release-channel.mjs'
-      - 'scripts/verify-reproducible-release*.mjs'
-      - 'scripts/verify-workflows*.mjs'
-      - 'scripts/write-release-repair-audit*.mjs'
 
 permissions:
   contents: read
   actions: read
 
 concurrency:
-  group: release-dry-run-${{ github.event.pull_request.number || github.ref }}
+  group: release-dry-run-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -65,7 +31,7 @@ jobs:
         run: npm run release:gate
       - name: Upload release evidence and candidate artifacts
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@043fb46d1a93a897026c735860bf21b6eb4f7b26 # v4.1.0
         with:
           name: stable-release-dry-run-${{ github.sha }}
           path: |
