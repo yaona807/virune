@@ -8,6 +8,7 @@ on:
     paths:
       - '.github/workflows/nightly.yml'
       - '.github/workflows/publish-v1.0.0.yml'
+      - '.github/workflows/verify-v1.0.0.yml'
       - 'package.json'
       - 'packages/**'
       - 'integration/**'
