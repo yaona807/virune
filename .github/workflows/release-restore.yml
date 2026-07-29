@@ -1,0 +1,171 @@
+name: Restore missing stable release
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/release-recovery/*.json'
+
+permissions:
+  actions: read
+  attestations: read
+  contents: write
+
+concurrency:
+  group: release-restore-${{ github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  restore:
+    name: Restore from retained immutable evidence
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout the reviewed recovery request
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 24
+          cache: npm
+      - name: Resolve the single recovery request added by this commit
+        id: request
+        shell: bash
+        run: |
+          mapfile -t requests < <(git diff-tree --no-commit-id --name-only -r "$GITHUB_SHA" -- '.github/release-recovery/*.json')
+          [[ ${#requests[@]} -eq 1 ]] || { echo "Expected one recovery request, found ${#requests[@]}." >&2; exit 1; }
+          [[ -f "${requests[0]}" ]] || { echo 'The recovery request must exist in the reviewed commit.' >&2; exit 1; }
+          echo "path=${requests[0]}" >> "$GITHUB_OUTPUT"
+      - name: Test the recovery evidence verifier
+        run: node --test scripts/verify-release-recovery.test.mjs
+      - name: Verify the retained Actions artifact identity
+        id: source
+        env:
+          REQUEST_PATH: ${{ steps.request.outputs.path }}
+        shell: bash
+        run: |
+          mkdir -p .cache/release-restore
+          artifact_id="$(node -p 'require(process.env.REQUEST_PATH).sourceArtifactId')"
+          gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact_id" > .cache/release-restore/source-artifact.json
+          node --input-type=module <<'NODE'
+          import { readFile, writeFile } from 'node:fs/promises';
+          const request = JSON.parse(await readFile(process.env.REQUEST_PATH, 'utf8'));
+          const artifact = JSON.parse(await readFile('.cache/release-restore/source-artifact.json', 'utf8'));
+          if (artifact.id !== request.sourceArtifactId) throw new Error('Source artifact ID mismatch.');
+          if (artifact.name !== request.sourceArtifactName) throw new Error('Source artifact name mismatch.');
+          if (artifact.workflow_run?.id !== request.sourceRunId) throw new Error('Source workflow run mismatch.');
+          if (artifact.digest !== request.sourceArtifactDigest) throw new Error('Source artifact digest mismatch.');
+          if (artifact.expired === true) throw new Error('Source artifact has expired.');
+          await writeFile(process.env.GITHUB_OUTPUT, `run_id=${request.sourceRunId}\nartifact_name=${request.sourceArtifactName}\n`, { flag: 'a' });
+          NODE
+      - name: Download the retained production artifact without rebuilding
+        shell: bash
+        run: gh run download "${{ steps.source.outputs.run_id }}" --name "${{ steps.source.outputs.artifact_name }}" --dir .cache/release-restore/source
+      - name: Verify every restored byte against committed release evidence
+        id: verified
+        run: node scripts/verify-release-recovery.mjs --request=${{ steps.request.outputs.path }} --artifact=.cache/release-restore/source --github-output=$GITHUB_OUTPUT
+      - name: Require the immutable tag and a missing public release
+        shell: bash
+        run: |
+          tag_commit="$(git rev-list -n 1 '${{ steps.verified.outputs.tag }}')"
+          [[ "$tag_commit" == '${{ steps.verified.outputs.expected_commit }}' ]] || { echo "Tag points to $tag_commit." >&2; exit 1; }
+          if gh release view '${{ steps.verified.outputs.tag }}' >/dev/null 2>&1; then
+            echo 'The stable release already exists; use the manual replacement path for asset repair.' >&2
+            exit 1
+          fi
+      - name: Restore the public GitHub Release from the exact retained assets
+        shell: bash
+        run: |
+          gh release create '${{ steps.verified.outputs.tag }}' \
+            '${{ steps.verified.outputs.release_directory }}'/* \
+            --verify-tag \
+            --latest \
+            --title '${{ steps.verified.outputs.release_title }}' \
+            --notes-file '${{ steps.verified.outputs.release_directory }}/README.md'
+      - name: Download and revalidate the public asset set
+        shell: bash
+        run: |
+          mkdir -p .cache/release-restore/public
+          gh release download '${{ steps.verified.outputs.tag }}' --dir .cache/release-restore/public
+          node scripts/verify-release-recovery.mjs --request=${{ steps.request.outputs.path }} --artifact=.cache/release-restore/public
+      - name: Verify existing provenance and CycloneDX attestations
+        shell: bash
+        run: |
+          for asset in .cache/release-restore/public/*; do
+            gh attestation verify "$asset" --repo "$GITHUB_REPOSITORY"
+          done
+          gh attestation verify .cache/release-restore/public/SBOM.cdx.json --repo "$GITHUB_REPOSITORY" --predicate-type https://cyclonedx.org/bom
+      - name: Install repository dependencies for public smoke verification
+        run: npm ci
+      - name: Verify public CLI and generated project
+        env:
+          VERSION: ${{ steps.verified.outputs.version }}
+        shell: bash
+        run: |
+          root="$RUNNER_TEMP/virune-restored-release"
+          prefix="$root/prefix"
+          project="$root/project"
+          rm -rf "$root"
+          mkdir -p "$root"
+          npm install --global "https://github.com/$GITHUB_REPOSITORY/releases/download/v${VERSION}/virune-${VERSION}.tgz" --prefix "$prefix" --no-audit --no-fund
+          [[ "$("$prefix/bin/virune" --version)" == "virune ${VERSION}" ]]
+          "$prefix/bin/virune" init "$project"
+          npm install --prefix "$project" --no-audit --no-fund
+          npm run --prefix "$project" check
+          npm run --prefix "$project" build
+          npm run --prefix "$project" start | tee "$root/project-output.txt"
+          grep -q 'Hello from Virune' "$root/project-output.txt"
+      - name: Verify the public VSIX in a clean profile
+        shell: bash
+        run: |
+          rm -rf release
+          mkdir -p release
+          cp '.cache/release-restore/public/virune-vscode-${{ steps.verified.outputs.version }}.vsix' release/
+          xvfb-run -a node scripts/vsix-smoke.mjs
+      - name: Write recovery evidence
+        env:
+          REQUEST_PATH: ${{ steps.request.outputs.path }}
+          TAG: ${{ steps.verified.outputs.tag }}
+          EXPECTED_COMMIT: ${{ steps.verified.outputs.expected_commit }}
+          SOURCE_ARTIFACT_DIGEST: ${{ steps.verified.outputs.source_artifact_digest }}
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFile, writeFile } from 'node:fs/promises';
+          const request = JSON.parse(await readFile(process.env.REQUEST_PATH, 'utf8'));
+          const report = {
+            schemaVersion: 1,
+            issue: request.issue,
+            tag: process.env.TAG,
+            expectedCommit: process.env.EXPECTED_COMMIT,
+            sourceRunId: request.sourceRunId,
+            sourceArtifactId: request.sourceArtifactId,
+            sourceArtifactDigest: process.env.SOURCE_ARTIFACT_DIGEST,
+            restorationRun: `https://github.com/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`,
+            restoredFromRetainedBytes: true,
+            publicAssetIntegrity: 'passed',
+            attestations: 'passed',
+            cliInstallation: 'passed',
+            generatedProject: 'passed',
+            vsix: { cleanInstall: 'passed', activation: 'passed', languageServer: 'passed', uninstall: 'passed' },
+            restoredAt: new Date().toISOString(),
+            passed: true,
+          };
+          await writeFile('.cache/release-restore/recovery-report.json', `${JSON.stringify(report, null, '\t')}\n`);
+          NODE
+      - name: Upload immutable recovery evidence
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: release-recovery-${{ steps.verified.outputs.tag }}-${{ github.run_id }}
+          path: |
+            ${{ steps.request.outputs.path }}
+            .cache/release-restore/source-artifact.json
+            .cache/release-restore/source/release/SHA256SUMS
+            .cache/release-restore/public/SHA256SUMS
+            .cache/release-restore/recovery-report.json
+          if-no-files-found: error
+          retention-days: 365
