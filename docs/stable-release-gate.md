@@ -18,6 +18,8 @@ The machine-readable requirements cover:
 - Public release packages, manifests, checksums, VSIX packaging, offline clean installation, and generated-project execution.
 - A successful Nightly quality run within the maximum age defined by policy whose `head_sha` exactly matches the release commit.
 
+For the exact release commit, the gate inspects recent completed Nightly runs in newest-first order. Later `cancelled` or `skipped` runs do not hide an earlier usable result, while a newer completed failure still blocks the release instead of falling back to an older success.
+
 Run a local structural check with:
 
 ```bash
