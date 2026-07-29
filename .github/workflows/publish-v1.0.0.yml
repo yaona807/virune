@@ -47,6 +47,7 @@ jobs:
         shell: bash
         run: |
           env \
+            GITHUB_EVENT_NAME="push" \
             GITHUB_SHA="$TARGET_SHA" \
             GITHUB_REF="refs/tags/$TAG" \
             GITHUB_REF_TYPE="tag" \
