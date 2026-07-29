@@ -79,4 +79,36 @@ Public verification run `30417979118` completed successfully against the publish
 - Verification artifact digest: `sha256:0cc2fb2324ccc7461c1b4d2ed042a6e51b74df4464869ab5ab4b11cfb6a21035`
 - Machine-readable evidence: `.github/release-verification/v1.0.0.json`
 
-The temporary one-shot publication and stable-verification workflows are removed after recording this evidence. The standard reusable Release, repair, dry-run, and prerelease public-verification workflows remain unchanged. The immutable RC1 and RC2 releases remain unchanged.
+## 2026-07-30 availability incident and recovery
+
+Issue #87 was opened after the public GitHub Releases page no longer exposed `v1.0.0`, despite the immutable tag and the original publication and public-verification evidence remaining valid. Repository evidence does not identify who or what changed the GitHub Release state, so the specific cause is unconfirmed. The incident is recorded as an external GitHub Release state mutation or deletion, not as a failure of the release bytes, tag, or verification evidence.
+
+The release was recovered without rebuilding any artifact:
+
+- Immutable tag `v1.0.0` was confirmed to resolve to `dcaf89b2f557fde38cdfd9bceb7d23af3ba8ed51`.
+- Retained production run `30417133795` supplied Actions artifact `8710597654`, named `release-evidence-v1.0.0`.
+- The retained artifact digest was `sha256:9d9f93d1f4f96328f14cdd0aa72d51d7e41dbfc3b1c347cae9108fefab5cf01a`.
+- Every retained and publicly downloaded asset, including `virune-vscode-1.0.0.vsix`, matched the committed byte sizes and SHA-256 values in `.github/release-verification/v1.0.0.json` and `SHA256SUMS`.
+- Provenance and CycloneDX attestations passed for the restored public assets.
+- The public CLI installation, generated-project `check`/`build`/`start`, and clean-profile VSIX installation, activation, Language Server startup, and uninstall checks passed again.
+- Successful recovery and verification run: `30467471246`.
+- Recovery evidence artifact: `8730226186`, `release-recovery-v1.0.0-30467471246`.
+- Recovery evidence digest: `sha256:23ac5d74e185777e30b6956f1c6bc6e23603999906243a9263acf3104a9ab19b`.
+
+### Recovery procedure
+
+A reviewed file under `.github/release-recovery/` identifies the immutable tag, expected commit, original production run, retained artifact ID, artifact name, artifact digest, and committed verification record. The `Restore missing stable release` workflow then:
+
+1. accepts exactly one reviewed recovery request merged to `main`;
+2. verifies the retained Actions artifact identity and digest;
+3. downloads the retained production artifact without rebuilding;
+4. verifies the complete source asset set, byte sizes, and SHA-256 values against committed evidence;
+5. verifies the immutable tag and either creates the missing Release or continues idempotently with an existing public Release;
+6. downloads and revalidates the complete public asset set;
+7. verifies provenance and CycloneDX attestations;
+8. repeats public CLI, generated-project, and clean-profile VSIX checks;
+9. stores a long-lived recovery evidence artifact and records the outcome on the tracking issue.
+
+The workflow intentionally refuses a moved tag, changed or expired source artifact, draft or prerelease state, missing or additional files, checksum or size drift, or any failed public smoke or attestation check. This makes recovery repeatable while preventing silent replacement with rebuilt or different bytes.
+
+The temporary one-shot publication and stable-verification workflows were removed after recording the original evidence. The standard reusable Release, repair, dry-run, prerelease public-verification, and evidence-bound recovery workflows remain available. The immutable RC1 and RC2 releases remain unchanged.
