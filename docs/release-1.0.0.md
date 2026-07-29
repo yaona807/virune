@@ -39,13 +39,13 @@ The stable release gate accepts Nightly evidence only when the successful run is
 2. Run Nightly quality suites for the exact merged `main` commit.
 3. Confirm the stable Release dry run succeeds for that exact commit.
 4. Create the immutable `v1.0.0` tag on the reviewed commit.
-5. Allow the production `Release` workflow to build, attest, and publish the assets.
+5. Allow the production release path to build, attest, and publish the assets.
 6. Run public CLI, generated-project, integrity, provenance, SBOM, and VSIX verification.
 7. Record the publication and public-verification evidence before closing Issue #64.
 
 ## Public installation
 
-After publication, install the stable CLI from the immutable release asset:
+Install the stable CLI from the immutable release asset:
 
 ```bash
 npm install --global https://github.com/yaona807/virune/releases/download/v1.0.0/virune-1.0.0.tgz
@@ -60,4 +60,23 @@ virune 1.0.0
 
 ## Execution results
 
-Publication and public-verification evidence will be recorded after the production workflow and public verification complete. The immutable RC1 and RC2 releases remain unchanged.
+Publication completed successfully on 2026-07-29.
+
+- Reviewed release commit: `dcaf89b2f557fde38cdfd9bceb7d23af3ba8ed51`
+- Immutable tag: `v1.0.0`, resolving exactly to the reviewed commit
+- Stable GitHub Release: `https://github.com/yaona807/virune/releases/tag/v1.0.0`
+- Production publication run: `30417133795`
+- The stable release gate, release-evidence upload, build-provenance attestation, CycloneDX SBOM attestation, immutable tag creation, and GitHub Release publication all passed.
+
+Public verification run `30417979118` completed successfully against the published assets.
+
+- The complete required asset set was downloaded from the public GitHub Release.
+- `SHA256SUMS`, release manifest schema v2, and CycloneDX 1.6 SBOM integrity passed.
+- Public CLI installation returned `virune 1.0.0`.
+- A generated project installed only immutable `v1.0.0` release dependencies and passed `check`, `build`, and `start`.
+- Provenance and CycloneDX attestations passed for the public assets.
+- The public VSIX passed clean installation, activation, Language Server startup, and uninstall verification.
+- Verification artifact digest: `sha256:0cc2fb2324ccc7461c1b4d2ed042a6e51b74df4464869ab5ab4b11cfb6a21035`
+- Machine-readable evidence: `.github/release-verification/v1.0.0.json`
+
+The temporary one-shot publication and stable-verification workflows are removed after recording this evidence. The standard reusable Release, repair, dry-run, and prerelease public-verification workflows remain unchanged. The immutable RC1 and RC2 releases remain unchanged.
