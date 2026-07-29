@@ -88,6 +88,14 @@ export function evaluateNightlyRun(run, { maxAgeHours, branch, expectedSha }, no
 	};
 }
 
+export function selectNightlyRun(runs, { expectedSha } = {}) {
+	if (!Array.isArray(runs)) return undefined;
+	return [...runs]
+		.filter(run => expectedSha === undefined || expectedSha === null || run.head_sha === expectedSha)
+		.sort((left, right) => nightlyRunTimestamp(right) - nightlyRunTimestamp(left))
+		.find(run => run.conclusion !== 'cancelled' && run.conclusion !== 'skipped');
+}
+
 export function resolveNightlyBranch(policyBranch, environment = process.env) {
 	const pullRequestBranch = environment.GITHUB_EVENT_NAME === 'pull_request' ? environment.GITHUB_HEAD_REF : undefined;
 	return typeof pullRequestBranch === 'string' && pullRequestBranch.length > 0 ? pullRequestBranch : policyBranch;
@@ -117,7 +125,8 @@ async function latestNightlyRun(policy) {
 	const url = new URL(`https://api.github.com/repos/${repository}/actions/workflows/${policy.workflow}/runs`);
 	url.searchParams.set('branch', branch);
 	url.searchParams.set('status', 'completed');
-	url.searchParams.set('per_page', '1');
+	url.searchParams.set('per_page', '20');
+	if (typeof policy.expectedSha === 'string' && policy.expectedSha.length > 0) url.searchParams.set('head_sha', policy.expectedSha);
 	const response = await fetch(url, {
 		headers: {
 			Accept: 'application/vnd.github+json',
@@ -127,7 +136,22 @@ async function latestNightlyRun(policy) {
 	});
 	if (!response.ok) return { passed: false, branch, reason: `GitHub Actions API returned ${response.status}.` };
 	const payload = await response.json();
-	return evaluateNightlyRun(payload.workflow_runs?.[0], { ...policy, branch });
+	const run = selectNightlyRun(payload.workflow_runs, { expectedSha: policy.expectedSha });
+	if (run === undefined) {
+		const commit = typeof policy.expectedSha === 'string' && policy.expectedSha.length > 0 ? ` for expected release commit ${policy.expectedSha}` : '';
+		return {
+			passed: false,
+			branch,
+			expectedSha: policy.expectedSha ?? null,
+			reason: `No completed Nightly run with a usable conclusion was found${commit}.`,
+		};
+	}
+	return evaluateNightlyRun(run, { ...policy, branch });
+}
+
+function nightlyRunTimestamp(run) {
+	const timestamp = Date.parse(run.run_started_at ?? run.updated_at ?? run.created_at ?? '');
+	return Number.isFinite(timestamp) ? timestamp : Number.NEGATIVE_INFINITY;
 }
 
 function runCommand(command, cwd) {
