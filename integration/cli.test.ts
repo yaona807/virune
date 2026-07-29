@@ -7,7 +7,13 @@ import { makeCliProject, repositoryRoot, runCli } from './cli-test-helpers.js';
 
 test('CLI init, check, build and run form a complete workflow', async () => {
 	const root = await makeCliProject();
-	assert.match((await runCli(['init', root])).stdout, /Initialized Virune project/u);
+	const init = await runCli(['init', root]);
+	assert.match(init.stdout, /Initialized Virune project/u);
+	assert.match(init.stdout, /Next steps:/u);
+	assert.match(init.stdout, /npm install/u);
+	assert.match(init.stdout, /npm run check/u);
+	assert.match(init.stdout, /npm run start/u);
+	assert.match(init.stdout, /README\.md#quick-start/u);
 	const manifest = JSON.parse(await readFile(join(root, 'package.json'), 'utf8')) as {
 		dependencies: Record<string, string>;
 		devDependencies: Record<string, string>;
@@ -18,10 +24,29 @@ test('CLI init, check, build and run form a complete workflow', async () => {
 	assert.equal(manifest.dependencies['@virune/runtime'], `${releaseBase}/virune-runtime-${version}.tgz`);
 	assert.equal(manifest.dependencies['@virune/stdlib'], `${releaseBase}/virune-stdlib-${version}.tgz`);
 	assert.equal(manifest.devDependencies.virune, `${releaseBase}/virune-${version}.tgz`);
+	const projectReadme = await readFile(join(root, 'README.md'), 'utf8');
+	assert.match(projectReadme, new RegExp(`Generated with Virune ${version.replaceAll('.', '\\.')}`, 'u'));
+	assert.match(projectReadme, /npm run check/u);
+	assert.match(projectReadme, /npm test/u);
+	assert.match(projectReadme, /npm run start/u);
+	assert.match(projectReadme, new RegExp(`blob/v${version.replaceAll('.', '\\.')}/docs/language-guide\\.md`, 'u'));
+	assert.match(projectReadme, new RegExp(`blob/v${version.replaceAll('.', '\\.')}/docs/standard-library\\.md`, 'u'));
+	assert.match(projectReadme, new RegExp(`blob/v${version.replaceAll('.', '\\.')}/docs/js-interop\\.md`, 'u'));
 	assert.match((await runCli(['check', root])).stdout, /Checked 1 module/u);
 	assert.match((await runCli(['build', root])).stdout, /Built 1 module/u);
 	assert.match(await readFile(join(root, 'dist/main.js'), 'utf8'), /export function main/u);
 	assert.match((await runCli(['run', root])).stdout, /Hello from Virune/u);
+});
+
+test('CLI init preserves existing project files', async () => {
+	const root = await makeCliProject();
+	await mkdir(root, { recursive: true });
+	await writeFile(join(root, 'README.md'), '# Existing project\n');
+	await mkdir(join(root, 'src'), { recursive: true });
+	await writeFile(join(root, 'src/main.virune'), 'pub fn main() -> Unit {\n\treturn Unit\n}\n');
+	await runCli(['init', root]);
+	assert.equal(await readFile(join(root, 'README.md'), 'utf8'), '# Existing project\n');
+	assert.equal(await readFile(join(root, 'src/main.virune'), 'utf8'), 'pub fn main() -> Unit {\n\treturn Unit\n}\n');
 });
 
 

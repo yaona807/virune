@@ -6,7 +6,7 @@ import { promisify } from 'node:util';
 
 const execute = promisify(execFile);
 export const repositoryRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
-const cli = join(repositoryRoot, 'packages/cli/dist/src/main.js');
+const cli = join(repositoryRoot, 'packages/cli/dist/src/entry.js');
 const temporaryRoot = join(repositoryRoot, '.test-tmp');
 
 export async function runCli(args: readonly string[], cwd = repositoryRoot): Promise<{ stdout: string; stderr: string }> {

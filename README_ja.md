@@ -26,7 +26,7 @@
 </p>
 
 > [!IMPORTANT]
-> **配布方針:** Viruneはnpm Registryへ公開しません。バージョン固定されたnpm互換tarballとVS Code用VSIXをGitHub Releasesで配布します。最初のv1.0.0 GitHub Releaseはまだ公開されていないため、それまではソースから利用してください。
+> **配布方針:** Viruneはnpm Registryへ公開しません。Stable版v1.0.0のCLI、Runtime、標準ライブラリ、VS Code用VSIXは、バージョン固定された成果物として[GitHub Releases](https://github.com/yaona807/virune/releases/tag/v1.0.0)から配布します。生成プロジェクトはすべてのVirune依存を同一の不変なReleaseへ固定し、toolchainとRuntimeの組み合わせを一致させます。
 
 ## Viruneが解決する課題
 
@@ -103,14 +103,14 @@ pub fn main(args: List<String>) -> Result<Unit, UserError> uses Console {
 
 ### GitHub Releasesからインストールする
 
-v1.0.0を公開した後は、リリースtarballからCLIを直接インストールできます。
+Stable版v1.0.0のCLIをRelease tarballから直接インストールします。
 
 ```bash
 npm install --global https://github.com/yaona807/virune/releases/download/v1.0.0/virune-1.0.0.tgz
 virune --version
 ```
 
-このtarballにはCLIの依存関係一式が含まれます。`virune`および内部の`@virune/*` packageはnpm Registryへ公開しません。
+このtarballにはCLIの依存関係一式が含まれます。`virune`および内部の`@virune/*` packageはnpm Registryへ公開しません。GitHub Releasesでバージョン付き・整合性検証済みの成果物を配布することで、生成プロジェクトのCLI、Runtime、標準ライブラリを同じ検証済みReleaseへ固定できます。
 
 ### プロジェクトを作成する
 
@@ -122,7 +122,7 @@ npm run check
 npm run start
 ```
 
-`virune init`はCLI、Runtime、標準ライブラリを同じGitHub Releaseの成果物へ固定します。プロジェクト内で`npm install`を実行すると、生成されたES moduleから利用する`@virune/runtime`と`@virune/stdlib`がプロジェクトへ導入され、単独で実行できる状態になります。
+`virune init`はプロジェクト用READMEを生成し、次に実行するcommandを表示します。また、CLI、Runtime、標準ライブラリを同じGitHub Releaseの成果物へ固定します。プロジェクト内で`npm install`を実行すると、生成されたES moduleから利用する`@virune/runtime`と`@virune/stdlib`がプロジェクトへ導入され、単独で実行できる状態になります。
 
 プログラム引数は`--`の後ろへ指定します。
 
@@ -132,7 +132,7 @@ npm run start -- Alice Bob
 
 ### ソースからビルドして実行する
 
-最初のGitHub Releaseを公開する前、または開発へ参加する場合は次の手順を使用します。
+Viruneの開発へ参加する場合、または最新の`main`を評価する場合は次の手順を使用します。
 
 ```bash
 git clone https://github.com/yaona807/virune.git
