@@ -4,13 +4,6 @@ on:
   schedule:
     - cron: '17 18 * * *'
   workflow_dispatch:
-  pull_request:
-    paths:
-      - '.github/workflows/nightly.yml'
-      - 'package.json'
-      - 'packages/**'
-      - 'integration/**'
-      - 'scripts/**'
   push:
     branches:
       - main
@@ -24,9 +17,12 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: nightly-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   fuzz:
-    if: github.event_name != 'pull_request'
     name: Fuzz shard ${{ matrix.shard }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -56,7 +52,6 @@ jobs:
           retention-days: 30
 
   binding-corpus:
-    if: github.event_name != 'pull_request'
     name: Binding corpus
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -100,7 +95,7 @@ jobs:
       - run: npm ci
       - run: npm run test:semantic-fuzz:long
         env:
-          VIRUNE_SEMANTIC_FUZZ_DURATION_MS: ${{ github.event_name == 'pull_request' && '120000' || '900000' }}
+          VIRUNE_SEMANTIC_FUZZ_DURATION_MS: 900000
           VIRUNE_SEMANTIC_FUZZ_BATCH_ITERATIONS: 25
           VIRUNE_SEMANTIC_FUZZ_SHARD: ${{ matrix.shard }}
           VIRUNE_SEMANTIC_FUZZ_ARTIFACT_DIR: fuzz-regressions/semantic-artifacts/shard-${{ matrix.shard }}
@@ -114,7 +109,6 @@ jobs:
           retention-days: 30
 
   reproducible-release:
-    if: github.event_name != 'pull_request'
     name: Reproducible release artifacts
     runs-on: ubuntu-24.04
     timeout-minutes: 60

@@ -4,7 +4,9 @@
 
 ## 目的
 
-ViruneのPull Request CIでは、platform-independentな検証とplatform-sensitiveなsmoke testを分離します。対応OS／Node.js matrixは維持しつつ、metadata検証、TypeScript build、unit suite、fuzz、conformance、formatter checkを各runnerで重複実行しない構成にします。
+Viruneでは、即時のPull Request検証、必須の再現可能ビルド検証、長時間のNightly suite、明示的なrelease rehearsalを分離します。対応OS／Node.js matrixを維持しつつ、同一Pull Request commitに対するmetadata検証、TypeScript build、semantic fuzz、再現可能release buildの重複を避けます。
+
+責務を移動する場合もworkflow名とrequired check名は維持します。特に`CI`、`Release artifacts`、`Reproducible release required check`、`Reproducible release artifacts`は変更せず、repository Rulesetが既存のcheck contextを失わないようにします。
 
 ## Pull Request CIの責務
 
@@ -19,7 +21,7 @@ ViruneのPull Request CIでは、platform-independentな検証とplatform-sensit
 
 変更fileが0件の場合、workflow、package metadata、dependency、source、generated baseline、Markdown以外のdocumentation assetが含まれる場合は、常にfull gateを選択します。
 
-Pushと手動実行では常にfull gateを選択します。
+Pushと手動CI実行では常にfull gateを選択します。
 
 ### Metadataとpolicy
 
@@ -31,16 +33,17 @@ Documentation-only Pull Requestでは、追加でdocumentation exampleをbuild�
 
 Full gateでは、Ubuntu 24.04／Node.js 24の`build` jobをmetadata検証と並列で開始します。このjobだけがPull Request用のproject reference buildとtype checkを実行し、生成した`dist` treeを短期artifactへpackageします。
 
-Core test、compiler quality、compatibility、browserの各jobはartifactが利用可能になり次第、互いを待たずに開始します。これによりbuildの重複を除去しつつ、対応platform matrixと時間の長い2つのplatform-independent suiteを直列化しません。
+Core test、compiler quality、semantic fuzz、compatibility、browserの各jobはartifactが利用可能になり次第、互いを待たずに開始します。これによりbuildの重複を除去しつつ、対応platform matrixと時間の長いplatform-independent suiteを直列化しません。
 
 ### Platform-independent gate
 
-Canonical buildを使用するUbuntu 24.04／Node.js 24の2 jobを並列実行します。
+Canonical buildを使用するUbuntu 24.04／Node.js 24のjobを並列実行します。
 
 - `verify`はbrowser runtimeを除く完全なunit／integration suiteを担当します。
-- `quality`はTypeScript binding corpus、fuzz／semantic differential fuzz smoke suite、language server／VS Code test、conformance、formatter check、source clone smoke testを担当します。
+- `quality`はTypeScript binding corpus、時間制限付きfuzz／semantic differential fuzz smoke suite、language server／VS Code test、conformance、formatter check、source clone smoke testを担当します。
+- `semantic-fuzz`はPull Request向けに4 shardのsemantic differential fuzzを実行し、各shardへ2分を割り当てます。
 
-この分離により、約1分のunit suiteと約45秒のbinding corpusを直列実行せず、全core検証を維持したままcritical pathを短縮します。
+Pull Request用semantic-fuzz jobはcanonical compiled-output artifactを使用して`scripts/semantic-fuzz-long.mjs`を実行します。Repositoryをjob内で再buildしません。Regression artifactとCI timing evidenceはshard単位でuploadします。
 
 ### Platform-sensitive compatibility
 
@@ -55,11 +58,38 @@ Compatibility jobは、OS、filesystem、path処理、process生成、Node.js ve
 
 Metadata検証、type check、全unit suite、binding corpus、fuzz、formatter検証は重複実行しません。
 
-### Browserとrelease
+### Browserとrelease artifact
 
-Browser jobはcanonical buildをrestoreし、core、quality、compatibility testと並列でChromium上のemitted ESMを実行します。
+Browser jobはcanonical buildをrestoreし、core、quality、semantic-fuzz、compatibility testと並列でChromium上のemitted ESMを実行します。
 
-Release-artifacts jobはmetadata、build、core test、compiler quality、compatibility、browserの全jobが成功した場合だけ実行します。公開判断にPull Request build artifactを流用せず、cleanなproduction release buildとrelease smoke verificationを実行します。
+`Release artifacts` jobはmetadata、build、core test、compiler quality、Pull Request semantic fuzz、compatibility、browserの全jobが成功した場合だけ実行します。Pushまたは手動CI実行ではPull Request専用semantic-fuzz jobをskipし、release-artifactsのdependencyはその意図したskipを許可します。公開判断にPull Request build artifactを流用せず、cleanなproduction release buildとrelease smoke verificationを実行します。
+
+## 必須の再現可能release check
+
+`Reproducible release required check`は、workflow名とjob名がrepository Rulesetから参照される可能性があるため、独立したPull Request workflowとして維持します。Documentation以外の変更では`npm run verify:reproducible-release`を実行し、documentation-only変更では同じrequired check contextを維持したまま変更分類後にshort-circuitします。
+
+高コストな独立二重buildを自動実行するPull Request workflowは、このrequired checkだけです。Release dry runは同一Pull Request commitで自動起動しないため、再現可能性を二重計算しません。
+
+## Release dry run
+
+`Release dry run`は明示的に起動する`workflow_dispatch` rehearsalです。公開処理は行わず、quality検証、release package作成、再現可能性検証、install済みVSIX smoke test、対応するNightly evidenceを含むstable release gate全体を実行します。
+
+Rehearsalを明示実行へ変更することで、通常のPull Requestがproduction release pathを二重に起動することを防ぎながら、完全なrelease前検証能力を維持します。公開予定refに対して、release policy、packaging、signing、repair処理を変更した場合、または公開前に実行します。
+
+## Nightlyの責務
+
+`Nightly quality suites`はschedule、関連変更が入った`main`へのpush、手動実行の場合だけ起動します。Pull Requestでは起動しません。
+
+Nightlyは次を担当します。
+
+- 15分のcrash fuzzを4 shard
+- 完全なbinding corpus
+- 15分のsemantic differential fuzzを4 shard
+- 独立した再現可能release build
+
+Pull Requestでは`CI`内の短い4 shard semantic fuzz gateを実行します。これにより即時feedbackの責務を明確にし、長時間campaignをmain branchと定期検証へ限定します。
+
+Nightly failureを無条件retryで隠してはいけません。再現証跡を保持し、原因となる問題を解決済みとする前にregression testへ昇格させます。
 
 ## Artifactとcacheの安全性
 
@@ -84,14 +114,11 @@ npm run verify:metadata
 npm run check
 npm run test:core:built -- --failure-output-only
 npm run test:binding-corpus:built
+node scripts/semantic-fuzz-long.mjs
 npm run test:platform-smoke:built
 npm run test:vscode:built
 npm run test:conformance:built
 npm run smoke:clone:built
+npm run verify:reproducible-release
+npm run release:gate
 ```
-
-## Nightlyの責務
-
-Pull Request CIでは時間を制限したfuzz smoke suiteと、対応platform matrixの完全な検証を行います。Nightly workflowは、長時間fuzz、mutation campaign、performanceの反復計測、ecosystem drift checkなど、即時のPull Request feedbackには不要な高コスト検証を担当します。
-
-Nightly failureを無条件retryで隠してはいけません。再現証跡を保持し、原因となる問題を解決済みとする前にregression testへ昇格させます。
