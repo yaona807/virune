@@ -37,7 +37,8 @@
 			"release-restore.yml": {
 				"actions": "read",
 				"attestations": "read",
-				"contents": "write"
+				"contents": "write",
+				"issues": "write"
 			},
 			"release.yml": {
 				"actions": "read",

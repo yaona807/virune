@@ -9,5 +9,5 @@
 	"sourceArtifactName": "release-evidence-v1.0.0",
 	"sourceArtifactDigest": "sha256:9d9f93d1f4f96328f14cdd0aa72d51d7e41dbfc3b1c347cae9108fefab5cf01a",
 	"verificationFile": ".github/release-verification/v1.0.0.json",
-	"reason": "Restore the deleted public v1.0.0 GitHub Release from the retained production artifact without rebuilding or changing any published bytes."
+	"reason": "Restore the deleted public v1.0.0 GitHub Release from the retained production artifact without rebuilding or changing any published bytes; retry after correcting filesystem-path parsing."
 }
