@@ -16,7 +16,7 @@
 		"node": ">=24.0.0"
 	},
 	"bin": {
-		"virune": "./dist/src/main.js"
+		"virune": "./dist/src/entry.js"
 	},
 	"exports": {
 		".": "./dist/src/main.js"
