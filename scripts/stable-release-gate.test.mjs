@@ -3,7 +3,7 @@ import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { evaluateNightlyRun, resolveExpectedNightlySha, resolveNightlyBranch, runStableReleaseGate } from './stable-release-gate.mjs';
+import { evaluateNightlyRun, resolveExpectedNightlySha, resolveNightlyBranch, runStableReleaseGate, selectNightlyRun } from './stable-release-gate.mjs';
 
 test('accepts a successful recent Nightly run for the expected commit', () => {
 	const now = Date.parse('2026-07-25T00:00:00Z');
@@ -21,6 +21,34 @@ test('rejects failed, stale, and mismatched Nightly evidence', () => {
 	const mismatched = evaluateNightlyRun({ conclusion: 'success', head_sha: 'previous', updated_at: '2026-07-25T11:00:00Z' }, { maxAgeHours: 36, expectedSha: 'candidate' }, now);
 	assert.equal(mismatched.passed, false);
 	assert.match(mismatched.reason, /does not match expected release commit/u);
+});
+
+test('ignores later cancelled or skipped Nightly runs for the same commit', () => {
+	const selected = selectNightlyRun([
+		{ id: 3, conclusion: 'cancelled', head_sha: 'candidate', created_at: '2026-07-25T03:00:00Z' },
+		{ id: 2, conclusion: 'skipped', head_sha: 'candidate', created_at: '2026-07-25T02:00:00Z' },
+		{ id: 1, conclusion: 'success', head_sha: 'candidate', created_at: '2026-07-25T01:00:00Z' },
+	], { expectedSha: 'candidate' });
+	assert.equal(selected?.id, 1);
+});
+
+test('does not hide a newer failed Nightly behind an older success', () => {
+	const selected = selectNightlyRun([
+		{ id: 1, conclusion: 'success', head_sha: 'candidate', created_at: '2026-07-25T01:00:00Z' },
+		{ id: 2, conclusion: 'failure', head_sha: 'candidate', created_at: '2026-07-25T02:00:00Z' },
+		{ id: 3, conclusion: 'cancelled', head_sha: 'candidate', created_at: '2026-07-25T03:00:00Z' },
+		{ id: 4, conclusion: 'success', head_sha: 'other', created_at: '2026-07-25T04:00:00Z' },
+	], { expectedSha: 'candidate' });
+	assert.equal(selected?.id, 2);
+});
+
+test('returns no usable Nightly when all matching runs were cancelled or skipped', () => {
+	const selected = selectNightlyRun([
+		{ id: 1, conclusion: 'cancelled', head_sha: 'candidate', created_at: '2026-07-25T02:00:00Z' },
+		{ id: 2, conclusion: 'skipped', head_sha: 'candidate', created_at: '2026-07-25T01:00:00Z' },
+		{ id: 3, conclusion: 'success', head_sha: 'other', created_at: '2026-07-25T03:00:00Z' },
+	], { expectedSha: 'candidate' });
+	assert.equal(selected, undefined);
 });
 
 test('uses pull-request head Nightly evidence without weakening tag releases', () => {
