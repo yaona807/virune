@@ -3,7 +3,9 @@ name: Publish v1.0.0
 on:
   push:
     branches:
-      - 'ops/publish-v1.0.0'
+      - main
+    paths:
+      - '.github/workflows/publish-v1.0.0.yml'
 
 permissions:
   actions: read
@@ -90,7 +92,7 @@ jobs:
             exit 1
           fi
           gh release create "$TAG" release/* --generate-notes --verify-tag
-      - name: Remove helper branch
+      - name: Remove source branch
         if: success()
         env:
           GH_TOKEN: ${{ github.token }}
