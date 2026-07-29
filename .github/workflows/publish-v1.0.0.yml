@@ -78,8 +78,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
-          existing="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG" --jq '.object.sha' 2>/dev/null || true)"
-          if [[ -n "$existing" ]]; then
+          if existing="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG" --jq '.object.sha' 2>/dev/null)"; then
             test "$existing" = "$TARGET_SHA" || {
               echo "Tag $TAG already points to $existing, expected $TARGET_SHA" >&2
               exit 1
@@ -89,6 +88,8 @@ jobs:
               -f ref="refs/tags/$TAG" \
               -f sha="$TARGET_SHA" >/dev/null
           fi
+          actual="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG" --jq '.object.sha')"
+          test "$actual" = "$TARGET_SHA"
           if gh release view "$TAG" >/dev/null 2>&1; then
             echo "Release $TAG already exists; refusing to replace immutable assets." >&2
             exit 1
