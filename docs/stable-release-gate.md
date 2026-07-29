@@ -16,7 +16,7 @@ The machine-readable requirements cover:
 - FFI Unknown fallbacks, unsafe boundaries, and the reviewed binding corpus.
 - Parser, formatter, checker, and semantic fuzz suites.
 - Public release packages, manifests, checksums, VSIX packaging, offline clean installation, and generated-project execution.
-- A successful Nightly quality run on `main` within the maximum age defined by policy.
+- A successful Nightly quality run within the maximum age defined by policy whose `head_sha` exactly matches the release commit.
 
 Run a local structural check with:
 

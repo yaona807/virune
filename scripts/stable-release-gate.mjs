@@ -28,7 +28,8 @@ export async function runStableReleaseGate({
 		});
 	}
 
-	const nightly = await fetchLatestNightly(policy.nightly);
+	const expectedNightlySha = await resolveExpectedNightlySha();
+	const nightly = await fetchLatestNightly({ ...policy.nightly, expectedSha: expectedNightlySha });
 	checks.push({ id: 'nightly', ...nightly });
 	const byId = new Map(checks.map(check => [check.id, check]));
 	const requirements = policy.requirements.map(requirement => {
@@ -43,6 +44,7 @@ export async function runStableReleaseGate({
 		schemaVersion: 1,
 		version: packageManifest.version,
 		commit: process.env.GITHUB_SHA ?? null,
+		expectedNightlySha,
 		ref: process.env.GITHUB_REF ?? null,
 		generatedAt: new Date().toISOString(),
 		checks,
@@ -59,28 +61,50 @@ export async function runStableReleaseGate({
 	return report;
 }
 
-export function evaluateNightlyRun(run, { maxAgeHours, branch }, now = Date.now()) {
-	if (run === undefined) return { passed: false, branch: branch ?? null, reason: 'No completed Nightly run was found.' };
+export function evaluateNightlyRun(run, { maxAgeHours, branch, expectedSha }, now = Date.now()) {
+	if (run === undefined) return { passed: false, branch: branch ?? null, expectedSha: expectedSha ?? null, reason: 'No completed Nightly run was found.' };
 	const completedAt = run.updated_at ?? run.created_at;
 	const ageHours = completedAt === undefined ? Number.POSITIVE_INFINITY : (now - Date.parse(completedAt)) / 3_600_000;
-	const passed = run.conclusion === 'success' && Number.isFinite(ageHours) && ageHours <= maxAgeHours;
+	const successful = run.conclusion === 'success';
+	const fresh = Number.isFinite(ageHours) && ageHours <= maxAgeHours;
+	const shaMatches = expectedSha === undefined || expectedSha === null || run.head_sha === expectedSha;
+	const passed = successful && fresh && shaMatches;
+	let reason;
+	if (!successful) reason = `Latest Nightly concluded ${run.conclusion ?? 'unknown'}.`;
+	else if (!fresh) reason = `Latest Nightly is older than ${maxAgeHours} hours.`;
+	else if (!shaMatches) reason = `Latest Nightly head ${run.head_sha ?? 'unknown'} does not match expected release commit ${expectedSha}.`;
 	return {
 		passed,
 		branch: branch ?? null,
 		conclusion: run.conclusion ?? null,
 		runId: run.id ?? null,
 		headSha: run.head_sha ?? null,
+		expectedSha: expectedSha ?? null,
 		completedAt: completedAt ?? null,
 		ageHours: Number.isFinite(ageHours) ? Number(ageHours.toFixed(2)) : null,
 		maxAgeHours,
 		url: run.html_url ?? null,
-		...(passed ? {} : { reason: run.conclusion !== 'success' ? `Latest Nightly concluded ${run.conclusion ?? 'unknown'}.` : `Latest Nightly is older than ${maxAgeHours} hours.` }),
+		...(passed ? {} : { reason }),
 	};
 }
 
 export function resolveNightlyBranch(policyBranch, environment = process.env) {
 	const pullRequestBranch = environment.GITHUB_EVENT_NAME === 'pull_request' ? environment.GITHUB_HEAD_REF : undefined;
 	return typeof pullRequestBranch === 'string' && pullRequestBranch.length > 0 ? pullRequestBranch : policyBranch;
+}
+
+export async function resolveExpectedNightlySha(environment = process.env, read = readFile) {
+	const fallback = typeof environment.GITHUB_SHA === 'string' && environment.GITHUB_SHA.length > 0 ? environment.GITHUB_SHA : null;
+	if (environment.GITHUB_EVENT_NAME !== 'pull_request') return fallback;
+	const eventPath = environment.GITHUB_EVENT_PATH;
+	if (typeof eventPath !== 'string' || eventPath.length === 0) return fallback;
+	try {
+		const event = JSON.parse(await read(eventPath, 'utf8'));
+		const headSha = event?.pull_request?.head?.sha;
+		return typeof headSha === 'string' && headSha.length > 0 ? headSha : fallback;
+	} catch {
+		return fallback;
+	}
 }
 
 async function latestNightlyRun(policy) {

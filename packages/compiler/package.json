@@ -1,6 +1,6 @@
 {
 	"name": "@virune/compiler",
-	"version": "1.0.0-rc.2",
+	"version": "1.0.0",
 	"private": true,
 	"repository": {
 		"type": "git",
@@ -30,7 +30,7 @@
 	"dependencies": {
 		"@jridgewell/gen-mapping": "0.3.13",
 		"@jridgewell/trace-mapping": "0.3.31",
-		"@virune/runtime": "1.0.0-rc.2",
+		"@virune/runtime": "1.0.0",
 		"chevrotain": "13.0.0"
 	},
 	"scripts": {
