@@ -1,0 +1,136 @@
+name: One-shot closed branch cleanup
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  cleanup:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'ops/cleanup-stale-branches-20260729'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete branches whose pull requests are all closed
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          CLEANUP_BRANCH: ${{ github.event.pull_request.head.ref }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          api='https://api.github.com'
+          headers=(
+            -H 'Accept: application/vnd.github+json'
+            -H "Authorization: Bearer ${GH_TOKEN}"
+            -H 'X-GitHub-Api-Version: 2022-11-28'
+          )
+
+          default_branch="$({ curl -fsSL "${headers[@]}" "${api}/repos/${REPO}"; } | jq -r '.default_branch')"
+          owner="${REPO%%/*}"
+
+          all_prs='[]'
+          page=1
+          while :; do
+            batch="$({ curl -fsSL "${headers[@]}" "${api}/repos/${REPO}/pulls?state=all&per_page=100&page=${page}"; })"
+            count="$(jq 'length' <<<"${batch}")"
+            all_prs="$(jq -cn --argjson current "${all_prs}" --argjson batch "${batch}" '$current + $batch')"
+            [[ "${count}" -lt 100 ]] && break
+            page=$((page + 1))
+          done
+
+          deleted=()
+          preserved=()
+          failed=()
+          page=1
+          while :; do
+            branches="$({ curl -fsSL "${headers[@]}" "${api}/repos/${REPO}/branches?per_page=100&page=${page}"; })"
+            count="$(jq 'length' <<<"${branches}")"
+
+            while IFS=$'\t' read -r branch sha; do
+              [[ -z "${branch}" ]] && continue
+
+              if [[ "${branch}" == "${default_branch}" || "${branch}" == "${CLEANUP_BRANCH}" ]]; then
+                preserved+=("${branch}")
+                continue
+              fi
+
+              if [[ "${branch}" == release-candidate/v* ]]; then
+                tag="${branch#release-candidate/}"
+                encoded_tag="$(jq -rn --arg value "${tag}" '$value | @uri')"
+                tag_status="$(curl -sS -o /dev/null -w '%{http_code}' "${headers[@]}" "${api}/repos/${REPO}/git/ref/tags/${encoded_tag}")"
+                release_status="$(curl -sS -o /dev/null -w '%{http_code}' "${headers[@]}" "${api}/repos/${REPO}/releases/tags/${encoded_tag}")"
+                if [[ "${tag_status}" == '200' && "${release_status}" == '200' ]]; then
+                  encoded_ref="$(jq -rn --arg value "heads/${branch}" '$value | @uri')"
+                  status="$(curl -sS -o /tmp/delete-response.json -w '%{http_code}' -X DELETE "${headers[@]}" "${api}/repos/${REPO}/git/refs/${encoded_ref}")"
+                  if [[ "${status}" == '204' ]]; then
+                    deleted+=("${branch} (published release candidate)")
+                  else
+                    failed+=("${branch} (HTTP ${status})")
+                  fi
+                  continue
+                fi
+              fi
+
+              matches="$(jq -c --arg repo "${REPO}" --arg branch "${branch}" '[.[] | select(.head.repo.full_name == $repo and .head.ref == $branch)]' <<<"${all_prs}")"
+              pr_count="$(jq 'length' <<<"${matches}")"
+              open_count="$(jq '[.[] | select(.state == "open")] | length' <<<"${matches}")"
+
+              if [[ "${pr_count}" -gt 0 && "${open_count}" -eq 0 ]]; then
+                encoded_ref="$(jq -rn --arg value "heads/${branch}" '$value | @uri')"
+                status="$(curl -sS -o /tmp/delete-response.json -w '%{http_code}' -X DELETE "${headers[@]}" "${api}/repos/${REPO}/git/refs/${encoded_ref}")"
+                if [[ "${status}" == '204' ]]; then
+                  deleted+=("${branch}")
+                else
+                  failed+=("${branch} (HTTP ${status})")
+                fi
+              else
+                preserved+=("${branch}")
+              fi
+            done < <(jq -r '.[] | [.name, .commit.sha] | @tsv' <<<"${branches}")
+
+            [[ "${count}" -lt 100 ]] && break
+            page=$((page + 1))
+          done
+
+          {
+            echo '## Branch cleanup result'
+            echo
+            echo "- Default branch preserved: \`${default_branch}\`"
+            echo "- Deleted: ${#deleted[@]}"
+            echo "- Preserved: ${#preserved[@]}"
+            echo "- Failed: ${#failed[@]}"
+            echo
+            echo '### Deleted branches'
+            if [[ "${#deleted[@]}" -eq 0 ]]; then
+              echo '- None'
+            else
+              printf -- '- `%s`\n' "${deleted[@]}"
+            fi
+            echo
+            echo '### Preserved branches'
+            printf -- '- `%s`\n' "${preserved[@]}"
+            if [[ "${#failed[@]}" -gt 0 ]]; then
+              echo
+              echo '### Failed deletions'
+              printf -- '- `%s`\n' "${failed[@]}"
+            fi
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+          curl -fsSL -X PATCH "${headers[@]}" \
+            -d '{"state":"closed"}' \
+            "${api}/repos/${REPO}/pulls/${PR_NUMBER}" >/dev/null
+
+          cleanup_ref="$(jq -rn --arg value "heads/${CLEANUP_BRANCH}" '$value | @uri')"
+          cleanup_status="$(curl -sS -o /tmp/cleanup-delete-response.json -w '%{http_code}' -X DELETE "${headers[@]}" "${api}/repos/${REPO}/git/refs/${cleanup_ref}")"
+          if [[ "${cleanup_status}" != '204' ]]; then
+            echo "Failed to delete cleanup branch: HTTP ${cleanup_status}" >&2
+            cat /tmp/cleanup-delete-response.json >&2 || true
+            exit 1
+          fi
