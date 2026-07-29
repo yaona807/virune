@@ -11,6 +11,7 @@ permissions:
   actions: read
   attestations: read
   contents: write
+  issues: write
 
 concurrency:
   group: release-restore-${{ github.sha }}
@@ -169,3 +170,27 @@ jobs:
             .cache/release-restore/recovery-report.json
           if-no-files-found: error
           retention-days: 365
+      - name: Record successful restoration
+        shell: bash
+        run: |
+          gh issue comment '${{ steps.verified.outputs.issue }}' --body-file - <<'EOF'
+          v1.0.0 public release restoration completed successfully.
+
+          - Retained production artifact was reused without rebuilding.
+          - Public asset checksums and byte sizes match committed release evidence.
+          - Provenance and CycloneDX attestations passed.
+          - Public CLI installation and generated-project checks passed.
+          - Clean-profile VSIX installation, activation, Language Server startup, and uninstall passed.
+          - Actions run: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          EOF
+      - name: Record failed restoration
+        if: failure()
+        env:
+          REQUEST_PATH: ${{ steps.request.outputs.path }}
+        shell: bash
+        run: |
+          if [[ -z "$REQUEST_PATH" || ! -f "$REQUEST_PATH" ]]; then
+            exit 0
+          fi
+          issue="$(node --input-type=module -e "import { readFileSync } from 'node:fs'; console.log(JSON.parse(readFileSync(process.env.REQUEST_PATH, 'utf8')).issue);")"
+          gh issue comment "$issue" --body "v1.0.0 public release restoration failed before completion. Actions run: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
