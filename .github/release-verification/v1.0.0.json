@@ -1,0 +1,46 @@
+{
+	"schemaVersion": 1,
+	"version": "1.0.0",
+	"tag": "v1.0.0",
+	"tagCommit": "dcaf89b2f557fde38cdfd9bceb7d23af3ba8ed51",
+	"expectedCommit": "dcaf89b2f557fde38cdfd9bceb7d23af3ba8ed51",
+	"repository": "yaona807/virune",
+	"release": {
+		"htmlUrl": "https://github.com/yaona807/virune/releases/tag/v1.0.0",
+		"prerelease": false,
+		"draft": false,
+		"targetCommitish": "main"
+	},
+	"assets": [
+		{"file":"MANIFEST.json","sha256":"e84a7d28e174edcc2ce2071f785575b63169101e7bda8d396667cec23b20d09c","bytes":1026},
+		{"file":"README.md","sha256":"d51fb40f9321844dd01a8c5bd28b8c8ae2489c2085bc5c89f7c5cd26dd0d1392","bytes":646},
+		{"file":"README_ja.md","sha256":"b3f88673e793f5013e64a0975af61105c0e20756376ccdbdbf0b0364bc16a3de","bytes":783},
+		{"file":"RELEASE-MANIFEST.json","sha256":"1bcbbb4026ece9846688d306443496eddf187e7a9b306d08294a16130e4e9633","bytes":3222},
+		{"file":"SBOM.cdx.json","sha256":"491ecee8f41dc76f810ebfdc0576721d8ff764669da33690fcc63d9a5859197d","bytes":363845},
+		{"file":"THIRD_PARTY_NOTICES.md","sha256":"310513bbdaad1a8998be78a2b8a730813e7b1526c0ee5ac4e5869f7f62a7225d","bytes":1000},
+		{"file":"THIRD_PARTY_NOTICES_ja.md","sha256":"40a8d3d6213e5908ef1350ae95ce6dab6a8f895a45ca3b03821c17542b1aa58a","bytes":1055},
+		{"file":"VSCODE-MANIFEST.json","sha256":"253e287b566ef2024a643fda3855c73612a299f4d68b2cd28c4312d71c0e74a1","bytes":185},
+		{"file":"package.json","sha256":"8c181bb761b2445ea1e9c401719247a1fce561e3107ce25d4988ee274a8b9d22","bytes":228},
+		{"file":"virune-1.0.0.tgz","sha256":"0ddf8de13cf64c503f11c49a25f5effd5d89c0ce77dddaa11b907d5322b034e4","bytes":5648969},
+		{"file":"virune-compiler-1.0.0.tgz","sha256":"69c9d54a925377a2331ba39a229ab5809d946eef54bc43a5f14601eafd87d7b4","bytes":143161},
+		{"file":"virune-formatter-1.0.0.tgz","sha256":"1fa015829016ad50aa4341b2d35ae05ce46622d95417ae3a09bc1a41fab88e6c","bytes":11889},
+		{"file":"virune-js-interop-1.0.0.tgz","sha256":"5273bd16b8e1264a6a66bc1bef57e9bb7bb0db6fe6c026c412265b4726fe0ecd","bytes":19643},
+		{"file":"virune-runtime-1.0.0.tgz","sha256":"c1b6cc2f49cdab9c5cc192995e955339dfc65beee9e6e01a47ea0b485ec3833b","bytes":40427},
+		{"file":"virune-stdlib-1.0.0.tgz","sha256":"32bbc5ccdcc13ed94a224be41d8bbed53ae5141a947e5859cf06d6b014b6c687","bytes":9164},
+		{"file":"virune-vscode-1.0.0.vsix","sha256":"834a16ab5be88a384b5db07eafeb07fc470172551b85dc0bda4e49521cf4f4ce","bytes":1979376}
+	],
+	"manifest": {"schemaVersion":2,"version":"1.0.0","fileCount":15},
+	"sbom": {"format":"CycloneDX","specVersion":"1.6","serialNumber":"urn:uuid:ea13433e-309b-5988-a7a8-43ac3ddba797","componentCount":382},
+	"installation": {
+		"cliUrl":"https://github.com/yaona807/virune/releases/download/v1.0.0/virune-1.0.0.tgz",
+		"versionOutput":"virune 1.0.0",
+		"generatedProject":{"dependencySource":"immutable release assets","check":"passed","build":"passed","run":"passed"}
+	},
+	"attestations":{"provenance":"passed","cyclonedx":"passed"},
+	"vsix":{"file":"virune-vscode-1.0.0.vsix","cleanInstall":"passed","activation":"passed","languageServer":"passed","uninstall":"passed"},
+	"verificationRunId":30417979118,
+	"verificationArtifactId":8710857249,
+	"verificationArtifactDigest":"sha256:0cc2fb2324ccc7461c1b4d2ed042a6e51b74df4464869ab5ab4b11cfb6a21035",
+	"verifiedAt":"2026-07-29T02:53:56.007Z",
+	"passed":true
+}
