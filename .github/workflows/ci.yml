@@ -232,6 +232,55 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
+  semantic-fuzz:
+    name: Semantic fuzz shard ${{ matrix.shard }} (pull request)
+    needs: [classify, build]
+    if: github.event_name == 'pull_request' && needs.classify.outputs.docs_only != 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3]
+    env:
+      VIRUNE_CI_JOB: semantic-fuzz-pr-${{ matrix.shard }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install dependencies
+        run: node scripts/run-ci-command.mjs --id install -- npm ci
+      - name: Download compiled output
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: compiled-node-24-${{ github.sha }}
+          path: .cache
+      - name: Restore compiled output
+        run: node scripts/run-ci-command.mjs --id restore-compiled-output -- tar -xzf .cache/compiled-output.tgz -C .
+      - name: Run bounded semantic differential fuzz shard
+        run: node scripts/run-ci-command.mjs --id semantic-fuzz-long-${{ matrix.shard }} -- node scripts/semantic-fuzz-long.mjs
+        env:
+          VIRUNE_SEMANTIC_FUZZ_DURATION_MS: 120000
+          VIRUNE_SEMANTIC_FUZZ_BATCH_ITERATIONS: 25
+          VIRUNE_SEMANTIC_FUZZ_SHARD: ${{ matrix.shard }}
+          VIRUNE_SEMANTIC_FUZZ_ARTIFACT_DIR: fuzz-regressions/semantic-artifacts/pr-shard-${{ matrix.shard }}
+      - name: Write timing summary
+        if: always()
+        run: node scripts/write-ci-summary.mjs
+      - name: Upload semantic fuzz evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: semantic-fuzz-pr-${{ matrix.shard }}-${{ github.sha }}
+          path: |
+            .cache/ci-timings/
+            .cache/ci-failures/
+            fuzz-regressions/semantic-artifacts/pr-shard-${{ matrix.shard }}/
+          if-no-files-found: warn
+          retention-days: 14
+
   compatibility:
     name: Core (${{ matrix.label }})
     needs: [classify, build]
@@ -343,7 +392,7 @@ jobs:
 
   release-artifacts:
     name: Release artifacts
-    needs: [classify, metadata, build, verify, quality, compatibility, browser]
+    needs: [classify, metadata, build, verify, quality, semantic-fuzz, compatibility, browser]
     if: >-
       always() &&
       needs.classify.outputs.docs_only != 'true' &&
@@ -351,6 +400,7 @@ jobs:
       needs.build.result == 'success' &&
       needs.verify.result == 'success' &&
       needs.quality.result == 'success' &&
+      (needs.semantic-fuzz.result == 'success' || needs.semantic-fuzz.result == 'skipped') &&
       needs.compatibility.result == 'success' &&
       needs.browser.result == 'success'
     runs-on: ubuntu-24.04
