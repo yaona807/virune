@@ -23,114 +23,139 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
         shell: bash
         run: |
-          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          import os
+          import urllib.error
+          import urllib.parse
+          import urllib.request
 
-          api='https://api.github.com'
-          headers=(
-            -H 'Accept: application/vnd.github+json'
-            -H "Authorization: Bearer ${GH_TOKEN}"
-            -H 'X-GitHub-Api-Version: 2022-11-28'
-          )
+          API = "https://api.github.com"
+          TOKEN = os.environ["GH_TOKEN"]
+          REPO = os.environ["REPO"]
+          CLEANUP_BRANCH = os.environ["CLEANUP_BRANCH"]
+          PR_NUMBER = os.environ["PR_NUMBER"]
+          OWNER = REPO.split("/", 1)[0]
+          HEADERS = {
+              "Accept": "application/vnd.github+json",
+              "Authorization": f"Bearer {TOKEN}",
+              "X-GitHub-Api-Version": "2022-11-28",
+              "User-Agent": "virune-one-shot-branch-cleanup",
+          }
 
-          default_branch="$({ curl -fsSL "${headers[@]}" "${api}/repos/${REPO}"; } | jq -r '.default_branch')"
-          owner="${REPO%%/*}"
+          def request(method, path, payload=None):
+              data = None if payload is None else json.dumps(payload).encode("utf-8")
+              req = urllib.request.Request(
+                  f"{API}{path}", data=data, headers=HEADERS, method=method
+              )
+              try:
+                  with urllib.request.urlopen(req) as response:
+                      raw = response.read()
+                      body = json.loads(raw) if raw else None
+                      return response.status, body
+              except urllib.error.HTTPError as error:
+                  raw = error.read()
+                  try:
+                      body = json.loads(raw) if raw else None
+                  except json.JSONDecodeError:
+                      body = raw.decode("utf-8", errors="replace")
+                  return error.code, body
 
-          all_prs='[]'
-          page=1
-          while :; do
-            batch="$({ curl -fsSL "${headers[@]}" "${api}/repos/${REPO}/pulls?state=all&per_page=100&page=${page}"; })"
-            count="$(jq 'length' <<<"${batch}")"
-            all_prs="$(jq -cn --argjson current "${all_prs}" --argjson batch "${batch}" '$current + $batch')"
-            [[ "${count}" -lt 100 ]] && break
-            page=$((page + 1))
-          done
+          def get_json(path):
+              status, body = request("GET", path)
+              if status != 200:
+                  raise RuntimeError(f"GET {path} failed: HTTP {status}: {body}")
+              return body
 
-          deleted=()
-          preserved=()
-          failed=()
-          page=1
-          while :; do
-            branches="$({ curl -fsSL "${headers[@]}" "${api}/repos/${REPO}/branches?per_page=100&page=${page}"; })"
-            count="$(jq 'length' <<<"${branches}")"
+          def get_all(path):
+              items = []
+              page = 1
+              separator = "&" if "?" in path else "?"
+              while True:
+                  batch = get_json(f"{path}{separator}per_page=100&page={page}")
+                  items.extend(batch)
+                  if len(batch) < 100:
+                      return items
+                  page += 1
 
-            while IFS=$'\t' read -r branch sha; do
-              [[ -z "${branch}" ]] && continue
+          repo_info = get_json(f"/repos/{REPO}")
+          default_branch = repo_info["default_branch"]
+          pull_requests = get_all(f"/repos/{REPO}/pulls?state=all")
+          branches = get_all(f"/repos/{REPO}/branches")
 
-              if [[ "${branch}" == "${default_branch}" || "${branch}" == "${CLEANUP_BRANCH}" ]]; then
-                preserved+=("${branch}")
-                continue
-              fi
+          deleted = []
+          preserved = []
+          failed = []
 
-              if [[ "${branch}" == release-candidate/v* ]]; then
-                tag="${branch#release-candidate/}"
-                encoded_tag="$(jq -rn --arg value "${tag}" '$value | @uri')"
-                tag_status="$(curl -sS -o /dev/null -w '%{http_code}' "${headers[@]}" "${api}/repos/${REPO}/git/ref/tags/${encoded_tag}")"
-                release_status="$(curl -sS -o /dev/null -w '%{http_code}' "${headers[@]}" "${api}/repos/${REPO}/releases/tags/${encoded_tag}")"
-                if [[ "${tag_status}" == '200' && "${release_status}" == '200' ]]; then
-                  encoded_ref="$(jq -rn --arg value "heads/${branch}" '$value | @uri')"
-                  status="$(curl -sS -o /tmp/delete-response.json -w '%{http_code}' -X DELETE "${headers[@]}" "${api}/repos/${REPO}/git/refs/${encoded_ref}")"
-                  if [[ "${status}" == '204' ]]; then
-                    deleted+=("${branch} (published release candidate)")
-                  else
-                    failed+=("${branch} (HTTP ${status})")
-                  fi
+          def delete_branch(branch, reason=None):
+              ref = urllib.parse.quote(f"heads/{branch}", safe="/")
+              status, body = request("DELETE", f"/repos/{REPO}/git/refs/{ref}")
+              if status == 204:
+                  deleted.append(f"{branch}{f' ({reason})' if reason else ''}")
+                  return True
+              failed.append(f"{branch} (HTTP {status}: {body})")
+              return False
+
+          for item in branches:
+              branch = item["name"]
+              if branch in {default_branch, CLEANUP_BRANCH}:
+                  preserved.append(branch)
                   continue
-                fi
-              fi
 
-              matches="$(jq -c --arg repo "${REPO}" --arg branch "${branch}" '[.[] | select(.head.repo.full_name == $repo and .head.ref == $branch)]' <<<"${all_prs}")"
-              pr_count="$(jq 'length' <<<"${matches}")"
-              open_count="$(jq '[.[] | select(.state == "open")] | length' <<<"${matches}")"
+              if branch.startswith("release-candidate/v"):
+                  tag = branch.removeprefix("release-candidate/")
+                  encoded_tag = urllib.parse.quote(tag, safe="")
+                  tag_status, _ = request("GET", f"/repos/{REPO}/git/ref/tags/{encoded_tag}")
+                  release_status, _ = request(
+                      "GET", f"/repos/{REPO}/releases/tags/{encoded_tag}"
+                  )
+                  if tag_status == 200 and release_status == 200:
+                      delete_branch(branch, "published release candidate")
+                      continue
 
-              if [[ "${pr_count}" -gt 0 && "${open_count}" -eq 0 ]]; then
-                encoded_ref="$(jq -rn --arg value "heads/${branch}" '$value | @uri')"
-                status="$(curl -sS -o /tmp/delete-response.json -w '%{http_code}' -X DELETE "${headers[@]}" "${api}/repos/${REPO}/git/refs/${encoded_ref}")"
-                if [[ "${status}" == '204' ]]; then
-                  deleted+=("${branch}")
-                else
-                  failed+=("${branch} (HTTP ${status})")
-                fi
-              else
-                preserved+=("${branch}")
-              fi
-            done < <(jq -r '.[] | [.name, .commit.sha] | @tsv' <<<"${branches}")
+              matches = [
+                  pull
+                  for pull in pull_requests
+                  if pull.get("head", {}).get("repo", {}).get("full_name") == REPO
+                  and pull.get("head", {}).get("ref") == branch
+              ]
+              if matches and all(pull.get("state") == "closed" for pull in matches):
+                  delete_branch(branch)
+              else:
+                  preserved.append(branch)
 
-            [[ "${count}" -lt 100 ]] && break
-            page=$((page + 1))
-          done
+          summary = {
+              "default_branch": default_branch,
+              "deleted": deleted,
+              "preserved": preserved,
+              "failed": failed,
+          }
+          print(json.dumps(summary, ensure_ascii=False, indent=2))
 
-          {
-            echo '## Branch cleanup result'
-            echo
-            echo "- Default branch preserved: \`${default_branch}\`"
-            echo "- Deleted: ${#deleted[@]}"
-            echo "- Preserved: ${#preserved[@]}"
-            echo "- Failed: ${#failed[@]}"
-            echo
-            echo '### Deleted branches'
-            if [[ "${#deleted[@]}" -eq 0 ]]; then
-              echo '- None'
-            else
-              printf -- '- `%s`\n' "${deleted[@]}"
-            fi
-            echo
-            echo '### Preserved branches'
-            printf -- '- `%s`\n' "${preserved[@]}"
-            if [[ "${#failed[@]}" -gt 0 ]]; then
-              echo
-              echo '### Failed deletions'
-              printf -- '- `%s`\n' "${failed[@]}"
-            fi
-          } >> "${GITHUB_STEP_SUMMARY}"
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as output:
+              output.write("## Branch cleanup result\n\n")
+              output.write(f"- Default branch preserved: `{default_branch}`\n")
+              output.write(f"- Deleted: {len(deleted)}\n")
+              output.write(f"- Preserved: {len(preserved)}\n")
+              output.write(f"- Failed: {len(failed)}\n\n")
+              output.write("### Deleted branches\n")
+              output.writelines(f"- `{branch}`\n" for branch in deleted or ["None"])
+              output.write("\n### Preserved branches\n")
+              output.writelines(f"- `{branch}`\n" for branch in preserved or ["None"])
+              if failed:
+                  output.write("\n### Failed deletions\n")
+                  output.writelines(f"- `{branch}`\n" for branch in failed)
 
-          curl -fsSL -X PATCH "${headers[@]}" \
-            -d '{"state":"closed"}' \
-            "${api}/repos/${REPO}/pulls/${PR_NUMBER}" >/dev/null
+          status, body = request(
+              "PATCH", f"/repos/{REPO}/pulls/{PR_NUMBER}", {"state": "closed"}
+          )
+          if status != 200:
+              raise RuntimeError(f"Failed to close cleanup PR: HTTP {status}: {body}")
 
-          cleanup_ref="$(jq -rn --arg value "heads/${CLEANUP_BRANCH}" '$value | @uri')"
-          cleanup_status="$(curl -sS -o /tmp/cleanup-delete-response.json -w '%{http_code}' -X DELETE "${headers[@]}" "${api}/repos/${REPO}/git/refs/${cleanup_ref}")"
-          if [[ "${cleanup_status}" != '204' ]]; then
-            echo "Failed to delete cleanup branch: HTTP ${cleanup_status}" >&2
-            cat /tmp/cleanup-delete-response.json >&2 || true
-            exit 1
-          fi
+          cleanup_ref = urllib.parse.quote(f"heads/{CLEANUP_BRANCH}", safe="/")
+          status, body = request("DELETE", f"/repos/{REPO}/git/refs/{cleanup_ref}")
+          if status != 204:
+              raise RuntimeError(
+                  f"Failed to delete cleanup branch: HTTP {status}: {body}"
+              )
+          PY
