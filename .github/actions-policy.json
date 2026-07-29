@@ -19,13 +19,6 @@
 				"contents": "read",
 				"security-events": "write"
 			},
-			"publish-v1.0.0.yml": {
-				"actions": "read",
-				"attestations": "write",
-				"artifact-metadata": "write",
-				"contents": "write",
-				"id-token": "write"
-			},
 			"release-dry-run.yml": {
 				"actions": "read",
 				"contents": "read"
@@ -47,10 +40,6 @@
 				"artifact-metadata": "write",
 				"contents": "write",
 				"id-token": "write"
-			},
-			"verify-v1.0.0.yml": {
-				"attestations": "read",
-				"contents": "read"
 			}
 		}
 	}
