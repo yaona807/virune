@@ -47,6 +47,10 @@
 				"artifact-metadata": "write",
 				"contents": "write",
 				"id-token": "write"
+			},
+			"verify-v1.0.0.yml": {
+				"attestations": "read",
+				"contents": "read"
 			}
 		}
 	}
