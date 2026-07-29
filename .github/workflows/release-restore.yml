@@ -69,16 +69,26 @@ jobs:
       - name: Verify every restored byte against committed release evidence
         id: verified
         run: node scripts/verify-release-recovery.mjs --request=${{ steps.request.outputs.path }} --artifact=.cache/release-restore/source --github-output=$GITHUB_OUTPUT
-      - name: Require the immutable tag and a missing public release
+      - name: Verify the immutable tag and detect an existing public release
+        id: release-state
         shell: bash
         run: |
           tag_commit="$(git rev-list -n 1 '${{ steps.verified.outputs.tag }}')"
           [[ "$tag_commit" == '${{ steps.verified.outputs.expected_commit }}' ]] || { echo "Tag points to $tag_commit." >&2; exit 1; }
-          if gh release view '${{ steps.verified.outputs.tag }}' >/dev/null 2>&1; then
-            echo 'The stable release already exists; use the manual replacement path for asset repair.' >&2
-            exit 1
+          if gh release view '${{ steps.verified.outputs.tag }}' --json tagName,isDraft,isPrerelease > .cache/release-restore/public-release.json 2>/dev/null; then
+            node --input-type=module <<'NODE'
+          import { readFile } from 'node:fs/promises';
+          const release = JSON.parse(await readFile('.cache/release-restore/public-release.json', 'utf8'));
+          if (release.tagName !== '${{ steps.verified.outputs.tag }}') throw new Error('Existing release tag mismatch.');
+          if (release.isDraft === true) throw new Error('Existing release is still a draft.');
+          if (release.isPrerelease === true) throw new Error('Existing stable release is marked as a prerelease.');
+          NODE
+            echo 'exists=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'exists=false' >> "$GITHUB_OUTPUT"
           fi
       - name: Restore the public GitHub Release from the exact retained assets
+        if: steps.release-state.outputs.exists != 'true'
         shell: bash
         run: |
           gh release create '${{ steps.verified.outputs.tag }}' \
@@ -133,6 +143,7 @@ jobs:
           TAG: ${{ steps.verified.outputs.tag }}
           EXPECTED_COMMIT: ${{ steps.verified.outputs.expected_commit }}
           SOURCE_ARTIFACT_DIGEST: ${{ steps.verified.outputs.source_artifact_digest }}
+          RELEASE_PREEXISTED: ${{ steps.release-state.outputs.exists }}
         shell: bash
         run: |
           node --input-type=module <<'NODE'
@@ -147,6 +158,7 @@ jobs:
             sourceArtifactId: request.sourceArtifactId,
             sourceArtifactDigest: process.env.SOURCE_ARTIFACT_DIGEST,
             restorationRun: `https://github.com/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`,
+            releasePreexisted: process.env.RELEASE_PREEXISTED === 'true',
             restoredFromRetainedBytes: true,
             publicAssetIntegrity: 'passed',
             attestations: 'passed',
