@@ -1,0 +1,126 @@
+name: One-shot orphan branch cleanup
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  cleanup:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'ops/cleanup-orphan-branches-20260729'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete verified orphan branches
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          CLEANUP_BRANCH: ${{ github.event.pull_request.head.ref }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import urllib.error
+          import urllib.parse
+          import urllib.request
+
+          API = "https://api.github.com"
+          TOKEN = os.environ["GH_TOKEN"]
+          REPO = os.environ["REPO"]
+          CLEANUP_BRANCH = os.environ["CLEANUP_BRANCH"]
+          PR_NUMBER = os.environ["PR_NUMBER"]
+          HEADERS = {
+              "Accept": "application/vnd.github+json",
+              "Authorization": f"Bearer {TOKEN}",
+              "X-GitHub-Api-Version": "2022-11-28",
+              "User-Agent": "virune-one-shot-orphan-cleanup",
+          }
+          TARGETS = [
+              "agent/fix-release-action-validation-backup",
+              "agent/fix-release-action-validation-copy",
+              "agent/fix-release-action-validation-final",
+              "agent/fix-release-action-validation-q",
+              "agent/fix-release-action-validation-r",
+              "agent/fix-release-action-validation-s",
+              "agent/fix-release-action-validation-stage",
+              "agent/fix-release-action-validation-temp",
+              "agent/fix-release-action-validation-unused",
+              "agent/fix-release-action-validation-work",
+              "agent/fix-release-action-validation-x",
+              "agent/fix-release-action-validation-y",
+              "agent/fix-release-action-validation-z",
+              "agent/improve-v1-onboarding",
+              "agent/project-scoped-lsp-invalidation",
+              "agent/verify-stable-v1.0.0",
+          ]
+
+          def request(method, path, payload=None):
+              data = None if payload is None else json.dumps(payload).encode("utf-8")
+              req = urllib.request.Request(
+                  f"{API}{path}", data=data, headers=HEADERS, method=method
+              )
+              try:
+                  with urllib.request.urlopen(req) as response:
+                      raw = response.read()
+                      body = json.loads(raw) if raw else None
+                      return response.status, body
+              except urllib.error.HTTPError as error:
+                  raw = error.read()
+                  try:
+                      body = json.loads(raw) if raw else None
+                  except json.JSONDecodeError:
+                      body = raw.decode("utf-8", errors="replace")
+                  return error.code, body
+
+          deleted = []
+          missing = []
+          failed = []
+          for branch in TARGETS:
+              ref = urllib.parse.quote(f"heads/{branch}", safe="/")
+              status, body = request("DELETE", f"/repos/{REPO}/git/refs/{ref}")
+              if status == 204:
+                  deleted.append(branch)
+              elif status == 422:
+                  missing.append(branch)
+              else:
+                  failed.append(f"{branch} (HTTP {status}: {body})")
+
+          result = {"deleted": deleted, "missing": missing, "failed": failed}
+          print(json.dumps(result, ensure_ascii=False, indent=2))
+
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as output:
+              output.write("## Orphan branch cleanup result\n\n")
+              output.write(f"- Deleted: {len(deleted)}\n")
+              output.write(f"- Already absent: {len(missing)}\n")
+              output.write(f"- Failed: {len(failed)}\n\n")
+              output.write("### Deleted branches\n")
+              output.writelines(f"- `{branch}`\n" for branch in deleted or ["None"])
+              if missing:
+                  output.write("\n### Already absent\n")
+                  output.writelines(f"- `{branch}`\n" for branch in missing)
+              if failed:
+                  output.write("\n### Failed deletions\n")
+                  output.writelines(f"- `{branch}`\n" for branch in failed)
+
+          if failed:
+              raise RuntimeError(f"Some branch deletions failed: {failed}")
+
+          status, body = request(
+              "PATCH", f"/repos/{REPO}/pulls/{PR_NUMBER}", {"state": "closed"}
+          )
+          if status != 200:
+              raise RuntimeError(f"Failed to close cleanup PR: HTTP {status}: {body}")
+
+          cleanup_ref = urllib.parse.quote(f"heads/{CLEANUP_BRANCH}", safe="/")
+          status, body = request("DELETE", f"/repos/{REPO}/git/refs/{cleanup_ref}")
+          if status != 204:
+              raise RuntimeError(
+                  f"Failed to delete cleanup branch: HTTP {status}: {body}"
+              )
+          PY
