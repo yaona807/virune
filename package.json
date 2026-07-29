@@ -87,7 +87,7 @@
 		"verify:release": "npm run pack:virune && npm run pack:vscode && npm run smoke:release",
 		"verify:reproducible-release": "node scripts/verify-reproducible-release.mjs",
 		"benchmark:lsp:built": "node scripts/benchmark-lsp-completion.mjs",
-		"benchmark:interop-heap:built": "node --expose-gc scripts/benchmark-interop-heap.mjs",
+		"benchmark:interop-heap:built": "node --expose-gc scripts/benchmark-js-interop-heap.mjs",
 		"check:performance": "node scripts/check-performance-regression.mjs",
 		"test:performance-regression": "node --test scripts/performance-regression.test.mjs",
 		"docs:check": "node scripts/verify-documentation.mjs",
