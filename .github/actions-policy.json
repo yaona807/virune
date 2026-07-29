@@ -34,6 +34,11 @@
 				"contents": "write",
 				"id-token": "write"
 			},
+			"release-restore.yml": {
+				"actions": "read",
+				"attestations": "read",
+				"contents": "write"
+			},
 			"release.yml": {
 				"actions": "read",
 				"attestations": "write",
