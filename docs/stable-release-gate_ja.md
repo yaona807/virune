@@ -18,6 +18,8 @@ tag起点のRelease workflowと手動のRelease dry-run workflowは、同じ`npm
 - 公開用package、manifest、checksum、VSIX packaging、offline clean install、生成projectの実行。
 - policyで定義した有効期間内に成功し、`head_sha`がrelease対象commitと完全に一致するNightly quality run。
 
+release対象commitについて、gateは完了済みNightly runを新しい順に確認します。後から作られた`cancelled`または`skipped`のrunは、それ以前の利用可能な結果を隠しません。一方、より新しい完了済みrunが失敗している場合は、古い成功へフォールバックせずreleaseを停止します。
+
 ローカルで構造を確認する場合は次を実行します。
 
 ```bash
