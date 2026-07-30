@@ -15,10 +15,10 @@ import {
 } from "./model.virune"
 import { parseMvp } from "./parser.virune"
 
-fn sourceExports(module: MvpModule) -> List<MvpExport> {
+fn sourceExports(moduleValue: MvpModule) -> List<MvpExport> {
 	let mut values: List<MvpExport> = []
-	for function in module.functions {
-		if function.public {
+	for function in moduleValue.functions {
+		if function.isPublic {
 			values = List.append(values, MvpExport { name: function.name, declarationKind: "FunctionDeclaration" })
 		}
 	}
@@ -43,16 +43,16 @@ pub fn compileMvpData(source: String) -> MvpCompilation {
 	if List.isNotEmpty(parsed.diagnostics) {
 		return rejected(parsed.diagnostics, [])
 	}
-	let module = match parsed.module {
+	let parsedModule = match parsed.parsedModule {
 		Some(value) => value
 		None => return rejected(parsed.diagnostics, [])
 	}
-	let exports = sourceExports(module)
-	let checked = checkMvp(module)
+	let exports = sourceExports(parsedModule)
+	let checked = checkMvp(parsedModule)
 	if List.isNotEmpty(checked.diagnostics) {
 		return rejected(checked.diagnostics, exports)
 	}
-	let hir = match checked.module {
+	let hir = match checked.hirModule {
 		Some(value) => value
 		None => return rejected(checked.diagnostics, exports)
 	}
