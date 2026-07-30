@@ -1,0 +1,70 @@
+//! Minimal vertical self-host compiler slice.
+//!
+//! The module implements a deterministic Lexer -> AST Parser -> Checker/HIR ->
+//! ES2022 Emitter pipeline in Virune. The TypeScript Host only adapts the
+//! versioned Kernel contract and performs final source-map encoding.
+
+import { checkMvp } from "./checker.virune"
+import { collectMvpExports, emitMvp } from "./emitter.virune"
+import { lexMvp } from "./lexer.virune"
+import {
+	MvpCompilation,
+	MvpDiagnostic,
+	MvpExport,
+	MvpModule,
+} from "./model.virune"
+import { parseMvp } from "./parser.virune"
+
+fn sourceExports(module: MvpModule) -> List<MvpExport> {
+	let mut values: List<MvpExport> = []
+	for function in module.functions {
+		if function.public {
+			values = List.append(values, MvpExport { name: function.name, declarationKind: "FunctionDeclaration" })
+		}
+	}
+	return values
+}
+
+fn rejected(diagnostics: List<MvpDiagnostic>, exports: List<MvpExport>) -> MvpCompilation {
+	return MvpCompilation {
+		accepted: false,
+		diagnostics: diagnostics,
+		codeBody: "",
+		exports: exports,
+	}
+}
+
+pub fn compileMvpData(source: String) -> MvpCompilation {
+	let lexed = lexMvp(source)
+	if List.isNotEmpty(lexed.diagnostics) {
+		return rejected(lexed.diagnostics, [])
+	}
+	let parsed = parseMvp(lexed.tokens)
+	if List.isNotEmpty(parsed.diagnostics) {
+		return rejected(parsed.diagnostics, [])
+	}
+	let module = match parsed.module {
+		Some(value) => value
+		None => return rejected(parsed.diagnostics, [])
+	}
+	let exports = sourceExports(module)
+	let checked = checkMvp(module)
+	if List.isNotEmpty(checked.diagnostics) {
+		return rejected(checked.diagnostics, exports)
+	}
+	let hir = match checked.module {
+		Some(value) => value
+		None => return rejected(checked.diagnostics, exports)
+	}
+	return MvpCompilation {
+		accepted: true,
+		diagnostics: [],
+		codeBody: emitMvp(hir),
+		exports: collectMvpExports(hir),
+	}
+}
+
+@jsExport
+pub fn compileMvp(source: String) -> Result<String, List<JsonError>> {
+	return Json.encode<MvpCompilation>(compileMvpData(source))
+}
