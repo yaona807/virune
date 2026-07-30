@@ -11,6 +11,7 @@ import {
 	MvpCompilation,
 	MvpDiagnostic,
 	MvpExport,
+	MvpHirModule,
 	MvpModule,
 } from "./model.virune"
 import { parseMvp } from "./parser.virune"
@@ -40,21 +41,21 @@ pub fn compileMvpData(source: String) -> MvpCompilation {
 		return rejected(lexed.diagnostics, [])
 	}
 	let parsed = parseMvp(lexed.tokens)
-	if List.isNotEmpty(parsed.diagnostics) {
+	if List.isNotEmpty(parsed.diagnostics) || match parsed.parsedModule { Some(_) => false, None => true } {
 		return rejected(parsed.diagnostics, [])
 	}
 	let parsedModule = match parsed.parsedModule {
 		Some(value) => value
-		None => return rejected(parsed.diagnostics, [])
+		None => MvpModule { functions: [] }
 	}
 	let exports = sourceExports(parsedModule)
 	let checked = checkMvp(parsedModule)
-	if List.isNotEmpty(checked.diagnostics) {
+	if List.isNotEmpty(checked.diagnostics) || match checked.hirModule { Some(_) => false, None => true } {
 		return rejected(checked.diagnostics, exports)
 	}
 	let hir = match checked.hirModule {
 		Some(value) => value
-		None => return rejected(checked.diagnostics, exports)
+		None => MvpHirModule { functions: [] }
 	}
 	return MvpCompilation {
 		accepted: true,
