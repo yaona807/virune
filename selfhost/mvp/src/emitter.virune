@@ -1,8 +1,9 @@
 //! Readable ES2022 emitter for the checked MVP HIR.
 
-import { MvpCheckResult } from "./checker.virune"
 import {
 	MvpCompilation,
+	MvpDiagnostic,
+	MvpExport,
 	MvpHirExpression,
 	MvpHirFunction,
 	MvpHirModule,
@@ -10,6 +11,12 @@ import {
 	MvpParameter,
 	MvpType,
 } from "./model.virune"
+
+record MvpCheckTransport derives Json {
+	hirModule: MvpHirModule?
+	diagnostics: List<MvpDiagnostic>
+	exports: List<MvpExport>
+}
 
 fn parameterNames(parameters: List<MvpParameter>) -> List<String> {
 	let mut values: List<String> = []
@@ -148,7 +155,7 @@ fn emitMvp(moduleValue: MvpHirModule) -> String {
 
 pub fn emitMvpJson(encoded: String) -> Result<String, List<JsonError>> {
 	let raw = Json.parse(encoded)?
-	let checked = Json.decode<MvpCheckResult>(raw)?
+	let checked = Json.decode<MvpCheckTransport>(raw)?
 	if List.isNotEmpty(checked.diagnostics) || match checked.hirModule { Some(_) => false, None => true } {
 		return Json.encode<MvpCompilation>(MvpCompilation {
 			accepted: false,
