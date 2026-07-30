@@ -1,5 +1,6 @@
 //! Direct AST parser for the minimal self-host compiler grammar.
 
+import { MvpLexResult } from "./lexer.virune"
 import {
 	MvpDiagnostic,
 	MvpExpression,
@@ -48,7 +49,7 @@ record ParsedParameter {
 	value: MvpParameter
 }
 
-pub record MvpParseResult {
+pub record MvpParseResult derives Json {
 	parsedModule: MvpModule?
 	diagnostics: List<MvpDiagnostic>
 }
@@ -251,6 +252,18 @@ fn parseStatement(cursor: Cursor, expressions: List<MvpExpression>) -> Result<Pa
 	return Err(parseError("MVP supports only let and return statements", start))
 }
 
+fn appendBinary(operator: MvpToken, leftId: Int, right: ParsedExpression, arena: List<MvpExpression>) -> Result<ParsedExpression, MvpDiagnostic> {
+	let left = expressionAt(arena, leftId, operator.span)?
+	let rightValue = expressionAt(right.expressions, right.expressionId, operator.span)?
+	return Ok(addExpression(right.cursor, right.expressions, MvpExpression {
+		kind: "binary",
+		text: operator.text,
+		literalType: None,
+		children: [leftId, right.expressionId],
+		span: span(left.span.start, rightValue.span.end),
+	}))
+}
+
 fn parseExpression(cursor: Cursor, expressions: List<MvpExpression>) -> Result<ParsedExpression, MvpDiagnostic> {
 	return parseOr(cursor, expressions)
 }
@@ -262,18 +275,13 @@ fn parseOr(cursor: Cursor, expressions: List<MvpExpression>) -> Result<ParsedExp
 	let mut arena = parsed.expressions
 	while tokenAt(current).text == "||" {
 		let operator = tokenAt(current)
-		let left = expressionAt(arena, expressionId, operator.span)?
 		let right = parseAnd(advance(current), arena)?
-		let rightValue = expressionAt(right.expressions, right.expressionId, operator.span)?
-		let added = addExpression(right.cursor, right.expressions, MvpExpression {
-			kind: "binary", text: operator.text, literalType: None,
-			children: [expressionId, right.expressionId], span: span(left.span.start, rightValue.span.end),
-		})
+		let added = appendBinary(operator, expressionId, right, arena)?
 		current = added.cursor
 		expressionId = added.expressionId
 		arena = added.expressions
 	}
-	return ParsedExpression { cursor: current, expressionId: expressionId, expressions: arena } |> Ok
+	return Ok(ParsedExpression { cursor: current, expressionId: expressionId, expressions: arena })
 }
 
 fn parseAnd(cursor: Cursor, expressions: List<MvpExpression>) -> Result<ParsedExpression, MvpDiagnostic> {
@@ -283,13 +291,8 @@ fn parseAnd(cursor: Cursor, expressions: List<MvpExpression>) -> Result<ParsedEx
 	let mut arena = parsed.expressions
 	while tokenAt(current).text == "&&" {
 		let operator = tokenAt(current)
-		let left = expressionAt(arena, expressionId, operator.span)?
 		let right = parseEquality(advance(current), arena)?
-		let rightValue = expressionAt(right.expressions, right.expressionId, operator.span)?
-		let added = addExpression(right.cursor, right.expressions, MvpExpression {
-			kind: "binary", text: operator.text, literalType: None,
-			children: [expressionId, right.expressionId], span: span(left.span.start, rightValue.span.end),
-		})
+		let added = appendBinary(operator, expressionId, right, arena)?
 		current = added.cursor
 		expressionId = added.expressionId
 		arena = added.expressions
@@ -304,13 +307,8 @@ fn parseEquality(cursor: Cursor, expressions: List<MvpExpression>) -> Result<Par
 	let mut arena = parsed.expressions
 	while tokenAt(current).text == "==" || tokenAt(current).text == "!=" {
 		let operator = tokenAt(current)
-		let left = expressionAt(arena, expressionId, operator.span)?
 		let right = parseComparison(advance(current), arena)?
-		let rightValue = expressionAt(right.expressions, right.expressionId, operator.span)?
-		let added = addExpression(right.cursor, right.expressions, MvpExpression {
-			kind: "binary", text: operator.text, literalType: None,
-			children: [expressionId, right.expressionId], span: span(left.span.start, rightValue.span.end),
-		})
+		let added = appendBinary(operator, expressionId, right, arena)?
 		current = added.cursor
 		expressionId = added.expressionId
 		arena = added.expressions
@@ -325,13 +323,8 @@ fn parseComparison(cursor: Cursor, expressions: List<MvpExpression>) -> Result<P
 	let mut arena = parsed.expressions
 	while tokenAt(current).text == "<" || tokenAt(current).text == "<=" || tokenAt(current).text == ">" || tokenAt(current).text == ">=" {
 		let operator = tokenAt(current)
-		let left = expressionAt(arena, expressionId, operator.span)?
 		let right = parseAdditive(advance(current), arena)?
-		let rightValue = expressionAt(right.expressions, right.expressionId, operator.span)?
-		let added = addExpression(right.cursor, right.expressions, MvpExpression {
-			kind: "binary", text: operator.text, literalType: None,
-			children: [expressionId, right.expressionId], span: span(left.span.start, rightValue.span.end),
-		})
+		let added = appendBinary(operator, expressionId, right, arena)?
 		current = added.cursor
 		expressionId = added.expressionId
 		arena = added.expressions
@@ -346,13 +339,8 @@ fn parseAdditive(cursor: Cursor, expressions: List<MvpExpression>) -> Result<Par
 	let mut arena = parsed.expressions
 	while tokenAt(current).text == "+" || tokenAt(current).text == "-" {
 		let operator = tokenAt(current)
-		let left = expressionAt(arena, expressionId, operator.span)?
 		let right = parseMultiplicative(advance(current), arena)?
-		let rightValue = expressionAt(right.expressions, right.expressionId, operator.span)?
-		let added = addExpression(right.cursor, right.expressions, MvpExpression {
-			kind: "binary", text: operator.text, literalType: None,
-			children: [expressionId, right.expressionId], span: span(left.span.start, rightValue.span.end),
-		})
+		let added = appendBinary(operator, expressionId, right, arena)?
 		current = added.cursor
 		expressionId = added.expressionId
 		arena = added.expressions
@@ -367,13 +355,8 @@ fn parseMultiplicative(cursor: Cursor, expressions: List<MvpExpression>) -> Resu
 	let mut arena = parsed.expressions
 	while tokenAt(current).text == "*" || tokenAt(current).text == "/" || tokenAt(current).text == "%" {
 		let operator = tokenAt(current)
-		let left = expressionAt(arena, expressionId, operator.span)?
 		let right = parseUnary(advance(current), arena)?
-		let rightValue = expressionAt(right.expressions, right.expressionId, operator.span)?
-		let added = addExpression(right.cursor, right.expressions, MvpExpression {
-			kind: "binary", text: operator.text, literalType: None,
-			children: [expressionId, right.expressionId], span: span(left.span.start, rightValue.span.end),
-		})
+		let added = appendBinary(operator, expressionId, right, arena)?
 		current = added.cursor
 		expressionId = added.expressionId
 		arena = added.expressions
@@ -387,8 +370,11 @@ fn parseUnary(cursor: Cursor, expressions: List<MvpExpression>) -> Result<Parsed
 		let parsed = parseUnary(advance(cursor), expressions)?
 		let operand = expressionAt(parsed.expressions, parsed.expressionId, token.span)?
 		return Ok(addExpression(parsed.cursor, parsed.expressions, MvpExpression {
-			kind: "unary", text: token.text, literalType: None,
-			children: [parsed.expressionId], span: span(token.span.start, operand.span.end),
+			kind: "unary",
+			text: token.text,
+			literalType: None,
+			children: [parsed.expressionId],
+			span: span(token.span.start, operand.span.end),
 		}))
 	}
 	return parsePrimary(cursor, expressions)
@@ -463,9 +449,18 @@ fn parseModule(tokens: List<MvpToken>) -> Result<MvpModule, MvpDiagnostic> {
 	return Ok(MvpModule { functions: functions })
 }
 
-pub fn parseMvp(tokens: List<MvpToken>) -> MvpParseResult {
+fn parseMvp(tokens: List<MvpToken>) -> MvpParseResult {
 	return match parseModule(tokens) {
 		Ok(value) => MvpParseResult { parsedModule: Some(value), diagnostics: [] }
 		Err(diagnostic) => MvpParseResult { parsedModule: None, diagnostics: [diagnostic] }
 	}
+}
+
+pub fn parseMvpJson(encoded: String) -> Result<String, List<JsonError>> {
+	let raw = Json.parse(encoded)?
+	let lexed = Json.decode<MvpLexResult>(raw)?
+	if List.isNotEmpty(lexed.diagnostics) {
+		return Json.encode<MvpParseResult>(MvpParseResult { parsedModule: None, diagnostics: lexed.diagnostics })
+	}
+	return Json.encode<MvpParseResult>(parseMvp(lexed.tokens))
 }
