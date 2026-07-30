@@ -6,7 +6,7 @@ import {
 	MvpFunction,
 	MvpModule,
 	MvpParameter,
-	MvpSpan,
+	MvpPosition,
 	MvpStatement,
 	MvpToken,
 	MvpTokenKind,
@@ -41,9 +41,27 @@ record ParsedFunction {
 	value: MvpFunction
 }
 
+record ParsedParameter {
+	cursor: Cursor
+	value: MvpParameter
+}
+
 pub record MvpParseResult {
-	module: MvpModule?
+	parsedModule: MvpModule?
 	diagnostics: List<MvpDiagnostic>
+}
+
+fn zeroPosition() -> MvpPosition {
+	return MvpPosition { offset: 0, line: 1, column: 1 }
+}
+
+fn fallbackToken() -> MvpToken {
+	let position = zeroPosition()
+	return MvpToken {
+		kind: MvpTokenKind.EndOfFile,
+		text: "",
+		span: span(position, position),
+	}
 }
 
 fn tokenAt(cursor: Cursor) -> MvpToken {
@@ -51,14 +69,7 @@ fn tokenAt(cursor: Cursor) -> MvpToken {
 		Some(value) => value
 		None => match List.last(cursor.tokens) {
 			Some(value) => value
-			None => MvpToken {
-				kind: MvpTokenKind.EndOfFile,
-				text: "",
-				span: span(
-					{ offset: 0, line: 1, column: 1 },
-					{ offset: 0, line: 1, column: 1 },
-				),
-			}
+			None => fallbackToken()
 		}
 	}
 }
@@ -80,41 +91,44 @@ fn parseError(message: String, token: MvpToken) -> MvpDiagnostic {
 }
 
 fn expectText(cursor: Cursor, text: String) -> Result<Cursor, MvpDiagnostic> {
-	let value = tokenAt(cursor)
-	if value.text != text {
-		return Err(parseError("Expected " + text + " but found " + value.text, value))
+	let token = tokenAt(cursor)
+	if token.text != text {
+		return Err(parseError("Expected " + text + " but found " + token.text, token))
 	}
 	return Ok(advance(cursor))
 }
 
 fn parseType(cursor: Cursor) -> Result<ParsedType, MvpDiagnostic> {
-	let value = tokenAt(cursor)
-	let parsed = if value.text == "Bool" then MvpType.BoolType else if value.text == "Int" then MvpType.IntType else if value.text == "Float" then MvpType.FloatType else if value.text == "String" then MvpType.StringType else if value.text == "Unit" then MvpType.UnitType else MvpType.ErrorType
+	let token = tokenAt(cursor)
+	let parsed = if token.text == "Bool" then MvpType.BoolType else if token.text == "Int" then MvpType.IntType else if token.text == "Float" then MvpType.FloatType else if token.text == "String" then MvpType.StringType else if token.text == "Unit" then MvpType.UnitType else MvpType.ErrorType
 	if parsed == MvpType.ErrorType {
-		return Err(parseError("Unknown MVP type " + value.text, value))
+		return Err(parseError("Unknown MVP type " + token.text, token))
 	}
 	return Ok(ParsedType { cursor: advance(cursor), value: parsed })
 }
 
-fn parseParameter(cursor: Cursor) -> Result<(Cursor, MvpParameter), MvpDiagnostic> {
+fn parseParameter(cursor: Cursor) -> Result<ParsedParameter, MvpDiagnostic> {
 	let nameToken = tokenAt(cursor)
 	if nameToken.kind != MvpTokenKind.Identifier {
 		return Err(parseError("Expected parameter name", nameToken))
 	}
 	let afterName = expectText(advance(cursor), ":")?
 	let parsedType = parseType(afterName)?
-	return Ok((parsedType.cursor, MvpParameter {
-		name: nameToken.text,
-		type: parsedType.value,
-		span: span(nameToken.span.start, tokenAt(parsedType.cursor).span.start),
-	}))
+	return Ok(ParsedParameter {
+		cursor: parsedType.cursor,
+		value: MvpParameter {
+			name: nameToken.text,
+			valueType: parsedType.value,
+			span: span(nameToken.span.start, tokenAt(parsedType.cursor).span.start),
+		},
+	})
 }
 
 fn parseFunction(cursor: Cursor) -> Result<ParsedFunction, MvpDiagnostic> {
 	let startCursor = skipNewLines(cursor)
 	let startToken = tokenAt(startCursor)
-	let public = startToken.text == "pub"
-	let afterPublic = if public then advance(startCursor) else startCursor
+	let isPublic = startToken.text == "pub"
+	let afterPublic = if isPublic then advance(startCursor) else startCursor
 	let afterFn = expectText(afterPublic, "fn")?
 	let nameToken = tokenAt(afterFn)
 	if nameToken.kind != MvpTokenKind.Identifier {
@@ -125,8 +139,8 @@ fn parseFunction(cursor: Cursor) -> Result<ParsedFunction, MvpDiagnostic> {
 	if tokenAt(current).text != ")" {
 		while true {
 			let parsed = parseParameter(current)?
-			current = parsed.0
-			parameters = List.append(parameters, parsed.1)
+			current = parsed.cursor
+			parameters = List.append(parameters, parsed.value)
 			if tokenAt(current).text == "," {
 				current = advance(current)
 				continue
@@ -150,7 +164,7 @@ fn parseFunction(cursor: Cursor) -> Result<ParsedFunction, MvpDiagnostic> {
 	return Ok(ParsedFunction {
 		cursor: current,
 		value: MvpFunction {
-			public: public,
+			isPublic: isPublic,
 			name: nameToken.text,
 			parameters: parameters,
 			returnType: parsedReturn.value,
@@ -161,14 +175,14 @@ fn parseFunction(cursor: Cursor) -> Result<ParsedFunction, MvpDiagnostic> {
 }
 
 fn consumeLineEnd(cursor: Cursor) -> Result<Cursor, MvpDiagnostic> {
-	let value = tokenAt(cursor)
-	if value.kind == MvpTokenKind.NewLine {
+	let token = tokenAt(cursor)
+	if token.kind == MvpTokenKind.NewLine {
 		return Ok(skipNewLines(cursor))
 	}
-	if value.text == "}" || value.kind == MvpTokenKind.EndOfFile {
+	if token.text == "}" || token.kind == MvpTokenKind.EndOfFile {
 		return Ok(cursor)
 	}
-	return Err(parseError("Expected end of statement", value))
+	return Err(parseError("Expected end of statement", token))
 }
 
 fn parseStatement(cursor: Cursor) -> Result<ParsedStatement, MvpDiagnostic> {
@@ -188,19 +202,17 @@ fn parseStatement(cursor: Cursor) -> Result<ParsedStatement, MvpDiagnostic> {
 		current = expectText(current, "=")?
 		let parsedExpression = parseExpression(current)?
 		let end = expressionSpan(parsedExpression.value).end
-		let after = consumeLineEnd(parsedExpression.cursor)?
 		return Ok(ParsedStatement {
-			cursor: after,
+			cursor: consumeLineEnd(parsedExpression.cursor)?,
 			value: MvpStatement.LetValue(nameToken.text, annotation, parsedExpression.value, span(start.span.start, end)),
 		})
 	}
 	if start.text == "return" {
 		let next = tokenAt(advance(cursor))
 		if next.kind == MvpTokenKind.NewLine || next.text == "}" || next.kind == MvpTokenKind.EndOfFile {
-			let expression = MvpExpression.UnitLiteral(start.span)
 			return Ok(ParsedStatement {
 				cursor: consumeLineEnd(advance(cursor))?,
-				value: MvpStatement.ReturnValue(expression, start.span),
+				value: MvpStatement.ReturnValue(MvpExpression.UnitLiteral(start.span), start.span),
 			})
 		}
 		let parsedExpression = parseExpression(advance(cursor))?
@@ -296,40 +308,40 @@ fn parseMultiplicative(cursor: Cursor) -> Result<ParsedExpression, MvpDiagnostic
 }
 
 fn parseUnary(cursor: Cursor) -> Result<ParsedExpression, MvpDiagnostic> {
-	let value = tokenAt(cursor)
-	if value.text == "!" || value.text == "-" {
+	let token = tokenAt(cursor)
+	if token.text == "!" || token.text == "-" {
 		let parsed = parseUnary(advance(cursor))?
 		return Ok(ParsedExpression {
 			cursor: parsed.cursor,
-			value: MvpExpression.UnaryValue(value.text, parsed.value, span(value.span.start, expressionSpan(parsed.value).end)),
+			value: MvpExpression.UnaryValue(token.text, parsed.value, span(token.span.start, expressionSpan(parsed.value).end)),
 		})
 	}
 	return parsePrimary(cursor)
 }
 
 fn parsePrimary(cursor: Cursor) -> Result<ParsedExpression, MvpDiagnostic> {
-	let value = tokenAt(cursor)
-	if value.text == "true" || value.text == "false" {
-		return Ok(ParsedExpression { cursor: advance(cursor), value: MvpExpression.BoolLiteral(value.text == "true", value.span) })
+	let token = tokenAt(cursor)
+	if token.text == "true" || token.text == "false" {
+		return Ok(ParsedExpression { cursor: advance(cursor), value: MvpExpression.BoolLiteral(token.text == "true", token.span) })
 	}
-	if value.kind == MvpTokenKind.Number {
-		let numberType = if String.contains(value.text, ".") then MvpType.FloatType else MvpType.IntType
-		return Ok(ParsedExpression { cursor: advance(cursor), value: MvpExpression.NumberLiteral(value.text, numberType, value.span) })
+	if token.kind == MvpTokenKind.Number {
+		let numberType = if String.contains(token.text, ".") then MvpType.FloatType else MvpType.IntType
+		return Ok(ParsedExpression { cursor: advance(cursor), value: MvpExpression.NumberLiteral(token.text, numberType, token.span) })
 	}
-	if value.kind == MvpTokenKind.StringLiteral {
-		return Ok(ParsedExpression { cursor: advance(cursor), value: MvpExpression.StringLiteralValue(value.text, value.span) })
+	if token.kind == MvpTokenKind.StringLiteral {
+		return Ok(ParsedExpression { cursor: advance(cursor), value: MvpExpression.StringLiteralValue(token.text, token.span) })
 	}
-	if value.text == "Unit" {
-		return Ok(ParsedExpression { cursor: advance(cursor), value: MvpExpression.UnitLiteral(value.span) })
+	if token.text == "Unit" {
+		return Ok(ParsedExpression { cursor: advance(cursor), value: MvpExpression.UnitLiteral(token.span) })
 	}
-	if value.text == "(" {
+	if token.text == "(" {
 		let parsed = parseExpression(advance(cursor))?
 		return Ok(ParsedExpression { cursor: expectText(parsed.cursor, ")")?, value: parsed.value })
 	}
-	if value.kind == MvpTokenKind.Identifier {
+	if token.kind == MvpTokenKind.Identifier {
 		let afterName = advance(cursor)
 		if tokenAt(afterName).text != "(" {
-			return Ok(ParsedExpression { cursor: afterName, value: MvpExpression.IdentifierValue(value.text, value.span) })
+			return Ok(ParsedExpression { cursor: afterName, value: MvpExpression.IdentifierValue(token.text, token.span) })
 		}
 		let mut current = advance(afterName)
 		let mut arguments: List<MvpExpression> = []
@@ -348,24 +360,26 @@ fn parsePrimary(cursor: Cursor) -> Result<ParsedExpression, MvpDiagnostic> {
 		let close = tokenAt(current)
 		return Ok(ParsedExpression {
 			cursor: expectText(current, ")")?,
-			value: MvpExpression.CallValue(value.text, arguments, span(value.span.start, close.span.end)),
+			value: MvpExpression.CallValue(token.text, arguments, span(token.span.start, close.span.end)),
 		})
 	}
-	return Err(parseError("Expected expression", value))
+	return Err(parseError("Expected expression", token))
 }
 
-pub fn parseMvp(tokens: List<MvpToken>) -> MvpParseResult {
+fn parseModule(tokens: List<MvpToken>) -> Result<MvpModule, MvpDiagnostic> {
 	let mut cursor = skipNewLines(Cursor { tokens: tokens, index: 0 })
 	let mut functions: List<MvpFunction> = []
 	while tokenAt(cursor).kind != MvpTokenKind.EndOfFile {
-		let parsed = parseFunction(cursor)
-		match parsed {
-			Ok(value) => {
-				functions = List.append(functions, value.value)
-				cursor = skipNewLines(value.cursor)
-			}
-			Err(diagnostic) => return MvpParseResult { module: None, diagnostics: [diagnostic] }
-		}
+		let parsed = parseFunction(cursor)?
+		functions = List.append(functions, parsed.value)
+		cursor = skipNewLines(parsed.cursor)
 	}
-	return MvpParseResult { module: Some(MvpModule { functions: functions }), diagnostics: [] }
+	return Ok(MvpModule { functions: functions })
+}
+
+pub fn parseMvp(tokens: List<MvpToken>) -> MvpParseResult {
+	return match parseModule(tokens) {
+		Ok(value) => MvpParseResult { parsedModule: Some(value), diagnostics: [] }
+		Err(diagnostic) => MvpParseResult { parsedModule: None, diagnostics: [diagnostic] }
+	}
 }
