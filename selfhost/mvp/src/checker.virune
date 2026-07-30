@@ -10,10 +10,12 @@ import {
 	MvpHirStatement,
 	MvpModule,
 	MvpParameter,
+	MvpPosition,
 	MvpSpan,
 	MvpStatement,
 	MvpType,
 	errorDiagnostic,
+	span,
 	typeName,
 } from "./model.virune"
 
@@ -59,6 +61,11 @@ pub record MvpCheckResult {
 	diagnostics: List<MvpDiagnostic>
 }
 
+fn zeroSpan() -> MvpSpan {
+	let position = MvpPosition { offset: 0, line: 1, column: 1 }
+	return span(position, position)
+}
+
 fn typeMismatch(actual: MvpType, expected: MvpType, valueSpan: MvpSpan) -> MvpDiagnostic {
 	return errorDiagnostic("L2043", typeName(actual) + " cannot be used as " + typeName(expected), valueSpan)
 }
@@ -89,10 +96,10 @@ fn findBinding(bindings: List<Binding>, name: String) -> Binding? {
 	return None
 }
 
-fn sourceExpressionAt(context: CheckContext, expressionId: Int, valueSpan: MvpSpan) -> Result<MvpExpression, MvpDiagnostic> {
+fn sourceExpressionAt(context: CheckContext, expressionId: Int) -> Result<MvpExpression, MvpDiagnostic> {
 	return match List.get(context.sourceExpressions, expressionId) {
 		Some(value) => Ok(value)
-		None => Err(errorDiagnostic("L9001", "Missing source expression arena entry", valueSpan))
+		None => Err(errorDiagnostic("L9001", "Missing source expression arena entry", zeroSpan()))
 	}
 }
 
@@ -145,10 +152,13 @@ fn checkLiteral(node: MvpExpression, expressions: List<MvpHirExpression>) -> Res
 }
 
 fn checkIdentifier(node: MvpExpression, context: CheckContext, expressions: List<MvpHirExpression>) -> Result<CheckedExpression, MvpDiagnostic> {
-	let binding = findBinding(context.bindings, node.text)
-	return match binding {
+	return match findBinding(context.bindings, node.text) {
 		Some(value) => Ok(addHir(expressions, MvpHirExpression {
-			kind: "local", text: node.text, valueType: value.valueType, children: [], span: node.span,
+			kind: "local",
+			text: node.text,
+			valueType: value.valueType,
+			children: [],
+			span: node.span,
 		}, value.valueType))
 		None => Err(errorDiagnostic("L1010", "Unknown name " + node.text, node.span))
 	}
@@ -158,22 +168,22 @@ fn checkArguments(node: MvpExpression, expected: List<MvpType>, context: CheckCo
 	if List.length(node.children) != List.length(expected) {
 		return Err(errorDiagnostic("L2012", "Expected " + Debug.format(List.length(expected)) + " arguments, received " + Debug.format(List.length(node.children)), node.span))
 	}
-	let mut values: List<Int> = []
+	let mut expressionIds: List<Int> = []
 	let mut arena = expressions
 	let mut index = 0
 	while index < List.length(node.children) {
-		let childId = childAt(node, index)?
+		let sourceId = childAt(node, index)?
 		let expectedType = expectedAt(expected, index, node.span)?
-		let checked = checkExpression(childId, context, arena)?
+		let checked = checkExpression(sourceId, context, arena)?
 		if checked.valueType != expectedType {
-			let child = sourceExpressionAt(context, childId, node.span)?
-			return Err(typeMismatch(checked.valueType, expectedType, child.span))
+			let source = sourceExpressionAt(context, sourceId)?
+			return Err(typeMismatch(checked.valueType, expectedType, source.span))
 		}
-		values = List.append(values, checked.expressionId)
+		expressionIds = List.append(expressionIds, checked.expressionId)
 		arena = checked.expressions
 		index = index + 1
 	}
-	return Ok(CheckedArguments { expressionIds: values, expressions: arena })
+	return Ok(CheckedArguments { expressionIds: expressionIds, expressions: arena })
 }
 
 fn checkKnownCall(node: MvpExpression, signature: Signature, context: CheckContext, expressions: List<MvpHirExpression>) -> Result<CheckedExpression, MvpDiagnostic> {
@@ -195,12 +205,12 @@ fn checkCall(node: MvpExpression, context: CheckContext, expressions: List<MvpHi
 }
 
 fn checkUnary(node: MvpExpression, context: CheckContext, expressions: List<MvpHirExpression>) -> Result<CheckedExpression, MvpDiagnostic> {
-	let childId = childAt(node, 0)?
-	let checked = checkExpression(childId, context, expressions)?
+	let sourceId = childAt(node, 0)?
+	let checked = checkExpression(sourceId, context, expressions)?
 	if node.text == "!" {
 		if checked.valueType != MvpType.BoolType {
-			let child = sourceExpressionAt(context, childId, node.span)?
-			return Err(typeMismatch(checked.valueType, MvpType.BoolType, child.span))
+			let source = sourceExpressionAt(context, sourceId)?
+			return Err(typeMismatch(checked.valueType, MvpType.BoolType, source.span))
 		}
 		return Ok(addHir(checked.expressions, MvpHirExpression {
 			kind: "unary", text: node.text, valueType: MvpType.BoolType,
@@ -216,49 +226,60 @@ fn checkUnary(node: MvpExpression, context: CheckContext, expressions: List<MvpH
 	}, checked.valueType))
 }
 
+fn checkedBinary(node: MvpExpression, left: CheckedExpression, right: CheckedExpression, resultType: MvpType) -> CheckedExpression {
+	return addHir(right.expressions, MvpHirExpression {
+		kind: "binary",
+		text: node.text,
+		valueType: resultType,
+		children: [left.expressionId, right.expressionId],
+		span: node.span,
+	}, resultType)
+}
+
 fn checkBinary(node: MvpExpression, context: CheckContext, expressions: List<MvpHirExpression>) -> Result<CheckedExpression, MvpDiagnostic> {
 	let leftSourceId = childAt(node, 0)?
 	let rightSourceId = childAt(node, 1)?
-	let checkedLeft = checkExpression(leftSourceId, context, expressions)?
-	let checkedRight = checkExpression(rightSourceId, context, checkedLeft.expressions)?
-	let resultType = if node.text == "&&" || node.text == "||" || node.text == "==" || node.text == "!=" || node.text == "<" || node.text == "<=" || node.text == ">" || node.text == ">=" then MvpType.BoolType else checkedLeft.valueType
+	let left = checkExpression(leftSourceId, context, expressions)?
+	let right = checkExpression(rightSourceId, context, left.expressions)?
 	if node.text == "&&" || node.text == "||" {
-		if checkedLeft.valueType != MvpType.BoolType {
-			let child = sourceExpressionAt(context, leftSourceId, node.span)?
-			return Err(typeMismatch(checkedLeft.valueType, MvpType.BoolType, child.span))
+		if left.valueType != MvpType.BoolType {
+			let source = sourceExpressionAt(context, leftSourceId)?
+			return Err(typeMismatch(left.valueType, MvpType.BoolType, source.span))
 		}
-		if checkedRight.valueType != MvpType.BoolType {
-			let child = sourceExpressionAt(context, rightSourceId, node.span)?
-			return Err(typeMismatch(checkedRight.valueType, MvpType.BoolType, child.span))
+		if right.valueType != MvpType.BoolType {
+			let source = sourceExpressionAt(context, rightSourceId)?
+			return Err(typeMismatch(right.valueType, MvpType.BoolType, source.span))
 		}
-	} else if node.text == "==" || node.text == "!=" {
-		if checkedLeft.valueType != checkedRight.valueType {
-			let child = sourceExpressionAt(context, rightSourceId, node.span)?
-			return Err(typeMismatch(checkedRight.valueType, checkedLeft.valueType, child.span))
+		return Ok(checkedBinary(node, left, right, MvpType.BoolType))
+	}
+	if node.text == "==" || node.text == "!=" {
+		if left.valueType != right.valueType {
+			let source = sourceExpressionAt(context, rightSourceId)?
+			return Err(typeMismatch(right.valueType, left.valueType, source.span))
 		}
-	} else if node.text == "<" || node.text == "<=" || node.text == ">" || node.text == ">=" {
-		if checkedLeft.valueType != checkedRight.valueType || !isOrdered(checkedLeft.valueType) {
+		return Ok(checkedBinary(node, left, right, MvpType.BoolType))
+	}
+	if node.text == "<" || node.text == "<=" || node.text == ">" || node.text == ">=" {
+		if left.valueType != right.valueType || !isOrdered(left.valueType) {
 			return Err(errorDiagnostic("L2015", "Comparison requires operands of the same ordered type", node.span))
 		}
-	} else {
-		if checkedLeft.valueType != checkedRight.valueType {
-			let child = sourceExpressionAt(context, rightSourceId, node.span)?
-			return Err(typeMismatch(checkedRight.valueType, checkedLeft.valueType, child.span))
-		}
-		if node.text != "+" || checkedLeft.valueType != MvpType.StringType {
-			if !isNumeric(checkedLeft.valueType) {
-				return Err(errorDiagnostic("L2016", "Operator " + node.text + " cannot be applied to " + typeName(checkedLeft.valueType), node.span))
-			}
-		}
+		return Ok(checkedBinary(node, left, right, MvpType.BoolType))
 	}
-	return Ok(addHir(checkedRight.expressions, MvpHirExpression {
-		kind: "binary", text: node.text, valueType: resultType,
-		children: [checkedLeft.expressionId, checkedRight.expressionId], span: node.span,
-	}, resultType))
+	if left.valueType != right.valueType {
+		let source = sourceExpressionAt(context, rightSourceId)?
+		return Err(typeMismatch(right.valueType, left.valueType, source.span))
+	}
+	if node.text == "+" && left.valueType == MvpType.StringType {
+		return Ok(checkedBinary(node, left, right, MvpType.StringType))
+	}
+	if !isNumeric(left.valueType) {
+		return Err(errorDiagnostic("L2016", "Operator " + node.text + " cannot be applied to " + typeName(left.valueType), node.span))
+	}
+	return Ok(checkedBinary(node, left, right, left.valueType))
 }
 
 fn checkExpression(expressionId: Int, context: CheckContext, expressions: List<MvpHirExpression>) -> Result<CheckedExpression, MvpDiagnostic> {
-	let node = sourceExpressionAt(context, expressionId, context.sourceExpressions[0].span)?
+	let node = sourceExpressionAt(context, expressionId)?
 	if node.kind == "bool" || node.kind == "number" || node.kind == "string" || node.kind == "unit" {
 		return checkLiteral(node, expressions)
 	}
@@ -284,7 +305,7 @@ fn checkLet(name: String, annotation: MvpType?, sourceExpressionId: Int, stateme
 	let checked = checkExpression(sourceExpressionId, context, expressions)?
 	let expected = match annotation { Some(value) => value, None => checked.valueType }
 	if checked.valueType != expected {
-		let source = sourceExpressionAt(context, sourceExpressionId, statementSpan)?
+		let source = sourceExpressionAt(context, sourceExpressionId)?
 		return Err(typeMismatch(checked.valueType, expected, source.span))
 	}
 	return Ok(CheckedStatement {
