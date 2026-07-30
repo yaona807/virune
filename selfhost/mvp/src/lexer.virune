@@ -10,7 +10,7 @@ import {
 	span,
 } from "./model.virune"
 
-pub record MvpLexResult {
+pub record MvpLexResult derives Json {
 	tokens: List<MvpToken>
 	diagnostics: List<MvpDiagnostic>
 }
@@ -63,7 +63,7 @@ fn isSingleSymbol(value: String) -> Bool {
 	return value == "(" || value == ")" || value == "{" || value == "}" || value == ":" || value == "," || value == "+" || value == "-" || value == "*" || value == "/" || value == "%" || value == "<" || value == ">" || value == "=" || value == "!"
 }
 
-pub fn lexMvp(source: String) -> MvpLexResult {
+fn lexMvp(source: String) -> MvpLexResult {
 	let chars = String.codePoints(source)
 	let mut index = 0
 	let mut line = 1
@@ -186,4 +186,8 @@ pub fn lexMvp(source: String) -> MvpLexResult {
 	let end = position(index, line, column)
 	tokens = List.append(tokens, token(MvpTokenKind.EndOfFile, "", end, end))
 	return MvpLexResult { tokens: tokens, diagnostics: diagnostics }
+}
+
+pub fn lexMvpJson(source: String) -> Result<String, List<JsonError>> {
+	return Json.encode<MvpLexResult>(lexMvp(source))
 }
