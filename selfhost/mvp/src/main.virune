@@ -1,71 +1,18 @@
 //! Minimal vertical self-host compiler slice.
 //!
-//! The module implements a deterministic Lexer -> AST Parser -> Checker/HIR ->
-//! ES2022 Emitter pipeline in Virune. The TypeScript Host only adapts the
-//! versioned Kernel contract and performs final source-map encoding.
+//! Each stage exposes only a Result-based JSON boundary. Internal compiler
+//! models remain private to their implementation modules, while the TypeScript
+//! Host adapts the final payload to Kernel Contract v1.
 
-import { checkMvp } from "./checker.virune"
-import { collectMvpExports, emitMvp } from "./emitter.virune"
-import { lexMvp } from "./lexer.virune"
-import {
-	MvpCompilation,
-	MvpDiagnostic,
-	MvpExport,
-	MvpHirModule,
-	MvpModule,
-} from "./model.virune"
-import { parseMvp } from "./parser.virune"
-
-fn sourceExports(moduleValue: MvpModule) -> List<MvpExport> {
-	let mut values: List<MvpExport> = []
-	for function in moduleValue.functions {
-		if function.isPublic {
-			values = List.append(values, MvpExport { name: function.name, declarationKind: "FunctionDeclaration" })
-		}
-	}
-	return values
-}
-
-fn rejected(diagnostics: List<MvpDiagnostic>, exports: List<MvpExport>) -> MvpCompilation {
-	return MvpCompilation {
-		accepted: false,
-		diagnostics: diagnostics,
-		codeBody: "",
-		exports: exports,
-	}
-}
-
-pub fn compileMvpData(source: String) -> MvpCompilation {
-	let lexed = lexMvp(source)
-	if List.isNotEmpty(lexed.diagnostics) {
-		return rejected(lexed.diagnostics, [])
-	}
-	let parsed = parseMvp(lexed.tokens)
-	if List.isNotEmpty(parsed.diagnostics) || match parsed.parsedModule { Some(_) => false, None => true } {
-		return rejected(parsed.diagnostics, [])
-	}
-	let parsedModule = match parsed.parsedModule {
-		Some(value) => value
-		None => MvpModule { functions: [] }
-	}
-	let exports = sourceExports(parsedModule)
-	let checked = checkMvp(parsedModule)
-	if List.isNotEmpty(checked.diagnostics) || match checked.hirModule { Some(_) => false, None => true } {
-		return rejected(checked.diagnostics, exports)
-	}
-	let hir = match checked.hirModule {
-		Some(value) => value
-		None => MvpHirModule { functions: [] }
-	}
-	return MvpCompilation {
-		accepted: true,
-		diagnostics: [],
-		codeBody: emitMvp(hir),
-		exports: collectMvpExports(hir),
-	}
-}
+import { checkMvpJson } from "./checker.virune"
+import { emitMvpJson } from "./emitter.virune"
+import { lexMvpJson } from "./lexer.virune"
+import { parseMvpJson } from "./parser.virune"
 
 @jsExport
 pub fn compileMvp(source: String) -> Result<String, List<JsonError>> {
-	return Json.encode<MvpCompilation>(compileMvpData(source))
+	let lexed = lexMvpJson(source)?
+	let parsed = parseMvpJson(lexed)?
+	let checked = checkMvpJson(parsed)?
+	return emitMvpJson(checked)
 }
