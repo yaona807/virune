@@ -1,7 +1,8 @@
 //! Readable ES2022 emitter for the checked MVP HIR.
 
+import { MvpCheckResult } from "./checker.virune"
 import {
-	MvpExport,
+	MvpCompilation,
 	MvpHirExpression,
 	MvpHirFunction,
 	MvpHirModule,
@@ -137,7 +138,7 @@ fn emitFunction(function: MvpHirFunction) -> String {
 		"}\n\n"
 }
 
-pub fn emitMvp(moduleValue: MvpHirModule) -> String {
+fn emitMvp(moduleValue: MvpHirModule) -> String {
 	let mut code = ""
 	for function in moduleValue.functions {
 		code = code + emitFunction(function)
@@ -145,12 +146,25 @@ pub fn emitMvp(moduleValue: MvpHirModule) -> String {
 	return code
 }
 
-pub fn collectMvpExports(moduleValue: MvpHirModule) -> List<MvpExport> {
-	let mut values: List<MvpExport> = []
-	for function in moduleValue.functions {
-		if function.isPublic {
-			values = List.append(values, MvpExport { name: function.name, declarationKind: "FunctionDeclaration" })
-		}
+pub fn emitMvpJson(encoded: String) -> Result<String, List<JsonError>> {
+	let raw = Json.parse(encoded)?
+	let checked = Json.decode<MvpCheckResult>(raw)?
+	if List.isNotEmpty(checked.diagnostics) || match checked.hirModule { Some(_) => false, None => true } {
+		return Json.encode<MvpCompilation>(MvpCompilation {
+			accepted: false,
+			diagnostics: checked.diagnostics,
+			codeBody: "",
+			exports: checked.exports,
+		})
 	}
-	return values
+	let hir = match checked.hirModule {
+		Some(value) => value
+		None => MvpHirModule { functions: [] }
+	}
+	return Json.encode<MvpCompilation>(MvpCompilation {
+		accepted: true,
+		diagnostics: [],
+		codeBody: emitMvp(hir),
+		exports: checked.exports,
+	})
 }
