@@ -1,0 +1,42 @@
+{
+	"schemaVersion": 1,
+	"seedId": "virune-stage0-v1.0.0",
+	"viruneVersion": "1.0.0",
+	"languageVersion": "1.0",
+	"release": {
+		"repository": "yaona807/virune",
+		"tag": "v1.0.0",
+		"commit": "dcaf89b2f557fde38cdfd9bceb7d23af3ba8ed51",
+		"url": "https://github.com/yaona807/virune/releases/tag/v1.0.0",
+		"verificationEvidence": ".github/release-verification/v1.0.0.json",
+		"verificationRunId": 30417979118,
+		"recoveryRunId": 30467471246
+	},
+	"artifact": {
+		"file": "virune-compiler-1.0.0.tgz",
+		"url": "https://github.com/yaona807/virune/releases/download/v1.0.0/virune-compiler-1.0.0.tgz",
+		"sha256": "69c9d54a925377a2331ba39a229ab5809d946eef54bc43a5f14601eafd87d7b4",
+		"bytes": 143161,
+		"package": {
+			"name": "@virune/compiler",
+			"version": "1.0.0",
+			"type": "module",
+			"node": ">=24.0.0",
+			"runtimeDependency": "1.0.0"
+		}
+	},
+	"baselines": {
+		"node": "24.0.0",
+		"runtimeAbi": "2",
+		"interopAbi": "2",
+		"normalizedArtifactPolicy": "1"
+	},
+	"policy": {
+		"updateMode": "reviewed-pull-request-only",
+		"automaticUpdates": false,
+		"review": {
+			"issue": 90,
+			"pullRequest": 105
+		}
+	}
+}
