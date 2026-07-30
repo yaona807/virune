@@ -1,6 +1,5 @@
 //! Direct AST parser for the minimal self-host compiler grammar.
 
-import { MvpLexResult } from "./lexer.virune"
 import {
 	MvpDiagnostic,
 	MvpExpression,
@@ -16,6 +15,11 @@ import {
 	errorDiagnostic,
 	span,
 } from "./model.virune"
+
+record MvpLexTransport derives Json {
+	tokens: List<MvpToken>
+	diagnostics: List<MvpDiagnostic>
+}
 
 record Cursor {
 	tokens: List<MvpToken>
@@ -49,7 +53,7 @@ record ParsedParameter {
 	value: MvpParameter
 }
 
-pub record MvpParseResult derives Json {
+record MvpParseResult derives Json {
 	parsedModule: MvpModule?
 	diagnostics: List<MvpDiagnostic>
 }
@@ -458,7 +462,7 @@ fn parseMvp(tokens: List<MvpToken>) -> MvpParseResult {
 
 pub fn parseMvpJson(encoded: String) -> Result<String, List<JsonError>> {
 	let raw = Json.parse(encoded)?
-	let lexed = Json.decode<MvpLexResult>(raw)?
+	let lexed = Json.decode<MvpLexTransport>(raw)?
 	if List.isNotEmpty(lexed.diagnostics) {
 		return Json.encode<MvpParseResult>(MvpParseResult { parsedModule: None, diagnostics: lexed.diagnostics })
 	}
