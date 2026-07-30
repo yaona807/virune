@@ -20,9 +20,10 @@ The normative Virune 1.0 language specification is in [`../spec/`](../spec/).
 
 - [Compiler API stability](compiler-api.md)
 - [Compiler architecture](compiler-architecture.md)
+- [Self-hosting architecture](self-hosting-architecture.md)
+- [Stage 0 self-hosting seed](self-hosting-seed.md)
 - [Incremental compilation](incremental-compilation.md)
 - [Fuzzing](fuzzing.md)
 - [TypeScript binding coverage](ffi-coverage.md)
 - [Release channels](release-channels.md)
 - [Stable release gate](stable-release-gate.md)
-

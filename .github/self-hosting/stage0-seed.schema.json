@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/yaona807/virune/blob/main/.github/self-hosting/stage0-seed.schema.json",
+  "title": "Virune Stage 0 Self-hosting Seed Manifest v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "seedId", "viruneVersion", "languageVersion", "release", "artifact", "baselines", "policy"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "seedId": { "type": "string", "minLength": 1 },
+    "viruneVersion": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:-[0-9A-Za-z.-]+)?$" },
+    "languageVersion": { "const": "1.0" },
+    "release": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repository", "tag", "commit", "url", "verificationEvidence", "verificationRunId", "recoveryRunId"],
+      "properties": {
+        "repository": { "const": "yaona807/virune" },
+        "tag": { "type": "string", "pattern": "^v[0-9]+\\.[0-9]+\\.[0-9]+(?:-[0-9A-Za-z.-]+)?$" },
+        "commit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+        "url": { "type": "string", "format": "uri", "pattern": "^https://github\\.com/yaona807/virune/releases/tag/" },
+        "verificationEvidence": { "type": "string", "pattern": "^\\.github/release-verification/v[0-9]+\\.[0-9]+\\.[0-9]+(?:-[0-9A-Za-z.-]+)?\\.json$" },
+        "verificationRunId": { "type": "integer", "minimum": 1 },
+        "recoveryRunId": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["file", "url", "sha256", "bytes", "package"],
+      "properties": {
+        "file": { "type": "string", "pattern": "^virune-compiler-[0-9]+\\.[0-9]+\\.[0-9]+(?:-[0-9A-Za-z.-]+)?\\.tgz$" },
+        "url": { "type": "string", "format": "uri", "pattern": "^https://github\\.com/yaona807/virune/releases/download/" },
+        "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "bytes": { "type": "integer", "minimum": 1 },
+        "package": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["name", "version", "type", "node", "runtimeDependency"],
+          "properties": {
+            "name": { "const": "@virune/compiler" },
+            "version": { "type": "string" },
+            "type": { "const": "module" },
+            "node": { "const": ">=24.0.0" },
+            "runtimeDependency": { "type": "string" }
+          }
+        }
+      }
+    },
+    "baselines": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["node", "runtimeAbi", "interopAbi", "normalizedArtifactPolicy"],
+      "properties": {
+        "node": { "const": "24.0.0" },
+        "runtimeAbi": { "const": "2" },
+        "interopAbi": { "const": "2" },
+        "normalizedArtifactPolicy": { "const": "1" }
+      }
+    },
+    "policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["updateMode", "automaticUpdates", "review"],
+      "properties": {
+        "updateMode": { "const": "reviewed-pull-request-only" },
+        "automaticUpdates": { "const": false },
+        "review": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["issue", "pullRequest"],
+          "properties": {
+            "issue": { "type": "integer", "minimum": 1 },
+            "pullRequest": { "type": "integer", "minimum": 1 }
+          }
+        }
+      }
+    }
+  }
+}
