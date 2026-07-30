@@ -21,6 +21,11 @@ const groups = platformSmoke ? platformGroups : [
 			name: 'unit',
 			command: ['scripts/run-unit-tests.mjs', ...(failureOutputOnly ? ['--failure-output-only'] : [])],
 		},
+		{
+			name: 'self-host kernel model',
+			command: ['packages/cli/dist/src/main.js', 'test', 'selfhost/kernel'],
+			failureOutput: '.cache/selfhost-kernel-test-failure.log',
+		},
 		{ name: 'documentation example policy', files: ['scripts/verify-documentation-examples.test.mjs'] },
 		{
 			name: 'documentation examples',

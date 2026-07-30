@@ -1,0 +1,310 @@
+//! Data-oriented foundations for the Virune self-host compiler kernel.
+//!
+//! This module intentionally uses records, enums, immutable lists, explicit
+//! state passing, and Result values. It does not depend on classes, reflection,
+//! unchecked casts, mutable record fields, or compiler-only intrinsics.
+
+pub record SourcePosition derives Eq, Hash, Debug, Json {
+	offset: Int
+	line: Int
+	column: Int
+}
+
+pub record SourceSpan derives Eq, Hash, Debug, Json {
+	start: SourcePosition
+	end: SourcePosition
+}
+
+pub enum TokenKind derives Eq, Hash, Debug, Json {
+	Identifier
+	Keyword
+	NumberLiteral
+	StringLiteral
+	Punctuation
+	EndOfFile
+}
+
+pub record Token derives Eq, Hash, Debug, Json {
+	kind: TokenKind
+	lexeme: String
+	span: SourceSpan
+}
+
+pub enum DiagnosticSeverity derives Eq, Hash, Debug, Json {
+	Error
+	Warning
+	Information
+	Hint
+}
+
+pub record Diagnostic derives Eq, Hash, Debug, Json {
+	code: String
+	severity: DiagnosticSeverity
+	message: String
+	sourcePath: String?
+	span: SourceSpan
+	notes: List<String>
+}
+
+pub record NodeId derives Eq, Hash, Debug, Json {
+	value: Int
+}
+
+pub record SymbolId derives Eq, Hash, Debug, Json {
+	value: Int
+}
+
+pub record TypeId derives Eq, Hash, Debug, Json {
+	value: Int
+}
+
+pub record StringId derives Eq, Hash, Debug, Json {
+	value: Int
+}
+
+pub record NumberId derives Eq, Hash, Debug, Json {
+	value: Int
+}
+
+pub record NodeEntry derives Eq, Hash, Debug, Json {
+	id: NodeId
+	kind: String
+	span: SourceSpan
+}
+
+pub record SymbolEntry derives Eq, Hash, Debug, Json {
+	id: SymbolId
+	name: String
+}
+
+pub record TypeEntry derives Eq, Hash, Debug, Json {
+	id: TypeId
+	display: String
+}
+
+record Arena<T> {
+	values: List<T>
+}
+
+record ArenaAllocation<T> {
+	arena: Arena<T>
+	id: Int
+}
+
+pub enum ModelError derives Eq, Debug, Json {
+	InvalidPosition(String)
+	InvalidSpan(String)
+	MissingArenaValue(Int)
+	MissingString(String)
+	MissingNumber(Int)
+}
+
+pub record StringEntry derives Eq, Hash, Debug, Json {
+	id: StringId
+	value: String
+}
+
+pub record NumberEntry derives Eq, Hash, Debug, Json {
+	id: NumberId
+	value: Int
+}
+
+pub record StringTable derives Eq, Hash, Debug, Json {
+	entries: List<StringEntry>
+}
+
+pub record NumberTable derives Eq, Hash, Debug, Json {
+	entries: List<NumberEntry>
+}
+
+pub record KernelModel derives Eq, Debug, Json {
+	version: Int
+	positions: List<SourcePosition>
+	spans: List<SourceSpan>
+	tokens: List<Token>
+	diagnostics: List<Diagnostic>
+	nodes: List<NodeEntry>
+	symbols: List<SymbolEntry>
+	types: List<TypeEntry>
+	strings: StringTable
+	numbers: NumberTable
+}
+
+pub record ArenaProbe derives Eq, Debug, Json {
+	first: String
+	second: String
+	count: Int
+	missingRejected: Bool
+}
+
+pub record CanonicalTables derives Eq, Debug, Json {
+	strings: StringTable
+	numbers: NumberTable
+}
+
+pub fn validateSourcePosition(position: SourcePosition) -> Result<SourcePosition, ModelError> {
+	if position.offset < 0 {
+		return Err(ModelError.InvalidPosition("offset must be non-negative"))
+	}
+	if position.line < 1 {
+		return Err(ModelError.InvalidPosition("line must be at least one"))
+	}
+	if position.column < 1 {
+		return Err(ModelError.InvalidPosition("column must be at least one"))
+	}
+	return Ok(position)
+}
+
+pub fn validateSourceSpan(span: SourceSpan) -> Result<SourceSpan, ModelError> {
+	let start = validateSourcePosition(span.start)?
+	let end = validateSourcePosition(span.end)?
+	if end.offset < start.offset {
+		return Err(ModelError.InvalidSpan("end offset must not precede start offset"))
+	}
+	return Ok(SourceSpan { start: start, end: end })
+}
+
+fn emptyArena<T>() -> Arena<T> {
+	return Arena<T> { values: [] }
+}
+
+fn allocateArena<T>(arena: Arena<T>, value: T) -> ArenaAllocation<T> {
+	let id = List.length(arena.values)
+	return ArenaAllocation<T> {
+		arena: Arena<T> { values: List.append(arena.values, value) },
+		id: id,
+	}
+}
+
+fn lookupArena<T>(arena: Arena<T>, id: Int) -> Result<T, ModelError> {
+	return match List.get(arena.values, id) {
+		Some(value) => Ok(value)
+		None => Err(ModelError.MissingArenaValue(id))
+	}
+}
+
+fn insertString(sorted: List<String>, value: String) -> List<String> {
+	return match sorted {
+		[] => [value]
+		[head, ...tail] => if value == head then sorted else if value < head then List.prepend(sorted, value) else List.prepend(insertString(tail, value), head)
+	}
+}
+
+fn insertNumber(sorted: List<Int>, value: Int) -> List<Int> {
+	return match sorted {
+		[] => [value]
+		[head, ...tail] => if value == head then sorted else if value < head then List.prepend(sorted, value) else List.prepend(insertNumber(tail, value), head)
+	}
+}
+
+pub fn buildStringTable(values: List<String>) -> StringTable {
+	let mut sorted: List<String> = []
+	for value in values {
+		sorted = insertString(sorted, value)
+	}
+	let mut entries: List<StringEntry> = []
+	let mut index = 0
+	for value in sorted {
+		entries = List.append(entries, StringEntry {
+			id: StringId { value: index },
+			value: value,
+		})
+		index = index + 1
+	}
+	return StringTable { entries: entries }
+}
+
+pub fn buildNumberTable(values: List<Int>) -> NumberTable {
+	let mut sorted: List<Int> = []
+	for value in values {
+		sorted = insertNumber(sorted, value)
+	}
+	let mut entries: List<NumberEntry> = []
+	let mut index = 0
+	for value in sorted {
+		entries = List.append(entries, NumberEntry {
+			id: NumberId { value: index },
+			value: value,
+		})
+		index = index + 1
+	}
+	return NumberTable { entries: entries }
+}
+
+pub fn findStringId(table: StringTable, value: String) -> Result<StringId, ModelError> {
+	for entry in table.entries {
+		if entry.value == value {
+			return Ok(entry.id)
+		}
+	}
+	return Err(ModelError.MissingString(value))
+}
+
+pub fn findNumberId(table: NumberTable, value: Int) -> Result<NumberId, ModelError> {
+	for entry in table.entries {
+		if entry.value == value {
+			return Ok(entry.id)
+		}
+	}
+	return Err(ModelError.MissingNumber(value))
+}
+
+fn stringValues(table: StringTable) -> List<String> {
+	let mut values: List<String> = []
+	for entry in table.entries {
+		values = List.append(values, entry.value)
+	}
+	return values
+}
+
+fn numberValues(table: NumberTable) -> List<Int> {
+	let mut values: List<Int> = []
+	for entry in table.entries {
+		values = List.append(values, entry.value)
+	}
+	return values
+}
+
+pub fn canonicalizeKernelModel(model: KernelModel) -> KernelModel {
+	return model with {
+		strings: buildStringTable(stringValues(model.strings)),
+		numbers: buildNumberTable(numberValues(model.numbers)),
+	}
+}
+
+@jsExport
+pub fn runArenaProbe() -> Result<ArenaProbe, ModelError> {
+	let firstAllocation = allocateArena<String>(emptyArena<String>(), "first")
+	let secondAllocation = allocateArena<String>(firstAllocation.arena, "second")
+	let first = lookupArena<String>(secondAllocation.arena, firstAllocation.id)?
+	let second = lookupArena<String>(secondAllocation.arena, secondAllocation.id)?
+	let missingRejected = match lookupArena<String>(secondAllocation.arena, 99) {
+		Ok(_) => false
+		Err(_) => true
+	}
+	return Ok(ArenaProbe {
+		first: first,
+		second: second,
+		count: List.length(secondAllocation.arena.values),
+		missingRejected: missingRejected,
+	})
+}
+
+@jsExport
+pub fn encodeCanonicalTables(strings: List<String>, numbers: List<Int>) -> Result<String, List<JsonError>> {
+	return Json.encode<CanonicalTables>(CanonicalTables {
+		strings: buildStringTable(strings),
+		numbers: buildNumberTable(numbers),
+	})
+}
+
+@jsExport
+pub fn decodeKernelModel(raw: Unknown) -> Result<KernelModel, List<JsonError>> {
+	return Json.decode<KernelModel>(raw)
+}
+
+@jsExport
+pub fn encodeCanonicalKernelModel(raw: Unknown) -> Result<String, List<JsonError>> {
+	let model = Json.decode<KernelModel>(raw)?
+	return Json.encode<KernelModel>(canonicalizeKernelModel(model))
+}

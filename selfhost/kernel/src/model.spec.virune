@@ -1,0 +1,73 @@
+import {
+	SourcePosition,
+	SourceSpan,
+	buildStringTable,
+	buildNumberTable,
+	findStringId,
+	findNumberId,
+	validateSourcePosition,
+	validateSourceSpan,
+	runArenaProbe,
+	encodeCanonicalTables,
+	decodeKernelModel,
+} from "./main.virune"
+
+fn resultString(value: Result<String, List<JsonError>>) -> String {
+	return match value {
+		Ok(text) => text
+		Err(_) => ""
+	}
+}
+
+test "source positions and spans reject malformed input without panic" {
+	let valid = validateSourcePosition(SourcePosition { offset: 0, line: 1, column: 1 })
+	let invalid = validateSourcePosition(SourcePosition { offset: -1, line: 0, column: 0 })
+	let reversed = validateSourceSpan(SourceSpan {
+		start: SourcePosition { offset: 2, line: 1, column: 3 },
+		end: SourcePosition { offset: 1, line: 1, column: 2 },
+	})
+	expect(match valid { Ok(_) => true, Err(_) => false })
+	expect(match invalid { Ok(_) => false, Err(_) => true })
+	expect(match reversed { Ok(_) => false, Err(_) => true })
+}
+
+test "immutable arena allocates deterministic ids and reports missing values" {
+	let probe = runArenaProbe()
+	expect(match probe {
+		Ok(value) => value.first == "first" && value.second == "second" && value.count == 2 && value.missingRejected
+		Err(_) => false
+	})
+}
+
+test "string and number tables are canonical regardless of insertion order" {
+	let first = resultString(encodeCanonicalTables(["zeta", "alpha", "zeta", "beta"], [9, 1, 9, 3]))
+	let second = resultString(encodeCanonicalTables(["beta", "zeta", "alpha"], [3, 9, 1]))
+	expect(first == second)
+	expect(String.contains(first, "\"value\":\"alpha\""))
+	expect(String.contains(first, "\"value\":1"))
+}
+
+test "table lookup returns stable ids and explicit errors" {
+	let strings = buildStringTable(["gamma", "alpha", "beta"])
+	let numbers = buildNumberTable([30, 10, 20])
+	expect(match findStringId(strings, "alpha") {
+		Ok(id) => id.value == 0
+		Err(_) => false
+	})
+	expect(match findStringId(strings, "missing") {
+		Ok(_) => false
+		Err(_) => true
+	})
+	expect(match findNumberId(numbers, 20) {
+		Ok(id) => id.value == 1
+		Err(_) => false
+	})
+}
+
+test "host decode adapter reports malformed input as Result" {
+	let decoded = decodeKernelModel("not a kernel model")
+	expect(match decoded {
+		Ok(_) => false
+		Err(errors) => List.isNotEmpty(errors)
+	})
+}
