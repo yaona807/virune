@@ -1,0 +1,169 @@
+//! Data-only model for the minimal self-host compiler slice.
+
+pub record MvpPosition derives Eq, Hash, Debug, Json {
+	offset: Int
+	line: Int
+	column: Int
+}
+
+pub record MvpSpan derives Eq, Hash, Debug, Json {
+	start: MvpPosition
+	end: MvpPosition
+}
+
+pub enum MvpTokenKind derives Eq, Hash, Debug {
+	Identifier
+	Number
+	StringLiteral
+	Symbol
+	NewLine
+	EndOfFile
+}
+
+pub record MvpToken derives Eq, Debug {
+	kind: MvpTokenKind
+	text: String
+	span: MvpSpan
+}
+
+pub enum MvpType derives Eq, Hash, Debug {
+	BoolType
+	IntType
+	FloatType
+	StringType
+	UnitType
+	ErrorType
+}
+
+pub enum MvpExpression {
+	BoolLiteral(Bool, MvpSpan)
+	NumberLiteral(String, MvpType, MvpSpan)
+	StringLiteralValue(String, MvpSpan)
+	UnitLiteral(MvpSpan)
+	IdentifierValue(String, MvpSpan)
+	CallValue(String, List<MvpExpression>, MvpSpan)
+	UnaryValue(String, MvpExpression, MvpSpan)
+	BinaryValue(String, MvpExpression, MvpExpression, MvpSpan)
+}
+
+pub enum MvpStatement {
+	LetValue(String, MvpType?, MvpExpression, MvpSpan)
+	ReturnValue(MvpExpression, MvpSpan)
+}
+
+pub record MvpParameter {
+	name: String
+	type: MvpType
+	span: MvpSpan
+}
+
+pub record MvpFunction {
+	public: Bool
+	name: String
+	parameters: List<MvpParameter>
+	returnType: MvpType
+	statements: List<MvpStatement>
+	span: MvpSpan
+}
+
+pub record MvpModule {
+	functions: List<MvpFunction>
+}
+
+pub enum MvpHirExpression {
+	HirBool(Bool, MvpSpan)
+	HirNumber(String, MvpType, MvpSpan)
+	HirString(String, MvpSpan)
+	HirUnit(MvpSpan)
+	HirLocal(String, MvpType, MvpSpan)
+	HirCall(String, List<MvpHirExpression>, MvpType, MvpSpan)
+	HirUnary(String, MvpHirExpression, MvpType, MvpSpan)
+	HirBinary(String, MvpHirExpression, MvpHirExpression, MvpType, MvpSpan)
+}
+
+pub enum MvpHirStatement {
+	HirLet(String, MvpType, MvpHirExpression, MvpSpan)
+	HirReturn(MvpHirExpression, MvpSpan)
+}
+
+pub record MvpHirFunction {
+	public: Bool
+	name: String
+	parameters: List<MvpParameter>
+	returnType: MvpType
+	statements: List<MvpHirStatement>
+	span: MvpSpan
+}
+
+pub record MvpHirModule {
+	functions: List<MvpHirFunction>
+}
+
+pub record MvpDiagnostic derives Eq, Debug, Json {
+	code: String
+	severity: String
+	message: String
+	span: MvpSpan
+}
+
+pub record MvpExport derives Eq, Debug, Json {
+	name: String
+	declarationKind: String
+}
+
+pub record MvpCompilation derives Eq, Debug, Json {
+	accepted: Bool
+	diagnostics: List<MvpDiagnostic>
+	codeBody: String
+	exports: List<MvpExport>
+}
+
+pub fn span(start: MvpPosition, end: MvpPosition) -> MvpSpan {
+	return MvpSpan { start: start, end: end }
+}
+
+pub fn expressionSpan(expression: MvpExpression) -> MvpSpan {
+	return match expression {
+		BoolLiteral(_, value) => value
+		NumberLiteral(_, _, value) => value
+		StringLiteralValue(_, value) => value
+		UnitLiteral(value) => value
+		IdentifierValue(_, value) => value
+		CallValue(_, _, value) => value
+		UnaryValue(_, _, value) => value
+		BinaryValue(_, _, _, value) => value
+	}
+}
+
+pub fn hirExpressionSpan(expression: MvpHirExpression) -> MvpSpan {
+	return match expression {
+		HirBool(_, value) => value
+		HirNumber(_, _, value) => value
+		HirString(_, value) => value
+		HirUnit(value) => value
+		HirLocal(_, _, value) => value
+		HirCall(_, _, _, value) => value
+		HirUnary(_, _, _, value) => value
+		HirBinary(_, _, _, _, value) => value
+	}
+}
+
+pub fn typeName(value: MvpType) -> String {
+	return match value {
+		BoolType => "Bool"
+		IntType => "Int"
+		FloatType => "Float"
+		StringType => "String"
+		UnitType => "Unit"
+		ErrorType => "<error>"
+	}
+}
+
+pub fn errorDiagnostic(code: String, message: String, valueSpan: MvpSpan) -> MvpDiagnostic {
+	return MvpDiagnostic {
+		code: code,
+		severity: "error",
+		message: message,
+		span: valueSpan,
+	}
+}
