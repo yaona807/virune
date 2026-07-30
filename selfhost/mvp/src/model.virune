@@ -53,12 +53,12 @@ pub enum MvpStatement {
 
 pub record MvpParameter {
 	name: String
-	type: MvpType
+	valueType: MvpType
 	span: MvpSpan
 }
 
 pub record MvpFunction {
-	public: Bool
+	isPublic: Bool
 	name: String
 	parameters: List<MvpParameter>
 	returnType: MvpType
@@ -87,7 +87,7 @@ pub enum MvpHirStatement {
 }
 
 pub record MvpHirFunction {
-	public: Bool
+	isPublic: Bool
 	name: String
 	parameters: List<MvpParameter>
 	returnType: MvpType
