@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { execFile } from 'node:child_process';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { dirname, join, relative, resolve } from 'node:path';
+import { promisify } from 'node:util';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { buildProject } from '../src/project/project.js';
 import { runDifferentialCase } from '../src/selfhost/differential-harness.js';
@@ -13,6 +15,7 @@ import {
 import { executeKernelOutputWithNode } from '../src/selfhost/node-executor.js';
 import type { KernelInputV1 } from '../src/selfhost/contract.js';
 
+const execFileAsync = promisify(execFile);
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../../..');
 const mvpRoot = join(repositoryRoot, 'selfhost', 'mvp');
 const temporaryRoot = join(repositoryRoot, '.test-tmp');
@@ -80,11 +83,21 @@ async function loadMvpModule(): Promise<{ readonly root: string; readonly module
 	await mkdir(temporaryRoot, { recursive: true });
 	const root = await mkdtemp(join(temporaryRoot, 'selfhost-mvp-'));
 	const configuredOutDir = resolve(mvpRoot, 'dist');
+	const outputPaths: string[] = [];
 	for (const built of result.modules) {
 		if (built.output === undefined || built.outputPath === undefined) continue;
 		const outputPath = join(root, relative(configuredOutDir, built.outputPath));
 		await mkdir(dirname(outputPath), { recursive: true });
 		await writeFile(outputPath, built.output.code);
+		outputPaths.push(outputPath);
+	}
+	for (const outputPath of outputPaths.sort()) {
+		try {
+			await execFileAsync(process.execPath, ['--check', outputPath]);
+		} catch (error) {
+			const details = error instanceof Error && 'stderr' in error ? String(error.stderr) : String(error);
+			throw new Error(`Generated MVP module ${relative(root, outputPath)} failed syntax validation:\n${details}`);
+		}
 	}
 	const moduleUrl = `${pathToFileURL(join(root, 'main.js')).href}?test=${Date.now()}`;
 	return { root, module: await import(moduleUrl) as SelfhostMvpModule };
