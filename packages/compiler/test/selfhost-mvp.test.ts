@@ -66,7 +66,7 @@ test('Legacy/Self-host rejected output has identical diagnostic code, message, a
 			left: legacyMvpKernel,
 			right: createSelfhostMvpKernel(loaded.module),
 		});
-		assert.equal(report.status, 'match');
+		assert.equal(report.status, 'match', JSON.stringify(report.differences, null, 2));
 		assert.equal(report.passed, true);
 		assert.deepEqual(report.differences, []);
 		assert.equal(report.right.compiler.output?.diagnostics[0]?.code, 'L1010');
