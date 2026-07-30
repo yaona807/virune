@@ -3,6 +3,7 @@
 import {
 	MvpDiagnostic,
 	MvpExpression,
+	MvpExport,
 	MvpFunction,
 	MvpHirExpression,
 	MvpHirFunction,
@@ -18,6 +19,7 @@ import {
 	span,
 	typeName,
 } from "./model.virune"
+import { MvpParseResult } from "./parser.virune"
 
 record Signature {
 	name: String
@@ -56,9 +58,10 @@ record CheckedStatement {
 	expressions: List<MvpHirExpression>
 }
 
-pub record MvpCheckResult {
+pub record MvpCheckResult derives Json {
 	hirModule: MvpHirModule?
 	diagnostics: List<MvpDiagnostic>
+	exports: List<MvpExport>
 }
 
 fn zeroSpan() -> MvpSpan {
@@ -74,6 +77,16 @@ fn parameterTypes(parameters: List<MvpParameter>) -> List<MvpType> {
 	let mut values: List<MvpType> = []
 	for parameter in parameters {
 		values = List.append(values, parameter.valueType)
+	}
+	return values
+}
+
+fn sourceExports(moduleValue: MvpModule) -> List<MvpExport> {
+	let mut values: List<MvpExport> = []
+	for function in moduleValue.functions {
+		if function.isPublic {
+			values = List.append(values, MvpExport { name: function.name, declarationKind: "FunctionDeclaration" })
+		}
 	}
 	return values
 }
@@ -397,9 +410,27 @@ fn checkModule(moduleValue: MvpModule) -> Result<MvpHirModule, MvpDiagnostic> {
 	return Ok(MvpHirModule { functions: functions })
 }
 
-pub fn checkMvp(moduleValue: MvpModule) -> MvpCheckResult {
+fn checkMvp(moduleValue: MvpModule) -> MvpCheckResult {
+	let exports = sourceExports(moduleValue)
 	return match checkModule(moduleValue) {
-		Ok(value) => MvpCheckResult { hirModule: Some(value), diagnostics: [] }
-		Err(diagnostic) => MvpCheckResult { hirModule: None, diagnostics: [diagnostic] }
+		Ok(value) => MvpCheckResult { hirModule: Some(value), diagnostics: [], exports: exports }
+		Err(diagnostic) => MvpCheckResult { hirModule: None, diagnostics: [diagnostic], exports: exports }
 	}
+}
+
+pub fn checkMvpJson(encoded: String) -> Result<String, List<JsonError>> {
+	let raw = Json.parse(encoded)?
+	let parsed = Json.decode<MvpParseResult>(raw)?
+	if List.isNotEmpty(parsed.diagnostics) || match parsed.parsedModule { Some(_) => false, None => true } {
+		return Json.encode<MvpCheckResult>(MvpCheckResult {
+			hirModule: None,
+			diagnostics: parsed.diagnostics,
+			exports: [],
+		})
+	}
+	let moduleValue = match parsed.parsedModule {
+		Some(value) => value
+		None => MvpModule { functions: [] }
+	}
+	return Json.encode<MvpCheckResult>(checkMvp(moduleValue))
 }
