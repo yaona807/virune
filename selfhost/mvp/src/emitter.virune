@@ -18,83 +18,107 @@ fn parameterNames(parameters: List<MvpParameter>) -> List<String> {
 	return values
 }
 
-fn emitArguments(arguments: List<MvpHirExpression>) -> List<String> {
+fn expressionAt(expressions: List<MvpHirExpression>, expressionId: Int) -> MvpHirExpression {
+	return match List.get(expressions, expressionId) {
+		Some(value) => value
+		None => panic("Missing HIR expression arena entry")
+	}
+}
+
+fn childAt(expression: MvpHirExpression, index: Int) -> Int {
+	return match List.get(expression.children, index) {
+		Some(value) => value
+		None => panic("Missing HIR child expression arena index")
+	}
+}
+
+fn emitArguments(expressionIds: List<Int>, expressions: List<MvpHirExpression>) -> List<String> {
 	let mut values: List<String> = []
-	for argument in arguments {
-		values = List.append(values, emitExpression(argument))
+	for expressionId in expressionIds {
+		values = List.append(values, emitExpression(expressionId, expressions))
 	}
 	return values
 }
 
-fn emitCall(name: String, arguments: List<MvpHirExpression>) -> String {
-	let values = emitArguments(arguments)
+fn emitCall(expression: MvpHirExpression, expressions: List<MvpHirExpression>) -> String {
+	let values = emitArguments(expression.children, expressions)
 	if List.isEmpty(values) {
-		return name + "($ctx)"
+		return expression.text + "($ctx)"
 	}
-	return name + "(" + String.join(values, ", ") + ", $ctx)"
+	return expression.text + "(" + String.join(values, ", ") + ", $ctx)"
 }
 
-fn emitUnary(operator: String, operand: MvpHirExpression, valueType: MvpType) -> String {
-	let value = emitExpression(operand)
-	if operator == "-" && valueType == MvpType.IntType {
+fn emitUnary(expression: MvpHirExpression, expressions: List<MvpHirExpression>) -> String {
+	let value = emitExpression(childAt(expression, 0), expressions)
+	if expression.text == "-" && expression.valueType == MvpType.IntType {
 		return "intNegate(" + value + ")"
 	}
-	return "(" + operator + value + ")"
+	return "(" + expression.text + value + ")"
 }
 
-fn emitBinary(operator: String, left: MvpHirExpression, right: MvpHirExpression, valueType: MvpType) -> String {
-	let leftCode = emitExpression(left)
-	let rightCode = emitExpression(right)
-	if operator == "==" {
+fn emitBinary(expression: MvpHirExpression, expressions: List<MvpHirExpression>) -> String {
+	let leftCode = emitExpression(childAt(expression, 0), expressions)
+	let rightCode = emitExpression(childAt(expression, 1), expressions)
+	if expression.text == "==" {
 		return "viruneEquals(" + leftCode + ", " + rightCode + ")"
 	}
-	if operator == "!=" {
+	if expression.text == "!=" {
 		return "!viruneEquals(" + leftCode + ", " + rightCode + ")"
 	}
-	if valueType == MvpType.IntType {
-		if operator == "+" {
+	if expression.valueType == MvpType.IntType {
+		if expression.text == "+" {
 			return "intAdd(" + leftCode + ", " + rightCode + ")"
 		}
-		if operator == "-" {
+		if expression.text == "-" {
 			return "intSubtract(" + leftCode + ", " + rightCode + ")"
 		}
-		if operator == "*" {
+		if expression.text == "*" {
 			return "intMultiply(" + leftCode + ", " + rightCode + ")"
 		}
-		if operator == "/" {
+		if expression.text == "/" {
 			return "intDivide(" + leftCode + ", " + rightCode + ")"
 		}
-		if operator == "%" {
+		if expression.text == "%" {
 			return "intRemainder(" + leftCode + ", " + rightCode + ")"
 		}
 	}
-	return "(" + leftCode + " " + operator + " " + rightCode + ")"
+	return "(" + leftCode + " " + expression.text + " " + rightCode + ")"
 }
 
-pub fn emitExpression(expression: MvpHirExpression) -> String {
-	return match expression {
-		HirBool(value, _) => if value then "true" else "false"
-		HirNumber(text, _, _) => text
-		HirString(text, _) => text
-		HirUnit(_) => "undefined"
-		HirLocal(name, _, _) => name
-		HirCall(name, arguments, _, _) => emitCall(name, arguments)
-		HirUnary(operator, operand, valueType, _) => emitUnary(operator, operand, valueType)
-		HirBinary(operator, left, right, valueType, _) => emitBinary(operator, left, right, valueType)
+fn emitExpression(expressionId: Int, expressions: List<MvpHirExpression>) -> String {
+	let expression = expressionAt(expressions, expressionId)
+	if expression.kind == "bool" || expression.kind == "number" || expression.kind == "string" {
+		return expression.text
 	}
+	if expression.kind == "unit" {
+		return "undefined"
+	}
+	if expression.kind == "local" {
+		return expression.text
+	}
+	if expression.kind == "call" {
+		return emitCall(expression, expressions)
+	}
+	if expression.kind == "unary" {
+		return emitUnary(expression, expressions)
+	}
+	if expression.kind == "binary" {
+		return emitBinary(expression, expressions)
+	}
+	return panic("Unknown HIR expression kind " + expression.kind)
 }
 
-fn emitStatement(statement: MvpHirStatement) -> String {
+fn emitStatement(statement: MvpHirStatement, expressions: List<MvpHirExpression>) -> String {
 	return match statement {
-		HirLet(name, _, expression, _) => "\t\tconst " + name + " = " + emitExpression(expression) + ";\n"
-		HirReturn(expression, _) => "\t\treturn " + emitExpression(expression) + ";\n"
+		HirLet(name, _, expressionId, _) => "\t\tconst " + name + " = " + emitExpression(expressionId, expressions) + ";\n"
+		HirReturn(expressionId, _) => "\t\treturn " + emitExpression(expressionId, expressions) + ";\n"
 	}
 }
 
-fn emitStatements(statements: List<MvpHirStatement>) -> String {
+fn emitStatements(statements: List<MvpHirStatement>, expressions: List<MvpHirExpression>) -> String {
 	let mut code = ""
 	for statement in statements {
-		code = code + emitStatement(statement)
+		code = code + emitStatement(statement, expressions)
 	}
 	return code
 }
@@ -105,7 +129,7 @@ fn emitFunction(function: MvpHirFunction) -> String {
 	let prefix = if function.isPublic then "export " else ""
 	return prefix + "function " + function.name + "(" + parameters + ") {\n" +
 		"\ttry {\n" +
-		emitStatements(function.statements) +
+		emitStatements(function.statements, function.expressions) +
 		"\t} catch ($error) {\n" +
 		"\t\tif (isPropagation($error)) return $error.value;\n" +
 		"\t\tthrow $error;\n" +
