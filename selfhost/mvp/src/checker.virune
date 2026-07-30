@@ -22,13 +22,13 @@ record Signature {
 	name: String
 	parameters: List<MvpType>
 	returnType: MvpType
-	public: Bool
+	isPublic: Bool
 	span: MvpSpan
 }
 
 record Binding {
 	name: String
-	type: MvpType
+	valueType: MvpType
 }
 
 record CheckContext {
@@ -39,7 +39,7 @@ record CheckContext {
 
 record CheckedExpression {
 	value: MvpHirExpression
-	type: MvpType
+	valueType: MvpType
 }
 
 record CheckedStatement {
@@ -48,7 +48,7 @@ record CheckedStatement {
 }
 
 pub record MvpCheckResult {
-	module: MvpHirModule?
+	hirModule: MvpHirModule?
 	diagnostics: List<MvpDiagnostic>
 }
 
@@ -59,7 +59,7 @@ fn typeMismatch(actual: MvpType, expected: MvpType, valueSpan: MvpSpan) -> MvpDi
 fn parameterTypes(parameters: List<MvpParameter>) -> List<MvpType> {
 	let mut values: List<MvpType> = []
 	for parameter in parameters {
-		values = List.append(values, parameter.type)
+		values = List.append(values, parameter.valueType)
 	}
 	return values
 }
@@ -91,25 +91,24 @@ fn isOrdered(value: MvpType) -> Bool {
 }
 
 fn checkBoolLiteral(value: Bool, valueSpan: MvpSpan) -> Result<CheckedExpression, MvpDiagnostic> {
-	return Ok(CheckedExpression { value: MvpHirExpression.HirBool(value, valueSpan), type: MvpType.BoolType })
+	return Ok(CheckedExpression { value: MvpHirExpression.HirBool(value, valueSpan), valueType: MvpType.BoolType })
 }
 
 fn checkNumberLiteral(text: String, valueType: MvpType, valueSpan: MvpSpan) -> Result<CheckedExpression, MvpDiagnostic> {
-	return Ok(CheckedExpression { value: MvpHirExpression.HirNumber(text, valueType, valueSpan), type: valueType })
+	return Ok(CheckedExpression { value: MvpHirExpression.HirNumber(text, valueType, valueSpan), valueType: valueType })
 }
 
 fn checkStringLiteral(text: String, valueSpan: MvpSpan) -> Result<CheckedExpression, MvpDiagnostic> {
-	return Ok(CheckedExpression { value: MvpHirExpression.HirString(text, valueSpan), type: MvpType.StringType })
+	return Ok(CheckedExpression { value: MvpHirExpression.HirString(text, valueSpan), valueType: MvpType.StringType })
 }
 
 fn checkUnitLiteral(valueSpan: MvpSpan) -> Result<CheckedExpression, MvpDiagnostic> {
-	return Ok(CheckedExpression { value: MvpHirExpression.HirUnit(valueSpan), type: MvpType.UnitType })
+	return Ok(CheckedExpression { value: MvpHirExpression.HirUnit(valueSpan), valueType: MvpType.UnitType })
 }
 
 fn checkIdentifier(name: String, valueSpan: MvpSpan, context: CheckContext) -> Result<CheckedExpression, MvpDiagnostic> {
-	let binding = findBinding(context.bindings, name)
-	return match binding {
-		Some(value) => Ok(CheckedExpression { value: MvpHirExpression.HirLocal(name, value.type, valueSpan), type: value.type })
+	return match findBinding(context.bindings, name) {
+		Some(value) => Ok(CheckedExpression { value: MvpHirExpression.HirLocal(name, value.valueType, valueSpan), valueType: value.valueType })
 		None => Err(errorDiagnostic("L1010", "Unknown name " + name, valueSpan))
 	}
 }
@@ -130,8 +129,8 @@ fn checkArguments(expressions: List<MvpExpression>, expected: List<MvpType>, con
 			None => MvpType.ErrorType
 		}
 		let checked = checkExpression(expression, context)?
-		if checked.type != expectedType {
-			return Err(typeMismatch(checked.type, expectedType, expressionSpan(expression)))
+		if checked.valueType != expectedType {
+			return Err(typeMismatch(checked.valueType, expectedType, expressionSpan(expression)))
 		}
 		values = List.append(values, checked.value)
 		index = index + 1
@@ -139,70 +138,69 @@ fn checkArguments(expressions: List<MvpExpression>, expected: List<MvpType>, con
 	return Ok(values)
 }
 
+fn checkKnownCall(signature: Signature, arguments: List<MvpExpression>, valueSpan: MvpSpan, context: CheckContext) -> Result<CheckedExpression, MvpDiagnostic> {
+	let values = checkArguments(arguments, signature.parameters, context, valueSpan)?
+	return Ok(CheckedExpression {
+		value: MvpHirExpression.HirCall(signature.name, values, signature.returnType, valueSpan),
+		valueType: signature.returnType,
+	})
+}
+
 fn checkCall(name: String, arguments: List<MvpExpression>, valueSpan: MvpSpan, context: CheckContext) -> Result<CheckedExpression, MvpDiagnostic> {
-	let signature = findSignature(context.signatures, name)
-	return match signature {
+	return match findSignature(context.signatures, name) {
 		Some(value) => checkKnownCall(value, arguments, valueSpan, context)
 		None => Err(errorDiagnostic("L1010", "Unknown name " + name, valueSpan))
 	}
 }
 
-fn checkKnownCall(signature: Signature, arguments: List<MvpExpression>, valueSpan: MvpSpan, context: CheckContext) -> Result<CheckedExpression, MvpDiagnostic> {
-	let values = checkArguments(arguments, signature.parameters, context, valueSpan)?
-	return Ok(CheckedExpression {
-		value: MvpHirExpression.HirCall(signature.name, values, signature.returnType, valueSpan),
-		type: signature.returnType,
-	})
-}
-
 fn checkUnary(operator: String, operand: MvpExpression, valueSpan: MvpSpan, context: CheckContext) -> Result<CheckedExpression, MvpDiagnostic> {
 	let checked = checkExpression(operand, context)?
 	if operator == "!" {
-		if checked.type != MvpType.BoolType {
-			return Err(typeMismatch(checked.type, MvpType.BoolType, expressionSpan(operand)))
+		if checked.valueType != MvpType.BoolType {
+			return Err(typeMismatch(checked.valueType, MvpType.BoolType, expressionSpan(operand)))
 		}
-		return Ok(CheckedExpression { value: MvpHirExpression.HirUnary(operator, checked.value, MvpType.BoolType, valueSpan), type: MvpType.BoolType })
+		return Ok(CheckedExpression { value: MvpHirExpression.HirUnary(operator, checked.value, MvpType.BoolType, valueSpan), valueType: MvpType.BoolType })
 	}
-	if !isNumeric(checked.type) {
+	if !isNumeric(checked.valueType) {
 		return Err(errorDiagnostic("L2017", "Unary minus requires a numeric value", valueSpan))
 	}
-	return Ok(CheckedExpression { value: MvpHirExpression.HirUnary(operator, checked.value, checked.type, valueSpan), type: checked.type })
+	return Ok(CheckedExpression { value: MvpHirExpression.HirUnary(operator, checked.value, checked.valueType, valueSpan), valueType: checked.valueType })
 }
 
 fn checkBinary(operator: String, left: MvpExpression, right: MvpExpression, valueSpan: MvpSpan, context: CheckContext) -> Result<CheckedExpression, MvpDiagnostic> {
 	let checkedLeft = checkExpression(left, context)?
 	let checkedRight = checkExpression(right, context)?
 	if operator == "&&" || operator == "||" {
-		if checkedLeft.type != MvpType.BoolType {
-			return Err(typeMismatch(checkedLeft.type, MvpType.BoolType, expressionSpan(left)))
+		if checkedLeft.valueType != MvpType.BoolType {
+			return Err(typeMismatch(checkedLeft.valueType, MvpType.BoolType, expressionSpan(left)))
 		}
-		if checkedRight.type != MvpType.BoolType {
-			return Err(typeMismatch(checkedRight.type, MvpType.BoolType, expressionSpan(right)))
+		if checkedRight.valueType != MvpType.BoolType {
+			return Err(typeMismatch(checkedRight.valueType, MvpType.BoolType, expressionSpan(right)))
 		}
-		return Ok(CheckedExpression { value: MvpHirExpression.HirBinary(operator, checkedLeft.value, checkedRight.value, MvpType.BoolType, valueSpan), type: MvpType.BoolType })
+		return Ok(CheckedExpression { value: MvpHirExpression.HirBinary(operator, checkedLeft.value, checkedRight.value, MvpType.BoolType, valueSpan), valueType: MvpType.BoolType })
 	}
 	if operator == "==" || operator == "!=" {
-		if checkedLeft.type != checkedRight.type {
-			return Err(typeMismatch(checkedRight.type, checkedLeft.type, expressionSpan(right)))
+		if checkedLeft.valueType != checkedRight.valueType {
+			return Err(typeMismatch(checkedRight.valueType, checkedLeft.valueType, expressionSpan(right)))
 		}
-		return Ok(CheckedExpression { value: MvpHirExpression.HirBinary(operator, checkedLeft.value, checkedRight.value, MvpType.BoolType, valueSpan), type: MvpType.BoolType })
+		return Ok(CheckedExpression { value: MvpHirExpression.HirBinary(operator, checkedLeft.value, checkedRight.value, MvpType.BoolType, valueSpan), valueType: MvpType.BoolType })
 	}
 	if operator == "<" || operator == "<=" || operator == ">" || operator == ">=" {
-		if checkedLeft.type != checkedRight.type || !isOrdered(checkedLeft.type) {
+		if checkedLeft.valueType != checkedRight.valueType || !isOrdered(checkedLeft.valueType) {
 			return Err(errorDiagnostic("L2015", "Comparison requires operands of the same ordered type", valueSpan))
 		}
-		return Ok(CheckedExpression { value: MvpHirExpression.HirBinary(operator, checkedLeft.value, checkedRight.value, MvpType.BoolType, valueSpan), type: MvpType.BoolType })
+		return Ok(CheckedExpression { value: MvpHirExpression.HirBinary(operator, checkedLeft.value, checkedRight.value, MvpType.BoolType, valueSpan), valueType: MvpType.BoolType })
 	}
-	if checkedLeft.type != checkedRight.type {
-		return Err(typeMismatch(checkedRight.type, checkedLeft.type, expressionSpan(right)))
+	if checkedLeft.valueType != checkedRight.valueType {
+		return Err(typeMismatch(checkedRight.valueType, checkedLeft.valueType, expressionSpan(right)))
 	}
-	if operator == "+" && checkedLeft.type == MvpType.StringType {
-		return Ok(CheckedExpression { value: MvpHirExpression.HirBinary(operator, checkedLeft.value, checkedRight.value, MvpType.StringType, valueSpan), type: MvpType.StringType })
+	if operator == "+" && checkedLeft.valueType == MvpType.StringType {
+		return Ok(CheckedExpression { value: MvpHirExpression.HirBinary(operator, checkedLeft.value, checkedRight.value, MvpType.StringType, valueSpan), valueType: MvpType.StringType })
 	}
-	if !isNumeric(checkedLeft.type) {
-		return Err(errorDiagnostic("L2016", "Operator " + operator + " cannot be applied to " + typeName(checkedLeft.type), valueSpan))
+	if !isNumeric(checkedLeft.valueType) {
+		return Err(errorDiagnostic("L2016", "Operator " + operator + " cannot be applied to " + typeName(checkedLeft.valueType), valueSpan))
 	}
-	return Ok(CheckedExpression { value: MvpHirExpression.HirBinary(operator, checkedLeft.value, checkedRight.value, checkedLeft.type, valueSpan), type: checkedLeft.type })
+	return Ok(CheckedExpression { value: MvpHirExpression.HirBinary(operator, checkedLeft.value, checkedRight.value, checkedLeft.valueType, valueSpan), valueType: checkedLeft.valueType })
 }
 
 fn checkExpression(expression: MvpExpression, context: CheckContext) -> Result<CheckedExpression, MvpDiagnostic> {
@@ -223,20 +221,20 @@ fn checkLet(name: String, annotation: MvpType?, expression: MvpExpression, state
 		return Err(errorDiagnostic("L1007", "Local name " + name + " shadows an existing name", statementSpan))
 	}
 	let checked = checkExpression(expression, context)?
-	let expected = match annotation { Some(value) => value, None => checked.type }
-	if checked.type != expected {
-		return Err(typeMismatch(checked.type, expected, expressionSpan(expression)))
+	let expected = match annotation { Some(value) => value, None => checked.valueType }
+	if checked.valueType != expected {
+		return Err(typeMismatch(checked.valueType, expected, expressionSpan(expression)))
 	}
 	return Ok(CheckedStatement {
 		value: MvpHirStatement.HirLet(name, expected, checked.value, statementSpan),
-		bindings: List.append(context.bindings, Binding { name: name, type: expected }),
+		bindings: List.append(context.bindings, Binding { name: name, valueType: expected }),
 	})
 }
 
 fn checkReturn(expression: MvpExpression, statementSpan: MvpSpan, context: CheckContext) -> Result<CheckedStatement, MvpDiagnostic> {
 	let checked = checkExpression(expression, context)?
-	if checked.type != context.returnType {
-		return Err(typeMismatch(checked.type, context.returnType, statementSpan))
+	if checked.valueType != context.returnType {
+		return Err(typeMismatch(checked.valueType, context.returnType, statementSpan))
 	}
 	return Ok(CheckedStatement { value: MvpHirStatement.HirReturn(checked.value, statementSpan), bindings: context.bindings })
 }
@@ -248,19 +246,19 @@ fn checkStatement(statement: MvpStatement, context: CheckContext) -> Result<Chec
 	}
 }
 
-fn parameterBindings(parameters: List<MvpParameter>, functionSpan: MvpSpan) -> Result<List<Binding>, MvpDiagnostic> {
+fn parameterBindings(parameters: List<MvpParameter>) -> Result<List<Binding>, MvpDiagnostic> {
 	let mut bindings: List<Binding> = []
 	for parameter in parameters {
 		if match findBinding(bindings, parameter.name) { Some(_) => true, None => false } {
 			return Err(errorDiagnostic("L1003", "Duplicate parameter " + parameter.name, parameter.span))
 		}
-		bindings = List.append(bindings, Binding { name: parameter.name, type: parameter.type })
+		bindings = List.append(bindings, Binding { name: parameter.name, valueType: parameter.valueType })
 	}
 	return Ok(bindings)
 }
 
 fn checkFunction(function: MvpFunction, signatures: List<Signature>) -> Result<MvpHirFunction, MvpDiagnostic> {
-	let mut bindings = parameterBindings(function.parameters, function.span)?
+	let mut bindings = parameterBindings(function.parameters)?
 	let mut statements: List<MvpHirStatement> = []
 	for statement in function.statements {
 		let checked = checkStatement(statement, CheckContext { signatures: signatures, bindings: bindings, returnType: function.returnType })?
@@ -268,7 +266,7 @@ fn checkFunction(function: MvpFunction, signatures: List<Signature>) -> Result<M
 		bindings = checked.bindings
 	}
 	return Ok(MvpHirFunction {
-		public: function.public,
+		isPublic: function.isPublic,
 		name: function.name,
 		parameters: function.parameters,
 		returnType: function.returnType,
@@ -287,26 +285,25 @@ fn registerSignatures(functions: List<MvpFunction>) -> Result<List<Signature>, M
 			name: function.name,
 			parameters: parameterTypes(function.parameters),
 			returnType: function.returnType,
-			public: function.public,
+			isPublic: function.isPublic,
 			span: function.span,
 		})
 	}
 	return Ok(signatures)
 }
 
-pub fn checkMvp(module: MvpModule) -> MvpCheckResult {
-	let registered = registerSignatures(module.functions)
-	let signatures = match registered {
-		Ok(value) => value
-		Err(diagnostic) => return MvpCheckResult { module: None, diagnostics: [diagnostic] }
-	}
+fn checkModule(moduleValue: MvpModule) -> Result<MvpHirModule, MvpDiagnostic> {
+	let signatures = registerSignatures(moduleValue.functions)?
 	let mut functions: List<MvpHirFunction> = []
-	for function in module.functions {
-		let checked = checkFunction(function, signatures)
-		match checked {
-			Ok(value) => functions = List.append(functions, value)
-			Err(diagnostic) => return MvpCheckResult { module: None, diagnostics: [diagnostic] }
-		}
+	for function in moduleValue.functions {
+		functions = List.append(functions, checkFunction(function, signatures)?)
 	}
-	return MvpCheckResult { module: Some(MvpHirModule { functions: functions }), diagnostics: [] }
+	return Ok(MvpHirModule { functions: functions })
+}
+
+pub fn checkMvp(moduleValue: MvpModule) -> MvpCheckResult {
+	return match checkModule(moduleValue) {
+		Ok(value) => MvpCheckResult { hirModule: Some(value), diagnostics: [] }
+		Err(diagnostic) => MvpCheckResult { hirModule: None, diagnostics: [diagnostic] }
+	}
 }
