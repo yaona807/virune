@@ -1,0 +1,209 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/yaona807/virune/blob/main/packages/compiler/schema/selfhost-kernel-v1.schema.json",
+  "title": "Virune Self-host Kernel Contract v1",
+  "description": "Data-only request and response envelope shared by the legacy TypeScript compiler and the future Virune compiler kernel.",
+  "oneOf": [
+    { "$ref": "#/$defs/input" },
+    { "$ref": "#/$defs/output" }
+  ],
+  "$defs": {
+    "path": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?!/)(?![A-Za-z]:[\\\\/])(?!.*(?:^|[\\\\/])\\.\\.(?:[\\\\/]|$)).+$"
+    },
+    "position": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["offset", "line", "column"],
+      "properties": {
+        "offset": { "type": "integer", "minimum": 0 },
+        "line": { "type": "integer", "minimum": 1 },
+        "column": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "span": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["start", "end"],
+      "properties": {
+        "start": { "$ref": "#/$defs/position" },
+        "end": { "$ref": "#/$defs/position" }
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "text"],
+      "properties": {
+        "path": { "$ref": "#/$defs/path" },
+        "text": { "type": "string" }
+      }
+    },
+    "interopModule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["specifier", "metadata"],
+      "properties": {
+        "specifier": { "type": "string", "minLength": 1 },
+        "metadata": { "type": "object" }
+      }
+    },
+    "interopManifest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "modules"],
+      "properties": {
+        "version": { "const": "1" },
+        "modules": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/interopModule" }
+        }
+      }
+    },
+    "emit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["target", "sourceMap", "sourcesContent"],
+      "properties": {
+        "target": { "const": "es2022" },
+        "sourceMap": { "type": "boolean" },
+        "sourcesContent": { "type": "boolean" }
+      }
+    },
+    "input": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["contractVersion", "languageVersion", "platform", "entryPath", "sources", "interopManifest", "emit"],
+      "properties": {
+        "contractVersion": { "const": "1" },
+        "languageVersion": { "const": "1.0" },
+        "platform": { "enum": ["node", "browser", "neutral"] },
+        "entryPath": { "$ref": "#/$defs/path" },
+        "sources": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/source" }
+        },
+        "interopManifest": { "$ref": "#/$defs/interopManifest" },
+        "emit": { "$ref": "#/$defs/emit" }
+      }
+    },
+    "diagnosticCause": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "message"],
+      "properties": {
+        "kind": { "enum": ["unknown", "internal"] },
+        "message": { "type": "string" },
+        "name": { "type": "string" },
+        "stack": { "type": "string" }
+      }
+    },
+    "relatedDiagnostic": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["message", "span"],
+      "properties": {
+        "message": { "type": "string" },
+        "sourcePath": { "$ref": "#/$defs/path" },
+        "span": { "$ref": "#/$defs/span" }
+      }
+    },
+    "diagnosticFix": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["title", "kind"],
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "kind": { "enum": ["insert", "replace", "remove", "rewrite"] },
+        "sourcePath": { "$ref": "#/$defs/path" },
+        "span": { "$ref": "#/$defs/span" },
+        "text": { "type": "string" }
+      }
+    },
+    "diagnostic": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "severity", "message", "span"],
+      "properties": {
+        "code": { "type": "string" },
+        "severity": { "enum": ["error", "warning", "information", "hint"] },
+        "message": { "type": "string" },
+        "sourcePath": { "$ref": "#/$defs/path" },
+        "span": { "$ref": "#/$defs/span" },
+        "related": { "type": "array", "items": { "$ref": "#/$defs/relatedDiagnostic" } },
+        "help": { "type": "string" },
+        "fixes": { "type": "array", "items": { "$ref": "#/$defs/diagnosticFix" } },
+        "cause": { "$ref": "#/$defs/diagnosticCause" }
+      }
+    },
+    "emittedModule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sourcePath", "outputPath", "code", "sourceMap"],
+      "properties": {
+        "sourcePath": { "$ref": "#/$defs/path" },
+        "outputPath": { "$ref": "#/$defs/path" },
+        "code": { "type": "string" },
+        "sourceMap": { "type": "string" }
+      }
+    },
+    "dependency": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["modulePath", "sourceKind", "specifier", "typeOnly", "public"],
+      "properties": {
+        "modulePath": { "$ref": "#/$defs/path" },
+        "sourceKind": { "enum": ["virune", "javascript"] },
+        "specifier": { "type": "string" },
+        "resolvedPath": { "$ref": "#/$defs/path" },
+        "typeOnly": { "type": "boolean" },
+        "public": { "type": "boolean" }
+      }
+    },
+    "exportedSymbol": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["modulePath", "name", "declarationKind"],
+      "properties": {
+        "modulePath": { "$ref": "#/$defs/path" },
+        "name": { "type": "string", "minLength": 1 },
+        "declarationKind": { "type": "string", "minLength": 1 }
+      }
+    },
+    "stats": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["parsedModules", "reusedParsedModules", "checkedModules", "reusedCheckedModules", "emittedModules", "reusedEmittedModules", "invalidatedModules"],
+      "properties": {
+        "parsedModules": { "type": "integer", "minimum": 0 },
+        "reusedParsedModules": { "type": "integer", "minimum": 0 },
+        "checkedModules": { "type": "integer", "minimum": 0 },
+        "reusedCheckedModules": { "type": "integer", "minimum": 0 },
+        "emittedModules": { "type": "integer", "minimum": 0 },
+        "reusedEmittedModules": { "type": "integer", "minimum": 0 },
+        "invalidatedModules": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "output": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["contractVersion", "languageVersion", "platform", "entryPath", "accepted", "diagnostics", "emittedModules", "dependencies", "exportedSymbols", "stats"],
+      "properties": {
+        "contractVersion": { "const": "1" },
+        "languageVersion": { "const": "1.0" },
+        "platform": { "enum": ["node", "browser", "neutral"] },
+        "entryPath": { "$ref": "#/$defs/path" },
+        "accepted": { "type": "boolean" },
+        "diagnostics": { "type": "array", "items": { "$ref": "#/$defs/diagnostic" } },
+        "emittedModules": { "type": "array", "items": { "$ref": "#/$defs/emittedModule" } },
+        "dependencies": { "type": "array", "items": { "$ref": "#/$defs/dependency" } },
+        "exportedSymbols": { "type": "array", "items": { "$ref": "#/$defs/exportedSymbol" } },
+        "stats": { "$ref": "#/$defs/stats" }
+      }
+    }
+  }
+}
