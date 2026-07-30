@@ -102,7 +102,7 @@ fn emitStatements(statements: List<MvpHirStatement>) -> String {
 fn emitFunction(function: MvpHirFunction) -> String {
 	let names = parameterNames(function.parameters)
 	let parameters = if List.isEmpty(names) then "$ctx = rootTaskContext()" else String.join(names, ", ") + ", $ctx = rootTaskContext()"
-	let prefix = if function.public then "export " else ""
+	let prefix = if function.isPublic then "export " else ""
 	return prefix + "function " + function.name + "(" + parameters + ") {\n" +
 		"\ttry {\n" +
 		emitStatements(function.statements) +
@@ -113,18 +113,18 @@ fn emitFunction(function: MvpHirFunction) -> String {
 		"}\n\n"
 }
 
-pub fn emitMvp(module: MvpHirModule) -> String {
+pub fn emitMvp(moduleValue: MvpHirModule) -> String {
 	let mut code = ""
-	for function in module.functions {
+	for function in moduleValue.functions {
 		code = code + emitFunction(function)
 	}
 	return code
 }
 
-pub fn collectMvpExports(module: MvpHirModule) -> List<MvpExport> {
+pub fn collectMvpExports(moduleValue: MvpHirModule) -> List<MvpExport> {
 	let mut values: List<MvpExport> = []
-	for function in module.functions {
-		if function.public {
+	for function in moduleValue.functions {
+		if function.isPublic {
 			values = List.append(values, MvpExport { name: function.name, declarationKind: "FunctionDeclaration" })
 		}
 	}
