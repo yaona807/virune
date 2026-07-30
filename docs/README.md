@@ -24,6 +24,7 @@ The normative Virune 1.0 language specification is in [`../spec/`](../spec/).
 - [Stage 0 self-hosting seed](self-hosting-seed.md)
 - [Self-hosting differential harness](self-hosting-differential.md)
 - [Self-hosting kernel data model](self-hosting-kernel-model.md)
+- [Self-hosting compiler MVP](self-hosting-mvp.md)
 - [Incremental compilation](incremental-compilation.md)
 - [Fuzzing](fuzzing.md)
 - [TypeScript binding coverage](ffi-coverage.md)
