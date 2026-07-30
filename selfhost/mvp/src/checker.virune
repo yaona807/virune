@@ -19,7 +19,11 @@ import {
 	span,
 	typeName,
 } from "./model.virune"
-import { MvpParseResult } from "./parser.virune"
+
+record MvpParseTransport derives Json {
+	parsedModule: MvpModule?
+	diagnostics: List<MvpDiagnostic>
+}
 
 record Signature {
 	name: String
@@ -58,7 +62,7 @@ record CheckedStatement {
 	expressions: List<MvpHirExpression>
 }
 
-pub record MvpCheckResult derives Json {
+record MvpCheckResult derives Json {
 	hirModule: MvpHirModule?
 	diagnostics: List<MvpDiagnostic>
 	exports: List<MvpExport>
@@ -420,7 +424,7 @@ fn checkMvp(moduleValue: MvpModule) -> MvpCheckResult {
 
 pub fn checkMvpJson(encoded: String) -> Result<String, List<JsonError>> {
 	let raw = Json.parse(encoded)?
-	let parsed = Json.decode<MvpParseResult>(raw)?
+	let parsed = Json.decode<MvpParseTransport>(raw)?
 	if List.isNotEmpty(parsed.diagnostics) || match parsed.parsedModule { Some(_) => false, None => true } {
 		return Json.encode<MvpCheckResult>(MvpCheckResult {
 			hirModule: None,
