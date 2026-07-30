@@ -11,7 +11,7 @@ pub record MvpSpan derives Eq, Hash, Debug, Json {
 	end: MvpPosition
 }
 
-pub enum MvpTokenKind derives Eq, Hash, Debug {
+pub enum MvpTokenKind derives Eq, Hash, Debug, Json {
 	Identifier
 	Number
 	StringLiteral
@@ -20,13 +20,13 @@ pub enum MvpTokenKind derives Eq, Hash, Debug {
 	EndOfFile
 }
 
-pub record MvpToken derives Eq, Debug {
+pub record MvpToken derives Eq, Debug, Json {
 	kind: MvpTokenKind
 	text: String
 	span: MvpSpan
 }
 
-pub enum MvpType derives Eq, Hash, Debug {
+pub enum MvpType derives Eq, Hash, Debug, Json {
 	BoolType
 	IntType
 	FloatType
@@ -36,7 +36,7 @@ pub enum MvpType derives Eq, Hash, Debug {
 }
 
 /// Flat AST node. Child expressions are arena indexes in `MvpFunction.expressions`.
-pub record MvpExpression {
+pub record MvpExpression derives Json {
 	kind: String
 	text: String
 	literalType: MvpType?
@@ -44,18 +44,18 @@ pub record MvpExpression {
 	span: MvpSpan
 }
 
-pub enum MvpStatement {
+pub enum MvpStatement derives Json {
 	LetValue(String, MvpType?, Int, MvpSpan)
 	ReturnValue(Int, MvpSpan)
 }
 
-pub record MvpParameter {
+pub record MvpParameter derives Json {
 	name: String
 	valueType: MvpType
 	span: MvpSpan
 }
 
-pub record MvpFunction {
+pub record MvpFunction derives Json {
 	isPublic: Bool
 	name: String
 	parameters: List<MvpParameter>
@@ -65,12 +65,12 @@ pub record MvpFunction {
 	span: MvpSpan
 }
 
-pub record MvpModule {
+pub record MvpModule derives Json {
 	functions: List<MvpFunction>
 }
 
 /// Flat checked HIR node. Child expressions are arena indexes in the function.
-pub record MvpHirExpression {
+pub record MvpHirExpression derives Json {
 	kind: String
 	text: String
 	valueType: MvpType
@@ -78,12 +78,12 @@ pub record MvpHirExpression {
 	span: MvpSpan
 }
 
-pub enum MvpHirStatement {
+pub enum MvpHirStatement derives Json {
 	HirLet(String, MvpType, Int, MvpSpan)
 	HirReturn(Int, MvpSpan)
 }
 
-pub record MvpHirFunction {
+pub record MvpHirFunction derives Json {
 	isPublic: Bool
 	name: String
 	parameters: List<MvpParameter>
@@ -93,7 +93,7 @@ pub record MvpHirFunction {
 	span: MvpSpan
 }
 
-pub record MvpHirModule {
+pub record MvpHirModule derives Json {
 	functions: List<MvpHirFunction>
 }
 
