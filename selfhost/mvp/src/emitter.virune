@@ -1,0 +1,132 @@
+//! Readable ES2022 emitter for the checked MVP HIR.
+
+import {
+	MvpExport,
+	MvpHirExpression,
+	MvpHirFunction,
+	MvpHirModule,
+	MvpHirStatement,
+	MvpParameter,
+	MvpType,
+} from "./model.virune"
+
+fn parameterNames(parameters: List<MvpParameter>) -> List<String> {
+	let mut values: List<String> = []
+	for parameter in parameters {
+		values = List.append(values, parameter.name)
+	}
+	return values
+}
+
+fn emitArguments(arguments: List<MvpHirExpression>) -> List<String> {
+	let mut values: List<String> = []
+	for argument in arguments {
+		values = List.append(values, emitExpression(argument))
+	}
+	return values
+}
+
+fn emitCall(name: String, arguments: List<MvpHirExpression>) -> String {
+	let values = emitArguments(arguments)
+	if List.isEmpty(values) {
+		return name + "($ctx)"
+	}
+	return name + "(" + String.join(values, ", ") + ", $ctx)"
+}
+
+fn emitUnary(operator: String, operand: MvpHirExpression, valueType: MvpType) -> String {
+	let value = emitExpression(operand)
+	if operator == "-" && valueType == MvpType.IntType {
+		return "intNegate(" + value + ")"
+	}
+	return "(" + operator + value + ")"
+}
+
+fn emitBinary(operator: String, left: MvpHirExpression, right: MvpHirExpression, valueType: MvpType) -> String {
+	let leftCode = emitExpression(left)
+	let rightCode = emitExpression(right)
+	if operator == "==" {
+		return "viruneEquals(" + leftCode + ", " + rightCode + ")"
+	}
+	if operator == "!=" {
+		return "!viruneEquals(" + leftCode + ", " + rightCode + ")"
+	}
+	if valueType == MvpType.IntType {
+		if operator == "+" {
+			return "intAdd(" + leftCode + ", " + rightCode + ")"
+		}
+		if operator == "-" {
+			return "intSubtract(" + leftCode + ", " + rightCode + ")"
+		}
+		if operator == "*" {
+			return "intMultiply(" + leftCode + ", " + rightCode + ")"
+		}
+		if operator == "/" {
+			return "intDivide(" + leftCode + ", " + rightCode + ")"
+		}
+		if operator == "%" {
+			return "intRemainder(" + leftCode + ", " + rightCode + ")"
+		}
+	}
+	return "(" + leftCode + " " + operator + " " + rightCode + ")"
+}
+
+pub fn emitExpression(expression: MvpHirExpression) -> String {
+	return match expression {
+		HirBool(value, _) => if value then "true" else "false"
+		HirNumber(text, _, _) => text
+		HirString(text, _) => text
+		HirUnit(_) => "undefined"
+		HirLocal(name, _, _) => name
+		HirCall(name, arguments, _, _) => emitCall(name, arguments)
+		HirUnary(operator, operand, valueType, _) => emitUnary(operator, operand, valueType)
+		HirBinary(operator, left, right, valueType, _) => emitBinary(operator, left, right, valueType)
+	}
+}
+
+fn emitStatement(statement: MvpHirStatement) -> String {
+	return match statement {
+		HirLet(name, _, expression, _) => "\t\tconst " + name + " = " + emitExpression(expression) + ";\n"
+		HirReturn(expression, _) => "\t\treturn " + emitExpression(expression) + ";\n"
+	}
+}
+
+fn emitStatements(statements: List<MvpHirStatement>) -> String {
+	let mut code = ""
+	for statement in statements {
+		code = code + emitStatement(statement)
+	}
+	return code
+}
+
+fn emitFunction(function: MvpHirFunction) -> String {
+	let names = parameterNames(function.parameters)
+	let parameters = if List.isEmpty(names) then "$ctx = rootTaskContext()" else String.join(names, ", ") + ", $ctx = rootTaskContext()"
+	let prefix = if function.public then "export " else ""
+	return prefix + "function " + function.name + "(" + parameters + ") {\n" +
+		"\ttry {\n" +
+		emitStatements(function.statements) +
+		"\t} catch ($error) {\n" +
+		"\t\tif (isPropagation($error)) return $error.value;\n" +
+		"\t\tthrow $error;\n" +
+		"\t}\n" +
+		"}\n\n"
+}
+
+pub fn emitMvp(module: MvpHirModule) -> String {
+	let mut code = ""
+	for function in module.functions {
+		code = code + emitFunction(function)
+	}
+	return code
+}
+
+pub fn collectMvpExports(module: MvpHirModule) -> List<MvpExport> {
+	let mut values: List<MvpExport> = []
+	for function in module.functions {
+		if function.public {
+			values = List.append(values, MvpExport { name: function.name, declarationKind: "FunctionDeclaration" })
+		}
+	}
+	return values
+}
