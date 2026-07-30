@@ -1,43 +1,38 @@
-import { compileMvpData } from "./main.virune"
+import { compileMvp } from "./main.virune"
 
-fn firstDiagnosticCode(source: String) -> String {
-	let result = compileMvpData(source)
-	return match List.first(result.diagnostics) {
-		Some(value) => value.code
-		None => ""
+fn encoded(source: String) -> String {
+	return match compileMvp(source) {
+		Ok(value) => value
+		Err(_) => ""
 	}
 }
 
 test "MVP compiles arithmetic and function calls deterministically" {
 	let source = "pub fn add(left: Int, right: Int) -> Int {\n\treturn left + right\n}\n\npub fn main() -> Int {\n\tlet value = add(20, 22)\n\treturn value * 2\n}\n"
-	let first = compileMvpData(source)
-	let second = compileMvpData(source)
-	expect(first.accepted)
+	let first = encoded(source)
+	let second = encoded(source)
 	expect(first == second)
-	expect(String.contains(first.codeBody, "export function add(left, right, $ctx = rootTaskContext())"))
-	expect(String.contains(first.codeBody, "return intAdd(left, right);"))
-	expect(String.contains(first.codeBody, "const value = add(20, 22, $ctx);"))
-	expect(String.contains(first.codeBody, "return intMultiply(value, 2);"))
+	expect(String.contains(first, "\"accepted\":true"))
+	expect(String.contains(first, "export function add(left, right, $ctx = rootTaskContext())"))
+	expect(String.contains(first, "return intAdd(left, right);"))
+	expect(String.contains(first, "const value = add(20, 22, $ctx);"))
+	expect(String.contains(first, "return intMultiply(value, 2);"))
 }
 
 test "MVP supports primitive literals, comparison, equality and logic" {
 	let source = "pub fn main() -> Bool {\n\tlet count = 3\n\tlet label = \"ok\"\n\treturn count >= 2 && label == \"ok\"\n}\n"
-	let result = compileMvpData(source)
-	expect(result.accepted)
-	expect(String.contains(result.codeBody, "(count >= 2)"))
-	expect(String.contains(result.codeBody, "viruneEquals(label, \"ok\")"))
+	let result = encoded(source)
+	expect(String.contains(result, "\"accepted\":true"))
+	expect(String.contains(result, "(count >= 2)"))
+	expect(String.contains(result, "viruneEquals(label, \\\"ok\\\")"))
 }
 
 test "MVP reports unknown names with stable diagnostic codes and spans" {
 	let source = "pub fn main() -> Int {\n\treturn missing\n}\n"
-	let result = compileMvpData(source)
-	expect(!result.accepted)
-	expect(firstDiagnosticCode(source) == "L1010")
-	let diagnostic = match List.first(result.diagnostics) {
-		Some(value) => value
-		None => panic("missing diagnostic")
-	}
-	expect(diagnostic.message == "Unknown name missing")
-	expect(diagnostic.span.start.line == 2)
-	expect(diagnostic.span.start.column == 9)
+	let result = encoded(source)
+	expect(String.contains(result, "\"accepted\":false"))
+	expect(String.contains(result, "\"code\":\"L1010\""))
+	expect(String.contains(result, "Unknown name missing"))
+	expect(String.contains(result, "\"line\":2"))
+	expect(String.contains(result, "\"column\":9"))
 }
