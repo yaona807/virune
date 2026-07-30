@@ -43,15 +43,18 @@ fn current(chars: List<String>, index: Int) -> String? {
 	return List.get(chars, index)
 }
 
+fn isDoubleSymbol(value: String) -> Bool {
+	return value == "->" || value == "<=" || value == ">=" || value == "==" || value == "!=" || value == "&&" || value == "||"
+}
+
+fn recognizedDoubleSymbol(first: String, second: String) -> String? {
+	let combined = first + second
+	return if isDoubleSymbol(combined) then Some(combined) else None
+}
+
 fn twoCharacterSymbol(first: String, second: String?) -> String? {
 	return match second {
-		Some(value) => {
-			let combined = first + value
-			if combined == "->" || combined == "<=" || combined == ">=" || combined == "==" || combined == "!=" || combined == "&&" || combined == "||" {
-				return Some(combined)
-			}
-			return None
-		}
+		Some(value) => recognizedDoubleSymbol(first, value)
 		None => None
 	}
 }
