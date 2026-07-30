@@ -1,0 +1,177 @@
+//! Readable ES2022 emitter for the checked MVP HIR.
+
+import {
+	MvpCompilation,
+	MvpDiagnostic,
+	MvpExport,
+	MvpHirExpression,
+	MvpHirFunction,
+	MvpHirModule,
+	MvpHirStatement,
+	MvpParameter,
+	MvpType,
+} from "./model.virune"
+
+record MvpCheckTransport derives Json {
+	hirModule: MvpHirModule?
+	diagnostics: List<MvpDiagnostic>
+	exports: List<MvpExport>
+}
+
+fn parameterNames(parameters: List<MvpParameter>) -> List<String> {
+	let mut values: List<String> = []
+	for parameter in parameters {
+		values = List.append(values, parameter.name)
+	}
+	return values
+}
+
+fn expressionAt(expressions: List<MvpHirExpression>, expressionId: Int) -> MvpHirExpression {
+	return match List.get(expressions, expressionId) {
+		Some(value) => value
+		None => panic("Missing HIR expression arena entry")
+	}
+}
+
+fn childAt(expression: MvpHirExpression, index: Int) -> Int {
+	return match List.get(expression.children, index) {
+		Some(value) => value
+		None => panic("Missing HIR child expression arena index")
+	}
+}
+
+fn emitArguments(expressionIds: List<Int>, expressions: List<MvpHirExpression>) -> List<String> {
+	let mut values: List<String> = []
+	for expressionId in expressionIds {
+		values = List.append(values, emitExpression(expressionId, expressions))
+	}
+	return values
+}
+
+fn emitCall(expression: MvpHirExpression, expressions: List<MvpHirExpression>) -> String {
+	let values = emitArguments(expression.children, expressions)
+	if List.isEmpty(values) {
+		return expression.text + "($ctx)"
+	}
+	return expression.text + "(" + String.join(values, ", ") + ", $ctx)"
+}
+
+fn emitUnary(expression: MvpHirExpression, expressions: List<MvpHirExpression>) -> String {
+	let value = emitExpression(childAt(expression, 0), expressions)
+	if expression.text == "-" && expression.valueType == MvpType.IntType {
+		return "intNegate(" + value + ")"
+	}
+	return "(" + expression.text + value + ")"
+}
+
+fn emitBinary(expression: MvpHirExpression, expressions: List<MvpHirExpression>) -> String {
+	let leftCode = emitExpression(childAt(expression, 0), expressions)
+	let rightCode = emitExpression(childAt(expression, 1), expressions)
+	if expression.text == "==" {
+		return "viruneEquals(" + leftCode + ", " + rightCode + ")"
+	}
+	if expression.text == "!=" {
+		return "!viruneEquals(" + leftCode + ", " + rightCode + ")"
+	}
+	if expression.valueType == MvpType.IntType {
+		if expression.text == "+" {
+			return "intAdd(" + leftCode + ", " + rightCode + ")"
+		}
+		if expression.text == "-" {
+			return "intSubtract(" + leftCode + ", " + rightCode + ")"
+		}
+		if expression.text == "*" {
+			return "intMultiply(" + leftCode + ", " + rightCode + ")"
+		}
+		if expression.text == "/" {
+			return "intDivide(" + leftCode + ", " + rightCode + ")"
+		}
+		if expression.text == "%" {
+			return "intRemainder(" + leftCode + ", " + rightCode + ")"
+		}
+	}
+	return "(" + leftCode + " " + expression.text + " " + rightCode + ")"
+}
+
+fn emitExpression(expressionId: Int, expressions: List<MvpHirExpression>) -> String {
+	let expression = expressionAt(expressions, expressionId)
+	if expression.kind == "bool" || expression.kind == "number" || expression.kind == "string" {
+		return expression.text
+	}
+	if expression.kind == "unit" {
+		return "undefined"
+	}
+	if expression.kind == "local" {
+		return expression.text
+	}
+	if expression.kind == "call" {
+		return emitCall(expression, expressions)
+	}
+	if expression.kind == "unary" {
+		return emitUnary(expression, expressions)
+	}
+	if expression.kind == "binary" {
+		return emitBinary(expression, expressions)
+	}
+	return panic("Unknown HIR expression kind " + expression.kind)
+}
+
+fn emitStatement(statement: MvpHirStatement, expressions: List<MvpHirExpression>) -> String {
+	return match statement {
+		HirLet(name, _, expressionId, _) => "\t\tconst " + name + " = " + emitExpression(expressionId, expressions) + ";\n"
+		HirReturn(expressionId, _) => "\t\treturn " + emitExpression(expressionId, expressions) + ";\n"
+	}
+}
+
+fn emitStatements(statements: List<MvpHirStatement>, expressions: List<MvpHirExpression>) -> String {
+	let mut code = ""
+	for statement in statements {
+		code = code + emitStatement(statement, expressions)
+	}
+	return code
+}
+
+fn emitFunction(function: MvpHirFunction) -> String {
+	let names = parameterNames(function.parameters)
+	let parameters = if List.isEmpty(names) then "$ctx = rootTaskContext()" else String.join(names, ", ") + ", $ctx = rootTaskContext()"
+	let prefix = if function.isPublic then "export " else ""
+	return prefix + "function " + function.name + "(" + parameters + ") {\n" +
+		"\ttry {\n" +
+		emitStatements(function.statements, function.expressions) +
+		"\t} catch ($error) {\n" +
+		"\t\tif (isPropagation($error)) return $error.value;\n" +
+		"\t\tthrow $error;\n" +
+		"\t}\n" +
+		"}\n\n"
+}
+
+fn emitMvp(moduleValue: MvpHirModule) -> String {
+	let mut code = ""
+	for function in moduleValue.functions {
+		code = code + emitFunction(function)
+	}
+	return code
+}
+
+pub fn emitMvpJson(encoded: String) -> Result<String, List<JsonError>> {
+	let raw = Json.parse(encoded)?
+	let checked = Json.decode<MvpCheckTransport>(raw)?
+	if List.isNotEmpty(checked.diagnostics) || match checked.hirModule { Some(_) => false, None => true } {
+		return Json.encode<MvpCompilation>(MvpCompilation {
+			accepted: false,
+			diagnostics: checked.diagnostics,
+			codeBody: "",
+			exports: checked.exports,
+		})
+	}
+	let hir = match checked.hirModule {
+		Some(value) => value
+		None => MvpHirModule { functions: [] }
+	}
+	return Json.encode<MvpCompilation>(MvpCompilation {
+		accepted: true,
+		diagnostics: [],
+		codeBody: emitMvp(hir),
+		exports: checked.exports,
+	})
+}

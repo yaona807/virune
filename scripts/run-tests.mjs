@@ -26,6 +26,11 @@ const groups = platformSmoke ? platformGroups : [
 			command: ['packages/cli/dist/src/main.js', 'test', 'selfhost/kernel'],
 			failureOutput: '.cache/selfhost-kernel-test-failure.log',
 		},
+		{
+			name: 'self-host compiler MVP',
+			command: ['packages/cli/dist/src/main.js', 'test', 'selfhost/mvp'],
+			failureOutput: '.cache/selfhost-mvp-test-failure.log',
+		},
 		{ name: 'documentation example policy', files: ['scripts/verify-documentation-examples.test.mjs'] },
 		{
 			name: 'documentation examples',

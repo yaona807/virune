@@ -1,0 +1,141 @@
+//! Data-only model for the minimal self-host compiler slice.
+
+pub record MvpPosition derives Eq, Hash, Debug, Json {
+	offset: Int
+	line: Int
+	column: Int
+}
+
+pub record MvpSpan derives Eq, Hash, Debug, Json {
+	start: MvpPosition
+	end: MvpPosition
+}
+
+pub enum MvpTokenKind derives Eq, Hash, Debug, Json {
+	Identifier
+	Number
+	StringLiteral
+	Symbol
+	NewLine
+	EndOfFile
+}
+
+pub record MvpToken derives Eq, Debug, Json {
+	kind: MvpTokenKind
+	text: String
+	span: MvpSpan
+}
+
+pub enum MvpType derives Eq, Hash, Debug, Json {
+	BoolType
+	IntType
+	FloatType
+	StringType
+	UnitType
+	ErrorType
+}
+
+/// Flat AST node. Child expressions are arena indexes in `MvpFunction.expressions`.
+pub record MvpExpression derives Json {
+	kind: String
+	text: String
+	literalType: MvpType?
+	children: List<Int>
+	span: MvpSpan
+}
+
+pub enum MvpStatement derives Json {
+	LetValue(String, MvpType?, Int, MvpSpan)
+	ReturnValue(Int, MvpSpan)
+}
+
+pub record MvpParameter derives Json {
+	name: String
+	valueType: MvpType
+	span: MvpSpan
+}
+
+pub record MvpFunction derives Json {
+	isPublic: Bool
+	name: String
+	parameters: List<MvpParameter>
+	returnType: MvpType
+	expressions: List<MvpExpression>
+	statements: List<MvpStatement>
+	span: MvpSpan
+}
+
+pub record MvpModule derives Json {
+	functions: List<MvpFunction>
+}
+
+/// Flat checked HIR node. Child expressions are arena indexes in the function.
+pub record MvpHirExpression derives Json {
+	kind: String
+	text: String
+	valueType: MvpType
+	children: List<Int>
+	span: MvpSpan
+}
+
+pub enum MvpHirStatement derives Json {
+	HirLet(String, MvpType, Int, MvpSpan)
+	HirReturn(Int, MvpSpan)
+}
+
+pub record MvpHirFunction derives Json {
+	isPublic: Bool
+	name: String
+	parameters: List<MvpParameter>
+	returnType: MvpType
+	expressions: List<MvpHirExpression>
+	statements: List<MvpHirStatement>
+	span: MvpSpan
+}
+
+pub record MvpHirModule derives Json {
+	functions: List<MvpHirFunction>
+}
+
+pub record MvpDiagnostic derives Eq, Debug, Json {
+	code: String
+	severity: String
+	message: String
+	span: MvpSpan
+}
+
+pub record MvpExport derives Eq, Debug, Json {
+	name: String
+	declarationKind: String
+}
+
+pub record MvpCompilation derives Eq, Debug, Json {
+	accepted: Bool
+	diagnostics: List<MvpDiagnostic>
+	codeBody: String
+	exports: List<MvpExport>
+}
+
+pub fn span(start: MvpPosition, end: MvpPosition) -> MvpSpan {
+	return MvpSpan { start: start, end: end }
+}
+
+pub fn typeName(value: MvpType) -> String {
+	return match value {
+		BoolType => "Bool"
+		IntType => "Int"
+		FloatType => "Float"
+		StringType => "String"
+		UnitType => "Unit"
+		ErrorType => "<error>"
+	}
+}
+
+pub fn errorDiagnostic(code: String, message: String, valueSpan: MvpSpan) -> MvpDiagnostic {
+	return MvpDiagnostic {
+		code: code,
+		severity: "error",
+		message: message,
+		span: valueSpan,
+	}
+}

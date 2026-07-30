@@ -1,0 +1,18 @@
+//! Minimal vertical self-host compiler slice.
+//!
+//! Each stage exposes only a Result-based JSON boundary. Internal compiler
+//! models remain private to their implementation modules, while the TypeScript
+//! Host adapts the final payload to Kernel Contract v1.
+
+import { checkMvpJson } from "./checker.virune"
+import { emitMvpJson } from "./emitter.virune"
+import { lexMvpJson } from "./lexer.virune"
+import { parseMvpJson } from "./parser.virune"
+
+@jsExport
+pub fn compileMvp(source: String) -> Result<String, List<JsonError>> {
+	let lexed = lexMvpJson(source)?
+	let parsed = parseMvpJson(lexed)?
+	let checked = checkMvpJson(parsed)?
+	return emitMvpJson(checked)
+}

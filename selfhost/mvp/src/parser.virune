@@ -1,0 +1,470 @@
+//! Direct AST parser for the minimal self-host compiler grammar.
+
+import {
+	MvpDiagnostic,
+	MvpExpression,
+	MvpFunction,
+	MvpModule,
+	MvpParameter,
+	MvpPosition,
+	MvpSpan,
+	MvpStatement,
+	MvpToken,
+	MvpTokenKind,
+	MvpType,
+	errorDiagnostic,
+	span,
+} from "./model.virune"
+
+record MvpLexTransport derives Json {
+	tokens: List<MvpToken>
+	diagnostics: List<MvpDiagnostic>
+}
+
+record Cursor {
+	tokens: List<MvpToken>
+	index: Int
+}
+
+record ParsedType {
+	cursor: Cursor
+	value: MvpType
+}
+
+record ParsedExpression {
+	cursor: Cursor
+	expressionId: Int
+	expressions: List<MvpExpression>
+}
+
+record ParsedStatement {
+	cursor: Cursor
+	value: MvpStatement
+	expressions: List<MvpExpression>
+}
+
+record ParsedFunction {
+	cursor: Cursor
+	value: MvpFunction
+}
+
+record ParsedParameter {
+	cursor: Cursor
+	value: MvpParameter
+}
+
+record MvpParseResult derives Json {
+	parsedModule: MvpModule?
+	diagnostics: List<MvpDiagnostic>
+}
+
+fn zeroPosition() -> MvpPosition {
+	return MvpPosition { offset: 0, line: 1, column: 1 }
+}
+
+fn fallbackToken() -> MvpToken {
+	let position = zeroPosition()
+	return MvpToken { kind: MvpTokenKind.EndOfFile, text: "", span: span(position, position) }
+}
+
+fn tokenAt(cursor: Cursor) -> MvpToken {
+	return match List.get(cursor.tokens, cursor.index) {
+		Some(value) => value
+		None => match List.last(cursor.tokens) {
+			Some(value) => value
+			None => fallbackToken()
+		}
+	}
+}
+
+fn expressionAt(expressions: List<MvpExpression>, expressionId: Int, valueSpan: MvpSpan) -> Result<MvpExpression, MvpDiagnostic> {
+	return match List.get(expressions, expressionId) {
+		Some(value) => Ok(value)
+		None => Err(errorDiagnostic("L9001", "Missing MVP expression arena entry", valueSpan))
+	}
+}
+
+fn addExpression(cursor: Cursor, expressions: List<MvpExpression>, expression: MvpExpression) -> ParsedExpression {
+	return ParsedExpression {
+		cursor: cursor,
+		expressionId: List.length(expressions),
+		expressions: List.append(expressions, expression),
+	}
+}
+
+fn advance(cursor: Cursor) -> Cursor {
+	return Cursor { tokens: cursor.tokens, index: cursor.index + 1 }
+}
+
+fn skipNewLines(cursor: Cursor) -> Cursor {
+	let mut result = cursor
+	while tokenAt(result).kind == MvpTokenKind.NewLine {
+		result = advance(result)
+	}
+	return result
+}
+
+fn parseError(message: String, token: MvpToken) -> MvpDiagnostic {
+	return errorDiagnostic("L0002", message, token.span)
+}
+
+fn expectText(cursor: Cursor, text: String) -> Result<Cursor, MvpDiagnostic> {
+	let token = tokenAt(cursor)
+	if token.text != text {
+		return Err(parseError("Expected " + text + " but found " + token.text, token))
+	}
+	return Ok(advance(cursor))
+}
+
+fn parseType(cursor: Cursor) -> Result<ParsedType, MvpDiagnostic> {
+	let token = tokenAt(cursor)
+	let parsed = if token.text == "Bool" then MvpType.BoolType else if token.text == "Int" then MvpType.IntType else if token.text == "Float" then MvpType.FloatType else if token.text == "String" then MvpType.StringType else if token.text == "Unit" then MvpType.UnitType else MvpType.ErrorType
+	if parsed == MvpType.ErrorType {
+		return Err(parseError("Unknown MVP type " + token.text, token))
+	}
+	return Ok(ParsedType { cursor: advance(cursor), value: parsed })
+}
+
+fn parseParameter(cursor: Cursor) -> Result<ParsedParameter, MvpDiagnostic> {
+	let nameToken = tokenAt(cursor)
+	if nameToken.kind != MvpTokenKind.Identifier {
+		return Err(parseError("Expected parameter name", nameToken))
+	}
+	let afterName = expectText(advance(cursor), ":")?
+	let parsedType = parseType(afterName)?
+	return Ok(ParsedParameter {
+		cursor: parsedType.cursor,
+		value: MvpParameter {
+			name: nameToken.text,
+			valueType: parsedType.value,
+			span: span(nameToken.span.start, tokenAt(parsedType.cursor).span.start),
+		},
+	})
+}
+
+fn parseFunction(cursor: Cursor) -> Result<ParsedFunction, MvpDiagnostic> {
+	let startCursor = skipNewLines(cursor)
+	let startToken = tokenAt(startCursor)
+	let isPublic = startToken.text == "pub"
+	let afterPublic = if isPublic then advance(startCursor) else startCursor
+	let afterFn = expectText(afterPublic, "fn")?
+	let nameToken = tokenAt(afterFn)
+	if nameToken.kind != MvpTokenKind.Identifier {
+		return Err(parseError("Expected function name", nameToken))
+	}
+	let mut current = expectText(advance(afterFn), "(")?
+	let mut parameters: List<MvpParameter> = []
+	if tokenAt(current).text != ")" {
+		while true {
+			let parsed = parseParameter(current)?
+			current = parsed.cursor
+			parameters = List.append(parameters, parsed.value)
+			if tokenAt(current).text == "," {
+				current = advance(current)
+				continue
+			}
+			break
+		}
+	}
+	current = expectText(current, ")")?
+	current = expectText(current, "->")?
+	let parsedReturn = parseType(current)?
+	current = expectText(parsedReturn.cursor, "{")?
+	current = skipNewLines(current)
+	let mut statements: List<MvpStatement> = []
+	let mut expressions: List<MvpExpression> = []
+	while tokenAt(current).text != "}" && tokenAt(current).kind != MvpTokenKind.EndOfFile {
+		let parsedStatement = parseStatement(current, expressions)?
+		statements = List.append(statements, parsedStatement.value)
+		expressions = parsedStatement.expressions
+		current = skipNewLines(parsedStatement.cursor)
+	}
+	let closeToken = tokenAt(current)
+	current = expectText(current, "}")?
+	return Ok(ParsedFunction {
+		cursor: current,
+		value: MvpFunction {
+			isPublic: isPublic,
+			name: nameToken.text,
+			parameters: parameters,
+			returnType: parsedReturn.value,
+			expressions: expressions,
+			statements: statements,
+			span: span(startToken.span.start, closeToken.span.end),
+		},
+	})
+}
+
+fn consumeLineEnd(cursor: Cursor) -> Result<Cursor, MvpDiagnostic> {
+	let token = tokenAt(cursor)
+	if token.kind == MvpTokenKind.NewLine {
+		return Ok(skipNewLines(cursor))
+	}
+	if token.text == "}" || token.kind == MvpTokenKind.EndOfFile {
+		return Ok(cursor)
+	}
+	return Err(parseError("Expected end of statement", token))
+}
+
+fn parseStatement(cursor: Cursor, expressions: List<MvpExpression>) -> Result<ParsedStatement, MvpDiagnostic> {
+	let start = tokenAt(cursor)
+	if start.text == "let" {
+		let nameToken = tokenAt(advance(cursor))
+		if nameToken.kind != MvpTokenKind.Identifier {
+			return Err(parseError("Expected local name", nameToken))
+		}
+		let mut current = advance(advance(cursor))
+		let mut annotation: MvpType? = None
+		if tokenAt(current).text == ":" {
+			let parsedType = parseType(advance(current))?
+			annotation = Some(parsedType.value)
+			current = parsedType.cursor
+		}
+		current = expectText(current, "=")?
+		let parsedExpression = parseExpression(current, expressions)?
+		let expression = expressionAt(parsedExpression.expressions, parsedExpression.expressionId, start.span)?
+		return Ok(ParsedStatement {
+			cursor: consumeLineEnd(parsedExpression.cursor)?,
+			value: MvpStatement.LetValue(nameToken.text, annotation, parsedExpression.expressionId, span(start.span.start, expression.span.end)),
+			expressions: parsedExpression.expressions,
+		})
+	}
+	if start.text == "return" {
+		let next = tokenAt(advance(cursor))
+		if next.kind == MvpTokenKind.NewLine || next.text == "}" || next.kind == MvpTokenKind.EndOfFile {
+			let parsedUnit = addExpression(advance(cursor), expressions, MvpExpression {
+				kind: "unit",
+				text: "Unit",
+				literalType: Some(MvpType.UnitType),
+				children: [],
+				span: start.span,
+			})
+			return Ok(ParsedStatement {
+				cursor: consumeLineEnd(parsedUnit.cursor)?,
+				value: MvpStatement.ReturnValue(parsedUnit.expressionId, start.span),
+				expressions: parsedUnit.expressions,
+			})
+		}
+		let parsedExpression = parseExpression(advance(cursor), expressions)?
+		let expression = expressionAt(parsedExpression.expressions, parsedExpression.expressionId, start.span)?
+		return Ok(ParsedStatement {
+			cursor: consumeLineEnd(parsedExpression.cursor)?,
+			value: MvpStatement.ReturnValue(parsedExpression.expressionId, span(start.span.start, expression.span.end)),
+			expressions: parsedExpression.expressions,
+		})
+	}
+	return Err(parseError("MVP supports only let and return statements", start))
+}
+
+fn appendBinary(operator: MvpToken, leftId: Int, right: ParsedExpression, arena: List<MvpExpression>) -> Result<ParsedExpression, MvpDiagnostic> {
+	let left = expressionAt(arena, leftId, operator.span)?
+	let rightValue = expressionAt(right.expressions, right.expressionId, operator.span)?
+	return Ok(addExpression(right.cursor, right.expressions, MvpExpression {
+		kind: "binary",
+		text: operator.text,
+		literalType: None,
+		children: [leftId, right.expressionId],
+		span: span(left.span.start, rightValue.span.end),
+	}))
+}
+
+fn parseExpression(cursor: Cursor, expressions: List<MvpExpression>) -> Result<ParsedExpression, MvpDiagnostic> {
+	return parseOr(cursor, expressions)
+}
+
+fn parseOr(cursor: Cursor, expressions: List<MvpExpression>) -> Result<ParsedExpression, MvpDiagnostic> {
+	let parsed = parseAnd(cursor, expressions)?
+	let mut current = parsed.cursor
+	let mut expressionId = parsed.expressionId
+	let mut arena = parsed.expressions
+	while tokenAt(current).text == "||" {
+		let operator = tokenAt(current)
+		let right = parseAnd(advance(current), arena)?
+		let added = appendBinary(operator, expressionId, right, arena)?
+		current = added.cursor
+		expressionId = added.expressionId
+		arena = added.expressions
+	}
+	return Ok(ParsedExpression { cursor: current, expressionId: expressionId, expressions: arena })
+}
+
+fn parseAnd(cursor: Cursor, expressions: List<MvpExpression>) -> Result<ParsedExpression, MvpDiagnostic> {
+	let parsed = parseEquality(cursor, expressions)?
+	let mut current = parsed.cursor
+	let mut expressionId = parsed.expressionId
+	let mut arena = parsed.expressions
+	while tokenAt(current).text == "&&" {
+		let operator = tokenAt(current)
+		let right = parseEquality(advance(current), arena)?
+		let added = appendBinary(operator, expressionId, right, arena)?
+		current = added.cursor
+		expressionId = added.expressionId
+		arena = added.expressions
+	}
+	return Ok(ParsedExpression { cursor: current, expressionId: expressionId, expressions: arena })
+}
+
+fn parseEquality(cursor: Cursor, expressions: List<MvpExpression>) -> Result<ParsedExpression, MvpDiagnostic> {
+	let parsed = parseComparison(cursor, expressions)?
+	let mut current = parsed.cursor
+	let mut expressionId = parsed.expressionId
+	let mut arena = parsed.expressions
+	while tokenAt(current).text == "==" || tokenAt(current).text == "!=" {
+		let operator = tokenAt(current)
+		let right = parseComparison(advance(current), arena)?
+		let added = appendBinary(operator, expressionId, right, arena)?
+		current = added.cursor
+		expressionId = added.expressionId
+		arena = added.expressions
+	}
+	return Ok(ParsedExpression { cursor: current, expressionId: expressionId, expressions: arena })
+}
+
+fn parseComparison(cursor: Cursor, expressions: List<MvpExpression>) -> Result<ParsedExpression, MvpDiagnostic> {
+	let parsed = parseAdditive(cursor, expressions)?
+	let mut current = parsed.cursor
+	let mut expressionId = parsed.expressionId
+	let mut arena = parsed.expressions
+	while tokenAt(current).text == "<" || tokenAt(current).text == "<=" || tokenAt(current).text == ">" || tokenAt(current).text == ">=" {
+		let operator = tokenAt(current)
+		let right = parseAdditive(advance(current), arena)?
+		let added = appendBinary(operator, expressionId, right, arena)?
+		current = added.cursor
+		expressionId = added.expressionId
+		arena = added.expressions
+	}
+	return Ok(ParsedExpression { cursor: current, expressionId: expressionId, expressions: arena })
+}
+
+fn parseAdditive(cursor: Cursor, expressions: List<MvpExpression>) -> Result<ParsedExpression, MvpDiagnostic> {
+	let parsed = parseMultiplicative(cursor, expressions)?
+	let mut current = parsed.cursor
+	let mut expressionId = parsed.expressionId
+	let mut arena = parsed.expressions
+	while tokenAt(current).text == "+" || tokenAt(current).text == "-" {
+		let operator = tokenAt(current)
+		let right = parseMultiplicative(advance(current), arena)?
+		let added = appendBinary(operator, expressionId, right, arena)?
+		current = added.cursor
+		expressionId = added.expressionId
+		arena = added.expressions
+	}
+	return Ok(ParsedExpression { cursor: current, expressionId: expressionId, expressions: arena })
+}
+
+fn parseMultiplicative(cursor: Cursor, expressions: List<MvpExpression>) -> Result<ParsedExpression, MvpDiagnostic> {
+	let parsed = parseUnary(cursor, expressions)?
+	let mut current = parsed.cursor
+	let mut expressionId = parsed.expressionId
+	let mut arena = parsed.expressions
+	while tokenAt(current).text == "*" || tokenAt(current).text == "/" || tokenAt(current).text == "%" {
+		let operator = tokenAt(current)
+		let right = parseUnary(advance(current), arena)?
+		let added = appendBinary(operator, expressionId, right, arena)?
+		current = added.cursor
+		expressionId = added.expressionId
+		arena = added.expressions
+	}
+	return Ok(ParsedExpression { cursor: current, expressionId: expressionId, expressions: arena })
+}
+
+fn parseUnary(cursor: Cursor, expressions: List<MvpExpression>) -> Result<ParsedExpression, MvpDiagnostic> {
+	let token = tokenAt(cursor)
+	if token.text == "!" || token.text == "-" {
+		let parsed = parseUnary(advance(cursor), expressions)?
+		let operand = expressionAt(parsed.expressions, parsed.expressionId, token.span)?
+		return Ok(addExpression(parsed.cursor, parsed.expressions, MvpExpression {
+			kind: "unary",
+			text: token.text,
+			literalType: None,
+			children: [parsed.expressionId],
+			span: span(token.span.start, operand.span.end),
+		}))
+	}
+	return parsePrimary(cursor, expressions)
+}
+
+fn parsePrimary(cursor: Cursor, expressions: List<MvpExpression>) -> Result<ParsedExpression, MvpDiagnostic> {
+	let token = tokenAt(cursor)
+	if token.text == "true" || token.text == "false" {
+		return Ok(addExpression(advance(cursor), expressions, MvpExpression {
+			kind: "bool", text: token.text, literalType: Some(MvpType.BoolType), children: [], span: token.span,
+		}))
+	}
+	if token.kind == MvpTokenKind.Number {
+		let numberType = if String.contains(token.text, ".") then MvpType.FloatType else MvpType.IntType
+		return Ok(addExpression(advance(cursor), expressions, MvpExpression {
+			kind: "number", text: token.text, literalType: Some(numberType), children: [], span: token.span,
+		}))
+	}
+	if token.kind == MvpTokenKind.StringLiteral {
+		return Ok(addExpression(advance(cursor), expressions, MvpExpression {
+			kind: "string", text: token.text, literalType: Some(MvpType.StringType), children: [], span: token.span,
+		}))
+	}
+	if token.text == "Unit" {
+		return Ok(addExpression(advance(cursor), expressions, MvpExpression {
+			kind: "unit", text: token.text, literalType: Some(MvpType.UnitType), children: [], span: token.span,
+		}))
+	}
+	if token.text == "(" {
+		let parsed = parseExpression(advance(cursor), expressions)?
+		return Ok(ParsedExpression { cursor: expectText(parsed.cursor, ")")?, expressionId: parsed.expressionId, expressions: parsed.expressions })
+	}
+	if token.kind == MvpTokenKind.Identifier {
+		let afterName = advance(cursor)
+		if tokenAt(afterName).text != "(" {
+			return Ok(addExpression(afterName, expressions, MvpExpression {
+				kind: "identifier", text: token.text, literalType: None, children: [], span: token.span,
+			}))
+		}
+		let mut current = advance(afterName)
+		let mut arena = expressions
+		let mut children: List<Int> = []
+		if tokenAt(current).text != ")" {
+			while true {
+				let parsedArgument = parseExpression(current, arena)?
+				children = List.append(children, parsedArgument.expressionId)
+				arena = parsedArgument.expressions
+				current = parsedArgument.cursor
+				if tokenAt(current).text == "," {
+					current = advance(current)
+					continue
+				}
+				break
+			}
+		}
+		let close = tokenAt(current)
+		return Ok(addExpression(expectText(current, ")")?, arena, MvpExpression {
+			kind: "call", text: token.text, literalType: None, children: children, span: span(token.span.start, close.span.end),
+		}))
+	}
+	return Err(parseError("Expected expression", token))
+}
+
+fn parseModule(tokens: List<MvpToken>) -> Result<MvpModule, MvpDiagnostic> {
+	let mut cursor = skipNewLines(Cursor { tokens: tokens, index: 0 })
+	let mut functions: List<MvpFunction> = []
+	while tokenAt(cursor).kind != MvpTokenKind.EndOfFile {
+		let parsed = parseFunction(cursor)?
+		functions = List.append(functions, parsed.value)
+		cursor = skipNewLines(parsed.cursor)
+	}
+	return Ok(MvpModule { functions: functions })
+}
+
+fn parseMvp(tokens: List<MvpToken>) -> MvpParseResult {
+	return match parseModule(tokens) {
+		Ok(value) => MvpParseResult { parsedModule: Some(value), diagnostics: [] }
+		Err(diagnostic) => MvpParseResult { parsedModule: None, diagnostics: [diagnostic] }
+	}
+}
+
+pub fn parseMvpJson(encoded: String) -> Result<String, List<JsonError>> {
+	let raw = Json.parse(encoded)?
+	let lexed = Json.decode<MvpLexTransport>(raw)?
+	if List.isNotEmpty(lexed.diagnostics) {
+		return Json.encode<MvpParseResult>(MvpParseResult { parsedModule: None, diagnostics: lexed.diagnostics })
+	}
+	return Json.encode<MvpParseResult>(parseMvp(lexed.tokens))
+}
