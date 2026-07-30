@@ -204,12 +204,12 @@ fn checkArguments(node: MvpExpression, expected: List<MvpType>, context: CheckCo
 }
 
 fn checkKnownCall(node: MvpExpression, signature: Signature, context: CheckContext, expressions: List<MvpHirExpression>) -> Result<CheckedExpression, MvpDiagnostic> {
-	let arguments = checkArguments(node, signature.parameters, context, expressions)?
-	return Ok(addHir(arguments.expressions, MvpHirExpression {
+	let checkedArguments = checkArguments(node, signature.parameters, context, expressions)?
+	return Ok(addHir(checkedArguments.expressions, MvpHirExpression {
 		kind: "call",
 		text: signature.name,
 		valueType: signature.returnType,
-		children: arguments.expressionIds,
+		children: checkedArguments.expressionIds,
 		span: node.span,
 	}, signature.returnType))
 }
