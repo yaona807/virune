@@ -10,7 +10,7 @@ import {
 	span,
 } from "./model.virune"
 
-pub record MvpLexResult derives Json {
+record MvpLexResult derives Json {
 	tokens: List<MvpToken>
 	diagnostics: List<MvpDiagnostic>
 }
