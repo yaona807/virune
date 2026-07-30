@@ -61,6 +61,63 @@
 				"emit": { "target": "es2022", "sourceMap": true, "sourcesContent": true }
 			},
 			"expectedDivergences": []
+		},
+		{
+			"id": "mvp-arithmetic-call",
+			"tags": ["mvp", "compiler-unit", "runtime"],
+			"input": {
+				"contractVersion": "1",
+				"languageVersion": "1.0",
+				"platform": "node",
+				"entryPath": "src/main.virune",
+				"sources": [
+					{
+						"path": "src/main.virune",
+						"text": "pub fn add(left: Int, right: Int) -> Int {\n\treturn left + right\n}\n\npub fn main() -> Int {\n\tlet value = add(20, 22)\n\treturn value * 2\n}\n"
+					}
+				],
+				"interopManifest": { "version": "1", "modules": [] },
+				"emit": { "target": "es2022", "sourceMap": false, "sourcesContent": true }
+			},
+			"expectedDivergences": []
+		},
+		{
+			"id": "mvp-primitives-logic",
+			"tags": ["mvp", "compiler-unit", "runtime"],
+			"input": {
+				"contractVersion": "1",
+				"languageVersion": "1.0",
+				"platform": "node",
+				"entryPath": "src/main.virune",
+				"sources": [
+					{
+						"path": "src/main.virune",
+						"text": "pub fn main() -> Bool {\n\tlet count = 3\n\tlet label = \"ok\"\n\treturn count >= 2 && label == \"ok\"\n}\n"
+					}
+				],
+				"interopManifest": { "version": "1", "modules": [] },
+				"emit": { "target": "es2022", "sourceMap": false, "sourcesContent": true }
+			},
+			"expectedDivergences": []
+		},
+		{
+			"id": "mvp-unknown-name",
+			"tags": ["mvp", "compiler-unit", "diagnostic"],
+			"input": {
+				"contractVersion": "1",
+				"languageVersion": "1.0",
+				"platform": "node",
+				"entryPath": "src/main.virune",
+				"sources": [
+					{
+						"path": "src/main.virune",
+						"text": "pub fn main() -> Int {\n\treturn missing\n}\n"
+					}
+				],
+				"interopManifest": { "version": "1", "modules": [] },
+				"emit": { "target": "es2022", "sourceMap": false, "sourcesContent": true }
+			},
+			"expectedDivergences": []
 		}
 	]
 }
