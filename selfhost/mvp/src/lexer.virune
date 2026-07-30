@@ -1,0 +1,186 @@
+//! Minimal deterministic lexer for the self-host compiler MVP.
+
+import {
+	MvpDiagnostic,
+	MvpPosition,
+	MvpSpan,
+	MvpToken,
+	MvpTokenKind,
+	errorDiagnostic,
+	span,
+} from "./model.virune"
+
+pub record MvpLexResult {
+	tokens: List<MvpToken>
+	diagnostics: List<MvpDiagnostic>
+}
+
+fn isDigit(value: String) -> Bool {
+	return value >= "0" && value <= "9"
+}
+
+fn isLetter(value: String) -> Bool {
+	return (value >= "a" && value <= "z") || (value >= "A" && value <= "Z") || value == "_"
+}
+
+fn isIdentifierPart(value: String) -> Bool {
+	return isLetter(value) || isDigit(value)
+}
+
+fn isHorizontalWhitespace(value: String) -> Bool {
+	return value == " " || value == "\t" || value == "\r"
+}
+
+fn position(offset: Int, line: Int, column: Int) -> MvpPosition {
+	return MvpPosition { offset: offset, line: line, column: column }
+}
+
+fn token(kind: MvpTokenKind, text: String, start: MvpPosition, end: MvpPosition) -> MvpToken {
+	return MvpToken { kind: kind, text: text, span: span(start, end) }
+}
+
+fn current(chars: List<String>, index: Int) -> String? {
+	return List.get(chars, index)
+}
+
+fn twoCharacterSymbol(first: String, second: String?) -> String? {
+	return match second {
+		Some(value) => {
+			let combined = first + value
+			if combined == "->" || combined == "<=" || combined == ">=" || combined == "==" || combined == "!=" || combined == "&&" || combined == "||" {
+				return Some(combined)
+			}
+			return None
+		}
+		None => None
+	}
+}
+
+fn isSingleSymbol(value: String) -> Bool {
+	return value == "(" || value == ")" || value == "{" || value == "}" || value == ":" || value == "," || value == "+" || value == "-" || value == "*" || value == "/" || value == "%" || value == "<" || value == ">" || value == "=" || value == "!"
+}
+
+pub fn lexMvp(source: String) -> MvpLexResult {
+	let chars = String.codePoints(source)
+	let mut index = 0
+	let mut line = 1
+	let mut column = 1
+	let mut tokens: List<MvpToken> = []
+	let mut diagnostics: List<MvpDiagnostic> = []
+	while index < List.length(chars) {
+		let value = match current(chars, index) {
+			Some(character) => character
+			None => ""
+		}
+		if isHorizontalWhitespace(value) {
+			index = index + 1
+			column = column + 1
+			continue
+		}
+		if value == "\n" {
+			let start = position(index, line, column)
+			index = index + 1
+			line = line + 1
+			column = 1
+			tokens = List.append(tokens, token(MvpTokenKind.NewLine, "\n", start, position(index, line, column)))
+			continue
+		}
+		let next = current(chars, index + 1)
+		if value == "/" && match next { Some(character) => character == "/", None => false } {
+			index = index + 2
+			column = column + 2
+			while index < List.length(chars) && match current(chars, index) { Some(character) => character != "\n", None => false } {
+				index = index + 1
+				column = column + 1
+			}
+			continue
+		}
+		let start = position(index, line, column)
+		if isLetter(value) {
+			let mut text = ""
+			while index < List.length(chars) && match current(chars, index) { Some(character) => isIdentifierPart(character), None => false } {
+				let character = match current(chars, index) { Some(item) => item, None => "" }
+				text = text + character
+				index = index + 1
+				column = column + 1
+			}
+			tokens = List.append(tokens, token(MvpTokenKind.Identifier, text, start, position(index, line, column)))
+			continue
+		}
+		if isDigit(value) {
+			let mut text = ""
+			let mut decimalSeen = false
+			while index < List.length(chars) {
+				let character = match current(chars, index) { Some(item) => item, None => "" }
+				if isDigit(character) {
+					text = text + character
+					index = index + 1
+					column = column + 1
+					continue
+				}
+				if character == "." && !decimalSeen && match current(chars, index + 1) { Some(item) => isDigit(item), None => false } {
+					decimalSeen = true
+					text = text + character
+					index = index + 1
+					column = column + 1
+					continue
+				}
+				break
+			}
+			tokens = List.append(tokens, token(MvpTokenKind.Number, text, start, position(index, line, column)))
+			continue
+		}
+		if value == "\"" {
+			let mut text = "\""
+			let mut escaped = false
+			let mut closed = false
+			index = index + 1
+			column = column + 1
+			while index < List.length(chars) {
+				let character = match current(chars, index) { Some(item) => item, None => "" }
+				if character == "\n" {
+					break
+				}
+				text = text + character
+				index = index + 1
+				column = column + 1
+				if character == "\"" && !escaped {
+					closed = true
+					break
+				}
+				if character == "\\" && !escaped {
+					escaped = true
+				} else {
+					escaped = false
+				}
+			}
+			let end = position(index, line, column)
+			if closed {
+				tokens = List.append(tokens, token(MvpTokenKind.StringLiteral, text, start, end))
+			} else {
+				diagnostics = List.append(diagnostics, errorDiagnostic("L0001", "Unterminated string literal", span(start, end)))
+			}
+			continue
+		}
+		let combined = twoCharacterSymbol(value, next)
+		if match combined { Some(_) => true, None => false } {
+			let text = match combined { Some(item) => item, None => "" }
+			index = index + 2
+			column = column + 2
+			tokens = List.append(tokens, token(MvpTokenKind.Symbol, text, start, position(index, line, column)))
+			continue
+		}
+		if isSingleSymbol(value) {
+			index = index + 1
+			column = column + 1
+			tokens = List.append(tokens, token(MvpTokenKind.Symbol, value, start, position(index, line, column)))
+			continue
+		}
+		index = index + 1
+		column = column + 1
+		diagnostics = List.append(diagnostics, errorDiagnostic("L0001", "Unexpected character " + value, span(start, position(index, line, column))))
+	}
+	let end = position(index, line, column)
+	tokens = List.append(tokens, token(MvpTokenKind.EndOfFile, "", end, end))
+	return MvpLexResult { tokens: tokens, diagnostics: diagnostics }
+}
