@@ -35,20 +35,18 @@ pub enum MvpType derives Eq, Hash, Debug {
 	ErrorType
 }
 
-pub enum MvpExpression {
-	BoolLiteral(Bool, MvpSpan)
-	NumberLiteral(String, MvpType, MvpSpan)
-	StringLiteralValue(String, MvpSpan)
-	UnitLiteral(MvpSpan)
-	IdentifierValue(String, MvpSpan)
-	CallValue(String, List<MvpExpression>, MvpSpan)
-	UnaryValue(String, MvpExpression, MvpSpan)
-	BinaryValue(String, MvpExpression, MvpExpression, MvpSpan)
+/// Flat AST node. Child expressions are arena indexes in `MvpFunction.expressions`.
+pub record MvpExpression {
+	kind: String
+	text: String
+	literalType: MvpType?
+	children: List<Int>
+	span: MvpSpan
 }
 
 pub enum MvpStatement {
-	LetValue(String, MvpType?, MvpExpression, MvpSpan)
-	ReturnValue(MvpExpression, MvpSpan)
+	LetValue(String, MvpType?, Int, MvpSpan)
+	ReturnValue(Int, MvpSpan)
 }
 
 pub record MvpParameter {
@@ -62,6 +60,7 @@ pub record MvpFunction {
 	name: String
 	parameters: List<MvpParameter>
 	returnType: MvpType
+	expressions: List<MvpExpression>
 	statements: List<MvpStatement>
 	span: MvpSpan
 }
@@ -70,20 +69,18 @@ pub record MvpModule {
 	functions: List<MvpFunction>
 }
 
-pub enum MvpHirExpression {
-	HirBool(Bool, MvpSpan)
-	HirNumber(String, MvpType, MvpSpan)
-	HirString(String, MvpSpan)
-	HirUnit(MvpSpan)
-	HirLocal(String, MvpType, MvpSpan)
-	HirCall(String, List<MvpHirExpression>, MvpType, MvpSpan)
-	HirUnary(String, MvpHirExpression, MvpType, MvpSpan)
-	HirBinary(String, MvpHirExpression, MvpHirExpression, MvpType, MvpSpan)
+/// Flat checked HIR node. Child expressions are arena indexes in the function.
+pub record MvpHirExpression {
+	kind: String
+	text: String
+	valueType: MvpType
+	children: List<Int>
+	span: MvpSpan
 }
 
 pub enum MvpHirStatement {
-	HirLet(String, MvpType, MvpHirExpression, MvpSpan)
-	HirReturn(MvpHirExpression, MvpSpan)
+	HirLet(String, MvpType, Int, MvpSpan)
+	HirReturn(Int, MvpSpan)
 }
 
 pub record MvpHirFunction {
@@ -91,6 +88,7 @@ pub record MvpHirFunction {
 	name: String
 	parameters: List<MvpParameter>
 	returnType: MvpType
+	expressions: List<MvpHirExpression>
 	statements: List<MvpHirStatement>
 	span: MvpSpan
 }
@@ -120,32 +118,6 @@ pub record MvpCompilation derives Eq, Debug, Json {
 
 pub fn span(start: MvpPosition, end: MvpPosition) -> MvpSpan {
 	return MvpSpan { start: start, end: end }
-}
-
-pub fn expressionSpan(expression: MvpExpression) -> MvpSpan {
-	return match expression {
-		BoolLiteral(_, value) => value
-		NumberLiteral(_, _, value) => value
-		StringLiteralValue(_, value) => value
-		UnitLiteral(value) => value
-		IdentifierValue(_, value) => value
-		CallValue(_, _, value) => value
-		UnaryValue(_, _, value) => value
-		BinaryValue(_, _, _, value) => value
-	}
-}
-
-pub fn hirExpressionSpan(expression: MvpHirExpression) -> MvpSpan {
-	return match expression {
-		HirBool(_, value) => value
-		HirNumber(_, _, value) => value
-		HirString(_, value) => value
-		HirUnit(value) => value
-		HirLocal(_, _, value) => value
-		HirCall(_, _, _, value) => value
-		HirUnary(_, _, _, value) => value
-		HirBinary(_, _, _, _, value) => value
-	}
 }
 
 pub fn typeName(value: MvpType) -> String {
