@@ -22,6 +22,7 @@ Virune 1.0の規範的な言語仕様は[`../spec/`](../spec/)にあります。
 - [Compiler architecture](compiler-architecture_ja.md)
 - [Self-hosting architecture](self-hosting-architecture_ja.md)
 - [Stage 0セルフホスティングSeed](self-hosting-seed_ja.md)
+- [セルフホスティング差分検証harness](self-hosting-differential_ja.md)
 - [Incremental compilation](incremental-compilation_ja.md)
 - [Fuzzing](fuzzing_ja.md)
 - [TypeScript binding対応範囲](ffi-coverage_ja.md)
