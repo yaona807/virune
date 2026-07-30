@@ -65,7 +65,7 @@ test "table lookup returns stable ids and explicit errors" {
 }
 
 test "host decode adapter reports malformed input as Result" {
-	let decoded = decodeKernelModel({})
+	let decoded = decodeKernelModel("not a kernel model")
 	expect(match decoded {
 		Ok(_) => false
 		Err(errors) => List.isNotEmpty(errors)
