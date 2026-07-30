@@ -76,7 +76,7 @@ export async function compileWithSelfhostMvp(module: SelfhostMvpModule, value: u
 		severity: validateSeverity(diagnostic.severity),
 		message: diagnostic.message,
 		sourcePath: source.path,
-		span: diagnostic.span,
+		span: normalizeLegacyDiagnosticSpan(diagnostic.span),
 	}));
 	const accepted = compilation.accepted && !diagnostics.some(diagnostic => diagnostic.severity === 'error');
 	const outputPath = `.selfhost-output/${source.path.replace(/\.virune$/u, '.js')}`;
@@ -110,6 +110,22 @@ export async function compileWithSelfhostMvp(module: SelfhostMvpModule, value: u
 		},
 	};
 	return validateKernelOutput(output);
+}
+
+/**
+ * The production parser preserves Chevrotain's inclusive endOffset while its
+ * line and column values denote the exclusive cursor position. The Virune MVP
+ * uses exclusive offsets internally, so the Host adapts only this historical
+ * contract quirk before differential comparison.
+ */
+function normalizeLegacyDiagnosticSpan(span: KernelSpanV1): KernelSpanV1 {
+	return {
+		start: span.start,
+		end: {
+			...span.end,
+			offset: span.end.offset > span.start.offset ? span.end.offset - 1 : span.end.offset,
+		},
+	};
 }
 
 function validateMvpInput(value: unknown): KernelInputV1 {
