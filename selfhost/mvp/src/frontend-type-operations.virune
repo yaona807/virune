@@ -1,0 +1,661 @@
+//! Pure collection type operations over the canonical self-host semantic arena.
+
+import {
+	FrontendSemanticResult,
+	SemanticDeclaration,
+	SemanticDiagnostic,
+	SemanticInstantiation,
+	SemanticPosition,
+	SemanticSpan,
+	SemanticType,
+	semanticPosition,
+	semanticSpan,
+} from "./frontend-semantic-model.virune"
+import { checkFrontendDataTypesJson } from "./frontend-semantic.virune"
+
+record FrontendTypeRelationRequest derives Eq, Debug, Json {
+	source: String
+	target: String
+}
+
+record FrontendCommonTypeRequest derives Eq, Debug, Json {
+	types: List<String>
+}
+
+record FrontendTypeOperationsRequest derives Eq, Debug, Json {
+	source: String
+	relations: List<FrontendTypeRelationRequest>
+	traits: List<String>
+	commonTypes: List<FrontendCommonTypeRequest>
+}
+
+record SemanticTypeRelationResult derives Eq, Debug, Json {
+	source: String
+	target: String
+	sourceTypeId: Int?
+	targetTypeId: Int?
+	assignable: Bool
+}
+
+record SemanticTypeTraits derives Eq, Debug, Json {
+	name: String
+	typeId: Int?
+	supportsEq: Bool
+	supportsHash: Bool
+	supportsJson: Bool
+	supportsDebug: Bool
+	containsOpenType: Bool
+	elementType: Int?
+	keyType: Int?
+	valueType: Int?
+	errorType: Int?
+	itemTypes: List<Int>
+}
+
+record SemanticCommonTypeResult derives Eq, Debug, Json {
+	types: List<String>
+	typeId: Int?
+	typeName: String?
+}
+
+record FrontendTypeOperationsResult derives Eq, Debug, Json {
+	accepted: Bool
+	types: List<SemanticType>
+	relations: List<SemanticTypeRelationResult>
+	traits: List<SemanticTypeTraits>
+	commonTypes: List<SemanticCommonTypeResult>
+	diagnostics: List<SemanticDiagnostic>
+}
+
+record TypeLookup {
+	id: Int
+	diagnostics: List<SemanticDiagnostic>
+}
+
+record CommonTypeValue {
+	id: Int
+	diagnostics: List<SemanticDiagnostic>
+}
+
+fn fallbackPosition() -> SemanticPosition {
+	return semanticPosition(0, 1, 1)
+}
+
+fn fallbackSpan() -> SemanticSpan {
+	let value = fallbackPosition()
+	return semanticSpan(value, value)
+}
+
+fn fallbackType() -> SemanticType {
+	return SemanticType {
+		id: -1,
+		kind: "missing",
+		name: "",
+		declarationId: None,
+		arguments: [],
+		instantiationId: None,
+		span: fallbackSpan(),
+	}
+}
+
+fn fallbackDeclaration() -> SemanticDeclaration {
+	return SemanticDeclaration {
+		id: -1,
+		sourceNodeId: -1,
+		kind: "missing",
+		name: "",
+		isPublic: false,
+		typeParameters: [],
+		memberIds: [],
+		targetType: None,
+		span: fallbackSpan(),
+	}
+}
+
+fn fallbackInstantiation() -> SemanticInstantiation {
+	return SemanticInstantiation {
+		id: -1,
+		declarationId: -1,
+		argumentTypeIds: [],
+		memberIds: [],
+		targetType: None,
+		span: fallbackSpan(),
+	}
+}
+
+fn typeAt(values: List<SemanticType>, id: Int) -> SemanticType {
+	return match List.get(values, id) {
+		Some(value) => value
+		None => fallbackType()
+	}
+}
+
+fn declarationAt(values: List<SemanticDeclaration>, id: Int) -> SemanticDeclaration {
+	return match List.get(values, id) {
+		Some(value) => value
+		None => fallbackDeclaration()
+	}
+}
+
+fn instantiationAt(values: List<SemanticInstantiation>, id: Int) -> SemanticInstantiation {
+	return match List.get(values, id) {
+		Some(value) => value
+		None => fallbackInstantiation()
+	}
+}
+
+fn declarationIndex(values: List<SemanticDeclaration>, name: String) -> Int {
+	let mut index = 0
+	while index < List.length(values) {
+		if declarationAt(values, index).name == name {
+			return index
+		}
+		index = index + 1
+	}
+	return -1
+}
+
+fn optionalInt(value: Int?) -> Int {
+	return match value {
+		Some(item) => item
+		None => -1
+	}
+}
+
+fn maybeInt(value: Int) -> Int? {
+	return if value >= 0 then Some(value) else None
+}
+
+fn operationDiagnostic(code: String, message: String, span: SemanticSpan, help: String?) -> SemanticDiagnostic {
+	return SemanticDiagnostic {
+		code: code,
+		severity: "error",
+		message: message,
+		span: span,
+		help: help,
+	}
+}
+
+fn lookupType(name: String, semantics: FrontendSemanticResult, diagnostics: List<SemanticDiagnostic>) -> TypeLookup {
+	let index = declarationIndex(semantics.declarations, name)
+	if index < 0 {
+		return TypeLookup {
+			id: -1,
+			diagnostics: List.append(diagnostics, operationDiagnostic(
+				"L2040",
+				"Unknown type operation target " + name,
+				fallbackSpan(),
+				Some("Declare a type alias with this name before using it in a type operation request."),
+			)),
+		}
+	}
+	let declaration = declarationAt(semantics.declarations, index)
+	let target = optionalInt(declaration.targetType)
+	if target < 0 {
+		return TypeLookup {
+			id: -1,
+			diagnostics: List.append(diagnostics, operationDiagnostic(
+				"L2040",
+				"Type operation target " + name + " has no concrete target type",
+				declaration.span,
+				Some("Reference the declaration through a concrete type alias."),
+			)),
+		}
+	}
+	return TypeLookup { id: target, diagnostics: diagnostics }
+}
+
+fn containsInt(values: List<Int>, expected: Int) -> Bool {
+	for value in values {
+		if value == expected {
+			return true
+		}
+	}
+	return false
+}
+
+fn argumentAt(value: SemanticType, index: Int) -> Int {
+	return match List.get(value.arguments, index) {
+		Some(item) => item
+		None => -1
+	}
+}
+
+fn typesEquivalent(leftId: Int, rightId: Int, semantics: FrontendSemanticResult, depth: Int) -> Bool {
+	if leftId == rightId {
+		return true
+	}
+	if leftId < 0 || rightId < 0 || depth >= 64 {
+		return false
+	}
+	let left = typeAt(semantics.types, leftId)
+	let right = typeAt(semantics.types, rightId)
+	if left.id < 0 || right.id < 0
+		|| left.kind != right.kind
+		|| left.name != right.name
+		|| left.declarationId != right.declarationId
+		|| List.length(left.arguments) != List.length(right.arguments) {
+		return false
+	}
+	let mut index = 0
+	while index < List.length(left.arguments) {
+		if !typesEquivalent(argumentAt(left, index), argumentAt(right, index), semantics, depth + 1) {
+			return false
+		}
+		index = index + 1
+	}
+	return true
+}
+
+fn underlyingTypeId(typeId: Int, semantics: FrontendSemanticResult, includeNewtype: Bool) -> Int {
+	let value = typeAt(semantics.types, typeId)
+	let declarationId = optionalInt(value.declarationId)
+	if value.kind != "named" || declarationId < 0 {
+		return -1
+	}
+	let declaration = declarationAt(semantics.declarations, declarationId)
+	let transparent = declaration.kind == "alias" || (includeNewtype && declaration.kind == "newtype")
+	if !transparent {
+		return -1
+	}
+	let instantiationId = optionalInt(value.instantiationId)
+	if instantiationId >= 0 {
+		return optionalInt(instantiationAt(semantics.instantiations, instantiationId).targetType)
+	}
+	return optionalInt(declaration.targetType)
+}
+
+fn operationViewTypeId(typeId: Int, semantics: FrontendSemanticResult, depth: Int) -> Int {
+	if depth >= 64 {
+		return typeId
+	}
+	let underlying = underlyingTypeId(typeId, semantics, false)
+	return if underlying >= 0 then operationViewTypeId(underlying, semantics, depth + 1) else typeId
+}
+
+fn isAssignable(sourceId: Int, targetId: Int, semantics: FrontendSemanticResult, depth: Int) -> Bool {
+	if sourceId < 0 || targetId < 0 || depth >= 64 {
+		return false
+	}
+	if typesEquivalent(sourceId, targetId, semantics, 0) {
+		return true
+	}
+	let source = typeAt(semantics.types, sourceId)
+	let target = typeAt(semantics.types, targetId)
+	if source.kind == "error" || target.kind == "error" {
+		return true
+	}
+	if source.kind == "builtin" && source.name == "Never" {
+		return true
+	}
+	if target.kind == "builtin" && target.name == "Unknown" {
+		return true
+	}
+	if target.kind == "builtin" && target.name == "Option" && List.length(target.arguments) == 1 {
+		if isAssignable(sourceId, argumentAt(target, 0), semantics, depth + 1) {
+			return true
+		}
+	}
+	let sourceUnderlying = underlyingTypeId(sourceId, semantics, false)
+	if sourceUnderlying >= 0 && isAssignable(sourceUnderlying, targetId, semantics, depth + 1) {
+		return true
+	}
+	let targetUnderlying = underlyingTypeId(targetId, semantics, false)
+	if targetUnderlying >= 0 && isAssignable(sourceId, targetUnderlying, semantics, depth + 1) {
+		return true
+	}
+	return false
+}
+
+fn allSupportEq(ids: List<Int>, semantics: FrontendSemanticResult, seen: List<Int>) -> Bool {
+	for id in ids {
+		if !supportsEq(id, semantics, seen) {
+			return false
+		}
+	}
+	return true
+}
+
+fn allSupportHash(ids: List<Int>, semantics: FrontendSemanticResult, seen: List<Int>) -> Bool {
+	for id in ids {
+		if !supportsHash(id, semantics, seen) {
+			return false
+		}
+	}
+	return true
+}
+
+fn allSupportJson(ids: List<Int>, semantics: FrontendSemanticResult, seen: List<Int>) -> Bool {
+	for id in ids {
+		if !supportsJson(id, semantics, seen) {
+			return false
+		}
+	}
+	return true
+}
+
+fn allSupportDebug(ids: List<Int>, semantics: FrontendSemanticResult, seen: List<Int>) -> Bool {
+	for id in ids {
+		if !supportsDebug(id, semantics, seen) {
+			return false
+		}
+	}
+	return true
+}
+
+fn supportsEq(typeId: Int, semantics: FrontendSemanticResult, seen: List<Int>) -> Bool {
+	if typeId < 0 {
+		return false
+	}
+	if containsInt(seen, typeId) {
+		return true
+	}
+	let nextSeen = List.append(seen, typeId)
+	let value = typeAt(semantics.types, typeId)
+	if value.kind == "builtin" {
+		if value.name == "Bool" || value.name == "Int" || value.name == "Float"
+			|| value.name == "BigInt" || value.name == "String" || value.name == "Unit" {
+			return true
+		}
+		if value.name == "List" || value.name == "Set" || value.name == "Option" {
+			return supportsEq(argumentAt(value, 0), semantics, nextSeen)
+		}
+		if value.name == "Map" || value.name == "Result" {
+			return supportsEq(argumentAt(value, 0), semantics, nextSeen)
+				&& supportsEq(argumentAt(value, 1), semantics, nextSeen)
+		}
+		return false
+	}
+	if value.kind == "tuple" {
+		return allSupportEq(value.arguments, semantics, nextSeen)
+	}
+	let underlying = underlyingTypeId(typeId, semantics, true)
+	return underlying >= 0 && supportsEq(underlying, semantics, nextSeen)
+}
+
+fn supportsHash(typeId: Int, semantics: FrontendSemanticResult, seen: List<Int>) -> Bool {
+	if typeId < 0 {
+		return false
+	}
+	if containsInt(seen, typeId) {
+		return true
+	}
+	let nextSeen = List.append(seen, typeId)
+	let value = typeAt(semantics.types, typeId)
+	if value.kind == "builtin" {
+		if value.name == "Bool" || value.name == "Int" || value.name == "BigInt"
+			|| value.name == "String" || value.name == "Unit" {
+			return true
+		}
+		if value.name == "List" || value.name == "Set" || value.name == "Option" {
+			return supportsHash(argumentAt(value, 0), semantics, nextSeen)
+		}
+		if value.name == "Map" || value.name == "Result" {
+			return supportsHash(argumentAt(value, 0), semantics, nextSeen)
+				&& supportsHash(argumentAt(value, 1), semantics, nextSeen)
+		}
+		return false
+	}
+	if value.kind == "tuple" {
+		return allSupportHash(value.arguments, semantics, nextSeen)
+	}
+	let underlying = underlyingTypeId(typeId, semantics, true)
+	return underlying >= 0 && supportsHash(underlying, semantics, nextSeen)
+}
+
+fn supportsJson(typeId: Int, semantics: FrontendSemanticResult, seen: List<Int>) -> Bool {
+	if typeId < 0 {
+		return false
+	}
+	if containsInt(seen, typeId) {
+		return true
+	}
+	let nextSeen = List.append(seen, typeId)
+	let value = typeAt(semantics.types, typeId)
+	if value.kind == "builtin" {
+		if value.name == "Bool" || value.name == "Int" || value.name == "Float"
+			|| value.name == "String" || value.name == "Unit" || value.name == "Unknown"
+			|| value.name == "JsonError" {
+			return true
+		}
+		if value.name == "List" || value.name == "Set" || value.name == "Option" {
+			return supportsJson(argumentAt(value, 0), semantics, nextSeen)
+		}
+		if value.name == "Map" {
+			let key = typeAt(semantics.types, argumentAt(value, 0))
+			return key.kind == "builtin" && key.name == "String"
+				&& supportsJson(argumentAt(value, 1), semantics, nextSeen)
+		}
+		if value.name == "Result" {
+			return supportsJson(argumentAt(value, 0), semantics, nextSeen)
+				&& supportsJson(argumentAt(value, 1), semantics, nextSeen)
+		}
+		return false
+	}
+	if value.kind == "tuple" {
+		return allSupportJson(value.arguments, semantics, nextSeen)
+	}
+	let underlying = underlyingTypeId(typeId, semantics, true)
+	return underlying >= 0 && supportsJson(underlying, semantics, nextSeen)
+}
+
+fn supportsDebug(typeId: Int, semantics: FrontendSemanticResult, seen: List<Int>) -> Bool {
+	if typeId < 0 {
+		return false
+	}
+	if containsInt(seen, typeId) {
+		return true
+	}
+	let nextSeen = List.append(seen, typeId)
+	let value = typeAt(semantics.types, typeId)
+	if value.kind == "builtin" {
+		if value.name == "Unknown" {
+			return false
+		}
+		if value.name == "List" || value.name == "Set" || value.name == "Option" {
+			return supportsDebug(argumentAt(value, 0), semantics, nextSeen)
+		}
+		if value.name == "Map" || value.name == "Result" {
+			return supportsDebug(argumentAt(value, 0), semantics, nextSeen)
+				&& supportsDebug(argumentAt(value, 1), semantics, nextSeen)
+		}
+		return true
+	}
+	if value.kind == "tuple" {
+		return allSupportDebug(value.arguments, semantics, nextSeen)
+	}
+	let underlying = underlyingTypeId(typeId, semantics, true)
+	return underlying >= 0 && supportsDebug(underlying, semantics, nextSeen)
+}
+
+fn containsOpenType(typeId: Int, semantics: FrontendSemanticResult, seen: List<Int>) -> Bool {
+	if typeId < 0 || containsInt(seen, typeId) {
+		return false
+	}
+	let value = typeAt(semantics.types, typeId)
+	if value.kind == "type-parameter" {
+		return true
+	}
+	let nextSeen = List.append(seen, typeId)
+	for argument in value.arguments {
+		if containsOpenType(argument, semantics, nextSeen) {
+			return true
+		}
+	}
+	return false
+}
+
+fn traitValue(name: String, typeId: Int, semantics: FrontendSemanticResult) -> SemanticTypeTraits {
+	let viewId = operationViewTypeId(typeId, semantics, 0)
+	let value = typeAt(semantics.types, viewId)
+	let mut elementType = -1
+	let mut keyType = -1
+	let mut valueType = -1
+	let mut errorType = -1
+	let mut itemTypes: List<Int> = []
+	if value.kind == "tuple" {
+		itemTypes = value.arguments
+	} else if value.kind == "builtin" {
+		if value.name == "List" || value.name == "Set" || value.name == "Option" {
+			elementType = argumentAt(value, 0)
+		}
+		if value.name == "Map" {
+			keyType = argumentAt(value, 0)
+			valueType = argumentAt(value, 1)
+		}
+		if value.name == "Result" {
+			valueType = argumentAt(value, 0)
+			errorType = argumentAt(value, 1)
+		}
+	}
+	return SemanticTypeTraits {
+		name: name,
+		typeId: maybeInt(typeId),
+		supportsEq: supportsEq(typeId, semantics, []),
+		supportsHash: supportsHash(typeId, semantics, []),
+		supportsJson: supportsJson(typeId, semantics, []),
+		supportsDebug: supportsDebug(typeId, semantics, []),
+		containsOpenType: containsOpenType(typeId, semantics, []),
+		elementType: maybeInt(elementType),
+		keyType: maybeInt(keyType),
+		valueType: maybeInt(valueType),
+		errorType: maybeInt(errorType),
+		itemTypes: itemTypes,
+	}
+}
+
+fn missingTraitValue(name: String) -> SemanticTypeTraits {
+	return SemanticTypeTraits {
+		name: name,
+		typeId: None,
+		supportsEq: false,
+		supportsHash: false,
+		supportsJson: false,
+		supportsDebug: false,
+		containsOpenType: false,
+		elementType: None,
+		keyType: None,
+		valueType: None,
+		errorType: None,
+		itemTypes: [],
+	}
+}
+
+fn commonType(ids: List<Int>, semantics: FrontendSemanticResult, diagnostics: List<SemanticDiagnostic>) -> CommonTypeValue {
+	if List.length(ids) == 0 {
+		return CommonTypeValue {
+			id: -1,
+			diagnostics: List.append(diagnostics, operationDiagnostic(
+				"L2042",
+				"Cannot compute a common type for an empty type list",
+				fallbackSpan(),
+				Some("Provide at least one concrete type alias."),
+			)),
+		}
+	}
+	let mut current = match List.get(ids, 0) { Some(value) => value, None => -1 }
+	let mut index = 1
+	while index < List.length(ids) {
+		let value = match List.get(ids, index) { Some(item) => item, None => -1 }
+		if isAssignable(value, current, semantics, 0) {
+			index = index + 1
+			continue
+		}
+		if isAssignable(current, value, semantics, 0) {
+			current = value
+			index = index + 1
+			continue
+		}
+		let left = typeAt(semantics.types, current)
+		let right = typeAt(semantics.types, value)
+		return CommonTypeValue {
+			id: -1,
+			diagnostics: List.append(diagnostics, operationDiagnostic(
+				"L2042",
+				"Incompatible result types " + left.name + " and " + right.name,
+				left.span,
+				Some("Use compatible branch result types or add an explicit conversion."),
+			)),
+		}
+	}
+	return CommonTypeValue { id: current, diagnostics: diagnostics }
+}
+
+fn diagnosticsAccepted(values: List<SemanticDiagnostic>) -> Bool {
+	for value in values {
+		if value.severity == "error" {
+			return false
+		}
+	}
+	return true
+}
+
+fn decodeRequest(encoded: String) -> Result<FrontendTypeOperationsRequest, List<JsonError>> {
+	let raw = Json.parse(encoded)?
+	return Json.decode<FrontendTypeOperationsRequest>(raw)
+}
+
+fn decodeSemantics(source: String) -> Result<FrontendSemanticResult, List<JsonError>> {
+	let encoded = checkFrontendDataTypesJson(source)?
+	let raw = Json.parse(encoded)?
+	return Json.decode<FrontendSemanticResult>(raw)
+}
+
+fn checkFrontendTypeOperations(request: FrontendTypeOperationsRequest) -> Result<FrontendTypeOperationsResult, List<JsonError>> {
+	let semantics = decodeSemantics(request.source)?
+	let mut diagnostics = semantics.diagnostics
+	let mut relations: List<SemanticTypeRelationResult> = []
+	for relation in request.relations {
+		let sourceLookup = lookupType(relation.source, semantics, diagnostics)
+		diagnostics = sourceLookup.diagnostics
+		let targetLookup = lookupType(relation.target, semantics, diagnostics)
+		diagnostics = targetLookup.diagnostics
+		relations = List.append(relations, SemanticTypeRelationResult {
+			source: relation.source,
+			target: relation.target,
+			sourceTypeId: maybeInt(sourceLookup.id),
+			targetTypeId: maybeInt(targetLookup.id),
+			assignable: sourceLookup.id >= 0 && targetLookup.id >= 0
+				&& isAssignable(sourceLookup.id, targetLookup.id, semantics, 0),
+		})
+	}
+	let mut traits: List<SemanticTypeTraits> = []
+	for name in request.traits {
+		let lookup = lookupType(name, semantics, diagnostics)
+		diagnostics = lookup.diagnostics
+		traits = List.append(traits, if lookup.id >= 0 then traitValue(name, lookup.id, semantics) else missingTraitValue(name))
+	}
+	let mut commonTypes: List<SemanticCommonTypeResult> = []
+	for commonRequest in request.commonTypes {
+		let mut ids: List<Int> = []
+		let mut valid = true
+		for name in commonRequest.types {
+			let lookup = lookupType(name, semantics, diagnostics)
+			diagnostics = lookup.diagnostics
+			if lookup.id < 0 {
+				valid = false
+			} else {
+				ids = List.append(ids, lookup.id)
+			}
+		}
+		let computed = if valid then commonType(ids, semantics, diagnostics) else CommonTypeValue { id: -1, diagnostics: diagnostics }
+		diagnostics = computed.diagnostics
+		commonTypes = List.append(commonTypes, SemanticCommonTypeResult {
+			types: commonRequest.types,
+			typeId: maybeInt(computed.id),
+			typeName: if computed.id >= 0 then Some(typeAt(semantics.types, computed.id).name) else None,
+		})
+	}
+	return Ok(FrontendTypeOperationsResult {
+		accepted: semantics.accepted && diagnosticsAccepted(diagnostics),
+		types: semantics.types,
+		relations: relations,
+		traits: traits,
+		commonTypes: commonTypes,
+		diagnostics: diagnostics,
+	})
+}
+
+pub fn checkFrontendTypeOperationsJson(encoded: String) -> Result<String, List<JsonError>> {
+	return Json.encode<FrontendTypeOperationsResult>(checkFrontendTypeOperations(decodeRequest(encoded)?)?)
+}
