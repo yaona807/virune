@@ -1,0 +1,24 @@
+{
+  "nodes": [
+    { "kind": "block", "children": [1, 2], "expressionType": null, "condition": null },
+    { "kind": "return", "children": [], "expressionType": null, "condition": null },
+    { "kind": "noop", "children": [], "expressionType": null, "condition": null },
+    { "kind": "block", "children": [4], "expressionType": null, "condition": null },
+    { "kind": "if", "children": [5], "expressionType": null, "condition": null },
+    { "kind": "block", "children": [6], "expressionType": null, "condition": null },
+    { "kind": "return", "children": [], "expressionType": null, "condition": null },
+    { "kind": "block", "children": [8], "expressionType": null, "condition": null },
+    { "kind": "for", "children": [9], "expressionType": null, "condition": null },
+    { "kind": "block", "children": [10], "expressionType": null, "condition": null },
+    { "kind": "return", "children": [], "expressionType": null, "condition": null },
+    { "kind": "block", "children": [12, 13], "expressionType": null, "condition": null },
+    { "kind": "expression", "children": [], "expressionType": "Never", "condition": null },
+    { "kind": "noop", "children": [], "expressionType": null, "condition": null }
+  ],
+  "functions": [
+    { "name": "complete", "returnType": "Int", "bodyNodeId": 0 },
+    { "name": "missing", "returnType": "String", "bodyNodeId": 3 },
+    { "name": "forMissing", "returnType": "Int", "bodyNodeId": 7 },
+    { "name": "neverEnd", "returnType": "Never", "bodyNodeId": 11 }
+  ]
+}
