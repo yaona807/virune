@@ -4,13 +4,16 @@ on:
   push:
     branches:
       - agent/selfhost-aggregate-call-ast
+  pull_request:
+    branches:
+      - main
 
 permissions:
   contents: write
 
 jobs:
   apply:
-    if: ${{ !contains(github.event.head_commit.message, '[aggregate-generated]') }}
+    if: ${{ github.event_name == 'pull_request' || !contains(github.event.head_commit.message, '[aggregate-generated]') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6.0.2
