@@ -118,3 +118,10 @@ The regular Stage 0 self-host tests verify:
 - agreement with the Legacy Compiler on lexical rejection and supported-source acceptance.
 
 This work does not change the grammar, production parser, stable Compiler API, Runtime ABI, Interop ABI, or public standard library.
+
+
+## Aggregate and call expressions
+
+The Parser core expands list items, parenthesized and tuple expressions, record entries, call arguments, optional call type arguments, and record-update entries into canonical flat-arena nodes. Shorthand record entries remain distinguishable from explicit value entries by their child count, while call and update containers reference only valid canonical node IDs.
+
+Comma-delimited recovery synchronizes at the next comma, closing delimiter, physical line end, or enclosing record brace. Trailing commas are accepted where the Virune 1.0 grammar permits them, nested aggregates reuse the same precedence-aware expression path, and progress guards prevent malformed item lists from hanging. Semantic arity and record-field validation remain later Type/Effect Checker work.

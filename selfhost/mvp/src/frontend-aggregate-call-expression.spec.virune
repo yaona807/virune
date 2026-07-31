@@ -1,0 +1,30 @@
+import { parseFrontendCore } from "./frontend-parser-core.virune"
+
+fn encoded(source: String) -> String {
+	return match parseFrontendCore(source) {
+		Ok(value) => value
+		Err(_) => ""
+	}
+}
+
+test "aggregate parser expands list tuple record call and update expressions" {
+	let source = "pub fn aggregate(value: Int, y: Int) -> Int {\n\tlet list = [1, value + 1, y,]\n\tlet grouped = (value + 1)\n\tlet tuple = (value, y)\n\tlet point = Point { x: value, y, }\n\tlet called = build<Result<Int>>(point, list,)\n\tlet updated = point with { x: called, y, }\n\treturn called\n}\n"
+	let result = encoded(source)
+	expect(String.contains(result, "\"accepted\":true"))
+	expect(String.contains(result, "\"kind\":\"ListExpression\""))
+	expect(String.contains(result, "\"kind\":\"ParenthesizedExpression\""))
+	expect(String.contains(result, "\"kind\":\"TupleExpression\""))
+	expect(String.contains(result, "\"kind\":\"RecordExpression\""))
+	expect(String.contains(result, "\"kind\":\"RecordEntry\""))
+	expect(String.contains(result, "\"kind\":\"TypeArguments\""))
+	expect(String.contains(result, "\"kind\":\"CallArguments\""))
+	expect(String.contains(result, "\"kind\":\"RecordUpdateExpression\""))
+}
+
+test "aggregate parser recovers after malformed items" {
+	let source = "pub fn broken() -> Int {\n\tlet list = [1,,2,]\n\tlet point = Point { broken 1, valid: 2, }\n\tlet called = make(1,,2,)\n\treturn 0\n}\npub fn after() -> Int {\n\treturn 1\n}\n"
+	let result = encoded(source)
+	expect(String.contains(result, "\"accepted\":false"))
+	expect(String.contains(result, "\"text\":\"valid\""))
+	expect(String.contains(result, "\"text\":\"after\""))
+}
