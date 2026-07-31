@@ -340,22 +340,6 @@ fn expectText(
 	return state
 }
 
-fn isDeclarationStartText(value: String) -> Bool {
-	return value == "@"
-		|| value == "pub"
-		|| value == "async"
-		|| value == "fn"
-		|| value == "record"
-		|| value == "enum"
-		|| value == "newtype"
-		|| value == "type"
-		|| value == "unsafe"
-		|| value == "extern"
-		|| value == "test"
-		|| value == "let"
-		|| value == "const"
-}
-
 fn isSupportedDocumentationTarget(kind: String) -> Bool {
 	return kind == "FunctionDeclaration"
 		|| kind == "RecordDeclaration"
@@ -1317,7 +1301,8 @@ fn parseModule(lexed: FrontendLexResult) -> FrontendParseResult {
 }
 
 fn decodeFrontend(source: String) -> Result<FrontendLexResult, List<JsonError>> {
-	let encoded = lexFrontend(source)?
+	let exported = lexFrontend(source)?
+	let encoded = Json.decode<String>(exported)?
 	return Json.decode<FrontendLexResult>(encoded)
 }
 
