@@ -388,23 +388,33 @@ fn parseEnumBody(stateValue: DetailState, tokens: List<FrontendToken>) -> Parsed
 		}
 		let mut payload: List<Int> = []
 		if isText(state, tokens, "(") {
-			state = skipNewLines(advance(state), tokens)
-			while !atEnd(state, tokens) && !isText(state, tokens, ")") {
+			state = advance(state)
+			while !atEnd(state, tokens)
+				&& tokenAt(tokens, state.index).kind != FrontendTokenKind.NewLine
+				&& !isText(state, tokens, ")")
+				&& !isText(state, tokens, "}") {
+				let before = state.index
 				let payloadType = parseTypeReference(state, tokens)
 				state = payloadType.state
 				if payloadType.id >= 0 {
 					payload = List.append(payload, payloadType.id)
 				}
 				if isText(state, tokens, ",") {
-					state = skipNewLines(advance(state), tokens)
-				} else if !isText(state, tokens, ")") {
+					state = advance(state)
+				} else if !isText(state, tokens, ")")
+					&& tokenAt(tokens, state.index).kind != FrontendTokenKind.NewLine
+					&& !isText(state, tokens, "}") {
 					state = addDiagnostic(state, tokens, "Expected , or ) in an enum payload")
-					if !atEnd(state, tokens) {
+					if state.index <= before && !atEnd(state, tokens) {
 						state = advance(state)
 					}
 				}
 			}
-			state = consumeExpected(state, tokens, ")", "after an enum payload")
+			if isText(state, tokens, ")") {
+				state = advance(state)
+			} else {
+				state = addDiagnostic(state, tokens, "Expected ) after an enum payload")
+			}
 		}
 		let variant = addNode(
 			state,
