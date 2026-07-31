@@ -1,0 +1,30 @@
+import { parseFrontendCore } from "./frontend-parser-core.virune"
+
+fn encoded(source: String) -> String {
+	return match parseFrontendCore(source) {
+		Ok(value) => value
+		Err(_) => ""
+	}
+}
+
+test "statement parser expands bindings assignments and control flow" {
+	let source = "pub fn statements(values: List<Int>) -> Int {\n\tlet mut total: Int = 0\n\tlet current = total\n\ttotal = total + 1\n\tif total > 0 {\n\t\tdiscard current\n\t} else if total == 0 {\n\t\tdefer cleanup(total)\n\t} else {\n\t\treturn 0\n\t}\n\twhile total < 10 {\n\t\ttotal = total + 1\n\t\tbreak\n\t}\n\tfor item in values {\n\t\tdiscard item\n\t\tcontinue\n\t}\n\treturn total\n}\n"
+	let result = encoded(source)
+	expect(String.contains(result, "\"accepted\":true"))
+	expect(String.contains(result, "\"kind\":\"LetBinding\""))
+	expect(String.contains(result, "\"text\":\"mut total\""))
+	expect(String.contains(result, "\"kind\":\"NamedTypeReference\""))
+	expect(String.contains(result, "\"kind\":\"AssignmentTarget\""))
+	expect(String.contains(result, "\"kind\":\"AssignmentStatement\""))
+	expect(String.contains(result, "\"kind\":\"ForBinding\""))
+	expect(String.contains(result, "\"kind\":\"ForStatement\""))
+	expect(String.contains(result, "\"kind\":\"WhileStatement\""))
+}
+
+test "statement parser recovers after malformed headers" {
+	let source = "pub fn broken(values: List<Int>) -> Int {\n\tlet mut : Int = 1\n\tlet typed: = 2\n\ttotal =\n\tfor in values {\n\t\tdiscard 1\n\t}\n\ttotal = 3\n\treturn total\n}\npub fn after() -> Int {\n\treturn 1\n}\n"
+	let result = encoded(source)
+	expect(String.contains(result, "\"accepted\":false"))
+	expect(String.contains(result, "\"kind\":\"AssignmentTarget\""))
+	expect(String.contains(result, "\"text\":\"after\""))
+}
