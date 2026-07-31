@@ -1,0 +1,486 @@
+//! Deterministic lexer for the complete Virune 1.0 token vocabulary.
+
+import {
+	FrontendComment,
+	FrontendCommentKind,
+	FrontendDiagnostic,
+	FrontendLexResult,
+	FrontendPosition,
+	FrontendSpan,
+	FrontendToken,
+	FrontendTokenKind,
+	frontendError,
+	frontendPosition,
+	frontendSpan,
+} from "./frontend-model.virune"
+
+record ScannerState {
+	index: Int
+	line: Int
+	column: Int
+}
+
+record ScannedNumber {
+	state: ScannerState
+	text: String
+	kind: FrontendTokenKind
+	diagnostics: List<FrontendDiagnostic>
+}
+
+record ScannedString {
+	state: ScannerState
+	text: String
+	diagnostics: List<FrontendDiagnostic>
+}
+
+record ScannedComment {
+	state: ScannerState
+	comment: FrontendComment
+}
+
+fn current(chars: List<String>, index: Int) -> String? {
+	return List.get(chars, index)
+}
+
+fn characterOrEmpty(chars: List<String>, index: Int) -> String {
+	return match current(chars, index) {
+		Some(value) => value
+		None => ""
+	}
+}
+
+fn position(state: ScannerState) -> FrontendPosition {
+	return frontendPosition(state.index, state.line, state.column)
+}
+
+fn advance(state: ScannerState, amount: Int) -> ScannerState {
+	return ScannerState {
+		index: state.index + amount,
+		line: state.line,
+		column: state.column + amount,
+	}
+}
+
+fn advanceNewLine(state: ScannerState, width: Int) -> ScannerState {
+	return ScannerState {
+		index: state.index + width,
+		line: state.line + 1,
+		column: 1,
+	}
+}
+
+fn token(kind: FrontendTokenKind, text: String, start: FrontendPosition, end: FrontendPosition) -> FrontendToken {
+	return FrontendToken { kind: kind, text: text, span: frontendSpan(start, end) }
+}
+
+fn isAsciiDigit(value: String) -> Bool {
+	return value >= "0" && value <= "9"
+}
+
+fn isHexDigit(value: String) -> Bool {
+	return isAsciiDigit(value) || (value >= "a" && value <= "f") || (value >= "A" && value <= "F")
+}
+
+fn isBinaryDigit(value: String) -> Bool {
+	return value == "0" || value == "1"
+}
+
+fn isAsciiLetter(value: String) -> Bool {
+	return (value >= "a" && value <= "z") || (value >= "A" && value <= "Z")
+}
+
+fn isIdentifierStart(value: String) -> Bool {
+	return isAsciiLetter(value) || value == "_"
+}
+
+fn isIdentifierPart(value: String) -> Bool {
+	return isIdentifierStart(value) || isAsciiDigit(value)
+}
+
+fn isHorizontalWhitespace(value: String) -> Bool {
+	return value == " " || value == "\t"
+}
+
+fn isKeyword(value: String) -> Bool {
+	return value == "as" || value == "async" || value == "await" || value == "break" || value == "const" || value == "continue" || value == "defer" || value == "derives" || value == "discard" || value == "else" || value == "enum" || value == "extern" || value == "false" || value == "fn" || value == "for" || value == "from" || value == "if" || value == "import" || value == "in" || value == "js" || value == "let" || value == "match" || value == "module" || value == "mut" || value == "newtype" || value == "parallel" || value == "pub" || value == "record" || value == "return" || value == "test" || value == "then" || value == "true" || value == "try" || value == "type" || value == "unsafe" || value == "uses" || value == "while" || value == "with"
+}
+
+fn isSingleSymbol(value: String) -> Bool {
+	return value == "(" || value == ")" || value == "{" || value == "}" || value == "[" || value == "]" || value == ":" || value == "," || value == "." || value == "@" || value == "?" || value == "=" || value == "<" || value == ">" || value == "+" || value == "-" || value == "*" || value == "/" || value == "%" || value == "!" || value == "|"
+}
+
+fn doubleSymbol(first: String, second: String) -> String? {
+	let value = first + second
+	if value == "->" || value == "<=" || value == ">=" || value == "==" || value == "!=" || value == "&&" || value == "||" || value == "|>" || value == "=>" {
+		return Some(value)
+	}
+	return None
+}
+
+fn tripleSymbol(first: String, second: String, third: String) -> String? {
+	let value = first + second + third
+	if value == "..." || value == "..=" {
+		return Some(value)
+	}
+	return None
+}
+
+fn lastCharacter(value: String) -> String {
+	return match List.last(String.codePoints(value)) {
+		Some(character) => character
+		None => ""
+	}
+}
+
+fn invalidSeparator(value: String) -> Bool {
+	return String.contains(value, "__") || lastCharacter(value) == "_"
+}
+
+fn numberCharacterAllowed(value: String, base: String) -> Bool {
+	if value == "_" {
+		return true
+	}
+	if base == "hex" {
+		return isHexDigit(value)
+	}
+	if base == "binary" {
+		return isBinaryDigit(value)
+	}
+	return isAsciiDigit(value)
+}
+
+fn scanBasedNumber(chars: List<String>, initial: ScannerState, base: String) -> ScannedNumber {
+	let start = position(initial)
+	let mut state = advance(initial, 2)
+	let mut text = characterOrEmpty(chars, initial.index) + characterOrEmpty(chars, initial.index + 1)
+	let mut digits = 0
+	while state.index < List.length(chars) && numberCharacterAllowed(characterOrEmpty(chars, state.index), base) {
+		let value = characterOrEmpty(chars, state.index)
+		text = text + value
+		if value != "_" {
+			digits = digits + 1
+		}
+		state = advance(state, 1)
+	}
+	let mut diagnostics: List<FrontendDiagnostic> = []
+	if digits == 0 || invalidSeparator(text) {
+		diagnostics = List.append(diagnostics, frontendError("Invalid numeric literal " + text, frontendSpan(start, position(state))))
+	}
+	let mut kind = FrontendTokenKind.IntLiteral
+	if characterOrEmpty(chars, state.index) == "n" {
+		text = text + "n"
+		state = advance(state, 1)
+		kind = FrontendTokenKind.BigIntLiteral
+	}
+	return ScannedNumber { state: state, text: text, kind: kind, diagnostics: diagnostics }
+}
+
+fn scanDecimalNumber(chars: List<String>, initial: ScannerState) -> ScannedNumber {
+	let start = position(initial)
+	let mut state = initial
+	let mut text = ""
+	while state.index < List.length(chars) && (isAsciiDigit(characterOrEmpty(chars, state.index)) || characterOrEmpty(chars, state.index) == "_") {
+		text = text + characterOrEmpty(chars, state.index)
+		state = advance(state, 1)
+	}
+	let mut kind = FrontendTokenKind.IntLiteral
+	if characterOrEmpty(chars, state.index) == "." && isAsciiDigit(characterOrEmpty(chars, state.index + 1)) {
+		kind = FrontendTokenKind.FloatLiteral
+		text = text + "."
+		state = advance(state, 1)
+		while state.index < List.length(chars) && (isAsciiDigit(characterOrEmpty(chars, state.index)) || characterOrEmpty(chars, state.index) == "_") {
+			text = text + characterOrEmpty(chars, state.index)
+			state = advance(state, 1)
+		}
+	}
+	let exponent = characterOrEmpty(chars, state.index)
+	let mut exponentDigits = 0
+	if exponent == "e" || exponent == "E" {
+		kind = FrontendTokenKind.FloatLiteral
+		text = text + exponent
+		state = advance(state, 1)
+		let sign = characterOrEmpty(chars, state.index)
+		if sign == "+" || sign == "-" {
+			text = text + sign
+			state = advance(state, 1)
+		}
+		while state.index < List.length(chars) && (isAsciiDigit(characterOrEmpty(chars, state.index)) || characterOrEmpty(chars, state.index) == "_") {
+			let value = characterOrEmpty(chars, state.index)
+			text = text + value
+			if value != "_" {
+				exponentDigits = exponentDigits + 1
+			}
+			state = advance(state, 1)
+		}
+	}
+	let mut diagnostics: List<FrontendDiagnostic> = []
+	if invalidSeparator(text) || ((exponent == "e" || exponent == "E") && exponentDigits == 0) {
+		diagnostics = List.append(diagnostics, frontendError("Invalid numeric literal " + text, frontendSpan(start, position(state))))
+	}
+	if kind == FrontendTokenKind.IntLiteral && characterOrEmpty(chars, state.index) == "n" {
+		text = text + "n"
+		state = advance(state, 1)
+		kind = FrontendTokenKind.BigIntLiteral
+	}
+	return ScannedNumber { state: state, text: text, kind: kind, diagnostics: diagnostics }
+}
+
+fn scanNumber(chars: List<String>, initial: ScannerState) -> ScannedNumber {
+	if characterOrEmpty(chars, initial.index) == "0" && (characterOrEmpty(chars, initial.index + 1) == "x" || characterOrEmpty(chars, initial.index + 1) == "X") {
+		return scanBasedNumber(chars, initial, "hex")
+	}
+	if characterOrEmpty(chars, initial.index) == "0" && (characterOrEmpty(chars, initial.index + 1) == "b" || characterOrEmpty(chars, initial.index + 1) == "B") {
+		return scanBasedNumber(chars, initial, "binary")
+	}
+	return scanDecimalNumber(chars, initial)
+}
+
+fn scanString(chars: List<String>, initial: ScannerState) -> ScannedString {
+	let start = position(initial)
+	let mut state = advance(initial, 1)
+	let mut text = "\""
+	let mut escaped = false
+	let mut closed = false
+	while state.index < List.length(chars) {
+		let value = characterOrEmpty(chars, state.index)
+		if value == "\n" || value == "\r" {
+			break
+		}
+		text = text + value
+		state = advance(state, 1)
+		if value == "\"" && !escaped {
+			closed = true
+			break
+		}
+		if value == "\\" && !escaped {
+			escaped = true
+		} else {
+			escaped = false
+		}
+	}
+	let mut diagnostics: List<FrontendDiagnostic> = []
+	if !closed {
+		diagnostics = List.append(diagnostics, frontendError("Unterminated string literal", frontendSpan(start, position(state))))
+	}
+	return ScannedString { state: state, text: text, diagnostics: diagnostics }
+}
+
+fn commentKind(chars: List<String>, index: Int) -> FrontendCommentKind {
+	let third = characterOrEmpty(chars, index + 2)
+	let fourth = characterOrEmpty(chars, index + 3)
+	if third == "!" {
+		return FrontendCommentKind.ModuleDocumentation
+	}
+	if third == "/" && fourth != "/" {
+		return FrontendCommentKind.DeclarationDocumentation
+	}
+	return FrontendCommentKind.Ordinary
+}
+
+fn commentMarkerWidth(kind: FrontendCommentKind) -> Int {
+	return if kind == FrontendCommentKind.Ordinary then 2 else 3
+}
+
+fn scanComment(chars: List<String>, initial: ScannerState) -> ScannedComment {
+	let start = position(initial)
+	let kind = commentKind(chars, initial.index)
+	let markerWidth = commentMarkerWidth(kind)
+	let mut state = advance(initial, markerWidth)
+	if characterOrEmpty(chars, state.index) == " " {
+		state = advance(state, 1)
+	}
+	let mut body = ""
+	while state.index < List.length(chars) && characterOrEmpty(chars, state.index) != "\n" && characterOrEmpty(chars, state.index) != "\r" {
+		body = body + characterOrEmpty(chars, state.index)
+		state = advance(state, 1)
+	}
+	return ScannedComment {
+		state: state,
+		comment: FrontendComment { kind: kind, text: body, span: frontendSpan(start, position(state)) },
+	}
+}
+
+fn nextNonNewLine(tokens: List<FrontendToken>, index: Int) -> FrontendToken? {
+	let mut currentIndex = index
+	while currentIndex < List.length(tokens) {
+		let value = match List.get(tokens, currentIndex) {
+			Some(item) => item
+			None => return None
+		}
+		if value.kind != FrontendTokenKind.NewLine {
+			return Some(value)
+		}
+		currentIndex = currentIndex + 1
+	}
+	return None
+}
+
+fn previousNonNewLine(tokens: List<FrontendToken>) -> FrontendToken? {
+	let mut index = List.length(tokens) - 1
+	while index >= 0 {
+		let value = match List.get(tokens, index) {
+			Some(item) => item
+			None => return None
+		}
+		if value.kind != FrontendTokenKind.NewLine {
+			return Some(value)
+		}
+		index = index - 1
+	}
+	return None
+}
+
+fn softAfter(value: String) -> Bool {
+	return value == "|>" || value == "==" || value == "!=" || value == "<=" || value == ">=" || value == "&&" || value == "||" || value == "=" || value == "<" || value == ">" || value == "+" || value == "-" || value == "*" || value == "/" || value == "%" || value == "," || value == "(" || value == "["
+}
+
+fn softBefore(value: String) -> Bool {
+	return value == "|>" || value == "==" || value == "!=" || value == "<=" || value == ">=" || value == "&&" || value == "||" || value == "<" || value == ">" || value == "+" || value == "-" || value == "*" || value == "/" || value == "%" || value == ")" || value == "]" || value == "else"
+}
+
+fn beginsDeclaration(value: String) -> Bool {
+	return value == "pub" || value == "async" || value == "fn" || value == "record" || value == "enum" || value == "newtype" || value == "type" || value == "unsafe" || value == "extern" || value == "test" || value == "let" || value == "const" || value == "@"
+}
+
+fn retainGenericDeclarationBreak(previous: FrontendToken?, next: FrontendToken?, braceDepth: Int) -> Bool {
+	if braceDepth != 0 {
+		return false
+	}
+	let previousText = match previous { Some(value) => value.text, None => "" }
+	if previousText != ">" {
+		return false
+	}
+	return match next {
+		Some(value) => value.kind == FrontendTokenKind.EndOfFile || beginsDeclaration(value.text)
+		None => true
+	}
+}
+
+fn normalizeNewLines(rawTokens: List<FrontendToken>) -> List<FrontendToken> {
+	let mut result: List<FrontendToken> = []
+	let mut parenDepth = 0
+	let mut bracketDepth = 0
+	let mut braceDepth = 0
+	let mut index = 0
+	while index < List.length(rawTokens) {
+		let value = match List.get(rawTokens, index) {
+			Some(item) => item
+			None => break
+		}
+		if value.kind == FrontendTokenKind.NewLine {
+			let previous = previousNonNewLine(result)
+			let next = nextNonNewLine(rawTokens, index + 1)
+			let previousText = match previous { Some(item) => item.text, None => "" }
+			let nextText = match next { Some(item) => item.text, None => "" }
+			let structuralSoft = parenDepth > 0 || bracketDepth > 0
+			let continuationSoft = softAfter(previousText) || softBefore(nextText)
+			if !(structuralSoft || continuationSoft) || retainGenericDeclarationBreak(previous, next, braceDepth) {
+				result = List.append(result, value)
+			}
+			index = index + 1
+			continue
+		}
+		if value.text == "(" {
+			parenDepth = parenDepth + 1
+		} else if value.text == ")" && parenDepth > 0 {
+			parenDepth = parenDepth - 1
+		} else if value.text == "[" {
+			bracketDepth = bracketDepth + 1
+		} else if value.text == "]" && bracketDepth > 0 {
+			bracketDepth = bracketDepth - 1
+		} else if value.text == "{" {
+			braceDepth = braceDepth + 1
+		} else if value.text == "}" && braceDepth > 0 {
+			braceDepth = braceDepth - 1
+		}
+		result = List.append(result, value)
+		index = index + 1
+	}
+	return result
+}
+
+fn scanFrontend(source: String) -> FrontendLexResult {
+	let chars = String.codePoints(source)
+	let mut state = ScannerState { index: 0, line: 1, column: 1 }
+	let mut rawTokens: List<FrontendToken> = []
+	let mut comments: List<FrontendComment> = []
+	let mut diagnostics: List<FrontendDiagnostic> = []
+	while state.index < List.length(chars) {
+		let value = characterOrEmpty(chars, state.index)
+		if isHorizontalWhitespace(value) {
+			state = advance(state, 1)
+			continue
+		}
+		if value == "\n" || value == "\r" {
+			let start = position(state)
+			let width = if value == "\r" && characterOrEmpty(chars, state.index + 1) == "\n" then 2 else 1
+			state = advanceNewLine(state, width)
+			rawTokens = List.append(rawTokens, token(FrontendTokenKind.NewLine, "\n", start, position(state)))
+			continue
+		}
+		if value == "/" && characterOrEmpty(chars, state.index + 1) == "/" {
+			let scanned = scanComment(chars, state)
+			state = scanned.state
+			comments = List.append(comments, scanned.comment)
+			continue
+		}
+		let start = position(state)
+		if isIdentifierStart(value) {
+			let mut text = ""
+			while state.index < List.length(chars) && isIdentifierPart(characterOrEmpty(chars, state.index)) {
+				text = text + characterOrEmpty(chars, state.index)
+				state = advance(state, 1)
+			}
+			let kind = if isKeyword(text) then FrontendTokenKind.Keyword else FrontendTokenKind.Identifier
+			rawTokens = List.append(rawTokens, token(kind, text, start, position(state)))
+			continue
+		}
+		if isAsciiDigit(value) {
+			let scanned = scanNumber(chars, state)
+			state = scanned.state
+			diagnostics = List.concat(diagnostics, scanned.diagnostics)
+			rawTokens = List.append(rawTokens, token(scanned.kind, scanned.text, start, position(state)))
+			continue
+		}
+		if value == "\"" {
+			let scanned = scanString(chars, state)
+			state = scanned.state
+			diagnostics = List.concat(diagnostics, scanned.diagnostics)
+			rawTokens = List.append(rawTokens, token(FrontendTokenKind.StringLiteral, scanned.text, start, position(state)))
+			continue
+		}
+		let triple = tripleSymbol(value, characterOrEmpty(chars, state.index + 1), characterOrEmpty(chars, state.index + 2))
+		if match triple { Some(_) => true, None => false } {
+			let text = match triple { Some(item) => item, None => "" }
+			state = advance(state, 3)
+			rawTokens = List.append(rawTokens, token(FrontendTokenKind.Symbol, text, start, position(state)))
+			continue
+		}
+		let double = doubleSymbol(value, characterOrEmpty(chars, state.index + 1))
+		if match double { Some(_) => true, None => false } {
+			let text = match double { Some(item) => item, None => "" }
+			state = advance(state, 2)
+			rawTokens = List.append(rawTokens, token(FrontendTokenKind.Symbol, text, start, position(state)))
+			continue
+		}
+		if isSingleSymbol(value) {
+			state = advance(state, 1)
+			rawTokens = List.append(rawTokens, token(FrontendTokenKind.Symbol, value, start, position(state)))
+			continue
+		}
+		state = advance(state, 1)
+		diagnostics = List.append(diagnostics, frontendError("Unexpected character " + value, frontendSpan(start, position(state))))
+	}
+	let end = position(state)
+	rawTokens = List.append(rawTokens, token(FrontendTokenKind.EndOfFile, "", end, end))
+	return FrontendLexResult {
+		tokens: normalizeNewLines(rawTokens),
+		comments: comments,
+		diagnostics: diagnostics,
+	}
+}
+
+@jsExport
+pub fn lexFrontend(source: String) -> Result<String, List<JsonError>> {
+	return Json.encode<FrontendLexResult>(scanFrontend(source))
+}
