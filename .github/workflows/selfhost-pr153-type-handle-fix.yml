@@ -1,0 +1,65 @@
+name: Selfhost PR153 type handle fix
+
+on:
+  push:
+    branches:
+      - selfhost/local-must-use-analysis
+    paths:
+      - .github/workflows/selfhost-pr153-type-handle-fix.yml
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: selfhost/local-must-use-analysis
+      - name: Prefer declaration named types
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path('selfhost/mvp/src/frontend-must-use.virune')
+          content = path.read_text()
+          before = '''fn typeForDeclaration(declarationId: Int, semantics: FrontendSemanticResult) -> Int {
+          \tlet declaration = declarationAt(semantics.declarations, declarationId)
+          \tlet target = optionalInt(declaration.targetType)
+          \tif target >= 0 {
+          \t\treturn target
+          \t}
+          \tlet mut index = 0
+          \twhile index < List.length(semantics.types) {
+          \t\tlet value = typeAt(semantics.types, index)
+          \t\tif optionalInt(value.declarationId) == declarationId {
+          \t\t\treturn value.id
+          \t\t}
+          \t\tindex = index + 1
+          \t}
+          \treturn -1
+          }'''
+          after = '''fn typeForDeclaration(declarationId: Int, semantics: FrontendSemanticResult) -> Int {
+          \tlet mut index = 0
+          \twhile index < List.length(semantics.types) {
+          \t\tlet value = typeAt(semantics.types, index)
+          \t\tif optionalInt(value.declarationId) == declarationId {
+          \t\t\treturn value.id
+          \t\t}
+          \t\tindex = index + 1
+          \t}
+          \treturn optionalInt(declarationAt(semantics.declarations, declarationId).targetType)
+          }'''
+          if content.count(before) != 1:
+              raise SystemExit('expected typeForDeclaration block once')
+          path.write_text(content.replace(before, after, 1))
+          Path('.github/workflows/selfhost-pr153-type-handle-fix.yml').unlink()
+      - name: Commit fix and remove temporary workflow
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add selfhost/mvp/src/frontend-must-use.virune .github/workflows/selfhost-pr153-type-handle-fix.yml
+          git commit -m "compiler(selfhost): preserve declaration type handles"
+          git push origin HEAD:selfhost/local-must-use-analysis
