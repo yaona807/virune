@@ -946,30 +946,20 @@ fn parseModule(lexed: FrontendLexResult) -> FrontendParseResult {
 	}
 }
 
-fn unwrapModuleTransport(value: String) -> Result<String, List<JsonError>> {
-	let mut current = value
+fn decodeFrontend(source: String) -> Result<FrontendLexResult, List<JsonError>> {
+	let mut current = lexFrontendJson(source)?
 	let mut depth = 0
-	let mut done = false
-	while depth < 8 && !done {
-		let characters = String.codePoints(current)
-		let first = match List.get(characters, 0) {
-			Some(character) => character
-			None => ""
-		}
-		if first == "\"" {
-			current = Json.decode<String>(current)?
-			depth = depth + 1
-		} else {
-			done = true
+	while depth < 8 {
+		let decoded = Json.decode<FrontendLexResult>(current)
+		match decoded {
+			Ok(value) => return Ok(value)
+			Err(_) => {
+				current = Json.decode<String>(current)?
+				depth = depth + 1
+			}
 		}
 	}
-	return Ok(current)
-}
-
-fn decodeFrontend(source: String) -> Result<FrontendLexResult, List<JsonError>> {
-	let transported = lexFrontendJson(source)?
-	let payload = unwrapModuleTransport(transported)?
-	return Json.decode<FrontendLexResult>(payload)
+	return Json.decode<FrontendLexResult>(current)
 }
 
 @jsExport
