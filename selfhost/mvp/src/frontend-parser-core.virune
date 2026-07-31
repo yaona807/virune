@@ -49,6 +49,11 @@ record ParsedDocumentation {
 	documentation: List<String>
 }
 
+record ParsedChildren {
+	state: CoreState
+	children: List<Int>
+}
+
 record DetailedDeclarationTransport derives Json {
 	nextIndex: Int
 	nodes: List<FrontendAstNode>
@@ -1714,6 +1719,227 @@ fn parseDetailedDeclaration(
 	}
 }
 
+fn prependNodeChildren(
+	stateValue: CoreState,
+	id: Int,
+	prefix: List<Int>,
+) -> CoreState {
+	if id < 0 || List.length(prefix) == 0 {
+		return stateValue
+	}
+	let mut nodes: List<FrontendAstNode> = []
+	for value in stateValue.nodes {
+		if value.id == id {
+			let updated = frontendAstNode(
+				value.id,
+				value.kind,
+				value.text,
+				value.span,
+				List.concat(prefix, value.children),
+				value.documentation,
+			)
+			nodes = List.append(nodes, updated)
+		} else {
+			nodes = List.append(nodes, value)
+		}
+	}
+	return withNodes(stateValue, nodes)
+}
+
+fn parseAttribute(stateValue: CoreState, tokens: List<FrontendToken>) -> ParsedNode {
+	let start = stateValue.index
+	let mut state = advance(stateValue)
+	let validName = currentKind(state, tokens) == FrontendTokenKind.Identifier
+	let name = if validName then currentText(state, tokens) else ""
+	if validName {
+		state = advance(state)
+	} else {
+		state = addDiagnosticAt(state, tokens, "P0001", "Expected an attribute name", state.index)
+	}
+	let mut children: List<Int> = []
+	if isText(state, tokens, "(") {
+		let argumentsValue = parseCallArguments(state, tokens)
+		state = argumentsValue.state
+		children = List.append(children, argumentsValue.id)
+	}
+	state = skipNewLines(state, tokens)
+	return addNode(state, tokens, "Attribute", name, start, state.index, children, [])
+}
+
+fn parseImportItem(stateValue: CoreState, tokens: List<FrontendToken>) -> ParsedNode {
+	let start = stateValue.index
+	let mut state = stateValue
+	let validName = currentKind(state, tokens) == FrontendTokenKind.Identifier
+	let name = if validName then currentText(state, tokens) else ""
+	if validName {
+		state = advance(state)
+	} else {
+		state = addDiagnosticAt(state, tokens, "P0001", "Expected an import item name", state.index)
+		if !atEnd(state, tokens) && !isText(state, tokens, "}") && !isText(state, tokens, ",") {
+			state = advance(state)
+		}
+	}
+	let mut text = name
+	if isText(state, tokens, "as") {
+		state = advance(state)
+		if currentKind(state, tokens) == FrontendTokenKind.Identifier {
+			text = name + " as " + currentText(state, tokens)
+			state = advance(state)
+		} else {
+			state = addDiagnosticAt(state, tokens, "P0001", "Expected an import alias after as", state.index)
+		}
+	}
+	return addNode(state, tokens, "ImportItem", text, start, state.index, [], [])
+}
+
+fn parseNamedImportItems(stateValue: CoreState, tokens: List<FrontendToken>) -> ParsedChildren {
+	let mut state = stateValue
+	let mut children: List<Int> = []
+	if isText(state, tokens, "{") {
+		state = skipNewLines(advance(state), tokens)
+	} else {
+		state = addDiagnosticAt(state, tokens, "P0001", "Expected { to begin import items", state.index)
+		return ParsedChildren { state: synchronizeLine(state, tokens), children: children }
+	}
+	while !atEnd(state, tokens) && !isText(state, tokens, "}") {
+		let before = state.index
+		let item = parseImportItem(state, tokens)
+		state = item.state
+		if item.id >= 0 {
+			children = List.append(children, item.id)
+		}
+		if isText(state, tokens, ",") {
+			state = skipNewLines(advance(state), tokens)
+		} else if !isText(state, tokens, "}") {
+			state = addDiagnosticAt(state, tokens, "P0001", "Expected , or } after an import item", state.index)
+			while !atEnd(state, tokens)
+				&& currentKind(state, tokens) != FrontendTokenKind.NewLine
+				&& !isText(state, tokens, ",")
+				&& !isText(state, tokens, "}") {
+				state = advance(state)
+			}
+			if isText(state, tokens, ",") {
+				state = skipNewLines(advance(state), tokens)
+			}
+		}
+		if state.index <= before {
+			state = addDiagnosticAt(state, tokens, "P0001", "Parser made no progress in import items", state.index)
+			if !atEnd(state, tokens) {
+				state = advance(state)
+			}
+		}
+	}
+	if isText(state, tokens, "}") {
+		state = advance(state)
+	} else {
+		state = addDiagnosticAt(state, tokens, "P0001", "Expected } to end import items", state.index)
+	}
+	return ParsedChildren { state: state, children: children }
+}
+
+fn parseImportSource(stateValue: CoreState, tokens: List<FrontendToken>) -> ParsedNode {
+	let start = stateValue.index
+	let mut state = stateValue
+	let validSource = currentKind(state, tokens) == FrontendTokenKind.StringLiteral
+	let text = if validSource then currentText(state, tokens) else ""
+	if validSource {
+		state = advance(state)
+	} else {
+		state = addDiagnosticAt(state, tokens, "P0001", "Expected an import source string", state.index)
+	}
+	return addNode(state, tokens, "ImportSource", text, start, state.index, [], [])
+}
+
+fn parseDetailedImport(stateValue: CoreState, tokens: List<FrontendToken>) -> ParsedNode {
+	let start = stateValue.index
+	let mut state = stateValue
+	let publicImport = isText(state, tokens, "pub")
+	if publicImport {
+		state = advance(state)
+	}
+	if isText(state, tokens, "import") {
+		state = advance(state)
+	} else {
+		state = addDiagnosticAt(state, tokens, "P0001", "Expected import", state.index)
+	}
+	let javascript = isText(state, tokens, "js")
+	if javascript {
+		state = advance(state)
+	}
+	let typeOnly = isText(state, tokens, "type")
+	if typeOnly {
+		state = advance(state)
+	}
+	let mut children: List<Int> = []
+	let mut form = if javascript then "javascript side-effect" else "virune"
+	let mut sourceAlreadyParsed = false
+	if isText(state, tokens, "{") {
+		let items = parseNamedImportItems(state, tokens)
+		state = items.state
+		children = items.children
+		form = if javascript then "javascript named" else "virune"
+		if isText(state, tokens, "from") {
+			state = advance(state)
+		} else {
+			state = addDiagnosticAt(state, tokens, "P0001", "Expected from after import items", state.index)
+		}
+	} else if javascript && isText(state, tokens, "*") {
+		let itemStart = state.index
+		state = advance(state)
+		if isText(state, tokens, "as") {
+			state = advance(state)
+		} else {
+			state = addDiagnosticAt(state, tokens, "P0001", "Expected as in a namespace import", state.index)
+		}
+		let validName = currentKind(state, tokens) == FrontendTokenKind.Identifier
+		let name = if validName then currentText(state, tokens) else ""
+		if validName {
+			state = advance(state)
+		} else {
+			state = addDiagnosticAt(state, tokens, "P0001", "Expected a namespace import name", state.index)
+		}
+		let item = addNode(state, tokens, "ImportItem", "* as " + name, itemStart, state.index, [], [])
+		state = item.state
+		children = List.append(children, item.id)
+		form = "javascript namespace"
+		if isText(state, tokens, "from") {
+			state = advance(state)
+		} else {
+			state = addDiagnosticAt(state, tokens, "P0001", "Expected from after a namespace import", state.index)
+		}
+	} else if javascript && currentKind(state, tokens) == FrontendTokenKind.Identifier {
+		let itemStart = state.index
+		let name = currentText(state, tokens)
+		state = advance(state)
+		let item = addNode(state, tokens, "ImportItem", "default as " + name, itemStart, state.index, [], [])
+		state = item.state
+		children = List.append(children, item.id)
+		form = "javascript default"
+		if isText(state, tokens, "from") {
+			state = advance(state)
+		} else {
+			state = addDiagnosticAt(state, tokens, "P0001", "Expected from after a default import", state.index)
+		}
+	} else if javascript && currentKind(state, tokens) == FrontendTokenKind.StringLiteral {
+		let sourceNode = parseImportSource(state, tokens)
+		state = sourceNode.state
+		children = List.append(children, sourceNode.id)
+		form = "javascript side-effect"
+		sourceAlreadyParsed = true
+	} else {
+		state = addDiagnosticAt(state, tokens, "P0001", "Expected import items or a JavaScript import binding", state.index)
+	}
+	if !sourceAlreadyParsed {
+		let sourceNode = parseImportSource(state, tokens)
+		state = sourceNode.state
+		children = List.append(children, sourceNode.id)
+	}
+	state = consumeLineEnd(state, tokens, "an import declaration")
+	let visibility = if publicImport then " public" else ""
+	let typeText = if typeOnly then " type" else ""
+	return addNode(state, tokens, "ImportDeclaration", form + visibility + typeText, start, state.index, children, [])
+}
+
 fn parseDeclaration(stateValue: CoreState, tokens: List<FrontendToken>) -> ParsedNode {
 	let kind = declarationKind(stateValue, tokens)
 	let docs = takeDocumentation(stateValue, tokens, supportsDocumentation(kind))
@@ -1754,6 +1980,23 @@ fn parseModule(lexed: FrontendLexResult) -> FrontendParseResult {
 	}
 	let mut children: List<Int> = []
 	state = skipNewLines(state, tokens)
+	if !atEnd(state, tokens) {
+		state = ingestCommentsBefore(
+			state,
+			comments,
+			tokenAt(tokens, state.index).span.start.line,
+			tokens,
+		)
+	}
+	if isText(state, tokens, "unsafe") && tokenAt(tokens, state.index + 1).text == "module" {
+		let start = state.index
+		let docs = takeDocumentation(state, tokens, false)
+		state = withSignificant(docs.state, true)
+		state = consumeLineEnd(withIndex(state, state.index + 2), tokens, "unsafe module")
+		let directive = addNode(state, tokens, "UnsafeModule", "unsafe module", start, state.index, [], [])
+		state = directive.state
+		children = List.append(children, directive.id)
+	}
 	let mut done = false
 	while !atEnd(state, tokens) && !done {
 		state = skipNewLines(state, tokens)
@@ -1767,28 +2010,29 @@ fn parseModule(lexed: FrontendLexResult) -> FrontendParseResult {
 				tokens,
 			)
 			let before = state.index
+			let mut attributeIds: List<Int> = []
 			while isText(state, tokens, "@") {
-				state = synchronizeLine(state, tokens)
+				let attribute = parseAttribute(state, tokens)
+				state = attribute.state
+				if attribute.id >= 0 {
+					attributeIds = List.append(attributeIds, attribute.id)
+				}
 			}
 			if isText(state, tokens, "import")
 				|| (isText(state, tokens, "pub") && tokenAt(tokens, state.index + 1).text == "import") {
+				if List.length(attributeIds) > 0 {
+					state = addDiagnosticAt(state, tokens, "P0001", "Attributes cannot target an import declaration", state.index)
+				}
 				let docs = takeDocumentation(state, tokens, false)
 				state = withSignificant(docs.state, true)
-				let imported = addNode(
-					synchronizeLine(state, tokens),
-					tokens,
-					"ImportDeclaration",
-					"import",
-					before,
-					state.index,
-					[],
-					[],
-				)
+				let imported = parseDetailedImport(state, tokens)
 				state = imported.state
-				children = List.append(children, imported.id)
+				if imported.id >= 0 {
+					children = List.append(children, imported.id)
+				}
 			} else {
 				let declaration = parseDeclaration(state, tokens)
-				state = declaration.state
+				state = prependNodeChildren(declaration.state, declaration.id, attributeIds)
 				if declaration.id >= 0 {
 					children = List.append(children, declaration.id)
 				}

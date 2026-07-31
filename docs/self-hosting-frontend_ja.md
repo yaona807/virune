@@ -130,3 +130,8 @@ Comma区切りのrecoveryは次のcomma、closing delimiter、物理line end、�
 ### Statement detail AST
 
 Stage 0 frontendはlocal statementをcanonical flat arenaへ詳細化します。`LetStatement`は`LetBinding`とinitializerをchildとして持ち、binding textで`mut`を区別し、任意の型注釈は詳細type-reference childとして接続します。assignmentは`AssignmentTarget`を持ち、`ForStatement`は`ForBinding`、iterable、bodyを保持します。壊れたheaderはlineまたはblock境界で復旧し、Production Parserの選択や公開Compiler契約は変更しません。
+
+
+### Module prefix AST
+
+Stage 0 frontendは`UnsafeModule`、Virune／JavaScriptの詳細`ImportDeclaration`、`ImportItem`、`ImportSource`、declaration `Attribute`を生成します。Import形式、visibility、type-only modeを決定的に保持し、attribute argument listは既存expression parserを再利用して、attribute IDを対象declarationへ接続します。壊れたmodule prefix構文はlineおよびdeclaration境界で復旧します。
