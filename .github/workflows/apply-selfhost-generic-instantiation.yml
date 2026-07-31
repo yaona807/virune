@@ -67,7 +67,7 @@ jobs:
           \\t\\tstate = resolved.state
           \\t\\tstate = setInstantiationTarget(state, instantiationId, resolved.id)
           \\t\\tlet target = typeAt(state.types, resolved.id)
-          \\t\\tif declaration.kind == "alias" && target.declarationId == Some(declaration.id) && intListsEqual(target.arguments, typeValue.arguments) {
+          \\t\\tif declaration.kind == "alias" && target.declarationId == Some(declaration.id) && typeListsEquivalent(target.arguments, typeValue.arguments, state) {
           \\t\\t\\tstate = addDiagnostic(state, semanticArenaDiagnostic(
           \\t\\t\\t\\t"L2042",
           \\t\\t\\t\\t"Recursive generic alias " + declaration.name,
@@ -82,6 +82,61 @@ jobs:
           fn containsOpenType`;
           script = script.slice(0, targetStart) + targetReplacement + script.slice(targetEnd + targetEndMarker.length);
           script = script.replace('value.kind != "named" || value.instantiationId != None', 'value.kind != "named" || hasInstantiation(value)');
+
+          const structuralMarker = 'fn instantiationIndex(state: SemanticState, declarationId: Int, typeArguments: List<Int>) -> Int {';
+          const structuralHelpers = `fn typesEquivalent(
+          \tleftId: Int,
+          \trightId: Int,
+          \tstate: SemanticState,
+          \tdepth: Int,
+          ) -> Bool {
+          \tif leftId == rightId {
+          \t\treturn true
+          \t}
+          \tif depth >= 64 {
+          \t\treturn false
+          \t}
+          \tlet left = typeAt(state.types, leftId)
+          \tlet right = typeAt(state.types, rightId)
+          \tif left.id < 0 || right.id < 0
+          \t\t|| left.kind != right.kind
+          \t\t|| left.name != right.name
+          \t\t|| left.declarationId != right.declarationId
+          \t\t|| List.length(left.arguments) != List.length(right.arguments) {
+          \t\treturn false
+          \t}
+          \tlet mut index = 0
+          \twhile index < List.length(left.arguments) {
+          \t\tlet leftArgument = match List.get(left.arguments, index) { Some(value) => value, None => -1 }
+          \t\tlet rightArgument = match List.get(right.arguments, index) { Some(value) => value, None => -2 }
+          \t\tif !typesEquivalent(leftArgument, rightArgument, state, depth + 1) {
+          \t\t\treturn false
+          \t\t}
+          \t\tindex = index + 1
+          \t}
+          \treturn true
+          }
+
+          fn typeListsEquivalent(left: List<Int>, right: List<Int>, state: SemanticState) -> Bool {
+          \tif List.length(left) != List.length(right) {
+          \t\treturn false
+          \t}
+          \tlet mut index = 0
+          \twhile index < List.length(left) {
+          \t\tlet leftId = match List.get(left, index) { Some(value) => value, None => -1 }
+          \t\tlet rightId = match List.get(right, index) { Some(value) => value, None => -2 }
+          \t\tif !typesEquivalent(leftId, rightId, state, 0) {
+          \t\t\treturn false
+          \t\t}
+          \t\tindex = index + 1
+          \t}
+          \treturn true
+          }
+
+          `;
+          if (!script.includes(structuralMarker)) throw new Error('Structural instantiation marker is missing');
+          script = script.replace(structuralMarker, structuralHelpers + structuralMarker);
+          script = script.replace('intListsEqual(value.argumentTypeIds, typeArguments)', 'typeListsEquivalent(value.argumentTypeIds, typeArguments, state)');
           await writeFile('.cache/apply-generic-instantiation.mjs', script);
           NODE
       - name: Apply generic implementation
