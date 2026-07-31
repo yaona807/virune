@@ -477,6 +477,7 @@ fn expressionStop(state: CoreState, tokens: List<FrontendToken>, stopAtBrace: Bo
 		return true
 	}
 	return isText(state, tokens, "}")
+		|| isText(state, tokens, "then")
 		|| isText(state, tokens, "else")
 		|| isText(state, tokens, ",")
 		|| isText(state, tokens, "=>")
@@ -766,6 +767,182 @@ fn parseParenthesizedLambda(
 	return parseLambdaPostfix(grouped.state, tokens, start, grouped.id)
 }
 
+fn parseControlPostfix(
+	stateValue: CoreState,
+	tokens: List<FrontendToken>,
+	start: Int,
+	valueIdValue: Int,
+) -> ParsedNode {
+	let mut state = stateValue
+	let mut valueId = valueIdValue
+	let mut done = false
+	while !done && !expressionStop(state, tokens, false) {
+		if isText(state, tokens, "(") {
+			let callArguments = consumeBalanced(state, tokens, "(", ")", "CallArguments")
+			state = callArguments.state
+			let call = addNode(
+				state,
+				tokens,
+				"CallExpression",
+				"call",
+				start,
+				state.index,
+				[valueId, callArguments.id],
+				[],
+			)
+			state = call.state
+			valueId = call.id
+		} else if isText(state, tokens, ".") {
+			state = advance(state)
+			let field = currentText(state, tokens)
+			if !atEnd(state, tokens) {
+				state = advance(state)
+			}
+			let member = addNode(
+				state,
+				tokens,
+				"FieldExpression",
+				field,
+				start,
+				state.index,
+				[valueId],
+				[],
+			)
+			state = member.state
+			valueId = member.id
+		} else if isText(state, tokens, "?") {
+			state = advance(state)
+			let tried = addNode(
+				state,
+				tokens,
+				"TryExpression",
+				"?",
+				start,
+				state.index,
+				[valueId],
+				[],
+			)
+			state = tried.state
+			valueId = tried.id
+		} else {
+			done = true
+		}
+	}
+	return ParsedNode { state: state, id: valueId }
+}
+
+fn parseConditionalExpression(stateValue: CoreState, tokens: List<FrontendToken>) -> ParsedNode {
+	let start = stateValue.index
+	let condition = parseExpression(advance(stateValue), tokens, 1, false)
+	let mut state = condition.state
+	let mut children: List<Int> = []
+	if condition.id >= 0 {
+		children = List.append(children, condition.id)
+	}
+	if isText(state, tokens, "then") {
+		state = advance(state)
+	} else {
+		state = addDiagnosticAt(state, tokens, "P0001", "Expected then in a conditional expression", state.index)
+	}
+	let consequent = parseExpression(state, tokens, 1, false)
+	state = consequent.state
+	if consequent.id >= 0 {
+		children = List.append(children, consequent.id)
+	}
+	if isText(state, tokens, "else") {
+		state = advance(state)
+	} else {
+		state = addDiagnosticAt(state, tokens, "P0001", "Expected else in a conditional expression", state.index)
+	}
+	let alternate = parseExpression(state, tokens, 1, false)
+	state = alternate.state
+	if alternate.id >= 0 {
+		children = List.append(children, alternate.id)
+	}
+	return addNode(state, tokens, "ConditionalExpression", "if", start, state.index, children, [])
+}
+
+fn synchronizeParallelEntry(stateValue: CoreState, tokens: List<FrontendToken>) -> CoreState {
+	let mut state = stateValue
+	while !atEnd(state, tokens)
+		&& currentKind(state, tokens) != FrontendTokenKind.NewLine
+		&& !isText(state, tokens, ",")
+		&& !isText(state, tokens, "}") {
+		state = advance(state)
+	}
+	return state
+}
+
+fn parseParallelEntry(stateValue: CoreState, tokens: List<FrontendToken>) -> ParsedNode {
+	let start = stateValue.index
+	let mut state = stateValue
+	let name = currentText(state, tokens)
+	if currentKind(state, tokens) == FrontendTokenKind.Identifier {
+		state = advance(state)
+	} else {
+		state = addDiagnosticAt(state, tokens, "P0001", "Expected a parallel entry name", state.index)
+	}
+	if isText(state, tokens, ":") {
+		state = advance(state)
+	} else {
+		state = addDiagnosticAt(state, tokens, "P0001", "Expected : after a parallel entry name", state.index)
+		state = synchronizeParallelEntry(state, tokens)
+		return addNode(state, tokens, "ParallelEntry", name, start, state.index, [], [])
+	}
+	let value = parseExpression(state, tokens, 1, false)
+	state = value.state
+	let mut children: List<Int> = []
+	if value.id >= 0 {
+		children = List.append(children, value.id)
+	}
+	return addNode(state, tokens, "ParallelEntry", name, start, state.index, children, [])
+}
+
+fn parseParallelExpression(stateValue: CoreState, tokens: List<FrontendToken>) -> ParsedNode {
+	let start = stateValue.index
+	let mut state = advance(stateValue)
+	let mut text = "parallel"
+	if isText(state, tokens, "try") {
+		text = "parallel try"
+		state = advance(state)
+	}
+	if isText(state, tokens, "{") {
+		state = skipNewLines(advance(state), tokens)
+	} else {
+		state = addDiagnosticAt(state, tokens, "P0001", "Expected { after parallel", state.index)
+		state = synchronizeParallelEntry(state, tokens)
+	}
+	let mut children: List<Int> = []
+	while !atEnd(state, tokens) && !isText(state, tokens, "}") {
+		let before = state.index
+		let entry = parseParallelEntry(state, tokens)
+		state = entry.state
+		if entry.id >= 0 {
+			children = List.append(children, entry.id)
+		}
+		if isText(state, tokens, ",") {
+			state = advance(state)
+		}
+		state = skipNewLines(state, tokens)
+		if state.index <= before {
+			state = addDiagnosticAt(state, tokens, "P0001", "Parser made no progress in a parallel expression", state.index)
+			if !atEnd(state, tokens) {
+				state = skipNewLines(advance(state), tokens)
+			}
+		}
+	}
+	if List.length(children) == 0 {
+		state = addDiagnosticAt(state, tokens, "P0001", "Expected at least one parallel entry", state.index)
+	}
+	if isText(state, tokens, "}") {
+		state = advance(state)
+	} else {
+		state = addDiagnosticAt(state, tokens, "P0001", "Expected } to end a parallel expression", state.index)
+	}
+	let expression = addNode(state, tokens, "ParallelExpression", text, start, state.index, children, [])
+	return parseControlPostfix(expression.state, tokens, start, expression.id)
+}
+
 fn parsePrimary(stateValue: CoreState, tokens: List<FrontendToken>, stopAtBrace: Bool) -> ParsedNode {
 	let mut state = stateValue
 	let start = state.index
@@ -774,6 +951,12 @@ fn parsePrimary(stateValue: CoreState, tokens: List<FrontendToken>, stopAtBrace:
 		return ParsedNode { state: state, id: -1 }
 	}
 	let text = currentText(state, tokens)
+	if text == "if" {
+		return parseConditionalExpression(state, tokens)
+	}
+	if text == "parallel" {
+		return parseParallelExpression(state, tokens)
+	}
 	if text == "fn" || (text == "async" && tokenAt(tokens, state.index + 1).text == "fn") {
 		return parseLambdaExpression(state, tokens)
 	}
