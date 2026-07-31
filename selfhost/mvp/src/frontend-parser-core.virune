@@ -947,19 +947,9 @@ fn parseModule(lexed: FrontendLexResult) -> FrontendParseResult {
 }
 
 fn decodeFrontend(source: String) -> Result<FrontendLexResult, List<JsonError>> {
-	let mut current = lexFrontendJson(source)?
-	let mut depth = 0
-	while depth < 8 {
-		let decoded = Json.decode<FrontendLexResult>(current)
-		match decoded {
-			Ok(value) => return Ok(value)
-			Err(_) => {
-				current = Json.decode<String>(current)?
-				depth = depth + 1
-			}
-		}
-	}
-	return Json.decode<FrontendLexResult>(current)
+	let encoded = lexFrontendJson(source)?
+	let raw = Json.parse(encoded)?
+	return Json.decode<FrontendLexResult>(raw)
 }
 
 @jsExport
