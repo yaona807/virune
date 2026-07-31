@@ -37,7 +37,8 @@ test "declaration parser reports malformed declaration details" {
 	let result = encoded(source)
 	expect(String.contains(result, "\"accepted\":false"))
 	expect(String.contains(result, "Expected :"))
-	expect(String.contains(result, "enum payload"))
+	expect(String.contains(result, "Expected ) after an enum payload"))
 	expect(String.contains(result, "\"text\":\"valid\""))
+	expect(String.contains(result, "\"text\":\"Empty\""))
 	expect(String.contains(result, "\"text\":\"main\""))
 }
