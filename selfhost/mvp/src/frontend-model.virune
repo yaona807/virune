@@ -1,0 +1,72 @@
+//! Data-only lexical model for the Virune 1.0 self-host frontend.
+
+pub record FrontendPosition derives Eq, Hash, Debug, Json {
+	offset: Int
+	line: Int
+	column: Int
+}
+
+pub record FrontendSpan derives Eq, Hash, Debug, Json {
+	start: FrontendPosition
+	end: FrontendPosition
+}
+
+pub enum FrontendTokenKind derives Eq, Hash, Debug, Json {
+	Identifier
+	Keyword
+	IntLiteral
+	BigIntLiteral
+	FloatLiteral
+	StringLiteral
+	Symbol
+	NewLine
+	EndOfFile
+}
+
+pub enum FrontendCommentKind derives Eq, Hash, Debug, Json {
+	Ordinary
+	DeclarationDocumentation
+	ModuleDocumentation
+}
+
+pub record FrontendToken derives Eq, Debug, Json {
+	kind: FrontendTokenKind
+	text: String
+	span: FrontendSpan
+}
+
+pub record FrontendComment derives Eq, Debug, Json {
+	kind: FrontendCommentKind
+	text: String
+	span: FrontendSpan
+}
+
+pub record FrontendDiagnostic derives Eq, Debug, Json {
+	code: String
+	severity: String
+	message: String
+	span: FrontendSpan
+}
+
+pub record FrontendLexResult derives Eq, Debug, Json {
+	tokens: List<FrontendToken>
+	comments: List<FrontendComment>
+	diagnostics: List<FrontendDiagnostic>
+}
+
+pub fn frontendPosition(offset: Int, line: Int, column: Int) -> FrontendPosition {
+	return FrontendPosition { offset: offset, line: line, column: column }
+}
+
+pub fn frontendSpan(start: FrontendPosition, end: FrontendPosition) -> FrontendSpan {
+	return FrontendSpan { start: start, end: end }
+}
+
+pub fn frontendError(message: String, valueSpan: FrontendSpan) -> FrontendDiagnostic {
+	return FrontendDiagnostic {
+		code: "L0001",
+		severity: "error",
+		message: message,
+		span: valueSpan,
+	}
+}
