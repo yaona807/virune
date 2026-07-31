@@ -1,0 +1,588 @@
+//! Deterministic closed pattern-space coverage for the Virune-authored checker.
+
+import {
+	FrontendSemanticResult,
+	SemanticDeclaration,
+	SemanticDiagnostic,
+	SemanticInstantiation,
+	SemanticMember,
+	SemanticPosition,
+	SemanticSpan,
+	SemanticType,
+	semanticDiagnostic,
+	semanticPosition,
+	semanticSpan,
+} from "./frontend-semantic-model.virune"
+import { checkFrontendDataTypesJson } from "./frontend-semantic.virune"
+
+record FrontendPatternArm {
+	kind: String
+	name: String?
+	guarded: Bool
+	span: SemanticSpan
+}
+
+record FrontendPatternCheck {
+	target: String
+	span: SemanticSpan
+	arms: List<FrontendPatternArm>
+}
+
+record FrontendPatternCoverageRequest {
+	source: String
+	checks: List<FrontendPatternCheck>
+}
+
+record SemanticPatternCase derives Eq, Debug, Json {
+	id: Int
+	name: String
+}
+
+record SemanticPatternArmResult derives Eq, Debug, Json {
+	index: Int
+	key: String?
+	guarded: Bool
+	reachable: Bool
+	coveredCaseId: Int?
+}
+
+record SemanticPatternCoverage derives Eq, Debug, Json {
+	target: String
+	targetTypeId: Int?
+	spaceKind: String
+	cases: List<SemanticPatternCase>
+	arms: List<SemanticPatternArmResult>
+	missingCaseIds: List<Int>
+	missingCaseNames: List<String>
+	exhaustive: Bool
+}
+
+record FrontendPatternCoverageResult derives Eq, Debug, Json {
+	accepted: Bool
+	typeCount: Int
+	checks: List<SemanticPatternCoverage>
+	diagnostics: List<SemanticDiagnostic>
+}
+
+record PatternSpace {
+	typeId: Int
+	kind: String
+	cases: List<SemanticPatternCase>
+}
+
+record PatternSpaceResult {
+	space: PatternSpace
+	diagnostics: List<SemanticDiagnostic>
+}
+
+record CoverageBuildResult {
+	coverage: SemanticPatternCoverage
+	diagnostics: List<SemanticDiagnostic>
+}
+
+fn fallbackPosition() -> SemanticPosition {
+	return semanticPosition(0, 1, 1)
+}
+
+fn fallbackSpan() -> SemanticSpan {
+	let value = fallbackPosition()
+	return semanticSpan(value, value)
+}
+
+fn fallbackType() -> SemanticType {
+	return SemanticType {
+		id: -1,
+		kind: "missing",
+		name: "",
+		declarationId: None,
+		arguments: [],
+		instantiationId: None,
+		span: fallbackSpan(),
+	}
+}
+
+fn fallbackDeclaration() -> SemanticDeclaration {
+	return SemanticDeclaration {
+		id: -1,
+		sourceNodeId: -1,
+		kind: "missing",
+		name: "",
+		isPublic: false,
+		typeParameters: [],
+		memberIds: [],
+		targetType: None,
+		span: fallbackSpan(),
+	}
+}
+
+fn fallbackMember() -> SemanticMember {
+	return SemanticMember {
+		id: -1,
+		declarationId: -1,
+		kind: "missing",
+		name: "",
+		typeIds: [],
+		span: fallbackSpan(),
+	}
+}
+
+fn fallbackInstantiation() -> SemanticInstantiation {
+	return SemanticInstantiation {
+		id: -1,
+		declarationId: -1,
+		argumentTypeIds: [],
+		memberIds: [],
+		targetType: None,
+		span: fallbackSpan(),
+	}
+}
+
+fn typeAt(values: List<SemanticType>, id: Int) -> SemanticType {
+	return match List.get(values, id) {
+		Some(value) => value
+		None => fallbackType()
+	}
+}
+
+fn declarationAt(values: List<SemanticDeclaration>, id: Int) -> SemanticDeclaration {
+	return match List.get(values, id) {
+		Some(value) => value
+		None => fallbackDeclaration()
+	}
+}
+
+fn memberAt(values: List<SemanticMember>, id: Int) -> SemanticMember {
+	return match List.get(values, id) {
+		Some(value) => value
+		None => fallbackMember()
+	}
+}
+
+fn instantiationAt(values: List<SemanticInstantiation>, id: Int) -> SemanticInstantiation {
+	return match List.get(values, id) {
+		Some(value) => value
+		None => fallbackInstantiation()
+	}
+}
+
+fn optionalInt(value: Int?) -> Int {
+	return match value {
+		Some(item) => item
+		None => -1
+	}
+}
+
+fn maybeInt(value: Int) -> Int? {
+	return if value >= 0 then Some(value) else None
+}
+
+fn declarationIndex(values: List<SemanticDeclaration>, name: String) -> Int {
+	let mut index = 0
+	while index < List.length(values) {
+		if declarationAt(values, index).name == name {
+			return index
+		}
+		index = index + 1
+	}
+	return -1
+}
+
+fn typeIndex(values: List<SemanticType>, name: String) -> Int {
+	let mut index = 0
+	while index < List.length(values) {
+		let value = typeAt(values, index)
+		if value.name == name {
+			return index
+		}
+		index = index + 1
+	}
+	return -1
+}
+
+fn typeForDeclaration(declarationId: Int, semantics: FrontendSemanticResult) -> Int {
+	let declaration = declarationAt(semantics.declarations, declarationId)
+	let target = optionalInt(declaration.targetType)
+	if target >= 0 {
+		return target
+	}
+	let mut index = 0
+	while index < List.length(semantics.types) {
+		let value = typeAt(semantics.types, index)
+		if optionalInt(value.declarationId) == declarationId {
+			return value.id
+		}
+		index = index + 1
+	}
+	return -1
+}
+
+fn resolveTargetType(name: String, semantics: FrontendSemanticResult) -> Int {
+	let declarationId = declarationIndex(semantics.declarations, name)
+	if declarationId >= 0 {
+		return typeForDeclaration(declarationId, semantics)
+	}
+	return typeIndex(semantics.types, name)
+}
+
+fn aliasTarget(typeId: Int, semantics: FrontendSemanticResult) -> Int {
+	let value = typeAt(semantics.types, typeId)
+	let declarationId = optionalInt(value.declarationId)
+	if value.kind != "named" || declarationId < 0 {
+		return -1
+	}
+	let declaration = declarationAt(semantics.declarations, declarationId)
+	if declaration.kind != "alias" {
+		return -1
+	}
+	let instantiationId = optionalInt(value.instantiationId)
+	if instantiationId >= 0 {
+		return optionalInt(instantiationAt(semantics.instantiations, instantiationId).targetType)
+	}
+	return optionalInt(declaration.targetType)
+}
+
+fn patternViewTypeId(typeId: Int, semantics: FrontendSemanticResult, depth: Int) -> Int {
+	if depth >= 64 {
+		return typeId
+	}
+	let target = aliasTarget(typeId, semantics)
+	return if target >= 0 then patternViewTypeId(target, semantics, depth + 1) else typeId
+}
+
+fn caseValue(id: Int, name: String) -> SemanticPatternCase {
+	return SemanticPatternCase { id: id, name: name }
+}
+
+fn builtinCases(kind: String) -> List<SemanticPatternCase> {
+	if kind == "bool" {
+		return [caseValue(0, "true"), caseValue(1, "false")]
+	}
+	if kind == "option" {
+		return [caseValue(0, "Some"), caseValue(1, "None")]
+	}
+	if kind == "result" {
+		return [caseValue(0, "Ok"), caseValue(1, "Err")]
+	}
+	return []
+}
+
+fn enumCases(declaration: SemanticDeclaration, semantics: FrontendSemanticResult) -> List<SemanticPatternCase> {
+	let mut cases: List<SemanticPatternCase> = []
+	for memberId in declaration.memberIds {
+		let member = memberAt(semantics.members, memberId)
+		if member.kind == "variant" {
+			cases = List.append(cases, caseValue(List.length(cases), member.name))
+		}
+	}
+	return cases
+}
+
+fn patternError(code: String, message: String, span: SemanticSpan, help: String?) -> SemanticDiagnostic {
+	return semanticDiagnostic(code, message, span, help)
+}
+
+fn invalidSpace() -> PatternSpace {
+	return PatternSpace { typeId: -1, kind: "invalid", cases: [] }
+}
+
+fn buildPatternSpace(
+	target: String,
+	span: SemanticSpan,
+	semantics: FrontendSemanticResult,
+	diagnosticsValue: List<SemanticDiagnostic>,
+) -> PatternSpaceResult {
+	let mut diagnostics = diagnosticsValue
+	let requestedTypeId = resolveTargetType(target, semantics)
+	if requestedTypeId < 0 {
+		diagnostics = List.append(diagnostics, patternError(
+			"L2040",
+			"Unknown match target type " + target,
+			span,
+			Some("Declare the target type in this module before checking pattern coverage."),
+		))
+		return PatternSpaceResult { space: invalidSpace(), diagnostics: diagnostics }
+	}
+	let typeId = patternViewTypeId(requestedTypeId, semantics, 0)
+	let value = typeAt(semantics.types, typeId)
+	if value.kind == "builtin" {
+		if value.name == "Bool" {
+			return PatternSpaceResult { space: PatternSpace { typeId: typeId, kind: "bool", cases: builtinCases("bool") }, diagnostics: diagnostics }
+		}
+		if value.name == "Option" {
+			return PatternSpaceResult { space: PatternSpace { typeId: typeId, kind: "option", cases: builtinCases("option") }, diagnostics: diagnostics }
+		}
+		if value.name == "Result" {
+			return PatternSpaceResult { space: PatternSpace { typeId: typeId, kind: "result", cases: builtinCases("result") }, diagnostics: diagnostics }
+		}
+		if value.name == "Int" {
+			return PatternSpaceResult { space: PatternSpace { typeId: typeId, kind: "int", cases: [] }, diagnostics: diagnostics }
+		}
+		if value.name == "String" {
+			return PatternSpaceResult { space: PatternSpace { typeId: typeId, kind: "string", cases: [] }, diagnostics: diagnostics }
+		}
+	}
+	let declarationId = optionalInt(value.declarationId)
+	if value.kind == "named" && declarationId >= 0 {
+		let declaration = declarationAt(semantics.declarations, declarationId)
+		if declaration.kind == "enum" {
+			return PatternSpaceResult {
+				space: PatternSpace {
+					typeId: typeId,
+					kind: "enum",
+					cases: enumCases(declaration, semantics),
+				},
+				diagnostics: diagnostics,
+			}
+		}
+	}
+	diagnostics = List.append(diagnostics, patternError(
+		"L2040",
+		"Unsupported match target type " + target,
+		span,
+		Some("This self-host slice supports Bool, Int, String, Option, Result, and local enum targets."),
+	))
+	return PatternSpaceResult { space: invalidSpace(), diagnostics: diagnostics }
+}
+
+fn containsString(values: List<String>, expected: String) -> Bool {
+	for value in values {
+		if value == expected {
+			return true
+		}
+	}
+	return false
+}
+
+fn containsInt(values: List<Int>, expected: Int) -> Bool {
+	for value in values {
+		if value == expected {
+			return true
+		}
+	}
+	return false
+}
+
+fn caseId(cases: List<SemanticPatternCase>, name: String) -> Int {
+	for value in cases {
+		if value.name == name {
+			return value.id
+		}
+	}
+	return -1
+}
+
+fn armKey(arm: FrontendPatternArm) -> String? {
+	if arm.kind == "wildcard" {
+		return Some("*")
+	}
+	if arm.kind == "constructor" || arm.kind == "boolean" || arm.kind == "literal" {
+		return match arm.name {
+			Some(name) => if String.length(name) > 0 then Some(name) else None
+			None => None
+		}
+	}
+	return None
+}
+
+fn closedSpace(kind: String) -> Bool {
+	return kind == "bool" || kind == "option" || kind == "result" || kind == "enum"
+}
+
+fn appendMissing(
+	cases: List<SemanticPatternCase>,
+	covered: List<Int>,
+	wildcard: Bool,
+) -> List<Int> {
+	let mut missing: List<Int> = []
+	if wildcard {
+		return missing
+	}
+	for value in cases {
+		if !containsInt(covered, value.id) {
+			missing = List.append(missing, value.id)
+		}
+	}
+	return missing
+}
+
+fn missingNames(cases: List<SemanticPatternCase>, ids: List<Int>) -> List<String> {
+	let mut names: List<String> = []
+	for id in ids {
+		for value in cases {
+			if value.id == id {
+				names = List.append(names, value.name)
+			}
+		}
+	}
+	return names
+}
+
+fn buildCoverage(
+	check: FrontendPatternCheck,
+	semantics: FrontendSemanticResult,
+	diagnosticsValue: List<SemanticDiagnostic>,
+) -> CoverageBuildResult {
+	let spaceResult = buildPatternSpace(check.target, check.span, semantics, diagnosticsValue)
+	let space = spaceResult.space
+	let mut diagnostics = spaceResult.diagnostics
+	let mut seen: List<String> = []
+	let mut covered: List<Int> = []
+	let mut arms: List<SemanticPatternArmResult> = []
+	let mut wildcard = false
+	let mut index = 0
+	for arm in check.arms {
+		let key = armKey(arm)
+		let mut reachable = true
+		let mut coveredCaseId = -1
+		if wildcard {
+			diagnostics = List.append(diagnostics, patternError(
+				"L3002",
+				"Unreachable pattern after wildcard",
+				arm.span,
+				Some("Remove this arm or move it before the unguarded wildcard arm."),
+			))
+			reachable = false
+		} else {
+			match key {
+				Some(value) => {
+					if !arm.guarded {
+						if containsString(seen, value) {
+							diagnostics = List.append(diagnostics, patternError(
+								"L3002",
+								"Unreachable duplicate pattern " + value,
+								arm.span,
+								Some("Remove the duplicate arm or add a guard that can distinguish it."),
+							))
+							reachable = false
+						} else {
+							seen = List.append(seen, value)
+						}
+						if value == "*" {
+							wildcard = true
+						} else if closedSpace(space.kind) {
+							coveredCaseId = caseId(space.cases, value)
+							if coveredCaseId < 0 {
+								diagnostics = List.append(diagnostics, patternError(
+									"L2040",
+									"Unknown pattern case " + value + " for " + check.target,
+									arm.span,
+									Some("Use a constructor or literal that belongs to the target pattern space."),
+								))
+							} else if !containsInt(covered, coveredCaseId) {
+								covered = List.append(covered, coveredCaseId)
+							}
+						}
+					}
+				}
+				None => {
+					diagnostics = List.append(diagnostics, patternError(
+						"L9001",
+						"Malformed pattern coverage arm",
+						arm.span,
+						Some("Use wildcard, constructor, boolean, or literal with the required name."),
+					))
+					reachable = false
+				}
+			}
+		}
+		arms = List.append(arms, SemanticPatternArmResult {
+			index: index,
+			key: key,
+			guarded: arm.guarded,
+			reachable: reachable,
+			coveredCaseId: maybeInt(coveredCaseId),
+		})
+		index = index + 1
+	}
+	let missing = appendMissing(space.cases, covered, wildcard)
+	let names = missingNames(space.cases, missing)
+	let mut exhaustive = false
+	if wildcard {
+		exhaustive = true
+	} else if space.kind == "bool" {
+		exhaustive = List.length(missing) == 0
+		if !exhaustive {
+			diagnostics = List.append(diagnostics, patternError(
+				"L3003",
+				"Bool match must cover true and false",
+				check.span,
+				Some("Add the missing Bool literal arm or an unguarded wildcard arm."),
+			))
+		}
+	} else if space.kind == "enum" || space.kind == "option" || space.kind == "result" {
+		exhaustive = List.length(missing) == 0
+		for name in names {
+			diagnostics = List.append(diagnostics, patternError(
+				"L3004",
+				"Non-exhaustive match: missing " + name,
+				check.span,
+				Some("Add an arm for " + name + " or an unguarded wildcard arm."),
+			))
+		}
+	} else if space.kind == "int" || space.kind == "string" {
+		diagnostics = List.append(diagnostics, patternError(
+			"L3005",
+			"Int and String matches require a wildcard arm",
+			check.span,
+			Some("Add an unguarded wildcard arm because this pattern space is open."),
+		))
+	} else {
+		exhaustive = false
+	}
+	return CoverageBuildResult {
+		coverage: SemanticPatternCoverage {
+			target: check.target,
+			targetTypeId: maybeInt(space.typeId),
+			spaceKind: space.kind,
+			cases: space.cases,
+			arms: arms,
+			missingCaseIds: missing,
+			missingCaseNames: names,
+			exhaustive: exhaustive,
+		},
+		diagnostics: diagnostics,
+	}
+}
+
+fn accepted(values: List<SemanticDiagnostic>) -> Bool {
+	for value in values {
+		if value.severity == "error" {
+			return false
+		}
+	}
+	return true
+}
+
+fn decodeRequest(encoded: String) -> Result<FrontendPatternCoverageRequest, List<JsonError>> {
+	let raw = Json.parse(encoded)?
+	return Json.decode<FrontendPatternCoverageRequest>(raw)
+}
+
+fn decodeSemantics(source: String) -> Result<FrontendSemanticResult, List<JsonError>> {
+	let encoded = checkFrontendDataTypesJson(source)?
+	let raw = Json.parse(encoded)?
+	return Json.decode<FrontendSemanticResult>(raw)
+}
+
+fn checkFrontendPatternCoverage(
+	request: FrontendPatternCoverageRequest,
+) -> Result<FrontendPatternCoverageResult, List<JsonError>> {
+	let semantics = decodeSemantics(request.source)?
+	let mut diagnostics = semantics.diagnostics
+	let mut checks: List<SemanticPatternCoverage> = []
+	for check in request.checks {
+		let result = buildCoverage(check, semantics, diagnostics)
+		diagnostics = result.diagnostics
+		checks = List.append(checks, result.coverage)
+	}
+	return Ok(FrontendPatternCoverageResult {
+		accepted: semantics.accepted && accepted(diagnostics),
+		typeCount: List.length(semantics.types),
+		checks: checks,
+		diagnostics: diagnostics,
+	})
+}
+
+pub fn checkFrontendPatternCoverageJson(encoded: String) -> Result<String, List<JsonError>> {
+	return Json.encode<FrontendPatternCoverageResult>(checkFrontendPatternCoverage(decodeRequest(encoded)?)?)
+}
