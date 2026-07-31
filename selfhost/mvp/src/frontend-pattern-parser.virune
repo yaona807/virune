@@ -1,0 +1,446 @@
+//! Canonical Virune 1.0 pattern parser for the self-host frontend.
+
+import {
+	FrontendPosition,
+	FrontendSpan,
+	FrontendToken,
+	FrontendTokenKind,
+} from "./frontend-model.virune"
+import {
+	FrontendAstNode,
+	ParserDiagnostic,
+	ParserPosition,
+	ParserSpan,
+	frontendAstNode,
+	parserDiagnostic,
+	parserPosition,
+	parserSpan,
+} from "./frontend-parser-model.virune"
+
+record PatternState {
+	index: Int
+	baseId: Int
+	nodes: List<FrontendAstNode>
+	diagnostics: List<ParserDiagnostic>
+}
+
+record ParsedPattern {
+	state: PatternState
+	id: Int
+}
+
+record PatternTransport derives Json {
+	nextIndex: Int
+	nodes: List<FrontendAstNode>
+	diagnostics: List<ParserDiagnostic>
+	root: Int
+}
+
+fn fallbackPosition() -> FrontendPosition {
+	return FrontendPosition { offset: 0, line: 1, column: 1 }
+}
+
+fn fallbackSpan() -> FrontendSpan {
+	let value = fallbackPosition()
+	return FrontendSpan { start: value, end: value }
+}
+
+fn fallbackToken() -> FrontendToken {
+	return FrontendToken {
+		kind: FrontendTokenKind.EndOfFile,
+		text: "",
+		span: fallbackSpan(),
+	}
+}
+
+fn tokenAt(tokens: List<FrontendToken>, index: Int) -> FrontendToken {
+	return match List.get(tokens, index) {
+		Some(value) => value
+		None => fallbackToken()
+	}
+}
+
+fn convertPosition(value: FrontendPosition) -> ParserPosition {
+	return parserPosition(value.offset, value.line, value.column)
+}
+
+fn convertSpan(value: FrontendSpan) -> ParserSpan {
+	return parserSpan(convertPosition(value.start), convertPosition(value.end))
+}
+
+fn spanBetween(tokens: List<FrontendToken>, startIndex: Int, endIndex: Int) -> ParserSpan {
+	let first = tokenAt(tokens, startIndex)
+	let last = if endIndex > startIndex then tokenAt(tokens, endIndex - 1) else first
+	return parserSpan(convertPosition(first.span.start), convertPosition(last.span.end))
+}
+
+fn withIndex(state: PatternState, index: Int) -> PatternState {
+	return PatternState {
+		index: index,
+		baseId: state.baseId,
+		nodes: state.nodes,
+		diagnostics: state.diagnostics,
+	}
+}
+
+fn withNodes(state: PatternState, nodes: List<FrontendAstNode>) -> PatternState {
+	return PatternState {
+		index: state.index,
+		baseId: state.baseId,
+		nodes: nodes,
+		diagnostics: state.diagnostics,
+	}
+}
+
+fn withDiagnostics(state: PatternState, diagnostics: List<ParserDiagnostic>) -> PatternState {
+	return PatternState {
+		index: state.index,
+		baseId: state.baseId,
+		nodes: state.nodes,
+		diagnostics: diagnostics,
+	}
+}
+
+fn advance(state: PatternState) -> PatternState {
+	return withIndex(state, state.index + 1)
+}
+
+fn atEnd(state: PatternState, tokens: List<FrontendToken>) -> Bool {
+	return tokenAt(tokens, state.index).kind == FrontendTokenKind.EndOfFile
+}
+
+fn isText(state: PatternState, tokens: List<FrontendToken>, text: String) -> Bool {
+	return tokenAt(tokens, state.index).text == text
+}
+
+fn skipNewLines(stateValue: PatternState, tokens: List<FrontendToken>) -> PatternState {
+	let mut state = stateValue
+	while tokenAt(tokens, state.index).kind == FrontendTokenKind.NewLine {
+		state = advance(state)
+	}
+	return state
+}
+
+fn addDiagnostic(state: PatternState, tokens: List<FrontendToken>, message: String) -> PatternState {
+	let value = tokenAt(tokens, state.index)
+	let diagnostic = parserDiagnostic("P0001", message, convertSpan(value.span))
+	return withDiagnostics(state, List.append(state.diagnostics, diagnostic))
+}
+
+fn addNode(
+	state: PatternState,
+	tokens: List<FrontendToken>,
+	kind: String,
+	text: String,
+	startIndex: Int,
+	endIndex: Int,
+	children: List<Int>,
+) -> ParsedPattern {
+	let id = state.baseId + List.length(state.nodes)
+	let node = frontendAstNode(
+		id,
+		kind,
+		text,
+		spanBetween(tokens, startIndex, endIndex),
+		children,
+		[],
+	)
+	return ParsedPattern {
+		state: withNodes(state, List.append(state.nodes, node)),
+		id: id,
+	}
+}
+
+fn consumeExpected(
+	stateValue: PatternState,
+	tokens: List<FrontendToken>,
+	text: String,
+	context: String,
+) -> PatternState {
+	let mut state = stateValue
+	if isText(state, tokens, text) {
+		return advance(state)
+	}
+	state = addDiagnostic(state, tokens, "Expected " + text + " " + context)
+	return state
+}
+
+fn isLiteral(value: FrontendToken) -> Bool {
+	return value.kind == FrontendTokenKind.StringLiteral
+		|| value.kind == FrontendTokenKind.IntLiteral
+		|| value.text == "true"
+		|| value.text == "false"
+}
+
+fn parseRestPattern(stateValue: PatternState, tokens: List<FrontendToken>) -> ParsedPattern {
+	let start = stateValue.index
+	let mut state = consumeExpected(stateValue, tokens, "...", "to begin a rest pattern")
+	let value = tokenAt(tokens, state.index)
+	if value.text == "_" || value.kind == FrontendTokenKind.Identifier {
+		state = advance(state)
+		return addNode(state, tokens, "RestPattern", value.text, start, state.index, [])
+	}
+	state = addDiagnostic(state, tokens, "Expected _ or an identifier after ...")
+	return addNode(state, tokens, "RestPattern", "", start, state.index, [])
+}
+
+fn parseListPattern(stateValue: PatternState, tokens: List<FrontendToken>, depth: Int) -> ParsedPattern {
+	let start = stateValue.index
+	let mut state = skipNewLines(advance(stateValue), tokens)
+	let mut children: List<Int> = []
+	let mut done = false
+	while !atEnd(state, tokens) && !done && !isText(state, tokens, "]") {
+		let before = state.index
+		let item = if isText(state, tokens, "...")
+			then parseRestPattern(state, tokens)
+			else parsePatternDepth(state, tokens, depth + 1)
+		state = item.state
+		if item.id >= 0 {
+			children = List.append(children, item.id)
+		}
+		if isText(state, tokens, ",") {
+			state = skipNewLines(advance(state), tokens)
+		} else if !isText(state, tokens, "]") {
+			state = addDiagnostic(state, tokens, "Expected , or ] in a list pattern")
+			if state.index <= before && !atEnd(state, tokens) {
+				state = advance(state)
+			}
+		}
+		if item.id >= 0 && tokenAt(tokens, before).text == "..." {
+			done = true
+		}
+	}
+	state = consumeExpected(state, tokens, "]", "after a list pattern")
+	return addNode(state, tokens, "ListPattern", "[]", start, state.index, children)
+}
+
+fn parseTuplePattern(stateValue: PatternState, tokens: List<FrontendToken>, depth: Int) -> ParsedPattern {
+	let start = stateValue.index
+	let mut state = skipNewLines(advance(stateValue), tokens)
+	let mut children: List<Int> = []
+	while !atEnd(state, tokens) && !isText(state, tokens, ")") {
+		let before = state.index
+		let item = parsePatternDepth(state, tokens, depth + 1)
+		state = item.state
+		if item.id >= 0 {
+			children = List.append(children, item.id)
+		}
+		if isText(state, tokens, ",") {
+			state = skipNewLines(advance(state), tokens)
+		} else if !isText(state, tokens, ")") {
+			state = addDiagnostic(state, tokens, "Expected , or ) in a tuple pattern")
+			if state.index <= before && !atEnd(state, tokens) {
+				state = advance(state)
+			}
+		}
+	}
+	state = consumeExpected(state, tokens, ")", "after a tuple pattern")
+	if List.length(children) < 2 {
+		state = addDiagnostic(state, tokens, "Tuple patterns require at least two elements")
+	}
+	return addNode(state, tokens, "TuplePattern", "()", start, state.index, children)
+}
+
+fn parseVariantPattern(
+	stateValue: PatternState,
+	tokens: List<FrontendToken>,
+	start: Int,
+	name: String,
+	depth: Int,
+) -> ParsedPattern {
+	let mut state = skipNewLines(advance(stateValue), tokens)
+	let mut children: List<Int> = []
+	while !atEnd(state, tokens) && !isText(state, tokens, ")") {
+		let before = state.index
+		let item = parsePatternDepth(state, tokens, depth + 1)
+		state = item.state
+		if item.id >= 0 {
+			children = List.append(children, item.id)
+		}
+		if isText(state, tokens, ",") {
+			state = skipNewLines(advance(state), tokens)
+		} else if !isText(state, tokens, ")") {
+			state = addDiagnostic(state, tokens, "Expected , or ) in a variant pattern")
+			if state.index <= before && !atEnd(state, tokens) {
+				state = advance(state)
+			}
+		}
+	}
+	state = consumeExpected(state, tokens, ")", "after a variant pattern")
+	return addNode(state, tokens, "VariantPattern", name, start, state.index, children)
+}
+
+fn parseRecordField(stateValue: PatternState, tokens: List<FrontendToken>, depth: Int) -> ParsedPattern {
+	let start = stateValue.index
+	let mut state = stateValue
+	let name = tokenAt(tokens, state.index).text
+	if tokenAt(tokens, state.index).kind == FrontendTokenKind.Identifier {
+		state = advance(state)
+	} else {
+		state = addDiagnostic(state, tokens, "Expected a record pattern field name")
+	}
+	let mut children: List<Int> = []
+	if isText(state, tokens, ":") {
+		let value = parsePatternDepth(advance(state), tokens, depth + 1)
+		state = value.state
+		if value.id >= 0 {
+			children = List.append(children, value.id)
+		}
+	}
+	return addNode(state, tokens, "RecordPatternField", name, start, state.index, children)
+}
+
+fn parseRecordPattern(
+	stateValue: PatternState,
+	tokens: List<FrontendToken>,
+	start: Int,
+	name: String,
+	depth: Int,
+) -> ParsedPattern {
+	let mut state = skipNewLines(advance(stateValue), tokens)
+	let mut children: List<Int> = []
+	let mut done = false
+	while !atEnd(state, tokens) && !done && !isText(state, tokens, "}") {
+		let before = state.index
+		if isText(state, tokens, "...") {
+			state = advance(state)
+			let rest = addNode(state, tokens, "RecordRestPattern", "...", before, state.index, [])
+			state = rest.state
+			children = List.append(children, rest.id)
+			done = true
+		} else {
+			let field = parseRecordField(state, tokens, depth)
+			state = field.state
+			if field.id >= 0 {
+				children = List.append(children, field.id)
+			}
+			if isText(state, tokens, ",") {
+				state = skipNewLines(advance(state), tokens)
+			} else if !isText(state, tokens, "}") {
+				state = addDiagnostic(state, tokens, "Expected , or } in a record pattern")
+				if state.index <= before && !atEnd(state, tokens) {
+					state = advance(state)
+				}
+			}
+		}
+	}
+	state = consumeExpected(state, tokens, "}", "after a record pattern")
+	return addNode(state, tokens, "RecordPattern", name, start, state.index, children)
+}
+
+fn parsePrimaryPattern(stateValue: PatternState, tokens: List<FrontendToken>, depth: Int) -> ParsedPattern {
+	let mut state = stateValue
+	let start = state.index
+	if depth > 64 {
+		state = addDiagnostic(state, tokens, "Pattern nesting exceeds the supported depth")
+		return ParsedPattern { state: state, id: -1 }
+	}
+	let value = tokenAt(tokens, state.index)
+	if value.text == "_" {
+		state = advance(state)
+		return addNode(state, tokens, "WildcardPattern", "_", start, state.index, [])
+	}
+	if value.kind == FrontendTokenKind.IntLiteral
+		&& tokenAt(tokens, state.index + 1).text == "..=" {
+		state = advance(state)
+		let lower = addNode(state, tokens, "LiteralPattern", value.text, start, state.index, [])
+		state = lower.state
+		state = advance(state)
+		let upperValue = tokenAt(tokens, state.index)
+		if upperValue.kind == FrontendTokenKind.IntLiteral {
+			state = advance(state)
+		} else {
+			state = addDiagnostic(state, tokens, "Expected an integer after ..=")
+		}
+		let upper = addNode(state, tokens, "LiteralPattern", upperValue.text, state.index - 1, state.index, [])
+		state = upper.state
+		return addNode(
+			state,
+			tokens,
+			"RangePattern",
+			"..=",
+			start,
+			state.index,
+			[lower.id, upper.id],
+		)
+	}
+	if isLiteral(value) {
+		state = advance(state)
+		return addNode(state, tokens, "LiteralPattern", value.text, start, state.index, [])
+	}
+	if value.text == "[" {
+		return parseListPattern(state, tokens, depth)
+	}
+	if value.text == "(" {
+		return parseTuplePattern(state, tokens, depth)
+	}
+	if value.kind == FrontendTokenKind.Identifier {
+		state = advance(state)
+		if isText(state, tokens, "(") {
+			return parseVariantPattern(state, tokens, start, value.text, depth)
+		}
+		if isText(state, tokens, "{") {
+			return parseRecordPattern(state, tokens, start, value.text, depth)
+		}
+		return addNode(state, tokens, "IdentifierPattern", value.text, start, state.index, [])
+	}
+	state = addDiagnostic(state, tokens, "Expected a pattern")
+	if !atEnd(state, tokens) {
+		state = advance(state)
+	}
+	return ParsedPattern { state: state, id: -1 }
+}
+
+fn parsePatternDepth(stateValue: PatternState, tokens: List<FrontendToken>, depth: Int) -> ParsedPattern {
+	let start = stateValue.index
+	let first = parsePrimaryPattern(stateValue, tokens, depth)
+	let mut state = first.state
+	let mut children: List<Int> = []
+	if first.id >= 0 {
+		children = List.append(children, first.id)
+	}
+	while isText(state, tokens, "|") {
+		let next = parsePrimaryPattern(advance(state), tokens, depth + 1)
+		state = next.state
+		if next.id >= 0 {
+			children = List.append(children, next.id)
+		}
+	}
+	if List.length(children) <= 1 {
+		return ParsedPattern { state: state, id: first.id }
+	}
+	return addNode(state, tokens, "OrPattern", "|", start, state.index, children)
+}
+
+fn parsePattern(
+	tokens: List<FrontendToken>,
+	startIndex: Int,
+	baseId: Int,
+) -> PatternTransport {
+	let parsed = parsePatternDepth(
+		PatternState {
+			index: startIndex,
+			baseId: baseId,
+			nodes: [],
+			diagnostics: [],
+		},
+		tokens,
+		0,
+	)
+	return PatternTransport {
+		nextIndex: parsed.state.index,
+		nodes: parsed.state.nodes,
+		diagnostics: parsed.state.diagnostics,
+		root: parsed.id,
+	}
+}
+
+pub fn parsePatternJson(
+	tokensEncoded: String,
+	startIndex: Int,
+	baseId: Int,
+) -> Result<String, List<JsonError>> {
+	let tokensRaw = Json.parse(tokensEncoded)?
+	let tokens = Json.decode<List<FrontendToken>>(tokensRaw)?
+	return Json.encode<PatternTransport>(parsePattern(tokens, startIndex, baseId))
+}
