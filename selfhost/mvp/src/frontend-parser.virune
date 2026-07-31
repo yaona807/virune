@@ -1302,7 +1302,8 @@ fn parseModule(lexed: FrontendLexResult) -> FrontendParseResult {
 
 fn decodeFrontend(source: String) -> Result<FrontendLexResult, List<JsonError>> {
 	let exported = lexFrontend(source)?
-	let encoded = Json.decode<String>(exported)?
+	let boundary = Json.decode<String>(exported)?
+	let encoded = Json.decode<String>(boundary)?
 	return Json.decode<FrontendLexResult>(encoded)
 }
 
