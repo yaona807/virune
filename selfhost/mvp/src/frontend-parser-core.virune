@@ -704,6 +704,68 @@ fn parseLambdaExpression(stateValue: CoreState, tokens: List<FrontendToken>) -> 
 	return addNode(state, tokens, "LambdaExpression", text, start, state.index, children, [])
 }
 
+fn parseLambdaPostfix(
+	stateValue: CoreState,
+	tokens: List<FrontendToken>,
+	start: Int,
+	valueIdValue: Int,
+) -> ParsedNode {
+	let mut state = stateValue
+	let mut valueId = valueIdValue
+	let mut done = false
+	while !done && !expressionStop(state, tokens, false) {
+		if isText(state, tokens, "(") {
+			let callArguments = consumeBalanced(state, tokens, "(", ")", "CallArguments")
+			state = callArguments.state
+			let call = addNode(
+				state,
+				tokens,
+				"CallExpression",
+				"call",
+				start,
+				state.index,
+				[valueId, callArguments.id],
+				[],
+			)
+			state = call.state
+			valueId = call.id
+		} else {
+			done = true
+		}
+	}
+	return ParsedNode { state: state, id: valueId }
+}
+
+fn parseParenthesizedLambda(
+	stateValue: CoreState,
+	tokens: List<FrontendToken>,
+) -> ParsedNode {
+	let start = stateValue.index
+	let mut state = advance(stateValue)
+	let text = currentText(state, tokens)
+	if text != "fn" && !(text == "async" && tokenAt(tokens, state.index + 1).text == "fn") {
+		return consumeBalanced(stateValue, tokens, "(", ")", "ParenthesizedExpression")
+	}
+	let inner = parseLambdaExpression(state, tokens)
+	state = inner.state
+	if isText(state, tokens, ")") {
+		state = advance(state)
+	} else {
+		state = addDiagnosticAt(state, tokens, "P0001", "Expected ) after a parenthesized lambda", state.index)
+	}
+	let grouped = addNode(
+		state,
+		tokens,
+		"ParenthesizedExpression",
+		"()",
+		start,
+		state.index,
+		[inner.id],
+		[],
+	)
+	return parseLambdaPostfix(grouped.state, tokens, start, grouped.id)
+}
+
 fn parsePrimary(stateValue: CoreState, tokens: List<FrontendToken>, stopAtBrace: Bool) -> ParsedNode {
 	let mut state = stateValue
 	let start = state.index
@@ -733,7 +795,7 @@ fn parsePrimary(stateValue: CoreState, tokens: List<FrontendToken>, stopAtBrace:
 		)
 	}
 	if text == "(" {
-		return consumeBalanced(state, tokens, "(", ")", "ParenthesizedExpression")
+		return parseParenthesizedLambda(state, tokens)
 	}
 	if text == "[" {
 		return consumeBalanced(state, tokens, "[", "]", "ListExpression")
