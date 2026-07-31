@@ -64,7 +64,22 @@ The pattern slice emits:
 - variant and record pattern nodes, including record fields and record rest;
 - canonical `OrPattern` nodes for alternative patterns.
 
-Pattern nesting is bounded. A malformed pattern or missing `=>` produces a stable parser diagnostic and synchronizes at a physical line end or the enclosing `}`. A progress guard prevents malformed arms from hanging the parser. Lambda internals and remaining grammar families stay in later bounded slices before Issue #96 can close.
+Pattern nesting is bounded. A malformed pattern or missing `=>` produces a stable parser diagnostic and synchronizes at a physical line end or the enclosing `}`. A progress guard prevents malformed arms from hanging the parser.
+
+## Lambda expressions
+
+Lambda headers are parsed by a separate Virune-authored data-only module. The header result is merged into the existing arena before the Parser core handles the expression or block body.
+
+The lambda slice emits:
+
+- sync and async `LambdaExpression` nodes;
+- `LambdaParameters` and individual `LambdaParameter` nodes;
+- optional parameter and return type-reference children;
+- `UsesClause` and individual `EffectName` nodes;
+- expression bodies and block bodies through the existing Parser core;
+- detailed parenthesized lambda nodes and immediate lambda-call postfix nodes.
+
+Type-reference nesting in lambda headers is bounded. Missing header delimiters or bodies produce stable diagnostics and synchronize at the current line boundary. Nested lambdas reuse the same recursive expression path without a separate recursive object model. Closure capture semantics and remaining grammar families stay in later bounded slices before Issue #96 can close.
 
 ## Documentation comments
 
@@ -85,7 +100,8 @@ The regular Stage 0 self-host tests verify:
 - flat-arena ID and child-reference integrity;
 - detailed record, enum, newtype, type-alias, and nested type-reference nodes;
 - guarded match arms and nested pattern families;
-- recovery from malformed declaration details and match arms to following functions;
+- sync and async lambdas, typed parameters, return types, uses clauses, both body forms, nesting, and immediate calls;
+- recovery from malformed declaration details, match arms, and lambda bodies to following functions;
 - agreement with the Legacy Compiler on lexical rejection and supported-source acceptance.
 
 This work does not change the grammar, production parser, stable Compiler API, Runtime ABI, Interop ABI, or public standard library.

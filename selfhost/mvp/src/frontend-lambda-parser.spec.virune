@@ -1,0 +1,32 @@
+import { parseFrontendCore } from "./frontend-parser-core.virune"
+
+fn encoded(source: String) -> String {
+	return match parseFrontendCore(source) {
+		Ok(value) => value
+		Err(_) => ""
+	}
+}
+
+test "lambda parser expands headers types uses bodies nesting and calls" {
+	let source = "pub fn build() -> Int {\n\tlet transform = fn(value: Int, apply: fn(Int) -> Int uses IO) -> Int uses IO, * => apply(value)\n\tlet worker = async fn(value: Int) -> Int uses IO {\n\t\treturn value\n\t}\n\tlet nested = fn(x: Int) => fn(y: Int) => x + y\n\tlet called = (fn(x: Int) => x)(1)\n\treturn 0\n}\n"
+	let result = encoded(source)
+	expect(String.contains(result, "\"accepted\":true"))
+	expect(String.contains(result, "\"kind\":\"LambdaExpression\""))
+	expect(String.contains(result, "\"text\":\"async fn\""))
+	expect(String.contains(result, "\"kind\":\"LambdaParameters\""))
+	expect(String.contains(result, "\"kind\":\"LambdaParameter\""))
+	expect(String.contains(result, "\"kind\":\"FunctionTypeReference\""))
+	expect(String.contains(result, "\"kind\":\"UsesClause\""))
+	expect(String.contains(result, "\"kind\":\"EffectName\""))
+	expect(String.contains(result, "\"kind\":\"ParenthesizedExpression\""))
+	expect(String.contains(result, "\"kind\":\"CallExpression\""))
+}
+
+test "lambda parser reports a missing body and reaches a following declaration" {
+	let source = "pub fn broken() -> Int {\n\tlet value = fn(x: Int)\n\treturn 0\n}\npub fn after() -> Int {\n\treturn 1\n}\n"
+	let result = encoded(source)
+	expect(String.contains(result, "\"accepted\":false"))
+	expect(String.contains(result, "Expected => or {"))
+	expect(String.contains(result, "Expected a lambda body"))
+	expect(String.contains(result, "\"text\":\"after\""))
+}

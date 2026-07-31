@@ -64,7 +64,22 @@ Pattern sliceは次のnodeを生成します。
 - variant、record、record field、record rest pattern
 - alternative pattern向けのcanonicalな`OrPattern`
 
-Pattern nestingには上限を設けています。Malformed patternまたは欠落した`=>`は安定したParser diagnosticを生成し、物理line endまたは囲んでいる`}`で同期します。Progress guardにより、malformed armでParserが停止し続けることを防ぎます。Lambda内部と残るgrammar familyはIssue #96を完了する前の後続sliceで扱います。
+Pattern nestingには上限を設けています。Malformed patternまたは欠落した`=>`は安定したParser diagnosticを生成し、物理line endまたは囲んでいる`}`で同期します。Progress guardにより、malformed armでParserが停止し続けることを防ぎます。
+
+## Lambda expression
+
+Lambda headerは、独立したVirune製data-only moduleでparseします。Header resultを既存arenaへ統合した後、Parser coreがexpression bodyまたはblock bodyを処理します。
+
+Lambda sliceは次のnodeを生成します。
+
+- sync／asyncの`LambdaExpression`
+- `LambdaParameters`と個別の`LambdaParameter`
+- optional parameter typeとreturn typeのchild
+- `UsesClause`と個別の`EffectName`
+- 既存Parser coreを利用したexpression bodyとblock body
+- 詳細parenthesized lambda nodeとimmediate lambda-call postfix node
+
+Lambda header内のtype-reference nestingには上限を設けています。Header delimiterまたはbodyの欠落は安定したdiagnosticを生成し、現在のline境界で同期します。Nested lambdaは別の再帰object modelを作らず、同じrecursive expression pathを再利用します。Closure capture semanticsと残るgrammar familyはIssue #96を完了する前の後続sliceで扱います。
 
 ## Documentation comment
 
@@ -85,7 +100,8 @@ Parserはmodule documentationをmodule nodeへ、declaration documentationを対
 - flat arenaのID／child reference整合性
 - record、enum、newtype、type alias、nested type-referenceの詳細node
 - guard付きmatch armとnested pattern family
-- malformed declaration detail／match armから後続functionまでのrecovery
+- sync／async lambda、typed parameter、return type、uses clause、両body form、nesting、immediate call
+- malformed declaration detail／match arm／lambda bodyから後続functionまでのrecovery
 - lexical rejectionと対応済みsource acceptanceのLegacy Compilerとの一致
 
 この作業ではgrammar、Production Parser、stable Compiler API、Runtime ABI、Interop ABI、公開standard libraryを変更しません。
