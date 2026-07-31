@@ -667,7 +667,10 @@ fn parseStatement(stateValue: CoreState, tokens: List<FrontendToken>) -> ParsedN
 		}
 		let expression = parseExpression(state, tokens, 1, false)
 		state = consumeLineEnd(expression.state, tokens, "a let statement")
-		let children = if expression.id >= 0 then [expression.id] else []
+		let mut children: List<Int> = []
+if expression.id >= 0 {
+    children = List.append(children, expression.id)
+}
 		return addNode(state, tokens, "LetStatement", "let", start, state.index, children, [])
 	}
 	if text == "return" || text == "discard" || text == "defer" {
@@ -722,7 +725,10 @@ fn parseStatement(stateValue: CoreState, tokens: List<FrontendToken>) -> ParsedN
 	}
 	let expression = parseExpression(state, tokens, 1, false)
 	state = consumeLineEnd(expression.state, tokens, "an expression statement")
-	let children = if expression.id >= 0 then [expression.id] else []
+	let mut children: List<Int> = []
+if expression.id >= 0 {
+    children = List.append(children, expression.id)
+}
 	return addNode(state, tokens, "ExpressionStatement", "", start, state.index, children, [])
 }
 
