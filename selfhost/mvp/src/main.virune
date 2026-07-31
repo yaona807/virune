@@ -9,6 +9,7 @@ import { checkMvpJson } from "./checker.virune"
 import { emitMvpJson } from "./emitter.virune"
 import { lexFrontend } from "./frontend-lexer.virune"
 import { parseFrontendCore } from "./frontend-parser-core.virune"
+import { checkFrontendPatternCoverageJson } from "./frontend-pattern-coverage.virune"
 import { checkFrontendDataTypesJson } from "./frontend-semantic.virune"
 import { buildFrontendSymbolScopeJson } from "./frontend-symbol-scope.virune"
 import { checkFrontendTypeOperationsJson } from "./frontend-type-operations.virune"
@@ -46,4 +47,9 @@ pub fn checkFrontendTypeOperationsContract(request: String) -> Result<String, Li
 @jsExport
 pub fn buildFrontendSymbolScopeContract(request: String) -> Result<String, List<JsonError>> {
 	return buildFrontendSymbolScopeJson(request)
+}
+
+@jsExport
+pub fn checkFrontendPatternCoverageContract(request: String) -> Result<String, List<JsonError>> {
+	return checkFrontendPatternCoverageJson(request)
 }
