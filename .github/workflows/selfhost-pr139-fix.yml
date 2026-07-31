@@ -1,0 +1,42 @@
+name: Selfhost PR139 syntax fix
+
+on:
+  push:
+    branches:
+      - selfhost/collection-type-operations
+    paths:
+      - .github/workflows/selfhost-pr139-fix.yml
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: selfhost/collection-type-operations
+      - name: Apply syntax fix
+        shell: python
+        run: |
+          from pathlib import Path
+
+          source_path = Path('selfhost/mvp/src/frontend-type-operations.virune')
+          content = source_path.read_text()
+          before = '''\t\tlet computed = if valid
+          \tthen commonType(ids, semantics, diagnostics)
+          \telse CommonTypeValue { id: -1, diagnostics: diagnostics }'''
+          after = '''\t\tlet computed = if valid then commonType(ids, semantics, diagnostics) else CommonTypeValue { id: -1, diagnostics: diagnostics }'''
+          if before not in content:
+              raise SystemExit('expected syntax fragment not found')
+          source_path.write_text(content.replace(before, after, 1))
+          Path('.github/workflows/selfhost-pr139-fix.yml').unlink()
+      - name: Commit fix and remove temporary workflow
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add selfhost/mvp/src/frontend-type-operations.virune .github/workflows/selfhost-pr139-fix.yml
+          git commit -m "compiler(selfhost): fix conditional expression syntax"
+          git push origin HEAD:selfhost/collection-type-operations
