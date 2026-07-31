@@ -27,7 +27,7 @@ CRLFとLFは同じ論理line progressionを生成しつつ、source offsetとspa
 
 ## Parser core
 
-Parser coreは検証済みLexer JSONを読み取り、canonicalなflat AST arenaを生成します。再帰的なJavaScript object graphではなく、integer IDとchild ID listを使用します。Node IDはappend順で決まるため、同一入力は同一serializationを生成します。
+Parser coreは検証済みLexer JSONを読み取り、canonicalなflat AST arenaを生成します。内部のLexer–Parser呼び出しには非`@jsExport`のJSON関数を使用し、JavaScript境界wrapperを介しません。`@jsExport`はHost向けcontractだけに限定します。再帰的なJavaScript object graphではなく、integer IDとchild ID listを使用します。Node IDはappend順で決まるため、同一入力は同一serializationを生成します。
 
 現在のParser基盤には次を含みます。
 
