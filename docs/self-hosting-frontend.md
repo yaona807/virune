@@ -36,10 +36,21 @@ The current parser foundation includes:
 - `let`, `return`, `discard`, `defer`, assignment, loop, and conditional statement structure;
 - precedence-aware binary expressions;
 - unary, call, field, try, and record-update postfix structure;
-- balanced transport nodes for declaration bodies and complex expression forms;
 - a depth limit and newline/declaration synchronization for malformed input.
 
-This core is intentionally a foundation. Record fields, enum variants, patterns, lambda internals, and every type-reference form will be expanded into detailed nodes in later bounded parser changes before Issue #96 can close.
+## Detailed declarations and types
+
+Record, enum, newtype, and type-alias declarations are expanded by a separate Virune-authored parser module. Its result is merged into the existing arena with absolute node IDs, so every child reference remains valid after integration.
+
+The detailed declaration slice emits:
+
+- `TypeParameters` and `TypeParameter` nodes;
+- `RecordBody` and individual `RecordField` nodes;
+- `EnumBody` and individual `EnumVariant` nodes with payload child types;
+- underlying type children for newtype and type aliases;
+- named, generic, tuple, function, list, and optional type-reference nodes.
+
+Malformed fields, variants, generic arguments, and underlying types produce stable parser diagnostics while preserving progress to following declarations. Patterns, lambda internals, and remaining grammar families stay in later bounded slices before Issue #96 can close.
 
 ## Documentation comments
 
@@ -58,7 +69,8 @@ The regular Stage 0 self-host tests verify:
 - soft-line normalization;
 - malformed literal and reserved-character diagnostics;
 - flat-arena ID and child-reference integrity;
-- parser recovery that reaches declarations following malformed input;
+- detailed record, enum, newtype, type-alias, and nested type-reference nodes;
+- recovery from malformed declaration details to a following function;
 - agreement with the Legacy Compiler on lexical rejection and supported-source acceptance.
 
 This work does not change the grammar, production parser, stable Compiler API, Runtime ABI, Interop ABI, or public standard library.
