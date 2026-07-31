@@ -1,0 +1,493 @@
+//! Deterministic module-level symbol visibility for the Virune-authored checker.
+
+record FrontendModuleDefinition derives Eq, Debug, Json {
+	name: String
+	sourceNodeId: Int
+}
+
+record FrontendVisibilityReference derives Eq, Debug, Json {
+	moduleId: Int?
+	space: String
+	name: String
+}
+
+record FrontendModuleSymbolDefinition derives Eq, Debug, Json {
+	moduleId: Int
+	space: String
+	kind: String
+	name: String
+	sourceNodeId: Int
+	isPublic: Bool
+	signatureTypes: List<FrontendVisibilityReference>
+}
+
+record FrontendModuleAccessRequest derives Eq, Debug, Json {
+	requesterModuleId: Int
+	definingModuleId: Int
+	space: String
+	name: String
+}
+
+record FrontendModuleVisibilityRequest derives Eq, Debug, Json {
+	modules: List<FrontendModuleDefinition>
+	symbols: List<FrontendModuleSymbolDefinition>
+	accesses: List<FrontendModuleAccessRequest>
+}
+
+record SemanticModule derives Eq, Debug, Json {
+	id: Int
+	name: String
+	sourceNodeId: Int
+}
+
+record SemanticModuleSymbol derives Eq, Debug, Json {
+	id: Int
+	moduleId: Int
+	space: String
+	kind: String
+	name: String
+	sourceNodeId: Int
+	isPublic: Bool
+	signatureTypeIds: List<Int>
+}
+
+record SemanticModuleAccessResult derives Eq, Debug, Json {
+	requesterModuleId: Int
+	definingModuleId: Int
+	space: String
+	name: String
+	symbolId: Int?
+	accessible: Bool
+}
+
+record SemanticVisibilityDiagnostic derives Eq, Debug, Json {
+	code: String
+	severity: String
+	message: String
+	moduleId: Int?
+	name: String?
+	help: String?
+}
+
+record FrontendModuleVisibilityResult derives Eq, Debug, Json {
+	accepted: Bool
+	modules: List<SemanticModule>
+	symbols: List<SemanticModuleSymbol>
+	accesses: List<SemanticModuleAccessResult>
+	diagnostics: List<SemanticVisibilityDiagnostic>
+}
+
+record ModuleBuildResult {
+	modules: List<SemanticModule>
+	diagnostics: List<SemanticVisibilityDiagnostic>
+}
+
+record SymbolBuildResult {
+	symbols: List<SemanticModuleSymbol>
+	diagnostics: List<SemanticVisibilityDiagnostic>
+}
+
+record SignatureBuildResult {
+	symbols: List<SemanticModuleSymbol>
+	diagnostics: List<SemanticVisibilityDiagnostic>
+}
+
+record AccessBuildResult {
+	accesses: List<SemanticModuleAccessResult>
+	diagnostics: List<SemanticVisibilityDiagnostic>
+}
+
+fn optionalInt(value: Int?) -> Int {
+	return match value {
+		Some(item) => item
+		None => -1
+	}
+}
+
+fn maybeInt(value: Int) -> Int? {
+	return if value >= 0 then Some(value) else None
+}
+
+fn fallbackModule() -> SemanticModule {
+	return SemanticModule { id: -1, name: "", sourceNodeId: -1 }
+}
+
+fn fallbackSymbol() -> SemanticModuleSymbol {
+	return SemanticModuleSymbol {
+		id: -1,
+		moduleId: -1,
+		space: "",
+		kind: "",
+		name: "",
+		sourceNodeId: -1,
+		isPublic: false,
+		signatureTypeIds: [],
+	}
+}
+
+fn fallbackDefinition() -> FrontendModuleSymbolDefinition {
+	return FrontendModuleSymbolDefinition {
+		moduleId: -1,
+		space: "",
+		kind: "",
+		name: "",
+		sourceNodeId: -1,
+		isPublic: false,
+		signatureTypes: [],
+	}
+}
+
+fn moduleAt(values: List<SemanticModule>, id: Int) -> SemanticModule {
+	return match List.get(values, id) {
+		Some(value) => value
+		None => fallbackModule()
+	}
+}
+
+fn symbolAt(values: List<SemanticModuleSymbol>, id: Int) -> SemanticModuleSymbol {
+	return match List.get(values, id) {
+		Some(value) => value
+		None => fallbackSymbol()
+	}
+}
+
+fn visibilityDiagnostic(
+	code: String,
+	message: String,
+	moduleId: Int?,
+	name: String?,
+	help: String?,
+) -> SemanticVisibilityDiagnostic {
+	return SemanticVisibilityDiagnostic {
+		code: code,
+		severity: "error",
+		message: message,
+		moduleId: moduleId,
+		name: name,
+		help: help,
+	}
+}
+
+fn validSpace(space: String) -> Bool {
+	return space == "value" || space == "type" || space == "capability"
+}
+
+fn validKind(kind: String) -> Bool {
+	return kind == "type" || kind == "function" || kind == "const" || kind == "variant" || kind == "capability" || kind == "import"
+}
+
+fn moduleNameIndex(values: List<SemanticModule>, name: String) -> Int {
+	for value in values {
+		if value.name == name {
+			return value.id
+		}
+	}
+	return -1
+}
+
+fn buildModules(values: List<FrontendModuleDefinition>) -> ModuleBuildResult {
+	let mut modules: List<SemanticModule> = []
+	let mut diagnostics: List<SemanticVisibilityDiagnostic> = []
+	let mut id = 0
+	for value in values {
+		if String.length(value.name) == 0 {
+			diagnostics = List.append(diagnostics, visibilityDiagnostic(
+				"L9001",
+				"Module name cannot be empty",
+				Some(id),
+				None,
+				Some("Use the canonical project-relative module identifier."),
+			))
+		}
+		if value.sourceNodeId < 0 {
+			diagnostics = List.append(diagnostics, visibilityDiagnostic(
+				"L9001",
+				"Module source node ID must be non-negative",
+				Some(id),
+				Some(value.name),
+				Some("Pass the canonical module AST node ID."),
+			))
+		}
+		if String.length(value.name) > 0 && moduleNameIndex(modules, value.name) >= 0 {
+			diagnostics = List.append(diagnostics, visibilityDiagnostic(
+				"L1001",
+				"Duplicate module " + value.name,
+				Some(id),
+				Some(value.name),
+				Some("Use a unique canonical module identifier."),
+			))
+		}
+		modules = List.append(modules, SemanticModule {
+			id: id,
+			name: value.name,
+			sourceNodeId: value.sourceNodeId,
+		})
+		id = id + 1
+	}
+	return ModuleBuildResult { modules: modules, diagnostics: diagnostics }
+}
+
+fn symbolIndex(
+	values: List<SemanticModuleSymbol>,
+	moduleId: Int,
+	space: String,
+	name: String,
+) -> Int {
+	for value in values {
+		if value.moduleId == moduleId && value.space == space && value.name == name {
+			return value.id
+		}
+	}
+	return -1
+}
+
+fn buildSymbols(
+	definitions: List<FrontendModuleSymbolDefinition>,
+	modules: List<SemanticModule>,
+	diagnosticsValue: List<SemanticVisibilityDiagnostic>,
+) -> SymbolBuildResult {
+	let mut symbols: List<SemanticModuleSymbol> = []
+	let mut diagnostics = diagnosticsValue
+	for definition in definitions {
+		let moduleValid = definition.moduleId >= 0 && definition.moduleId < List.length(modules)
+		let spaceValid = validSpace(definition.space)
+		let kindValid = validKind(definition.kind)
+		let nameValid = String.length(definition.name) > 0
+		if !moduleValid {
+			diagnostics = List.append(diagnostics, visibilityDiagnostic(
+				"L9001",
+				"Symbol references an unknown module",
+				Some(definition.moduleId),
+				Some(definition.name),
+				Some("Reference a module ID from the canonical module arena."),
+			))
+		}
+		if !spaceValid {
+			diagnostics = List.append(diagnostics, visibilityDiagnostic(
+				"L9001",
+				"Unknown symbol namespace " + definition.space,
+				Some(definition.moduleId),
+				Some(definition.name),
+				Some("Use value, type, or capability."),
+			))
+		}
+		if !kindValid {
+			diagnostics = List.append(diagnostics, visibilityDiagnostic(
+				"L9001",
+				"Unknown module symbol kind " + definition.kind,
+				Some(definition.moduleId),
+				Some(definition.name),
+				Some("Use type, function, const, variant, capability, or import."),
+			))
+		}
+		if !nameValid {
+			diagnostics = List.append(diagnostics, visibilityDiagnostic(
+				"L9001",
+				"Module symbol name cannot be empty",
+				Some(definition.moduleId),
+				Some(definition.name),
+				Some("Use the canonical declaration or imported binding name."),
+			))
+		}
+		if definition.sourceNodeId < 0 {
+			diagnostics = List.append(diagnostics, visibilityDiagnostic(
+				"L9001",
+				"Module symbol source node ID must be non-negative",
+				Some(definition.moduleId),
+				Some(definition.name),
+				Some("Pass the canonical AST node ID that defines the symbol."),
+			))
+		}
+		if moduleValid && spaceValid && kindValid && nameValid && definition.sourceNodeId >= 0 {
+			if symbolIndex(symbols, definition.moduleId, definition.space, definition.name) >= 0 {
+				diagnostics = List.append(diagnostics, visibilityDiagnostic(
+					"L1001",
+					"Duplicate module symbol " + definition.name,
+					Some(definition.moduleId),
+					Some(definition.name),
+					Some("Rename or remove the duplicate definition in this namespace."),
+				))
+			} else {
+				symbols = List.append(symbols, SemanticModuleSymbol {
+					id: List.length(symbols),
+					moduleId: definition.moduleId,
+					space: definition.space,
+					kind: definition.kind,
+					name: definition.name,
+					sourceNodeId: definition.sourceNodeId,
+					isPublic: definition.isPublic,
+					signatureTypeIds: [],
+				})
+			}
+		}
+	}
+	return SymbolBuildResult { symbols: symbols, diagnostics: diagnostics }
+}
+
+fn definitionForSymbol(
+	definitions: List<FrontendModuleSymbolDefinition>,
+	symbol: SemanticModuleSymbol,
+) -> FrontendModuleSymbolDefinition {
+	for definition in definitions {
+		if definition.moduleId == symbol.moduleId && definition.space == symbol.space && definition.name == symbol.name {
+			return definition
+		}
+	}
+	return fallbackDefinition()
+}
+
+fn resolveSignatures(
+	definitions: List<FrontendModuleSymbolDefinition>,
+	modules: List<SemanticModule>,
+	symbolsValue: List<SemanticModuleSymbol>,
+	diagnosticsValue: List<SemanticVisibilityDiagnostic>,
+) -> SignatureBuildResult {
+	let mut symbols: List<SemanticModuleSymbol> = []
+	let mut diagnostics = diagnosticsValue
+	for symbol in symbolsValue {
+		let definition = definitionForSymbol(definitions, symbol)
+		let mut signatureTypeIds: List<Int> = []
+		for reference in definition.signatureTypes {
+			let referencedModuleId = optionalInt(reference.moduleId)
+			if referencedModuleId >= 0 {
+				let moduleValid = referencedModuleId < List.length(modules)
+				let spaceValid = validSpace(reference.space)
+				let nameValid = String.length(reference.name) > 0
+				if !moduleValid || !spaceValid || !nameValid {
+					diagnostics = List.append(diagnostics, visibilityDiagnostic(
+						"L9001",
+						"Malformed public signature reference",
+						Some(referencedModuleId),
+						Some(reference.name),
+						Some("Use a valid module ID, namespace, and non-empty symbol name."),
+					))
+				} else {
+					let referencedSymbolId = symbolIndex(symbolsValue, referencedModuleId, reference.space, reference.name)
+					if referencedSymbolId < 0 {
+						diagnostics = List.append(diagnostics, visibilityDiagnostic(
+							"L2040",
+							"Unknown signature type " + reference.name,
+							Some(referencedModuleId),
+							Some(reference.name),
+							Some("Declare the referenced type before validating the public API."),
+						))
+					} else {
+						signatureTypeIds = List.append(signatureTypeIds, referencedSymbolId)
+						let referenced = symbolAt(symbolsValue, referencedSymbolId)
+						if symbol.isPublic && reference.space == "type" && !referenced.isPublic {
+							diagnostics = List.append(diagnostics, visibilityDiagnostic(
+								"L4010",
+								"Public API " + symbol.name + " exposes private nominal type " + reference.name,
+								Some(symbol.moduleId),
+								Some(symbol.name),
+								Some("Make the nominal type public or remove it from the public signature."),
+							))
+						}
+					}
+				}
+			}
+		}
+		symbols = List.append(symbols, SemanticModuleSymbol {
+			id: symbol.id,
+			moduleId: symbol.moduleId,
+			space: symbol.space,
+			kind: symbol.kind,
+			name: symbol.name,
+			sourceNodeId: symbol.sourceNodeId,
+			isPublic: symbol.isPublic,
+			signatureTypeIds: signatureTypeIds,
+		})
+	}
+	return SignatureBuildResult { symbols: symbols, diagnostics: diagnostics }
+}
+
+fn buildAccesses(
+	requests: List<FrontendModuleAccessRequest>,
+	modules: List<SemanticModule>,
+	symbols: List<SemanticModuleSymbol>,
+	diagnosticsValue: List<SemanticVisibilityDiagnostic>,
+) -> AccessBuildResult {
+	let mut accesses: List<SemanticModuleAccessResult> = []
+	let mut diagnostics = diagnosticsValue
+	for request in requests {
+		let requesterValid = request.requesterModuleId >= 0 && request.requesterModuleId < List.length(modules)
+		let definingValid = request.definingModuleId >= 0 && request.definingModuleId < List.length(modules)
+		let spaceValid = validSpace(request.space)
+		let nameValid = String.length(request.name) > 0
+		let mut symbolId = -1
+		let mut accessible = false
+		if !requesterValid || !definingValid || !spaceValid || !nameValid {
+			diagnostics = List.append(diagnostics, visibilityDiagnostic(
+				"L9001",
+				"Malformed module symbol access",
+				Some(request.requesterModuleId),
+				Some(request.name),
+				Some("Use valid requester and defining module IDs, namespace, and symbol name."),
+			))
+		} else {
+			symbolId = symbolIndex(symbols, request.definingModuleId, request.space, request.name)
+			if symbolId < 0 {
+				diagnostics = List.append(diagnostics, visibilityDiagnostic(
+					"L2040",
+					"Unknown module symbol " + request.name,
+					Some(request.definingModuleId),
+					Some(request.name),
+					Some("Declare or import the requested symbol in the defining module."),
+				))
+			} else {
+				let symbol = symbolAt(symbols, symbolId)
+				accessible = request.requesterModuleId == request.definingModuleId || symbol.isPublic
+				if !accessible {
+					diagnostics = List.append(diagnostics, visibilityDiagnostic(
+						"L4010",
+						"Private module symbol " + request.name + " is not visible across modules",
+						Some(request.requesterModuleId),
+						Some(request.name),
+						Some("Make the symbol public or access it only from its defining module."),
+					))
+				}
+			}
+		}
+		accesses = List.append(accesses, SemanticModuleAccessResult {
+			requesterModuleId: request.requesterModuleId,
+			definingModuleId: request.definingModuleId,
+			space: request.space,
+			name: request.name,
+			symbolId: maybeInt(symbolId),
+			accessible: accessible,
+		})
+	}
+	return AccessBuildResult { accesses: accesses, diagnostics: diagnostics }
+}
+
+fn accepted(values: List<SemanticVisibilityDiagnostic>) -> Bool {
+	for value in values {
+		if value.severity == "error" {
+			return false
+		}
+	}
+	return true
+}
+
+fn decodeRequest(encoded: String) -> Result<FrontendModuleVisibilityRequest, List<JsonError>> {
+	let raw = Json.parse(encoded)?
+	return Json.decode<FrontendModuleVisibilityRequest>(raw)
+}
+
+fn checkFrontendModuleVisibility(request: FrontendModuleVisibilityRequest) -> FrontendModuleVisibilityResult {
+	let moduleResult = buildModules(request.modules)
+	let symbolResult = buildSymbols(request.symbols, moduleResult.modules, moduleResult.diagnostics)
+	let signatureResult = resolveSignatures(request.symbols, moduleResult.modules, symbolResult.symbols, symbolResult.diagnostics)
+	let accessResult = buildAccesses(request.accesses, moduleResult.modules, signatureResult.symbols, signatureResult.diagnostics)
+	return FrontendModuleVisibilityResult {
+		accepted: accepted(accessResult.diagnostics),
+		modules: moduleResult.modules,
+		symbols: signatureResult.symbols,
+		accesses: accessResult.accesses,
+		diagnostics: accessResult.diagnostics,
+	}
+}
+
+pub fn checkFrontendModuleVisibilityJson(encoded: String) -> Result<String, List<JsonError>> {
+	return Json.encode<FrontendModuleVisibilityResult>(checkFrontendModuleVisibility(decodeRequest(encoded)?))
+}
