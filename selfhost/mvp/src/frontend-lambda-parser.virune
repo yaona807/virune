@@ -301,8 +301,8 @@ fn parseTypePrimary(stateValue: LambdaState, tokens: List<FrontendToken>, depth:
 	state = named.state
 	let mut rootId = named.id
 	if isText(state, tokens, "<") {
-		let arguments = parseTypeList(state, tokens, ">", depth + 1)
-		state = arguments.state
+		let genericArguments = parseTypeList(state, tokens, ">", depth + 1)
+		state = genericArguments.state
 		let generic = addNode(
 			state,
 			tokens,
@@ -310,7 +310,7 @@ fn parseTypePrimary(stateValue: LambdaState, tokens: List<FrontendToken>, depth:
 			value.text,
 			start,
 			state.index,
-			[named.id, arguments.id],
+			[named.id, genericArguments.id],
 		)
 		state = generic.state
 		rootId = generic.id
