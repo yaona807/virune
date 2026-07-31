@@ -33,7 +33,7 @@ type ParseResult = {
 	readonly diagnostics: readonly ParserDiagnostic[];
 };
 type FrontendParserModule = {
-	readonly parseFrontendContract: (source: string) => ViruneResult<unknown>;
+	readonly parseFrontendContract: (source: string) => ViruneResult<string>;
 };
 
 const kernelInput = (text: string): KernelInputV1 => ({
@@ -158,7 +158,6 @@ function parse(module: FrontendParserModule, source: string): ParseResult {
 		throw new Error(`Frontend parser contract failed: ${JSON.stringify(encoded.$values[0])}`);
 	}
 	const value = encoded.$values[0];
-	assert.equal(typeof value, 'string');
 	return JSON.parse(value) as ParseResult;
 }
 
