@@ -1,0 +1,406 @@
+//! Deterministic async context, await operand, and required-effect validation.
+
+record FrontendAsyncContext derives Eq, Debug, Json {
+	kind: String
+	name: String
+	isAsync: Bool
+	declaredEffects: List<String>
+}
+
+record FrontendAwaitExpression derives Eq, Debug, Json {
+	contextId: Int
+	operandKind: String
+	operandType: String
+	awaitedType: String?
+}
+
+record FrontendAsyncAwaitRequest derives Eq, Debug, Json {
+	contexts: List<FrontendAsyncContext>
+	expressions: List<FrontendAwaitExpression>
+}
+
+record SemanticAsyncContext derives Eq, Debug, Json {
+	id: Int
+	kind: String
+	name: String
+	isAsync: Bool
+	declaredEffects: List<String>
+	wildcard: Bool
+}
+
+record SemanticAwaitExpression derives Eq, Debug, Json {
+	id: Int
+	contextId: Int
+	operandKind: String
+	operandType: String
+	awaitedType: String?
+	resultType: String?
+	contextValid: Bool
+	operandValid: Bool
+	requiredEffects: List<String>
+	missingEffects: List<String>
+	valid: Bool
+}
+
+record SemanticAsyncAwaitDiagnostic derives Eq, Debug, Json {
+	code: String
+	severity: String
+	message: String
+	contextId: Int?
+	expressionId: Int?
+	effect: String?
+	help: String?
+}
+
+record FrontendAsyncAwaitResult derives Eq, Debug, Json {
+	accepted: Bool
+	contexts: List<SemanticAsyncContext>
+	expressions: List<SemanticAwaitExpression>
+	diagnostics: List<SemanticAsyncAwaitDiagnostic>
+}
+
+record ContextBuildResult {
+	contexts: List<SemanticAsyncContext>
+	diagnostics: List<SemanticAsyncAwaitDiagnostic>
+}
+
+record ExpressionBuildResult {
+	expressions: List<SemanticAwaitExpression>
+	diagnostics: List<SemanticAsyncAwaitDiagnostic>
+}
+
+fn maybeInt(value: Int) -> Int? {
+	return if value >= 0 then Some(value) else None
+}
+
+fn asyncAwaitDiagnostic(
+	code: String,
+	message: String,
+	contextId: Int?,
+	expressionId: Int?,
+	effect: String?,
+	help: String?,
+) -> SemanticAsyncAwaitDiagnostic {
+	return SemanticAsyncAwaitDiagnostic {
+		code: code,
+		severity: "error",
+		message: message,
+		contextId: contextId,
+		expressionId: expressionId,
+		effect: effect,
+		help: help,
+	}
+}
+
+fn knownEffects() -> List<String> {
+	return [
+		"Console",
+		"Task",
+		"File",
+		"Process",
+		"Network",
+		"Timer",
+		"Clock",
+		"Storage",
+		"Dom",
+		"Random",
+		"JavaScript",
+	]
+}
+
+fn containsString(values: List<String>, expected: String) -> Bool {
+	for value in values {
+		if value == expected {
+			return true
+		}
+	}
+	return false
+}
+
+fn canonicalEffects(values: List<String>) -> List<String> {
+	let mut result: List<String> = []
+	for effect in knownEffects() {
+		if containsString(values, effect) {
+			result = List.append(result, effect)
+		}
+	}
+	return result
+}
+
+fn fallbackContext() -> SemanticAsyncContext {
+	return SemanticAsyncContext {
+		id: -1,
+		kind: "invalid",
+		name: "",
+		isAsync: false,
+		declaredEffects: [],
+		wildcard: false,
+	}
+}
+
+fn contextAt(values: List<SemanticAsyncContext>, id: Int) -> SemanticAsyncContext {
+	return match List.get(values, id) {
+		Some(value) => value
+		None => fallbackContext()
+	}
+}
+
+fn validContextKind(kind: String) -> Bool {
+	return kind == "module" || kind == "function" || kind == "test"
+}
+
+fn duplicateContext(values: List<SemanticAsyncContext>, name: String) -> Bool {
+	for value in values {
+		if value.name == name {
+			return true
+		}
+	}
+	return false
+}
+
+fn buildContexts(values: List<FrontendAsyncContext>) -> ContextBuildResult {
+	let mut contexts: List<SemanticAsyncContext> = []
+	let mut diagnostics: List<SemanticAsyncAwaitDiagnostic> = []
+	let mut id = 0
+	for value in values {
+		if !validContextKind(value.kind) {
+			diagnostics = List.append(diagnostics, asyncAwaitDiagnostic(
+				"L9001",
+				"Unknown async context kind " + value.kind,
+				Some(id),
+				None,
+				None,
+				Some("Use module, function, or test."),
+			))
+		}
+		if String.length(value.name) == 0 {
+			diagnostics = List.append(diagnostics, asyncAwaitDiagnostic(
+				"L9001",
+				"Async context name cannot be empty",
+				Some(id),
+				None,
+				None,
+				Some("Use the canonical module, function, or test name."),
+			))
+		}
+		if String.length(value.name) > 0 && duplicateContext(contexts, value.name) {
+			diagnostics = List.append(diagnostics, asyncAwaitDiagnostic(
+				"L1001",
+				"Duplicate async context " + value.name,
+				Some(id),
+				None,
+				None,
+				Some("Use a unique context entry in this async await request."),
+			))
+		}
+		contexts = List.append(contexts, SemanticAsyncContext {
+			id: id,
+			kind: value.kind,
+			name: value.name,
+			isAsync: value.isAsync,
+			declaredEffects: canonicalEffects(value.declaredEffects),
+			wildcard: containsString(value.declaredEffects, "*"),
+		})
+		id = id + 1
+	}
+	return ContextBuildResult { contexts: contexts, diagnostics: diagnostics }
+}
+
+fn validOperandKind(kind: String) -> Bool {
+	return kind == "future" || kind == "foreign" || kind == "other"
+}
+
+fn optionalStringValid(value: String?) -> Bool {
+	return match value {
+		Some(item) => String.length(item) > 0
+		None => true
+	}
+}
+
+fn optionalStringPresent(value: String?) -> Bool {
+	return match value {
+		Some(item) => String.length(item) > 0
+		None => false
+	}
+}
+
+fn buildExpressions(
+	values: List<FrontendAwaitExpression>,
+	contexts: List<SemanticAsyncContext>,
+	diagnosticsValue: List<SemanticAsyncAwaitDiagnostic>,
+) -> ExpressionBuildResult {
+	let mut expressions: List<SemanticAwaitExpression> = []
+	let mut diagnostics = diagnosticsValue
+	let mut id = 0
+	for value in values {
+		let contextReferenceValid = value.contextId >= 0 && value.contextId < List.length(contexts)
+		let operandTypeValid = String.length(value.operandType) > 0
+		let awaitedHandleValid = optionalStringValid(value.awaitedType)
+		let operandKindValid = validOperandKind(value.operandKind)
+		let mut contextValid = false
+		let mut operandValid = false
+		let mut resultType: String? = None
+		let mut requiredEffects: List<String> = []
+		let mut missingEffects: List<String> = []
+		if !contextReferenceValid {
+			diagnostics = List.append(diagnostics, asyncAwaitDiagnostic(
+				"L9001",
+				"Await expression references an unknown async context",
+				maybeInt(value.contextId),
+				Some(id),
+				None,
+				Some("Reference a context ID from the canonical async context arena."),
+			))
+		} else {
+			let context = contextAt(contexts, value.contextId)
+			contextValid = (context.kind == "function" || context.kind == "test") && context.isAsync
+			if !contextValid {
+				diagnostics = List.append(diagnostics, asyncAwaitDiagnostic(
+					"L2022",
+					"await can only be used in an async function or test",
+					Some(value.contextId),
+					Some(id),
+					None,
+					Some("Mark the enclosing function or test async, or remove await."),
+				))
+			}
+		}
+		if !operandTypeValid {
+			diagnostics = List.append(diagnostics, asyncAwaitDiagnostic(
+				"L9001",
+				"Await operand type cannot be empty",
+				maybeInt(value.contextId),
+				Some(id),
+				None,
+				Some("Pass the canonical inferred operand type name."),
+			))
+		}
+		if !awaitedHandleValid {
+			diagnostics = List.append(diagnostics, asyncAwaitDiagnostic(
+				"L9001",
+				"Resolved awaited type cannot be empty",
+				maybeInt(value.contextId),
+				Some(id),
+				None,
+				Some("Pass a non-empty awaited type name or null for a non-PromiseLike foreign operand."),
+			))
+		}
+		if !operandKindValid {
+			diagnostics = List.append(diagnostics, asyncAwaitDiagnostic(
+				"L9001",
+				"Unknown await operand kind " + value.operandKind,
+				maybeInt(value.contextId),
+				Some(id),
+				None,
+				Some("Use future, foreign, or other."),
+			))
+		}
+		if operandKindValid && value.operandKind == "foreign" {
+			requiredEffects = ["JavaScript"]
+			if contextReferenceValid {
+				let context = contextAt(contexts, value.contextId)
+				if !context.wildcard && !containsString(context.declaredEffects, "JavaScript") {
+					missingEffects = ["JavaScript"]
+					diagnostics = List.append(diagnostics, asyncAwaitDiagnostic(
+						"L2076",
+						"Effect JavaScript is not declared by the enclosing function; add uses JavaScript",
+						Some(value.contextId),
+						Some(id),
+						Some("JavaScript"),
+						Some("Add uses JavaScript to the enclosing function or remove the foreign await."),
+					))
+				}
+			}
+		}
+		if operandKindValid && operandTypeValid && awaitedHandleValid {
+			if value.operandKind == "future" {
+				if optionalStringPresent(value.awaitedType) {
+					operandValid = true
+					resultType = value.awaitedType
+				} else {
+					diagnostics = List.append(diagnostics, asyncAwaitDiagnostic(
+						"L9001",
+						"Future await requires a resolved awaited type",
+						maybeInt(value.contextId),
+						Some(id),
+						None,
+						Some("Pass the canonical Future value type as awaitedType."),
+					))
+				}
+			} else if value.operandKind == "foreign" {
+				if optionalStringPresent(value.awaitedType) {
+					operandValid = true
+					resultType = value.awaitedType
+				} else {
+					diagnostics = List.append(diagnostics, asyncAwaitDiagnostic(
+						"L2023",
+						"await requires Future or JavaScript PromiseLike, received " + value.operandType,
+						maybeInt(value.contextId),
+						Some(id),
+						None,
+						Some("Await a Future or a Host-validated JavaScript PromiseLike value."),
+					))
+				}
+			} else {
+				diagnostics = List.append(diagnostics, asyncAwaitDiagnostic(
+					"L2023",
+					"await requires Future, received " + value.operandType,
+					maybeInt(value.contextId),
+					Some(id),
+					None,
+					Some("Await a Future value."),
+				))
+			}
+		}
+		expressions = List.append(expressions, SemanticAwaitExpression {
+			id: id,
+			contextId: value.contextId,
+			operandKind: value.operandKind,
+			operandType: value.operandType,
+			awaitedType: value.awaitedType,
+			resultType: resultType,
+			contextValid: contextValid,
+			operandValid: operandValid,
+			requiredEffects: requiredEffects,
+			missingEffects: missingEffects,
+			valid: contextReferenceValid
+				&& contextValid
+				&& operandKindValid
+				&& operandTypeValid
+				&& awaitedHandleValid
+				&& operandValid
+				&& List.length(missingEffects) == 0,
+		})
+		id = id + 1
+	}
+	return ExpressionBuildResult { expressions: expressions, diagnostics: diagnostics }
+}
+
+fn accepted(values: List<SemanticAsyncAwaitDiagnostic>) -> Bool {
+	for value in values {
+		if value.severity == "error" {
+			return false
+		}
+	}
+	return true
+}
+
+fn decodeRequest(encoded: String) -> Result<FrontendAsyncAwaitRequest, List<JsonError>> {
+	let raw = Json.parse(encoded)?
+	return Json.decode<FrontendAsyncAwaitRequest>(raw)
+}
+
+fn checkFrontendAsyncAwait(request: FrontendAsyncAwaitRequest) -> FrontendAsyncAwaitResult {
+	let contextResult = buildContexts(request.contexts)
+	let expressionResult = buildExpressions(request.expressions, contextResult.contexts, contextResult.diagnostics)
+	return FrontendAsyncAwaitResult {
+		accepted: accepted(expressionResult.diagnostics),
+		contexts: contextResult.contexts,
+		expressions: expressionResult.expressions,
+		diagnostics: expressionResult.diagnostics,
+	}
+}
+
+pub fn checkFrontendAsyncAwaitJson(encoded: String) -> Result<String, List<JsonError>> {
+	return Json.encode<FrontendAsyncAwaitResult>(checkFrontendAsyncAwait(decodeRequest(encoded)?))
+}
