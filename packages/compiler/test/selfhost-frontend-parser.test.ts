@@ -18,6 +18,8 @@ type ViruneResult<T> = { readonly $tag: 'Ok' | 'Err'; readonly $values: readonly
 type Position = { readonly offset: number; readonly line: number; readonly column: number };
 type Span = { readonly start: Position; readonly end: Position };
 type ParserDiagnostic = { readonly code: string; readonly severity: string; readonly message: string; readonly span: Span };
+type FrontendToken = { readonly kind: unknown; readonly text: string; readonly span: Span };
+type FrontendLexResult = { readonly tokens: readonly FrontendToken[]; readonly diagnostics: readonly unknown[] };
 type AstNode = {
 	readonly id: number;
 	readonly kind: string;
@@ -33,6 +35,7 @@ type ParseResult = {
 	readonly diagnostics: readonly ParserDiagnostic[];
 };
 type FrontendParserModule = {
+	readonly lexFrontendContract: (source: string) => ViruneResult<string>;
 	readonly parseFrontendContract: (source: string) => ViruneResult<string>;
 };
 
@@ -80,7 +83,17 @@ test('Stage 0 frontend parser emits a canonical flat AST and agrees with Legacy 
 		const first = parse(loaded.module, supportedSource);
 		const second = parse(loaded.module, supportedSource);
 		assert.deepEqual(first, second);
-		assert.equal(first.accepted, true);
+		if (!first.accepted) {
+			const lexed = lex(loaded.module, supportedSource);
+			throw new Error(JSON.stringify({
+				diagnostics: first.diagnostics,
+				tokens: lexed.tokens.map(item => ({
+					text: item.text,
+					kind: item.kind,
+					line: item.span.start.line,
+				})),
+			}, null, 2));
+		}
 		assert.deepEqual(first.diagnostics, []);
 		assert.equal(first.nodes[first.root]?.kind, 'Module');
 		assert.deepEqual(first.nodes.map(item => item.id), first.nodes.map((_, index) => index));
@@ -152,13 +165,20 @@ test('frontend parser terminates safely for bounded malformed-input regression c
 	}
 });
 
+function lex(module: FrontendParserModule, source: string): FrontendLexResult {
+	const encoded = module.lexFrontendContract(source);
+	if (encoded.$tag !== 'Ok') {
+		throw new Error(`Frontend lexer contract failed: ${JSON.stringify(encoded.$values[0])}`);
+	}
+	return JSON.parse(encoded.$values[0]) as FrontendLexResult;
+}
+
 function parse(module: FrontendParserModule, source: string): ParseResult {
 	const encoded = module.parseFrontendContract(source);
 	if (encoded.$tag !== 'Ok') {
 		throw new Error(`Frontend parser contract failed: ${JSON.stringify(encoded.$values[0])}`);
 	}
-	const value = encoded.$values[0];
-	return JSON.parse(value) as ParseResult;
+	return JSON.parse(encoded.$values[0]) as ParseResult;
 }
 
 async function loadFrontendParser(): Promise<{ readonly root: string; readonly module: FrontendParserModule }> {
