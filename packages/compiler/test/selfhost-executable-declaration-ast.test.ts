@@ -78,7 +78,7 @@ test('parser emits detailed function, test, and top-level value declarations', a
 		assert.ok(first.nodes.some(item => item.kind === 'Effect' && item.text === 'io'));
 		assert.ok(first.nodes.some(item => item.kind === 'Effect' && item.text === '*'));
 		assert.ok(choose.children.some(id => first.nodes[id]?.kind === 'Block'));
-		assert.ok(identity.children.some(id => first.nodes[id]?.kind === 'Identifier'));
+		assert.ok(identity.children.some(id => first.nodes[id]?.kind === 'IdentifierExpression'));
 
 		const testDeclaration = first.nodes.find(item => item.kind === 'TestDeclaration');
 		assert.ok(testDeclaration);
