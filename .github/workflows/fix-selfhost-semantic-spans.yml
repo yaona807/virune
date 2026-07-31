@@ -22,7 +22,7 @@ jobs:
         with:
           node-version: 24
           cache: npm
-      - name: Convert parser spans to semantic spans
+      - name: Convert parser spans and strict-mode identifiers
         run: |
           node --input-type=module - <<'NODE'
           import { readFile, writeFile } from 'node:fs/promises';
@@ -63,6 +63,11 @@ jobs:
           source = source.replace('\t\t\t\t\tspan: node.span,\n\t\t\t\t}', '\t\t\t\t\tspan: toSemanticSpan(node.span),\n\t\t\t\t}');
           source = source.replace('\t\tspan: span,\n\t}', '\t\tspan: toSemanticSpan(span),\n\t}');
           source = source.replace('\t\tspan: node.span,\n\t}\n\treturn withMembers', '\t\tspan: toSemanticSpan(node.span),\n\t}\n\treturn withMembers');
+          source = source.replaceAll('arguments: List<Int>', 'typeArguments: List<Int>');
+          source = source.replaceAll('arguments: arguments,', 'arguments: typeArguments,');
+          source = source.replaceAll('List.length(arguments)', 'List.length(typeArguments)');
+          source = source.replaceAll('None, arguments, node.span', 'None, typeArguments, node.span');
+          source = source.replaceAll('declaration, state), arguments, node.span', 'declaration, state), typeArguments, node.span');
           await writeFile(path, source);
           NODE
       - run: npm ci
