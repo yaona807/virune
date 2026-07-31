@@ -1,0 +1,519 @@
+//! Deterministic local must-use classification and value-consumption analysis.
+
+import {
+	FrontendAstNode,
+	FrontendParseResult,
+	ParserPosition,
+	ParserSpan,
+	parserPosition,
+	parserSpan,
+} from "./frontend-parser-model.virune"
+import { parseFrontendCore } from "./frontend-parser-core.virune"
+import {
+	FrontendSemanticResult,
+	SemanticDeclaration,
+	SemanticDiagnostic,
+	SemanticInstantiation,
+	SemanticPosition,
+	SemanticSpan,
+	SemanticType,
+	semanticDiagnostic,
+	semanticPosition,
+	semanticSpan,
+} from "./frontend-semantic-model.virune"
+import { checkFrontendDataTypesJson } from "./frontend-semantic.virune"
+
+record FrontendValueUse derives Eq, Debug, Json {
+	typeName: String
+	disposition: String
+	span: SemanticSpan
+}
+
+record FrontendMustUseRequest derives Eq, Debug, Json {
+	source: String
+	values: List<FrontendValueUse>
+}
+
+record SemanticMustUseDeclaration derives Eq, Debug, Json {
+	declarationId: Int
+	name: String
+	span: SemanticSpan
+}
+
+record SemanticValueUseResult derives Eq, Debug, Json {
+	index: Int
+	typeName: String
+	typeId: Int?
+	disposition: String
+	mustUse: Bool
+	reason: String
+	consumed: Bool
+}
+
+record FrontendMustUseResult derives Eq, Debug, Json {
+	accepted: Bool
+	typeCount: Int
+	declarations: List<SemanticMustUseDeclaration>
+	values: List<SemanticValueUseResult>
+	diagnostics: List<SemanticDiagnostic>
+}
+
+record MustUseClassification {
+	mustUse: Bool
+	reason: String
+}
+
+record TypeLookup {
+	id: Int
+	declarationId: Int
+	diagnostics: List<SemanticDiagnostic>
+}
+
+fn fallbackParserPosition() -> ParserPosition {
+	return parserPosition(0, 1, 1)
+}
+
+fn fallbackParserSpan() -> ParserSpan {
+	let value = fallbackParserPosition()
+	return parserSpan(value, value)
+}
+
+fn fallbackPosition() -> SemanticPosition {
+	return semanticPosition(0, 1, 1)
+}
+
+fn fallbackSpan() -> SemanticSpan {
+	let value = fallbackPosition()
+	return semanticSpan(value, value)
+}
+
+fn fallbackNode() -> FrontendAstNode {
+	return FrontendAstNode {
+		id: -1,
+		kind: "missing",
+		text: "",
+		span: fallbackParserSpan(),
+		children: [],
+		documentation: [],
+	}
+}
+
+fn fallbackType() -> SemanticType {
+	return SemanticType {
+		id: -1,
+		kind: "missing",
+		name: "",
+		declarationId: None,
+		arguments: [],
+		instantiationId: None,
+		span: fallbackSpan(),
+	}
+}
+
+fn fallbackDeclaration() -> SemanticDeclaration {
+	return SemanticDeclaration {
+		id: -1,
+		sourceNodeId: -1,
+		kind: "missing",
+		name: "",
+		isPublic: false,
+		typeParameters: [],
+		memberIds: [],
+		targetType: None,
+		span: fallbackSpan(),
+	}
+}
+
+fn fallbackInstantiation() -> SemanticInstantiation {
+	return SemanticInstantiation {
+		id: -1,
+		declarationId: -1,
+		argumentTypeIds: [],
+		memberIds: [],
+		targetType: None,
+		span: fallbackSpan(),
+	}
+}
+
+fn nodeAt(values: List<FrontendAstNode>, id: Int) -> FrontendAstNode {
+	return match List.get(values, id) {
+		Some(value) => value
+		None => fallbackNode()
+	}
+}
+
+fn typeAt(values: List<SemanticType>, id: Int) -> SemanticType {
+	return match List.get(values, id) {
+		Some(value) => value
+		None => fallbackType()
+	}
+}
+
+fn declarationAt(values: List<SemanticDeclaration>, id: Int) -> SemanticDeclaration {
+	return match List.get(values, id) {
+		Some(value) => value
+		None => fallbackDeclaration()
+	}
+}
+
+fn instantiationAt(values: List<SemanticInstantiation>, id: Int) -> SemanticInstantiation {
+	return match List.get(values, id) {
+		Some(value) => value
+		None => fallbackInstantiation()
+	}
+}
+
+fn optionalInt(value: Int?) -> Int {
+	return match value {
+		Some(item) => item
+		None => -1
+	}
+}
+
+fn maybeInt(value: Int) -> Int? {
+	return if value >= 0 then Some(value) else None
+}
+
+fn toSemanticSpan(value: ParserSpan) -> SemanticSpan {
+	return semanticSpan(
+		semanticPosition(value.start.offset, value.start.line, value.start.column),
+		semanticPosition(value.end.offset, value.end.line, value.end.column),
+	)
+}
+
+fn containsInt(values: List<Int>, expected: Int) -> Bool {
+	for value in values {
+		if value == expected {
+			return true
+		}
+	}
+	return false
+}
+
+fn declarationIndex(values: List<SemanticDeclaration>, name: String) -> Int {
+	let mut index = 0
+	while index < List.length(values) {
+		if declarationAt(values, index).name == name {
+			return index
+		}
+		index = index + 1
+	}
+	return -1
+}
+
+fn typeIndex(values: List<SemanticType>, name: String) -> Int {
+	let mut index = 0
+	while index < List.length(values) {
+		if typeAt(values, index).name == name {
+			return index
+		}
+		index = index + 1
+	}
+	return -1
+}
+
+fn typeForDeclaration(declarationId: Int, semantics: FrontendSemanticResult) -> Int {
+	let mut index = 0
+	while index < List.length(semantics.types) {
+		let value = typeAt(semantics.types, index)
+		if optionalInt(value.declarationId) == declarationId {
+			return value.id
+		}
+		index = index + 1
+	}
+	return optionalInt(declarationAt(semantics.declarations, declarationId).targetType)
+}
+
+fn lookupType(
+	name: String,
+	span: SemanticSpan,
+	semantics: FrontendSemanticResult,
+	diagnosticsValue: List<SemanticDiagnostic>,
+) -> TypeLookup {
+	let declarationId = declarationIndex(semantics.declarations, name)
+	if declarationId >= 0 {
+		return TypeLookup {
+			id: typeForDeclaration(declarationId, semantics),
+			declarationId: declarationId,
+			diagnostics: diagnosticsValue,
+		}
+	}
+	let typeId = typeIndex(semantics.types, name)
+	if typeId >= 0 {
+		return TypeLookup {
+			id: typeId,
+			declarationId: optionalInt(typeAt(semantics.types, typeId).declarationId),
+			diagnostics: diagnosticsValue,
+		}
+	}
+	return TypeLookup {
+		id: -1,
+		declarationId: -1,
+		diagnostics: List.append(diagnosticsValue, semanticDiagnostic(
+			"L2040",
+			"Unknown must-use type " + name,
+			span,
+			Some("Declare the type in this module before checking value consumption."),
+		)),
+	}
+}
+
+fn validMustUseTarget(kind: String) -> Bool {
+	return kind == "RecordDeclaration"
+		|| kind == "EnumDeclaration"
+		|| kind == "NewtypeDeclaration"
+}
+
+fn declarationNode(kind: String) -> Bool {
+	return validMustUseTarget(kind)
+		|| kind == "TypeAliasDeclaration"
+		|| kind == "FunctionDeclaration"
+		|| kind == "ExternDeclaration"
+		|| kind == "TestDeclaration"
+		|| kind == "TopLevelValueDeclaration"
+}
+
+fn attributeArgumentCount(attribute: FrontendAstNode, parse: FrontendParseResult) -> Int {
+	let mut count = 0
+	for childId in attribute.children {
+		let child = nodeAt(parse.nodes, childId)
+		if child.kind == "CallArguments" {
+			count = count + List.length(child.children)
+		}
+	}
+	return count
+}
+
+fn hasMustUseAttribute(declaration: FrontendAstNode, parse: FrontendParseResult) -> Bool {
+	for childId in declaration.children {
+		let child = nodeAt(parse.nodes, childId)
+		if child.kind == "Attribute" && child.text == "mustUse" {
+			return true
+		}
+	}
+	return false
+}
+
+fn validateMustUseAttributes(
+	parse: FrontendParseResult,
+	diagnosticsValue: List<SemanticDiagnostic>,
+) -> List<SemanticDiagnostic> {
+	let mut diagnostics = diagnosticsValue
+	for declaration in parse.nodes {
+		if declarationNode(declaration.kind) {
+			for childId in declaration.children {
+				let attribute = nodeAt(parse.nodes, childId)
+				if attribute.kind == "Attribute" && attribute.text == "mustUse" {
+					let span = toSemanticSpan(attribute.span)
+					if !validMustUseTarget(declaration.kind) {
+						diagnostics = List.append(diagnostics, semanticDiagnostic(
+							"L2090",
+							"@mustUse can be used only on record, enum, or newtype declarations",
+							span,
+							Some("Move @mustUse to a record, enum, or newtype declaration."),
+						))
+					}
+					if attributeArgumentCount(attribute, parse) > 0 {
+						diagnostics = List.append(diagnostics, semanticDiagnostic(
+							"L2091",
+							"@mustUse does not accept arguments",
+							span,
+							Some("Remove the @mustUse arguments."),
+						))
+					}
+				}
+			}
+		}
+	}
+	return diagnostics
+}
+
+fn collectMustUseDeclarations(
+	parse: FrontendParseResult,
+	semantics: FrontendSemanticResult,
+) -> List<SemanticMustUseDeclaration> {
+	let mut values: List<SemanticMustUseDeclaration> = []
+	for declaration in semantics.declarations {
+		let node = nodeAt(parse.nodes, declaration.sourceNodeId)
+		if validMustUseTarget(node.kind) && hasMustUseAttribute(node, parse) {
+			values = List.append(values, SemanticMustUseDeclaration {
+				declarationId: declaration.id,
+				name: declaration.name,
+				span: declaration.span,
+			})
+		}
+	}
+	return values
+}
+
+fn annotatedDeclarationIds(values: List<SemanticMustUseDeclaration>) -> List<Int> {
+	let mut ids: List<Int> = []
+	for value in values {
+		ids = List.append(ids, value.declarationId)
+	}
+	return ids
+}
+
+fn aliasTarget(typeId: Int, semantics: FrontendSemanticResult) -> Int {
+	let value = typeAt(semantics.types, typeId)
+	let declarationId = optionalInt(value.declarationId)
+	if value.kind != "named" || declarationId < 0 {
+		return -1
+	}
+	let declaration = declarationAt(semantics.declarations, declarationId)
+	if declaration.kind != "alias" {
+		return -1
+	}
+	let instantiationId = optionalInt(value.instantiationId)
+	if instantiationId >= 0 {
+		return optionalInt(instantiationAt(semantics.instantiations, instantiationId).targetType)
+	}
+	return optionalInt(declaration.targetType)
+}
+
+fn classifyMustUse(
+	typeId: Int,
+	semantics: FrontendSemanticResult,
+	annotated: List<Int>,
+	seen: List<Int>,
+) -> MustUseClassification {
+	if typeId < 0 || containsInt(seen, typeId) {
+		return MustUseClassification { mustUse: false, reason: "ordinary" }
+	}
+	let value = typeAt(semantics.types, typeId)
+	if value.kind == "builtin" && value.name == "Result" {
+		return MustUseClassification { mustUse: true, reason: "result" }
+	}
+	let declarationId = optionalInt(value.declarationId)
+	if declarationId >= 0 && containsInt(annotated, declarationId) {
+		return MustUseClassification { mustUse: true, reason: "attribute" }
+	}
+	let target = aliasTarget(typeId, semantics)
+	if target >= 0 {
+		let inner = classifyMustUse(target, semantics, annotated, List.append(seen, typeId))
+		if inner.mustUse {
+			return MustUseClassification { mustUse: true, reason: "alias" }
+		}
+	}
+	return MustUseClassification { mustUse: false, reason: "ordinary" }
+}
+
+fn classifyLookup(
+	lookup: TypeLookup,
+	semantics: FrontendSemanticResult,
+	annotated: List<Int>,
+) -> MustUseClassification {
+	if lookup.declarationId >= 0 {
+		if containsInt(annotated, lookup.declarationId) {
+			return MustUseClassification { mustUse: true, reason: "attribute" }
+		}
+		let declaration = declarationAt(semantics.declarations, lookup.declarationId)
+		if declaration.kind == "alias" {
+			let target = optionalInt(declaration.targetType)
+			if target >= 0 {
+				let inner = classifyMustUse(target, semantics, annotated, [])
+				if inner.mustUse {
+					return MustUseClassification { mustUse: true, reason: "alias" }
+				}
+			}
+		}
+	}
+	return classifyMustUse(lookup.id, semantics, annotated, [])
+}
+
+fn validDisposition(value: String) -> Bool {
+	return value == "expression"
+		|| value == "bind"
+		|| value == "return"
+		|| value == "discard"
+		|| value == "await"
+		|| value == "handle"
+}
+
+fn dispositionConsumed(value: String) -> Bool {
+	return value == "bind"
+		|| value == "return"
+		|| value == "discard"
+		|| value == "await"
+		|| value == "handle"
+}
+
+fn accepted(values: List<SemanticDiagnostic>) -> Bool {
+	for value in values {
+		if value.severity == "error" {
+			return false
+		}
+	}
+	return true
+}
+
+fn decodeRequest(encoded: String) -> Result<FrontendMustUseRequest, List<JsonError>> {
+	let raw = Json.parse(encoded)?
+	return Json.decode<FrontendMustUseRequest>(raw)
+}
+
+fn decodeSemantics(source: String) -> Result<FrontendSemanticResult, List<JsonError>> {
+	let encoded = checkFrontendDataTypesJson(source)?
+	let raw = Json.parse(encoded)?
+	return Json.decode<FrontendSemanticResult>(raw)
+}
+
+fn decodeParse(source: String) -> Result<FrontendParseResult, List<JsonError>> {
+	let encoded = parseFrontendCore(source)?
+	let raw = Json.parse(encoded)?
+	return Json.decode<FrontendParseResult>(raw)
+}
+
+fn checkFrontendMustUse(request: FrontendMustUseRequest) -> Result<FrontendMustUseResult, List<JsonError>> {
+	let semantics = decodeSemantics(request.source)?
+	let parse = decodeParse(request.source)?
+	let mut diagnostics = validateMustUseAttributes(parse, semantics.diagnostics)
+	let declarations = collectMustUseDeclarations(parse, semantics)
+	let annotated = annotatedDeclarationIds(declarations)
+	let mut values: List<SemanticValueUseResult> = []
+	let mut index = 0
+	for value in request.values {
+		let lookup = lookupType(value.typeName, value.span, semantics, diagnostics)
+		diagnostics = lookup.diagnostics
+		let classification = classifyLookup(lookup, semantics, annotated)
+		let mut consumed = dispositionConsumed(value.disposition)
+		if !validDisposition(value.disposition) {
+			diagnostics = List.append(diagnostics, semanticDiagnostic(
+				"L9001",
+				"Unknown must-use value disposition " + value.disposition,
+				value.span,
+				Some("Use expression, bind, return, discard, await, or handle."),
+			))
+			consumed = false
+		}
+		if classification.mustUse && value.disposition == "expression" {
+			diagnostics = List.append(diagnostics, semanticDiagnostic(
+				"L2097",
+				"Value of type " + value.typeName + " must be used; bind it, return it, await it, handle it, or write discard",
+				value.span,
+				Some("Consume the value explicitly or write discard when ignoring it is intentional."),
+			))
+		}
+		values = List.append(values, SemanticValueUseResult {
+			index: index,
+			typeName: value.typeName,
+			typeId: maybeInt(lookup.id),
+			disposition: value.disposition,
+			mustUse: classification.mustUse,
+			reason: classification.reason,
+			consumed: consumed,
+		})
+		index = index + 1
+	}
+	return Ok(FrontendMustUseResult {
+		accepted: semantics.accepted && accepted(diagnostics),
+		typeCount: List.length(semantics.types),
+		declarations: declarations,
+		values: values,
+		diagnostics: diagnostics,
+	})
+}
+
+pub fn checkFrontendMustUseJson(encoded: String) -> Result<String, List<JsonError>> {
+	return Json.encode<FrontendMustUseResult>(checkFrontendMustUse(decodeRequest(encoded)?)?)
+}
