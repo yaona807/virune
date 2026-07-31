@@ -249,16 +249,17 @@ fn scanString(chars: List<String>, initial: ScannerState) -> ScannedString {
 	let mut text = "\""
 	let mut escaped = false
 	let mut closed = false
-	while state.index < List.length(chars) {
+	let mut done = false
+	while state.index < List.length(chars) && !done {
 		let value = characterOrEmpty(chars, state.index)
 		if value == "\n" || value == "\r" {
-			state = ScannerState { index: List.length(chars), line: state.line, column: state.column }
+			done = true
 		} else {
 			text = text + value
 			state = advance(state, 1)
 			if value == "\"" && !escaped {
 				closed = true
-				state = ScannerState { index: List.length(chars), line: state.line, column: state.column }
+				done = true
 			} else if value == "\\" && !escaped {
 				escaped = true
 			} else {
