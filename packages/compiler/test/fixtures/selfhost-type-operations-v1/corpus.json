@@ -1,0 +1,126 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "id": "capabilities-components",
+      "source": "operations.virune",
+      "accepted": true,
+      "diagnosticCodes": [],
+      "relations": [],
+      "traits": [
+        {
+          "name": "FloatType",
+          "resolved": true,
+          "capabilities": [true, false, true, true],
+          "containsOpenType": false
+        },
+        {
+          "name": "IntList",
+          "resolved": true,
+          "capabilities": [true, true, true, true],
+          "containsOpenType": false,
+          "element": "Int"
+        },
+        {
+          "name": "IntSet",
+          "resolved": true,
+          "capabilities": [true, true, true, true],
+          "containsOpenType": false,
+          "element": "Int"
+        },
+        {
+          "name": "IntStringMap",
+          "resolved": true,
+          "capabilities": [true, true, false, true],
+          "containsOpenType": false,
+          "key": "Int",
+          "value": "String"
+        },
+        {
+          "name": "Outcome",
+          "resolved": true,
+          "capabilities": [true, true, true, true],
+          "containsOpenType": false,
+          "value": "Int",
+          "error": "String"
+        },
+        {
+          "name": "Pair",
+          "resolved": true,
+          "capabilities": [true, true, true, true],
+          "containsOpenType": false,
+          "items": ["Int", "String"]
+        },
+        {
+          "name": "StringIntMap",
+          "resolved": true,
+          "capabilities": [true, true, true, true],
+          "containsOpenType": false,
+          "key": "String",
+          "value": "Int"
+        },
+        {
+          "name": "UnknownType",
+          "resolved": true,
+          "capabilities": [false, false, true, false],
+          "containsOpenType": false
+        },
+        {
+          "name": "UserIdRef",
+          "resolved": true,
+          "capabilities": [true, true, true, true],
+          "containsOpenType": false
+        }
+      ],
+      "commonTypes": []
+    },
+    {
+      "id": "common-relations",
+      "source": "operations.virune",
+      "accepted": true,
+      "diagnosticCodes": [],
+      "relations": [
+        { "source": "IntAlias", "target": "IntType", "assignable": true },
+        { "source": "IntList", "target": "IntListAgain", "assignable": true },
+        { "source": "IntList", "target": "StringList", "assignable": false },
+        { "source": "IntType", "target": "IntAlias", "assignable": true },
+        { "source": "IntType", "target": "MaybeInt", "assignable": true },
+        { "source": "NeverType", "target": "StringType", "assignable": true },
+        { "source": "StringType", "target": "UnknownType", "assignable": true },
+        { "source": "UserIdRef", "target": "IntType", "assignable": false }
+      ],
+      "traits": [],
+      "commonTypes": [
+        { "types": ["IntType", "MaybeInt"], "typeName": "Option" },
+        { "types": ["NeverType", "IntType"], "typeName": "Int" }
+      ]
+    },
+    {
+      "id": "incompatible-common",
+      "source": "operations.virune",
+      "accepted": false,
+      "diagnosticCodes": ["L2042"],
+      "relations": [],
+      "traits": [],
+      "commonTypes": [
+        { "types": ["IntType", "StringType"], "typeName": null }
+      ]
+    },
+    {
+      "id": "unknown-operation",
+      "source": "operations.virune",
+      "accepted": false,
+      "diagnosticCodes": ["L2040"],
+      "relations": [
+        { "source": "MissingType", "target": "IntType", "assignable": false }
+      ],
+      "traits": [
+        {
+          "name": "MissingType",
+          "resolved": false
+        }
+      ],
+      "commonTypes": []
+    }
+  ]
+}
