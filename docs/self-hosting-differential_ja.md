@@ -78,3 +78,18 @@ npm run selfhost:parser:parity
 ```
 
 Expected divergenceには正確なcaseとJSON path、理由、期限内のISO日付が必要です。未説明差分、stale policy、expired policyは失敗します。
+
+## Data type semantic table
+
+Type／Effect Checkerの第1段階では、typed Stage 0 frontend resultからrecord、enum、newtype、type aliasのcanonical declaration／member／type arenaを構築します。Builtin type、同一moduleの宣言、宣言type parameterを解決し、duplicate definition、duplicate type parameter、unknown type、generic arity mismatchを安定したdiagnostic code・source range・helpでrejectします。
+
+Semantic JSON境界はParser実装型を再公開せず、独自のsource position recordを保持します。Arena IDは連番で、すべての参照IDをHost testが検証し、同じsourceの繰り返しcompileは完全に同じserializationを返す必要があります。
+
+対象検証:
+
+```bash
+npm run build
+node --test --test-timeout=120000 packages/compiler/dist/test/selfhost-semantic-data-types.test.js
+```
+
+この段階ではProduction Parser／Checkerを変更せず、Self-host KernelをProduction経路へ接続しません。
