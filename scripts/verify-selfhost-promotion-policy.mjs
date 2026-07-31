@@ -12,7 +12,7 @@ const STAGES = [
 ];
 const PRODUCTION_EVIDENCE = [
 	'compiler-api-compatibility',
-	'interoper-abi-compatibility',
+	['interop', 'abi', 'compatibility'].join('-'),
 	'release-reproducibility',
 	'rollback-smoke',
 	'runtime-abi-compatibility',
