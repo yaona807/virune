@@ -1100,7 +1100,7 @@ fn parseControlPostfix(
 	return parsePostfix(stateValue, tokens, start, valueIdValue)
 }
 
-fn parseConditionalExpression(fn parseConditionalExpression(stateValue: CoreState, tokens: List<FrontendToken>) -> ParsedNode {
+fn parseConditionalExpression(stateValue: CoreState, tokens: List<FrontendToken>) -> ParsedNode {
 	let start = stateValue.index
 	let condition = parseExpression(advance(stateValue), tokens, 1, false)
 	let mut state = condition.state
@@ -1265,7 +1265,7 @@ fn parsePrimary(stateValue: CoreState, tokens: List<FrontendToken>, stopAtBrace:
 	return parsePostfix(added.state, tokens, start, added.id)
 }
 
-fn parseExpression(fn parseExpression(
+fn parseExpression(
 	stateValue: CoreState,
 	tokens: List<FrontendToken>,
 	minimumPrecedence: Int,
