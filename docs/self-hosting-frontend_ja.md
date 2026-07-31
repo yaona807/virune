@@ -2,7 +2,7 @@
 
 [English](self-hosting-frontend.md)
 
-Virune製Frontendは、縦断MVPから境界を限定したマージ可能な段階に分けて拡張します。最初の段階では、`selfhost/mvp/src/frontend-model.virune`と`frontend-lexer.virune`に完全な字句contractを追加します。Production Compiler経路からは引き続き隔離します。
+Virune製Frontendは、縦断MVPから境界を限定したマージ可能な段階に分けて拡張します。Production Compiler経路からは引き続き隔離します。
 
 ## 字句contract
 
@@ -25,20 +25,40 @@ Lexerはtokenを返す前に、`spec/grammar.ebnf`の規範的なsoft-line規則
 
 CRLFとLFは同じ論理line progressionを生成しつつ、source offsetとspanを保持します。
 
+## Parser core
+
+Parser coreは検証済みLexer JSONを読み取り、canonicalなflat AST arenaを生成します。再帰的なJavaScript object graphではなく、integer IDとchild ID listを使用します。Node IDはappend順で決まるため、同一入力は同一serializationを生成します。
+
+現在のParser基盤には次を含みます。
+
+- module、unsafe module、import、attribute、declaration envelope
+- function declarationとnested block
+- `let`、`return`、`discard`、`defer`、assignment、loop、conditional statement構造
+- precedenceを考慮したbinary expression
+- unary、call、field、try、record update postfix構造
+- declaration bodyと複雑なexpression form向けのbalanced transport node
+- malformed input向けのdepth limitとnewline／declaration synchronization
+
+このcoreは拡張基盤です。Record field、enum variant、pattern、lambda内部、全type-reference formは、Issue #96を完了する前に後続の限定Parser変更で詳細nodeへ展開します。
+
 ## Documentation comment
 
-Commentは破棄しません。`//!`と、正確に3本のslashで始まる`///`を、ordinaryな`//`／`////`とは別に分類します。Markerと、その直後にある最大1個のASCII spaceを除去し、正規化textと完全なsource spanを保持します。次のFrontend段階でParserが宣言へ関連付けます。
+Commentは破棄しません。`//!`と、正確に3本のslashで始まる`///`を、ordinaryな`//`／`////`とは別に分類します。Markerと、その直後にある最大1個のASCII spaceを除去し、正規化textと完全なsource spanを保持します。
+
+Parserはmodule documentationをmodule nodeへ、declaration documentationを対応可能なdeclaration nodeへ関連付けます。Unsupported、late、unattached groupは既存の`L0010`〜`L0012` diagnosticを生成します。
 
 ## 検証
 
 通常のStage 0 Self-host testで次を検証します。
 
-- 決定的なtoken output
+- 決定的なtoken／AST output
 - keyword、literal、operatorの完全なvocabulary
-- documentation comment分類
+- documentation comment分類と関連付け
 - CRLF position tracking
 - soft-line normalization
 - malformed literalと予約文字のdiagnostic
-- lexical rejection codeおよび開始位置のLegacy Compilerとの一致
+- flat arenaのID／child reference整合性
+- malformed input後のdeclarationまで到達するParser recovery
+- lexical rejectionと対応済みsource acceptanceのLegacy Compilerとの一致
 
-この段階ではgrammar、Production Parser、stable Compiler API、Runtime ABI、Interop ABI、公開standard libraryを変更しません。
+この作業ではgrammar、Production Parser、stable Compiler API、Runtime ABI、Interop ABI、公開standard libraryを変更しません。
