@@ -15,20 +15,20 @@ import {
 } from "./frontend-semantic-model.virune"
 import { checkFrontendDataTypesJson } from "./frontend-semantic.virune"
 
-record FrontendPatternArm {
+record FrontendPatternArm derives Eq, Debug, Json {
 	kind: String
 	name: String?
 	guarded: Bool
 	span: SemanticSpan
 }
 
-record FrontendPatternCheck {
+record FrontendPatternCheck derives Eq, Debug, Json {
 	target: String
 	span: SemanticSpan
 	arms: List<FrontendPatternArm>
 }
 
-record FrontendPatternCoverageRequest {
+record FrontendPatternCoverageRequest derives Eq, Debug, Json {
 	source: String
 	checks: List<FrontendPatternCheck>
 }
