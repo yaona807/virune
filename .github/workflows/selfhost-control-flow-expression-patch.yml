@@ -1,0 +1,33 @@
+name: Self-host control-flow expression integration
+
+on:
+  pull_request:
+    branches:
+      - main
+    types:
+      - synchronize
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.head_ref == 'agent/selfhost-control-flow-expression-ast'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: agent/selfhost-control-flow-expression-ast
+      - name: Apply control-flow expression integration
+        run: python3 scripts/apply-selfhost-control-flow-expression-patch.py
+      - name: Commit control-flow expression integration
+        shell: bash
+        run: |
+          if git diff --quiet; then
+            exit 0
+          fi
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add selfhost/mvp/src/frontend-parser-core.virune
+          git commit -m "compiler(selfhost): integrate conditional and parallel expressions"
+          git push origin HEAD:agent/selfhost-control-flow-expression-ast
