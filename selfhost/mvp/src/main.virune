@@ -2,7 +2,8 @@
 //!
 //! Each stage exposes only a Result-based JSON boundary. Internal compiler
 //! models remain private to their implementation modules, while the TypeScript
-//! Host adapts the final payload to Kernel Contract v1.
+//! Host adapts the final payload to Kernel Contract v1. Semantic stages exchange
+//! their typed models through JSON adapters instead of re-exporting them.
 
 import { checkMvpJson } from "./checker.virune"
 import { emitMvpJson } from "./emitter.virune"
