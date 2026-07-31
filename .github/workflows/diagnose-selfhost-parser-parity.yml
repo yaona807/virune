@@ -12,7 +12,13 @@ jobs:
   diagnose:
     if: ${{ github.head_ref == 'agent/selfhost-parser-parity' }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 12
+    strategy:
+      fail-fast: false
+      matrix:
+        group: [0, 1, 2, 3]
+    env:
+      PARITY_GROUP: ${{ matrix.group }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -22,20 +28,27 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
-      - name: Add progress markers
+      - name: Select shard and add progress markers
         run: |
           node --input-type=module - <<'NODE'
           import { readFile, writeFile } from 'node:fs/promises';
-          const path = 'packages/compiler/test/selfhost-parser-parity.test.ts';
-          let source = await readFile(path, 'utf8');
+          const corpusPath = '.github/self-hosting/parser-parity-corpus-v1.json';
+          const corpus = JSON.parse(await readFile(corpusPath, 'utf8'));
+          const group = Number(process.env.PARITY_GROUP);
+          corpus.cases = corpus.cases.filter((_, index) => index % 4 === group);
+          console.log(`PARITY_GROUP ${group}: ${corpus.cases.map(item => item.id).join(', ')}`);
+          await writeFile(corpusPath, `${JSON.stringify(corpus, null, 2)}\n`);
+
+          const testPath = 'packages/compiler/test/selfhost-parser-parity.test.ts';
+          let source = await readFile(testPath, 'utf8');
           const caseMarker = '\t\tfor (const fixture of corpus.cases) {\n\t\t\tconst legacy = parseLegacySyntax(fixture.source);';
           const caseReplacement = '\t\tfor (const fixture of corpus.cases) {\n\t\t\tconsole.log(`PARITY_CASE ${fixture.id}`);\n\t\t\tconst legacy = parseLegacySyntax(fixture.source);';
           const mutationMarker = '\t\t\tfor (const mutation of fixture.mutations) {\n\t\t\t\tconst mutatedSource = mutate(fixture.source, mutation);';
           const mutationReplacement = '\t\t\tfor (const mutation of fixture.mutations) {\n\t\t\t\tconsole.log(`PARITY_MUTATION ${fixture.id}:${mutation}`);\n\t\t\t\tconst mutatedSource = mutate(fixture.source, mutation);';
           if (!source.includes(caseMarker) || !source.includes(mutationMarker)) throw new Error('Parity progress marker target is missing');
           source = source.replace(caseMarker, caseReplacement).replace(mutationMarker, mutationReplacement);
-          await writeFile(path, source);
+          await writeFile(testPath, source);
           NODE
       - run: npm run build
-      - name: Run parity with process timeout
-        run: timeout --signal=TERM --kill-after=10s 300s node --test --test-timeout=290000 packages/compiler/dist/test/selfhost-parser-parity.test.js
+      - name: Run parity shard with process timeout
+        run: timeout --signal=TERM --kill-after=10s 180s node --test --test-timeout=170000 packages/compiler/dist/test/selfhost-parser-parity.test.js
