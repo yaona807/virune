@@ -8,7 +8,7 @@ fn encoded(source: String) -> String {
 }
 
 test "frontend lexer recognizes the normative token vocabulary deterministically" {
-	let source = "pub async fn main<T>(value: Int) -> Bool uses io {\n\tlet count = 0x2a\n\tlet mask = 0b1010n\n\tlet ratio = 1_2.5e+2\n\treturn count >= 2 && value != 0 || false\n}\n"
+	let source = "pub async fn main<T>(value: Int) -> Bool uses io {\n\tlet count = 0x2a\n\tlet mask = 0b1010n\n\tlet ratio = 1_2.5e+2\n\tlet label = \"ok\"\n\treturn count >= 2 && value != 0 || label == \"ok\"\n}\n"
 	let first = encoded(source)
 	let second = encoded(source)
 	expect(first == second)
@@ -17,6 +17,7 @@ test "frontend lexer recognizes the normative token vocabulary deterministically
 	expect(String.contains(first, "\"text\":\"0x2a\""))
 	expect(String.contains(first, "\"text\":\"0b1010n\""))
 	expect(String.contains(first, "\"text\":\"1_2.5e+2\""))
+	expect(String.contains(first, "\"text\":\"\\\"ok\\\"\""))
 	expect(String.contains(first, "\"text\":\">=\""))
 	expect(String.contains(first, "\"text\":\"&&\""))
 	expect(String.contains(first, "\"text\":\"!=\""))
@@ -27,11 +28,11 @@ test "frontend lexer recognizes the normative token vocabulary deterministically
 test "frontend lexer preserves normalized documentation metadata and CRLF spans" {
 	let source = "//! Module docs\r\n\r\n/// Item docs\r\n@deprecated\r\npub fn main() -> Unit {\r\n\treturn\r\n}\r\n//// ordinary\r\n"
 	let result = encoded(source)
-	expect(String.contains(result, "\"kind\":\"ModuleDocumentation\""))
+	expect(String.contains(result, "\"tag\":\"ModuleDocumentation\""))
 	expect(String.contains(result, "\"text\":\"Module docs\""))
-	expect(String.contains(result, "\"kind\":\"DeclarationDocumentation\""))
+	expect(String.contains(result, "\"tag\":\"DeclarationDocumentation\""))
 	expect(String.contains(result, "\"text\":\"Item docs\""))
-	expect(String.contains(result, "\"kind\":\"Ordinary\""))
+	expect(String.contains(result, "\"tag\":\"Ordinary\""))
 	expect(String.contains(result, "\"text\":\"// ordinary\""))
 	expect(String.contains(result, "\"line\":3"))
 }
@@ -39,8 +40,8 @@ test "frontend lexer preserves normalized documentation metadata and CRLF spans"
 test "frontend lexer applies normative soft-line normalization" {
 	let source = "pub fn main(\n\tvalue: Int,\n) -> Int {\n\tlet first = value +\n\t\t1\n\tif first > 0 {\n\t\treturn first\n\t}\n\telse {\n\t\treturn 0\n\t}\n}\n"
 	let result = encoded(source)
-	expect(!String.contains(result, "\"text\":\"(\"" + ",\"span\"" + "BROKEN"))
 	expect(String.contains(result, "\"text\":\"else\""))
+	expect(String.contains(result, "\"tag\":\"NewLine\""))
 	expect(String.contains(result, "\"diagnostics\":[]"))
 }
 
@@ -48,7 +49,7 @@ test "frontend lexer retains the top-level generic declaration line end" {
 	let source = "pub type Box<T> = List<T>\npub fn main() -> Unit {\n\treturn\n}\n"
 	let result = encoded(source)
 	expect(String.contains(result, "\"text\":\">\""))
-	expect(String.contains(result, "\"kind\":\"NewLine\""))
+	expect(String.contains(result, "\"tag\":\"NewLine\""))
 }
 
 test "frontend lexer reports malformed literals and reserved characters" {
