@@ -1,5 +1,7 @@
 # Self-host collection type operations
 
+[日本語](self-hosting-collection-type-operations_ja.md)
+
 The collection type-operation slice runs over the canonical semantic arena produced by the self-host data-type checker. It supports structural relations for tuples, `List`, `Map`, `Set`, `Option`, and `Result`, together with `Never`／`Unknown` boundaries, optional lifting, alias transparency, common-type selection, and recursive `Eq`／`Hash`／`Json`／`Debug` capability checks.
 
 The module deliberately consumes the semantic result through the string-based JSON contract. Typed semantic implementation records remain private to their module, preventing an internal representation from becoming an accidental cross-module API. The returned operation result is also encoded through a deterministic JSON boundary.
