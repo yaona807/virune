@@ -135,7 +135,7 @@ test('missing, guarded, duplicate, and post-wildcard arms match legacy diagnosti
 	}
 });
 
-test('unknown targets and malformed arms return diagnostics instead of panicking', async () => {
+test('unknown targets and malformed or guarded unknown arms return diagnostics instead of panicking', async () => {
 	const loaded = await loadCoverageModule();
 	try {
 		const result = evaluate(loaded.module, {
@@ -143,13 +143,16 @@ test('unknown targets and malformed arms return diagnostics instead of panicking
 			checks: [
 				check('MissingType', [wildcard(71)], 70),
 				check('StatusTarget', [{ kind: 'constructor', name: null, guarded: false, span: span(73) }], 72),
+				check('StatusTarget', [constructor('Missing', 75, true)], 74),
 			],
 		});
 		assert.equal(result.accepted, false);
 		assert.ok(codes(result).includes('L2040'));
 		assert.ok(codes(result).includes('L9001'));
 		assert.equal(result.checks[0]?.targetTypeId, null);
+		assert.equal(result.checks[0]?.exhaustive, false);
 		assert.equal(result.checks[1]?.arms[0]?.reachable, false);
+		assert.equal(result.checks[2]?.arms[0]?.reachable, false);
 	} finally {
 		await rm(loaded.root, { recursive: true, force: true });
 	}
