@@ -79,7 +79,19 @@ The lambda slice emits:
 - expression bodies and block bodies through the existing Parser core;
 - detailed parenthesized lambda nodes and immediate lambda-call postfix nodes.
 
-Type-reference nesting in lambda headers is bounded. Missing header delimiters or bodies produce stable diagnostics and synchronize at the current line boundary. Nested lambdas reuse the same recursive expression path without a separate recursive object model. Closure capture semantics and remaining grammar families stay in later bounded slices before Issue #96 can close.
+Type-reference nesting in lambda headers is bounded. Missing header delimiters or bodies produce stable diagnostics and synchronize at the current line boundary. Nested lambdas reuse the same recursive expression path without a separate recursive object model.
+
+## Conditional and parallel expressions
+
+Conditional expressions are expanded directly by the Parser core. Each `ConditionalExpression` has condition, consequent, and alternate child nodes, and nested conditionals reuse the existing precedence-aware expression path.
+
+Parallel expressions emit:
+
+- `ParallelExpression` nodes for both `parallel` and `parallel try`;
+- individual `ParallelEntry` nodes with a name and expression child;
+- detailed postfix call, field, and try nodes following the closing brace.
+
+A missing entry colon synchronizes at a comma, physical line end, or the enclosing `}`. The next entry and following declarations remain parseable, and a progress guard prevents malformed entry lists from hanging the parser. Parallel execution semantics, closure capture semantics, and remaining grammar families stay in later bounded slices before Issue #96 can close.
 
 ## Documentation comments
 
@@ -101,7 +113,8 @@ The regular Stage 0 self-host tests verify:
 - detailed record, enum, newtype, type-alias, and nested type-reference nodes;
 - guarded match arms and nested pattern families;
 - sync and async lambdas, typed parameters, return types, uses clauses, both body forms, nesting, and immediate calls;
-- recovery from malformed declaration details, match arms, and lambda bodies to following functions;
+- conditional branches, parallel and parallel-try entries, and direct postfix structure;
+- recovery from malformed declaration details, match arms, lambda bodies, and parallel entries to following functions;
 - agreement with the Legacy Compiler on lexical rejection and supported-source acceptance.
 
 This work does not change the grammar, production parser, stable Compiler API, Runtime ABI, Interop ABI, or public standard library.
