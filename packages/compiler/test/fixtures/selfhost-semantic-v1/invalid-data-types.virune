@@ -1,0 +1,7 @@
+record Duplicate {}
+record Duplicate {}
+record Params<T, T> {}
+record Unknown {
+    value: Missing
+}
+type Bad = Result<Int>
