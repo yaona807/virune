@@ -128,7 +128,7 @@ test('@mustUse target and argument restrictions match legacy diagnostics', async
 			'\tvalue: Int,',
 			'}',
 			'@mustUse',
-			type InvalidAlias = Int',
+			'type InvalidAlias = Int',
 			'@mustUse',
 			'fn invalidFunction() -> Unit {',
 			'\treturn Unit',
