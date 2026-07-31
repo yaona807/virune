@@ -1,0 +1,11 @@
+{
+  "scopes": [
+    { "kind": "module", "ownerNodeId": 0, "parentScopeId": null }
+  ],
+  "symbols": [
+    { "scopeId": 0, "space": "value", "name": "entry", "sourceNodeId": 1 },
+    { "scopeId": 0, "space": "type", "name": "entry", "sourceNodeId": 2 },
+    { "scopeId": 0, "space": "value", "name": "entry", "sourceNodeId": 3 }
+  ],
+  "lookups": []
+}
