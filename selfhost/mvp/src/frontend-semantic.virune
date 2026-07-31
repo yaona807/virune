@@ -15,8 +15,10 @@ import {
 	SemanticDeclaration,
 	SemanticDiagnostic,
 	SemanticMember,
+	SemanticSpan,
 	SemanticType,
-	semanticDiagnostic,
+	semanticPosition,
+	semanticSpan,
 } from "./frontend-semantic-model.virune"
 
 record SemanticState {
@@ -39,6 +41,28 @@ record ResolvedTypes {
 record CollectedParameters {
 	names: List<String>
 	diagnostics: List<SemanticDiagnostic>
+}
+
+fn toSemanticSpan(value: ParserSpan) -> SemanticSpan {
+	return semanticSpan(
+		semanticPosition(value.start.offset, value.start.line, value.start.column),
+		semanticPosition(value.end.offset, value.end.line, value.end.column),
+	)
+}
+
+fn semanticDiagnostic(
+	code: String,
+	message: String,
+	span: ParserSpan,
+	help: String?,
+) -> SemanticDiagnostic {
+	return SemanticDiagnostic {
+		code: code,
+		severity: "error",
+		message: message,
+		span: toSemanticSpan(span),
+		help: help,
+	}
 }
 
 fn fallbackPosition() -> ParserPosition {
@@ -71,7 +95,7 @@ fn fallbackDeclaration() -> SemanticDeclaration {
 		typeParameters: [],
 		memberIds: [],
 		targetType: None,
-		span: fallbackSpan(),
+		span: toSemanticSpan(fallbackSpan()),
 	}
 }
 
@@ -128,7 +152,7 @@ fn parserSemanticDiagnostic(value: ParserDiagnostic) -> SemanticDiagnostic {
 		code: value.code,
 		severity: value.severity,
 		message: value.message,
-		span: value.span,
+		span: toSemanticSpan(value.span),
 		help: None,
 	}
 }
@@ -249,7 +273,7 @@ fn registerDeclarations(source: String, parsed: FrontendParseResult) -> Semantic
 					typeParameters: parameters.names,
 					memberIds: [],
 					targetType: None,
-					span: node.span,
+					span: toSemanticSpan(node.span),
 				}
 				state = withDeclarations(state, List.append(state.declarations, declaration))
 			}
@@ -315,7 +339,7 @@ fn appendType(
 	kind: String,
 	name: String,
 	declarationId: Int?,
-	arguments: List<Int>,
+	typeArguments: List<Int>,
 	span: ParserSpan,
 ) -> ResolvedType {
 	let id = List.length(state.types)
@@ -324,8 +348,8 @@ fn appendType(
 		kind: kind,
 		name: name,
 		declarationId: declarationId,
-		arguments: arguments,
-		span: span,
+		arguments: typeArguments,
+		span: toSemanticSpan(span),
 	}
 	return ResolvedType { state: withTypes(state, List.append(state.types, value)), id: id }
 }
@@ -352,7 +376,7 @@ fn resolveChildren(
 
 fn resolveNamed(
 	node: FrontendAstNode,
-	arguments: List<Int>,
+	typeArguments: List<Int>,
 	declaration: SemanticDeclaration,
 	stateValue: SemanticState,
 ) -> ResolvedType {
@@ -365,12 +389,12 @@ fn resolveNamed(
 			node.span,
 			Some("Declare the type, import it, or use a supported builtin type."),
 		))
-		return appendType(state, "error", node.text, None, arguments, node.span)
+		return appendType(state, "error", node.text, None, typeArguments, node.span)
 	}
-	if expected != List.length(arguments) {
+	if expected != List.length(typeArguments) {
 		state = addDiagnostic(state, semanticDiagnostic(
 			"L2041",
-			node.text + " expects " + Debug.format(expected) + " type arguments, received " + Debug.format(List.length(arguments)),
+			node.text + " expects " + Debug.format(expected) + " type arguments, received " + Debug.format(List.length(typeArguments)),
 			node.span,
 			Some("Supply exactly the declared number of type arguments."),
 		))
@@ -381,7 +405,7 @@ fn resolveNamed(
 	} else if builtinArity(node.text) >= 0 {
 		kind = "builtin"
 	}
-	return appendType(state, kind, node.text, targetDeclarationId(node.text, declaration, state), arguments, node.span)
+	return appendType(state, kind, node.text, targetDeclarationId(node.text, declaration, state), typeArguments, node.span)
 }
 
 fn resolveType(
@@ -454,7 +478,7 @@ fn addMember(
 		kind: kind,
 		name: node.text,
 		typeIds: typeIds,
-		span: node.span,
+		span: toSemanticSpan(node.span),
 	}
 	return withMembers(state, List.append(state.members, member))
 }
