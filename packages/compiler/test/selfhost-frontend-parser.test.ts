@@ -103,10 +103,12 @@ test('Stage 0 frontend parser emits a canonical flat AST and agrees with Legacy 
 test('frontend parser reports multiple diagnostics and still reaches a following declaration', async () => {
 	const loaded = await loadFrontendParser();
 	try {
-		const source = 'pub fn broken(value: Int -> Int {\n\tlet =\n\treturn\n}\npub nonsense\npub fn valid() -> Int {\n\treturn 1\n}\n';
+		const source = 'pub fn broken() -> Int {\n\tlet =\n\treturn\n}\npub nonsense\npub fn valid() -> Int {\n\treturn 1\n}\n';
 		const result = parse(loaded.module, source);
 		assert.equal(result.accepted, false);
 		assert.ok(result.diagnostics.length >= 2);
+		assert.ok(result.diagnostics.some(item => item.message === 'Expected a local binding name'));
+		assert.ok(result.diagnostics.some(item => item.message === 'Expected a declaration'));
 		assert.ok(result.nodes.some(item => item.kind === 'FunctionDeclaration' && item.text === 'valid'));
 	} finally {
 		await rm(loaded.root, { recursive: true, force: true });
