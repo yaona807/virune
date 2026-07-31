@@ -36,10 +36,21 @@ Parser coreは検証済みLexer JSONを読み取り、canonicalなflat AST arena
 - `let`、`return`、`discard`、`defer`、assignment、loop、conditional statement構造
 - precedenceを考慮したbinary expression
 - unary、call、field、try、record update postfix構造
-- declaration bodyと複雑なexpression form向けのbalanced transport node
 - malformed input向けのdepth limitとnewline／declaration synchronization
 
-このcoreは拡張基盤です。Record field、enum variant、pattern、lambda内部、全type-reference formは、Issue #96を完了する前に後続の限定Parser変更で詳細nodeへ展開します。
+## 詳細declarationとtype
+
+Record、enum、newtype、type aliasは、独立したVirune製Parser moduleで詳細ASTへ展開します。返却nodeはabsolute IDを用いて既存arenaへ統合するため、統合後も全child referenceが有効です。
+
+詳細declaration sliceは次のnodeを生成します。
+
+- `TypeParameters`と`TypeParameter`
+- `RecordBody`と個別の`RecordField`
+- `EnumBody`とpayload typeをchildに持つ個別の`EnumVariant`
+- newtype／type aliasのunderlying type child
+- named、generic、tuple、function、list、optional type reference
+
+Malformedなfield、variant、generic argument、underlying typeは安定したParser diagnosticを生成し、後続declarationへの進行を維持します。Pattern、lambda内部、残るgrammar familyはIssue #96を完了する前の後続sliceで扱います。
 
 ## Documentation comment
 
@@ -58,7 +69,8 @@ Parserはmodule documentationをmodule nodeへ、declaration documentationを対
 - soft-line normalization
 - malformed literalと予約文字のdiagnostic
 - flat arenaのID／child reference整合性
-- malformed input後のdeclarationまで到達するParser recovery
+- record、enum、newtype、type alias、nested type-referenceの詳細node
+- malformed declaration detailから後続functionまでのrecovery
 - lexical rejectionと対応済みsource acceptanceのLegacy Compilerとの一致
 
 この作業ではgrammar、Production Parser、stable Compiler API、Runtime ABI、Interop ABI、公開standard libraryを変更しません。
