@@ -11,7 +11,10 @@ import {
 	FrontendTokenKind,
 } from "./frontend-model.virune"
 import { lexFrontendJson } from "./frontend-lexer.virune"
-import { parseDetailedDeclarationJson } from "./frontend-declaration-parser.virune"
+import {
+	parseDetailedDeclarationJson,
+	parseTypeReferenceJson,
+} from "./frontend-declaration-parser.virune"
 import { parseLambdaHeaderJson } from "./frontend-lambda-parser.virune"
 import { parsePatternJson } from "./frontend-pattern-parser.virune"
 import {
@@ -1333,6 +1336,60 @@ fn parseBlock(stateValue: CoreState, tokens: List<FrontendToken>) -> ParsedNode 
 	return addNode(state, tokens, "Block", "", start, state.index, children, [])
 }
 
+fn loadTypeReference(
+	state: CoreState,
+	tokens: List<FrontendToken>,
+) -> Result<DetailedDeclarationTransport, List<JsonError>> {
+	let tokensEncoded = Json.encode<List<FrontendToken>>(tokens)?
+	let encoded = parseTypeReferenceJson(
+		tokensEncoded,
+		state.index,
+		List.length(state.nodes),
+	)?
+	let raw = Json.parse(encoded)?
+	return Json.decode<DetailedDeclarationTransport>(raw)
+}
+
+fn mergeTypeReference(
+	stateValue: CoreState,
+	value: DetailedDeclarationTransport,
+) -> ParsedNode {
+	let state = CoreState {
+		index: value.nextIndex,
+		nodes: List.concat(stateValue.nodes, value.nodes),
+		diagnostics: List.concat(stateValue.diagnostics, value.diagnostics),
+		commentIndex: stateValue.commentIndex,
+		pendingDocumentation: stateValue.pendingDocumentation,
+		moduleDocumentation: stateValue.moduleDocumentation,
+		significantSeen: stateValue.significantSeen,
+	}
+	return ParsedNode { state: state, id: value.root }
+}
+
+fn typeReferenceFailure(
+	stateValue: CoreState,
+	tokens: List<FrontendToken>,
+) -> ParsedNode {
+	let failed = addDiagnosticAt(
+		stateValue,
+		tokens,
+		"P9003",
+		"Type reference parser transport failed",
+		stateValue.index,
+	)
+	return ParsedNode { state: failed, id: -1 }
+}
+
+fn parseTypeReferenceNode(
+	stateValue: CoreState,
+	tokens: List<FrontendToken>,
+) -> ParsedNode {
+	return match loadTypeReference(stateValue, tokens) {
+		Ok(value) => mergeTypeReference(stateValue, value)
+		Err(_) => typeReferenceFailure(stateValue, tokens)
+	}
+}
+
 fn parseStatement(stateValue: CoreState, tokens: List<FrontendToken>) -> ParsedNode {
 	let mut state = stateValue
 	let start = state.index
@@ -1344,19 +1401,38 @@ fn parseStatement(stateValue: CoreState, tokens: List<FrontendToken>) -> ParsedN
 	}
 	if text == "let" {
 		state = advance(state)
-		if isText(state, tokens, "mut") {
+		let mutable = isText(state, tokens, "mut")
+		if mutable {
 			state = advance(state)
 		}
-		if currentKind(state, tokens) == FrontendTokenKind.Identifier {
+		let bindingStart = state.index
+		let validName = currentKind(state, tokens) == FrontendTokenKind.Identifier
+		let name = if validName then currentText(state, tokens) else ""
+		if validName {
 			state = advance(state)
 		} else {
 			state = addDiagnosticAt(state, tokens, "P0001", "Expected a local binding name", state.index)
 		}
-		while !atEnd(state, tokens)
-			&& currentKind(state, tokens) != FrontendTokenKind.NewLine
-			&& !isText(state, tokens, "=") {
-			state = advance(state)
+		let mut bindingChildren: List<Int> = []
+		if isText(state, tokens, ":") {
+			let annotation = parseTypeReferenceNode(advance(state), tokens)
+			state = annotation.state
+			if annotation.id >= 0 {
+				bindingChildren = List.append(bindingChildren, annotation.id)
+			}
 		}
+		let bindingText = if mutable then "mut " + name else name
+		let binding = addNode(
+			state,
+			tokens,
+			"LetBinding",
+			bindingText,
+			bindingStart,
+			state.index,
+			bindingChildren,
+			[],
+		)
+		state = binding.state
 		if isText(state, tokens, "=") {
 			state = advance(state)
 		} else {
@@ -1364,68 +1440,117 @@ fn parseStatement(stateValue: CoreState, tokens: List<FrontendToken>) -> ParsedN
 		}
 		let expression = parseExpression(state, tokens, 1, false)
 		state = consumeLineEnd(expression.state, tokens, "a let statement")
-		let mut children: List<Int> = []
-if expression.id >= 0 {
-    children = List.append(children, expression.id)
-}
+		let mut children: List<Int> = [binding.id]
+		if expression.id >= 0 {
+			children = List.append(children, expression.id)
+		}
 		return addNode(state, tokens, "LetStatement", "let", start, state.index, children, [])
 	}
 	if text == "return" || text == "discard" || text == "defer" {
 		state = advance(state)
 		let mut children: List<Int> = []
-		if currentKind(state, tokens) != FrontendTokenKind.NewLine
+		let hasValue = currentKind(state, tokens) != FrontendTokenKind.NewLine
 			&& !atEnd(state, tokens)
-			&& !isText(state, tokens, "}") {
+			&& !isText(state, tokens, "}")
+		if hasValue {
 			let expression = parseExpression(state, tokens, 1, false)
 			state = expression.state
 			if expression.id >= 0 {
 				children = List.append(children, expression.id)
 			}
+		} else if text != "return" {
+			state = addDiagnosticAt(state, tokens, "P0001", "Expected an expression after " + text, state.index)
 		}
 		state = consumeLineEnd(state, tokens, text)
 		let kind = if text == "return" then "ReturnStatement" else if text == "discard" then "DiscardStatement" else "DeferStatement"
 		return addNode(state, tokens, kind, text, start, state.index, children, [])
 	}
-	if text == "if" || text == "while" || text == "for" {
-		state = advance(state)
-		if text == "for" {
-			if currentKind(state, tokens) == FrontendTokenKind.Identifier {
-				state = advance(state)
-			} else {
-				state = addDiagnosticAt(state, tokens, "P0001", "Expected a loop binding", state.index)
-			}
-			if isText(state, tokens, "in") {
-				state = advance(state)
-			} else {
-				state = addDiagnosticAt(state, tokens, "P0001", "Expected in in a for statement", state.index)
-			}
-		}
-		let condition = parseExpression(state, tokens, 1, true)
+	if text == "if" {
+		let condition = parseExpression(advance(state), tokens, 1, true)
 		state = condition.state
 		let body = parseBlock(state, tokens)
 		state = body.state
-		let mut children = [condition.id, body.id]
-		if text == "if" && isText(state, tokens, "else") {
+		let mut children: List<Int> = []
+		if condition.id >= 0 {
+			children = List.append(children, condition.id)
+		}
+		children = List.append(children, body.id)
+		if isText(state, tokens, "else") {
 			state = advance(state)
 			if isText(state, tokens, "if") {
 				let alternative = parseStatement(state, tokens)
 				state = alternative.state
-				children = List.append(children, alternative.id)
+				if alternative.id >= 0 {
+					children = List.append(children, alternative.id)
+				}
 			} else {
 				let alternative = parseBlock(state, tokens)
 				state = alternative.state
 				children = List.append(children, alternative.id)
 			}
 		}
-		let kind = if text == "if" then "IfStatement" else if text == "while" then "WhileStatement" else "ForStatement"
-		return addNode(state, tokens, kind, text, start, state.index, children, [])
+		return addNode(state, tokens, "IfStatement", "if", start, state.index, children, [])
+	}
+	if text == "while" {
+		let condition = parseExpression(advance(state), tokens, 1, true)
+		state = condition.state
+		let body = parseBlock(state, tokens)
+		state = body.state
+		let mut children: List<Int> = []
+		if condition.id >= 0 {
+			children = List.append(children, condition.id)
+		}
+		children = List.append(children, body.id)
+		return addNode(state, tokens, "WhileStatement", "while", start, state.index, children, [])
+	}
+	if text == "for" {
+		state = advance(state)
+		let bindingStart = state.index
+		let validName = currentKind(state, tokens) == FrontendTokenKind.Identifier
+		let name = if validName then currentText(state, tokens) else ""
+		if validName {
+			state = advance(state)
+		} else {
+			state = addDiagnosticAt(state, tokens, "P0001", "Expected a loop binding", state.index)
+		}
+		let binding = addNode(state, tokens, "ForBinding", name, bindingStart, state.index, [], [])
+		state = binding.state
+		if isText(state, tokens, "in") {
+			state = advance(state)
+		} else {
+			state = addDiagnosticAt(state, tokens, "P0001", "Expected in in a for statement", state.index)
+		}
+		let iterable = parseExpression(state, tokens, 1, true)
+		state = iterable.state
+		let body = parseBlock(state, tokens)
+		state = body.state
+		let mut children: List<Int> = [binding.id]
+		if iterable.id >= 0 {
+			children = List.append(children, iterable.id)
+		}
+		children = List.append(children, body.id)
+		return addNode(state, tokens, "ForStatement", "for", start, state.index, children, [])
+	}
+	if currentKind(state, tokens) == FrontendTokenKind.Identifier
+		&& tokenAt(tokens, state.index + 1).text == "=" {
+		let targetName = currentText(state, tokens)
+		let target = addNode(advance(state), tokens, "AssignmentTarget", targetName, start, start + 1, [], [])
+		state = target.state
+		state = advance(state)
+		let value = parseExpression(state, tokens, 1, false)
+		state = consumeLineEnd(value.state, tokens, "an assignment statement")
+		let mut children: List<Int> = [target.id]
+		if value.id >= 0 {
+			children = List.append(children, value.id)
+		}
+		return addNode(state, tokens, "AssignmentStatement", "=", start, state.index, children, [])
 	}
 	let expression = parseExpression(state, tokens, 1, false)
 	state = consumeLineEnd(expression.state, tokens, "an expression statement")
 	let mut children: List<Int> = []
-if expression.id >= 0 {
-    children = List.append(children, expression.id)
-}
+	if expression.id >= 0 {
+		children = List.append(children, expression.id)
+	}
 	return addNode(state, tokens, "ExpressionStatement", "", start, state.index, children, [])
 }
 
