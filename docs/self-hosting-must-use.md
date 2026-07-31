@@ -36,7 +36,7 @@ The contract accepts an explicit disposition for each canonical type handle:
 
 A must-use value with the `expression` disposition produces `L2097`. The other five dispositions are explicit consumption. Unknown dispositions produce bounded `L9001` diagnostics, and unknown type handles produce `L2040` instead of panicking.
 
-The result returns the canonical type ID, classification reason, consumption decision, annotated declaration IDs, and diagnostics. Repeating the same request must serialize identically.
+The result returns the canonical type ID, classification reason, consumption decision, annotated declaration IDs, and diagnostics. Repeating the same request must serialize identically. Only the string-based JSON adapter is public; parser, semantic, request, and result records remain module-private at this stage boundary.
 
 ## Validation
 
