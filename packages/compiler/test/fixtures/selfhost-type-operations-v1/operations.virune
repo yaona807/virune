@@ -1,0 +1,17 @@
+pub newtype UserId = Int
+pub type IntType = Int
+pub type IntAlias = IntType
+pub type StringType = String
+pub type FloatType = Float
+pub type NeverType = Never
+pub type UnknownType = Unknown
+pub type IntList = List<Int>
+pub type IntListAgain = List<Int>
+pub type StringList = List<String>
+pub type MaybeInt = Int?
+pub type IntSet = Set<Int>
+pub type StringIntMap = Map<String, Int>
+pub type IntStringMap = Map<Int, String>
+pub type Pair = (Int, String)
+pub type Outcome = Result<Int, String>
+pub type UserIdRef = UserId
