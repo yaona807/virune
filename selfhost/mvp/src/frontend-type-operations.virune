@@ -632,9 +632,7 @@ pub fn checkFrontendTypeOperations(request: FrontendTypeOperationsRequest) -> Re
 				ids = List.append(ids, lookup.id)
 			}
 		}
-		let computed = if valid
-			then commonType(ids, semantics, diagnostics)
-			else CommonTypeValue { id: -1, diagnostics: diagnostics }
+		let computed = if valid then commonType(ids, semantics, diagnostics) else CommonTypeValue { id: -1, diagnostics: diagnostics }
 		diagnostics = computed.diagnostics
 		commonTypes = List.append(commonTypes, SemanticCommonTypeResult {
 			types: commonRequest.types,
