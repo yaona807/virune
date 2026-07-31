@@ -1,0 +1,14 @@
+{
+  "nodes": [
+    { "kind": "block", "children": [0], "expressionType": null, "condition": null },
+    { "kind": "if", "children": [], "expressionType": null, "condition": null },
+    { "kind": "while", "children": [3], "expressionType": null, "condition": "true" },
+    { "kind": "noop", "children": [], "expressionType": null, "condition": null },
+    { "kind": "mystery", "children": [], "expressionType": null, "condition": null }
+  ],
+  "functions": [
+    { "name": "duplicate", "returnType": "Int", "bodyNodeId": 0 },
+    { "name": "duplicate", "returnType": "Int", "bodyNodeId": 1 },
+    { "name": "", "returnType": "Unit", "bodyNodeId": 99 }
+  ]
+}
