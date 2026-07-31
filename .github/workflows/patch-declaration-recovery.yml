@@ -1,0 +1,87 @@
+name: Patch declaration recovery
+
+on:
+  push:
+    branches:
+      - agent/selfhost-declaration-type-ast
+    paths:
+      - .github/workflows/patch-declaration-recovery.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: agent/selfhost-declaration-type-ast
+          fetch-depth: 0
+      - name: Bound malformed enum payload recovery
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('selfhost/mvp/src/frontend-declaration-parser.virune')
+          content = path.read_text(encoding='utf-8')
+          old = '''\t\tif isText(state, tokens, "(") {
+          \t\t\tstate = skipNewLines(advance(state), tokens)
+          \t\t\twhile !atEnd(state, tokens) && !isText(state, tokens, ")") {
+          \t\t\t\tlet payloadType = parseTypeReference(state, tokens)
+          \t\t\t\tstate = payloadType.state
+          \t\t\t\tif payloadType.id >= 0 {
+          \t\t\t\t\tpayload = List.append(payload, payloadType.id)
+          \t\t\t\t}
+          \t\t\t\tif isText(state, tokens, ",") {
+          \t\t\t\t\tstate = skipNewLines(advance(state), tokens)
+          \t\t\t\t} else if !isText(state, tokens, ")") {
+          \t\t\t\t\tstate = addDiagnostic(state, tokens, "Expected , or ) in an enum payload")
+          \t\t\t\t\tif !atEnd(state, tokens) {
+          \t\t\t\t\t\tstate = advance(state)
+          \t\t\t\t\t}
+          \t\t\t\t}
+          \t\t\t}
+          \t\t\tstate = consumeExpected(state, tokens, ")", "after an enum payload")
+          \t\t}'''
+          new = '''\t\tif isText(state, tokens, "(") {
+          \t\t\tstate = advance(state)
+          \t\t\twhile !atEnd(state, tokens)
+          \t\t\t\t&& tokenAt(tokens, state.index).kind != FrontendTokenKind.NewLine
+          \t\t\t\t&& !isText(state, tokens, ")")
+          \t\t\t\t&& !isText(state, tokens, "}") {
+          \t\t\t\tlet before = state.index
+          \t\t\t\tlet payloadType = parseTypeReference(state, tokens)
+          \t\t\t\tstate = payloadType.state
+          \t\t\t\tif payloadType.id >= 0 {
+          \t\t\t\t\tpayload = List.append(payload, payloadType.id)
+          \t\t\t\t}
+          \t\t\t\tif isText(state, tokens, ",") {
+          \t\t\t\t\tstate = advance(state)
+          \t\t\t\t} else if !isText(state, tokens, ")")
+          \t\t\t\t\t&& tokenAt(tokens, state.index).kind != FrontendTokenKind.NewLine
+          \t\t\t\t\t&& !isText(state, tokens, "}") {
+          \t\t\t\t\tstate = addDiagnostic(state, tokens, "Expected , or ) in an enum payload")
+          \t\t\t\t\tif state.index <= before && !atEnd(state, tokens) {
+          \t\t\t\t\t\tstate = advance(state)
+          \t\t\t\t\t}
+          \t\t\t\t}
+          \t\t\t}
+          \t\t\tif isText(state, tokens, ")") {
+          \t\t\t\tstate = advance(state)
+          \t\t\t} else {
+          \t\t\t\tstate = addDiagnostic(state, tokens, "Expected ) after an enum payload")
+          \t\t\t}
+          \t\t}'''
+          if content.count(old) != 1:
+              raise SystemExit(f'replacement count: {content.count(old)}')
+          path.write_text(content.replace(old, new), encoding='utf-8')
+          PY
+      - name: Commit patch and remove helper workflow
+        run: |
+          git rm .github/workflows/patch-declaration-recovery.yml
+          git add selfhost/mvp/src/frontend-declaration-parser.virune
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git commit -m "fix(selfhost): bound malformed enum payload recovery"
+          git push origin HEAD:agent/selfhost-declaration-type-ast
