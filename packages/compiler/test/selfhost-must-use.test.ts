@@ -69,7 +69,8 @@ test('local must-use declarations and consumed values are canonical and determin
 				value('TokenAlias', 'await', 23),
 				value('TokenAlias2', 'handle', 24),
 				value('ResultAlias', 'bind', 25),
-				value('Plain', 'expression', 26),
+				value('Result', 'handle', 26),
+				value('Plain', 'expression', 27),
 			],
 		};
 		const first = evaluate(loaded.module, request);
@@ -85,6 +86,7 @@ test('local must-use declarations and consumed values are canonical and determin
 		assert.deepEqual(classification(first, 'TokenAlias'), [true, 'alias', true]);
 		assert.deepEqual(classification(first, 'TokenAlias2'), [true, 'alias', true]);
 		assert.deepEqual(classification(first, 'ResultAlias'), [true, 'alias', true]);
+		assert.deepEqual(classification(first, 'Result'), [true, 'result', true]);
 		assert.deepEqual(classification(first, 'Plain'), [false, 'ordinary', false]);
 		validateReferences(first);
 	} finally {
@@ -126,7 +128,7 @@ test('@mustUse target and argument restrictions match legacy diagnostics', async
 			'\tvalue: Int,',
 			'}',
 			'@mustUse',
-			'type InvalidAlias = Int',
+			type InvalidAlias = Int',
 			'@mustUse',
 			'fn invalidFunction() -> Unit {',
 			'\treturn Unit',
