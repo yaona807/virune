@@ -515,8 +515,8 @@ fn parsePrimary(stateValue: CoreState, tokens: List<FrontendToken>, stopAtBrace:
 	let mut done = false
 	while !done && !expressionStop(state, tokens, stopAtBrace) {
 		if isText(state, tokens, "(") {
-			let arguments = consumeBalanced(state, tokens, "(", ")", "CallArguments")
-			state = arguments.state
+			let callArguments = consumeBalanced(state, tokens, "(", ")", "CallArguments")
+			state = callArguments.state
 			let call = addNode(
 				state,
 				tokens,
@@ -524,7 +524,7 @@ fn parsePrimary(stateValue: CoreState, tokens: List<FrontendToken>, stopAtBrace:
 				"call",
 				start,
 				state.index,
-				[valueId, arguments.id],
+				[valueId, callArguments.id],
 				[],
 			)
 			state = call.state
