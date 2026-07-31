@@ -1,0 +1,450 @@
+//! Canonical Virune 1.0 lambda-header parser for the self-host frontend.
+
+import {
+	FrontendPosition,
+	FrontendSpan,
+	FrontendToken,
+	FrontendTokenKind,
+} from "./frontend-model.virune"
+import {
+	FrontendAstNode,
+	ParserDiagnostic,
+	ParserPosition,
+	ParserSpan,
+	frontendAstNode,
+	parserDiagnostic,
+	parserPosition,
+	parserSpan,
+} from "./frontend-parser-model.virune"
+
+record LambdaState {
+	index: Int
+	baseId: Int
+	nodes: List<FrontendAstNode>
+	diagnostics: List<ParserDiagnostic>
+}
+
+record ParsedLambdaDetail {
+	state: LambdaState
+	id: Int
+}
+
+record LambdaHeaderTransport derives Json {
+	nextIndex: Int
+	nodes: List<FrontendAstNode>
+	diagnostics: List<ParserDiagnostic>
+	children: List<Int>
+	isAsync: Bool
+}
+
+fn fallbackPosition() -> FrontendPosition {
+	return FrontendPosition { offset: 0, line: 1, column: 1 }
+}
+
+fn fallbackSpan() -> FrontendSpan {
+	let value = fallbackPosition()
+	return FrontendSpan { start: value, end: value }
+}
+
+fn fallbackToken() -> FrontendToken {
+	return FrontendToken {
+		kind: FrontendTokenKind.EndOfFile,
+		text: "",
+		span: fallbackSpan(),
+	}
+}
+
+fn tokenAt(tokens: List<FrontendToken>, index: Int) -> FrontendToken {
+	return match List.get(tokens, index) {
+		Some(value) => value
+		None => fallbackToken()
+	}
+}
+
+fn convertPosition(value: FrontendPosition) -> ParserPosition {
+	return parserPosition(value.offset, value.line, value.column)
+}
+
+fn convertSpan(value: FrontendSpan) -> ParserSpan {
+	return parserSpan(convertPosition(value.start), convertPosition(value.end))
+}
+
+fn spanBetween(tokens: List<FrontendToken>, startIndex: Int, endIndex: Int) -> ParserSpan {
+	let first = tokenAt(tokens, startIndex)
+	let last = if endIndex > startIndex then tokenAt(tokens, endIndex - 1) else first
+	return parserSpan(convertPosition(first.span.start), convertPosition(last.span.end))
+}
+
+fn withIndex(state: LambdaState, index: Int) -> LambdaState {
+	return LambdaState {
+		index: index,
+		baseId: state.baseId,
+		nodes: state.nodes,
+		diagnostics: state.diagnostics,
+	}
+}
+
+fn withNodes(state: LambdaState, nodes: List<FrontendAstNode>) -> LambdaState {
+	return LambdaState {
+		index: state.index,
+		baseId: state.baseId,
+		nodes: nodes,
+		diagnostics: state.diagnostics,
+	}
+}
+
+fn withDiagnostics(state: LambdaState, diagnostics: List<ParserDiagnostic>) -> LambdaState {
+	return LambdaState {
+		index: state.index,
+		baseId: state.baseId,
+		nodes: state.nodes,
+		diagnostics: diagnostics,
+	}
+}
+
+fn advance(state: LambdaState) -> LambdaState {
+	return withIndex(state, state.index + 1)
+}
+
+fn atEnd(state: LambdaState, tokens: List<FrontendToken>) -> Bool {
+	return tokenAt(tokens, state.index).kind == FrontendTokenKind.EndOfFile
+}
+
+fn isText(state: LambdaState, tokens: List<FrontendToken>, text: String) -> Bool {
+	return tokenAt(tokens, state.index).text == text
+}
+
+fn skipNewLines(stateValue: LambdaState, tokens: List<FrontendToken>) -> LambdaState {
+	let mut state = stateValue
+	while tokenAt(tokens, state.index).kind == FrontendTokenKind.NewLine {
+		state = advance(state)
+	}
+	return state
+}
+
+fn addDiagnostic(state: LambdaState, tokens: List<FrontendToken>, message: String) -> LambdaState {
+	let value = tokenAt(tokens, state.index)
+	let diagnostic = parserDiagnostic("P0001", message, convertSpan(value.span))
+	return withDiagnostics(state, List.append(state.diagnostics, diagnostic))
+}
+
+fn addNode(
+	state: LambdaState,
+	tokens: List<FrontendToken>,
+	kind: String,
+	text: String,
+	startIndex: Int,
+	endIndex: Int,
+	children: List<Int>,
+) -> ParsedLambdaDetail {
+	let id = state.baseId + List.length(state.nodes)
+	let node = frontendAstNode(
+		id,
+		kind,
+		text,
+		spanBetween(tokens, startIndex, endIndex),
+		children,
+		[],
+	)
+	return ParsedLambdaDetail {
+		state: withNodes(state, List.append(state.nodes, node)),
+		id: id,
+	}
+}
+
+fn consumeExpected(
+	stateValue: LambdaState,
+	tokens: List<FrontendToken>,
+	text: String,
+	context: String,
+) -> LambdaState {
+	let mut state = stateValue
+	if isText(state, tokens, text) {
+		return advance(state)
+	}
+	state = addDiagnostic(state, tokens, "Expected " + text + " " + context)
+	return state
+}
+
+fn parseTypeReference(stateValue: LambdaState, tokens: List<FrontendToken>, depth: Int) -> ParsedLambdaDetail {
+	let start = stateValue.index
+	let primary = parseTypePrimary(stateValue, tokens, depth)
+	let mut state = primary.state
+	let mut rootId = primary.id
+	while rootId >= 0 && isText(state, tokens, "?") {
+		state = advance(state)
+		let optional = addNode(
+			state,
+			tokens,
+			"OptionalTypeReference",
+			"?",
+			start,
+			state.index,
+			[rootId],
+		)
+		state = optional.state
+		rootId = optional.id
+	}
+	return ParsedLambdaDetail { state: state, id: rootId }
+}
+
+fn parseTypeList(
+	stateValue: LambdaState,
+	tokens: List<FrontendToken>,
+	close: String,
+	depth: Int,
+) -> ParsedLambdaDetail {
+	let start = stateValue.index
+	let mut state = skipNewLines(advance(stateValue), tokens)
+	let mut children: List<Int> = []
+	while !atEnd(state, tokens) && !isText(state, tokens, close) {
+		let before = state.index
+		let item = parseTypeReference(state, tokens, depth + 1)
+		state = item.state
+		if item.id >= 0 {
+			children = List.append(children, item.id)
+		}
+		if isText(state, tokens, ",") {
+			state = skipNewLines(advance(state), tokens)
+		} else if !isText(state, tokens, close) {
+			state = addDiagnostic(state, tokens, "Expected , or " + close + " in a type list")
+			if state.index <= before && !atEnd(state, tokens) {
+				state = advance(state)
+			}
+		}
+	}
+	state = consumeExpected(state, tokens, close, "after a type list")
+	return addNode(state, tokens, "TypeList", close, start, state.index, children)
+}
+
+fn parseFunctionType(
+	stateValue: LambdaState,
+	tokens: List<FrontendToken>,
+	depth: Int,
+) -> ParsedLambdaDetail {
+	let start = stateValue.index
+	let mut state = stateValue
+	let mut text = "fn"
+	if isText(state, tokens, "async") {
+		text = "async fn"
+		state = advance(state)
+	}
+	state = consumeExpected(state, tokens, "fn", "in a function type")
+	if isText(state, tokens, "(") {
+		let parameters = parseTypeList(state, tokens, ")", depth + 1)
+		state = parameters.state
+		let mut children: List<Int> = [parameters.id]
+		state = consumeExpected(state, tokens, "->", "after function-type parameters")
+		let resultType = parseTypeReference(state, tokens, depth + 1)
+		state = resultType.state
+		if resultType.id >= 0 {
+			children = List.append(children, resultType.id)
+		}
+		let uses = parseUsesClause(state, tokens)
+		state = uses.state
+		if uses.id >= 0 {
+			children = List.append(children, uses.id)
+		}
+		return addNode(state, tokens, "FunctionTypeReference", text, start, state.index, children)
+	}
+	state = addDiagnostic(state, tokens, "Expected ( in a function type")
+	return addNode(state, tokens, "FunctionTypeReference", text, start, state.index, [])
+}
+
+fn parseTypePrimary(stateValue: LambdaState, tokens: List<FrontendToken>, depth: Int) -> ParsedLambdaDetail {
+	let mut state = stateValue
+	let start = state.index
+	if depth > 64 {
+		state = addDiagnostic(state, tokens, "Type-reference nesting exceeds the supported depth")
+		return ParsedLambdaDetail { state: state, id: -1 }
+	}
+	let value = tokenAt(tokens, state.index)
+	if value.text == "async" && tokenAt(tokens, state.index + 1).text == "fn" {
+		return parseFunctionType(state, tokens, depth)
+	}
+	if value.text == "fn" {
+		return parseFunctionType(state, tokens, depth)
+	}
+	if value.text == "[" {
+		state = advance(state)
+		let element = parseTypeReference(state, tokens, depth + 1)
+		state = element.state
+		state = consumeExpected(state, tokens, "]", "after a list type")
+		let mut children: List<Int> = []
+		if element.id >= 0 {
+			children = List.append(children, element.id)
+		}
+		return addNode(state, tokens, "ListTypeReference", "[]", start, state.index, children)
+	}
+	if value.text == "(" {
+		let tuple = parseTypeList(state, tokens, ")", depth + 1)
+		state = tuple.state
+		return addNode(
+			state,
+			tokens,
+			"TupleTypeReference",
+			"()",
+			start,
+			state.index,
+			tuple.state.nodes |> List.length |> fn(_) => [tuple.id],
+		)
+	}
+	if value.kind != FrontendTokenKind.Identifier && value.kind != FrontendTokenKind.Keyword {
+		state = addDiagnostic(state, tokens, "Expected a type reference")
+		if !atEnd(state, tokens) {
+			state = advance(state)
+		}
+		return ParsedLambdaDetail { state: state, id: -1 }
+	}
+	state = advance(state)
+	let named = addNode(state, tokens, "NamedTypeReference", value.text, start, state.index, [])
+	state = named.state
+	let mut rootId = named.id
+	if isText(state, tokens, "<") {
+		let arguments = parseTypeList(state, tokens, ">", depth + 1)
+		state = arguments.state
+		let generic = addNode(
+			state,
+			tokens,
+			"GenericTypeReference",
+			value.text,
+			start,
+			state.index,
+			[named.id, arguments.id],
+		)
+		state = generic.state
+		rootId = generic.id
+	}
+	return ParsedLambdaDetail { state: state, id: rootId }
+}
+
+fn parseUsesClause(stateValue: LambdaState, tokens: List<FrontendToken>) -> ParsedLambdaDetail {
+	let start = stateValue.index
+	let mut state = stateValue
+	let mut children: List<Int> = []
+	if !isText(state, tokens, "uses") {
+		return ParsedLambdaDetail { state: state, id: -1 }
+	}
+	state = advance(state)
+	let mut done = false
+	while !atEnd(state, tokens) && !done {
+		let value = tokenAt(tokens, state.index)
+		if value.kind == FrontendTokenKind.Identifier || value.text == "*" {
+			state = advance(state)
+			let effect = addNode(state, tokens, "EffectName", value.text, state.index - 1, state.index, [])
+			state = effect.state
+			children = List.append(children, effect.id)
+		} else {
+			state = addDiagnostic(state, tokens, "Expected an effect name after uses")
+			done = true
+		}
+		if isText(state, tokens, ",") {
+			state = advance(state)
+		} else {
+			done = true
+		}
+	}
+	return addNode(state, tokens, "UsesClause", "uses", start, state.index, children)
+}
+
+fn parseLambdaParameter(stateValue: LambdaState, tokens: List<FrontendToken>) -> ParsedLambdaDetail {
+	let start = stateValue.index
+	let mut state = stateValue
+	let name = tokenAt(tokens, state.index).text
+	if tokenAt(tokens, state.index).kind == FrontendTokenKind.Identifier {
+		state = advance(state)
+	} else {
+		state = addDiagnostic(state, tokens, "Expected a lambda parameter name")
+		if !atEnd(state, tokens) {
+			state = advance(state)
+		}
+	}
+	let mut children: List<Int> = []
+	if isText(state, tokens, ":") {
+		let parameterType = parseTypeReference(advance(state), tokens, 0)
+		state = parameterType.state
+		if parameterType.id >= 0 {
+			children = List.append(children, parameterType.id)
+		}
+	}
+	return addNode(state, tokens, "LambdaParameter", name, start, state.index, children)
+}
+
+fn parseLambdaParameters(stateValue: LambdaState, tokens: List<FrontendToken>) -> ParsedLambdaDetail {
+	let start = stateValue.index
+	let mut state = consumeExpected(stateValue, tokens, "(", "to begin lambda parameters")
+	state = skipNewLines(state, tokens)
+	let mut children: List<Int> = []
+	while !atEnd(state, tokens) && !isText(state, tokens, ")") {
+		let before = state.index
+		let parameter = parseLambdaParameter(state, tokens)
+		state = parameter.state
+		if parameter.id >= 0 {
+			children = List.append(children, parameter.id)
+		}
+		if isText(state, tokens, ",") {
+			state = skipNewLines(advance(state), tokens)
+		} else if !isText(state, tokens, ")") {
+			state = addDiagnostic(state, tokens, "Expected , or ) after a lambda parameter")
+			if state.index <= before && !atEnd(state, tokens) {
+				state = advance(state)
+			}
+		}
+	}
+	state = consumeExpected(state, tokens, ")", "after lambda parameters")
+	return addNode(state, tokens, "LambdaParameters", "()", start, state.index, children)
+}
+
+fn parseLambdaHeader(
+	tokens: List<FrontendToken>,
+	startIndex: Int,
+	baseId: Int,
+) -> LambdaHeaderTransport {
+	let mut state = LambdaState {
+		index: startIndex,
+		baseId: baseId,
+		nodes: [],
+		diagnostics: [],
+	}
+	let mut asyncValue = false
+	if isText(state, tokens, "async") {
+		asyncValue = true
+		state = advance(state)
+	}
+	state = consumeExpected(state, tokens, "fn", "to begin a lambda")
+	let parameters = parseLambdaParameters(state, tokens)
+	state = parameters.state
+	let mut children: List<Int> = [parameters.id]
+	if isText(state, tokens, "->") {
+		let returnType = parseTypeReference(advance(state), tokens, 0)
+		state = returnType.state
+		if returnType.id >= 0 {
+			children = List.append(children, returnType.id)
+		}
+	}
+	let uses = parseUsesClause(state, tokens)
+	state = uses.state
+	if uses.id >= 0 {
+		children = List.append(children, uses.id)
+	}
+	if !isText(state, tokens, "=>") && !isText(state, tokens, "{") {
+		state = addDiagnostic(state, tokens, "Expected => or { after a lambda header")
+	}
+	return LambdaHeaderTransport {
+		nextIndex: state.index,
+		nodes: state.nodes,
+		diagnostics: state.diagnostics,
+		children: children,
+		isAsync: asyncValue,
+	}
+}
+
+pub fn parseLambdaHeaderJson(
+	tokensEncoded: String,
+	startIndex: Int,
+	baseId: Int,
+) -> Result<String, List<JsonError>> {
+	let tokensRaw = Json.parse(tokensEncoded)?
+	let tokens = Json.decode<List<FrontendToken>>(tokensRaw)?
+	return Json.encode<LambdaHeaderTransport>(parseLambdaHeader(tokens, startIndex, baseId))
+}
