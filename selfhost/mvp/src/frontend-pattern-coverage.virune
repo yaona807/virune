@@ -454,31 +454,39 @@ fn buildCoverage(
 				Some("Use wildcard, constructor, boolean, or literal with the required name."),
 			))
 			reachable = false
-		} else if !arm.guarded {
-			if containsString(seen, keyValue) {
-				diagnostics = List.append(diagnostics, patternError(
-					"L3002",
-					"Unreachable duplicate pattern " + keyValue,
-					arm.span,
-					Some("Remove the duplicate arm or add a guard that can distinguish it."),
-				))
-				reachable = false
-			} else {
-				seen = List.append(seen, keyValue)
-			}
-			if keyValue == "*" {
-				wildcard = true
-			} else if closedSpace(space.kind) {
-				coveredCaseId = caseId(space.cases, keyValue)
-				if coveredCaseId < 0 {
+		} else {
+			let mut knownCaseId = -1
+			if keyValue != "*" && closedSpace(space.kind) {
+				knownCaseId = caseId(space.cases, keyValue)
+				if knownCaseId < 0 {
 					diagnostics = List.append(diagnostics, patternError(
 						"L2040",
 						"Unknown pattern case " + keyValue + " for " + check.target,
 						arm.span,
 						Some("Use a constructor or literal that belongs to the target pattern space."),
 					))
-				} else if !containsInt(covered, coveredCaseId) {
-					covered = List.append(covered, coveredCaseId)
+					reachable = false
+				}
+			}
+			if !arm.guarded {
+				if containsString(seen, keyValue) {
+					diagnostics = List.append(diagnostics, patternError(
+						"L3002",
+						"Unreachable duplicate pattern " + keyValue,
+						arm.span,
+						Some("Remove the duplicate arm or add a guard that can distinguish it."),
+					))
+					reachable = false
+				} else {
+					seen = List.append(seen, keyValue)
+				}
+				if keyValue == "*" {
+					wildcard = true
+				} else if knownCaseId >= 0 {
+					coveredCaseId = knownCaseId
+					if !containsInt(covered, coveredCaseId) {
+						covered = List.append(covered, coveredCaseId)
+					}
 				}
 			}
 		}
@@ -495,7 +503,7 @@ fn buildCoverage(
 	let names = missingNames(space.cases, missing)
 	let mut exhaustive = false
 	if wildcard {
-		exhaustive = true
+		exhaustive = space.kind != "invalid"
 	} else if space.kind == "bool" {
 		exhaustive = List.length(missing) == 0
 		if !exhaustive {
