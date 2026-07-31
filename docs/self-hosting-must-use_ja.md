@@ -36,7 +36,7 @@ Contractはcanonical type handleごとに明示的なdispositionを受け取り�
 
 Must-use値が`expression`の場合は`L2097`です。それ以外の5種類は明示的に消費済みとして扱います。未知のdispositionは有限な`L9001`、未知のtype handleはpanicせず`L2040`になります。
 
-Resultにはcanonical type ID、分類理由、消費判定、annotation付きdeclaration ID、diagnosticを含めます。同一requestは完全に同じserializationを返す必要があります。
+Resultにはcanonical type ID、分類理由、消費判定、annotation付きdeclaration ID、diagnosticを含めます。同一requestは完全に同じserializationを返す必要があります。公開するのは文字列ベースのJSON adapterだけで、parser／semantic／request／result recordはこの段階ではmodule-privateとします。
 
 ## 検証
 
