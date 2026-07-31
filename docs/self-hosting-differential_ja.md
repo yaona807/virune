@@ -102,7 +102,7 @@ node --test --test-timeout=120000 packages/compiler/dist/test/selfhost-semantic-
 
 意味論第3段階では、canonical semantic arena上で純粋な型関係を評価します。Tuple、`List`、`Map`、`Set`、`Option`、`Result`の構造比較、`Never`／`Unknown`境界、optional lifting、alias透過、再帰的な`Eq`／`Hash`／`Json`／`Debug` capability判定を扱います。Newtypeはassignabilityでは名目的境界を維持し、capability判定ではunderlying typeを参照するため、Legacy Checkerの境界と一致します。
 
-JSON contractはtype aliasを安定した操作handleとして受け取り、canonical type ID、component ID、relation結果、common type結果を返します。Trait結果では、参照する型graphに未解決のtype parameterが残っているかも明示します。互換性のないcommon typeは`L2042`、存在しない操作対象は`L2040`になります。同一requestは完全に同じserializationを返し、返却されたすべてのIDをHost testで検証します。
+JSON contractはtype aliasを安定した操作handleとして受け取り、canonical type ID、component ID、relation結果、common type結果を返します。Trait結果では、参照する型graphに未解決のtype parameterが残っているかも明示します。公開するのは文字列ベースのJSON adapterだけで、typed request／result recordはmodule-privateとし、semantic実装型を再公開しません。互換性のないcommon typeは`L2042`、存在しない操作対象は`L2040`になります。同一requestは完全に同じserializationを返し、返却されたすべてのIDをHost testで検証します。
 
 対象検証:
 
