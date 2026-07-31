@@ -1,0 +1,21 @@
+{
+  "nodes": [
+    { "kind": "block", "children": [1], "expressionType": null, "condition": null },
+    { "kind": "if", "children": [2, 4], "expressionType": null, "condition": null },
+    { "kind": "block", "children": [3], "expressionType": null, "condition": null },
+    { "kind": "return", "children": [], "expressionType": null, "condition": null },
+    { "kind": "block", "children": [5], "expressionType": null, "condition": null },
+    { "kind": "expression", "children": [], "expressionType": "Never", "condition": null },
+    { "kind": "block", "children": [7], "expressionType": null, "condition": null },
+    { "kind": "noop", "children": [], "expressionType": null, "condition": null },
+    { "kind": "block", "children": [9], "expressionType": null, "condition": null },
+    { "kind": "while", "children": [10], "expressionType": null, "condition": "true" },
+    { "kind": "block", "children": [11], "expressionType": null, "condition": null },
+    { "kind": "discard", "children": [], "expressionType": "Never", "condition": null }
+  ],
+  "functions": [
+    { "name": "choose", "returnType": "Int", "bodyNodeId": 0 },
+    { "name": "unitBody", "returnType": "Unit", "bodyNodeId": 6 },
+    { "name": "forever", "returnType": "Never", "bodyNodeId": 8 }
+  ]
+}
