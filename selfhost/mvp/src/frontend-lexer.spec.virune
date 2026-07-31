@@ -1,0 +1,62 @@
+import { lexFrontend } from "./frontend-lexer.virune"
+
+fn encoded(source: String) -> String {
+	return match lexFrontend(source) {
+		Ok(value) => value
+		Err(_) => ""
+	}
+}
+
+test "frontend lexer recognizes the normative token vocabulary deterministically" {
+	let source = "pub async fn main<T>(value: Int) -> Bool uses io {\n\tlet count = 0x2a\n\tlet mask = 0b1010n\n\tlet ratio = 1_2.5e+2\n\tlet label = \"ok\"\n\treturn count >= 2 && value != 0 || label == \"ok\"\n}\n"
+	let first = encoded(source)
+	let second = encoded(source)
+	expect(first == second)
+	expect(String.contains(first, "\"text\":\"pub\""))
+	expect(String.contains(first, "\"text\":\"async\""))
+	expect(String.contains(first, "\"text\":\"0x2a\""))
+	expect(String.contains(first, "\"text\":\"0b1010n\""))
+	expect(String.contains(first, "\"text\":\"1_2.5e+2\""))
+	expect(String.contains(first, "\"text\":\"\\\"ok\\\"\""))
+	expect(String.contains(first, "\"text\":\">=\""))
+	expect(String.contains(first, "\"text\":\"&&\""))
+	expect(String.contains(first, "\"text\":\"!=\""))
+	expect(String.contains(first, "\"text\":\"||\""))
+	expect(String.contains(first, "\"diagnostics\":[]"))
+}
+
+test "frontend lexer preserves normalized documentation metadata and CRLF spans" {
+	let source = "//! Module docs\r\n\r\n/// Item docs\r\n@deprecated\r\npub fn main() -> Unit {\r\n\treturn\r\n}\r\n//// ordinary\r\n"
+	let result = encoded(source)
+	expect(String.contains(result, "\"tag\":\"ModuleDocumentation\""))
+	expect(String.contains(result, "\"text\":\"Module docs\""))
+	expect(String.contains(result, "\"tag\":\"DeclarationDocumentation\""))
+	expect(String.contains(result, "\"text\":\"Item docs\""))
+	expect(String.contains(result, "\"tag\":\"Ordinary\""))
+	expect(String.contains(result, "\"text\":\"// ordinary\""))
+	expect(String.contains(result, "\"line\":3"))
+}
+
+test "frontend lexer applies normative soft-line normalization" {
+	let source = "pub fn main(\n\tvalue: Int,\n) -> Int {\n\tlet first = value +\n\t\t1\n\tif first > 0 {\n\t\treturn first\n\t}\n\telse {\n\t\treturn 0\n\t}\n}\n"
+	let result = encoded(source)
+	expect(String.contains(result, "\"text\":\"else\""))
+	expect(String.contains(result, "\"tag\":\"NewLine\""))
+	expect(String.contains(result, "\"diagnostics\":[]"))
+}
+
+test "frontend lexer retains the top-level generic declaration line end" {
+	let source = "pub type Box<T> = List<T>\npub fn main() -> Unit {\n\treturn\n}\n"
+	let result = encoded(source)
+	expect(String.contains(result, "\"text\":\">\""))
+	expect(String.contains(result, "\"tag\":\"NewLine\""))
+}
+
+test "frontend lexer reports malformed literals and reserved characters" {
+	let source = "let a = 0x_\nlet b = 1e+\nlet c = \"unterminated\nlet $bad = 1\n"
+	let result = encoded(source)
+	expect(String.contains(result, "Invalid numeric literal 0x_"))
+	expect(String.contains(result, "Invalid numeric literal 1e+"))
+	expect(String.contains(result, "Unterminated string literal"))
+	expect(String.contains(result, "Unexpected character $"))
+}
