@@ -12,13 +12,17 @@ jobs:
   diagnose:
     if: ${{ github.head_ref == 'agent/selfhost-parser-parity' }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 12
+    timeout-minutes: 10
     strategy:
       fail-fast: false
       matrix:
-        group: [0, 1, 2, 3]
+        case:
+          - valid-data-declarations
+          - valid-conditional-parallel
+          - valid-type-references
+          - invalid-parameter-colon
     env:
-      PARITY_GROUP: ${{ matrix.group }}
+      PARITY_CASE: ${{ matrix.case }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -28,15 +32,15 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
-      - name: Select shard and add progress markers
+      - name: Select case and add progress markers
         run: |
           node --input-type=module - <<'NODE'
           import { readFile, writeFile } from 'node:fs/promises';
           const corpusPath = '.github/self-hosting/parser-parity-corpus-v1.json';
           const corpus = JSON.parse(await readFile(corpusPath, 'utf8'));
-          const group = Number(process.env.PARITY_GROUP);
-          corpus.cases = corpus.cases.filter((_, index) => index % 4 === group);
-          console.log(`PARITY_GROUP ${group}: ${corpus.cases.map(item => item.id).join(', ')}`);
+          corpus.cases = corpus.cases.filter(item => item.id === process.env.PARITY_CASE);
+          if (corpus.cases.length !== 1) throw new Error(`Missing parity case ${process.env.PARITY_CASE}`);
+          console.log(`PARITY_SELECTED ${process.env.PARITY_CASE}`);
           await writeFile(corpusPath, `${JSON.stringify(corpus, null, 2)}\n`);
 
           const testPath = 'packages/compiler/test/selfhost-parser-parity.test.ts';
@@ -50,5 +54,5 @@ jobs:
           await writeFile(testPath, source);
           NODE
       - run: npm run build
-      - name: Run parity shard with process timeout
-        run: timeout --signal=TERM --kill-after=10s 180s node --test --test-timeout=170000 packages/compiler/dist/test/selfhost-parser-parity.test.js
+      - name: Run isolated parity case
+        run: timeout --signal=TERM --kill-after=10s 90s node --test --test-timeout=80000 packages/compiler/dist/test/selfhost-parser-parity.test.js
