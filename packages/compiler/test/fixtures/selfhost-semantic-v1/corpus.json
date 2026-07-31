@@ -1,0 +1,54 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "id": "data-types",
+      "source": "data-types.virune",
+      "accepted": true,
+      "diagnosticCodes": [],
+      "declarations": [
+        { "name": "Box", "kind": "record", "typeParameters": ["T"] },
+        { "name": "Outcome", "kind": "enum", "typeParameters": ["T", "E"] },
+        { "name": "UserId", "kind": "newtype", "typeParameters": [] },
+        { "name": "Lookup", "kind": "alias", "typeParameters": [] }
+      ],
+      "requiredInstantiations": []
+    },
+    {
+      "id": "generics",
+      "source": "generics.virune",
+      "accepted": true,
+      "diagnosticCodes": [],
+      "declarations": [
+        { "name": "Box", "kind": "record", "typeParameters": ["T"] },
+        { "name": "Pair", "kind": "record", "typeParameters": ["T"] },
+        { "name": "Wrapper", "kind": "record", "typeParameters": ["T"] },
+        { "name": "Recursive", "kind": "record", "typeParameters": ["T"] }
+      ],
+      "requiredInstantiations": [
+        "Box<Int>",
+        "Box<String>",
+        "Pair<Int>",
+        "Pair<String>",
+        "Wrapper<String>",
+        "Recursive<Int>"
+      ]
+    },
+    {
+      "id": "invalid-data-types",
+      "source": "invalid-data-types.virune",
+      "accepted": false,
+      "diagnosticCodes": ["L1001", "L1003", "L2040", "L2041"],
+      "declarations": [],
+      "requiredInstantiations": []
+    },
+    {
+      "id": "recursive-alias",
+      "source": "recursive-alias.virune",
+      "accepted": false,
+      "diagnosticCodes": ["L2042"],
+      "declarations": [],
+      "requiredInstantiations": []
+    }
+  ]
+}

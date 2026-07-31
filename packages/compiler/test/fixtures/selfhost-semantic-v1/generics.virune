@@ -1,0 +1,9 @@
+record Box<T> { value: T }
+record Pair<T> { left: T, right: T }
+record Wrapper<T> { value: Box<T>, pair: Pair<T> }
+record Recursive<T> { next: Recursive<T>? }
+type IntBox = Box<Int>
+type StringWrapper = Wrapper<String>
+type Reused = Pair<Int>
+type ReusedAgain = Pair<Int>
+type IntRecursive = Recursive<Int>
