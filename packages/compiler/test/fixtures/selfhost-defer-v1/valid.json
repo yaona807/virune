@@ -1,0 +1,11 @@
+{
+  "scopes": [
+    { "kind": "function", "name": "run" },
+    { "kind": "test", "name": "cleanup test" }
+  ],
+  "statements": [
+    { "scopeId": 0, "expressionType": "Unit" },
+    { "scopeId": 0, "expressionType": "Never" },
+    { "scopeId": 1, "expressionType": "Unit" }
+  ]
+}
