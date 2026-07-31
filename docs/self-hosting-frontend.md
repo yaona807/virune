@@ -135,3 +135,8 @@ The Stage 0 frontend expands local statements into the canonical flat arena. `Le
 ### Module prefix AST
 
 The Stage 0 frontend emits `UnsafeModule`, detailed Virune and JavaScript `ImportDeclaration` nodes, `ImportItem`, `ImportSource`, and declaration `Attribute` nodes. Import form, visibility, and type-only mode are encoded deterministically, while attribute argument lists reuse the existing expression parser and attribute IDs are attached to the target declaration. Malformed prefix constructs recover at line and declaration boundaries.
+
+
+### Executable declaration AST
+
+Functions now own deterministic modifier, type-parameter, parameter, return-type, uses-clause, and body children. Block bodies reuse the detailed statement parser and expression bodies reuse the precedence parser. Tests own an optional async modifier and a detailed block. Top-level `let` and `const` declarations own a `TopLevelBinding` with an optional detailed type reference plus the initializer expression. Header recovery preserves progress to later declarations.

@@ -1559,6 +1559,161 @@ fn parseStatement(stateValue: CoreState, tokens: List<FrontendToken>) -> ParsedN
 	return addNode(state, tokens, "ExpressionStatement", "", start, state.index, children, [])
 }
 
+fn modifierPresent(
+	stateValue: CoreState,
+	tokens: List<FrontendToken>,
+	keywordIndex: Int,
+	modifier: String,
+) -> Bool {
+	let mut index = stateValue.index
+	let mut found = false
+	while index < keywordIndex {
+		if tokenAt(tokens, index).text == modifier {
+			found = true
+		}
+		index = index + 1
+	}
+	return found
+}
+
+fn parseTypeParametersNode(stateValue: CoreState, tokens: List<FrontendToken>) -> ParsedNode {
+	let start = stateValue.index
+	let mut state = stateValue
+	let mut children: List<Int> = []
+	if isText(state, tokens, "<") {
+		state = advance(state)
+	} else {
+		state = addDiagnosticAt(state, tokens, "P0001", "Expected < to begin type parameters", state.index)
+	}
+	while !atEnd(state, tokens) && !isText(state, tokens, ">") {
+		let before = state.index
+		let validName = currentKind(state, tokens) == FrontendTokenKind.Identifier
+		let name = if validName then currentText(state, tokens) else ""
+		if validName {
+			state = advance(state)
+		} else {
+			state = addDiagnosticAt(state, tokens, "P0001", "Expected a type parameter name", state.index)
+			if !atEnd(state, tokens) && !isText(state, tokens, ",") && !isText(state, tokens, ">") {
+				state = advance(state)
+			}
+		}
+		let parameter = addNode(state, tokens, "TypeParameter", name, before, state.index, [], [])
+		state = parameter.state
+		children = List.append(children, parameter.id)
+		if isText(state, tokens, ",") {
+			state = advance(state)
+		} else if !isText(state, tokens, ">") {
+			state = addDiagnosticAt(state, tokens, "P0001", "Expected , or > after a type parameter", state.index)
+		}
+		if state.index <= before {
+			state = advance(state)
+		}
+	}
+	if isText(state, tokens, ">") {
+		state = advance(state)
+	} else {
+		state = addDiagnosticAt(state, tokens, "P0001", "Expected > to end type parameters", state.index)
+	}
+	return addNode(state, tokens, "TypeParameters", "", start, state.index, children, [])
+}
+
+fn parseParametersNode(stateValue: CoreState, tokens: List<FrontendToken>) -> ParsedNode {
+	let start = stateValue.index
+	let mut state = stateValue
+	let mut children: List<Int> = []
+	if isText(state, tokens, "(") {
+		state = skipNewLines(advance(state), tokens)
+	} else {
+		state = addDiagnosticAt(state, tokens, "P0001", "Expected ( to begin parameters", state.index)
+	}
+	while !atEnd(state, tokens) && !isText(state, tokens, ")") {
+		let before = state.index
+		let validName = currentKind(state, tokens) == FrontendTokenKind.Identifier
+		let name = if validName then currentText(state, tokens) else ""
+		if validName {
+			state = advance(state)
+		} else {
+			state = addDiagnosticAt(state, tokens, "P0001", "Expected a parameter name", state.index)
+		}
+		if isText(state, tokens, ":") {
+			state = advance(state)
+		} else {
+			state = addDiagnosticAt(state, tokens, "P0001", "Expected : after a parameter name", state.index)
+		}
+		let typeValue = parseTypeReferenceNode(state, tokens)
+		state = typeValue.state
+		let mut parameterChildren: List<Int> = []
+		if typeValue.id >= 0 {
+			parameterChildren = List.append(parameterChildren, typeValue.id)
+		}
+		let parameter = addNode(state, tokens, "Parameter", name, before, state.index, parameterChildren, [])
+		state = parameter.state
+		children = List.append(children, parameter.id)
+		if isText(state, tokens, ",") {
+			state = skipNewLines(advance(state), tokens)
+		} else if !isText(state, tokens, ")") {
+			state = addDiagnosticAt(state, tokens, "P0001", "Expected , or ) after a parameter", state.index)
+			while !atEnd(state, tokens)
+				&& !isText(state, tokens, ",")
+				&& !isText(state, tokens, ")")
+				&& currentKind(state, tokens) != FrontendTokenKind.NewLine {
+				state = advance(state)
+			}
+			if isText(state, tokens, ",") {
+				state = skipNewLines(advance(state), tokens)
+			}
+		}
+		if state.index <= before {
+			state = advance(state)
+		}
+	}
+	if isText(state, tokens, ")") {
+		state = advance(state)
+	} else {
+		state = addDiagnosticAt(state, tokens, "P0001", "Expected ) to end parameters", state.index)
+	}
+	return addNode(state, tokens, "Parameters", "", start, state.index, children, [])
+}
+
+fn parseReturnTypeNode(stateValue: CoreState, tokens: List<FrontendToken>) -> ParsedNode {
+	let start = stateValue.index
+	let typeValue = parseTypeReferenceNode(stateValue, tokens)
+	let mut children: List<Int> = []
+	if typeValue.id >= 0 {
+		children = List.append(children, typeValue.id)
+	}
+	return addNode(typeValue.state, tokens, "ReturnType", "", start, typeValue.state.index, children, [])
+}
+
+fn parseUsesClauseNode(stateValue: CoreState, tokens: List<FrontendToken>) -> ParsedNode {
+	let start = stateValue.index
+	let mut state = advance(stateValue)
+	let mut children: List<Int> = []
+	let mut done = false
+	while !atEnd(state, tokens) && !done {
+		let before = state.index
+		let validEffect = currentKind(state, tokens) == FrontendTokenKind.Identifier || isText(state, tokens, "*")
+		let name = if validEffect then currentText(state, tokens) else ""
+		if validEffect {
+			state = advance(state)
+		} else {
+			state = addDiagnosticAt(state, tokens, "P0001", "Expected an effect name", state.index)
+			done = true
+		}
+		if validEffect {
+			let effect = addNode(state, tokens, "Effect", name, before, state.index, [], [])
+			state = effect.state
+			children = List.append(children, effect.id)
+		}
+		if isText(state, tokens, ",") {
+			state = advance(state)
+		} else {
+			done = true
+		}
+	}
+	return addNode(state, tokens, "UsesClause", "uses", start, state.index, children, [])
+}
+
 fn parseFunction(
 	stateValue: CoreState,
 	tokens: List<FrontendToken>,
@@ -1566,6 +1721,8 @@ fn parseFunction(
 ) -> ParsedNode {
 	let start = stateValue.index
 	let keywordIndex = declarationKeywordIndex(stateValue, tokens)
+	let publicValue = modifierPresent(stateValue, tokens, keywordIndex, "pub")
+	let asyncValue = modifierPresent(stateValue, tokens, keywordIndex, "async")
 	let mut state = withIndex(stateValue, keywordIndex + 1)
 	let name = currentText(state, tokens)
 	if currentKind(state, tokens) == FrontendTokenKind.Identifier {
@@ -1573,23 +1730,31 @@ fn parseFunction(
 	} else {
 		state = addDiagnosticAt(state, tokens, "P0001", "Expected a function name", state.index)
 	}
-	if isText(state, tokens, "<") {
-		let generics = consumeBalanced(state, tokens, "<", ">", "TypeParameters")
-		state = generics.state
-	}
-	if isText(state, tokens, "(") {
-		let parameters = consumeBalanced(state, tokens, "(", ")", "Parameters")
-		state = parameters.state
-	} else {
-		state = addDiagnosticAt(state, tokens, "P0001", "Expected a parameter list", state.index)
-	}
-	while !atEnd(state, tokens)
-		&& currentKind(state, tokens) != FrontendTokenKind.NewLine
-		&& !isText(state, tokens, "{")
-		&& !isText(state, tokens, "=>") {
-		state = advance(state)
-	}
 	let mut children: List<Int> = []
+	if publicValue || asyncValue {
+		let modifierText = if publicValue && asyncValue then "public async" else if publicValue then "public" else "async"
+		let modifiers = addNode(state, tokens, "FunctionModifiers", modifierText, start, keywordIndex, [], [])
+		state = modifiers.state
+		children = List.append(children, modifiers.id)
+	}
+	if isText(state, tokens, "<") {
+		let typeParameters = parseTypeParametersNode(state, tokens)
+		state = typeParameters.state
+		children = List.append(children, typeParameters.id)
+	}
+	let parameters = parseParametersNode(state, tokens)
+	state = parameters.state
+	children = List.append(children, parameters.id)
+	if isText(state, tokens, "->") {
+		let returnType = parseReturnTypeNode(advance(state), tokens)
+		state = returnType.state
+		children = List.append(children, returnType.id)
+	}
+	if isText(state, tokens, "uses") {
+		let usesClause = parseUsesClauseNode(state, tokens)
+		state = usesClause.state
+		children = List.append(children, usesClause.id)
+	}
 	if isText(state, tokens, "{") {
 		let body = parseBlock(state, tokens)
 		state = body.state
@@ -1597,21 +1762,88 @@ fn parseFunction(
 	} else if isText(state, tokens, "=>") {
 		let expression = parseExpression(advance(state), tokens, 1, false)
 		state = consumeLineEnd(expression.state, tokens, "an expression-bodied function")
-		children = List.append(children, expression.id)
+		if expression.id >= 0 {
+			children = List.append(children, expression.id)
+		}
 	} else {
 		state = addDiagnosticAt(state, tokens, "P0001", "Expected a function body", state.index)
 		state = synchronizeLine(state, tokens)
 	}
-	return addNode(
-		state,
-		tokens,
-		"FunctionDeclaration",
-		name,
-		start,
-		state.index,
-		children,
-		documentation,
-	)
+	return addNode(state, tokens, "FunctionDeclaration", name, start, state.index, children, documentation)
+}
+
+fn parseTestDeclaration(
+	stateValue: CoreState,
+	tokens: List<FrontendToken>,
+) -> ParsedNode {
+	let start = stateValue.index
+	let keywordIndex = declarationKeywordIndex(stateValue, tokens)
+	let asyncValue = modifierPresent(stateValue, tokens, keywordIndex, "async")
+	let mut state = withIndex(stateValue, keywordIndex + 1)
+	let validName = currentKind(state, tokens) == FrontendTokenKind.StringLiteral
+	let name = if validName then currentText(state, tokens) else ""
+	if validName {
+		state = advance(state)
+	} else {
+		state = addDiagnosticAt(state, tokens, "P0001", "Expected a test name string", state.index)
+	}
+	let mut children: List<Int> = []
+	if asyncValue {
+		let modifiers = addNode(state, tokens, "TestModifiers", "async", start, keywordIndex, [], [])
+		state = modifiers.state
+		children = List.append(children, modifiers.id)
+	}
+	if isText(state, tokens, "{") {
+		let body = parseBlock(state, tokens)
+		state = body.state
+		children = List.append(children, body.id)
+	} else {
+		state = addDiagnosticAt(state, tokens, "P0001", "Expected a test body", state.index)
+		state = synchronizeLine(state, tokens)
+	}
+	return addNode(state, tokens, "TestDeclaration", name, start, state.index, children, [])
+}
+
+fn parseTopLevelValueDeclaration(
+	stateValue: CoreState,
+	tokens: List<FrontendToken>,
+	documentation: List<String>,
+) -> ParsedNode {
+	let start = stateValue.index
+	let keywordIndex = declarationKeywordIndex(stateValue, tokens)
+	let publicValue = modifierPresent(stateValue, tokens, keywordIndex, "pub")
+	let keyword = tokenAt(tokens, keywordIndex).text
+	let mut state = withIndex(stateValue, keywordIndex + 1)
+	let validName = currentKind(state, tokens) == FrontendTokenKind.Identifier
+	let name = if validName then currentText(state, tokens) else ""
+	if validName {
+		state = advance(state)
+	} else {
+		state = addDiagnosticAt(state, tokens, "P0001", "Expected a top-level binding name", state.index)
+	}
+	let mut bindingChildren: List<Int> = []
+	if isText(state, tokens, ":") {
+		let annotation = parseTypeReferenceNode(advance(state), tokens)
+		state = annotation.state
+		if annotation.id >= 0 {
+			bindingChildren = List.append(bindingChildren, annotation.id)
+		}
+	}
+	let bindingText = (if publicValue then "public " else "") + keyword + " " + name
+	let binding = addNode(state, tokens, "TopLevelBinding", bindingText, keywordIndex, state.index, bindingChildren, [])
+	state = binding.state
+	if isText(state, tokens, "=") {
+		state = advance(state)
+	} else {
+		state = addDiagnosticAt(state, tokens, "P0001", "Expected = in a top-level value declaration", state.index)
+	}
+	let initializer = parseExpression(state, tokens, 1, false)
+	state = consumeLineEnd(initializer.state, tokens, "a top-level value declaration")
+	let mut children: List<Int> = [binding.id]
+	if initializer.id >= 0 {
+		children = List.append(children, initializer.id)
+	}
+	return addNode(state, tokens, "TopLevelValueDeclaration", name, start, state.index, children, documentation)
 }
 
 fn parseComposite(
@@ -1957,10 +2189,10 @@ fn parseDeclaration(stateValue: CoreState, tokens: List<FrontendToken>) -> Parse
 		return parseComposite(state, tokens, kind, docs.documentation)
 	}
 	if kind == "TopLevelValueDeclaration" {
-		return parseLineDeclaration(state, tokens, kind, docs.documentation)
+		return parseTopLevelValueDeclaration(state, tokens, docs.documentation)
 	}
 	if kind == "TestDeclaration" {
-		return parseComposite(state, tokens, kind, [])
+		return parseTestDeclaration(state, tokens)
 	}
 	let failed = addDiagnosticAt(state, tokens, "P0001", "Expected a declaration", state.index)
 	return ParsedNode { state: synchronizeLine(failed, tokens), id: -1 }

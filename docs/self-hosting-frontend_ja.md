@@ -135,3 +135,8 @@ Stage 0 frontendはlocal statementをcanonical flat arenaへ詳細化します�
 ### Module prefix AST
 
 Stage 0 frontendは`UnsafeModule`、Virune／JavaScriptの詳細`ImportDeclaration`、`ImportItem`、`ImportSource`、declaration `Attribute`を生成します。Import形式、visibility、type-only modeを決定的に保持し、attribute argument listは既存expression parserを再利用して、attribute IDを対象declarationへ接続します。壊れたmodule prefix構文はlineおよびdeclaration境界で復旧します。
+
+
+### Executable declaration AST
+
+Functionはmodifier、type parameter、parameter、return type、uses clause、bodyを決定的なchildとして保持します。Block bodyは詳細statement parserを、expression bodyはprecedence parserを再利用します。Testは任意のasync modifierと詳細Blockを持ちます。Top-level `let`／`const`は任意の詳細type referenceを持つ`TopLevelBinding`とinitializer expressionを保持します。Header recoveryは後続declarationへの進行を維持します。
