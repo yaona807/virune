@@ -23,10 +23,11 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: 22
-      - run: node scripts/apply-selfhost-aggregate-call-ast.mjs
+      - run: node scripts/run-selfhost-aggregate-patch.mjs
       - name: Commit generated implementation
         run: |
           rm scripts/apply-selfhost-aggregate-call-ast.mjs
+          rm scripts/run-selfhost-aggregate-patch.mjs
           rm .github/workflows/apply-selfhost-aggregate-call-ast.yml
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -36,6 +37,7 @@ jobs:
             docs/self-hosting-frontend.md \
             docs/self-hosting-frontend_ja.md \
             scripts/apply-selfhost-aggregate-call-ast.mjs \
+            scripts/run-selfhost-aggregate-patch.mjs \
             .github/workflows/apply-selfhost-aggregate-call-ast.yml
           git commit -m "compiler(selfhost): add aggregate and call expression AST [aggregate-generated]"
           git push origin HEAD:agent/selfhost-aggregate-call-ast
