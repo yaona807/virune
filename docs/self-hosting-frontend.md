@@ -50,7 +50,21 @@ The detailed declaration slice emits:
 - underlying type children for newtype and type aliases;
 - named, generic, tuple, function, list, and optional type-reference nodes.
 
-Malformed fields, variants, generic arguments, and underlying types produce stable parser diagnostics while preserving progress to following declarations. If an unclosed enum payload suppresses its physical newline during lexical normalization, source line positions terminate recovery before the next variant is consumed. Patterns, lambda internals, and remaining grammar families stay in later bounded slices before Issue #96 can close.
+Malformed fields, variants, generic arguments, and underlying types produce stable parser diagnostics while preserving progress to following declarations. If an unclosed enum payload suppresses its physical newline during lexical normalization, source line positions terminate recovery before the next variant is consumed.
+
+## Match expressions and patterns
+
+`MatchExpression` uses the existing precedence-aware expression parser for the target, optional guards, and arm bodies. A separate Virune-authored pattern module parses each arm pattern and returns data-only JSON containing absolute arena node IDs.
+
+The pattern slice emits:
+
+- `MatchArm` nodes with pattern, optional guard, and body children;
+- wildcard, identifier, literal, and inclusive-range pattern nodes;
+- list, tuple, and rest pattern nodes;
+- variant and record pattern nodes, including record fields and record rest;
+- canonical `OrPattern` nodes for alternative patterns.
+
+Pattern nesting is bounded. A malformed pattern or missing `=>` produces a stable parser diagnostic and synchronizes at a physical line end or the enclosing `}`. A progress guard prevents malformed arms from hanging the parser. Lambda internals and remaining grammar families stay in later bounded slices before Issue #96 can close.
 
 ## Documentation comments
 
@@ -70,7 +84,8 @@ The regular Stage 0 self-host tests verify:
 - malformed literal and reserved-character diagnostics;
 - flat-arena ID and child-reference integrity;
 - detailed record, enum, newtype, type-alias, and nested type-reference nodes;
-- recovery from malformed declaration details to a following function;
+- guarded match arms and nested pattern families;
+- recovery from malformed declaration details and match arms to following functions;
 - agreement with the Legacy Compiler on lexical rejection and supported-source acceptance.
 
 This work does not change the grammar, production parser, stable Compiler API, Runtime ABI, Interop ABI, or public standard library.
