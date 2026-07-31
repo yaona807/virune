@@ -50,7 +50,21 @@ Record、enum、newtype、type aliasは、独立したVirune製Parser moduleで�
 - newtype／type aliasのunderlying type child
 - named、generic、tuple、function、list、optional type reference
 
-Malformedなfield、variant、generic argument、underlying typeは安定したParser diagnosticを生成し、後続declarationへの進行を維持します。Pattern、lambda内部、残るgrammar familyはIssue #96を完了する前の後続sliceで扱います。
+Malformedなfield、variant、generic argument、underlying typeは安定したParser diagnosticを生成し、後続declarationへの進行を維持します。未閉鎖のenum payloadによって物理newlineがLexer normalizationで抑制された場合は、source line positionを使い、次variantを消費する前にrecoveryを停止します。
+
+## Match expressionとpattern
+
+`MatchExpression`のtarget、optional guard、arm bodyは、既存のprecedence-aware expression parserでparseします。各armのpatternは独立したVirune製moduleでparseし、absolute arena node IDを持つdata-only JSONとして返します。
+
+Pattern sliceは次のnodeを生成します。
+
+- pattern、optional guard、bodyをchildに持つ`MatchArm`
+- wildcard、identifier、literal、inclusive range pattern
+- list、tuple、rest pattern
+- variant、record、record field、record rest pattern
+- alternative pattern向けのcanonicalな`OrPattern`
+
+Pattern nestingには上限を設けています。Malformed patternまたは欠落した`=>`は安定したParser diagnosticを生成し、物理line endまたは囲んでいる`}`で同期します。Progress guardにより、malformed armでParserが停止し続けることを防ぎます。Lambda内部と残るgrammar familyはIssue #96を完了する前の後続sliceで扱います。
 
 ## Documentation comment
 
@@ -70,7 +84,8 @@ Parserはmodule documentationをmodule nodeへ、declaration documentationを対
 - malformed literalと予約文字のdiagnostic
 - flat arenaのID／child reference整合性
 - record、enum、newtype、type alias、nested type-referenceの詳細node
-- malformed declaration detailから後続functionまでのrecovery
+- guard付きmatch armとnested pattern family
+- malformed declaration detail／match armから後続functionまでのrecovery
 - lexical rejectionと対応済みsource acceptanceのLegacy Compilerとの一致
 
 この作業ではgrammar、Production Parser、stable Compiler API、Runtime ABI、Interop ABI、公開standard libraryを変更しません。

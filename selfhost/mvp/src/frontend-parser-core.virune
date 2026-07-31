@@ -12,6 +12,7 @@ import {
 } from "./frontend-model.virune"
 import { lexFrontendJson } from "./frontend-lexer.virune"
 import { parseDetailedDeclarationJson } from "./frontend-declaration-parser.virune"
+import { parsePatternJson } from "./frontend-pattern-parser.virune"
 import {
 	FrontendAstNode,
 	FrontendParseResult,
@@ -45,6 +46,13 @@ record ParsedDocumentation {
 }
 
 record DetailedDeclarationTransport derives Json {
+	nextIndex: Int
+	nodes: List<FrontendAstNode>
+	diagnostics: List<ParserDiagnostic>
+	root: Int
+}
+
+record PatternTransport derives Json {
 	nextIndex: Int
 	nodes: List<FrontendAstNode>
 	diagnostics: List<ParserDiagnostic>
@@ -453,7 +461,10 @@ fn expressionStop(state: CoreState, tokens: List<FrontendToken>, stopAtBrace: Bo
 	if stopAtBrace && isText(state, tokens, "{") {
 		return true
 	}
-	return isText(state, tokens, "}") || isText(state, tokens, "else")
+	return isText(state, tokens, "}")
+		|| isText(state, tokens, "else")
+		|| isText(state, tokens, ",")
+		|| isText(state, tokens, "=>")
 }
 
 fn consumeBalanced(
@@ -487,6 +498,133 @@ fn consumeBalanced(
 	return addNode(state, tokens, kind, open + close, start, state.index, [], [])
 }
 
+fn loadPattern(
+	state: CoreState,
+	tokens: List<FrontendToken>,
+) -> Result<PatternTransport, List<JsonError>> {
+	let tokensEncoded = Json.encode<List<FrontendToken>>(tokens)?
+	let encoded = parsePatternJson(tokensEncoded, state.index, List.length(state.nodes))?
+	let raw = Json.parse(encoded)?
+	return Json.decode<PatternTransport>(raw)
+}
+
+fn mergePatternValue(stateValue: CoreState, value: PatternTransport) -> ParsedNode {
+	let state = CoreState {
+		index: value.nextIndex,
+		nodes: List.concat(stateValue.nodes, value.nodes),
+		diagnostics: List.concat(stateValue.diagnostics, value.diagnostics),
+		commentIndex: stateValue.commentIndex,
+		pendingDocumentation: stateValue.pendingDocumentation,
+		moduleDocumentation: stateValue.moduleDocumentation,
+		significantSeen: stateValue.significantSeen,
+	}
+	return ParsedNode { state: state, id: value.root }
+}
+
+fn mergePatternFailure(stateValue: CoreState, tokens: List<FrontendToken>) -> ParsedNode {
+	let failed = addDiagnosticAt(
+		stateValue,
+		tokens,
+		"P9001",
+		"Pattern parser transport failed",
+		stateValue.index,
+	)
+	return ParsedNode { state: failed, id: -1 }
+}
+
+fn parsePatternNode(stateValue: CoreState, tokens: List<FrontendToken>) -> ParsedNode {
+	return match loadPattern(stateValue, tokens) {
+		Ok(value) => mergePatternValue(stateValue, value)
+		Err(_) => mergePatternFailure(stateValue, tokens)
+	}
+}
+
+fn synchronizeMatchArm(stateValue: CoreState, tokens: List<FrontendToken>) -> CoreState {
+	let mut state = stateValue
+	while !atEnd(state, tokens)
+		&& currentKind(state, tokens) != FrontendTokenKind.NewLine
+		&& !isText(state, tokens, "}") {
+		state = advance(state)
+	}
+	return skipNewLines(state, tokens)
+}
+
+fn parseMatchExpression(stateValue: CoreState, tokens: List<FrontendToken>) -> ParsedNode {
+	let start = stateValue.index
+	let mut state = advance(stateValue)
+	let target = parseExpression(state, tokens, 1, true)
+	state = target.state
+	let mut children: List<Int> = []
+	if target.id >= 0 {
+		children = List.append(children, target.id)
+	}
+	if isText(state, tokens, "{") {
+		state = skipNewLines(advance(state), tokens)
+	} else {
+		state = addDiagnosticAt(state, tokens, "P0001", "Expected { after a match target", state.index)
+		state = synchronizeMatchArm(state, tokens)
+	}
+	while !atEnd(state, tokens) && !isText(state, tokens, "}") {
+		let armStart = state.index
+		let before = state.index
+		let pattern = parsePatternNode(state, tokens)
+		state = pattern.state
+		let mut armChildren: List<Int> = []
+		if pattern.id >= 0 {
+			armChildren = List.append(armChildren, pattern.id)
+		}
+		if isText(state, tokens, "if") {
+			let guard = parseExpression(advance(state), tokens, 1, false)
+			state = guard.state
+			if guard.id >= 0 {
+				armChildren = List.append(armChildren, guard.id)
+			}
+		}
+		let mut hasArrow = false
+		if isText(state, tokens, "=>") {
+			state = advance(state)
+			hasArrow = true
+		} else {
+			state = addDiagnosticAt(state, tokens, "P0001", "Expected => after a match pattern", state.index)
+			state = synchronizeMatchArm(state, tokens)
+		}
+		if hasArrow && !atEnd(state, tokens) && !isText(state, tokens, "}") {
+			let body = parseExpression(state, tokens, 1, false)
+			state = body.state
+			if body.id >= 0 {
+				armChildren = List.append(armChildren, body.id)
+			}
+		}
+		if isText(state, tokens, ",") {
+			state = advance(state)
+		}
+		let arm = addNode(
+			state,
+			tokens,
+			"MatchArm",
+			"=>",
+			armStart,
+			state.index,
+			armChildren,
+			[],
+		)
+		state = skipNewLines(arm.state, tokens)
+		children = List.append(children, arm.id)
+		if state.index <= before {
+			state = addDiagnosticAt(state, tokens, "P0001", "Parser made no progress in a match expression", state.index)
+			if !atEnd(state, tokens) {
+				state = skipNewLines(advance(state), tokens)
+			}
+		}
+	}
+	if isText(state, tokens, "}") {
+		state = advance(state)
+	} else {
+		state = addDiagnosticAt(state, tokens, "P0001", "Expected } to end a match expression", state.index)
+	}
+	return addNode(state, tokens, "MatchExpression", "match", start, state.index, children, [])
+}
+
 fn parsePrimary(stateValue: CoreState, tokens: List<FrontendToken>, stopAtBrace: Bool) -> ParsedNode {
 	let mut state = stateValue
 	let start = state.index
@@ -495,6 +633,9 @@ fn parsePrimary(stateValue: CoreState, tokens: List<FrontendToken>, stopAtBrace:
 		return ParsedNode { state: state, id: -1 }
 	}
 	let text = currentText(state, tokens)
+	if text == "match" {
+		return parseMatchExpression(state, tokens)
+	}
 	if text == "!" || text == "-" || text == "await" {
 		state = advance(state)
 		let operand = parsePrimary(state, tokens, stopAtBrace)

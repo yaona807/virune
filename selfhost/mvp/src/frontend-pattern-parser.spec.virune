@@ -1,0 +1,33 @@
+import { parseFrontendCore } from "./frontend-parser-core.virune"
+
+fn encoded(source: String) -> String {
+	return match parseFrontendCore(source) {
+		Ok(value) => value
+		Err(_) => ""
+	}
+}
+
+test "match parser expands guarded arms and nested patterns" {
+	let source = "pub fn inspect(value: Int) -> Int {\n\treturn match value {\n\t\tOk([first, ...rest]) | Err((first, second)) if first > 0 => first\n\t\tPoint { x, y: 0, ... } => x\n\t\t1..=5 => 1\n\t\t_ => 0\n\t}\n}\n"
+	let result = encoded(source)
+	expect(String.contains(result, "\"accepted\":true"))
+	expect(String.contains(result, "\"kind\":\"MatchExpression\""))
+	expect(String.contains(result, "\"kind\":\"MatchArm\""))
+	expect(String.contains(result, "\"kind\":\"OrPattern\""))
+	expect(String.contains(result, "\"kind\":\"VariantPattern\""))
+	expect(String.contains(result, "\"kind\":\"ListPattern\""))
+	expect(String.contains(result, "\"kind\":\"RestPattern\""))
+	expect(String.contains(result, "\"kind\":\"TuplePattern\""))
+	expect(String.contains(result, "\"kind\":\"RecordPattern\""))
+	expect(String.contains(result, "\"kind\":\"RangePattern\""))
+	expect(String.contains(result, "\"kind\":\"WildcardPattern\""))
+}
+
+test "match parser recovers after malformed arm" {
+	let source = "pub fn broken(value: Int) -> Int {\n\treturn match value {\n\t\t0 1\n\t\t_ => 0\n\t}\n}\npub fn after() -> Int {\n\treturn 1\n}\n"
+	let result = encoded(source)
+	expect(String.contains(result, "\"accepted\":false"))
+	expect(String.contains(result, "Expected =>"))
+	expect(String.contains(result, "\"kind\":\"WildcardPattern\""))
+	expect(String.contains(result, "\"text\":\"after\""))
+}
