@@ -9,7 +9,7 @@ import {
 	parserPosition,
 	parserSpan,
 } from "./frontend-parser-model.virune"
-import { parseFrontendModule } from "./frontend-parser-core.virune"
+import { parseFrontendCore } from "./frontend-parser-core.virune"
 import {
 	FrontendSemanticResult,
 	SemanticDeclaration,
@@ -29,6 +29,11 @@ record SemanticState {
 record ResolvedType {
 	state: SemanticState
 	id: Int
+}
+
+record ResolvedTypes {
+	state: SemanticState
+	ids: List<Int>
 }
 
 record CollectedParameters {
@@ -56,6 +61,20 @@ fn fallbackNode() -> FrontendAstNode {
 	}
 }
 
+fn fallbackDeclaration() -> SemanticDeclaration {
+	return SemanticDeclaration {
+		id: -1,
+		sourceNodeId: -1,
+		kind: "missing",
+		name: "",
+		isPublic: false,
+		typeParameters: [],
+		memberIds: [],
+		targetType: None,
+		span: fallbackSpan(),
+	}
+}
+
 fn nodeAt(nodes: List<FrontendAstNode>, id: Int) -> FrontendAstNode {
 	return match List.get(nodes, id) {
 		Some(value) => value
@@ -63,8 +82,14 @@ fn nodeAt(nodes: List<FrontendAstNode>, id: Int) -> FrontendAstNode {
 	}
 }
 
+fn declarationAt(declarations: List<SemanticDeclaration>, index: Int) -> SemanticDeclaration {
+	return match List.get(declarations, index) {
+		Some(value) => value
+		None => fallbackDeclaration()
+	}
+}
+
 fn stateWith(
-	state: SemanticState,
 	declarations: List<SemanticDeclaration>,
 	members: List<SemanticMember>,
 	types: List<SemanticType>,
@@ -78,24 +103,24 @@ fn stateWith(
 	}
 }
 
-fn withDeclarations(state: SemanticState, declarations: List<SemanticDeclaration>) -> SemanticState {
-	return stateWith(state, declarations, state.members, state.types, state.diagnostics)
+fn withDeclarations(state: SemanticState, values: List<SemanticDeclaration>) -> SemanticState {
+	return stateWith(values, state.members, state.types, state.diagnostics)
 }
 
-fn withMembers(state: SemanticState, members: List<SemanticMember>) -> SemanticState {
-	return stateWith(state, state.declarations, members, state.types, state.diagnostics)
+fn withMembers(state: SemanticState, values: List<SemanticMember>) -> SemanticState {
+	return stateWith(state.declarations, values, state.types, state.diagnostics)
 }
 
-fn withTypes(state: SemanticState, types: List<SemanticType>) -> SemanticState {
-	return stateWith(state, state.declarations, state.members, types, state.diagnostics)
+fn withTypes(state: SemanticState, values: List<SemanticType>) -> SemanticState {
+	return stateWith(state.declarations, state.members, values, state.diagnostics)
 }
 
-fn withDiagnostics(state: SemanticState, diagnostics: List<SemanticDiagnostic>) -> SemanticState {
-	return stateWith(state, state.declarations, state.members, state.types, diagnostics)
+fn withDiagnostics(state: SemanticState, values: List<SemanticDiagnostic>) -> SemanticState {
+	return stateWith(state.declarations, state.members, state.types, values)
 }
 
-fn addDiagnostic(state: SemanticState, diagnostic: SemanticDiagnostic) -> SemanticState {
-	return withDiagnostics(state, List.append(state.diagnostics, diagnostic))
+fn addDiagnostic(state: SemanticState, value: SemanticDiagnostic) -> SemanticState {
+	return withDiagnostics(state, List.append(state.diagnostics, value))
 }
 
 fn parserSemanticDiagnostic(value: ParserDiagnostic) -> SemanticDiagnostic {
@@ -137,24 +162,6 @@ fn declarationKind(kind: String) -> String {
 	return "alias"
 }
 
-fn findDeclaration(declarations: List<SemanticDeclaration>, name: String) -> SemanticDeclaration? {
-	for declaration in declarations {
-		if declaration.name == name {
-			return Some(declaration)
-		}
-	}
-	return None
-}
-
-fn findDeclarationById(declarations: List<SemanticDeclaration>, id: Int) -> SemanticDeclaration? {
-	for declaration in declarations {
-		if declaration.id == id {
-			return Some(declaration)
-		}
-	}
-	return None
-}
-
 fn containsName(values: List<String>, name: String) -> Bool {
 	for value in values {
 		if value == name {
@@ -164,50 +171,56 @@ fn containsName(values: List<String>, name: String) -> Bool {
 	return false
 }
 
-fn childOfKind(node: FrontendAstNode, nodes: List<FrontendAstNode>, kind: String) -> FrontendAstNode? {
-	for childId in node.children {
-		let child = nodeAt(nodes, childId)
-		if child.kind == kind {
-			return Some(child)
+fn declarationIndex(declarations: List<SemanticDeclaration>, name: String) -> Int {
+	let mut index = 0
+	while index < List.length(declarations) {
+		if declarationAt(declarations, index).name == name {
+			return index
 		}
+		index = index + 1
 	}
-	return None
+	return -1
 }
 
-fn hasPublicModifier(node: FrontendAstNode, nodes: List<FrontendAstNode>) -> Bool {
-	return match childOfKind(node, nodes, "DataDeclarationModifiers") {
-		Some(value) => value.text == "public"
-		None => false
+fn childOfKindId(node: FrontendAstNode, nodes: List<FrontendAstNode>, kind: String) -> Int {
+	for childId in node.children {
+		if nodeAt(nodes, childId).kind == kind {
+			return childId
+		}
 	}
+	return -1
+}
+
+fn sourceIsPublic(source: String, node: FrontendAstNode) -> Bool {
+	let end = node.span.start.offset + 3
+	return String.slice(source, node.span.start.offset, Some(end)) == "pub"
 }
 
 fn collectTypeParameters(node: FrontendAstNode, nodes: List<FrontendAstNode>) -> CollectedParameters {
 	let mut names: List<String> = []
 	let mut diagnostics: List<SemanticDiagnostic> = []
-	let container = childOfKind(node, nodes, "TypeParameters")
-	match container {
-		Some(value) => {
-			for childId in value.children {
-				let parameter = nodeAt(nodes, childId)
-				if containsName(names, parameter.text) {
-					diagnostics = List.append(diagnostics, semanticDiagnostic(
-						"L1003",
-						"Duplicate type parameter " + parameter.text,
-						parameter.span,
-						Some("Rename or remove the duplicate type parameter."),
-					))
-				} else {
-					names = List.append(names, parameter.text)
-				}
+	let containerId = childOfKindId(node, nodes, "TypeParameters")
+	if containerId >= 0 {
+		let container = nodeAt(nodes, containerId)
+		for childId in container.children {
+			let parameter = nodeAt(nodes, childId)
+			if containsName(names, parameter.text) {
+				diagnostics = List.append(diagnostics, semanticDiagnostic(
+					"L1003",
+					"Duplicate type parameter " + parameter.text,
+					parameter.span,
+					Some("Rename or remove the duplicate type parameter."),
+				))
+			} else {
+				names = List.append(names, parameter.text)
 			}
 		}
-		None => {}
 	}
 	return CollectedParameters { names: names, diagnostics: diagnostics }
 }
 
-fn registerDeclarations(parsed: FrontendParseResult) -> SemanticState {
-	let mut state = SemanticState { declarations: [], members: [], types: [], diagnostics: [] }
+fn registerDeclarations(source: String, parsed: FrontendParseResult) -> SemanticState {
+	let mut state = stateWith([], [], [], [])
 	for diagnostic in parsed.diagnostics {
 		state = addDiagnostic(state, parserSemanticDiagnostic(diagnostic))
 	}
@@ -215,33 +228,30 @@ fn registerDeclarations(parsed: FrontendParseResult) -> SemanticState {
 	for childId in root.children {
 		let node = nodeAt(parsed.nodes, childId)
 		if isDataDeclaration(node.kind) {
-			match findDeclaration(state.declarations, node.text) {
-				Some(_) => {
-					state = addDiagnostic(state, semanticDiagnostic(
-						"L1001",
-						"Duplicate definition " + node.text,
-						node.span,
-						Some("Use a unique type declaration name in this module."),
-					))
+			if declarationIndex(state.declarations, node.text) >= 0 {
+				state = addDiagnostic(state, semanticDiagnostic(
+					"L1001",
+					"Duplicate definition " + node.text,
+					node.span,
+					Some("Use a unique type declaration name in this module."),
+				))
+			} else {
+				let parameters = collectTypeParameters(node, parsed.nodes)
+				for diagnostic in parameters.diagnostics {
+					state = addDiagnostic(state, diagnostic)
 				}
-				None => {
-					let parameters = collectTypeParameters(node, parsed.nodes)
-					for diagnostic in parameters.diagnostics {
-						state = addDiagnostic(state, diagnostic)
-					}
-					let declaration = SemanticDeclaration {
-						id: List.length(state.declarations),
-						sourceNodeId: node.id,
-						kind: declarationKind(node.kind),
-						name: node.text,
-						isPublic: hasPublicModifier(node, parsed.nodes),
-						typeParameters: parameters.names,
-						memberIds: [],
-						targetType: None,
-						span: node.span,
-					}
-					state = withDeclarations(state, List.append(state.declarations, declaration))
+				let declaration = SemanticDeclaration {
+					id: List.length(state.declarations),
+					sourceNodeId: node.id,
+					kind: declarationKind(node.kind),
+					name: node.text,
+					isPublic: sourceIsPublic(source, node),
+					typeParameters: parameters.names,
+					memberIds: [],
+					targetType: None,
+					span: node.span,
 				}
+				state = withDeclarations(state, List.append(state.declarations, declaration))
 			}
 		}
 	}
@@ -256,12 +266,12 @@ fn replaceDeclaration(state: SemanticState, replacement: SemanticDeclaration) ->
 	return withDeclarations(state, values)
 }
 
-fn builtinArity(name: String) -> Int? {
+fn builtinArity(name: String) -> Int {
 	if name == "List" || name == "Set" || name == "Option" || name == "Stream" {
-		return Some(1)
+		return 1
 	}
 	if name == "Map" || name == "Result" || name == "Validation" {
-		return Some(2)
+		return 2
 	}
 	if name == "Bool" || name == "Int" || name == "Float" || name == "BigInt"
 		|| name == "String" || name == "Unit" || name == "Unknown" || name == "Never"
@@ -269,40 +279,35 @@ fn builtinArity(name: String) -> Int? {
 		|| name == "Byte" || name == "Int8" || name == "UInt8" || name == "Int16"
 		|| name == "UInt16" || name == "Int32" || name == "UInt32" || name == "Int64"
 		|| name == "UInt64" || name == "Bytes" || name == "MutableBytes" {
-		return Some(0)
+		return 0
 	}
-	return None
+	return -1
 }
 
-fn expectedArity(
-	name: String,
-	declaration: SemanticDeclaration,
-	declarations: List<SemanticDeclaration>,
-) -> Int? {
+fn expectedArity(name: String, declaration: SemanticDeclaration, state: SemanticState) -> Int {
 	if containsName(declaration.typeParameters, name) {
-		return Some(0)
+		return 0
 	}
-	return match builtinArity(name) {
-		Some(value) => Some(value)
-		None => match findDeclaration(declarations, name) {
-			Some(value) => Some(List.length(value.typeParameters))
-			None => None
-		}
+	let builtin = builtinArity(name)
+	if builtin >= 0 {
+		return builtin
 	}
+	let index = declarationIndex(state.declarations, name)
+	if index >= 0 {
+		return List.length(declarationAt(state.declarations, index).typeParameters)
+	}
+	return -1
 }
 
-fn targetDeclarationId(
-	name: String,
-	declaration: SemanticDeclaration,
-	declarations: List<SemanticDeclaration>,
-) -> Int? {
+fn targetDeclarationId(name: String, declaration: SemanticDeclaration, state: SemanticState) -> Int? {
 	if containsName(declaration.typeParameters, name) {
 		return Some(declaration.id)
 	}
-	return match findDeclaration(declarations, name) {
-		Some(value) => Some(value.id)
-		None => None
+	let index = declarationIndex(state.declarations, name)
+	if index >= 0 {
+		return Some(declarationAt(state.declarations, index).id)
 	}
+	return None
 }
 
 fn appendType(
@@ -325,67 +330,58 @@ fn appendType(
 	return ResolvedType { state: withTypes(state, List.append(state.types, value)), id: id }
 }
 
-fn argumentIds(
+fn resolveChildren(
 	node: FrontendAstNode,
 	startIndex: Int,
 	parsed: FrontendParseResult,
 	declaration: SemanticDeclaration,
 	stateValue: SemanticState,
-) -> ResolvedType {
+) -> ResolvedTypes {
 	let mut state = stateValue
-	let mut values: List<Int> = []
+	let mut ids: List<Int> = []
 	let mut index = startIndex
 	while index < List.length(node.children) {
 		let childId = match List.get(node.children, index) { Some(value) => value, None => -1 }
 		let resolved = resolveType(childId, parsed, declaration, state)
 		state = resolved.state
-		values = List.append(values, resolved.id)
+		ids = List.append(ids, resolved.id)
 		index = index + 1
 	}
-	return appendType(state, "arguments", "", None, values, node.span)
+	return ResolvedTypes { state: state, ids: ids }
 }
 
 fn resolveNamed(
 	node: FrontendAstNode,
-	argumentIdsValue: List<Int>,
-	parsed: FrontendParseResult,
+	arguments: List<Int>,
 	declaration: SemanticDeclaration,
 	stateValue: SemanticState,
 ) -> ResolvedType {
 	let mut state = stateValue
-	let arity = expectedArity(node.text, declaration, state.declarations)
-	match arity {
-		Some(expected) => {
-			if expected != List.length(argumentIdsValue) {
-				state = addDiagnostic(state, semanticDiagnostic(
-					"L2041",
-					node.text + " expects " + Debug.format(expected) + " type arguments, received " + Debug.format(List.length(argumentIdsValue)),
-					node.span,
-					Some("Supply exactly the declared number of type arguments."),
-				))
-			}
-			let kind = if containsName(declaration.typeParameters, node.text) then "type-parameter"
-				else if match builtinArity(node.text) { Some(_) => true, None => false } then "builtin"
-				else "named"
-			return appendType(
-				state,
-				kind,
-				node.text,
-				targetDeclarationId(node.text, declaration, state.declarations),
-				argumentIdsValue,
-				node.span,
-			)
-		}
-		None => {
-			state = addDiagnostic(state, semanticDiagnostic(
-				"L2040",
-				"Unknown type " + node.text,
-				node.span,
-				Some("Declare the type, import it, or use a supported builtin type."),
-			))
-			return appendType(state, "error", node.text, None, argumentIdsValue, node.span)
-		}
+	let expected = expectedArity(node.text, declaration, state)
+	if expected < 0 {
+		state = addDiagnostic(state, semanticDiagnostic(
+			"L2040",
+			"Unknown type " + node.text,
+			node.span,
+			Some("Declare the type, import it, or use a supported builtin type."),
+		))
+		return appendType(state, "error", node.text, None, arguments, node.span)
 	}
+	if expected != List.length(arguments) {
+		state = addDiagnostic(state, semanticDiagnostic(
+			"L2041",
+			node.text + " expects " + Debug.format(expected) + " type arguments, received " + Debug.format(List.length(arguments)),
+			node.span,
+			Some("Supply exactly the declared number of type arguments."),
+		))
+	}
+	let kind = "named"
+	if containsName(declaration.typeParameters, node.text) {
+		kind = "type-parameter"
+	} else if builtinArity(node.text) >= 0 {
+		kind = "builtin"
+	}
+	return appendType(state, kind, node.text, targetDeclarationId(node.text, declaration, state), arguments, node.span)
 }
 
 fn resolveType(
@@ -396,45 +392,27 @@ fn resolveType(
 ) -> ResolvedType {
 	let node = nodeAt(parsed.nodes, nodeId)
 	if node.kind == "NamedTypeReference" {
-		return resolveNamed(node, [], parsed, declaration, stateValue)
+		return resolveNamed(node, [], declaration, stateValue)
 	}
 	if node.kind == "GenericTypeReference" {
-		let collected = argumentIds(node, 1, parsed, declaration, stateValue)
-		let container = match List.get(collected.state.types, collected.id) {
-			Some(value) => value
-			None => SemanticType { id: -1, kind: "arguments", name: "", declarationId: None, arguments: [], span: node.span }
-		}
-		let withoutContainer = SemanticState {
-			declarations: collected.state.declarations,
-			members: collected.state.members,
-			types: List.take(collected.state.types, collected.id),
-			diagnostics: collected.state.diagnostics,
-		}
-		return resolveNamed(node, container.arguments, parsed, declaration, withoutContainer)
+		let values = resolveChildren(node, 1, parsed, declaration, stateValue)
+		return resolveNamed(node, values.ids, declaration, values.state)
 	}
 	if node.kind == "ListTypeReference" {
-		let collected = argumentIds(node, 0, parsed, declaration, stateValue)
-		let container = match List.get(collected.state.types, collected.id) { Some(value) => value, None => SemanticType { id: -1, kind: "arguments", name: "", declarationId: None, arguments: [], span: node.span } }
-		let withoutContainer = SemanticState { declarations: collected.state.declarations, members: collected.state.members, types: List.take(collected.state.types, collected.id), diagnostics: collected.state.diagnostics }
-		return appendType(withoutContainer, "builtin", "List", None, container.arguments, node.span)
+		let values = resolveChildren(node, 0, parsed, declaration, stateValue)
+		return appendType(values.state, "builtin", "List", None, values.ids, node.span)
 	}
 	if node.kind == "OptionalTypeReference" {
-		let collected = argumentIds(node, 0, parsed, declaration, stateValue)
-		let container = match List.get(collected.state.types, collected.id) { Some(value) => value, None => SemanticType { id: -1, kind: "arguments", name: "", declarationId: None, arguments: [], span: node.span } }
-		let withoutContainer = SemanticState { declarations: collected.state.declarations, members: collected.state.members, types: List.take(collected.state.types, collected.id), diagnostics: collected.state.diagnostics }
-		return appendType(withoutContainer, "builtin", "Option", None, container.arguments, node.span)
+		let values = resolveChildren(node, 0, parsed, declaration, stateValue)
+		return appendType(values.state, "builtin", "Option", None, values.ids, node.span)
 	}
 	if node.kind == "TupleTypeReference" {
-		let collected = argumentIds(node, 0, parsed, declaration, stateValue)
-		let container = match List.get(collected.state.types, collected.id) { Some(value) => value, None => SemanticType { id: -1, kind: "arguments", name: "", declarationId: None, arguments: [], span: node.span } }
-		let withoutContainer = SemanticState { declarations: collected.state.declarations, members: collected.state.members, types: List.take(collected.state.types, collected.id), diagnostics: collected.state.diagnostics }
-		return appendType(withoutContainer, "tuple", "$Tuple", None, container.arguments, node.span)
+		let values = resolveChildren(node, 0, parsed, declaration, stateValue)
+		return appendType(values.state, "tuple", "$Tuple", None, values.ids, node.span)
 	}
 	if node.kind == "FunctionTypeReference" {
-		let collected = argumentIds(node, 0, parsed, declaration, stateValue)
-		let container = match List.get(collected.state.types, collected.id) { Some(value) => value, None => SemanticType { id: -1, kind: "arguments", name: "", declarationId: None, arguments: [], span: node.span } }
-		let withoutContainer = SemanticState { declarations: collected.state.declarations, members: collected.state.members, types: List.take(collected.state.types, collected.id), diagnostics: collected.state.diagnostics }
-		return appendType(withoutContainer, "function", "fn", None, container.arguments, node.span)
+		let values = resolveChildren(node, 0, parsed, declaration, stateValue)
+		return appendType(values.state, "function", "fn", None, values.ids, node.span)
 	}
 	let state = addDiagnostic(stateValue, semanticDiagnostic(
 		"L9001",
@@ -481,6 +459,21 @@ fn addMember(
 	return withMembers(state, List.append(state.members, member))
 }
 
+fn attachMemberId(state: SemanticState, declarationId: Int, memberId: Int) -> SemanticState {
+	let declaration = declarationAt(state.declarations, declarationId)
+	return replaceDeclaration(state, SemanticDeclaration {
+		id: declaration.id,
+		sourceNodeId: declaration.sourceNodeId,
+		kind: declaration.kind,
+		name: declaration.name,
+		isPublic: declaration.isPublic,
+		typeParameters: declaration.typeParameters,
+		memberIds: List.append(declaration.memberIds, memberId),
+		targetType: declaration.targetType,
+		span: declaration.span,
+	})
+}
+
 fn processMembers(
 	container: FrontendAstNode,
 	kind: String,
@@ -491,31 +484,30 @@ fn processMembers(
 	let mut state = stateValue
 	for childId in container.children {
 		let memberNode = nodeAt(parsed.nodes, childId)
+		let resolved = resolveChildren(memberNode, 0, parsed, declaration, state)
+		state = resolved.state
 		let beforeCount = List.length(state.members)
-		let mut resolvedIds: List<Int> = []
-		for typeNodeId in memberNode.children {
-			let resolved = resolveType(typeNodeId, parsed, declaration, state)
-			state = resolved.state
-			resolvedIds = List.append(resolvedIds, resolved.id)
-		}
-		state = addMember(state, declaration, kind, memberNode, resolvedIds)
+		state = addMember(state, declaration, kind, memberNode, resolved.ids)
 		if List.length(state.members) > beforeCount {
-			let memberId = List.length(state.members) - 1
-			let current = match findDeclarationById(state.declarations, declaration.id) { Some(value) => value, None => declaration }
-			state = replaceDeclaration(state, SemanticDeclaration {
-				id: current.id,
-				sourceNodeId: current.sourceNodeId,
-				kind: current.kind,
-				name: current.name,
-				isPublic: current.isPublic,
-				typeParameters: current.typeParameters,
-				memberIds: List.append(current.memberIds, memberId),
-				targetType: current.targetType,
-				span: current.span,
-			})
+			state = attachMemberId(state, declaration.id, List.length(state.members) - 1)
 		}
 	}
 	return state
+}
+
+fn setTargetType(state: SemanticState, declarationId: Int, targetType: Int) -> SemanticState {
+	let declaration = declarationAt(state.declarations, declarationId)
+	return replaceDeclaration(state, SemanticDeclaration {
+		id: declaration.id,
+		sourceNodeId: declaration.sourceNodeId,
+		kind: declaration.kind,
+		name: declaration.name,
+		isPublic: declaration.isPublic,
+		typeParameters: declaration.typeParameters,
+		memberIds: declaration.memberIds,
+		targetType: Some(targetType),
+		span: declaration.span,
+	})
 }
 
 fn processDeclaration(
@@ -524,38 +516,19 @@ fn processDeclaration(
 	stateValue: SemanticState,
 ) -> SemanticState {
 	let node = nodeAt(parsed.nodes, declarationValue.sourceNodeId)
-	let declaration = match findDeclarationById(stateValue.declarations, declarationValue.id) {
-		Some(value) => value
-		None => declarationValue
+	if declarationValue.kind == "record" {
+		let bodyId = childOfKindId(node, parsed.nodes, "RecordBody")
+		return if bodyId >= 0 then processMembers(nodeAt(parsed.nodes, bodyId), "field", parsed, declarationValue, stateValue) else stateValue
 	}
-	if declaration.kind == "record" {
-		return match childOfKind(node, parsed.nodes, "RecordBody") {
-			Some(value) => processMembers(value, "field", parsed, declaration, stateValue)
-			None => stateValue
-		}
-	}
-	if declaration.kind == "enum" {
-		return match childOfKind(node, parsed.nodes, "EnumBody") {
-			Some(value) => processMembers(value, "variant", parsed, declaration, stateValue)
-			None => stateValue
-		}
+	if declarationValue.kind == "enum" {
+		let bodyId = childOfKindId(node, parsed.nodes, "EnumBody")
+		return if bodyId >= 0 then processMembers(nodeAt(parsed.nodes, bodyId), "variant", parsed, declarationValue, stateValue) else stateValue
 	}
 	for childId in node.children {
 		let child = nodeAt(parsed.nodes, childId)
 		if isTypeReference(child.kind) {
-			let resolved = resolveType(child.id, parsed, declaration, stateValue)
-			let current = match findDeclarationById(resolved.state.declarations, declaration.id) { Some(value) => value, None => declaration }
-			return replaceDeclaration(resolved.state, SemanticDeclaration {
-				id: current.id,
-				sourceNodeId: current.sourceNodeId,
-				kind: current.kind,
-				name: current.name,
-				isPublic: current.isPublic,
-				typeParameters: current.typeParameters,
-				memberIds: current.memberIds,
-				targetType: Some(resolved.id),
-				span: current.span,
-			})
+			let resolved = resolveType(child.id, parsed, declarationValue, stateValue)
+			return setTargetType(resolved.state, declarationValue.id, resolved.id)
 		}
 	}
 	return stateValue
@@ -570,9 +543,15 @@ fn semanticAccepted(diagnostics: List<SemanticDiagnostic>) -> Bool {
 	return true
 }
 
+fn decodeFrontend(source: String) -> Result<FrontendParseResult, List<JsonError>> {
+	let encoded = parseFrontendCore(source)?
+	let raw = Json.parse(encoded)?
+	return Json.decode<FrontendParseResult>(raw)
+}
+
 pub fn checkFrontendDataTypes(source: String) -> Result<FrontendSemanticResult, List<JsonError>> {
-	let parsed = parseFrontendModule(source)?
-	let mut state = registerDeclarations(parsed)
+	let parsed = decodeFrontend(source)?
+	let mut state = registerDeclarations(source, parsed)
 	if parsed.accepted {
 		let declarations = state.declarations
 		for declaration in declarations {
@@ -588,7 +567,6 @@ pub fn checkFrontendDataTypes(source: String) -> Result<FrontendSemanticResult, 
 	})
 }
 
-@jsExport
 pub fn checkFrontendDataTypesJson(source: String) -> Result<String, List<JsonError>> {
 	return Json.encode<FrontendSemanticResult>(checkFrontendDataTypes(source)?)
 }
