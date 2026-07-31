@@ -580,13 +580,15 @@ fn parseMatchExpression(stateValue: CoreState, tokens: List<FrontendToken>) -> P
 				armChildren = List.append(armChildren, guard.id)
 			}
 		}
+		let mut hasArrow = false
 		if isText(state, tokens, "=>") {
 			state = advance(state)
+			hasArrow = true
 		} else {
 			state = addDiagnosticAt(state, tokens, "P0001", "Expected => after a match pattern", state.index)
 			state = synchronizeMatchArm(state, tokens)
 		}
-		if !atEnd(state, tokens) && !isText(state, tokens, "}") {
+		if hasArrow && !atEnd(state, tokens) && !isText(state, tokens, "}") {
 			let body = parseExpression(state, tokens, 1, false)
 			state = body.state
 			if body.id >= 0 {
