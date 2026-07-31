@@ -144,9 +144,7 @@ fn upsertField(
 	return result
 }
 
-fn buildParallel(
-	request: FrontendParallelRequest,
-) -> ParallelBuildResult {
+fn buildParallel(request: FrontendParallelRequest) -> ParallelBuildResult {
 	let mut entries: List<SemanticParallelEntry> = []
 	let mut fields: List<SemanticParallelField> = []
 	let mut diagnostics: List<SemanticParallelDiagnostic> = []
@@ -303,11 +301,11 @@ fn resultType(
 	fields: List<SemanticParallelField>,
 	commonErrorType: String?,
 ) -> String {
-	let record = recordType(fields)
+	let recordShape = recordType(fields)
 	if tryMode {
-		return "Future<Result<" + record + ", " + optionalStringOr(commonErrorType, "Error") + ">>"
+		return "Future<Result<" + recordShape + ", " + optionalStringOr(commonErrorType, "Error") + ">>"
 	}
-	return "Future<" + record + ">"
+	return "Future<" + recordShape + ">"
 }
 
 fn accepted(values: List<SemanticParallelDiagnostic>) -> Bool {
