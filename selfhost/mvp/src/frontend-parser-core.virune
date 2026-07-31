@@ -325,7 +325,7 @@ fn consumeLineEnd(stateValue: CoreState, tokens: List<FrontendToken>, context: S
 	state = addDiagnosticAt(
 		state,
 		tokens,
-		"P0001",
+		"L0002",
 		"Expected a line end after " + context,
 		state.index,
 	)
@@ -519,7 +519,7 @@ fn consumeBalanced(
 		state = advance(state)
 	}
 	if !done {
-		state = addDiagnosticAt(state, tokens, "P0001", "Unterminated " + kind, start)
+		state = addDiagnosticAt(state, tokens, "L0002", "Unterminated " + kind, start)
 	}
 	return addNode(state, tokens, kind, open + close, start, state.index, [], [])
 }
@@ -587,7 +587,7 @@ fn parseMatchExpression(stateValue: CoreState, tokens: List<FrontendToken>) -> P
 	if isText(state, tokens, "{") {
 		state = skipNewLines(advance(state), tokens)
 	} else {
-		state = addDiagnosticAt(state, tokens, "P0001", "Expected { after a match target", state.index)
+		state = addDiagnosticAt(state, tokens, "L0002", "Expected { after a match target", state.index)
 		state = synchronizeMatchArm(state, tokens)
 	}
 	while !atEnd(state, tokens) && !isText(state, tokens, "}") {
@@ -611,7 +611,7 @@ fn parseMatchExpression(stateValue: CoreState, tokens: List<FrontendToken>) -> P
 			state = advance(state)
 			hasArrow = true
 		} else {
-			state = addDiagnosticAt(state, tokens, "P0001", "Expected => after a match pattern", state.index)
+			state = addDiagnosticAt(state, tokens, "L0002", "Expected => after a match pattern", state.index)
 			state = synchronizeMatchArm(state, tokens)
 		}
 		if hasArrow && !atEnd(state, tokens) && !isText(state, tokens, "}") {
@@ -637,7 +637,7 @@ fn parseMatchExpression(stateValue: CoreState, tokens: List<FrontendToken>) -> P
 		state = skipNewLines(arm.state, tokens)
 		children = List.append(children, arm.id)
 		if state.index <= before {
-			state = addDiagnosticAt(state, tokens, "P0001", "Parser made no progress in a match expression", state.index)
+			state = addDiagnosticAt(state, tokens, "L0002", "Parser made no progress in a match expression", state.index)
 			if !atEnd(state, tokens) {
 				state = skipNewLines(advance(state), tokens)
 			}
@@ -646,7 +646,7 @@ fn parseMatchExpression(stateValue: CoreState, tokens: List<FrontendToken>) -> P
 	if isText(state, tokens, "}") {
 		state = advance(state)
 	} else {
-		state = addDiagnosticAt(state, tokens, "P0001", "Expected } to end a match expression", state.index)
+		state = addDiagnosticAt(state, tokens, "L0002", "Expected } to end a match expression", state.index)
 	}
 	return addNode(state, tokens, "MatchExpression", "match", start, state.index, children, [])
 }
@@ -708,7 +708,7 @@ fn parseLambdaExpression(stateValue: CoreState, tokens: List<FrontendToken>) -> 
 		state = body.state
 		children = List.append(children, body.id)
 	} else {
-		state = addDiagnosticAt(state, tokens, "P0001", "Expected a lambda body", state.index)
+		state = addDiagnosticAt(state, tokens, "L0002", "Expected a lambda body", state.index)
 		state = synchronizeLine(state, tokens)
 	}
 	let text = if loaded.isAsync then "async fn" else "fn"
@@ -744,14 +744,14 @@ fn parseListExpression(stateValue: CoreState, tokens: List<FrontendToken>) -> Pa
 		if isText(state, tokens, ",") {
 			state = skipNewLines(advance(state), tokens)
 		} else if !isText(state, tokens, "]") {
-			state = addDiagnosticAt(state, tokens, "P0001", "Expected , or ] in a list expression", state.index)
+			state = addDiagnosticAt(state, tokens, "L0002", "Expected , or ] in a list expression", state.index)
 			state = synchronizeAggregateItem(state, tokens, "]")
 			if isText(state, tokens, ",") {
 				state = skipNewLines(advance(state), tokens)
 			}
 		}
 		if state.index <= before {
-			state = addDiagnosticAt(state, tokens, "P0001", "Parser made no progress in a list expression", state.index)
+			state = addDiagnosticAt(state, tokens, "L0002", "Parser made no progress in a list expression", state.index)
 			if !atEnd(state, tokens) {
 				state = advance(state)
 			}
@@ -760,7 +760,7 @@ fn parseListExpression(stateValue: CoreState, tokens: List<FrontendToken>) -> Pa
 	if isText(state, tokens, "]") {
 		state = advance(state)
 	} else {
-		state = addDiagnosticAt(state, tokens, "P0001", "Expected ] to end a list expression", state.index)
+		state = addDiagnosticAt(state, tokens, "L0002", "Expected ] to end a list expression", state.index)
 	}
 	return addNode(state, tokens, "ListExpression", "[]", start, state.index, children, [])
 }
@@ -772,7 +772,7 @@ fn parseParenthesizedOrTupleExpression(
 	let start = stateValue.index
 	let mut state = skipNewLines(advance(stateValue), tokens)
 	if isText(state, tokens, ")") {
-		state = addDiagnosticAt(state, tokens, "P0001", "Expected an expression after (", state.index)
+		state = addDiagnosticAt(state, tokens, "L0002", "Expected an expression after (", state.index)
 		state = advance(state)
 		return addNode(state, tokens, "ParenthesizedExpression", "()", start, state.index, [], [])
 	}
@@ -787,7 +787,7 @@ fn parseParenthesizedOrTupleExpression(
 		while isText(state, tokens, ",") && !done {
 			state = skipNewLines(advance(state), tokens)
 			if isText(state, tokens, ")") {
-				state = addDiagnosticAt(state, tokens, "P0001", "Expected a tuple expression after ,", state.index)
+				state = addDiagnosticAt(state, tokens, "L0002", "Expected a tuple expression after ,", state.index)
 				done = true
 			} else {
 				let item = parseExpression(state, tokens, 1, false)
@@ -800,7 +800,7 @@ fn parseParenthesizedOrTupleExpression(
 		if isText(state, tokens, ")") {
 			state = advance(state)
 		} else {
-			state = addDiagnosticAt(state, tokens, "P0001", "Expected ) to end a tuple expression", state.index)
+			state = addDiagnosticAt(state, tokens, "L0002", "Expected ) to end a tuple expression", state.index)
 			state = synchronizeAggregateItem(state, tokens, ")")
 			if isText(state, tokens, ")") {
 				state = advance(state)
@@ -811,7 +811,7 @@ fn parseParenthesizedOrTupleExpression(
 	if isText(state, tokens, ")") {
 		state = advance(state)
 	} else {
-		state = addDiagnosticAt(state, tokens, "P0001", "Expected ) after a parenthesized expression", state.index)
+		state = addDiagnosticAt(state, tokens, "L0002", "Expected ) after a parenthesized expression", state.index)
 		state = synchronizeAggregateItem(state, tokens, ")")
 		if isText(state, tokens, ")") {
 			state = advance(state)
@@ -827,7 +827,7 @@ fn parseRecordEntry(stateValue: CoreState, tokens: List<FrontendToken>) -> Parse
 	if currentKind(state, tokens) == FrontendTokenKind.Identifier {
 		state = advance(state)
 	} else {
-		state = addDiagnosticAt(state, tokens, "P0001", "Expected a record entry name", state.index)
+		state = addDiagnosticAt(state, tokens, "L0002", "Expected a record entry name", state.index)
 		if !atEnd(state, tokens) {
 			state = advance(state)
 		}
@@ -849,7 +849,7 @@ fn parseRecordFieldBlock(stateValue: CoreState, tokens: List<FrontendToken>) -> 
 	if isText(state, tokens, "{") {
 		state = skipNewLines(advance(state), tokens)
 	} else {
-		state = addDiagnosticAt(state, tokens, "P0001", "Expected { to begin record entries", state.index)
+		state = addDiagnosticAt(state, tokens, "L0002", "Expected { to begin record entries", state.index)
 	}
 	let mut children: List<Int> = []
 	while !atEnd(state, tokens) && !isText(state, tokens, "}") {
@@ -862,7 +862,7 @@ fn parseRecordFieldBlock(stateValue: CoreState, tokens: List<FrontendToken>) -> 
 		if isText(state, tokens, ",") {
 			state = skipNewLines(advance(state), tokens)
 		} else if !isText(state, tokens, "}") {
-			state = addDiagnosticAt(state, tokens, "P0001", "Expected , or } after a record entry", state.index)
+			state = addDiagnosticAt(state, tokens, "L0002", "Expected , or } after a record entry", state.index)
 			state = synchronizeAggregateItem(state, tokens, "}")
 			if isText(state, tokens, ",") {
 				state = skipNewLines(advance(state), tokens)
@@ -871,7 +871,7 @@ fn parseRecordFieldBlock(stateValue: CoreState, tokens: List<FrontendToken>) -> 
 			}
 		}
 		if state.index <= before {
-			state = addDiagnosticAt(state, tokens, "P0001", "Parser made no progress in record entries", state.index)
+			state = addDiagnosticAt(state, tokens, "L0002", "Parser made no progress in record entries", state.index)
 			if !atEnd(state, tokens) {
 				state = skipNewLines(advance(state), tokens)
 			}
@@ -880,7 +880,7 @@ fn parseRecordFieldBlock(stateValue: CoreState, tokens: List<FrontendToken>) -> 
 	if isText(state, tokens, "}") {
 		state = advance(state)
 	} else {
-		state = addDiagnosticAt(state, tokens, "P0001", "Expected } to end record entries", state.index)
+		state = addDiagnosticAt(state, tokens, "L0002", "Expected } to end record entries", state.index)
 	}
 	return addNode(state, tokens, "RecordFieldBlock", "{}", start, state.index, children, [])
 }
@@ -918,14 +918,14 @@ fn parseCallArguments(stateValue: CoreState, tokens: List<FrontendToken>) -> Par
 		if isText(state, tokens, ",") {
 			state = skipNewLines(advance(state), tokens)
 		} else if !isText(state, tokens, ")") {
-			state = addDiagnosticAt(state, tokens, "P0001", "Expected , or ) in call arguments", state.index)
+			state = addDiagnosticAt(state, tokens, "L0002", "Expected , or ) in call arguments", state.index)
 			state = synchronizeAggregateItem(state, tokens, ")")
 			if isText(state, tokens, ",") {
 				state = skipNewLines(advance(state), tokens)
 			}
 		}
 		if state.index <= before {
-			state = addDiagnosticAt(state, tokens, "P0001", "Parser made no progress in call arguments", state.index)
+			state = addDiagnosticAt(state, tokens, "L0002", "Parser made no progress in call arguments", state.index)
 			if !atEnd(state, tokens) {
 				state = advance(state)
 			}
@@ -934,7 +934,7 @@ fn parseCallArguments(stateValue: CoreState, tokens: List<FrontendToken>) -> Par
 	if isText(state, tokens, ")") {
 		state = advance(state)
 	} else {
-		state = addDiagnosticAt(state, tokens, "P0001", "Expected ) to end call arguments", state.index)
+		state = addDiagnosticAt(state, tokens, "L0002", "Expected ) to end call arguments", state.index)
 	}
 	return addNode(state, tokens, "CallArguments", "()", start, state.index, children, [])
 }
@@ -1084,7 +1084,7 @@ fn parseParenthesizedLambda(
 	if isText(state, tokens, ")") {
 		state = advance(state)
 	} else {
-		state = addDiagnosticAt(state, tokens, "P0001", "Expected ) after a parenthesized lambda", state.index)
+		state = addDiagnosticAt(state, tokens, "L0002", "Expected ) after a parenthesized lambda", state.index)
 	}
 	let grouped = addNode(
 		state,
@@ -1119,7 +1119,7 @@ fn parseConditionalExpression(stateValue: CoreState, tokens: List<FrontendToken>
 	if isText(state, tokens, "then") {
 		state = advance(state)
 	} else {
-		state = addDiagnosticAt(state, tokens, "P0001", "Expected then in a conditional expression", state.index)
+		state = addDiagnosticAt(state, tokens, "L0002", "Expected then in a conditional expression", state.index)
 	}
 	let consequent = parseExpression(state, tokens, 1, false)
 	state = consequent.state
@@ -1129,7 +1129,7 @@ fn parseConditionalExpression(stateValue: CoreState, tokens: List<FrontendToken>
 	if isText(state, tokens, "else") {
 		state = advance(state)
 	} else {
-		state = addDiagnosticAt(state, tokens, "P0001", "Expected else in a conditional expression", state.index)
+		state = addDiagnosticAt(state, tokens, "L0002", "Expected else in a conditional expression", state.index)
 	}
 	let alternate = parseExpression(state, tokens, 1, false)
 	state = alternate.state
@@ -1157,12 +1157,12 @@ fn parseParallelEntry(stateValue: CoreState, tokens: List<FrontendToken>) -> Par
 	if currentKind(state, tokens) == FrontendTokenKind.Identifier {
 		state = advance(state)
 	} else {
-		state = addDiagnosticAt(state, tokens, "P0001", "Expected a parallel entry name", state.index)
+		state = addDiagnosticAt(state, tokens, "L0002", "Expected a parallel entry name", state.index)
 	}
 	if isText(state, tokens, ":") {
 		state = advance(state)
 	} else {
-		state = addDiagnosticAt(state, tokens, "P0001", "Expected : after a parallel entry name", state.index)
+		state = addDiagnosticAt(state, tokens, "L0002", "Expected : after a parallel entry name", state.index)
 		state = synchronizeParallelEntry(state, tokens)
 		return addNode(state, tokens, "ParallelEntry", name, start, state.index, [], [])
 	}
@@ -1186,7 +1186,7 @@ fn parseParallelExpression(stateValue: CoreState, tokens: List<FrontendToken>) -
 	if isText(state, tokens, "{") {
 		state = skipNewLines(advance(state), tokens)
 	} else {
-		state = addDiagnosticAt(state, tokens, "P0001", "Expected { after parallel", state.index)
+		state = addDiagnosticAt(state, tokens, "L0002", "Expected { after parallel", state.index)
 		state = synchronizeParallelEntry(state, tokens)
 	}
 	let mut children: List<Int> = []
@@ -1202,19 +1202,19 @@ fn parseParallelExpression(stateValue: CoreState, tokens: List<FrontendToken>) -
 		}
 		state = skipNewLines(state, tokens)
 		if state.index <= before {
-			state = addDiagnosticAt(state, tokens, "P0001", "Parser made no progress in a parallel expression", state.index)
+			state = addDiagnosticAt(state, tokens, "L0002", "Parser made no progress in a parallel expression", state.index)
 			if !atEnd(state, tokens) {
 				state = skipNewLines(advance(state), tokens)
 			}
 		}
 	}
 	if List.length(children) == 0 {
-		state = addDiagnosticAt(state, tokens, "P0001", "Expected at least one parallel entry", state.index)
+		state = addDiagnosticAt(state, tokens, "L0002", "Expected at least one parallel entry", state.index)
 	}
 	if isText(state, tokens, "}") {
 		state = advance(state)
 	} else {
-		state = addDiagnosticAt(state, tokens, "P0001", "Expected } to end a parallel expression", state.index)
+		state = addDiagnosticAt(state, tokens, "L0002", "Expected } to end a parallel expression", state.index)
 	}
 	let expression = addNode(state, tokens, "ParallelExpression", text, start, state.index, children, [])
 	return parseControlPostfix(expression.state, tokens, start, expression.id)
@@ -1224,7 +1224,7 @@ fn parsePrimary(stateValue: CoreState, tokens: List<FrontendToken>, stopAtBrace:
 	let mut state = stateValue
 	let start = state.index
 	if expressionStop(state, tokens, stopAtBrace) {
-		state = addDiagnosticAt(state, tokens, "P0001", "Expected an expression", state.index)
+		state = addDiagnosticAt(state, tokens, "L0002", "Expected an expression", state.index)
 		return ParsedNode { state: state, id: -1 }
 	}
 	let text = currentText(state, tokens)
@@ -1316,7 +1316,7 @@ fn parseBlock(stateValue: CoreState, tokens: List<FrontendToken>) -> ParsedNode 
 	if isText(state, tokens, "{") {
 		state = advance(state)
 	} else {
-		state = addDiagnosticAt(state, tokens, "P0001", "Expected { to begin a block", state.index)
+		state = addDiagnosticAt(state, tokens, "L0002", "Expected { to begin a block", state.index)
 	}
 	state = skipNewLines(state, tokens)
 	let mut children: List<Int> = []
@@ -1328,7 +1328,7 @@ fn parseBlock(stateValue: CoreState, tokens: List<FrontendToken>) -> ParsedNode 
 			children = List.append(children, statement.id)
 		}
 		if state.index <= before {
-			state = addDiagnosticAt(state, tokens, "P0001", "Parser made no progress in a block", state.index)
+			state = addDiagnosticAt(state, tokens, "L0002", "Parser made no progress in a block", state.index)
 			state = synchronizeLine(advance(state), tokens)
 		}
 		state = skipNewLines(state, tokens)
@@ -1336,7 +1336,7 @@ fn parseBlock(stateValue: CoreState, tokens: List<FrontendToken>) -> ParsedNode 
 	if isText(state, tokens, "}") {
 		state = advance(state)
 	} else {
-		state = addDiagnosticAt(state, tokens, "P0001", "Expected } to end a block", state.index)
+		state = addDiagnosticAt(state, tokens, "L0002", "Expected } to end a block", state.index)
 	}
 	return addNode(state, tokens, "Block", "", start, state.index, children, [])
 }
@@ -1416,7 +1416,7 @@ fn parseStatement(stateValue: CoreState, tokens: List<FrontendToken>) -> ParsedN
 		if validName {
 			state = advance(state)
 		} else {
-			state = addDiagnosticAt(state, tokens, "P0001", "Expected a local binding name", state.index)
+			state = addDiagnosticAt(state, tokens, "L0002", "Expected a local binding name", state.index)
 		}
 		let mut bindingChildren: List<Int> = []
 		if isText(state, tokens, ":") {
@@ -1441,7 +1441,7 @@ fn parseStatement(stateValue: CoreState, tokens: List<FrontendToken>) -> ParsedN
 		if isText(state, tokens, "=") {
 			state = advance(state)
 		} else {
-			state = addDiagnosticAt(state, tokens, "P0001", "Expected = in a let statement", state.index)
+			state = addDiagnosticAt(state, tokens, "L0002", "Expected = in a let statement", state.index)
 		}
 		let expression = parseExpression(state, tokens, 1, false)
 		state = consumeLineEnd(expression.state, tokens, "a let statement")
@@ -1464,7 +1464,7 @@ fn parseStatement(stateValue: CoreState, tokens: List<FrontendToken>) -> ParsedN
 				children = List.append(children, expression.id)
 			}
 		} else if text != "return" {
-			state = addDiagnosticAt(state, tokens, "P0001", "Expected an expression after " + text, state.index)
+			state = addDiagnosticAt(state, tokens, "L0002", "Expected an expression after " + text, state.index)
 		}
 		state = consumeLineEnd(state, tokens, text)
 		let kind = if text == "return" then "ReturnStatement" else if text == "discard" then "DiscardStatement" else "DeferStatement"
@@ -1516,14 +1516,14 @@ fn parseStatement(stateValue: CoreState, tokens: List<FrontendToken>) -> ParsedN
 		if validName {
 			state = advance(state)
 		} else {
-			state = addDiagnosticAt(state, tokens, "P0001", "Expected a loop binding", state.index)
+			state = addDiagnosticAt(state, tokens, "L0002", "Expected a loop binding", state.index)
 		}
 		let binding = addNode(state, tokens, "ForBinding", name, bindingStart, state.index, [], [])
 		state = binding.state
 		if isText(state, tokens, "in") {
 			state = advance(state)
 		} else {
-			state = addDiagnosticAt(state, tokens, "P0001", "Expected in in a for statement", state.index)
+			state = addDiagnosticAt(state, tokens, "L0002", "Expected in in a for statement", state.index)
 		}
 		let iterable = parseExpression(state, tokens, 1, true)
 		state = iterable.state
@@ -1583,7 +1583,7 @@ fn parseTypeParametersNode(stateValue: CoreState, tokens: List<FrontendToken>) -
 	if isText(state, tokens, "<") {
 		state = advance(state)
 	} else {
-		state = addDiagnosticAt(state, tokens, "P0001", "Expected < to begin type parameters", state.index)
+		state = addDiagnosticAt(state, tokens, "L0002", "Expected < to begin type parameters", state.index)
 	}
 	while !atEnd(state, tokens) && !isText(state, tokens, ">") {
 		let before = state.index
@@ -1592,7 +1592,7 @@ fn parseTypeParametersNode(stateValue: CoreState, tokens: List<FrontendToken>) -
 		if validName {
 			state = advance(state)
 		} else {
-			state = addDiagnosticAt(state, tokens, "P0001", "Expected a type parameter name", state.index)
+			state = addDiagnosticAt(state, tokens, "L0002", "Expected a type parameter name", state.index)
 			if !atEnd(state, tokens) && !isText(state, tokens, ",") && !isText(state, tokens, ">") {
 				state = advance(state)
 			}
@@ -1603,7 +1603,7 @@ fn parseTypeParametersNode(stateValue: CoreState, tokens: List<FrontendToken>) -
 		if isText(state, tokens, ",") {
 			state = advance(state)
 		} else if !isText(state, tokens, ">") {
-			state = addDiagnosticAt(state, tokens, "P0001", "Expected , or > after a type parameter", state.index)
+			state = addDiagnosticAt(state, tokens, "L0002", "Expected , or > after a type parameter", state.index)
 		}
 		if state.index <= before {
 			state = advance(state)
@@ -1612,7 +1612,7 @@ fn parseTypeParametersNode(stateValue: CoreState, tokens: List<FrontendToken>) -
 	if isText(state, tokens, ">") {
 		state = advance(state)
 	} else {
-		state = addDiagnosticAt(state, tokens, "P0001", "Expected > to end type parameters", state.index)
+		state = addDiagnosticAt(state, tokens, "L0002", "Expected > to end type parameters", state.index)
 	}
 	return addNode(state, tokens, "TypeParameters", "", start, state.index, children, [])
 }
@@ -1624,7 +1624,7 @@ fn parseParametersNode(stateValue: CoreState, tokens: List<FrontendToken>) -> Pa
 	if isText(state, tokens, "(") {
 		state = skipNewLines(advance(state), tokens)
 	} else {
-		state = addDiagnosticAt(state, tokens, "P0001", "Expected ( to begin parameters", state.index)
+		state = addDiagnosticAt(state, tokens, "L0002", "Expected ( to begin parameters", state.index)
 	}
 	while !atEnd(state, tokens) && !isText(state, tokens, ")") {
 		let before = state.index
@@ -1633,12 +1633,16 @@ fn parseParametersNode(stateValue: CoreState, tokens: List<FrontendToken>) -> Pa
 		if validName {
 			state = advance(state)
 		} else {
-			state = addDiagnosticAt(state, tokens, "P0001", "Expected a parameter name", state.index)
+			state = addDiagnosticAt(state, tokens, "L0002", "Expected a parameter name", state.index)
+		}
+		let optional = isText(state, tokens, "?")
+		if optional {
+			state = advance(state)
 		}
 		if isText(state, tokens, ":") {
 			state = advance(state)
 		} else {
-			state = addDiagnosticAt(state, tokens, "P0001", "Expected : after a parameter name", state.index)
+			state = addDiagnosticAt(state, tokens, "L0002", "Expected : after a parameter name", state.index)
 		}
 		let typeValue = parseTypeReferenceNode(state, tokens)
 		state = typeValue.state
@@ -1646,13 +1650,14 @@ fn parseParametersNode(stateValue: CoreState, tokens: List<FrontendToken>) -> Pa
 		if typeValue.id >= 0 {
 			parameterChildren = List.append(parameterChildren, typeValue.id)
 		}
-		let parameter = addNode(state, tokens, "Parameter", name, before, state.index, parameterChildren, [])
+		let parameterText = if optional then "optional " + name else name
+		let parameter = addNode(state, tokens, "Parameter", parameterText, before, state.index, parameterChildren, [])
 		state = parameter.state
 		children = List.append(children, parameter.id)
 		if isText(state, tokens, ",") {
 			state = skipNewLines(advance(state), tokens)
 		} else if !isText(state, tokens, ")") {
-			state = addDiagnosticAt(state, tokens, "P0001", "Expected , or ) after a parameter", state.index)
+			state = addDiagnosticAt(state, tokens, "L0002", "Expected , or ) after a parameter", state.index)
 			while !atEnd(state, tokens)
 				&& !isText(state, tokens, ",")
 				&& !isText(state, tokens, ")")
@@ -1670,7 +1675,7 @@ fn parseParametersNode(stateValue: CoreState, tokens: List<FrontendToken>) -> Pa
 	if isText(state, tokens, ")") {
 		state = advance(state)
 	} else {
-		state = addDiagnosticAt(state, tokens, "P0001", "Expected ) to end parameters", state.index)
+		state = addDiagnosticAt(state, tokens, "L0002", "Expected ) to end parameters", state.index)
 	}
 	return addNode(state, tokens, "Parameters", "", start, state.index, children, [])
 }
@@ -1697,7 +1702,7 @@ fn parseUsesClauseNode(stateValue: CoreState, tokens: List<FrontendToken>) -> Pa
 		if validEffect {
 			state = advance(state)
 		} else {
-			state = addDiagnosticAt(state, tokens, "P0001", "Expected an effect name", state.index)
+			state = addDiagnosticAt(state, tokens, "L0002", "Expected an effect name", state.index)
 			done = true
 		}
 		if validEffect {
@@ -1728,7 +1733,7 @@ fn parseFunction(
 	if currentKind(state, tokens) == FrontendTokenKind.Identifier {
 		state = advance(state)
 	} else {
-		state = addDiagnosticAt(state, tokens, "P0001", "Expected a function name", state.index)
+		state = addDiagnosticAt(state, tokens, "L0002", "Expected a function name", state.index)
 	}
 	let mut children: List<Int> = []
 	if publicValue || asyncValue {
@@ -1766,7 +1771,7 @@ fn parseFunction(
 			children = List.append(children, expression.id)
 		}
 	} else {
-		state = addDiagnosticAt(state, tokens, "P0001", "Expected a function body", state.index)
+		state = addDiagnosticAt(state, tokens, "L0002", "Expected a function body", state.index)
 		state = synchronizeLine(state, tokens)
 	}
 	return addNode(state, tokens, "FunctionDeclaration", name, start, state.index, children, documentation)
@@ -1785,7 +1790,7 @@ fn parseTestDeclaration(
 	if validName {
 		state = advance(state)
 	} else {
-		state = addDiagnosticAt(state, tokens, "P0001", "Expected a test name string", state.index)
+		state = addDiagnosticAt(state, tokens, "L0002", "Expected a test name string", state.index)
 	}
 	let mut children: List<Int> = []
 	if asyncValue {
@@ -1798,7 +1803,7 @@ fn parseTestDeclaration(
 		state = body.state
 		children = List.append(children, body.id)
 	} else {
-		state = addDiagnosticAt(state, tokens, "P0001", "Expected a test body", state.index)
+		state = addDiagnosticAt(state, tokens, "L0002", "Expected a test body", state.index)
 		state = synchronizeLine(state, tokens)
 	}
 	return addNode(state, tokens, "TestDeclaration", name, start, state.index, children, [])
@@ -1819,7 +1824,7 @@ fn parseTopLevelValueDeclaration(
 	if validName {
 		state = advance(state)
 	} else {
-		state = addDiagnosticAt(state, tokens, "P0001", "Expected a top-level binding name", state.index)
+		state = addDiagnosticAt(state, tokens, "L0002", "Expected a top-level binding name", state.index)
 	}
 	let mut bindingChildren: List<Int> = []
 	if isText(state, tokens, ":") {
@@ -1835,7 +1840,7 @@ fn parseTopLevelValueDeclaration(
 	if isText(state, tokens, "=") {
 		state = advance(state)
 	} else {
-		state = addDiagnosticAt(state, tokens, "P0001", "Expected = in a top-level value declaration", state.index)
+		state = addDiagnosticAt(state, tokens, "L0002", "Expected = in a top-level value declaration", state.index)
 	}
 	let initializer = parseExpression(state, tokens, 1, false)
 	state = consumeLineEnd(initializer.state, tokens, "a top-level value declaration")
@@ -1853,7 +1858,7 @@ fn parseExternParameters(stateValue: CoreState, tokens: List<FrontendToken>) -> 
 	if isText(state, tokens, "(") {
 		state = skipNewLines(advance(state), tokens)
 	} else {
-		state = addDiagnosticAt(state, tokens, "P0001", "Expected ( to begin extern parameters", state.index)
+		state = addDiagnosticAt(state, tokens, "L0002", "Expected ( to begin extern parameters", state.index)
 	}
 	while !atEnd(state, tokens) && !isText(state, tokens, ")") {
 		let before = state.index
@@ -1862,7 +1867,7 @@ fn parseExternParameters(stateValue: CoreState, tokens: List<FrontendToken>) -> 
 		if validName {
 			state = advance(state)
 		} else {
-			state = addDiagnosticAt(state, tokens, "P0001", "Expected an extern parameter name", state.index)
+			state = addDiagnosticAt(state, tokens, "L0002", "Expected an extern parameter name", state.index)
 		}
 		let optional = isText(state, tokens, "?")
 		if optional {
@@ -1871,7 +1876,7 @@ fn parseExternParameters(stateValue: CoreState, tokens: List<FrontendToken>) -> 
 		if isText(state, tokens, ":") {
 			state = advance(state)
 		} else {
-			state = addDiagnosticAt(state, tokens, "P0001", "Expected : after an extern parameter name", state.index)
+			state = addDiagnosticAt(state, tokens, "L0002", "Expected : after an extern parameter name", state.index)
 		}
 		let typeValue = parseTypeReferenceNode(state, tokens)
 		state = typeValue.state
@@ -1895,7 +1900,7 @@ fn parseExternParameters(stateValue: CoreState, tokens: List<FrontendToken>) -> 
 		if isText(state, tokens, ",") {
 			state = skipNewLines(advance(state), tokens)
 		} else if !isText(state, tokens, ")") {
-			state = addDiagnosticAt(state, tokens, "P0001", "Expected , or ) after an extern parameter", state.index)
+			state = addDiagnosticAt(state, tokens, "L0002", "Expected , or ) after an extern parameter", state.index)
 			while !atEnd(state, tokens)
 				&& currentKind(state, tokens) != FrontendTokenKind.NewLine
 				&& !isText(state, tokens, ",")
@@ -1907,7 +1912,7 @@ fn parseExternParameters(stateValue: CoreState, tokens: List<FrontendToken>) -> 
 			}
 		}
 		if state.index <= before {
-			state = addDiagnosticAt(state, tokens, "P0001", "Parser made no progress in extern parameters", state.index)
+			state = addDiagnosticAt(state, tokens, "L0002", "Parser made no progress in extern parameters", state.index)
 			if !atEnd(state, tokens) {
 				state = advance(state)
 			}
@@ -1916,7 +1921,7 @@ fn parseExternParameters(stateValue: CoreState, tokens: List<FrontendToken>) -> 
 	if isText(state, tokens, ")") {
 		state = advance(state)
 	} else {
-		state = addDiagnosticAt(state, tokens, "P0001", "Expected ) to end extern parameters", state.index)
+		state = addDiagnosticAt(state, tokens, "L0002", "Expected ) to end extern parameters", state.index)
 	}
 	return addNode(state, tokens, "ExternParameters", "", start, state.index, children, [])
 }
@@ -1931,14 +1936,14 @@ fn parseExternFunction(stateValue: CoreState, tokens: List<FrontendToken>) -> Pa
 	if isText(state, tokens, "fn") {
 		state = advance(state)
 	} else {
-		state = addDiagnosticAt(state, tokens, "P0001", "Expected fn in an extern declaration", state.index)
+		state = addDiagnosticAt(state, tokens, "L0002", "Expected fn in an extern declaration", state.index)
 	}
 	let validName = currentKind(state, tokens) == FrontendTokenKind.Identifier
 	let name = if validName then currentText(state, tokens) else ""
 	if validName {
 		state = advance(state)
 	} else {
-		state = addDiagnosticAt(state, tokens, "P0001", "Expected an extern function name", state.index)
+		state = addDiagnosticAt(state, tokens, "L0002", "Expected an extern function name", state.index)
 	}
 	let mut children: List<Int> = []
 	if asyncValue {
@@ -1954,7 +1959,7 @@ fn parseExternFunction(stateValue: CoreState, tokens: List<FrontendToken>) -> Pa
 		state = returnType.state
 		children = List.append(children, returnType.id)
 	} else {
-		state = addDiagnosticAt(state, tokens, "P0001", "Expected -> in an extern function", state.index)
+		state = addDiagnosticAt(state, tokens, "L0002", "Expected -> in an extern function", state.index)
 	}
 	if isText(state, tokens, "uses") {
 		let usesClause = parseUsesClauseNode(state, tokens)
@@ -1964,7 +1969,7 @@ fn parseExternFunction(stateValue: CoreState, tokens: List<FrontendToken>) -> Pa
 	if isText(state, tokens, "=") {
 		state = advance(state)
 	} else {
-		state = addDiagnosticAt(state, tokens, "P0001", "Expected = before an extern binding", state.index)
+		state = addDiagnosticAt(state, tokens, "L0002", "Expected = before an extern binding", state.index)
 	}
 	let bindingStart = state.index
 	let validBinding = currentKind(state, tokens) == FrontendTokenKind.StringLiteral
@@ -1972,7 +1977,7 @@ fn parseExternFunction(stateValue: CoreState, tokens: List<FrontendToken>) -> Pa
 	if validBinding {
 		state = advance(state)
 	} else {
-		state = addDiagnosticAt(state, tokens, "P0001", "Expected a JavaScript binding string", state.index)
+		state = addDiagnosticAt(state, tokens, "L0002", "Expected a JavaScript binding string", state.index)
 	}
 	let binding = addNode(state, tokens, "ExternBinding", bindingText, bindingStart, state.index, [], [])
 	state = binding.state
@@ -2004,7 +2009,7 @@ fn parseExternDeclaration(
 	if isText(state, tokens, "js") {
 		state = advance(state)
 	} else {
-		state = addDiagnosticAt(state, tokens, "P0001", "Expected js after extern", state.index)
+		state = addDiagnosticAt(state, tokens, "L0002", "Expected js after extern", state.index)
 	}
 	let sourceStart = state.index
 	let validSource = currentKind(state, tokens) == FrontendTokenKind.StringLiteral
@@ -2012,7 +2017,7 @@ fn parseExternDeclaration(
 	if validSource {
 		state = advance(state)
 	} else {
-		state = addDiagnosticAt(state, tokens, "P0001", "Expected an extern module source string", state.index)
+		state = addDiagnosticAt(state, tokens, "L0002", "Expected an extern module source string", state.index)
 	}
 	let sourceNode = addNode(state, tokens, "ExternSource", sourceText, sourceStart, state.index, [], [])
 	state = sourceNode.state
@@ -2020,7 +2025,7 @@ fn parseExternDeclaration(
 	if isText(state, tokens, "{") {
 		state = skipNewLines(advance(state), tokens)
 	} else {
-		state = addDiagnosticAt(state, tokens, "P0001", "Expected { to begin an extern declaration", state.index)
+		state = addDiagnosticAt(state, tokens, "L0002", "Expected { to begin an extern declaration", state.index)
 		state = synchronizeLine(state, tokens)
 	}
 	while !atEnd(state, tokens) && !isText(state, tokens, "}") {
@@ -2032,11 +2037,11 @@ fn parseExternDeclaration(
 				state = member.state
 				children = List.append(children, member.id)
 			} else {
-				state = addDiagnosticAt(state, tokens, "P0001", "Expected an extern function", state.index)
+				state = addDiagnosticAt(state, tokens, "L0002", "Expected an extern function", state.index)
 				state = synchronizeLine(state, tokens)
 			}
 			if state.index <= before {
-				state = addDiagnosticAt(state, tokens, "P0001", "Parser made no progress in an extern declaration", state.index)
+				state = addDiagnosticAt(state, tokens, "L0002", "Parser made no progress in an extern declaration", state.index)
 				if !atEnd(state, tokens) {
 					state = advance(state)
 				}
@@ -2046,7 +2051,7 @@ fn parseExternDeclaration(
 	if isText(state, tokens, "}") {
 		state = advance(state)
 	} else {
-		state = addDiagnosticAt(state, tokens, "P0001", "Expected } to end an extern declaration", state.index)
+		state = addDiagnosticAt(state, tokens, "L0002", "Expected } to end an extern declaration", state.index)
 	}
 	return addNode(state, tokens, "ExternDeclaration", sourceText, start, state.index, children, documentation)
 }
@@ -2075,7 +2080,7 @@ fn parseComposite(
 		state = body.state
 		children = List.append(children, body.id)
 	} else {
-		state = addDiagnosticAt(state, tokens, "P0001", "Expected a declaration body", state.index)
+		state = addDiagnosticAt(state, tokens, "L0002", "Expected a declaration body", state.index)
 		state = synchronizeLine(state, tokens)
 	}
 	return addNode(state, tokens, kind, name, start, state.index, children, documentation)
@@ -2191,7 +2196,7 @@ fn parseAttribute(stateValue: CoreState, tokens: List<FrontendToken>) -> ParsedN
 	if validName {
 		state = advance(state)
 	} else {
-		state = addDiagnosticAt(state, tokens, "P0001", "Expected an attribute name", state.index)
+		state = addDiagnosticAt(state, tokens, "L0002", "Expected an attribute name", state.index)
 	}
 	let mut children: List<Int> = []
 	if isText(state, tokens, "(") {
@@ -2211,7 +2216,7 @@ fn parseImportItem(stateValue: CoreState, tokens: List<FrontendToken>) -> Parsed
 	if validName {
 		state = advance(state)
 	} else {
-		state = addDiagnosticAt(state, tokens, "P0001", "Expected an import item name", state.index)
+		state = addDiagnosticAt(state, tokens, "L0002", "Expected an import item name", state.index)
 		if !atEnd(state, tokens) && !isText(state, tokens, "}") && !isText(state, tokens, ",") {
 			state = advance(state)
 		}
@@ -2223,7 +2228,7 @@ fn parseImportItem(stateValue: CoreState, tokens: List<FrontendToken>) -> Parsed
 			text = name + " as " + currentText(state, tokens)
 			state = advance(state)
 		} else {
-			state = addDiagnosticAt(state, tokens, "P0001", "Expected an import alias after as", state.index)
+			state = addDiagnosticAt(state, tokens, "L0002", "Expected an import alias after as", state.index)
 		}
 	}
 	return addNode(state, tokens, "ImportItem", text, start, state.index, [], [])
@@ -2235,7 +2240,7 @@ fn parseNamedImportItems(stateValue: CoreState, tokens: List<FrontendToken>) -> 
 	if isText(state, tokens, "{") {
 		state = skipNewLines(advance(state), tokens)
 	} else {
-		state = addDiagnosticAt(state, tokens, "P0001", "Expected { to begin import items", state.index)
+		state = addDiagnosticAt(state, tokens, "L0002", "Expected { to begin import items", state.index)
 		return ParsedChildren { state: synchronizeLine(state, tokens), children: children }
 	}
 	while !atEnd(state, tokens) && !isText(state, tokens, "}") {
@@ -2248,7 +2253,7 @@ fn parseNamedImportItems(stateValue: CoreState, tokens: List<FrontendToken>) -> 
 		if isText(state, tokens, ",") {
 			state = skipNewLines(advance(state), tokens)
 		} else if !isText(state, tokens, "}") {
-			state = addDiagnosticAt(state, tokens, "P0001", "Expected , or } after an import item", state.index)
+			state = addDiagnosticAt(state, tokens, "L0002", "Expected , or } after an import item", state.index)
 			while !atEnd(state, tokens)
 				&& currentKind(state, tokens) != FrontendTokenKind.NewLine
 				&& !isText(state, tokens, ",")
@@ -2260,7 +2265,7 @@ fn parseNamedImportItems(stateValue: CoreState, tokens: List<FrontendToken>) -> 
 			}
 		}
 		if state.index <= before {
-			state = addDiagnosticAt(state, tokens, "P0001", "Parser made no progress in import items", state.index)
+			state = addDiagnosticAt(state, tokens, "L0002", "Parser made no progress in import items", state.index)
 			if !atEnd(state, tokens) {
 				state = advance(state)
 			}
@@ -2269,7 +2274,7 @@ fn parseNamedImportItems(stateValue: CoreState, tokens: List<FrontendToken>) -> 
 	if isText(state, tokens, "}") {
 		state = advance(state)
 	} else {
-		state = addDiagnosticAt(state, tokens, "P0001", "Expected } to end import items", state.index)
+		state = addDiagnosticAt(state, tokens, "L0002", "Expected } to end import items", state.index)
 	}
 	return ParsedChildren { state: state, children: children }
 }
@@ -2282,7 +2287,7 @@ fn parseImportSource(stateValue: CoreState, tokens: List<FrontendToken>) -> Pars
 	if validSource {
 		state = advance(state)
 	} else {
-		state = addDiagnosticAt(state, tokens, "P0001", "Expected an import source string", state.index)
+		state = addDiagnosticAt(state, tokens, "L0002", "Expected an import source string", state.index)
 	}
 	return addNode(state, tokens, "ImportSource", text, start, state.index, [], [])
 }
@@ -2297,7 +2302,7 @@ fn parseDetailedImport(stateValue: CoreState, tokens: List<FrontendToken>) -> Pa
 	if isText(state, tokens, "import") {
 		state = advance(state)
 	} else {
-		state = addDiagnosticAt(state, tokens, "P0001", "Expected import", state.index)
+		state = addDiagnosticAt(state, tokens, "L0002", "Expected import", state.index)
 	}
 	let javascript = isText(state, tokens, "js")
 	if javascript {
@@ -2318,7 +2323,7 @@ fn parseDetailedImport(stateValue: CoreState, tokens: List<FrontendToken>) -> Pa
 		if isText(state, tokens, "from") {
 			state = advance(state)
 		} else {
-			state = addDiagnosticAt(state, tokens, "P0001", "Expected from after import items", state.index)
+			state = addDiagnosticAt(state, tokens, "L0002", "Expected from after import items", state.index)
 		}
 	} else if javascript && isText(state, tokens, "*") {
 		let itemStart = state.index
@@ -2326,14 +2331,14 @@ fn parseDetailedImport(stateValue: CoreState, tokens: List<FrontendToken>) -> Pa
 		if isText(state, tokens, "as") {
 			state = advance(state)
 		} else {
-			state = addDiagnosticAt(state, tokens, "P0001", "Expected as in a namespace import", state.index)
+			state = addDiagnosticAt(state, tokens, "L0002", "Expected as in a namespace import", state.index)
 		}
 		let validName = currentKind(state, tokens) == FrontendTokenKind.Identifier
 		let name = if validName then currentText(state, tokens) else ""
 		if validName {
 			state = advance(state)
 		} else {
-			state = addDiagnosticAt(state, tokens, "P0001", "Expected a namespace import name", state.index)
+			state = addDiagnosticAt(state, tokens, "L0002", "Expected a namespace import name", state.index)
 		}
 		let item = addNode(state, tokens, "ImportItem", "* as " + name, itemStart, state.index, [], [])
 		state = item.state
@@ -2342,7 +2347,7 @@ fn parseDetailedImport(stateValue: CoreState, tokens: List<FrontendToken>) -> Pa
 		if isText(state, tokens, "from") {
 			state = advance(state)
 		} else {
-			state = addDiagnosticAt(state, tokens, "P0001", "Expected from after a namespace import", state.index)
+			state = addDiagnosticAt(state, tokens, "L0002", "Expected from after a namespace import", state.index)
 		}
 	} else if javascript && currentKind(state, tokens) == FrontendTokenKind.Identifier {
 		let itemStart = state.index
@@ -2355,7 +2360,7 @@ fn parseDetailedImport(stateValue: CoreState, tokens: List<FrontendToken>) -> Pa
 		if isText(state, tokens, "from") {
 			state = advance(state)
 		} else {
-			state = addDiagnosticAt(state, tokens, "P0001", "Expected from after a default import", state.index)
+			state = addDiagnosticAt(state, tokens, "L0002", "Expected from after a default import", state.index)
 		}
 	} else if javascript && currentKind(state, tokens) == FrontendTokenKind.StringLiteral {
 		let sourceNode = parseImportSource(state, tokens)
@@ -2364,7 +2369,7 @@ fn parseDetailedImport(stateValue: CoreState, tokens: List<FrontendToken>) -> Pa
 		form = "javascript side-effect"
 		sourceAlreadyParsed = true
 	} else {
-		state = addDiagnosticAt(state, tokens, "P0001", "Expected import items or a JavaScript import binding", state.index)
+		state = addDiagnosticAt(state, tokens, "L0002", "Expected import items or a JavaScript import binding", state.index)
 	}
 	if !sourceAlreadyParsed {
 		let sourceNode = parseImportSource(state, tokens)
@@ -2399,7 +2404,7 @@ fn parseDeclaration(stateValue: CoreState, tokens: List<FrontendToken>) -> Parse
 	if kind == "TestDeclaration" {
 		return parseTestDeclaration(state, tokens)
 	}
-	let failed = addDiagnosticAt(state, tokens, "P0001", "Expected a declaration", state.index)
+	let failed = addDiagnosticAt(state, tokens, "L0002", "Expected a declaration", state.index)
 	return ParsedNode { state: synchronizeLine(failed, tokens), id: -1 }
 }
 
@@ -2458,7 +2463,7 @@ fn parseModule(lexed: FrontendLexResult) -> FrontendParseResult {
 			if isText(state, tokens, "import")
 				|| (isText(state, tokens, "pub") && tokenAt(tokens, state.index + 1).text == "import") {
 				if List.length(attributeIds) > 0 {
-					state = addDiagnosticAt(state, tokens, "P0001", "Attributes cannot target an import declaration", state.index)
+					state = addDiagnosticAt(state, tokens, "L0002", "Attributes cannot target an import declaration", state.index)
 				}
 				let docs = takeDocumentation(state, tokens, false)
 				state = withSignificant(docs.state, true)
@@ -2475,7 +2480,7 @@ fn parseModule(lexed: FrontendLexResult) -> FrontendParseResult {
 				}
 			}
 			if state.index <= before {
-				state = addDiagnosticAt(state, tokens, "P0001", "Parser made no progress at module scope", state.index)
+				state = addDiagnosticAt(state, tokens, "L0002", "Parser made no progress at module scope", state.index)
 				state = synchronizeLine(advance(state), tokens)
 			}
 		}
