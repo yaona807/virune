@@ -1,0 +1,94 @@
+name: Implement self-host parser parity
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  implement:
+    if: ${{ github.head_ref == 'agent/selfhost-parser-parity' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: agent/selfhost-parser-parity
+          fetch-depth: 0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 24
+          cache: npm
+      - name: Normalize parser diagnostics and optional parameters
+        run: |
+          node --input-type=module - <<'NODE'
+          import { readFile, writeFile } from 'node:fs/promises';
+
+          const parserFiles = [
+            'selfhost/mvp/src/frontend-parser.virune',
+            'selfhost/mvp/src/frontend-parser-core.virune',
+            'selfhost/mvp/src/frontend-lambda-parser.virune',
+            'selfhost/mvp/src/frontend-pattern-parser.virune',
+            'selfhost/mvp/src/frontend-declaration-parser.virune',
+          ];
+          for (const path of parserFiles) {
+            const source = await readFile(path, 'utf8');
+            await writeFile(path, source.replaceAll('"P0001"', '"L0002"'));
+          }
+
+          const corePath = 'selfhost/mvp/src/frontend-parser-core.virune';
+          let core = await readFile(corePath, 'utf8');
+          const nameBoundary = `\t\tif validName {\n\t\t\tstate = advance(state)\n\t\t} else {\n\t\t\tstate = addDiagnosticAt(state, tokens, "L0002", "Expected a parameter name", state.index)\n\t\t}\n\t\tif isText(state, tokens, ":") {`;
+          const optionalBoundary = `\t\tif validName {\n\t\t\tstate = advance(state)\n\t\t} else {\n\t\t\tstate = addDiagnosticAt(state, tokens, "L0002", "Expected a parameter name", state.index)\n\t\t}\n\t\tlet optional = isText(state, tokens, "?")\n\t\tif optional {\n\t\t\tstate = advance(state)\n\t\t}\n\t\tif isText(state, tokens, ":") {`;
+          if (!core.includes(nameBoundary)) throw new Error('Function parameter optional-boundary target is missing');
+          core = core.replace(nameBoundary, optionalBoundary);
+          const nodeBoundary = `\t\tlet parameter = addNode(state, tokens, "Parameter", name, before, state.index, parameterChildren, [])`;
+          const optionalNode = `\t\tlet parameterText = if optional then "optional " + name else name\n\t\tlet parameter = addNode(state, tokens, "Parameter", parameterText, before, state.index, parameterChildren, [])`;
+          if (!core.includes(nodeBoundary)) throw new Error('Function parameter node target is missing');
+          core = core.replace(nodeBoundary, optionalNode);
+          await writeFile(corePath, core);
+
+          const packagePath = 'package.json';
+          let packageSource = await readFile(packagePath, 'utf8');
+          const scriptMarker = '\t\t"selfhost:mvp:differential": "npm run selfhost:mvp:build && node scripts/run-selfhost-mvp-differential.mjs",';
+          if (!packageSource.includes('"selfhost:parser:parity"')) {
+            if (!packageSource.includes(scriptMarker)) throw new Error('Package script insertion target is missing');
+            packageSource = packageSource.replace(
+              scriptMarker,
+              scriptMarker + '\n\t\t"selfhost:parser:parity": "npm run build && node --test --test-timeout=120000 packages/compiler/dist/test/selfhost-parser-parity.test.js",',
+            );
+          }
+          await writeFile(packagePath, packageSource);
+
+          const englishPath = 'docs/self-hosting-differential.md';
+          let english = await readFile(englishPath, 'utf8');
+          if (!english.includes('## Parser parity corpus')) {
+            english += '\n\n## Parser parity corpus\n\nThe versioned `.github/self-hosting/parser-parity-corpus-v1.json` corpus compares the production Legacy lexer/parser with the Virune Stage 0 frontend. It covers the Virune 1.0 grammar families, compares accepted/rejected status, and compares the public parser diagnostic contract (`code`, `severity`, and source range) for isolated malformed cases. Chevrotain\'s historical inclusive `endOffset` is normalized at the Host boundary; line and column values remain unchanged. Deterministic bounded mutations verify progress, canonical arena IDs, and absence of panics.\n\nRun it locally with:\n\n```bash\nnpm run selfhost:parser:parity\n```\n\nExpected divergences require an exact case and JSON path, a reason, and a non-expired ISO date. Unmatched, stale, or expired policies fail the test.\n';
+          }
+          await writeFile(englishPath, english);
+
+          const japanesePath = 'docs/self-hosting-differential_ja.md';
+          let japanese = await readFile(japanesePath, 'utf8');
+          if (!japanese.includes('## Parser parity corpus')) {
+            japanese += '\n\n## Parser parity corpus\n\nVersion管理された`.github/self-hosting/parser-parity-corpus-v1.json`で、Production Legacy lexer／parserとVirune Stage 0 frontendを比較します。Virune 1.0 grammarの各構文群についてaccepted／rejectedを比較し、単一破損caseでは公開Parser diagnostic契約である`code`、`severity`、source rangeを比較します。Chevrotain由来の歴史的なinclusive `endOffset`だけをHost境界で正規化し、line／columnは変更しません。決定的なbounded mutationで進行保証、canonical arena ID、panic不在を検証します。\n\nローカル実行:\n\n```bash\nnpm run selfhost:parser:parity\n```\n\nExpected divergenceには正確なcaseとJSON path、理由、期限内のISO日付が必要です。未説明差分、stale policy、expired policyは失敗します。\n';
+          }
+          await writeFile(japanesePath, japanese);
+          NODE
+      - run: npm ci
+      - run: npm run check
+      - name: Run parser parity corpus
+        run: node --test --test-timeout=120000 packages/compiler/dist/test/selfhost-parser-parity.test.js
+      - name: Run Stage 0 self-host tests
+        run: node packages/cli/dist/src/main.js test selfhost/mvp
+      - run: git diff --check
+      - name: Commit implementation and remove temporary workflow
+        run: |
+          rm .github/workflows/implement-selfhost-parser-parity.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .github/self-hosting/parser-parity-corpus-v1.json packages/compiler/test/selfhost-parser-parity.test.ts selfhost/mvp/src/frontend-parser.virune selfhost/mvp/src/frontend-parser-core.virune selfhost/mvp/src/frontend-lambda-parser.virune selfhost/mvp/src/frontend-pattern-parser.virune selfhost/mvp/src/frontend-declaration-parser.virune package.json docs/self-hosting-differential.md docs/self-hosting-differential_ja.md .github/workflows/implement-selfhost-parser-parity.yml
+          git commit -m "compiler(selfhost): complete parser parity harness"
+          git push origin HEAD:agent/selfhost-parser-parity
