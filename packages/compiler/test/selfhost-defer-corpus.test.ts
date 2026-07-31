@@ -119,8 +119,12 @@ async function loadManifest(): Promise<CorpusManifest> {
 function validateFixtureShape(fixture: CorpusCase): void {
 	assert.equal(fixture.scopes.length > 0, true, `${fixture.id}: no scopes`);
 	assert.equal(fixture.statements.length > 0, true, `${fixture.id}: no statements`);
-	const scopeKeys = fixture.scopes.map(item => `${item.kind}:${item.name}`);
-	assert.equal(new Set(scopeKeys).size === scopeKeys.length, fixture.id === 'malformed-request');
+	const nonEmptyNames = fixture.scopes.map(item => item.name).filter(name => name.length > 0);
+	assert.equal(
+		new Set(nonEmptyNames).size === nonEmptyNames.length,
+		fixture.id !== 'malformed-request',
+		`${fixture.id}: duplicate scope-name expectation`,
+	);
 }
 
 function checkEncoded(module: DeferModule, request: unknown): string {
