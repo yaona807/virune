@@ -79,7 +79,19 @@ Lambda sliceは次のnodeを生成します。
 - 既存Parser coreを利用したexpression bodyとblock body
 - 詳細parenthesized lambda nodeとimmediate lambda-call postfix node
 
-Lambda header内のtype-reference nestingには上限を設けています。Header delimiterまたはbodyの欠落は安定したdiagnosticを生成し、現在のline境界で同期します。Nested lambdaは別の再帰object modelを作らず、同じrecursive expression pathを再利用します。Closure capture semanticsと残るgrammar familyはIssue #96を完了する前の後続sliceで扱います。
+Lambda header内のtype-reference nestingには上限を設けています。Header delimiterまたはbodyの欠落は安定したdiagnosticを生成し、現在のline境界で同期します。Nested lambdaは別の再帰object modelを作らず、同じrecursive expression pathを再利用します。
+
+## Conditional expressionとparallel expression
+
+Conditional expressionはParser coreで直接詳細化します。各`ConditionalExpression`はcondition、consequent、alternateのchildを持ち、nested conditionalも既存のprecedence-aware expression pathを再利用します。
+
+Parallel expressionは次のnodeを生成します。
+
+- `parallel`と`parallel try`に対応する`ParallelExpression`
+- nameとexpression childを持つ個別の`ParallelEntry`
+- 閉じ波括弧後のcall、field、try postfix詳細node
+
+Entryのcolonが欠落した場合はcomma、物理line end、囲んでいる`}`で同期します。次entryと後続declarationを引き続きparseでき、progress guardによりmalformed entry listでParserが停止し続けることを防ぎます。Parallel execution semantics、closure capture semantics、残るgrammar familyはIssue #96を完了する前の後続sliceで扱います。
 
 ## Documentation comment
 
@@ -101,7 +113,8 @@ Parserはmodule documentationをmodule nodeへ、declaration documentationを対
 - record、enum、newtype、type alias、nested type-referenceの詳細node
 - guard付きmatch armとnested pattern family
 - sync／async lambda、typed parameter、return type、uses clause、両body form、nesting、immediate call
-- malformed declaration detail／match arm／lambda bodyから後続functionまでのrecovery
+- conditional branch、parallel／parallel try entry、direct postfix構造
+- malformed declaration detail／match arm／lambda body／parallel entryから後続functionまでのrecovery
 - lexical rejectionと対応済みsource acceptanceのLegacy Compilerとの一致
 
 この作業ではgrammar、Production Parser、stable Compiler API、Runtime ABI、Interop ABI、公開standard libraryを変更しません。
