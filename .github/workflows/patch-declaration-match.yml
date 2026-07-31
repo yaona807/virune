@@ -1,0 +1,80 @@
+name: Patch declaration match arms
+
+on:
+  push:
+    branches:
+      - agent/selfhost-declaration-type-ast
+    paths:
+      - .github/workflows/patch-declaration-match.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: agent/selfhost-declaration-type-ast
+          fetch-depth: 0
+      - name: Move match-arm blocks into helpers
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('selfhost/mvp/src/frontend-parser-core.virune')
+          content = path.read_text(encoding='utf-8')
+          start = content.index('fn parseDetailedDeclaration(\n')
+          end = content.index('\n\nfn parseDeclaration(', start)
+          replacement = '''fn mergeDetailedDeclaration(
+          \tstateValue: CoreState,
+          \tvalue: DetailedDeclarationTransport,
+          ) -> ParsedNode {
+          \tlet state = CoreState {
+          \t\tindex: value.nextIndex,
+          \t\tnodes: List.concat(stateValue.nodes, value.nodes),
+          \t\tdiagnostics: List.concat(stateValue.diagnostics, value.diagnostics),
+          \t\tcommentIndex: stateValue.commentIndex,
+          \t\tpendingDocumentation: stateValue.pendingDocumentation,
+          \t\tmoduleDocumentation: stateValue.moduleDocumentation,
+          \t\tsignificantSeen: stateValue.significantSeen,
+          \t}
+          \treturn ParsedNode { state: state, id: value.root }
+          }
+
+          fn detailedDeclarationFailure(
+          \tstateValue: CoreState,
+          \ttokens: List<FrontendToken>,
+          ) -> ParsedNode {
+          \tlet failed = addDiagnosticAt(
+          \t\tstateValue,
+          \t\ttokens,
+          \t\t"P9000",
+          \t\t"Detailed declaration parser transport failed",
+          \t\tstateValue.index,
+          \t)
+          \treturn ParsedNode { state: synchronizeLine(failed, tokens), id: -1 }
+          }
+
+          fn parseDetailedDeclaration(
+          \tstateValue: CoreState,
+          \ttokens: List<FrontendToken>,
+          \tkind: String,
+          \tdocumentation: List<String>,
+          ) -> ParsedNode {
+          \treturn match loadDetailedDeclaration(stateValue, tokens, kind, documentation) {
+          \t\tOk(value) => mergeDetailedDeclaration(stateValue, value)
+          \t\tErr(_) => detailedDeclarationFailure(stateValue, tokens)
+          \t}
+          }'''
+          path.write_text(content[:start] + replacement + content[end:], encoding='utf-8')
+          PY
+      - name: Commit patch and remove helper workflow
+        run: |
+          git rm .github/workflows/patch-declaration-match.yml
+          git add selfhost/mvp/src/frontend-parser-core.virune
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git commit -m "fix(selfhost): make declaration match arms Stage 0 compatible"
+          git push origin HEAD:agent/selfhost-declaration-type-ast
