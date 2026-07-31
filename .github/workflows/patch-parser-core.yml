@@ -1,0 +1,43 @@
+name: Patch parser core type annotations
+
+on:
+  push:
+    branches:
+      - agent/selfhost-frontend-parser-core
+    paths:
+      - .github/workflows/patch-parser-core.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: agent/selfhost-frontend-parser-core
+          fetch-depth: 0
+      - name: Apply typed child-list patch
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path('selfhost/mvp/src/frontend-parser-core.virune')
+          content = path.read_text(encoding='utf-8')
+          old = 'let children = if expression.id >= 0 then [expression.id] else []'
+          new = '''let mut children: List<Int> = []
+          if expression.id >= 0 {
+              children = List.append(children, expression.id)
+          }'''
+          if content.count(old) != 2:
+              raise SystemExit(f'expected 2 replacements, found {content.count(old)}')
+          path.write_text(content.replace(old, new), encoding='utf-8')
+      - name: Commit patch and remove helper workflow
+        run: |
+          git rm .github/workflows/patch-parser-core.yml
+          git add selfhost/mvp/src/frontend-parser-core.virune
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git commit -m "fix(selfhost): type parser child lists explicitly"
+          git push origin HEAD:agent/selfhost-frontend-parser-core
