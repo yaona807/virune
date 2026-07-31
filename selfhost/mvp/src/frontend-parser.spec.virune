@@ -1,0 +1,47 @@
+import { parseFrontend } from "./frontend-parser.virune"
+
+fn encoded(source: String) -> String {
+	return match parseFrontend(source) {
+		Ok(value) => value
+		Err(_) => ""
+	}
+}
+
+test "frontend parser builds a deterministic flat module AST" {
+	let source = "//! Parser module\nunsafe module\n\nimport { Thing as Alias } from \"./thing.virune\"\nimport js * as host from \"node:host\"\n\n/// Adds values\n@deprecated\npub fn add<T>(left: Int, right: Int) -> Int {\n\tlet value = left + right * 2\n\tif value > 0 {\n\t\treturn value\n\t} else {\n\t\treturn 0\n\t}\n}\n\n/// Record docs\npub record Pair<T> derives Eq {\n\tleft: T\n\tright: T\n}\n\npub enum Choice<T> {\n\tSome(T)\n\tNone\n}\n\npub newtype UserId = Int\npub type Maybe<T> = Option<T>\nunsafe extern js \"pkg\" {\n\tfn read(value: Int) -> Int = \"read\"\n}\npub let answer: Int = add(20, 1)\nasync test \"works\" {\n\tdiscard add(1, 2)\n}\n"
+	let first = encoded(source)
+	let second = encoded(source)
+	expect(first == second)
+	expect(String.contains(first, "\"accepted\":true"))
+	expect(String.contains(first, "\"kind\":\"Module\""))
+	expect(String.contains(first, "\"kind\":\"UnsafeModule\""))
+	expect(String.contains(first, "\"kind\":\"ImportDeclaration\""))
+	expect(String.contains(first, "\"kind\":\"FunctionDeclaration\""))
+	expect(String.contains(first, "\"kind\":\"RecordDeclaration\""))
+	expect(String.contains(first, "\"kind\":\"EnumDeclaration\""))
+	expect(String.contains(first, "\"kind\":\"NewtypeDeclaration\""))
+	expect(String.contains(first, "\"kind\":\"TypeAliasDeclaration\""))
+	expect(String.contains(first, "\"kind\":\"ExternDeclaration\""))
+	expect(String.contains(first, "\"kind\":\"TopLevelValueDeclaration\""))
+	expect(String.contains(first, "\"kind\":\"TestDeclaration\""))
+	expect(String.contains(first, "\"kind\":\"BinaryExpression\""))
+	expect(String.contains(first, "\"kind\":\"IfStatement\""))
+	expect(String.contains(first, "\"documentation\":[\"Adds values\"]"))
+	expect(String.contains(first, "\"documentation\":[\"Parser module\"]"))
+}
+
+test "frontend parser recovers and reports multiple malformed constructs" {
+	let source = "pub fn broken(value: Int -> Int {\n\tlet =\n\treturn\n}\npub nonsense\npub fn valid() -> Int {\n\treturn 1\n}\n"
+	let result = encoded(source)
+	expect(String.contains(result, "\"accepted\":false"))
+	expect(String.contains(result, "Unterminated Parameters"))
+	expect(String.contains(result, "Expected a declaration"))
+}
+
+test "frontend parser enforces documentation attachment boundaries" {
+	let source = "/// Import docs are unsupported\nimport { Value } from \"./value.virune\"\n//! Late module docs\npub fn main() -> Unit {\n\treturn\n}\n"
+	let result = encoded(source)
+	expect(String.contains(result, "\"code\":\"L0012\""))
+	expect(String.contains(result, "\"code\":\"L0011\""))
+	expect(String.contains(result, "\"accepted\":false"))
+}
