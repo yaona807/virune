@@ -1,0 +1,64 @@
+//! Canonical data-only semantic model for the Virune-authored checker.
+
+import { ParserSpan } from "./frontend-parser-model.virune"
+
+pub record SemanticDiagnostic derives Eq, Debug, Json {
+	code: String
+	severity: String
+	message: String
+	span: ParserSpan
+	help: String?
+}
+
+pub record SemanticType derives Eq, Debug, Json {
+	id: Int
+	kind: String
+	name: String
+	declarationId: Int?
+	arguments: List<Int>
+	span: ParserSpan
+}
+
+pub record SemanticMember derives Eq, Debug, Json {
+	id: Int
+	declarationId: Int
+	kind: String
+	name: String
+	typeIds: List<Int>
+	span: ParserSpan
+}
+
+pub record SemanticDeclaration derives Eq, Debug, Json {
+	id: Int
+	sourceNodeId: Int
+	kind: String
+	name: String
+	isPublic: Bool
+	typeParameters: List<String>
+	memberIds: List<Int>
+	targetType: Int?
+	span: ParserSpan
+}
+
+pub record FrontendSemanticResult derives Eq, Debug, Json {
+	accepted: Bool
+	declarations: List<SemanticDeclaration>
+	members: List<SemanticMember>
+	types: List<SemanticType>
+	diagnostics: List<SemanticDiagnostic>
+}
+
+pub fn semanticDiagnostic(
+	code: String,
+	message: String,
+	span: ParserSpan,
+	help: String?,
+) -> SemanticDiagnostic {
+	return SemanticDiagnostic {
+		code: code,
+		severity: "error",
+		message: message,
+		span: span,
+		help: help,
+	}
+}
