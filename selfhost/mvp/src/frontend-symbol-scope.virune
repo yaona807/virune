@@ -1,0 +1,380 @@
+//! Canonical lexical scope and symbol arena for the Virune-authored checker.
+
+pub record FrontendScopeDefinition derives Eq, Debug, Json {
+	kind: String
+	ownerNodeId: Int
+	parentScopeId: Int?
+}
+
+pub record FrontendSymbolDefinition derives Eq, Debug, Json {
+	scopeId: Int
+	space: String
+	name: String
+	sourceNodeId: Int
+}
+
+pub record FrontendScopeLookupRequest derives Eq, Debug, Json {
+	scopeId: Int
+	space: String
+	name: String
+}
+
+pub record FrontendSymbolScopeRequest derives Eq, Debug, Json {
+	scopes: List<FrontendScopeDefinition>
+	symbols: List<FrontendSymbolDefinition>
+	lookups: List<FrontendScopeLookupRequest>
+}
+
+pub record SemanticScope derives Eq, Debug, Json {
+	id: Int
+	kind: String
+	ownerNodeId: Int
+	parentScopeId: Int?
+}
+
+pub record SemanticSymbol derives Eq, Debug, Json {
+	id: Int
+	scopeId: Int
+	space: String
+	name: String
+	sourceNodeId: Int
+	shadowsSymbolId: Int?
+}
+
+pub record SemanticScopeLookupResult derives Eq, Debug, Json {
+	scopeId: Int
+	space: String
+	name: String
+	symbolId: Int?
+}
+
+pub record SemanticScopeDiagnostic derives Eq, Debug, Json {
+	code: String
+	severity: String
+	message: String
+	scopeId: Int?
+	name: String?
+	help: String?
+}
+
+pub record FrontendSymbolScopeResult derives Eq, Debug, Json {
+	accepted: Bool
+	scopes: List<SemanticScope>
+	symbols: List<SemanticSymbol>
+	lookups: List<SemanticScopeLookupResult>
+	diagnostics: List<SemanticScopeDiagnostic>
+}
+
+record ScopeBuildResult {
+	scopes: List<SemanticScope>
+	diagnostics: List<SemanticScopeDiagnostic>
+}
+
+record SymbolBuildResult {
+	symbols: List<SemanticSymbol>
+	diagnostics: List<SemanticScopeDiagnostic>
+}
+
+record LookupBuildResult {
+	lookups: List<SemanticScopeLookupResult>
+	diagnostics: List<SemanticScopeDiagnostic>
+}
+
+fn optionalInt(value: Int?) -> Int {
+	return match value {
+		Some(item) => item
+		None => -1
+	}
+}
+
+fn maybeInt(value: Int) -> Int? {
+	return if value >= 0 then Some(value) else None
+}
+
+fn fallbackScope() -> SemanticScope {
+	return SemanticScope {
+		id: -1,
+		kind: "missing",
+		ownerNodeId: -1,
+		parentScopeId: None,
+	}
+}
+
+fn scopeAt(values: List<SemanticScope>, id: Int) -> SemanticScope {
+	return match List.get(values, id) {
+		Some(value) => value
+		None => fallbackScope()
+	}
+}
+
+fn scopeDiagnostic(
+	code: String,
+	message: String,
+	scopeId: Int?,
+	name: String?,
+	help: String?,
+) -> SemanticScopeDiagnostic {
+	return SemanticScopeDiagnostic {
+		code: code,
+		severity: "error",
+		message: message,
+		scopeId: scopeId,
+		name: name,
+		help: help,
+	}
+}
+
+fn validScopeKind(kind: String) -> Bool {
+	return kind == "module" || kind == "function" || kind == "block"
+}
+
+fn validSpace(space: String) -> Bool {
+	return space == "value" || space == "type" || space == "capability"
+}
+
+fn buildScopes(values: List<FrontendScopeDefinition>) -> ScopeBuildResult {
+	let mut scopes: List<SemanticScope> = []
+	let mut diagnostics: List<SemanticScopeDiagnostic> = []
+	let mut id = 0
+	for value in values {
+		let requestedParent = optionalInt(value.parentScopeId)
+		let mut parent: Int? = value.parentScopeId
+		if !validScopeKind(value.kind) {
+			diagnostics = List.append(diagnostics, scopeDiagnostic(
+				"L9001",
+				"Unknown scope kind " + value.kind,
+				Some(id),
+				None,
+				Some("Use module, function, or block."),
+			))
+		}
+		if value.ownerNodeId < 0 {
+			diagnostics = List.append(diagnostics, scopeDiagnostic(
+				"L9001",
+				"Scope owner node ID must be non-negative",
+				Some(id),
+				None,
+				Some("Pass the canonical AST node ID that owns this scope."),
+			))
+		}
+		if value.kind == "module" && requestedParent >= 0 {
+			diagnostics = List.append(diagnostics, scopeDiagnostic(
+				"L9001",
+				"Module scope cannot have a parent scope",
+				Some(id),
+				None,
+				Some("Use None for a module scope parent."),
+			))
+			parent = None
+		}
+		if value.kind != "module" && requestedParent < 0 {
+			diagnostics = List.append(diagnostics, scopeDiagnostic(
+				"L9001",
+				"Nested scope requires a parent scope",
+				Some(id),
+				None,
+				Some("Reference an earlier module, function, or block scope."),
+			))
+		}
+		if requestedParent >= id {
+			diagnostics = List.append(diagnostics, scopeDiagnostic(
+				"L9001",
+				"Parent scope must reference an earlier scope",
+				Some(id),
+				None,
+				Some("Scope parents must form an acyclic arena."),
+			))
+			parent = None
+		}
+		scopes = List.append(scopes, SemanticScope {
+			id: id,
+			kind: value.kind,
+			ownerNodeId: value.ownerNodeId,
+			parentScopeId: parent,
+		})
+		id = id + 1
+	}
+	return ScopeBuildResult { scopes: scopes, diagnostics: diagnostics }
+}
+
+fn symbolInScope(
+	values: List<SemanticSymbol>,
+	scopeId: Int,
+	space: String,
+	name: String,
+) -> Int {
+	for value in values {
+		if value.scopeId == scopeId && value.space == space && value.name == name {
+			return value.id
+		}
+	}
+	return -1
+}
+
+fn nearestSymbol(
+	values: List<SemanticSymbol>,
+	scopes: List<SemanticScope>,
+	startScopeId: Int,
+	space: String,
+	name: String,
+) -> Int {
+	let mut scopeId = startScopeId
+	let mut remaining = List.length(scopes) + 1
+	while scopeId >= 0 && remaining > 0 {
+		let found = symbolInScope(values, scopeId, space, name)
+		if found >= 0 {
+			return found
+		}
+		scopeId = optionalInt(scopeAt(scopes, scopeId).parentScopeId)
+		remaining = remaining - 1
+	}
+	return -1
+}
+
+fn buildSymbols(
+	definitions: List<FrontendSymbolDefinition>,
+	scopes: List<SemanticScope>,
+	diagnosticsValue: List<SemanticScopeDiagnostic>,
+) -> SymbolBuildResult {
+	let mut symbols: List<SemanticSymbol> = []
+	let mut diagnostics = diagnosticsValue
+	for definition in definitions {
+		let scopeValid = definition.scopeId >= 0 && definition.scopeId < List.length(scopes)
+		let spaceValid = validSpace(definition.space)
+		let nameValid = String.length(definition.name) > 0
+		if !scopeValid {
+			diagnostics = List.append(diagnostics, scopeDiagnostic(
+				"L9001",
+				"Symbol references an unknown scope",
+				Some(definition.scopeId),
+				Some(definition.name),
+				Some("Reference a scope ID from the canonical scope arena."),
+			))
+		}
+		if !spaceValid {
+			diagnostics = List.append(diagnostics, scopeDiagnostic(
+				"L9001",
+				"Unknown symbol namespace " + definition.space,
+				Some(definition.scopeId),
+				Some(definition.name),
+				Some("Use value, type, or capability."),
+			))
+		}
+		if !nameValid {
+			diagnostics = List.append(diagnostics, scopeDiagnostic(
+				"L9001",
+				"Symbol name cannot be empty",
+				Some(definition.scopeId),
+				Some(definition.name),
+				Some("Use the canonical declaration or binding name."),
+			))
+		}
+		if definition.sourceNodeId < 0 {
+			diagnostics = List.append(diagnostics, scopeDiagnostic(
+				"L9001",
+				"Symbol source node ID must be non-negative",
+				Some(definition.scopeId),
+				Some(definition.name),
+				Some("Pass the canonical AST node ID that defines the symbol."),
+			))
+		}
+		if scopeValid && spaceValid && nameValid && definition.sourceNodeId >= 0 {
+			let duplicate = symbolInScope(symbols, definition.scopeId, definition.space, definition.name)
+			if duplicate >= 0 {
+				diagnostics = List.append(diagnostics, scopeDiagnostic(
+					"L1001",
+					"Duplicate symbol " + definition.name + " in the same scope and namespace",
+					Some(definition.scopeId),
+					Some(definition.name),
+					Some("Rename or remove the duplicate binding."),
+				))
+			} else {
+				let parentId = optionalInt(scopeAt(scopes, definition.scopeId).parentScopeId)
+				let shadowed = nearestSymbol(symbols, scopes, parentId, definition.space, definition.name)
+				symbols = List.append(symbols, SemanticSymbol {
+					id: List.length(symbols),
+					scopeId: definition.scopeId,
+					space: definition.space,
+					name: definition.name,
+					sourceNodeId: definition.sourceNodeId,
+					shadowsSymbolId: maybeInt(shadowed),
+				})
+			}
+		}
+	}
+	return SymbolBuildResult { symbols: symbols, diagnostics: diagnostics }
+}
+
+fn buildLookups(
+	requests: List<FrontendScopeLookupRequest>,
+	scopes: List<SemanticScope>,
+	symbols: List<SemanticSymbol>,
+	diagnosticsValue: List<SemanticScopeDiagnostic>,
+) -> LookupBuildResult {
+	let mut lookups: List<SemanticScopeLookupResult> = []
+	let mut diagnostics = diagnosticsValue
+	for request in requests {
+		let scopeValid = request.scopeId >= 0 && request.scopeId < List.length(scopes)
+		let spaceValid = validSpace(request.space)
+		let nameValid = String.length(request.name) > 0
+		let mut symbolId = -1
+		if !scopeValid || !spaceValid || !nameValid {
+			diagnostics = List.append(diagnostics, scopeDiagnostic(
+				"L9001",
+				"Invalid symbol lookup request",
+				Some(request.scopeId),
+				Some(request.name),
+				Some("Use a valid scope ID, namespace, and non-empty symbol name."),
+			))
+		} else {
+			symbolId = nearestSymbol(symbols, scopes, request.scopeId, request.space, request.name)
+			if symbolId < 0 {
+				diagnostics = List.append(diagnostics, scopeDiagnostic(
+					"L2040",
+					"Unknown symbol " + request.name,
+					Some(request.scopeId),
+					Some(request.name),
+					Some("Declare the symbol in this scope or an enclosing scope."),
+				))
+			}
+		}
+		lookups = List.append(lookups, SemanticScopeLookupResult {
+			scopeId: request.scopeId,
+			space: request.space,
+			name: request.name,
+			symbolId: maybeInt(symbolId),
+		})
+	}
+	return LookupBuildResult { lookups: lookups, diagnostics: diagnostics }
+}
+
+fn accepted(diagnostics: List<SemanticScopeDiagnostic>) -> Bool {
+	for diagnostic in diagnostics {
+		if diagnostic.severity == "error" {
+			return false
+		}
+	}
+	return true
+}
+
+fn decodeRequest(encoded: String) -> Result<FrontendSymbolScopeRequest, List<JsonError>> {
+	let raw = Json.parse(encoded)?
+	return Json.decode<FrontendSymbolScopeRequest>(raw)
+}
+
+pub fn buildFrontendSymbolScope(request: FrontendSymbolScopeRequest) -> FrontendSymbolScopeResult {
+	let scopeResult = buildScopes(request.scopes)
+	let symbolResult = buildSymbols(request.symbols, scopeResult.scopes, scopeResult.diagnostics)
+	let lookupResult = buildLookups(request.lookups, scopeResult.scopes, symbolResult.symbols, symbolResult.diagnostics)
+	return FrontendSymbolScopeResult {
+		accepted: accepted(lookupResult.diagnostics),
+		scopes: scopeResult.scopes,
+		symbols: symbolResult.symbols,
+		lookups: lookupResult.lookups,
+		diagnostics: lookupResult.diagnostics,
+	}
+}
+
+pub fn buildFrontendSymbolScopeJson(encoded: String) -> Result<String, List<JsonError>> {
+	return Json.encode<FrontendSymbolScopeResult>(buildFrontendSymbolScope(decodeRequest(encoded)?))
+}

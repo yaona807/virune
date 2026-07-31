@@ -10,6 +10,7 @@ import { emitMvpJson } from "./emitter.virune"
 import { lexFrontend } from "./frontend-lexer.virune"
 import { parseFrontendCore } from "./frontend-parser-core.virune"
 import { checkFrontendDataTypesJson } from "./frontend-semantic.virune"
+import { buildFrontendSymbolScopeJson } from "./frontend-symbol-scope.virune"
 import { checkFrontendTypeOperationsJson } from "./frontend-type-operations.virune"
 import { lexMvpJson } from "./lexer.virune"
 import { parseMvpJson } from "./parser.virune"
@@ -40,4 +41,9 @@ pub fn checkFrontendDataTypesContract(source: String) -> Result<String, List<Jso
 @jsExport
 pub fn checkFrontendTypeOperationsContract(request: String) -> Result<String, List<JsonError>> {
 	return checkFrontendTypeOperationsJson(request)
+}
+
+@jsExport
+pub fn buildFrontendSymbolScopeContract(request: String) -> Result<String, List<JsonError>> {
+	return buildFrontendSymbolScopeJson(request)
 }
