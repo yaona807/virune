@@ -1,0 +1,29 @@
+name: Selfhost PR139 sync main
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - .github/workflows/selfhost-pr139-sync-main.yml
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: selfhost/collection-type-operations
+          fetch-depth: 0
+      - name: Merge latest main
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git fetch origin main
+          git merge --no-edit --no-ff origin/main
+          git rm .github/workflows/selfhost-pr139-sync-main.yml
+          git commit -m "ci: remove temporary PR139 sync workflow"
+          git push origin HEAD:selfhost/collection-type-operations
