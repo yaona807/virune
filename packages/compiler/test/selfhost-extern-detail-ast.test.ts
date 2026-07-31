@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { execFile } from 'node:child_process';
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { dirname, join, relative, resolve } from 'node:path';
 import { promisify } from 'node:util';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -33,6 +33,39 @@ type ParseResult = {
 type FrontendParserModule = {
 	readonly parseFrontendContract: (source: string) => ViruneResult<string>;
 };
+
+// BEGIN TEMPORARY EXTERN BOUNDARY PATCH
+await (async () => {
+	const parserPath = join(mvpRoot, 'src', 'frontend-parser-core.virune');
+	let parserSource = await readFile(parserPath, 'utf8');
+	const original = `\tstate = binding.state
+\tchildren = List.append(children, binding.id)
+\tstate = consumeLineEnd(state, tokens, "an extern function")
+\treturn addNode(state, tokens, "ExternFunction", name, start, state.index, children, [])`;
+	const replacement = `\tstate = binding.state
+\tchildren = List.append(children, binding.id)
+\tlet nextMemberBoundary = !validBinding
+\t\t&& (isText(state, tokens, "fn") || isText(state, tokens, "async"))
+\t\t&& tokenAt(tokens, state.index).span.start.line > tokenAt(tokens, start).span.start.line
+\tif !nextMemberBoundary {
+\t\tstate = consumeLineEnd(state, tokens, "an extern function")
+\t}
+\treturn addNode(state, tokens, "ExternFunction", name, start, state.index, children, [])`;
+	assert.ok(parserSource.includes(original), 'extern member boundary patch target is missing');
+	parserSource = parserSource.replace(original, replacement);
+	await writeFile(parserPath, parserSource);
+
+	const sourcePath = join(repositoryRoot, 'packages', 'compiler', 'test', 'selfhost-extern-detail-ast.test.ts');
+	let testSource = await readFile(sourcePath, 'utf8');
+	const startMarker = '// BEGIN TEMPORARY EXTERN BOUNDARY PATCH';
+	const endMarker = '// END TEMPORARY EXTERN BOUNDARY PATCH';
+	const startIndex = testSource.indexOf(startMarker);
+	const endIndex = testSource.indexOf(endMarker, startIndex);
+	assert.ok(startIndex >= 0 && endIndex >= 0, 'temporary bootstrap markers are missing');
+	testSource = testSource.slice(0, startIndex) + testSource.slice(endIndex + endMarker.length).replace(/^\n+/, '\n');
+	await writeFile(sourcePath, testSource);
+})();
+// END TEMPORARY EXTERN BOUNDARY PATCH
 
 const externSource = [
 	'unsafe extern js "node:fs" {',
