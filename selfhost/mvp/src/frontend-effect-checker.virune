@@ -1,0 +1,294 @@
+//! Deterministic effect declaration and requirement validation.
+
+record FrontendEffectFunction derives Eq, Debug, Json {
+	name: String
+	declaredEffects: List<String>
+}
+
+record FrontendEffectRequirement derives Eq, Debug, Json {
+	functionId: Int
+	requiredEffects: List<String>
+}
+
+record FrontendEffectRequest derives Eq, Debug, Json {
+	functions: List<FrontendEffectFunction>
+	requirements: List<FrontendEffectRequirement>
+}
+
+record SemanticEffectFunction derives Eq, Debug, Json {
+	id: Int
+	name: String
+	declaredEffects: List<String>
+	wildcard: Bool
+}
+
+record SemanticEffectRequirement derives Eq, Debug, Json {
+	id: Int
+	functionId: Int
+	requiredEffects: List<String>
+	missingEffects: List<String>
+	satisfied: Bool
+}
+
+record SemanticEffectDiagnostic derives Eq, Debug, Json {
+	code: String
+	severity: String
+	message: String
+	functionId: Int?
+	effect: String?
+	help: String?
+}
+
+record FrontendEffectResult derives Eq, Debug, Json {
+	accepted: Bool
+	functions: List<SemanticEffectFunction>
+	requirements: List<SemanticEffectRequirement>
+	diagnostics: List<SemanticEffectDiagnostic>
+}
+
+record FunctionBuildResult {
+	functions: List<SemanticEffectFunction>
+	diagnostics: List<SemanticEffectDiagnostic>
+}
+
+record RequirementBuildResult {
+	requirements: List<SemanticEffectRequirement>
+	diagnostics: List<SemanticEffectDiagnostic>
+}
+
+fn knownEffects() -> List<String> {
+	return [
+		"Console",
+		"Task",
+		"File",
+		"Process",
+		"Network",
+		"Timer",
+		"Clock",
+		"Storage",
+		"Dom",
+		"Random",
+		"JavaScript",
+	]
+}
+
+fn containsString(values: List<String>, expected: String) -> Bool {
+	for value in values {
+		if value == expected {
+			return true
+		}
+	}
+	return false
+}
+
+fn knownEffect(name: String) -> Bool {
+	return containsString(knownEffects(), name)
+}
+
+fn canonicalEffects(values: List<String>) -> List<String> {
+	let mut result: List<String> = []
+	for effect in knownEffects() {
+		if containsString(values, effect) {
+			result = List.append(result, effect)
+		}
+	}
+	return result
+}
+
+fn effectDiagnostic(
+	code: String,
+	message: String,
+	functionId: Int?,
+	effect: String?,
+	help: String?,
+) -> SemanticEffectDiagnostic {
+	return SemanticEffectDiagnostic {
+		code: code,
+		severity: "error",
+		message: message,
+		functionId: functionId,
+		effect: effect,
+		help: help,
+	}
+}
+
+fn fallbackFunction() -> SemanticEffectFunction {
+	return SemanticEffectFunction {
+		id: -1,
+		name: "",
+		declaredEffects: [],
+		wildcard: false,
+	}
+}
+
+fn functionAt(values: List<SemanticEffectFunction>, id: Int) -> SemanticEffectFunction {
+	return match List.get(values, id) {
+		Some(value) => value
+		None => fallbackFunction()
+	}
+}
+
+fn duplicateName(values: List<SemanticEffectFunction>, name: String) -> Bool {
+	for value in values {
+		if value.name == name {
+			return true
+		}
+	}
+	return false
+}
+
+fn appendUnknownEffectDiagnostics(
+	values: List<String>,
+	functionId: Int,
+	diagnosticsValue: List<SemanticEffectDiagnostic>,
+) -> List<SemanticEffectDiagnostic> {
+	let mut diagnostics = diagnosticsValue
+	let mut seen: List<String> = []
+	for effect in values {
+		if effect != "*" && !knownEffect(effect) && !containsString(seen, effect) {
+			diagnostics = List.append(diagnostics, effectDiagnostic(
+				"L2085",
+				"Unknown effect " + effect + "; Virune supports only built-in effects",
+				Some(functionId),
+				Some(effect),
+				Some("Use a built-in effect name or remove the effect from the uses clause."),
+			))
+			seen = List.append(seen, effect)
+		}
+	}
+	return diagnostics
+}
+
+fn buildFunctions(values: List<FrontendEffectFunction>) -> FunctionBuildResult {
+	let mut functions: List<SemanticEffectFunction> = []
+	let mut diagnostics: List<SemanticEffectDiagnostic> = []
+	let mut id = 0
+	for value in values {
+		if String.length(value.name) == 0 {
+			diagnostics = List.append(diagnostics, effectDiagnostic(
+				"L9001",
+				"Effect function name cannot be empty",
+				Some(id),
+				None,
+				Some("Use the canonical enclosing function name."),
+			))
+		}
+		if String.length(value.name) > 0 && duplicateName(functions, value.name) {
+			diagnostics = List.append(diagnostics, effectDiagnostic(
+				"L1001",
+				"Duplicate effect function " + value.name,
+				Some(id),
+				None,
+				Some("Use a unique function entry in this effect-checking request."),
+			))
+		}
+		diagnostics = appendUnknownEffectDiagnostics(value.declaredEffects, id, diagnostics)
+		functions = List.append(functions, SemanticEffectFunction {
+			id: id,
+			name: value.name,
+			declaredEffects: canonicalEffects(value.declaredEffects),
+			wildcard: containsString(value.declaredEffects, "*"),
+		})
+		id = id + 1
+	}
+	return FunctionBuildResult { functions: functions, diagnostics: diagnostics }
+}
+
+fn missingEffects(
+	required: List<String>,
+	functionValue: SemanticEffectFunction,
+) -> List<String> {
+	let mut missing: List<String> = []
+	if functionValue.wildcard {
+		return missing
+	}
+	for effect in canonicalEffects(required) {
+		if !containsString(functionValue.declaredEffects, effect) {
+			missing = List.append(missing, effect)
+		}
+	}
+	return missing
+}
+
+fn buildRequirements(
+	values: List<FrontendEffectRequirement>,
+	functions: List<SemanticEffectFunction>,
+	diagnosticsValue: List<SemanticEffectDiagnostic>,
+) -> RequirementBuildResult {
+	let mut requirements: List<SemanticEffectRequirement> = []
+	let mut diagnostics = diagnosticsValue
+	let mut id = 0
+	for value in values {
+		let functionValid = value.functionId >= 0 && value.functionId < List.length(functions)
+		let mut missing: List<String> = []
+		if !functionValid {
+			diagnostics = List.append(diagnostics, effectDiagnostic(
+				"L9001",
+				"Effect requirement references an unknown function",
+				Some(value.functionId),
+				None,
+				Some("Reference a function ID from the canonical function arena."),
+			))
+		} else {
+			diagnostics = appendUnknownEffectDiagnostics(value.requiredEffects, value.functionId, diagnostics)
+			let functionValue = functionAt(functions, value.functionId)
+			missing = missingEffects(value.requiredEffects, functionValue)
+			for effect in missing {
+				diagnostics = List.append(diagnostics, effectDiagnostic(
+					"L2076",
+					"Effect " + effect + " is not declared by the enclosing function; add uses " + effect,
+					Some(value.functionId),
+					Some(effect),
+					Some("Add uses " + effect + " to the enclosing function or remove the effectful operation."),
+				))
+			}
+		}
+		requirements = List.append(requirements, SemanticEffectRequirement {
+			id: id,
+			functionId: value.functionId,
+			requiredEffects: canonicalEffects(value.requiredEffects),
+			missingEffects: missing,
+			satisfied: functionValid && List.length(missing) == 0 && !containsUnknown(value.requiredEffects),
+		})
+		id = id + 1
+	}
+	return RequirementBuildResult { requirements: requirements, diagnostics: diagnostics }
+}
+
+fn containsUnknown(values: List<String>) -> Bool {
+	for value in values {
+		if value != "*" && !knownEffect(value) {
+			return true
+		}
+	}
+	return false
+}
+
+fn accepted(values: List<SemanticEffectDiagnostic>) -> Bool {
+	for value in values {
+		if value.severity == "error" {
+			return false
+		}
+	}
+	return true
+}
+
+fn decodeRequest(encoded: String) -> Result<FrontendEffectRequest, List<JsonError>> {
+	let raw = Json.parse(encoded)?
+	return Json.decode<FrontendEffectRequest>(raw)
+}
+
+fn checkFrontendEffects(request: FrontendEffectRequest) -> FrontendEffectResult {
+	let functionResult = buildFunctions(request.functions)
+	let requirementResult = buildRequirements(request.requirements, functionResult.functions, functionResult.diagnostics)
+	return FrontendEffectResult {
+		accepted: accepted(requirementResult.diagnostics),
+		functions: functionResult.functions,
+		requirements: requirementResult.requirements,
+		diagnostics: requirementResult.diagnostics,
+	}
+}
+
+pub fn checkFrontendEffectsJson(encoded: String) -> Result<String, List<JsonError>> {
+	return Json.encode<FrontendEffectResult>(checkFrontendEffects(decodeRequest(encoded)?))
+}
