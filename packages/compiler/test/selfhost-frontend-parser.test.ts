@@ -87,6 +87,10 @@ test('Stage 0 frontend parser emits a canonical flat AST and agrees with Legacy 
 		for (const node of first.nodes) {
 			for (const child of node.children) assert.ok(child >= 0 && child < first.nodes.length);
 		}
+		assert.ok(first.nodes.some(item => item.kind === 'RecordDeclaration' && item.text === 'Pair'));
+		assert.ok(first.nodes.some(item => item.kind === 'EnumDeclaration' && item.text === 'Choice'));
+		assert.ok(first.nodes.some(item => item.kind === 'NewtypeDeclaration' && item.text === 'UserId'));
+		assert.ok(first.nodes.some(item => item.kind === 'TypeAliasDeclaration' && item.text === 'Maybe'));
 		assert.deepEqual(first.nodes.find(item => item.kind === 'FunctionDeclaration' && item.text === 'add')?.documentation, ['Adds values']);
 		assert.deepEqual(first.nodes[first.root]?.documentation, ['Frontend parser']);
 		assert.ok(first.nodes.some(item => item.kind === 'BinaryExpression' && item.text === '*'));
