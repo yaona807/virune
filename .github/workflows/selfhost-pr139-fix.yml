@@ -6,6 +6,11 @@ on:
       - selfhost/collection-type-operations
     paths:
       - .github/workflows/selfhost-pr139-fix.yml
+  pull_request:
+    branches:
+      - main
+    paths:
+      - .github/workflows/selfhost-pr139-fix.yml
 
 permissions:
   contents: write
