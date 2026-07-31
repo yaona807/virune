@@ -33,7 +33,7 @@ type ParseResult = {
 	readonly diagnostics: readonly ParserDiagnostic[];
 };
 type FrontendParserModule = {
-	readonly parseFrontendContract: (source: string) => ViruneResult<string>;
+	readonly parseFrontendContract: (source: string) => ViruneResult<unknown>;
 };
 
 const kernelInput = (text: string): KernelInputV1 => ({
@@ -154,7 +154,9 @@ test('frontend parser terminates safely for bounded malformed-input regression c
 
 function parse(module: FrontendParserModule, source: string): ParseResult {
 	const encoded = module.parseFrontendContract(source);
-	assert.equal(encoded.$tag, 'Ok');
+	if (encoded.$tag !== 'Ok') {
+		throw new Error(`Frontend parser contract failed: ${JSON.stringify(encoded.$values[0])}`);
+	}
 	const value = encoded.$values[0];
 	assert.equal(typeof value, 'string');
 	return JSON.parse(value) as ParseResult;
