@@ -1,0 +1,41 @@
+name: Diagnose self-host parser parity
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    if: ${{ github.head_ref == 'agent/selfhost-parser-parity' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: agent/selfhost-parser-parity
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Add progress markers
+        run: |
+          node --input-type=module - <<'NODE'
+          import { readFile, writeFile } from 'node:fs/promises';
+          const path = 'packages/compiler/test/selfhost-parser-parity.test.ts';
+          let source = await readFile(path, 'utf8');
+          const caseMarker = '\t\tfor (const fixture of corpus.cases) {\n\t\t\tconst legacy = parseLegacySyntax(fixture.source);';
+          const caseReplacement = '\t\tfor (const fixture of corpus.cases) {\n\t\t\tconsole.log(`PARITY_CASE ${fixture.id}`);\n\t\t\tconst legacy = parseLegacySyntax(fixture.source);';
+          const mutationMarker = '\t\t\tfor (const mutation of fixture.mutations) {\n\t\t\t\tconst mutatedSource = mutate(fixture.source, mutation);';
+          const mutationReplacement = '\t\t\tfor (const mutation of fixture.mutations) {\n\t\t\t\tconsole.log(`PARITY_MUTATION ${fixture.id}:${mutation}`);\n\t\t\t\tconst mutatedSource = mutate(fixture.source, mutation);';
+          if (!source.includes(caseMarker) || !source.includes(mutationMarker)) throw new Error('Parity progress marker target is missing');
+          source = source.replace(caseMarker, caseReplacement).replace(mutationMarker, mutationReplacement);
+          await writeFile(path, source);
+          NODE
+      - run: npm run build
+      - name: Run parity with process timeout
+        run: timeout --signal=TERM --kill-after=10s 300s node --test --test-timeout=290000 packages/compiler/dist/test/selfhost-parser-parity.test.js
