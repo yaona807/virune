@@ -22,17 +22,27 @@ jobs:
         with:
           node-version: 24
           cache: npm
+      - name: Rename reserved parser binding
+        run: |
+          node --input-type=module - <<'NODE'
+          import { readFile, writeFile } from 'node:fs/promises';
+          const path = 'selfhost/mvp/src/frontend-parser-core.virune';
+          let source = await readFile(path, 'utf8');
+          source = source.replace('let record = parseRecordExpression(state, tokens, text)', 'let recordValue = parseRecordExpression(state, tokens, text)');
+          source = source.replace('return parsePostfix(record.state, tokens, start, record.id)', 'return parsePostfix(recordValue.state, tokens, start, recordValue.id)');
+          await writeFile(path, source);
+          NODE
       - run: npm ci
       - run: npm run check
       - name: Run aggregate parser Host test
         run: node --test --test-timeout=120000 packages/compiler/dist/test/selfhost-aggregate-call-expression-ast.test.js
       - name: Run Stage 0 self-host tests
         run: node packages/cli/dist/src/main.js test selfhost/mvp
-      - name: Remove temporary validation workflow
+      - name: Commit fix and remove temporary validation workflow
         run: |
           rm .github/workflows/validate-selfhost-aggregate.yml
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add .github/workflows/validate-selfhost-aggregate.yml
-          git commit -m "chore: remove aggregate parser validation workflow"
+          git add selfhost/mvp/src/frontend-parser-core.virune .github/workflows/validate-selfhost-aggregate.yml
+          git commit -m "fix(selfhost): avoid reserved record binding"
           git push origin HEAD:agent/selfhost-aggregate-call-ast
