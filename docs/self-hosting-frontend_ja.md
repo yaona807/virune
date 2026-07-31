@@ -140,3 +140,8 @@ Stage 0 frontendは`UnsafeModule`、Virune／JavaScriptの詳細`ImportDeclarati
 ### Executable declaration AST
 
 Functionはmodifier、type parameter、parameter、return type、uses clause、bodyを決定的なchildとして保持します。Block bodyは詳細statement parserを、expression bodyはprecedence parserを再利用します。Testは任意のasync modifierと詳細Blockを持ちます。Top-level `let`／`const`は任意の詳細type referenceを持つ`TopLevelBinding`とinitializer expressionを保持します。Header recoveryは後続declarationへの進行を維持します。
+
+
+### Extern declaration AST
+
+JavaScript extern blockは`ExternModifiers`、`ExternSource`、詳細`ExternFunction`、`ExternParameters`、`ExternParameter`、`ReturnType`、`UsesClause`、`ExternBinding`を生成します。Optional parameterはparameter textで決定的に区別し、壊れたmemberは物理line境界で復旧して後続extern memberとdeclarationへの到達性を維持します。

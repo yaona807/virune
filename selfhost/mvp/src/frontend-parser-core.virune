@@ -1846,6 +1846,211 @@ fn parseTopLevelValueDeclaration(
 	return addNode(state, tokens, "TopLevelValueDeclaration", name, start, state.index, children, documentation)
 }
 
+fn parseExternParameters(stateValue: CoreState, tokens: List<FrontendToken>) -> ParsedNode {
+	let start = stateValue.index
+	let mut state = stateValue
+	let mut children: List<Int> = []
+	if isText(state, tokens, "(") {
+		state = skipNewLines(advance(state), tokens)
+	} else {
+		state = addDiagnosticAt(state, tokens, "P0001", "Expected ( to begin extern parameters", state.index)
+	}
+	while !atEnd(state, tokens) && !isText(state, tokens, ")") {
+		let before = state.index
+		let validName = currentKind(state, tokens) == FrontendTokenKind.Identifier
+		let name = if validName then currentText(state, tokens) else ""
+		if validName {
+			state = advance(state)
+		} else {
+			state = addDiagnosticAt(state, tokens, "P0001", "Expected an extern parameter name", state.index)
+		}
+		let optional = isText(state, tokens, "?")
+		if optional {
+			state = advance(state)
+		}
+		if isText(state, tokens, ":") {
+			state = advance(state)
+		} else {
+			state = addDiagnosticAt(state, tokens, "P0001", "Expected : after an extern parameter name", state.index)
+		}
+		let typeValue = parseTypeReferenceNode(state, tokens)
+		state = typeValue.state
+		let mut parameterChildren: List<Int> = []
+		if typeValue.id >= 0 {
+			parameterChildren = List.append(parameterChildren, typeValue.id)
+		}
+		let parameterText = if optional then "optional " + name else name
+		let parameter = addNode(
+			state,
+			tokens,
+			"ExternParameter",
+			parameterText,
+			before,
+			state.index,
+			parameterChildren,
+			[],
+		)
+		state = parameter.state
+		children = List.append(children, parameter.id)
+		if isText(state, tokens, ",") {
+			state = skipNewLines(advance(state), tokens)
+		} else if !isText(state, tokens, ")") {
+			state = addDiagnosticAt(state, tokens, "P0001", "Expected , or ) after an extern parameter", state.index)
+			while !atEnd(state, tokens)
+				&& currentKind(state, tokens) != FrontendTokenKind.NewLine
+				&& !isText(state, tokens, ",")
+				&& !isText(state, tokens, ")") {
+				state = advance(state)
+			}
+			if isText(state, tokens, ",") {
+				state = skipNewLines(advance(state), tokens)
+			}
+		}
+		if state.index <= before {
+			state = addDiagnosticAt(state, tokens, "P0001", "Parser made no progress in extern parameters", state.index)
+			if !atEnd(state, tokens) {
+				state = advance(state)
+			}
+		}
+	}
+	if isText(state, tokens, ")") {
+		state = advance(state)
+	} else {
+		state = addDiagnosticAt(state, tokens, "P0001", "Expected ) to end extern parameters", state.index)
+	}
+	return addNode(state, tokens, "ExternParameters", "", start, state.index, children, [])
+}
+
+fn parseExternFunction(stateValue: CoreState, tokens: List<FrontendToken>) -> ParsedNode {
+	let start = stateValue.index
+	let mut state = stateValue
+	let asyncValue = isText(state, tokens, "async")
+	if asyncValue {
+		state = advance(state)
+	}
+	if isText(state, tokens, "fn") {
+		state = advance(state)
+	} else {
+		state = addDiagnosticAt(state, tokens, "P0001", "Expected fn in an extern declaration", state.index)
+	}
+	let validName = currentKind(state, tokens) == FrontendTokenKind.Identifier
+	let name = if validName then currentText(state, tokens) else ""
+	if validName {
+		state = advance(state)
+	} else {
+		state = addDiagnosticAt(state, tokens, "P0001", "Expected an extern function name", state.index)
+	}
+	let mut children: List<Int> = []
+	if asyncValue {
+		let modifiers = addNode(state, tokens, "ExternFunctionModifiers", "async", start, state.index, [], [])
+		state = modifiers.state
+		children = List.append(children, modifiers.id)
+	}
+	let parameters = parseExternParameters(state, tokens)
+	state = parameters.state
+	children = List.append(children, parameters.id)
+	if isText(state, tokens, "->") {
+		let returnType = parseReturnTypeNode(advance(state), tokens)
+		state = returnType.state
+		children = List.append(children, returnType.id)
+	} else {
+		state = addDiagnosticAt(state, tokens, "P0001", "Expected -> in an extern function", state.index)
+	}
+	if isText(state, tokens, "uses") {
+		let usesClause = parseUsesClauseNode(state, tokens)
+		state = usesClause.state
+		children = List.append(children, usesClause.id)
+	}
+	if isText(state, tokens, "=") {
+		state = advance(state)
+	} else {
+		state = addDiagnosticAt(state, tokens, "P0001", "Expected = before an extern binding", state.index)
+	}
+	let bindingStart = state.index
+	let validBinding = currentKind(state, tokens) == FrontendTokenKind.StringLiteral
+	let bindingText = if validBinding then currentText(state, tokens) else ""
+	if validBinding {
+		state = advance(state)
+	} else {
+		state = addDiagnosticAt(state, tokens, "P0001", "Expected a JavaScript binding string", state.index)
+	}
+	let binding = addNode(state, tokens, "ExternBinding", bindingText, bindingStart, state.index, [], [])
+	state = binding.state
+	children = List.append(children, binding.id)
+	let nextMemberBoundary = !validBinding
+		&& (isText(state, tokens, "fn") || isText(state, tokens, "async"))
+		&& tokenAt(tokens, state.index).span.start.line > tokenAt(tokens, start).span.start.line
+	if !nextMemberBoundary {
+		state = consumeLineEnd(state, tokens, "an extern function")
+	}
+	return addNode(state, tokens, "ExternFunction", name, start, state.index, children, [])
+}
+
+fn parseExternDeclaration(
+	stateValue: CoreState,
+	tokens: List<FrontendToken>,
+	documentation: List<String>,
+) -> ParsedNode {
+	let start = stateValue.index
+	let keywordIndex = declarationKeywordIndex(stateValue, tokens)
+	let unsafeValue = modifierPresent(stateValue, tokens, keywordIndex, "unsafe")
+	let mut state = withIndex(stateValue, keywordIndex + 1)
+	let mut children: List<Int> = []
+	if unsafeValue {
+		let modifiers = addNode(state, tokens, "ExternModifiers", "unsafe", start, keywordIndex, [], [])
+		state = modifiers.state
+		children = List.append(children, modifiers.id)
+	}
+	if isText(state, tokens, "js") {
+		state = advance(state)
+	} else {
+		state = addDiagnosticAt(state, tokens, "P0001", "Expected js after extern", state.index)
+	}
+	let sourceStart = state.index
+	let validSource = currentKind(state, tokens) == FrontendTokenKind.StringLiteral
+	let sourceText = if validSource then currentText(state, tokens) else ""
+	if validSource {
+		state = advance(state)
+	} else {
+		state = addDiagnosticAt(state, tokens, "P0001", "Expected an extern module source string", state.index)
+	}
+	let sourceNode = addNode(state, tokens, "ExternSource", sourceText, sourceStart, state.index, [], [])
+	state = sourceNode.state
+	children = List.append(children, sourceNode.id)
+	if isText(state, tokens, "{") {
+		state = skipNewLines(advance(state), tokens)
+	} else {
+		state = addDiagnosticAt(state, tokens, "P0001", "Expected { to begin an extern declaration", state.index)
+		state = synchronizeLine(state, tokens)
+	}
+	while !atEnd(state, tokens) && !isText(state, tokens, "}") {
+		state = skipNewLines(state, tokens)
+		if !atEnd(state, tokens) && !isText(state, tokens, "}") {
+			let before = state.index
+			if isText(state, tokens, "fn") || isText(state, tokens, "async") {
+				let member = parseExternFunction(state, tokens)
+				state = member.state
+				children = List.append(children, member.id)
+			} else {
+				state = addDiagnosticAt(state, tokens, "P0001", "Expected an extern function", state.index)
+				state = synchronizeLine(state, tokens)
+			}
+			if state.index <= before {
+				state = addDiagnosticAt(state, tokens, "P0001", "Parser made no progress in an extern declaration", state.index)
+				if !atEnd(state, tokens) {
+					state = advance(state)
+				}
+			}
+		}
+	}
+	if isText(state, tokens, "}") {
+		state = advance(state)
+	} else {
+		state = addDiagnosticAt(state, tokens, "P0001", "Expected } to end an extern declaration", state.index)
+	}
+	return addNode(state, tokens, "ExternDeclaration", sourceText, start, state.index, children, documentation)
+}
+
 fn parseComposite(
 	stateValue: CoreState,
 	tokens: List<FrontendToken>,
@@ -2186,7 +2391,7 @@ fn parseDeclaration(stateValue: CoreState, tokens: List<FrontendToken>) -> Parse
 		return parseDetailedDeclaration(state, tokens, kind, docs.documentation)
 	}
 	if kind == "ExternDeclaration" {
-		return parseComposite(state, tokens, kind, docs.documentation)
+		return parseExternDeclaration(state, tokens, docs.documentation)
 	}
 	if kind == "TopLevelValueDeclaration" {
 		return parseTopLevelValueDeclaration(state, tokens, docs.documentation)

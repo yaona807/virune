@@ -140,3 +140,8 @@ The Stage 0 frontend emits `UnsafeModule`, detailed Virune and JavaScript `Impor
 ### Executable declaration AST
 
 Functions now own deterministic modifier, type-parameter, parameter, return-type, uses-clause, and body children. Block bodies reuse the detailed statement parser and expression bodies reuse the precedence parser. Tests own an optional async modifier and a detailed block. Top-level `let` and `const` declarations own a `TopLevelBinding` with an optional detailed type reference plus the initializer expression. Header recovery preserves progress to later declarations.
+
+
+### Extern declaration AST
+
+JavaScript extern blocks now emit `ExternModifiers`, `ExternSource`, detailed `ExternFunction`, `ExternParameters`, `ExternParameter`, `ReturnType`, `UsesClause`, and `ExternBinding` nodes. Optional parameters are encoded deterministically in parameter text, and malformed members recover at physical line boundaries so later extern members and declarations remain reachable.
