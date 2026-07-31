@@ -12,6 +12,7 @@ import {
 } from "./frontend-model.virune"
 import { lexFrontendJson } from "./frontend-lexer.virune"
 import { parseDetailedDeclarationJson } from "./frontend-declaration-parser.virune"
+import { parseLambdaHeaderJson } from "./frontend-lambda-parser.virune"
 import { parsePatternJson } from "./frontend-pattern-parser.virune"
 import {
 	FrontendAstNode,
@@ -57,6 +58,20 @@ record PatternTransport derives Json {
 	nodes: List<FrontendAstNode>
 	diagnostics: List<ParserDiagnostic>
 	root: Int
+}
+
+record LambdaHeaderTransport derives Json {
+	nextIndex: Int
+	nodes: List<FrontendAstNode>
+	diagnostics: List<ParserDiagnostic>
+	children: List<Int>
+	isAsync: Bool
+}
+
+record LoadedLambdaHeader {
+	state: CoreState
+	children: List<Int>
+	isAsync: Bool
 }
 
 fn stateWith(
@@ -625,6 +640,70 @@ fn parseMatchExpression(stateValue: CoreState, tokens: List<FrontendToken>) -> P
 	return addNode(state, tokens, "MatchExpression", "match", start, state.index, children, [])
 }
 
+fn loadLambdaHeader(
+	state: CoreState,
+	tokens: List<FrontendToken>,
+) -> Result<LambdaHeaderTransport, List<JsonError>> {
+	let tokensEncoded = Json.encode<List<FrontendToken>>(tokens)?
+	let encoded = parseLambdaHeaderJson(tokensEncoded, state.index, List.length(state.nodes))?
+	let raw = Json.parse(encoded)?
+	return Json.decode<LambdaHeaderTransport>(raw)
+}
+
+fn mergeLambdaHeaderValue(stateValue: CoreState, value: LambdaHeaderTransport) -> LoadedLambdaHeader {
+	let state = CoreState {
+		index: value.nextIndex,
+		nodes: List.concat(stateValue.nodes, value.nodes),
+		diagnostics: List.concat(stateValue.diagnostics, value.diagnostics),
+		commentIndex: stateValue.commentIndex,
+		pendingDocumentation: stateValue.pendingDocumentation,
+		moduleDocumentation: stateValue.moduleDocumentation,
+		significantSeen: stateValue.significantSeen,
+	}
+	return LoadedLambdaHeader { state: state, children: value.children, isAsync: value.isAsync }
+}
+
+fn mergeLambdaHeaderFailure(stateValue: CoreState, tokens: List<FrontendToken>) -> LoadedLambdaHeader {
+	let failed = addDiagnosticAt(
+		stateValue,
+		tokens,
+		"P9002",
+		"Lambda header parser transport failed",
+		stateValue.index,
+	)
+	return LoadedLambdaHeader { state: failed, children: [], isAsync: false }
+}
+
+fn parseLambdaHeaderNode(stateValue: CoreState, tokens: List<FrontendToken>) -> LoadedLambdaHeader {
+	return match loadLambdaHeader(stateValue, tokens) {
+		Ok(value) => mergeLambdaHeaderValue(stateValue, value)
+		Err(_) => mergeLambdaHeaderFailure(stateValue, tokens)
+	}
+}
+
+fn parseLambdaExpression(stateValue: CoreState, tokens: List<FrontendToken>) -> ParsedNode {
+	let start = stateValue.index
+	let loaded = parseLambdaHeaderNode(stateValue, tokens)
+	let mut state = loaded.state
+	let mut children = loaded.children
+	if isText(state, tokens, "=>") {
+		let body = parseExpression(advance(state), tokens, 1, false)
+		state = body.state
+		if body.id >= 0 {
+			children = List.append(children, body.id)
+		}
+	} else if isText(state, tokens, "{") {
+		let body = parseBlock(state, tokens)
+		state = body.state
+		children = List.append(children, body.id)
+	} else {
+		state = addDiagnosticAt(state, tokens, "P0001", "Expected a lambda body", state.index)
+		state = synchronizeLine(state, tokens)
+	}
+	let text = if loaded.isAsync then "async fn" else "fn"
+	return addNode(state, tokens, "LambdaExpression", text, start, state.index, children, [])
+}
+
 fn parsePrimary(stateValue: CoreState, tokens: List<FrontendToken>, stopAtBrace: Bool) -> ParsedNode {
 	let mut state = stateValue
 	let start = state.index
@@ -633,6 +712,9 @@ fn parsePrimary(stateValue: CoreState, tokens: List<FrontendToken>, stopAtBrace:
 		return ParsedNode { state: state, id: -1 }
 	}
 	let text = currentText(state, tokens)
+	if text == "fn" || (text == "async" && tokenAt(tokens, state.index + 1).text == "fn") {
+		return parseLambdaExpression(state, tokens)
+	}
 	if text == "match" {
 		return parseMatchExpression(state, tokens)
 	}

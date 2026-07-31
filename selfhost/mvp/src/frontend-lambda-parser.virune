@@ -286,7 +286,7 @@ fn parseTypePrimary(stateValue: LambdaState, tokens: List<FrontendToken>, depth:
 			"()",
 			start,
 			state.index,
-			tuple.state.nodes |> List.length |> fn(_) => [tuple.id],
+			[tuple.id],
 		)
 	}
 	if value.kind != FrontendTokenKind.Identifier && value.kind != FrontendTokenKind.Keyword {
