@@ -74,7 +74,22 @@ const supportedSource = [
 	'',
 ].join('\n');
 
-test('Stage 0 frontend parser emits a canonical flat AST and agrees with Legacy acceptance', async () => {
+const legacyComparableSource = [
+	'pub fn add(left: Int, right: Int) -> Int {',
+	'\tlet value = left + right * 2',
+	'\tif value > 0 {',
+	'\t\treturn value',
+	'\t} else {',
+	'\t\treturn 0',
+	'\t}',
+	'}',
+	'pub fn main() -> Int {',
+	'\treturn add(20, 1)',
+	'}',
+	'',
+].join('\n');
+
+test('Stage 0 frontend parser emits a canonical flat AST deterministically', async () => {
 	const loaded = await loadFrontendParser();
 	try {
 		const first = parse(loaded.module, supportedSource);
@@ -96,9 +111,19 @@ test('Stage 0 frontend parser emits a canonical flat AST and agrees with Legacy 
 		assert.ok(first.nodes.some(item => item.kind === 'BinaryExpression' && item.text === '*'));
 		assert.ok(first.nodes.some(item => item.kind === 'BinaryExpression' && item.text === '+'));
 		assert.ok(first.nodes.some(item => item.kind === 'IfStatement'));
+	} finally {
+		await rm(loaded.root, { recursive: true, force: true });
+	}
+});
 
-		const legacy = await compileWithLegacyKernel(kernelInput(supportedSource));
-		assert.equal(legacy.accepted, first.accepted);
+test('frontend parser agrees with Legacy acceptance for a semantic-complete source', async () => {
+	const loaded = await loadFrontendParser();
+	try {
+		const parsed = parse(loaded.module, legacyComparableSource);
+		const legacy = await compileWithLegacyKernel(kernelInput(legacyComparableSource));
+		assert.equal(parsed.accepted, true);
+		assert.equal(legacy.accepted, true);
+		assert.equal(parsed.accepted, legacy.accepted);
 	} finally {
 		await rm(loaded.root, { recursive: true, force: true });
 	}
