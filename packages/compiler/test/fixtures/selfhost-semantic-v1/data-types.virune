@@ -1,0 +1,13 @@
+pub record Box<T> {
+    value: T
+    history: List<T?>
+}
+
+pub enum Outcome<T, E> {
+    Ok(T)
+    Err(E)
+    Empty
+}
+
+pub newtype UserId = Int
+pub type Lookup = Map<String, UserId>
