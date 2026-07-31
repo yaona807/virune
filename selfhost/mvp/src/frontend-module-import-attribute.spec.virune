@@ -1,0 +1,31 @@
+import { parseFrontendCore } from "./frontend-parser-core.virune"
+
+fn encoded(source: String) -> String {
+	return match parseFrontendCore(source) {
+		Ok(value) => value
+		Err(_) => ""
+	}
+}
+
+test "module parser expands directives imports and attributes" {
+	let source = "unsafe module\npub import type { Foo as LocalFoo, Bar } from \"./types.virune\"\nimport js { parse as parseJson } from \"json\"\nimport js defaultValue from \"pkg\"\nimport js * as namespace from \"pkg-ns\"\nimport js \"side-effect\"\n@trace(\"record\", 1)\npub record Box<T> {\n\tvalue: T\n}\n@bench\ntest \"smoke\" {\n\tdiscard 1\n}\n"
+	let result = encoded(source)
+	expect(String.contains(result, "\"accepted\":true"))
+	expect(String.contains(result, "\"kind\":\"UnsafeModule\""))
+	expect(String.contains(result, "\"text\":\"virune public type\""))
+	expect(String.contains(result, "\"text\":\"javascript named\""))
+	expect(String.contains(result, "\"text\":\"javascript default\""))
+	expect(String.contains(result, "\"text\":\"javascript namespace\""))
+	expect(String.contains(result, "\"text\":\"javascript side-effect\""))
+	expect(String.contains(result, "\"kind\":\"ImportItem\""))
+	expect(String.contains(result, "\"kind\":\"ImportSource\""))
+	expect(String.contains(result, "\"kind\":\"Attribute\""))
+}
+
+test "module parser recovers after malformed prefix constructs" {
+	let source = "import { Foo as } from \"./bad.virune\"\nimport js * namespace from \"bad\"\n@(\"missing\")\npub record Recovered {\n\tvalue: Int\n}\npub fn after() -> Int {\n\treturn 1\n}\n"
+	let result = encoded(source)
+	expect(String.contains(result, "\"accepted\":false"))
+	expect(String.contains(result, "\"text\":\"Recovered\""))
+	expect(String.contains(result, "\"text\":\"after\""))
+}

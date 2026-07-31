@@ -130,3 +130,8 @@ Comma-delimited recovery synchronizes at the next comma, closing delimiter, phys
 ### Statement detail AST
 
 The Stage 0 frontend expands local statements into the canonical flat arena. `LetStatement` owns a `LetBinding` child and initializer; the binding text distinguishes `mut` and may own a detailed type-reference child. Assignments use an `AssignmentTarget` child, while `ForStatement` owns `ForBinding`, iterable, and body children. Invalid headers recover at line or block boundaries without changing the production parser selection or public compiler contracts.
+
+
+### Module prefix AST
+
+The Stage 0 frontend emits `UnsafeModule`, detailed Virune and JavaScript `ImportDeclaration` nodes, `ImportItem`, `ImportSource`, and declaration `Attribute` nodes. Import form, visibility, and type-only mode are encoded deterministically, while attribute argument lists reuse the existing expression parser and attribute IDs are attached to the target declaration. Malformed prefix constructs recover at line and declaration boundaries.
