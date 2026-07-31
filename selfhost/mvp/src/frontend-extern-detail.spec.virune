@@ -1,0 +1,29 @@
+import { parseFrontendCore } from "./frontend-parser-core.virune"
+
+fn encoded(source: String) -> String {
+	return match parseFrontendCore(source) {
+		Ok(value) => value
+		Err(_) => ""
+	}
+}
+
+test "parser expands extern declaration members" {
+	let source = "unsafe extern js \"node:fs\" {\n\tasync fn read(path: String, options?: Int,) -> String uses io = \"readFile\"\n\tfn stat(path: String) -> Int = \"statSync\"\n}\npub fn after() -> Int {\n\treturn 1\n}\n"
+	let result = encoded(source)
+	expect(String.contains(result, "\"accepted\":true"))
+	expect(String.contains(result, "\"kind\":\"ExternModifiers\""))
+	expect(String.contains(result, "\"kind\":\"ExternSource\""))
+	expect(String.contains(result, "\"kind\":\"ExternFunction\""))
+	expect(String.contains(result, "\"kind\":\"ExternFunctionModifiers\""))
+	expect(String.contains(result, "\"kind\":\"ExternParameters\""))
+	expect(String.contains(result, "\"text\":\"optional options\""))
+	expect(String.contains(result, "\"kind\":\"ExternBinding\""))
+}
+
+test "parser recovers after malformed extern members" {
+	let source = "extern js {\n\tfn missingColon(value Int) -> Int = \"broken\"\n\tfn missingBinding(value: Int) -> Int =\n\tfn recovered(value: Int) -> Int = \"ok\"\n}\npub fn after() -> Int {\n\treturn 1\n}\n"
+	let result = encoded(source)
+	expect(String.contains(result, "\"accepted\":false"))
+	expect(String.contains(result, "\"text\":\"recovered\""))
+	expect(String.contains(result, "\"text\":\"after\""))
+}
