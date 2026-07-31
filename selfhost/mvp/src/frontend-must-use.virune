@@ -403,8 +403,20 @@ fn classifyLookup(
 	semantics: FrontendSemanticResult,
 	annotated: List<Int>,
 ) -> MustUseClassification {
-	if lookup.declarationId >= 0 && containsInt(annotated, lookup.declarationId) {
-		return MustUseClassification { mustUse: true, reason: "attribute" }
+	if lookup.declarationId >= 0 {
+		if containsInt(annotated, lookup.declarationId) {
+			return MustUseClassification { mustUse: true, reason: "attribute" }
+		}
+		let declaration = declarationAt(semantics.declarations, lookup.declarationId)
+		if declaration.kind == "alias" {
+			let target = optionalInt(declaration.targetType)
+			if target >= 0 {
+				let inner = classifyMustUse(target, semantics, annotated, [])
+				if inner.mustUse {
+					return MustUseClassification { mustUse: true, reason: "alias" }
+				}
+			}
+		}
 	}
 	return classifyMustUse(lookup.id, semantics, annotated, [])
 }
