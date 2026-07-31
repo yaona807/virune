@@ -1,0 +1,93 @@
+name: Repair self-host generic workflow
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    if: ${{ github.head_ref == 'agent/selfhost-generic-instantiation' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: agent/selfhost-generic-instantiation
+          fetch-depth: 0
+      - name: Repair generated Virune syntax
+        run: |
+          node --input-type=module - <<'NODE'
+          import { readFile, writeFile } from 'node:fs/promises';
+          const path = '.github/workflows/implement-selfhost-generic-instantiation.yml';
+          let source = await readFile(path, 'utf8');
+
+          const helperMarker = `          fn internInstantiation(stateValue: SemanticState, typeId: Int) -> SemanticState {`;
+          const helpers = `          fn optionalTypeId(value: Int?) -> Int {
+          \\treturn match value {
+          \\t\\tSome(item) => item
+          \\t\\tNone => -1
+          \\t}
+          }
+
+          fn hasInstantiation(value: SemanticType) -> Bool {
+          \\treturn match value.instantiationId {
+          \\t\\tSome(_) => true
+          \\t\\tNone => false
+          \\t}
+          }
+
+          `;
+          if (!source.includes(helperMarker)) throw new Error('Generic helper insertion marker is missing');
+          source = source.replace(helperMarker, helpers + helperMarker);
+
+          const oldTarget = `          \\tmatch declaration.targetType {
+          \\t\\tSome(sourceTarget) => {
+          \\t\\t\\tlet resolved = substituteType(sourceTarget, declaration, typeValue.arguments, state)
+          \\t\\t\\tstate = resolved.state
+          \\t\\t\\tstate = setInstantiationTarget(state, instantiationId, resolved.id)
+          \\t\\t\\tlet target = typeAt(state.types, resolved.id)
+          \\t\\t\\tif declaration.kind == "alias" && target.declarationId == Some(declaration.id) && intListsEqual(target.arguments, typeValue.arguments) {
+          \\t\\t\\t\\tstate = addDiagnostic(state, semanticArenaDiagnostic(
+          \\t\\t\\t\\t\\t"L2042",
+          \\t\\t\\t\\t\\t"Recursive generic alias " + declaration.name,
+          \\t\\t\\t\\t\\ttypeValue.span,
+          \\t\\t\\t\\t\\tSome("Break the alias cycle with a concrete data declaration."),
+          \\t\\t\\t\\t))
+          \\t\\t\\t}
+          \\t\\t}
+          \\t\\tNone => {}
+          \\t}
+          \\treturn state`;
+          const newTarget = `          \\tlet sourceTarget = optionalTypeId(declaration.targetType)
+          \\tif sourceTarget >= 0 {
+          \\t\\tlet resolved = substituteType(sourceTarget, declaration, typeValue.arguments, state)
+          \\t\\tstate = resolved.state
+          \\t\\tstate = setInstantiationTarget(state, instantiationId, resolved.id)
+          \\t\\tlet target = typeAt(state.types, resolved.id)
+          \\t\\tif declaration.kind == "alias" && target.declarationId == Some(declaration.id) && intListsEqual(target.arguments, typeValue.arguments) {
+          \\t\\t\\tstate = addDiagnostic(state, semanticArenaDiagnostic(
+          \\t\\t\\t\\t"L2042",
+          \\t\\t\\t\\t"Recursive generic alias " + declaration.name,
+          \\t\\t\\t\\ttypeValue.span,
+          \\t\\t\\t\\tSome("Break the alias cycle with a concrete data declaration."),
+          \\t\\t\\t))
+          \\t\\t}
+          \\t}
+          \\treturn state`;
+          if (!source.includes(oldTarget)) throw new Error('Generic target match block is missing');
+          source = source.replace(oldTarget, newTarget);
+          source = source.replace('value.kind != "named" || value.instantiationId != None', 'value.kind != "named" || hasInstantiation(value)');
+          await writeFile(path, source);
+          NODE
+      - name: Commit repair and remove repair workflow
+        run: |
+          rm .github/workflows/repair-selfhost-generic-workflow.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .github/workflows/implement-selfhost-generic-instantiation.yml .github/workflows/repair-selfhost-generic-workflow.yml
+          git commit -m "ci(selfhost): repair generic instantiation syntax"
+          git push origin HEAD:agent/selfhost-generic-instantiation
