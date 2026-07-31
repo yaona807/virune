@@ -1,0 +1,41 @@
+name: Self-host lambda keyword repair
+
+on:
+  pull_request:
+    branches:
+      - main
+    types:
+      - synchronize
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    if: github.head_ref == 'agent/selfhost-lambda-ast'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: agent/selfhost-lambda-ast
+      - name: Rename reserved local variables
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('selfhost/mvp/src/frontend-lambda-parser.virune')
+          text = path.read_text()
+          text = text.replace('let uses = parseUsesClause(state, tokens)', 'let usesClause = parseUsesClause(state, tokens)')
+          text = text.replace('state = uses.state', 'state = usesClause.state')
+          text = text.replace('if uses.id >= 0 {', 'if usesClause.id >= 0 {')
+          text = text.replace('children = List.append(children, uses.id)', 'children = List.append(children, usesClause.id)')
+          path.write_text(text)
+          PY
+          if git diff --quiet; then
+            exit 0
+          fi
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add selfhost/mvp/src/frontend-lambda-parser.virune
+          git commit -m "fix(selfhost): avoid reserved uses binding"
+          git push origin HEAD:agent/selfhost-lambda-ast
