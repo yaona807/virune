@@ -1,0 +1,81 @@
+//! Canonical data-only semantic model for the Virune-authored checker.
+
+pub record SemanticPosition derives Eq, Debug, Json {
+	offset: Int
+	line: Int
+	column: Int
+}
+
+pub record SemanticSpan derives Eq, Debug, Json {
+	start: SemanticPosition
+	end: SemanticPosition
+}
+
+pub record SemanticDiagnostic derives Eq, Debug, Json {
+	code: String
+	severity: String
+	message: String
+	span: SemanticSpan
+	help: String?
+}
+
+pub record SemanticType derives Eq, Debug, Json {
+	id: Int
+	kind: String
+	name: String
+	declarationId: Int?
+	arguments: List<Int>
+	span: SemanticSpan
+}
+
+pub record SemanticMember derives Eq, Debug, Json {
+	id: Int
+	declarationId: Int
+	kind: String
+	name: String
+	typeIds: List<Int>
+	span: SemanticSpan
+}
+
+pub record SemanticDeclaration derives Eq, Debug, Json {
+	id: Int
+	sourceNodeId: Int
+	kind: String
+	name: String
+	isPublic: Bool
+	typeParameters: List<String>
+	memberIds: List<Int>
+	targetType: Int?
+	span: SemanticSpan
+}
+
+pub record FrontendSemanticResult derives Eq, Debug, Json {
+	accepted: Bool
+	declarations: List<SemanticDeclaration>
+	members: List<SemanticMember>
+	types: List<SemanticType>
+	diagnostics: List<SemanticDiagnostic>
+}
+
+pub fn semanticPosition(offset: Int, line: Int, column: Int) -> SemanticPosition {
+	return SemanticPosition { offset: offset, line: line, column: column }
+}
+
+pub fn semanticSpan(start: SemanticPosition, end: SemanticPosition) -> SemanticSpan {
+	return SemanticSpan { start: start, end: end }
+}
+
+pub fn semanticDiagnostic(
+	code: String,
+	message: String,
+	span: SemanticSpan,
+	help: String?,
+) -> SemanticDiagnostic {
+	return SemanticDiagnostic {
+		code: code,
+		severity: "error",
+		message: message,
+		span: span,
+		help: help,
+	}
+}

@@ -78,3 +78,18 @@ npm run selfhost:parser:parity
 ```
 
 Expected divergences require an exact case and JSON path, a reason, and a non-expired ISO date. Unmatched, stale, or expired policies fail the test.
+
+## Data type semantic table
+
+The first Type/Effect Checker slice consumes the typed Stage 0 frontend result and builds canonical declaration, member, and type arenas for records, enums, newtypes, and type aliases. It resolves builtin types, declarations in the same module, and declaration type parameters. Duplicate definitions, duplicate type parameters, unknown types, and generic arity mismatches produce stable diagnostics with source ranges and help text.
+
+The semantic JSON boundary owns its source-position records instead of re-exporting parser implementation types. Arena IDs are contiguous, every reference is validated by the Host test, and repeated compilation of the same source must serialize identically.
+
+Run the focused validation with:
+
+```bash
+npm run build
+node --test --test-timeout=120000 packages/compiler/dist/test/selfhost-semantic-data-types.test.js
+```
+
+This slice does not change the production parser or checker and does not connect the self-host kernel to the production path.
