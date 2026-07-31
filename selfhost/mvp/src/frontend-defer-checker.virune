@@ -1,0 +1,244 @@
+//! Deterministic defer context and expression-result validation.
+
+record FrontendDeferScope derives Eq, Debug, Json {
+	kind: String
+	name: String
+}
+
+record FrontendDeferStatement derives Eq, Debug, Json {
+	scopeId: Int
+	expressionType: String
+}
+
+record FrontendDeferRequest derives Eq, Debug, Json {
+	scopes: List<FrontendDeferScope>
+	statements: List<FrontendDeferStatement>
+}
+
+record SemanticDeferScope derives Eq, Debug, Json {
+	id: Int
+	kind: String
+	name: String
+}
+
+record SemanticDeferStatement derives Eq, Debug, Json {
+	id: Int
+	scopeId: Int
+	expressionType: String
+	contextValid: Bool
+	typeValid: Bool
+	valid: Bool
+}
+
+record SemanticDeferDiagnostic derives Eq, Debug, Json {
+	code: String
+	severity: String
+	message: String
+	scopeId: Int?
+	statementId: Int?
+	help: String?
+}
+
+record FrontendDeferResult derives Eq, Debug, Json {
+	accepted: Bool
+	scopes: List<SemanticDeferScope>
+	statements: List<SemanticDeferStatement>
+	diagnostics: List<SemanticDeferDiagnostic>
+}
+
+record ScopeBuildResult {
+	scopes: List<SemanticDeferScope>
+	diagnostics: List<SemanticDeferDiagnostic>
+}
+
+record StatementBuildResult {
+	statements: List<SemanticDeferStatement>
+	diagnostics: List<SemanticDeferDiagnostic>
+}
+
+fn maybeInt(value: Int) -> Int? {
+	return if value >= 0 then Some(value) else None
+}
+
+fn deferDiagnostic(
+	code: String,
+	message: String,
+	scopeId: Int?,
+	statementId: Int?,
+	help: String?,
+) -> SemanticDeferDiagnostic {
+	return SemanticDeferDiagnostic {
+		code: code,
+		severity: "error",
+		message: message,
+		scopeId: scopeId,
+		statementId: statementId,
+		help: help,
+	}
+}
+
+fn fallbackScope() -> SemanticDeferScope {
+	return SemanticDeferScope { id: -1, kind: "invalid", name: "" }
+}
+
+fn scopeAt(values: List<SemanticDeferScope>, id: Int) -> SemanticDeferScope {
+	return match List.get(values, id) {
+		Some(value) => value
+		None => fallbackScope()
+	}
+}
+
+fn validScopeKind(kind: String) -> Bool {
+	return kind == "module" || kind == "function" || kind == "test"
+}
+
+fn duplicateScope(values: List<SemanticDeferScope>, name: String) -> Bool {
+	for value in values {
+		if value.name == name {
+			return true
+		}
+	}
+	return false
+}
+
+fn buildScopes(values: List<FrontendDeferScope>) -> ScopeBuildResult {
+	let mut scopes: List<SemanticDeferScope> = []
+	let mut diagnostics: List<SemanticDeferDiagnostic> = []
+	let mut id = 0
+	for value in values {
+		if !validScopeKind(value.kind) {
+			diagnostics = List.append(diagnostics, deferDiagnostic(
+				"L9001",
+				"Unknown defer scope kind " + value.kind,
+				Some(id),
+				None,
+				Some("Use module, function, or test."),
+			))
+		}
+		if String.length(value.name) == 0 {
+			diagnostics = List.append(diagnostics, deferDiagnostic(
+				"L9001",
+				"Defer scope name cannot be empty",
+				Some(id),
+				None,
+				Some("Use the canonical module, function, or test name."),
+			))
+		}
+		if String.length(value.name) > 0 && duplicateScope(scopes, value.name) {
+			diagnostics = List.append(diagnostics, deferDiagnostic(
+				"L1001",
+				"Duplicate defer scope " + value.name,
+				Some(id),
+				None,
+				Some("Use a unique scope entry in this defer request."),
+			))
+		}
+		scopes = List.append(scopes, SemanticDeferScope {
+			id: id,
+			kind: value.kind,
+			name: value.name,
+		})
+		id = id + 1
+	}
+	return ScopeBuildResult { scopes: scopes, diagnostics: diagnostics }
+}
+
+fn validDeferredType(name: String) -> Bool {
+	return name == "Unit" || name == "Never"
+}
+
+fn buildStatements(
+	values: List<FrontendDeferStatement>,
+	scopes: List<SemanticDeferScope>,
+	diagnosticsValue: List<SemanticDeferDiagnostic>,
+) -> StatementBuildResult {
+	let mut statements: List<SemanticDeferStatement> = []
+	let mut diagnostics = diagnosticsValue
+	let mut id = 0
+	for value in values {
+		let scopeValid = value.scopeId >= 0 && value.scopeId < List.length(scopes)
+		let typeHandleValid = String.length(value.expressionType) > 0
+		let mut contextValid = false
+		let mut typeValid = false
+		if !scopeValid {
+			diagnostics = List.append(diagnostics, deferDiagnostic(
+				"L9001",
+				"Defer statement references an unknown scope",
+				maybeInt(value.scopeId),
+				Some(id),
+				Some("Reference a scope ID from the canonical defer scope arena."),
+			))
+		} else {
+			let scope = scopeAt(scopes, value.scopeId)
+			contextValid = scope.kind == "function" || scope.kind == "test"
+			if !contextValid {
+				diagnostics = List.append(diagnostics, deferDiagnostic(
+					"L2070",
+					"defer can be used only inside a function or test",
+					Some(value.scopeId),
+					Some(id),
+					Some("Move defer into a function or test body."),
+				))
+			}
+		}
+		if !typeHandleValid {
+			diagnostics = List.append(diagnostics, deferDiagnostic(
+				"L9001",
+				"Deferred expression type cannot be empty",
+				maybeInt(value.scopeId),
+				Some(id),
+				Some("Pass the canonical inferred expression type name."),
+			))
+		} else {
+			typeValid = validDeferredType(value.expressionType)
+			if !typeValid {
+				diagnostics = List.append(diagnostics, deferDiagnostic(
+					"L2071",
+					"defer expression must produce Unit, received " + value.expressionType,
+					maybeInt(value.scopeId),
+					Some(id),
+					Some("Use a Unit- or Never-producing deferred expression."),
+				))
+			}
+		}
+		statements = List.append(statements, SemanticDeferStatement {
+			id: id,
+			scopeId: value.scopeId,
+			expressionType: value.expressionType,
+			contextValid: contextValid,
+			typeValid: typeValid,
+			valid: scopeValid && contextValid && typeHandleValid && typeValid,
+		})
+		id = id + 1
+	}
+	return StatementBuildResult { statements: statements, diagnostics: diagnostics }
+}
+
+fn accepted(values: List<SemanticDeferDiagnostic>) -> Bool {
+	for value in values {
+		if value.severity == "error" {
+			return false
+		}
+	}
+	return true
+}
+
+fn decodeRequest(encoded: String) -> Result<FrontendDeferRequest, List<JsonError>> {
+	let raw = Json.parse(encoded)?
+	return Json.decode<FrontendDeferRequest>(raw)
+}
+
+fn checkFrontendDefer(request: FrontendDeferRequest) -> FrontendDeferResult {
+	let scopeResult = buildScopes(request.scopes)
+	let statementResult = buildStatements(request.statements, scopeResult.scopes, scopeResult.diagnostics)
+	return FrontendDeferResult {
+		accepted: accepted(statementResult.diagnostics),
+		scopes: scopeResult.scopes,
+		statements: statementResult.statements,
+		diagnostics: statementResult.diagnostics,
+	}
+}
+
+pub fn checkFrontendDeferJson(encoded: String) -> Result<String, List<JsonError>> {
+	return Json.encode<FrontendDeferResult>(checkFrontendDefer(decodeRequest(encoded)?))
+}
