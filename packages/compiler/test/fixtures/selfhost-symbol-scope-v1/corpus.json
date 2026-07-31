@@ -1,0 +1,100 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "id": "duplicate",
+      "request": "duplicate.json",
+      "accepted": false,
+      "diagnosticCodes": ["L1001"],
+      "scopes": [
+        { "kind": "module", "ownerNodeId": 0, "parentScopeId": null }
+      ],
+      "symbols": [
+        {
+          "scopeId": 0,
+          "space": "value",
+          "name": "entry",
+          "sourceNodeId": 1,
+          "shadows": null
+        },
+        {
+          "scopeId": 0,
+          "space": "type",
+          "name": "entry",
+          "sourceNodeId": 2,
+          "shadows": null
+        }
+      ],
+      "lookups": []
+    },
+    {
+      "id": "malformed",
+      "request": "malformed.json",
+      "accepted": false,
+      "diagnosticCodes": ["L2040", "L9001"],
+      "scopes": [
+        { "kind": "module", "ownerNodeId": 0, "parentScopeId": null },
+        { "kind": "block", "ownerNodeId": 1, "parentScopeId": null }
+      ],
+      "symbols": [],
+      "lookups": [
+        { "scopeId": 0, "space": "value", "name": "missing", "symbol": null }
+      ]
+    },
+    {
+      "id": "valid",
+      "request": "valid.json",
+      "accepted": true,
+      "diagnosticCodes": [],
+      "scopes": [
+        { "kind": "module", "ownerNodeId": 0, "parentScopeId": null },
+        { "kind": "function", "ownerNodeId": 10, "parentScopeId": 0 },
+        { "kind": "block", "ownerNodeId": 20, "parentScopeId": 1 },
+        { "kind": "block", "ownerNodeId": 30, "parentScopeId": 2 }
+      ],
+      "symbols": [
+        {
+          "scopeId": 0,
+          "space": "value",
+          "name": "item",
+          "sourceNodeId": 1,
+          "shadows": null
+        },
+        {
+          "scopeId": 0,
+          "space": "type",
+          "name": "item",
+          "sourceNodeId": 2,
+          "shadows": null
+        },
+        {
+          "scopeId": 1,
+          "space": "value",
+          "name": "item",
+          "sourceNodeId": 11,
+          "shadows": "0:value:item:1"
+        },
+        {
+          "scopeId": 2,
+          "space": "capability",
+          "name": "io",
+          "sourceNodeId": 21,
+          "shadows": null
+        },
+        {
+          "scopeId": 3,
+          "space": "value",
+          "name": "local",
+          "sourceNodeId": 31,
+          "shadows": null
+        }
+      ],
+      "lookups": [
+        { "scopeId": 3, "space": "value", "name": "item", "symbol": "1:value:item:11" },
+        { "scopeId": 3, "space": "type", "name": "item", "symbol": "0:type:item:2" },
+        { "scopeId": 3, "space": "capability", "name": "io", "symbol": "2:capability:io:21" },
+        { "scopeId": 3, "space": "value", "name": "local", "symbol": "3:value:local:31" }
+      ]
+    }
+  ]
+}
