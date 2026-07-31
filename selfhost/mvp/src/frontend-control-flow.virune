@@ -1,0 +1,395 @@
+//! Deterministic control-flow termination and unreachable-statement analysis.
+
+record FrontendFlowNode derives Eq, Debug, Json {
+	kind: String
+	children: List<Int>
+	expressionType: String?
+	condition: String?
+}
+
+record FrontendFlowFunction derives Eq, Debug, Json {
+	name: String
+	returnType: String
+	bodyNodeId: Int
+}
+
+record FrontendControlFlowRequest derives Eq, Debug, Json {
+	nodes: List<FrontendFlowNode>
+	functions: List<FrontendFlowFunction>
+}
+
+record SemanticFlowNode derives Eq, Debug, Json {
+	id: Int
+	kind: String
+	children: List<Int>
+	expressionType: String?
+	condition: String?
+}
+
+record SemanticFlowFunction derives Eq, Debug, Json {
+	id: Int
+	name: String
+	returnType: String
+	bodyNodeId: Int
+	alwaysTerminates: Bool
+	unreachableNodeIds: List<Int>
+}
+
+record SemanticFlowDiagnostic derives Eq, Debug, Json {
+	code: String
+	severity: String
+	message: String
+	functionId: Int?
+	nodeId: Int?
+	help: String?
+}
+
+record FrontendControlFlowResult derives Eq, Debug, Json {
+	accepted: Bool
+	nodes: List<SemanticFlowNode>
+	functions: List<SemanticFlowFunction>
+	diagnostics: List<SemanticFlowDiagnostic>
+}
+
+record NodeBuildResult {
+	nodes: List<SemanticFlowNode>
+	diagnostics: List<SemanticFlowDiagnostic>
+	valid: Bool
+}
+
+record FunctionBuildResult {
+	functions: List<SemanticFlowFunction>
+	diagnostics: List<SemanticFlowDiagnostic>
+}
+
+record FlowAnalysis {
+	terminates: Bool
+	unreachable: List<Int>
+}
+
+fn maybeInt(value: Int) -> Int? {
+	return if value >= 0 then Some(value) else None
+}
+
+fn flowDiagnostic(
+	code: String,
+	message: String,
+	functionId: Int?,
+	nodeId: Int?,
+	help: String?,
+) -> SemanticFlowDiagnostic {
+	return SemanticFlowDiagnostic {
+		code: code,
+		severity: "error",
+		message: message,
+		functionId: functionId,
+		nodeId: nodeId,
+		help: help,
+	}
+}
+
+fn fallbackNode() -> SemanticFlowNode {
+	return SemanticFlowNode {
+		id: -1,
+		kind: "invalid",
+		children: [],
+		expressionType: None,
+		condition: None,
+	}
+}
+
+fn nodeAt(values: List<SemanticFlowNode>, id: Int) -> SemanticFlowNode {
+	return match List.get(values, id) {
+		Some(value) => value
+		None => fallbackNode()
+	}
+}
+
+fn validKind(kind: String) -> Bool {
+	return kind == "block"
+		|| kind == "return"
+		|| kind == "expression"
+		|| kind == "discard"
+		|| kind == "break"
+		|| kind == "continue"
+		|| kind == "if"
+		|| kind == "while"
+		|| kind == "for"
+		|| kind == "noop"
+}
+
+fn validChildCount(kind: String, count: Int) -> Bool {
+	if kind == "block" {
+		return true
+	}
+	if kind == "if" {
+		return count == 1 || count == 2
+	}
+	if kind == "while" || kind == "for" {
+		return count == 1
+	}
+	return count == 0
+}
+
+fn childKindValid(node: SemanticFlowNode, nodes: List<SemanticFlowNode>) -> Bool {
+	if node.kind == "if" {
+		let thenNode = nodeAt(nodes, match List.get(node.children, 0) { Some(value) => value None => -1 })
+		if thenNode.kind != "block" {
+			return false
+		}
+		if List.length(node.children) == 2 {
+			let elseNode = nodeAt(nodes, match List.get(node.children, 1) { Some(value) => value None => -1 })
+			return elseNode.kind == "block" || elseNode.kind == "if"
+		}
+	}
+	if node.kind == "while" || node.kind == "for" {
+		let body = nodeAt(nodes, match List.get(node.children, 0) { Some(value) => value None => -1 })
+		return body.kind == "block"
+	}
+	return true
+}
+
+fn buildNodes(values: List<FrontendFlowNode>) -> NodeBuildResult {
+	let mut nodes: List<SemanticFlowNode> = []
+	let mut diagnostics: List<SemanticFlowDiagnostic> = []
+	let mut valid = true
+	let mut id = 0
+	for value in values {
+		if !validKind(value.kind) {
+			diagnostics = List.append(diagnostics, flowDiagnostic(
+				"L9001",
+				"Unknown control-flow node kind " + value.kind,
+				None,
+				Some(id),
+				Some("Use block, return, expression, discard, break, continue, if, while, for, or noop."),
+			))
+			valid = false
+		}
+		if !validChildCount(value.kind, List.length(value.children)) {
+			diagnostics = List.append(diagnostics, flowDiagnostic(
+				"L9001",
+				"Invalid child layout for control-flow node " + value.kind,
+				None,
+				Some(id),
+				Some("Use the canonical child layout for this node kind."),
+			))
+			valid = false
+		}
+		for childId in value.children {
+			if childId <= id || childId >= List.length(values) {
+				diagnostics = List.append(diagnostics, flowDiagnostic(
+					"L9001",
+					"Control-flow child must reference a later node in the canonical arena",
+					None,
+					Some(id),
+					Some("Use a valid later node ID so the flow arena remains acyclic."),
+				))
+				valid = false
+			}
+		}
+		nodes = List.append(nodes, SemanticFlowNode {
+			id: id,
+			kind: value.kind,
+			children: value.children,
+			expressionType: value.expressionType,
+			condition: value.condition,
+		})
+		id = id + 1
+	}
+	for node in nodes {
+		if validKind(node.kind) && validChildCount(node.kind, List.length(node.children)) && !childKindValid(node, nodes) {
+			diagnostics = List.append(diagnostics, flowDiagnostic(
+				"L9001",
+				"Control-flow branch or loop body has an invalid node kind",
+				None,
+				Some(node.id),
+				Some("Use a block for branch and loop bodies; an else branch may also be an if node."),
+			))
+			valid = false
+		}
+	}
+	return NodeBuildResult { nodes: nodes, diagnostics: diagnostics, valid: valid }
+}
+
+fn appendInts(values: List<Int>, additions: List<Int>) -> List<Int> {
+	let mut result = values
+	for value in additions {
+		result = List.append(result, value)
+	}
+	return result
+}
+
+fn optionalStringEquals(value: String?, expected: String) -> Bool {
+	return match value {
+		Some(item) => item == expected
+		None => false
+	}
+}
+
+fn analyzeNode(nodeId: Int, nodes: List<SemanticFlowNode>) -> FlowAnalysis {
+	let node = nodeAt(nodes, nodeId)
+	if node.kind == "return" || node.kind == "break" || node.kind == "continue" {
+		return FlowAnalysis { terminates: true, unreachable: [] }
+	}
+	if node.kind == "expression" || node.kind == "discard" {
+		return FlowAnalysis {
+			terminates: optionalStringEquals(node.expressionType, "Never"),
+			unreachable: [],
+		}
+	}
+	if node.kind == "block" {
+		let mut terminated = false
+		let mut unreachable: List<Int> = []
+		for childId in node.children {
+			if terminated {
+				unreachable = List.append(unreachable, childId)
+			} else {
+				let result = analyzeNode(childId, nodes)
+				unreachable = appendInts(unreachable, result.unreachable)
+				terminated = result.terminates
+			}
+		}
+		return FlowAnalysis { terminates: terminated, unreachable: unreachable }
+	}
+	if node.kind == "if" {
+		let thenId = match List.get(node.children, 0) { Some(value) => value None => -1 }
+		let thenResult = analyzeNode(thenId, nodes)
+		if List.length(node.children) < 2 {
+			return FlowAnalysis { terminates: false, unreachable: thenResult.unreachable }
+		}
+		let elseId = match List.get(node.children, 1) { Some(value) => value None => -1 }
+		let elseResult = analyzeNode(elseId, nodes)
+		return FlowAnalysis {
+			terminates: thenResult.terminates && elseResult.terminates,
+			unreachable: appendInts(thenResult.unreachable, elseResult.unreachable),
+		}
+	}
+	if node.kind == "while" {
+		let bodyId = match List.get(node.children, 0) { Some(value) => value None => -1 }
+		let bodyResult = analyzeNode(bodyId, nodes)
+		return FlowAnalysis {
+			terminates: optionalStringEquals(node.condition, "true") && bodyResult.terminates,
+			unreachable: bodyResult.unreachable,
+		}
+	}
+	if node.kind == "for" {
+		let bodyId = match List.get(node.children, 0) { Some(value) => value None => -1 }
+		let bodyResult = analyzeNode(bodyId, nodes)
+		return FlowAnalysis { terminates: false, unreachable: bodyResult.unreachable }
+	}
+	return FlowAnalysis { terminates: false, unreachable: [] }
+}
+
+fn duplicateFunction(values: List<SemanticFlowFunction>, name: String) -> Bool {
+	for value in values {
+		if value.name == name {
+			return true
+		}
+	}
+	return false
+}
+
+fn buildFunctions(
+	values: List<FrontendFlowFunction>,
+	nodes: List<SemanticFlowNode>,
+	arenaValid: Bool,
+	diagnosticsValue: List<SemanticFlowDiagnostic>,
+) -> FunctionBuildResult {
+	let mut functions: List<SemanticFlowFunction> = []
+	let mut diagnostics = diagnosticsValue
+	let mut id = 0
+	for value in values {
+		let nameValid = String.length(value.name) > 0
+		let bodyValid = value.bodyNodeId >= 0
+			&& value.bodyNodeId < List.length(nodes)
+			&& nodeAt(nodes, value.bodyNodeId).kind == "block"
+		if !nameValid {
+			diagnostics = List.append(diagnostics, flowDiagnostic(
+				"L9001",
+				"Control-flow function name cannot be empty",
+				Some(id),
+				None,
+				Some("Use the canonical enclosing function name."),
+			))
+		}
+		if nameValid && duplicateFunction(functions, value.name) {
+			diagnostics = List.append(diagnostics, flowDiagnostic(
+				"L1001",
+				"Duplicate control-flow function " + value.name,
+				Some(id),
+				None,
+				Some("Use a unique function entry in this control-flow request."),
+			))
+		}
+		if !bodyValid {
+			diagnostics = List.append(diagnostics, flowDiagnostic(
+				"L9001",
+				"Control-flow function body must reference a block node",
+				Some(id),
+				maybeInt(value.bodyNodeId),
+				Some("Reference a valid block node from the canonical flow arena."),
+			))
+		}
+		let mut analysis = FlowAnalysis { terminates: false, unreachable: [] }
+		if arenaValid && bodyValid {
+			analysis = analyzeNode(value.bodyNodeId, nodes)
+			if value.returnType != "Unit" && !analysis.terminates {
+				diagnostics = List.append(diagnostics, flowDiagnostic(
+					"L3001",
+					"Function " + value.name + " does not return on every path",
+					Some(id),
+					Some(value.bodyNodeId),
+					Some("Return a value or terminate on every control-flow path."),
+				))
+			}
+			for unreachableId in analysis.unreachable {
+				diagnostics = List.append(diagnostics, flowDiagnostic(
+					"L3006",
+					"Unreachable statement",
+					Some(id),
+					Some(unreachableId),
+					Some("Remove the statement or move it before the terminating statement."),
+				))
+			}
+		}
+		functions = List.append(functions, SemanticFlowFunction {
+			id: id,
+			name: value.name,
+			returnType: value.returnType,
+			bodyNodeId: value.bodyNodeId,
+			alwaysTerminates: analysis.terminates,
+			unreachableNodeIds: analysis.unreachable,
+		})
+		id = id + 1
+	}
+	return FunctionBuildResult { functions: functions, diagnostics: diagnostics }
+}
+
+fn accepted(values: List<SemanticFlowDiagnostic>) -> Bool {
+	for value in values {
+		if value.severity == "error" {
+			return false
+		}
+	}
+	return true
+}
+
+fn decodeRequest(encoded: String) -> Result<FrontendControlFlowRequest, List<JsonError>> {
+	let raw = Json.parse(encoded)?
+	return Json.decode<FrontendControlFlowRequest>(raw)
+}
+
+fn checkFrontendControlFlow(request: FrontendControlFlowRequest) -> FrontendControlFlowResult {
+	let nodeResult = buildNodes(request.nodes)
+	let functionResult = buildFunctions(request.functions, nodeResult.nodes, nodeResult.valid, nodeResult.diagnostics)
+	return FrontendControlFlowResult {
+		accepted: accepted(functionResult.diagnostics),
+		nodes: nodeResult.nodes,
+		functions: functionResult.functions,
+		diagnostics: functionResult.diagnostics,
+	}
+}
+
+pub fn checkFrontendControlFlowJson(encoded: String) -> Result<String, List<JsonError>> {
+	return Json.encode<FrontendControlFlowResult>(checkFrontendControlFlow(decodeRequest(encoded)?))
+}
