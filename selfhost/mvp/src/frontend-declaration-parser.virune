@@ -522,6 +522,38 @@ fn parseDetailed(
 	}
 }
 
+fn parseTypeReferenceTransport(
+	tokens: List<FrontendToken>,
+	startIndex: Int,
+	baseId: Int,
+) -> DetailedDeclarationTransport {
+	let initial = DetailState {
+		index: startIndex,
+		baseId: baseId,
+		nodes: [],
+		diagnostics: [],
+	}
+	let parsed = parseTypeReference(initial, tokens)
+	return DetailedDeclarationTransport {
+		nextIndex: parsed.state.index,
+		nodes: parsed.state.nodes,
+		diagnostics: parsed.state.diagnostics,
+		root: parsed.id,
+	}
+}
+
+pub fn parseTypeReferenceJson(
+	tokensEncoded: String,
+	startIndex: Int,
+	baseId: Int,
+) -> Result<String, List<JsonError>> {
+	let tokensRaw = Json.parse(tokensEncoded)?
+	let tokens = Json.decode<List<FrontendToken>>(tokensRaw)?
+	return Json.encode<DetailedDeclarationTransport>(
+		parseTypeReferenceTransport(tokens, startIndex, baseId),
+	)
+}
+
 pub fn parseDetailedDeclarationJson(
 	tokensEncoded: String,
 	startIndex: Int,

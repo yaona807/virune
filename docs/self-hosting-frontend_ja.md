@@ -125,3 +125,8 @@ Parserはmodule documentationをmodule nodeへ、declaration documentationを対
 Parser coreはlist item、parenthesized／tuple expression、record entry、call argument、任意のcall type argument、record-update entryをcanonical flat-arena nodeへ詳細化します。Shorthand record entryと明示value entryはchild数で区別でき、callとupdateのcontainerは有効なcanonical node IDだけを参照します。
 
 Comma区切りのrecoveryは次のcomma、closing delimiter、物理line end、または囲んでいるrecord braceで同期します。Virune 1.0 grammarが許可する位置ではtrailing commaを受理し、nested aggregateは同じprecedence-aware expression pathを再利用し、progress guardによりmalformed item listでParserが停止し続けることを防ぎます。Semantic arityとrecord-field validationは後続のType／Effect Checkerで扱います。
+
+
+### Statement detail AST
+
+Stage 0 frontendはlocal statementをcanonical flat arenaへ詳細化します。`LetStatement`は`LetBinding`とinitializerをchildとして持ち、binding textで`mut`を区別し、任意の型注釈は詳細type-reference childとして接続します。assignmentは`AssignmentTarget`を持ち、`ForStatement`は`ForBinding`、iterable、bodyを保持します。壊れたheaderはlineまたはblock境界で復旧し、Production Parserの選択や公開Compiler契約は変更しません。
