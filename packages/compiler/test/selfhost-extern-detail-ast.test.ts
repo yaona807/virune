@@ -84,7 +84,7 @@ test('parser recovers after malformed extern members', async () => {
 	try {
 		const source = [
 			'extern js {',
-			'\tfn missingColon(value Int) -> Int = "broken"',
+			'\tnotAMember',
 			'\tfn missingBinding(value: Int) -> Int =',
 			'\tfn recovered(value: Int) -> Int = "ok"',
 			'}',
