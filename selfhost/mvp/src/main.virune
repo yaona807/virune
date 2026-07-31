@@ -4,12 +4,13 @@
 //! models remain private to their implementation modules, while the TypeScript
 //! Host adapts the final payload to Kernel Contract v1. Data types, type
 //! operations, symbol scopes, module visibility, pattern coverage, local
-//! must-use analysis, effect requirements, and control-flow termination cross
-//! module boundaries only as JSON.
+//! must-use analysis, effect requirements, control-flow termination, and defer
+//! validation cross module boundaries only as JSON.
 
 import { checkMvpJson } from "./checker.virune"
 import { emitMvpJson } from "./emitter.virune"
 import { checkFrontendControlFlowJson } from "./frontend-control-flow.virune"
+import { checkFrontendDeferJson } from "./frontend-defer-checker.virune"
 import { checkFrontendEffectsJson } from "./frontend-effect-checker.virune"
 import { lexFrontend } from "./frontend-lexer.virune"
 import { checkFrontendMustUseJson } from "./frontend-must-use.virune"
@@ -78,4 +79,9 @@ pub fn checkFrontendEffectsContract(request: String) -> Result<String, List<Json
 @jsExport
 pub fn checkFrontendControlFlowContract(request: String) -> Result<String, List<JsonError>> {
 	return checkFrontendControlFlowJson(request)
+}
+
+@jsExport
+pub fn checkFrontendDeferContract(request: String) -> Result<String, List<JsonError>> {
+	return checkFrontendDeferJson(request)
 }
