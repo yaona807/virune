@@ -7,6 +7,7 @@
 import { checkMvpJson } from "./checker.virune"
 import { emitMvpJson } from "./emitter.virune"
 import { lexFrontend } from "./frontend-lexer.virune"
+import { parseFrontendCore } from "./frontend-parser-core.virune"
 import { lexMvpJson } from "./lexer.virune"
 import { parseMvpJson } from "./parser.virune"
 
@@ -21,4 +22,9 @@ pub fn compileMvp(source: String) -> Result<String, List<JsonError>> {
 @jsExport
 pub fn lexFrontendContract(source: String) -> Result<String, List<JsonError>> {
 	return lexFrontend(source)
+}
+
+@jsExport
+pub fn parseFrontendContract(source: String) -> Result<String, List<JsonError>> {
+	return parseFrontendCore(source)
 }

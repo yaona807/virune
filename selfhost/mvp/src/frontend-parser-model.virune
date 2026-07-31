@@ -1,0 +1,65 @@
+//! Canonical flat AST model for the Virune-authored frontend parser.
+
+pub record ParserPosition derives Eq, Hash, Debug, Json {
+	offset: Int
+	line: Int
+	column: Int
+}
+
+pub record ParserSpan derives Eq, Hash, Debug, Json {
+	start: ParserPosition
+	end: ParserPosition
+}
+
+pub record ParserDiagnostic derives Eq, Debug, Json {
+	code: String
+	severity: String
+	message: String
+	span: ParserSpan
+}
+
+pub record FrontendAstNode derives Eq, Debug, Json {
+	id: Int
+	kind: String
+	text: String
+	span: ParserSpan
+	children: List<Int>
+	documentation: List<String>
+}
+
+pub record FrontendParseResult derives Eq, Debug, Json {
+	accepted: Bool
+	root: Int
+	nodes: List<FrontendAstNode>
+	diagnostics: List<ParserDiagnostic>
+}
+
+pub fn parserPosition(offset: Int, line: Int, column: Int) -> ParserPosition {
+	return ParserPosition { offset: offset, line: line, column: column }
+}
+
+pub fn parserSpan(start: ParserPosition, end: ParserPosition) -> ParserSpan {
+	return ParserSpan { start: start, end: end }
+}
+
+pub fn parserDiagnostic(code: String, message: String, span: ParserSpan) -> ParserDiagnostic {
+	return ParserDiagnostic { code: code, severity: "error", message: message, span: span }
+}
+
+pub fn frontendAstNode(
+	id: Int,
+	kind: String,
+	text: String,
+	span: ParserSpan,
+	children: List<Int>,
+	documentation: List<String>,
+) -> FrontendAstNode {
+	return FrontendAstNode {
+		id: id,
+		kind: kind,
+		text: text,
+		span: span,
+		children: children,
+		documentation: documentation,
+	}
+}

@@ -1,0 +1,1314 @@
+//! Recursive-descent and Pratt-parser foundation for the Virune 1.0 frontend.
+
+import {
+	FrontendComment,
+	FrontendCommentKind,
+	FrontendDiagnostic,
+	FrontendLexResult,
+	FrontendPosition,
+	FrontendSpan,
+	FrontendToken,
+	FrontendTokenKind,
+} from "./frontend-model.virune"
+import { lexFrontend } from "./frontend-lexer.virune"
+import {
+	FrontendAstNode,
+	FrontendParseResult,
+	ParserDiagnostic,
+	ParserPosition,
+	ParserSpan,
+	frontendAstNode,
+	parserDiagnostic,
+	parserPosition,
+	parserSpan,
+} from "./frontend-parser-model.virune"
+
+record ParserState {
+	index: Int
+	nodes: List<FrontendAstNode>
+	diagnostics: List<ParserDiagnostic>
+	commentIndex: Int
+	pendingDocumentation: List<String>
+	moduleDocumentation: List<String>
+	significantSeen: Bool
+	depth: Int
+}
+
+record ParsedNode {
+	state: ParserState
+	id: Int
+}
+
+record ParsedNodes {
+	state: ParserState
+	ids: List<Int>
+}
+
+record ParsedDocumentation {
+	state: ParserState
+	documentation: List<String>
+}
+
+fn makeState(
+	index: Int,
+	nodes: List<FrontendAstNode>,
+	diagnostics: List<ParserDiagnostic>,
+	commentIndex: Int,
+	pendingDocumentation: List<String>,
+	moduleDocumentation: List<String>,
+	significantSeen: Bool,
+	depth: Int,
+) -> ParserState {
+	return ParserState {
+		index: index,
+		nodes: nodes,
+		diagnostics: diagnostics,
+		commentIndex: commentIndex,
+		pendingDocumentation: pendingDocumentation,
+		moduleDocumentation: moduleDocumentation,
+		significantSeen: significantSeen,
+		depth: depth,
+	}
+}
+
+fn withIndex(state: ParserState, index: Int) -> ParserState {
+	return makeState(
+		index,
+		state.nodes,
+		state.diagnostics,
+		state.commentIndex,
+		state.pendingDocumentation,
+		state.moduleDocumentation,
+		state.significantSeen,
+		state.depth,
+	)
+}
+
+fn withNodes(state: ParserState, nodes: List<FrontendAstNode>) -> ParserState {
+	return makeState(
+		state.index,
+		nodes,
+		state.diagnostics,
+		state.commentIndex,
+		state.pendingDocumentation,
+		state.moduleDocumentation,
+		state.significantSeen,
+		state.depth,
+	)
+}
+
+fn withDiagnostics(state: ParserState, diagnostics: List<ParserDiagnostic>) -> ParserState {
+	return makeState(
+		state.index,
+		state.nodes,
+		diagnostics,
+		state.commentIndex,
+		state.pendingDocumentation,
+		state.moduleDocumentation,
+		state.significantSeen,
+		state.depth,
+	)
+}
+
+fn withComments(
+	state: ParserState,
+	commentIndex: Int,
+	pendingDocumentation: List<String>,
+	moduleDocumentation: List<String>,
+) -> ParserState {
+	return makeState(
+		state.index,
+		state.nodes,
+		state.diagnostics,
+		commentIndex,
+		pendingDocumentation,
+		moduleDocumentation,
+		state.significantSeen,
+		state.depth,
+	)
+}
+
+fn withSignificant(state: ParserState, significantSeen: Bool) -> ParserState {
+	return makeState(
+		state.index,
+		state.nodes,
+		state.diagnostics,
+		state.commentIndex,
+		state.pendingDocumentation,
+		state.moduleDocumentation,
+		significantSeen,
+		state.depth,
+	)
+}
+
+fn withDepth(state: ParserState, depth: Int) -> ParserState {
+	return makeState(
+		state.index,
+		state.nodes,
+		state.diagnostics,
+		state.commentIndex,
+		state.pendingDocumentation,
+		state.moduleDocumentation,
+		state.significantSeen,
+		depth,
+	)
+}
+
+fn fallbackPosition() -> FrontendPosition {
+	return FrontendPosition { offset: 0, line: 1, column: 1 }
+}
+
+fn fallbackSpan() -> FrontendSpan {
+	let value = fallbackPosition()
+	return FrontendSpan { start: value, end: value }
+}
+
+fn fallbackToken() -> FrontendToken {
+	return FrontendToken {
+		kind: FrontendTokenKind.EndOfFile,
+		text: "",
+		span: fallbackSpan(),
+	}
+}
+
+fn tokenAt(tokens: List<FrontendToken>, index: Int) -> FrontendToken {
+	return match List.get(tokens, index) {
+		Some(value) => value
+		None => fallbackToken()
+	}
+}
+
+fn commentAt(comments: List<FrontendComment>, index: Int) -> FrontendComment {
+	return match List.get(comments, index) {
+		Some(value) => value
+		None => FrontendComment {
+			kind: FrontendCommentKind.Ordinary,
+			text: "",
+			span: fallbackSpan(),
+		}
+	}
+}
+
+fn convertPosition(value: FrontendPosition) -> ParserPosition {
+	return parserPosition(value.offset, value.line, value.column)
+}
+
+fn convertSpan(value: FrontendSpan) -> ParserSpan {
+	return parserSpan(convertPosition(value.start), convertPosition(value.end))
+}
+
+fn spanBetween(tokens: List<FrontendToken>, startIndex: Int, endIndex: Int) -> ParserSpan {
+	let startToken = tokenAt(tokens, startIndex)
+	let endToken = if endIndex > startIndex then tokenAt(tokens, endIndex - 1) else startToken
+	return parserSpan(convertPosition(startToken.span.start), convertPosition(endToken.span.end))
+}
+
+fn addNode(
+	state: ParserState,
+	tokens: List<FrontendToken>,
+	kind: String,
+	text: String,
+	startIndex: Int,
+	endIndex: Int,
+	children: List<Int>,
+	documentation: List<String>,
+) -> ParsedNode {
+	let id = List.length(state.nodes)
+	let node = frontendAstNode(
+		id,
+		kind,
+		text,
+		spanBetween(tokens, startIndex, endIndex),
+		children,
+		documentation,
+	)
+	return ParsedNode {
+		state: withNodes(state, List.append(state.nodes, node)),
+		id: id,
+	}
+}
+
+fn addDiagnosticAt(
+	state: ParserState,
+	tokens: List<FrontendToken>,
+	code: String,
+	message: String,
+	index: Int,
+) -> ParserState {
+	let value = tokenAt(tokens, index)
+	let diagnostic = parserDiagnostic(code, message, convertSpan(value.span))
+	return withDiagnostics(state, List.append(state.diagnostics, diagnostic))
+}
+
+fn convertDiagnostic(value: FrontendDiagnostic) -> ParserDiagnostic {
+	return ParserDiagnostic {
+		code: value.code,
+		severity: value.severity,
+		message: value.message,
+		span: convertSpan(value.span),
+	}
+}
+
+fn convertDiagnostics(values: List<FrontendDiagnostic>) -> List<ParserDiagnostic> {
+	let mut result: List<ParserDiagnostic> = []
+	for value in values {
+		result = List.append(result, convertDiagnostic(value))
+	}
+	return result
+}
+
+fn currentText(state: ParserState, tokens: List<FrontendToken>) -> String {
+	return tokenAt(tokens, state.index).text
+}
+
+fn currentKind(state: ParserState, tokens: List<FrontendToken>) -> FrontendTokenKind {
+	return tokenAt(tokens, state.index).kind
+}
+
+fn atEnd(state: ParserState, tokens: List<FrontendToken>) -> Bool {
+	return currentKind(state, tokens) == FrontendTokenKind.EndOfFile
+}
+
+fn isText(state: ParserState, tokens: List<FrontendToken>, text: String) -> Bool {
+	return currentText(state, tokens) == text
+}
+
+fn nextText(state: ParserState, tokens: List<FrontendToken>, distance: Int) -> String {
+	return tokenAt(tokens, state.index + distance).text
+}
+
+fn advance(state: ParserState) -> ParserState {
+	return withIndex(state, state.index + 1)
+}
+
+fn skipNewLines(stateValue: ParserState, tokens: List<FrontendToken>) -> ParserState {
+	let mut state = stateValue
+	while currentKind(state, tokens) == FrontendTokenKind.NewLine {
+		state = advance(state)
+	}
+	return state
+}
+
+fn stringListContains(values: List<String>, target: String) -> Bool {
+	for value in values {
+		if value == target {
+			return true
+		}
+	}
+	return false
+}
+
+fn consumeLineEnd(
+	stateValue: ParserState,
+	tokens: List<FrontendToken>,
+	context: String,
+) -> ParserState {
+	let mut state = stateValue
+	if currentKind(state, tokens) != FrontendTokenKind.NewLine {
+		state = addDiagnosticAt(
+			state,
+			tokens,
+			"P0001",
+			"Expected a line end after " + context,
+			state.index,
+		)
+		return state
+	}
+	return skipNewLines(state, tokens)
+}
+
+fn expectText(
+	stateValue: ParserState,
+	tokens: List<FrontendToken>,
+	text: String,
+	context: String,
+) -> ParserState {
+	let mut state = stateValue
+	if isText(state, tokens, text) {
+		return advance(state)
+	}
+	state = addDiagnosticAt(
+		state,
+		tokens,
+		"P0001",
+		"Expected " + text + " " + context,
+		state.index,
+	)
+	if !atEnd(state, tokens) {
+		state = advance(state)
+	}
+	return state
+}
+
+fn isSupportedDocumentationTarget(kind: String) -> Bool {
+	return kind == "FunctionDeclaration"
+		|| kind == "RecordDeclaration"
+		|| kind == "EnumDeclaration"
+		|| kind == "NewtypeDeclaration"
+		|| kind == "TypeAliasDeclaration"
+		|| kind == "ExternDeclaration"
+		|| kind == "TopLevelValueDeclaration"
+}
+
+fn ingestCommentsBefore(
+	stateValue: ParserState,
+	comments: List<FrontendComment>,
+	line: Int,
+	tokens: List<FrontendToken>,
+) -> ParserState {
+	let mut state = stateValue
+	let mut commentIndex = state.commentIndex
+	let mut pending = state.pendingDocumentation
+	let mut moduleDocumentation = state.moduleDocumentation
+	let mut done = false
+	while commentIndex < List.length(comments) && !done {
+		let value = commentAt(comments, commentIndex)
+		if value.span.end.line > line {
+			done = true
+		} else {
+			if value.kind == FrontendCommentKind.Ordinary {
+				if List.length(pending) > 0 {
+					state = addDiagnosticAt(
+						state,
+						tokens,
+						"L0010",
+						"Declaration documentation is not attached to a declaration",
+						state.index,
+					)
+					pending = []
+				}
+			} else if value.kind == FrontendCommentKind.ModuleDocumentation {
+				if state.significantSeen {
+					state = addDiagnosticAt(
+						state,
+						tokens,
+						"L0011",
+						"Module documentation must appear at the beginning of the file",
+						state.index,
+					)
+				} else {
+					moduleDocumentation = List.append(moduleDocumentation, value.text)
+				}
+			} else {
+				pending = List.append(pending, value.text)
+			}
+			commentIndex = commentIndex + 1
+		}
+	}
+	return withComments(state, commentIndex, pending, moduleDocumentation)
+}
+
+fn takeDocumentation(
+	stateValue: ParserState,
+	tokens: List<FrontendToken>,
+	supported: Bool,
+) -> ParsedDocumentation {
+	let mut state = stateValue
+	let documentation = state.pendingDocumentation
+	if !supported && List.length(documentation) > 0 {
+		state = addDiagnosticAt(
+			state,
+			tokens,
+			"L0012",
+			"Documentation comments cannot target this construct",
+			state.index,
+		)
+	}
+	state = withComments(state, state.commentIndex, [], state.moduleDocumentation)
+	return ParsedDocumentation {
+		state: state,
+		documentation: if supported then documentation else [],
+	}
+}
+
+fn consumeBalanced(
+	stateValue: ParserState,
+	tokens: List<FrontendToken>,
+	open: String,
+	close: String,
+	kind: String,
+) -> ParsedNode {
+	let start = stateValue.index
+	let mut state = stateValue
+	let mut depth = 0
+	let mut done = false
+	while !atEnd(state, tokens) && !done {
+		let text = currentText(state, tokens)
+		if text == open {
+			depth = depth + 1
+		} else if text == close {
+			depth = depth - 1
+			if depth == 0 {
+				state = advance(state)
+				done = true
+				continue
+			}
+		}
+		state = advance(state)
+	}
+	if !done {
+		state = addDiagnosticAt(
+			state,
+			tokens,
+			"P0001",
+			"Unterminated " + kind,
+			start,
+		)
+	}
+	return addNode(
+		state,
+		tokens,
+		kind,
+		open + close,
+		start,
+		state.index,
+		[],
+		[],
+	)
+}
+
+fn parseAttributes(stateValue: ParserState, tokens: List<FrontendToken>) -> ParsedNodes {
+	let mut state = stateValue
+	let mut ids: List<Int> = []
+	while isText(state, tokens, "@") {
+		let start = state.index
+		state = advance(state)
+		let name = currentText(state, tokens)
+		if currentKind(state, tokens) == FrontendTokenKind.Identifier {
+			state = advance(state)
+		} else {
+			state = addDiagnosticAt(
+				state,
+				tokens,
+				"P0001",
+				"Expected an attribute name",
+				state.index,
+			)
+		}
+		if isText(state, tokens, "(") {
+			let values = consumeBalanced(
+				state,
+				tokens,
+				"(",
+				")",
+				"AttributeArguments",
+			)
+			state = values.state
+		}
+		state = skipNewLines(state, tokens)
+		let added = addNode(
+			state,
+			tokens,
+			"Attribute",
+			name,
+			start,
+			state.index,
+			[],
+			[],
+		)
+		state = added.state
+		ids = List.append(ids, added.id)
+	}
+	return ParsedNodes { state: state, ids: ids }
+}
+
+fn consumeUntilLineEnd(stateValue: ParserState, tokens: List<FrontendToken>) -> ParserState {
+	let mut state = stateValue
+	while !atEnd(state, tokens)
+		&& currentKind(state, tokens) != FrontendTokenKind.NewLine {
+		state = advance(state)
+	}
+	return state
+}
+
+fn synchronize(stateValue: ParserState, tokens: List<FrontendToken>) -> ParserState {
+	let mut state = stateValue
+	while !atEnd(state, tokens) {
+		if currentKind(state, tokens) == FrontendTokenKind.NewLine {
+			return skipNewLines(state, tokens)
+		}
+		if isText(state, tokens, "}") {
+			return state
+		}
+		state = advance(state)
+	}
+	return state
+}
+
+fn binaryPrecedence(value: String) -> Int {
+	if value == "|>" {
+		return 1
+	}
+	if value == "||" {
+		return 2
+	}
+	if value == "&&" {
+		return 3
+	}
+	if value == "==" || value == "!=" {
+		return 4
+	}
+	if value == "<" || value == "<=" || value == ">" || value == ">=" {
+		return 5
+	}
+	if value == "+" || value == "-" {
+		return 6
+	}
+	if value == "*" || value == "/" || value == "%" {
+		return 7
+	}
+	return 0
+}
+
+fn isStopToken(
+	state: ParserState,
+	tokens: List<FrontendToken>,
+	stops: List<String>,
+) -> Bool {
+	if atEnd(state, tokens)
+		|| currentKind(state, tokens) == FrontendTokenKind.NewLine {
+		return true
+	}
+	return stringListContains(stops, currentText(state, tokens))
+}
+
+fn parseExpression(
+	stateValue: ParserState,
+	tokens: List<FrontendToken>,
+	minimumPrecedence: Int,
+	stops: List<String>,
+) -> ParsedNode {
+	let prefixed = parsePrefix(stateValue, tokens, stops)
+	let mut state = prefixed.state
+	let mut leftId = prefixed.id
+	let mut done = leftId < 0
+	while !done && !isStopToken(state, tokens, stops) {
+		let operator = currentText(state, tokens)
+		let precedence = binaryPrecedence(operator)
+		if precedence == 0 || precedence < minimumPrecedence {
+			done = true
+		} else {
+			let start = state.index
+			state = advance(state)
+			let right = parseExpression(
+				state,
+				tokens,
+				precedence + 1,
+				stops,
+			)
+			state = right.state
+			let added = addNode(
+				state,
+				tokens,
+				"BinaryExpression",
+				operator,
+				start,
+				state.index,
+				[leftId, right.id],
+				[],
+			)
+			state = added.state
+			leftId = added.id
+		}
+	}
+	return ParsedNode { state: state, id: leftId }
+}
+
+fn parsePrefix(
+	stateValue: ParserState,
+	tokens: List<FrontendToken>,
+	stops: List<String>,
+) -> ParsedNode {
+	let mut state = stateValue
+	if state.depth >= 256 {
+		state = addDiagnosticAt(
+			state,
+			tokens,
+			"P0002",
+			"Parser nesting exceeds the supported limit",
+			state.index,
+		)
+		return ParsedNode {
+			state: synchronize(state, tokens),
+			id: -1,
+		}
+	}
+	if isStopToken(state, tokens, stops) {
+		state = addDiagnosticAt(
+			state,
+			tokens,
+			"P0001",
+			"Expected an expression",
+			state.index,
+		)
+		return ParsedNode { state: state, id: -1 }
+	}
+	let start = state.index
+	let text = currentText(state, tokens)
+	if text == "!" || text == "-" || text == "await" {
+		state = advance(withDepth(state, state.depth + 1))
+		let operand = parsePrefix(state, tokens, stops)
+		state = withDepth(operand.state, stateValue.depth)
+		return addNode(
+			state,
+			tokens,
+			"UnaryExpression",
+			text,
+			start,
+			state.index,
+			[operand.id],
+			[],
+		)
+	}
+	if text == "(" {
+		let grouped = consumeBalanced(
+			state,
+			tokens,
+			"(",
+			")",
+			"ParenthesizedExpression",
+		)
+		return parsePostfix(grouped, tokens, stops)
+	}
+	if text == "[" {
+		let listed = consumeBalanced(
+			state,
+			tokens,
+			"[",
+			"]",
+			"ListExpression",
+		)
+		return parsePostfix(listed, tokens, stops)
+	}
+	let kind = if currentKind(state, tokens) == FrontendTokenKind.Identifier then "IdentifierExpression" else "LiteralExpression"
+	state = advance(state)
+	let added = addNode(
+		state,
+		tokens,
+		kind,
+		text,
+		start,
+		state.index,
+		[],
+		[],
+	)
+	return parsePostfix(added, tokens, stops)
+}
+
+fn parsePostfix(
+	parsedValue: ParsedNode,
+	tokens: List<FrontendToken>,
+	stops: List<String>,
+) -> ParsedNode {
+	let mut state = parsedValue.state
+	let mut valueId = parsedValue.id
+	let mut done = valueId < 0
+	while !done && !isStopToken(state, tokens, stops) {
+		let start = state.index
+		if isText(state, tokens, "(") {
+			let callArguments = consumeBalanced(
+				state,
+				tokens,
+				"(",
+				")",
+				"CallArguments",
+			)
+			state = callArguments.state
+			let added = addNode(
+				state,
+				tokens,
+				"CallExpression",
+				"call",
+				start,
+				state.index,
+				[valueId, callArguments.id],
+				[],
+			)
+			state = added.state
+			valueId = added.id
+		} else if isText(state, tokens, ".") {
+			state = advance(state)
+			let field = currentText(state, tokens)
+			if !atEnd(state, tokens) {
+				state = advance(state)
+			}
+			let added = addNode(
+				state,
+				tokens,
+				"FieldExpression",
+				field,
+				start,
+				state.index,
+				[valueId],
+				[],
+			)
+			state = added.state
+			valueId = added.id
+		} else if isText(state, tokens, "?") {
+			state = advance(state)
+			let added = addNode(
+				state,
+				tokens,
+				"TryExpression",
+				"?",
+				start,
+				state.index,
+				[valueId],
+				[],
+			)
+			state = added.state
+			valueId = added.id
+		} else {
+			done = true
+		}
+	}
+	return ParsedNode { state: state, id: valueId }
+}
+
+fn parseBlock(stateValue: ParserState, tokens: List<FrontendToken>) -> ParsedNode {
+	let start = stateValue.index
+	let mut state = expectText(stateValue, tokens, "{", "to begin a block")
+	state = skipNewLines(state, tokens)
+	let mut children: List<Int> = []
+	while !atEnd(state, tokens) && !isText(state, tokens, "}") {
+		let before = state.index
+		let statement = parseStatement(state, tokens)
+		state = statement.state
+		if statement.id >= 0 {
+			children = List.append(children, statement.id)
+		}
+		if state.index <= before {
+			state = addDiagnosticAt(
+				state,
+				tokens,
+				"P0001",
+				"Parser made no progress in a block",
+				state.index,
+			)
+			state = synchronize(advance(state), tokens)
+		}
+		state = skipNewLines(state, tokens)
+	}
+	state = expectText(state, tokens, "}", "to end a block")
+	return addNode(
+		state,
+		tokens,
+		"Block",
+		"",
+		start,
+		state.index,
+		children,
+		[],
+	)
+}
+
+fn parseStatement(stateValue: ParserState, tokens: List<FrontendToken>) -> ParsedNode {
+	let mut state = stateValue
+	let start = state.index
+	let text = currentText(state, tokens)
+	if text == "break" || text == "continue" {
+		state = advance(state)
+		state = consumeLineEnd(state, tokens, text)
+		let kind = if text == "break" then "BreakStatement" else "ContinueStatement"
+		return addNode(state, tokens, kind, text, start, state.index, [], [])
+	}
+	if text == "let" {
+		state = advance(state)
+		if isText(state, tokens, "mut") {
+			state = advance(state)
+		}
+		if currentKind(state, tokens) == FrontendTokenKind.Identifier {
+			state = advance(state)
+		} else {
+			state = addDiagnosticAt(
+				state,
+				tokens,
+				"P0001",
+				"Expected a local binding name",
+				state.index,
+			)
+		}
+		while !atEnd(state, tokens)
+			&& !isText(state, tokens, "=")
+			&& currentKind(state, tokens) != FrontendTokenKind.NewLine {
+			state = advance(state)
+		}
+		state = expectText(state, tokens, "=", "in a let statement")
+		let expression = parseExpression(state, tokens, 1, [])
+		state = expression.state
+		state = consumeLineEnd(state, tokens, "a let statement")
+		return addNode(
+			state,
+			tokens,
+			"LetStatement",
+			"let",
+			start,
+			state.index,
+			[expression.id],
+			[],
+		)
+	}
+	if text == "return" || text == "discard" || text == "defer" {
+		state = advance(state)
+		let mut children: List<Int> = []
+		if currentKind(state, tokens) != FrontendTokenKind.NewLine
+			&& !atEnd(state, tokens) {
+			let expression = parseExpression(state, tokens, 1, [])
+			state = expression.state
+			if expression.id >= 0 {
+				children = List.append(children, expression.id)
+			}
+		}
+		state = consumeLineEnd(state, tokens, text)
+		let kind = if text == "return" then "ReturnStatement" else if text == "discard" then "DiscardStatement" else "DeferStatement"
+		return addNode(state, tokens, kind, text, start, state.index, children, [])
+	}
+	if text == "if" || text == "while" || text == "for" {
+		state = advance(state)
+		if text == "for" {
+			if currentKind(state, tokens) == FrontendTokenKind.Identifier {
+				state = advance(state)
+			} else {
+				state = addDiagnosticAt(
+					state,
+					tokens,
+					"P0001",
+					"Expected a loop binding",
+					state.index,
+				)
+			}
+			state = expectText(state, tokens, "in", "in a for statement")
+		}
+		let condition = parseExpression(state, tokens, 1, ["{"])
+		state = condition.state
+		let body = parseBlock(state, tokens)
+		state = body.state
+		let mut children = [condition.id, body.id]
+		if text == "if" && isText(state, tokens, "else") {
+			state = advance(state)
+			if isText(state, tokens, "if") {
+				let alternative = parseStatement(state, tokens)
+				state = alternative.state
+				children = List.append(children, alternative.id)
+			} else {
+				let alternative = parseBlock(state, tokens)
+				state = alternative.state
+				children = List.append(children, alternative.id)
+			}
+		}
+		let kind = if text == "if" then "IfStatement" else if text == "while" then "WhileStatement" else "ForStatement"
+		return addNode(state, tokens, kind, text, start, state.index, children, [])
+	}
+	if currentKind(state, tokens) == FrontendTokenKind.Identifier
+		&& nextText(state, tokens, 1) == "=" {
+		let name = currentText(state, tokens)
+		state = advance(state)
+		state = advance(state)
+		let expression = parseExpression(state, tokens, 1, [])
+		state = expression.state
+		state = consumeLineEnd(state, tokens, "an assignment")
+		return addNode(
+			state,
+			tokens,
+			"AssignmentStatement",
+			name,
+			start,
+			state.index,
+			[expression.id],
+			[],
+		)
+	}
+	let expression = parseExpression(state, tokens, 1, [])
+	state = expression.state
+	state = consumeLineEnd(state, tokens, "an expression statement")
+	return addNode(
+		state,
+		tokens,
+		"ExpressionStatement",
+		"",
+		start,
+		state.index,
+		[expression.id],
+		[],
+	)
+}
+
+fn declarationKind(state: ParserState, tokens: List<FrontendToken>) -> String {
+	let first = currentText(state, tokens)
+	let second = nextText(state, tokens, 1)
+	let third = nextText(state, tokens, 2)
+	if first == "pub" && second == "async" && third == "fn" {
+		return "FunctionDeclaration"
+	}
+	if (first == "pub" && second == "fn")
+		|| (first == "async" && second == "fn")
+		|| first == "fn" {
+		return "FunctionDeclaration"
+	}
+	if (first == "pub" && second == "record") || first == "record" {
+		return "RecordDeclaration"
+	}
+	if (first == "pub" && second == "enum") || first == "enum" {
+		return "EnumDeclaration"
+	}
+	if (first == "pub" && second == "newtype") || first == "newtype" {
+		return "NewtypeDeclaration"
+	}
+	if (first == "pub" && second == "type") || first == "type" {
+		return "TypeAliasDeclaration"
+	}
+	if (first == "unsafe" && second == "extern") || first == "extern" {
+		return "ExternDeclaration"
+	}
+	if (first == "async" && second == "test") || first == "test" {
+		return "TestDeclaration"
+	}
+	if (first == "pub" && (second == "let" || second == "const"))
+		|| first == "let"
+		|| first == "const" {
+		return "TopLevelValueDeclaration"
+	}
+	return ""
+}
+
+fn consumeModifiers(
+	stateValue: ParserState,
+	tokens: List<FrontendToken>,
+	values: List<String>,
+) -> ParserState {
+	let mut state = stateValue
+	while stringListContains(values, currentText(state, tokens)) {
+		state = advance(state)
+	}
+	return state
+}
+
+fn parseFunctionDeclaration(
+	stateValue: ParserState,
+	tokens: List<FrontendToken>,
+	attributes: List<Int>,
+	documentation: List<String>,
+) -> ParsedNode {
+	let start = stateValue.index
+	let mut state = consumeModifiers(stateValue, tokens, ["pub", "async"])
+	state = expectText(state, tokens, "fn", "in a function declaration")
+	let name = currentText(state, tokens)
+	if currentKind(state, tokens) == FrontendTokenKind.Identifier {
+		state = advance(state)
+	} else {
+		state = addDiagnosticAt(state, tokens, "P0001", "Expected a function name", state.index)
+	}
+	let mut children = attributes
+	if isText(state, tokens, "<") {
+		let generics = consumeBalanced(state, tokens, "<", ">", "TypeParameters")
+		state = generics.state
+		children = List.append(children, generics.id)
+	}
+	if isText(state, tokens, "(") {
+		let parameters = consumeBalanced(state, tokens, "(", ")", "Parameters")
+		state = parameters.state
+		children = List.append(children, parameters.id)
+	} else {
+		state = addDiagnosticAt(state, tokens, "P0001", "Expected a parameter list", state.index)
+	}
+	while !atEnd(state, tokens)
+		&& !isText(state, tokens, "{")
+		&& !isText(state, tokens, "=>")
+		&& currentKind(state, tokens) != FrontendTokenKind.NewLine {
+		state = advance(state)
+	}
+	if isText(state, tokens, "{") {
+		let body = parseBlock(state, tokens)
+		state = body.state
+		children = List.append(children, body.id)
+	} else if isText(state, tokens, "=>") {
+		state = advance(state)
+		let expression = parseExpression(state, tokens, 1, [])
+		state = expression.state
+		children = List.append(children, expression.id)
+		state = consumeLineEnd(state, tokens, "an expression-bodied function")
+	} else {
+		state = addDiagnosticAt(state, tokens, "P0001", "Expected a function body", state.index)
+		state = synchronize(state, tokens)
+	}
+	return addNode(
+		state,
+		tokens,
+		"FunctionDeclaration",
+		name,
+		start,
+		state.index,
+		children,
+		documentation,
+	)
+}
+
+fn parseCompositeDeclaration(
+	stateValue: ParserState,
+	tokens: List<FrontendToken>,
+	kind: String,
+	attributes: List<Int>,
+	documentation: List<String>,
+) -> ParsedNode {
+	let start = stateValue.index
+	let mut state = stateValue
+	let mut name = ""
+	while !atEnd(state, tokens)
+		&& !isText(state, tokens, "{")
+		&& currentKind(state, tokens) != FrontendTokenKind.NewLine {
+		if name == "" && currentKind(state, tokens) == FrontendTokenKind.Identifier {
+			name = currentText(state, tokens)
+		}
+		state = advance(state)
+	}
+	let mut children = attributes
+	if isText(state, tokens, "{") {
+		let body = consumeBalanced(state, tokens, "{", "}", kind + "Body")
+		state = body.state
+		children = List.append(children, body.id)
+	} else {
+		state = addDiagnosticAt(state, tokens, "P0001", "Expected a declaration body", state.index)
+		state = synchronize(state, tokens)
+	}
+	return addNode(state, tokens, kind, name, start, state.index, children, documentation)
+}
+
+fn parseLineDeclaration(
+	stateValue: ParserState,
+	tokens: List<FrontendToken>,
+	kind: String,
+	attributes: List<Int>,
+	documentation: List<String>,
+) -> ParsedNode {
+	let start = stateValue.index
+	let mut state = stateValue
+	let mut name = ""
+	let mut equalsFound = false
+	while !atEnd(state, tokens)
+		&& currentKind(state, tokens) != FrontendTokenKind.NewLine
+		&& !equalsFound {
+		if name == "" && currentKind(state, tokens) == FrontendTokenKind.Identifier {
+			name = currentText(state, tokens)
+		}
+		if isText(state, tokens, "=") {
+			equalsFound = true
+			state = advance(state)
+		} else {
+			state = advance(state)
+		}
+	}
+	let mut children = attributes
+	if equalsFound && kind == "TopLevelValueDeclaration" {
+		let expression = parseExpression(state, tokens, 1, [])
+		state = expression.state
+		children = List.append(children, expression.id)
+	} else {
+		state = consumeUntilLineEnd(state, tokens)
+	}
+	state = consumeLineEnd(state, tokens, kind)
+	return addNode(state, tokens, kind, name, start, state.index, children, documentation)
+}
+
+fn parseTestDeclaration(
+	stateValue: ParserState,
+	tokens: List<FrontendToken>,
+	attributes: List<Int>,
+) -> ParsedNode {
+	let start = stateValue.index
+	let mut state = consumeModifiers(stateValue, tokens, ["async"])
+	state = expectText(state, tokens, "test", "in a test declaration")
+	let name = currentText(state, tokens)
+	if currentKind(state, tokens) == FrontendTokenKind.StringLiteral {
+		state = advance(state)
+	} else {
+		state = addDiagnosticAt(state, tokens, "P0001", "Expected a test name", state.index)
+	}
+	let body = parseBlock(state, tokens)
+	state = body.state
+	return addNode(
+		state,
+		tokens,
+		"TestDeclaration",
+		name,
+		start,
+		state.index,
+		List.concat(attributes, [body.id]),
+		[],
+	)
+}
+
+fn parseDeclaration(
+	stateValue: ParserState,
+	tokens: List<FrontendToken>,
+	attributes: List<Int>,
+) -> ParsedNode {
+	let kind = declarationKind(stateValue, tokens)
+	let docs = takeDocumentation(
+		stateValue,
+		tokens,
+		isSupportedDocumentationTarget(kind),
+	)
+	let state = withSignificant(docs.state, true)
+	if kind == "FunctionDeclaration" {
+		return parseFunctionDeclaration(state, tokens, attributes, docs.documentation)
+	}
+	if kind == "RecordDeclaration"
+		|| kind == "EnumDeclaration"
+		|| kind == "ExternDeclaration" {
+		return parseCompositeDeclaration(state, tokens, kind, attributes, docs.documentation)
+	}
+	if kind == "NewtypeDeclaration"
+		|| kind == "TypeAliasDeclaration"
+		|| kind == "TopLevelValueDeclaration" {
+		return parseLineDeclaration(state, tokens, kind, attributes, docs.documentation)
+	}
+	if kind == "TestDeclaration" {
+		return parseTestDeclaration(state, tokens, attributes)
+	}
+	let failed = addDiagnosticAt(state, tokens, "P0001", "Expected a declaration", state.index)
+	return ParsedNode { state: synchronize(failed, tokens), id: -1 }
+}
+
+fn parseImport(stateValue: ParserState, tokens: List<FrontendToken>) -> ParsedNode {
+	let start = stateValue.index
+	let docs = takeDocumentation(stateValue, tokens, false)
+	let mut state = withSignificant(docs.state, true)
+	state = consumeUntilLineEnd(state, tokens)
+	state = consumeLineEnd(state, tokens, "an import declaration")
+	return addNode(state, tokens, "ImportDeclaration", "import", start, state.index, [], [])
+}
+
+fn parseUnsafeModule(stateValue: ParserState, tokens: List<FrontendToken>) -> ParsedNode {
+	let start = stateValue.index
+	let docs = takeDocumentation(stateValue, tokens, false)
+	let mut state = withSignificant(docs.state, true)
+	state = expectText(state, tokens, "unsafe", "in an unsafe module declaration")
+	state = expectText(state, tokens, "module", "in an unsafe module declaration")
+	state = consumeLineEnd(state, tokens, "an unsafe module declaration")
+	return addNode(state, tokens, "UnsafeModule", "unsafe module", start, state.index, [], [])
+}
+
+fn hasErrors(diagnostics: List<ParserDiagnostic>) -> Bool {
+	for diagnostic in diagnostics {
+		if diagnostic.severity == "error" {
+			return true
+		}
+	}
+	return false
+}
+
+fn parseModule(lexed: FrontendLexResult) -> FrontendParseResult {
+	let tokens = lexed.tokens
+	let comments = lexed.comments
+	let mut state = makeState(
+		0,
+		[],
+		convertDiagnostics(lexed.diagnostics),
+		0,
+		[],
+		[],
+		false,
+		0,
+	)
+	let mut children: List<Int> = []
+	state = skipNewLines(state, tokens)
+	state = ingestCommentsBefore(
+		state,
+		comments,
+		tokenAt(tokens, state.index).span.start.line,
+		tokens,
+	)
+	if isText(state, tokens, "unsafe") && nextText(state, tokens, 1) == "module" {
+		let declaration = parseUnsafeModule(state, tokens)
+		state = declaration.state
+		children = List.append(children, declaration.id)
+	}
+	state = skipNewLines(state, tokens)
+	while !atEnd(state, tokens)
+		&& (isText(state, tokens, "import")
+			|| (isText(state, tokens, "pub") && nextText(state, tokens, 1) == "import")) {
+		state = ingestCommentsBefore(
+			state,
+			comments,
+			tokenAt(tokens, state.index).span.start.line,
+			tokens,
+		)
+		let imported = parseImport(state, tokens)
+		state = imported.state
+		children = List.append(children, imported.id)
+		state = skipNewLines(state, tokens)
+	}
+	let mut done = false
+	while !atEnd(state, tokens) && !done {
+		state = skipNewLines(state, tokens)
+		if atEnd(state, tokens) {
+			done = true
+		} else {
+			state = ingestCommentsBefore(
+				state,
+				comments,
+				tokenAt(tokens, state.index).span.start.line,
+				tokens,
+			)
+			let before = state.index
+			let attributes = parseAttributes(state, tokens)
+			state = attributes.state
+			let declaration = parseDeclaration(state, tokens, attributes.ids)
+			state = declaration.state
+			if declaration.id >= 0 {
+				children = List.append(children, declaration.id)
+			}
+			if state.index <= before {
+				state = addDiagnosticAt(
+					state,
+					tokens,
+					"P0001",
+					"Parser made no progress at module scope",
+					state.index,
+				)
+				state = synchronize(advance(state), tokens)
+			}
+		}
+	}
+	state = ingestCommentsBefore(state, comments, 2147483647, tokens)
+	if List.length(state.pendingDocumentation) > 0 {
+		state = addDiagnosticAt(
+			state,
+			tokens,
+			"L0010",
+			"Declaration documentation is not attached to a declaration",
+			state.index,
+		)
+		state = withComments(state, state.commentIndex, [], state.moduleDocumentation)
+	}
+	let root = addNode(
+		state,
+		tokens,
+		"Module",
+		"",
+		0,
+		state.index + 1,
+		children,
+		state.moduleDocumentation,
+	)
+	state = root.state
+	return FrontendParseResult {
+		accepted: !hasErrors(state.diagnostics),
+		root: root.id,
+		nodes: state.nodes,
+		diagnostics: state.diagnostics,
+	}
+}
+
+fn decodeFrontend(source: String) -> Result<FrontendLexResult, List<JsonError>> {
+	let exported = lexFrontend(source)?
+	let boundary = Json.decode<String>(exported)?
+	let encoded = Json.decode<String>(boundary)?
+	return Json.decode<FrontendLexResult>(encoded)
+}
+
+@jsExport
+pub fn parseFrontend(source: String) -> Result<String, List<JsonError>> {
+	let lexed = decodeFrontend(source)?
+	return Json.encode<FrontendParseResult>(parseModule(lexed))
+}
