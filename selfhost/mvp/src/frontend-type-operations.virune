@@ -11,7 +11,7 @@ import {
 	semanticPosition,
 	semanticSpan,
 } from "./frontend-semantic-model.virune"
-import { checkFrontendDataTypes } from "./frontend-semantic.virune"
+import { checkFrontendDataTypesJson } from "./frontend-semantic.virune"
 
 record FrontendTypeRelationRequest derives Eq, Debug, Json {
 	source: String
@@ -595,8 +595,14 @@ fn decodeRequest(encoded: String) -> Result<FrontendTypeOperationsRequest, List<
 	return Json.decode<FrontendTypeOperationsRequest>(raw)
 }
 
+fn decodeSemantics(source: String) -> Result<FrontendSemanticResult, List<JsonError>> {
+	let encoded = checkFrontendDataTypesJson(source)?
+	let raw = Json.parse(encoded)?
+	return Json.decode<FrontendSemanticResult>(raw)
+}
+
 fn checkFrontendTypeOperations(request: FrontendTypeOperationsRequest) -> Result<FrontendTypeOperationsResult, List<JsonError>> {
-	let semantics = checkFrontendDataTypes(request.source)?
+	let semantics = decodeSemantics(request.source)?
 	let mut diagnostics = semantics.diagnostics
 	let mut relations: List<SemanticTypeRelationResult> = []
 	for relation in request.relations {
