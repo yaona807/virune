@@ -1,0 +1,82 @@
+name: Fix self-host semantic spans
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: ${{ github.head_ref == 'agent/selfhost-semantic-data-types' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: agent/selfhost-semantic-data-types
+          fetch-depth: 0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 24
+          cache: npm
+      - name: Convert parser spans to semantic spans
+        run: |
+          node --input-type=module - <<'NODE'
+          import { readFile, writeFile } from 'node:fs/promises';
+          const path = 'selfhost/mvp/src/frontend-semantic.virune';
+          let source = await readFile(path, 'utf8');
+          source = source.replace(
+            '\tSemanticMember,\n\tSemanticType,\n\tsemanticDiagnostic,\n',
+            '\tSemanticMember,\n\tSemanticSpan,\n\tSemanticType,\n\tsemanticPosition,\n\tsemanticSpan,\n',
+          );
+          const insertion = `fn toSemanticSpan(value: ParserSpan) -> SemanticSpan {
+          \treturn semanticSpan(
+          \t\tsemanticPosition(value.start.offset, value.start.line, value.start.column),
+          \t\tsemanticPosition(value.end.offset, value.end.line, value.end.column),
+          \t)
+          }
+
+          fn semanticDiagnostic(
+          \tcode: String,
+          \tmessage: String,
+          \tspan: ParserSpan,
+          \thelp: String?,
+          ) -> SemanticDiagnostic {
+          \treturn SemanticDiagnostic {
+          \t\tcode: code,
+          \t\tseverity: "error",
+          \t\tmessage: message,
+          \t\tspan: toSemanticSpan(span),
+          \t\thelp: help,
+          \t}
+          }
+
+          `;
+          const marker = 'fn fallbackPosition() -> ParserPosition {';
+          if (!source.includes(marker)) throw new Error('Semantic span insertion marker is missing');
+          source = source.replace(marker, insertion + marker);
+          source = source.replace('\t\tspan: fallbackSpan(),\n\t}\n}\n\nfn nodeAt', '\t\tspan: toSemanticSpan(fallbackSpan()),\n\t}\n}\n\nfn nodeAt');
+          source = source.replace('\t\tspan: value.span,\n\t\thelp: None,', '\t\tspan: toSemanticSpan(value.span),\n\t\thelp: None,');
+          source = source.replace('\t\t\t\t\tspan: node.span,\n\t\t\t\t}', '\t\t\t\t\tspan: toSemanticSpan(node.span),\n\t\t\t\t}');
+          source = source.replace('\t\tspan: span,\n\t}', '\t\tspan: toSemanticSpan(span),\n\t}');
+          source = source.replace('\t\tspan: node.span,\n\t}\n\treturn withMembers', '\t\tspan: toSemanticSpan(node.span),\n\t}\n\treturn withMembers');
+          await writeFile(path, source);
+          NODE
+      - run: npm ci
+      - run: npm run build
+      - name: Run semantic Host tests
+        run: node --test --test-timeout=120000 packages/compiler/dist/test/selfhost-semantic-data-types.test.js
+      - name: Run complete Stage 0 tests
+        run: node packages/cli/dist/src/main.js test selfhost/mvp
+      - run: git diff --check
+      - name: Commit fix and remove workflow
+        run: |
+          rm .github/workflows/fix-selfhost-semantic-spans.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add selfhost/mvp/src/frontend-semantic.virune .github/workflows/fix-selfhost-semantic-spans.yml
+          git commit -m "compiler(selfhost): own semantic source spans"
+          git push origin HEAD:agent/selfhost-semantic-data-types
