@@ -1,0 +1,34 @@
+import { parseFrontendCore } from "./frontend-parser-core.virune"
+
+fn encoded(source: String) -> String {
+	return match parseFrontendCore(source) {
+		Ok(value) => value
+		Err(_) => ""
+	}
+}
+
+test "parser expands function test and top level value declarations" {
+	let source = "@api\npub async fn choose<T, U>(left: T, right: U) -> U uses io, * {\n\treturn right\n}\nfn identity<T>(value: T) -> T => value\nasync test \"async smoke\" {\n\tdiscard await run()\n}\npub const answer: Int = 42\nlet inferred = answer\n"
+	let result = encoded(source)
+	expect(String.contains(result, "\"accepted\":true"))
+	expect(String.contains(result, "\"kind\":\"FunctionModifiers\""))
+	expect(String.contains(result, "\"kind\":\"TypeParameters\""))
+	expect(String.contains(result, "\"kind\":\"TypeParameter\""))
+	expect(String.contains(result, "\"kind\":\"Parameters\""))
+	expect(String.contains(result, "\"kind\":\"Parameter\""))
+	expect(String.contains(result, "\"kind\":\"ReturnType\""))
+	expect(String.contains(result, "\"kind\":\"UsesClause\""))
+	expect(String.contains(result, "\"kind\":\"TestModifiers\""))
+	expect(String.contains(result, "\"kind\":\"TopLevelBinding\""))
+	expect(String.contains(result, "\"text\":\"public const answer\""))
+}
+
+test "parser recovers after malformed executable declaration headers" {
+	let source = "pub async fn broken(value Int) -> Int {\n\treturn 0\n}\nasync test {\n\tdiscard 1\n}\npub const : Int = 1\npub fn after() -> Int {\n\treturn 1\n}\n"
+	let result = encoded(source)
+	expect(String.contains(result, "\"accepted\":false"))
+	expect(String.contains(result, "\"text\":\"broken\""))
+	expect(String.contains(result, "\"kind\":\"TestDeclaration\""))
+	expect(String.contains(result, "\"kind\":\"TopLevelValueDeclaration\""))
+	expect(String.contains(result, "\"text\":\"after\""))
+}
