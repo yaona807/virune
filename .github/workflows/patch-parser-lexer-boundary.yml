@@ -1,0 +1,71 @@
+name: Patch parser lexer boundary
+
+on:
+  push:
+    branches:
+      - agent/selfhost-frontend-parser-core
+    paths:
+      - .github/workflows/patch-parser-lexer-boundary.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: agent/selfhost-frontend-parser-core
+          fetch-depth: 0
+      - name: Keep JSON at the Host boundary only
+        shell: python
+        run: |
+          from pathlib import Path
+
+          lexer_path = Path('selfhost/mvp/src/frontend-lexer.virune')
+          lexer = lexer_path.read_text(encoding='utf-8')
+          lexer_old = '''@jsExport
+          pub fn lexFrontend(source: String) -> Result<String, List<JsonError>> {
+              return Json.encode<FrontendLexResult>(scanFrontend(source))
+          }'''
+          lexer_new = '''pub fn scanFrontendResult(source: String) -> FrontendLexResult {
+              return scanFrontend(source)
+          }
+
+          @jsExport
+          pub fn lexFrontend(source: String) -> Result<String, List<JsonError>> {
+              return Json.encode<FrontendLexResult>(scanFrontendResult(source))
+          }'''
+          if lexer.count(lexer_old) != 1:
+              raise SystemExit(f'lexer replacement count: {lexer.count(lexer_old)}')
+          lexer_path.write_text(lexer.replace(lexer_old, lexer_new), encoding='utf-8')
+
+          parser_path = Path('selfhost/mvp/src/frontend-parser-core.virune')
+          parser = parser_path.read_text(encoding='utf-8')
+          import_old = 'import { lexFrontend } from "./frontend-lexer.virune"'
+          import_new = 'import { scanFrontendResult } from "./frontend-lexer.virune"'
+          decode_old = '''fn decodeFrontend(source: String) -> Result<FrontendLexResult, List<JsonError>> {
+              let exported = lexFrontend(source)?
+              let first = Json.decode<String>(exported)?
+              let second = Json.decode<String>(first)?
+              let payload = Json.decode<String>(second)?
+              return Json.decode<FrontendLexResult>(payload)
+          }'''
+          decode_new = '''fn decodeFrontend(source: String) -> Result<FrontendLexResult, List<JsonError>> {
+              return Ok(scanFrontendResult(source))
+          }'''
+          if parser.count(import_old) != 1:
+              raise SystemExit(f'import replacement count: {parser.count(import_old)}')
+          if parser.count(decode_old) != 1:
+              raise SystemExit(f'decode replacement count: {parser.count(decode_old)}')
+          parser = parser.replace(import_old, import_new).replace(decode_old, decode_new)
+          parser_path.write_text(parser, encoding='utf-8')
+      - name: Commit patch and remove helper workflow
+        run: |
+          git rm .github/workflows/patch-parser-lexer-boundary.yml
+          git add selfhost/mvp/src/frontend-lexer.virune selfhost/mvp/src/frontend-parser-core.virune
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git commit -m "fix(selfhost): keep lexer JSON at host boundary"
+          git push origin HEAD:agent/selfhost-frontend-parser-core
