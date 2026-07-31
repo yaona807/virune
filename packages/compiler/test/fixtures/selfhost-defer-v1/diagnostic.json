@@ -1,0 +1,11 @@
+{
+  "scopes": [
+    { "kind": "module", "name": "main" },
+    { "kind": "function", "name": "run" }
+  ],
+  "statements": [
+    { "scopeId": 0, "expressionType": "Unit" },
+    { "scopeId": 1, "expressionType": "Int" },
+    { "scopeId": 0, "expressionType": "String" }
+  ]
+}
