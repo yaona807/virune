@@ -66,3 +66,15 @@ The smoke command is suitable for an initial non-blocking CI step:
 ```
 
 The step must remain non-blocking until a real self-host kernel is connected and the promotion criteria in the self-hosting architecture are met. At that point the right-hand kernel changes; the corpus and artifact format remain unchanged.
+
+## Parser parity corpus
+
+The versioned `.github/self-hosting/parser-parity-corpus-v1.json` corpus compares the production Legacy lexer/parser with the Virune Stage 0 frontend. It covers the Virune 1.0 grammar families, compares accepted/rejected status, and compares the public parser diagnostic contract (`code`, `severity`, and source range) for isolated malformed cases. Chevrotain's historical inclusive `endOffset` is normalized at the Host boundary. For zero-width parser diagnostics, the end column is also normalized to the start column; all other line and column values remain unchanged. Deterministic bounded mutations verify progress, canonical arena IDs, and absence of panics.
+
+Run it locally with:
+
+```bash
+npm run selfhost:parser:parity
+```
+
+Expected divergences require an exact case and JSON path, a reason, and a non-expired ISO date. Unmatched, stale, or expired policies fail the test.

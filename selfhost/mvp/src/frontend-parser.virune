@@ -308,7 +308,7 @@ fn consumeLineEnd(
 		state = addDiagnosticAt(
 			state,
 			tokens,
-			"P0001",
+			"L0002",
 			"Expected a line end after " + context,
 			state.index,
 		)
@@ -330,7 +330,7 @@ fn expectText(
 	state = addDiagnosticAt(
 		state,
 		tokens,
-		"P0001",
+		"L0002",
 		"Expected " + text + " " + context,
 		state.index,
 	)
@@ -450,7 +450,7 @@ fn consumeBalanced(
 		state = addDiagnosticAt(
 			state,
 			tokens,
-			"P0001",
+			"L0002",
 			"Unterminated " + kind,
 			start,
 		)
@@ -480,7 +480,7 @@ fn parseAttributes(stateValue: ParserState, tokens: List<FrontendToken>) -> Pars
 			state = addDiagnosticAt(
 				state,
 				tokens,
-				"P0001",
+				"L0002",
 				"Expected an attribute name",
 				state.index,
 			)
@@ -637,7 +637,7 @@ fn parsePrefix(
 		state = addDiagnosticAt(
 			state,
 			tokens,
-			"P0001",
+			"L0002",
 			"Expected an expression",
 			state.index,
 		)
@@ -781,7 +781,7 @@ fn parseBlock(stateValue: ParserState, tokens: List<FrontendToken>) -> ParsedNod
 			state = addDiagnosticAt(
 				state,
 				tokens,
-				"P0001",
+				"L0002",
 				"Parser made no progress in a block",
 				state.index,
 			)
@@ -823,7 +823,7 @@ fn parseStatement(stateValue: ParserState, tokens: List<FrontendToken>) -> Parse
 			state = addDiagnosticAt(
 				state,
 				tokens,
-				"P0001",
+				"L0002",
 				"Expected a local binding name",
 				state.index,
 			)
@@ -872,7 +872,7 @@ fn parseStatement(stateValue: ParserState, tokens: List<FrontendToken>) -> Parse
 				state = addDiagnosticAt(
 					state,
 					tokens,
-					"P0001",
+					"L0002",
 					"Expected a loop binding",
 					state.index,
 				)
@@ -996,7 +996,7 @@ fn parseFunctionDeclaration(
 	if currentKind(state, tokens) == FrontendTokenKind.Identifier {
 		state = advance(state)
 	} else {
-		state = addDiagnosticAt(state, tokens, "P0001", "Expected a function name", state.index)
+		state = addDiagnosticAt(state, tokens, "L0002", "Expected a function name", state.index)
 	}
 	let mut children = attributes
 	if isText(state, tokens, "<") {
@@ -1009,7 +1009,7 @@ fn parseFunctionDeclaration(
 		state = parameters.state
 		children = List.append(children, parameters.id)
 	} else {
-		state = addDiagnosticAt(state, tokens, "P0001", "Expected a parameter list", state.index)
+		state = addDiagnosticAt(state, tokens, "L0002", "Expected a parameter list", state.index)
 	}
 	while !atEnd(state, tokens)
 		&& !isText(state, tokens, "{")
@@ -1028,7 +1028,7 @@ fn parseFunctionDeclaration(
 		children = List.append(children, expression.id)
 		state = consumeLineEnd(state, tokens, "an expression-bodied function")
 	} else {
-		state = addDiagnosticAt(state, tokens, "P0001", "Expected a function body", state.index)
+		state = addDiagnosticAt(state, tokens, "L0002", "Expected a function body", state.index)
 		state = synchronize(state, tokens)
 	}
 	return addNode(
@@ -1067,7 +1067,7 @@ fn parseCompositeDeclaration(
 		state = body.state
 		children = List.append(children, body.id)
 	} else {
-		state = addDiagnosticAt(state, tokens, "P0001", "Expected a declaration body", state.index)
+		state = addDiagnosticAt(state, tokens, "L0002", "Expected a declaration body", state.index)
 		state = synchronize(state, tokens)
 	}
 	return addNode(state, tokens, kind, name, start, state.index, children, documentation)
@@ -1121,7 +1121,7 @@ fn parseTestDeclaration(
 	if currentKind(state, tokens) == FrontendTokenKind.StringLiteral {
 		state = advance(state)
 	} else {
-		state = addDiagnosticAt(state, tokens, "P0001", "Expected a test name", state.index)
+		state = addDiagnosticAt(state, tokens, "L0002", "Expected a test name", state.index)
 	}
 	let body = parseBlock(state, tokens)
 	state = body.state
@@ -1165,7 +1165,7 @@ fn parseDeclaration(
 	if kind == "TestDeclaration" {
 		return parseTestDeclaration(state, tokens, attributes)
 	}
-	let failed = addDiagnosticAt(state, tokens, "P0001", "Expected a declaration", state.index)
+	let failed = addDiagnosticAt(state, tokens, "L0002", "Expected a declaration", state.index)
 	return ParsedNode { state: synchronize(failed, tokens), id: -1 }
 }
 
@@ -1262,7 +1262,7 @@ fn parseModule(lexed: FrontendLexResult) -> FrontendParseResult {
 				state = addDiagnosticAt(
 					state,
 					tokens,
-					"P0001",
+					"L0002",
 					"Parser made no progress at module scope",
 					state.index,
 				)

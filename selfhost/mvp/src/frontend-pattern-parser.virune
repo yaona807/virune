@@ -123,7 +123,7 @@ fn skipNewLines(stateValue: PatternState, tokens: List<FrontendToken>) -> Patter
 
 fn addDiagnostic(state: PatternState, tokens: List<FrontendToken>, message: String) -> PatternState {
 	let value = tokenAt(tokens, state.index)
-	let diagnostic = parserDiagnostic("P0001", message, convertSpan(value.span))
+	let diagnostic = parserDiagnostic("L0002", message, convertSpan(value.span))
 	return withDiagnostics(state, List.append(state.diagnostics, diagnostic))
 }
 
