@@ -73,6 +73,14 @@ fn token(kind: FrontendTokenKind, text: String, start: FrontendPosition, end: Fr
 	return FrontendToken { kind: kind, text: text, span: frontendSpan(start, end) }
 }
 
+fn tokenAt(tokens: List<FrontendToken>, index: Int) -> FrontendToken {
+	let fallback = frontendPosition(0, 1, 1)
+	return match List.get(tokens, index) {
+		Some(value) => value
+		None => token(FrontendTokenKind.EndOfFile, "", fallback, fallback)
+	}
+}
+
 fn isAsciiDigit(value: String) -> Bool {
 	return value >= "0" && value <= "9"
 }
@@ -244,18 +252,18 @@ fn scanString(chars: List<String>, initial: ScannerState) -> ScannedString {
 	while state.index < List.length(chars) {
 		let value = characterOrEmpty(chars, state.index)
 		if value == "\n" || value == "\r" {
-			break
-		}
-		text = text + value
-		state = advance(state, 1)
-		if value == "\"" && !escaped {
-			closed = true
-			break
-		}
-		if value == "\\" && !escaped {
-			escaped = true
+			state = ScannerState { index: List.length(chars), line: state.line, column: state.column }
 		} else {
-			escaped = false
+			text = text + value
+			state = advance(state, 1)
+			if value == "\"" && !escaped {
+				closed = true
+				state = ScannerState { index: List.length(chars), line: state.line, column: state.column }
+			} else if value == "\\" && !escaped {
+				escaped = true
+			} else {
+				escaped = false
+			}
 		}
 	}
 	let mut diagnostics: List<FrontendDiagnostic> = []
@@ -300,17 +308,14 @@ fn scanComment(chars: List<String>, initial: ScannerState) -> ScannedComment {
 	}
 }
 
-fn nextNonNewLine(tokens: List<FrontendToken>, index: Int) -> FrontendToken? {
-	let mut currentIndex = index
-	while currentIndex < List.length(tokens) {
-		let value = match List.get(tokens, currentIndex) {
-			Some(item) => item
-			None => return None
-		}
+fn nextNonNewLine(tokens: List<FrontendToken>, startIndex: Int) -> FrontendToken? {
+	let mut index = startIndex
+	while index < List.length(tokens) {
+		let value = tokenAt(tokens, index)
 		if value.kind != FrontendTokenKind.NewLine {
 			return Some(value)
 		}
-		currentIndex = currentIndex + 1
+		index = index + 1
 	}
 	return None
 }
@@ -318,10 +323,7 @@ fn nextNonNewLine(tokens: List<FrontendToken>, index: Int) -> FrontendToken? {
 fn previousNonNewLine(tokens: List<FrontendToken>) -> FrontendToken? {
 	let mut index = List.length(tokens) - 1
 	while index >= 0 {
-		let value = match List.get(tokens, index) {
-			Some(item) => item
-			None => return None
-		}
+		let value = tokenAt(tokens, index)
 		if value.kind != FrontendTokenKind.NewLine {
 			return Some(value)
 		}
@@ -363,10 +365,7 @@ fn normalizeNewLines(rawTokens: List<FrontendToken>) -> List<FrontendToken> {
 	let mut braceDepth = 0
 	let mut index = 0
 	while index < List.length(rawTokens) {
-		let value = match List.get(rawTokens, index) {
-			Some(item) => item
-			None => break
-		}
+		let value = tokenAt(rawTokens, index)
 		if value.kind == FrontendTokenKind.NewLine {
 			let previous = previousNonNewLine(result)
 			let next = nextNonNewLine(rawTokens, index + 1)
