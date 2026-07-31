@@ -27,7 +27,7 @@ CRLF and LF inputs produce the same logical line progression while preserving so
 
 ## Parser core
 
-The parser core consumes the validated lexer JSON and writes a canonical flat AST arena. The internal Lexer–Parser call uses a non-`@jsExport` JSON function. At each bounded transport layer, the parser first attempts to decode `FrontendLexResult`; only a failed payload decode permits one JSON-string unwrap, up to eight layers. `@jsExport` remains limited to the Host-facing contract. Nodes use integer IDs and child-ID lists rather than recursive JavaScript object graphs. Append order defines node IDs, so identical input produces identical serialization.
+The parser core consumes the validated lexer JSON and writes a canonical flat AST arena. The internal Lexer–Parser call uses a non-`@jsExport` JSON function. As in the existing MVP pipeline, JSON text is parsed with `Json.parse` before the resulting JSON value is decoded as `FrontendLexResult`. `@jsExport` remains limited to the Host-facing contract. Nodes use integer IDs and child-ID lists rather than recursive JavaScript object graphs. Append order defines node IDs, so identical input produces identical serialization.
 
 The current parser foundation includes:
 
