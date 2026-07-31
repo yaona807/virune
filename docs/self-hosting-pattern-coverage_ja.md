@@ -27,7 +27,7 @@ Case IDは連番で、言語上のcanonical順を維持します。Local enumの
 - unguarded wildcardがない`Int`／`String`は`L3005`です。
 - unknown target／caseやmalformed requestはpanicせずdiagnosticを返します。
 
-Resultにはcanonical case、arm reachability、covered case ID、missing case ID／name、最終的なexhaustiveness判定を含めます。同一requestは完全に同じJSONを返す必要があります。
+Resultにはcanonical case、arm reachability、covered case ID、missing case ID／name、最終的なexhaustiveness判定を含めます。同一requestは完全に同じJSONを返す必要があります。公開するのは文字列ベースのJSON adapterだけで、request／result／semantic transport recordはmodule-privateとします。
 
 ## 検証
 
