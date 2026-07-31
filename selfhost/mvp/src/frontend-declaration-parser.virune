@@ -389,17 +389,24 @@ fn parseEnumBody(stateValue: DetailState, tokens: List<FrontendToken>) -> Parsed
 		let mut payload: List<Int> = []
 		if isText(state, tokens, "(") {
 			state = advance(state)
+			let mut payloadDone = false
 			while !atEnd(state, tokens)
+				&& !payloadDone
 				&& tokenAt(tokens, state.index).kind != FrontendTokenKind.NewLine
 				&& !isText(state, tokens, ")")
 				&& !isText(state, tokens, "}") {
 				let before = state.index
+				let payloadLine = tokenAt(tokens, before).span.start.line
 				let payloadType = parseTypeReference(state, tokens)
 				state = payloadType.state
 				if payloadType.id >= 0 {
 					payload = List.append(payload, payloadType.id)
 				}
-				if isText(state, tokens, ",") {
+				if tokenAt(tokens, state.index).span.start.line > payloadLine
+					&& !isText(state, tokens, ")") {
+					state = addDiagnostic(state, tokens, "Expected ) after an enum payload")
+					payloadDone = true
+				} else if isText(state, tokens, ",") {
 					state = advance(state)
 				} else if !isText(state, tokens, ")")
 					&& tokenAt(tokens, state.index).kind != FrontendTokenKind.NewLine
@@ -412,7 +419,7 @@ fn parseEnumBody(stateValue: DetailState, tokens: List<FrontendToken>) -> Parsed
 			}
 			if isText(state, tokens, ")") {
 				state = advance(state)
-			} else {
+			} else if !payloadDone {
 				state = addDiagnostic(state, tokens, "Expected ) after an enum payload")
 			}
 		}
