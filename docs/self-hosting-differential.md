@@ -102,7 +102,7 @@ The second semantic slice interns local generic data type applications by declar
 
 The third semantic slice evaluates pure type relations over the canonical semantic arena. It covers structural tuple, `List`, `Map`, `Set`, `Option`, and `Result` relations; `Never` and `Unknown` boundaries; optional lifting; alias transparency; and recursive `Eq`, `Hash`, `Json`, and `Debug` capability checks. Newtypes remain nominal for assignability while their underlying type participates in capability checks, matching the Legacy checker boundary.
 
-The JSON contract accepts type aliases as stable operation handles and returns canonical type IDs, component IDs, relation results, and common-type results. Incompatible common types produce `L2042`; missing operation targets produce `L2040`. Repeated requests must serialize identically and every returned ID is validated by the Host test.
+The JSON contract accepts type aliases as stable operation handles and returns canonical type IDs, component IDs, relation results, and common-type results. Trait results also expose whether the referenced type graph still contains an open type parameter. Incompatible common types produce `L2042`; missing operation targets produce `L2040`. Repeated requests must serialize identically and every returned ID is validated by the Host test.
 
 Run the focused validation with:
 
