@@ -212,11 +212,6 @@ fn typeIndex(values: List<SemanticType>, name: String) -> Int {
 }
 
 fn typeForDeclaration(declarationId: Int, semantics: FrontendSemanticResult) -> Int {
-	let declaration = declarationAt(semantics.declarations, declarationId)
-	let target = optionalInt(declaration.targetType)
-	if target >= 0 {
-		return target
-	}
 	let mut index = 0
 	while index < List.length(semantics.types) {
 		let value = typeAt(semantics.types, index)
@@ -225,7 +220,7 @@ fn typeForDeclaration(declarationId: Int, semantics: FrontendSemanticResult) -> 
 		}
 		index = index + 1
 	}
-	return -1
+	return optionalInt(declarationAt(semantics.declarations, declarationId).targetType)
 }
 
 fn lookupType(
