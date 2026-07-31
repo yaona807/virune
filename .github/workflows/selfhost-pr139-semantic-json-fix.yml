@@ -1,0 +1,60 @@
+name: Selfhost PR139 semantic JSON fix
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - .github/workflows/selfhost-pr139-semantic-json-fix.yml
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: selfhost/collection-type-operations
+      - name: Route semantic transport through JSON
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path('selfhost/mvp/src/frontend-type-operations.virune')
+          content = path.read_text()
+          replacements = [
+              ('import { checkFrontendDataTypes } from "./frontend-semantic.virune"', 'import { checkFrontendDataTypesJson } from "./frontend-semantic.virune"'),
+              ('\tlet semantics = checkFrontendDataTypes(request.source)?', '\tlet semantics = decodeSemantics(request.source)?'),
+          ]
+          for before, after in replacements:
+              count = content.count(before)
+              if count != 1:
+                  raise SystemExit(f'expected one occurrence of {before!r}, found {count}')
+              content = content.replace(before, after, 1)
+          marker = '''fn decodeRequest(encoded: String) -> Result<FrontendTypeOperationsRequest, List<JsonError>> {
+          \tlet raw = Json.parse(encoded)?
+          \treturn Json.decode<FrontendTypeOperationsRequest>(raw)
+          }
+          '''
+          insertion = marker + '''
+          fn decodeSemantics(source: String) -> Result<FrontendSemanticResult, List<JsonError>> {
+          \tlet encoded = checkFrontendDataTypesJson(source)?
+          \tlet raw = Json.parse(encoded)?
+          \treturn Json.decode<FrontendSemanticResult>(raw)
+          }
+          '''
+          count = content.count(marker)
+          if count != 1:
+              raise SystemExit(f'expected decodeRequest marker once, found {count}')
+          content = content.replace(marker, insertion, 1)
+          path.write_text(content)
+          Path('.github/workflows/selfhost-pr139-semantic-json-fix.yml').unlink()
+      - name: Commit fix and remove temporary workflow
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add selfhost/mvp/src/frontend-type-operations.virune .github/workflows/selfhost-pr139-semantic-json-fix.yml
+          git commit -m "compiler(selfhost): isolate semantic transport through JSON"
+          git push origin HEAD:selfhost/collection-type-operations
