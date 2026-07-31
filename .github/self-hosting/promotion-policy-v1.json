@@ -1,0 +1,157 @@
+{
+	"schemaVersion": 1,
+	"automaticPromotionAllowed": false,
+	"stages": [
+		{
+			"id": "pr-informational",
+			"blocking": false,
+			"scope": "pull-request",
+			"productionDefault": false,
+			"requiredEvidence": [
+				"bootstrap-smoke",
+				"differential-smoke",
+				"format-check",
+				"performance-smoke",
+				"type-check",
+				"unit-tests"
+			],
+			"promotionRequirements": {
+				"minimumConsecutiveSuccessfulRuns": 0,
+				"minimumObservationDays": 0,
+				"maximumUnexplainedDifferentials": 0,
+				"manualApprovalRequired": false,
+				"rollbackEvidenceRequired": false,
+				"minimumStableReleaseCycles": 0
+			}
+		},
+		{
+			"id": "nightly-shadow",
+			"blocking": false,
+			"scope": "nightly",
+			"productionDefault": false,
+			"requiredEvidence": [
+				"bootstrap-smoke",
+				"differential-smoke",
+				"format-check",
+				"performance-smoke",
+				"type-check",
+				"unit-tests",
+				"binding-corpus",
+				"browser-integration",
+				"clean-bootstrap",
+				"full-conformance",
+				"full-differential",
+				"fuzz-regression",
+				"performance-budget",
+				"stage1-stage2"
+			],
+			"promotionRequirements": {
+				"minimumConsecutiveSuccessfulRuns": 0,
+				"minimumObservationDays": 0,
+				"maximumUnexplainedDifferentials": 0,
+				"manualApprovalRequired": true,
+				"rollbackEvidenceRequired": false,
+				"minimumStableReleaseCycles": 0
+			}
+		},
+		{
+			"id": "required-selfhost",
+			"blocking": true,
+			"scope": "selfhost-related",
+			"productionDefault": false,
+			"requiredEvidence": [
+				"bootstrap-smoke",
+				"differential-smoke",
+				"format-check",
+				"performance-smoke",
+				"type-check",
+				"unit-tests",
+				"binding-corpus",
+				"browser-integration",
+				"clean-bootstrap",
+				"full-conformance",
+				"full-differential",
+				"fuzz-regression",
+				"performance-budget",
+				"stage1-stage2"
+			],
+			"promotionRequirements": {
+				"minimumConsecutiveSuccessfulRuns": 14,
+				"minimumObservationDays": 14,
+				"maximumUnexplainedDifferentials": 0,
+				"manualApprovalRequired": true,
+				"rollbackEvidenceRequired": false,
+				"minimumStableReleaseCycles": 0
+			}
+		},
+		{
+			"id": "required-compiler",
+			"blocking": true,
+			"scope": "compiler-changes",
+			"productionDefault": false,
+			"requiredEvidence": [
+				"bootstrap-smoke",
+				"differential-smoke",
+				"format-check",
+				"performance-smoke",
+				"type-check",
+				"unit-tests",
+				"binding-corpus",
+				"browser-integration",
+				"clean-bootstrap",
+				"full-conformance",
+				"full-differential",
+				"fuzz-regression",
+				"performance-budget",
+				"stage1-stage2",
+				"compiler-api-compatibility",
+				"interop-abi-compatibility",
+				"runtime-abi-compatibility"
+			],
+			"promotionRequirements": {
+				"minimumConsecutiveSuccessfulRuns": 28,
+				"minimumObservationDays": 28,
+				"maximumUnexplainedDifferentials": 0,
+				"manualApprovalRequired": true,
+				"rollbackEvidenceRequired": false,
+				"minimumStableReleaseCycles": 0
+			}
+		},
+		{
+			"id": "production-default",
+			"blocking": true,
+			"scope": "production",
+			"productionDefault": true,
+			"requiredEvidence": [
+				"bootstrap-smoke",
+				"differential-smoke",
+				"format-check",
+				"performance-smoke",
+				"type-check",
+				"unit-tests",
+				"binding-corpus",
+				"browser-integration",
+				"clean-bootstrap",
+				"full-conformance",
+				"full-differential",
+				"fuzz-regression",
+				"performance-budget",
+				"stage1-stage2",
+				"compiler-api-compatibility",
+				"interop-abi-compatibility",
+				"runtime-abi-compatibility",
+				"release-reproducibility",
+				"rollback-smoke",
+				"stable-release-cycle"
+			],
+			"promotionRequirements": {
+				"minimumConsecutiveSuccessfulRuns": 30,
+				"minimumObservationDays": 30,
+				"maximumUnexplainedDifferentials": 0,
+				"manualApprovalRequired": true,
+				"rollbackEvidenceRequired": true,
+				"minimumStableReleaseCycles": 1
+			}
+		}
+	]
+}
