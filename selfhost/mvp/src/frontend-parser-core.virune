@@ -858,6 +858,36 @@ fn loadDetailedDeclaration(
 	return Json.decode<DetailedDeclarationTransport>(raw)
 }
 
+fn mergeDetailedDeclaration(
+	stateValue: CoreState,
+	value: DetailedDeclarationTransport,
+) -> ParsedNode {
+	let state = CoreState {
+		index: value.nextIndex,
+		nodes: List.concat(stateValue.nodes, value.nodes),
+		diagnostics: List.concat(stateValue.diagnostics, value.diagnostics),
+		commentIndex: stateValue.commentIndex,
+		pendingDocumentation: stateValue.pendingDocumentation,
+		moduleDocumentation: stateValue.moduleDocumentation,
+		significantSeen: stateValue.significantSeen,
+	}
+	return ParsedNode { state: state, id: value.root }
+}
+
+fn detailedDeclarationFailure(
+	stateValue: CoreState,
+	tokens: List<FrontendToken>,
+) -> ParsedNode {
+	let failed = addDiagnosticAt(
+		stateValue,
+		tokens,
+		"P9000",
+		"Detailed declaration parser transport failed",
+		stateValue.index,
+	)
+	return ParsedNode { state: synchronizeLine(failed, tokens), id: -1 }
+}
+
 fn parseDetailedDeclaration(
 	stateValue: CoreState,
 	tokens: List<FrontendToken>,
@@ -865,28 +895,8 @@ fn parseDetailedDeclaration(
 	documentation: List<String>,
 ) -> ParsedNode {
 	return match loadDetailedDeclaration(stateValue, tokens, kind, documentation) {
-		Ok(value) => {
-			let state = CoreState {
-				index: value.nextIndex,
-				nodes: List.concat(stateValue.nodes, value.nodes),
-				diagnostics: List.concat(stateValue.diagnostics, value.diagnostics),
-				commentIndex: stateValue.commentIndex,
-				pendingDocumentation: stateValue.pendingDocumentation,
-				moduleDocumentation: stateValue.moduleDocumentation,
-				significantSeen: stateValue.significantSeen,
-			}
-			ParsedNode { state: state, id: value.root }
-		}
-		Err(_) => {
-			let failed = addDiagnosticAt(
-				stateValue,
-				tokens,
-				"P9000",
-				"Detailed declaration parser transport failed",
-				stateValue.index,
-			)
-			ParsedNode { state: synchronizeLine(failed, tokens), id: -1 }
-		}
+		Ok(value) => mergeDetailedDeclaration(stateValue, value)
+		Err(_) => detailedDeclarationFailure(stateValue, tokens)
 	}
 }
 
