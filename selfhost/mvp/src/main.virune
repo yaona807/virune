@@ -3,11 +3,13 @@
 //! Each stage exposes only a Result-based JSON boundary. Internal compiler
 //! models remain private to their implementation modules, while the TypeScript
 //! Host adapts the final payload to Kernel Contract v1. Data types, type
-//! operations, symbol scopes, and pattern coverage cross modules only as JSON.
+//! operations, symbol scopes, pattern coverage, and must-use analysis cross
+//! modules only as JSON.
 
 import { checkMvpJson } from "./checker.virune"
 import { emitMvpJson } from "./emitter.virune"
 import { lexFrontend } from "./frontend-lexer.virune"
+import { checkFrontendMustUseJson } from "./frontend-must-use.virune"
 import { parseFrontendCore } from "./frontend-parser-core.virune"
 import { checkFrontendPatternCoverageJson } from "./frontend-pattern-coverage.virune"
 import { checkFrontendDataTypesJson } from "./frontend-semantic.virune"
@@ -52,4 +54,9 @@ pub fn buildFrontendSymbolScopeContract(request: String) -> Result<String, List<
 @jsExport
 pub fn checkFrontendPatternCoverageContract(request: String) -> Result<String, List<JsonError>> {
 	return checkFrontendPatternCoverageJson(request)
+}
+
+@jsExport
+pub fn checkFrontendMustUseContract(request: String) -> Result<String, List<JsonError>> {
+	return checkFrontendMustUseJson(request)
 }
