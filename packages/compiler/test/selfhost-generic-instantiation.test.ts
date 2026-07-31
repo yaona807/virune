@@ -80,7 +80,7 @@ const recursiveAliasSource = [
 	'',
 ].join('\n');
 
-test('generic instantiations are substituted, nested, interned, and deterministic', async () => {
+test('generic instantiations are substituted, nested, structurally interned, and deterministic', async () => {
 	const loaded = await loadSemanticModule();
 	try {
 		const first = check(loaded.module, validSource);
