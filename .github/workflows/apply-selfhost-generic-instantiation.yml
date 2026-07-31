@@ -54,16 +54,14 @@ jobs:
           }
 
           `;
-          script = script.replace(
-            "          fn internInstantiation(stateValue: SemanticState, typeId: Int) -> SemanticState {",
-            helpers.split('\n').map(line => `          ${line}`).join('\n') + "          fn internInstantiation(stateValue: SemanticState, typeId: Int) -> SemanticState {",
-          );
+          if (!script.includes(helperMarker)) throw new Error('Generic helper insertion marker is missing');
+          script = script.replace(helperMarker, helpers + helperMarker);
 
-          const targetStart = script.indexOf('          \\tmatch declaration.targetType {');
-          const targetEndMarker = '          \\treturn state\n          }\n\n          fn containsOpenType';
+          const targetStart = script.indexOf('\\tmatch declaration.targetType {');
+          const targetEndMarker = '\\treturn state\n}\n\nfn containsOpenType';
           const targetEnd = script.indexOf(targetEndMarker, targetStart);
           if (targetStart < 0 || targetEnd < 0) throw new Error(`Generic target region is missing: ${targetStart}/${targetEnd}`);
-          const targetReplacement = `          \\tlet sourceTarget = optionalTypeId(declaration.targetType)
+          const targetReplacement = `\\tlet sourceTarget = optionalTypeId(declaration.targetType)
           \\tif sourceTarget >= 0 {
           \\t\\tlet resolved = substituteType(sourceTarget, declaration, typeValue.arguments, state)
           \\t\\tstate = resolved.state
