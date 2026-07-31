@@ -480,11 +480,11 @@ fn scanFrontend(source: String) -> FrontendLexResult {
 	}
 }
 
-pub fn scanFrontendResult(source: String) -> FrontendLexResult {
-	return scanFrontend(source)
+pub fn lexFrontendJson(source: String) -> Result<String, List<JsonError>> {
+	return Json.encode<FrontendLexResult>(scanFrontend(source))
 }
 
 @jsExport
 pub fn lexFrontend(source: String) -> Result<String, List<JsonError>> {
-	return Json.encode<FrontendLexResult>(scanFrontendResult(source))
+	return lexFrontendJson(source)
 }
