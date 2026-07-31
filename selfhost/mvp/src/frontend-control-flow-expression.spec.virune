@@ -1,0 +1,31 @@
+import { parseFrontendCore } from "./frontend-parser-core.virune"
+
+fn encoded(source: String) -> String {
+	return match parseFrontendCore(source) {
+		Ok(value) => value
+		Err(_) => ""
+	}
+}
+
+test "control flow parser expands conditional and parallel expressions" {
+	let source = "pub fn compute(flag: Bool, value: Int) -> Int {\n\tlet selected = if flag then value else 0\n\tlet jobs = parallel try {\n\t\tfirst: selected,\n\t\tsecond: if flag then value + 1 else 1,\n\t}\n\tlet direct = parallel { item: 1 }.item?\n\tdiscard jobs.first?\n\treturn selected\n}\n"
+	let result = encoded(source)
+	expect(String.contains(result, "\"accepted\":true"))
+	expect(String.contains(result, "\"kind\":\"ConditionalExpression\""))
+	expect(String.contains(result, "\"kind\":\"ParallelExpression\""))
+	expect(String.contains(result, "\"text\":\"parallel try\""))
+	expect(String.contains(result, "\"kind\":\"ParallelEntry\""))
+	expect(String.contains(result, "\"text\":\"first\""))
+	expect(String.contains(result, "\"text\":\"second\""))
+	expect(String.contains(result, "\"kind\":\"FieldExpression\""))
+	expect(String.contains(result, "\"kind\":\"TryExpression\""))
+}
+
+test "parallel parser recovers after malformed entry" {
+	let source = "pub fn broken() -> Int {\n\tlet jobs = parallel {\n\t\tbroken 1\n\t\tvalid: 2,\n\t}\n\treturn 0\n}\npub fn after() -> Int {\n\treturn 1\n}\n"
+	let result = encoded(source)
+	expect(String.contains(result, "\"accepted\":false"))
+	expect(String.contains(result, "Expected :"))
+	expect(String.contains(result, "\"text\":\"valid\""))
+	expect(String.contains(result, "\"text\":\"after\""))
+}
