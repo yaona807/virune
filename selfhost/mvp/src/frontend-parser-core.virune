@@ -947,7 +947,8 @@ fn parseModule(lexed: FrontendLexResult) -> FrontendParseResult {
 }
 
 fn decodeFrontend(source: String) -> Result<FrontendLexResult, List<JsonError>> {
-	let payload = lexFrontendJson(source)?
+	let transported = lexFrontendJson(source)?
+	let payload = Json.decode<String>(transported)?
 	return Json.decode<FrontendLexResult>(payload)
 }
 
