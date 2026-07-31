@@ -1,12 +1,21 @@
 //! Canonical data-only semantic model for the Virune-authored checker.
 
-import { ParserSpan } from "./frontend-parser-model.virune"
+pub record SemanticPosition derives Eq, Debug, Json {
+	offset: Int
+	line: Int
+	column: Int
+}
+
+pub record SemanticSpan derives Eq, Debug, Json {
+	start: SemanticPosition
+	end: SemanticPosition
+}
 
 pub record SemanticDiagnostic derives Eq, Debug, Json {
 	code: String
 	severity: String
 	message: String
-	span: ParserSpan
+	span: SemanticSpan
 	help: String?
 }
 
@@ -16,7 +25,7 @@ pub record SemanticType derives Eq, Debug, Json {
 	name: String
 	declarationId: Int?
 	arguments: List<Int>
-	span: ParserSpan
+	span: SemanticSpan
 }
 
 pub record SemanticMember derives Eq, Debug, Json {
@@ -25,7 +34,7 @@ pub record SemanticMember derives Eq, Debug, Json {
 	kind: String
 	name: String
 	typeIds: List<Int>
-	span: ParserSpan
+	span: SemanticSpan
 }
 
 pub record SemanticDeclaration derives Eq, Debug, Json {
@@ -37,7 +46,7 @@ pub record SemanticDeclaration derives Eq, Debug, Json {
 	typeParameters: List<String>
 	memberIds: List<Int>
 	targetType: Int?
-	span: ParserSpan
+	span: SemanticSpan
 }
 
 pub record FrontendSemanticResult derives Eq, Debug, Json {
@@ -48,10 +57,18 @@ pub record FrontendSemanticResult derives Eq, Debug, Json {
 	diagnostics: List<SemanticDiagnostic>
 }
 
+pub fn semanticPosition(offset: Int, line: Int, column: Int) -> SemanticPosition {
+	return SemanticPosition { offset: offset, line: line, column: column }
+}
+
+pub fn semanticSpan(start: SemanticPosition, end: SemanticPosition) -> SemanticSpan {
+	return SemanticSpan { start: start, end: end }
+}
+
 pub fn semanticDiagnostic(
 	code: String,
 	message: String,
-	span: ParserSpan,
+	span: SemanticSpan,
 	help: String?,
 ) -> SemanticDiagnostic {
 	return SemanticDiagnostic {
