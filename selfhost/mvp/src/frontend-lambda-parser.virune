@@ -240,10 +240,10 @@ fn parseFunctionType(
 		if resultType.id >= 0 {
 			children = List.append(children, resultType.id)
 		}
-		let uses = parseUsesClause(state, tokens)
-		state = uses.state
-		if uses.id >= 0 {
-			children = List.append(children, uses.id)
+		let usesClause = parseUsesClause(state, tokens)
+		state = usesClause.state
+		if usesClause.id >= 0 {
+			children = List.append(children, usesClause.id)
 		}
 		return addNode(state, tokens, "FunctionTypeReference", text, start, state.index, children)
 	}
@@ -422,10 +422,10 @@ fn parseLambdaHeader(
 			children = List.append(children, returnType.id)
 		}
 	}
-	let uses = parseUsesClause(state, tokens)
-	state = uses.state
-	if uses.id >= 0 {
-		children = List.append(children, uses.id)
+	let usesClause = parseUsesClause(state, tokens)
+	state = usesClause.state
+	if usesClause.id >= 0 {
+		children = List.append(children, usesClause.id)
 	}
 	if !isText(state, tokens, "=>") && !isText(state, tokens, "{") {
 		state = addDiagnostic(state, tokens, "Expected => or { after a lambda header")
