@@ -21,7 +21,7 @@ test "parser expands extern declaration members" {
 }
 
 test "parser recovers after malformed extern members" {
-	let source = "extern js {\n\tfn missingColon(value Int) -> Int = \"broken\"\n\tfn missingBinding(value: Int) -> Int =\n\tfn recovered(value: Int) -> Int = \"ok\"\n}\npub fn after() -> Int {\n\treturn 1\n}\n"
+	let source = "extern js {\n\tnotAMember\n\tfn missingBinding(value: Int) -> Int =\n\tfn recovered(value: Int) -> Int = \"ok\"\n}\npub fn after() -> Int {\n\treturn 1\n}\n"
 	let result = encoded(source)
 	expect(String.contains(result, "\"accepted\":false"))
 	expect(String.contains(result, "\"text\":\"recovered\""))
