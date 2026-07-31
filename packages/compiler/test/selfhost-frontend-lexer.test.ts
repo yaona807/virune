@@ -15,11 +15,11 @@ const mvpRoot = join(repositoryRoot, 'selfhost', 'mvp');
 const temporaryRoot = join(repositoryRoot, '.test-tmp');
 
 type ViruneResult<T> = { readonly $tag: 'Ok' | 'Err'; readonly $values: readonly [T] };
-
+type ViruneEnum = string | { readonly tag: string; readonly values: readonly unknown[] };
 type Position = { readonly offset: number; readonly line: number; readonly column: number };
 type Span = { readonly start: Position; readonly end: Position };
-type Token = { readonly kind: string; readonly text: string; readonly span: Span };
-type Comment = { readonly kind: string; readonly text: string; readonly span: Span };
+type Token = { readonly kind: ViruneEnum; readonly text: string; readonly span: Span };
+type Comment = { readonly kind: ViruneEnum; readonly text: string; readonly span: Span };
 type Diagnostic = { readonly code: string; readonly severity: string; readonly message: string; readonly span: Span };
 type LexResult = {
 	readonly tokens: readonly Token[];
@@ -57,14 +57,14 @@ test('Stage 0 frontend lexer recognizes the complete lexical vocabulary determin
 		const second = lex(loaded.module, source);
 		assert.deepEqual(first, second);
 		assert.deepEqual(first.diagnostics, []);
-		assert.equal(first.tokens.at(-1)?.kind, 'EndOfFile');
+		assert.equal(enumTag(first.tokens.at(-1)?.kind), 'EndOfFile');
 		assert.deepEqual(
-			first.tokens.filter(item => item.kind !== 'NewLine' && item.kind !== 'EndOfFile').map(item => item.text),
+			first.tokens.filter(item => enumTag(item.kind) !== 'NewLine' && enumTag(item.kind) !== 'EndOfFile').map(item => item.text),
 			['pub', 'async', 'fn', 'main', '<', 'T', '>', '(', 'value', ':', 'Int', ')', '->', 'Bool', 'uses', 'io', '{', 'let', 'hex', '=', '0x2a', 'let', 'binary', '=', '0b1010n', 'let', 'ratio', '=', '1_2.5e+2', 'return', 'value', '>=', '2', '&&', 'value', '!=', '0', '||', 'false', '}'],
 		);
-		assert.equal(first.tokens.find(item => item.text === '0x2a')?.kind, 'IntLiteral');
-		assert.equal(first.tokens.find(item => item.text === '0b1010n')?.kind, 'BigIntLiteral');
-		assert.equal(first.tokens.find(item => item.text === '1_2.5e+2')?.kind, 'FloatLiteral');
+		assert.equal(enumTag(first.tokens.find(item => item.text === '0x2a')?.kind), 'IntLiteral');
+		assert.equal(enumTag(first.tokens.find(item => item.text === '0b1010n')?.kind), 'BigIntLiteral');
+		assert.equal(enumTag(first.tokens.find(item => item.text === '1_2.5e+2')?.kind), 'FloatLiteral');
 	} finally {
 		await rm(loaded.root, { recursive: true, force: true });
 	}
@@ -74,7 +74,7 @@ test('frontend lexer preserves comment metadata and normalizes CRLF positions', 
 	const loaded = await loadFrontendLexer();
 	try {
 		const result = lex(loaded.module, '//! Module docs\r\n\r\n/// Item docs\r\n@deprecated\r\npub fn main() -> Unit {\r\n\treturn\r\n}\r\n//// ordinary\r\n');
-		assert.deepEqual(result.comments.map(item => [item.kind, item.text]), [
+		assert.deepEqual(result.comments.map(item => [enumTag(item.kind), item.text]), [
 			['ModuleDocumentation', 'Module docs'],
 			['DeclarationDocumentation', 'Item docs'],
 			['Ordinary', '// ordinary'],
@@ -92,8 +92,8 @@ test('frontend lexer applies the normative soft-line rules without suppressing b
 	try {
 		const source = 'pub fn main(\nvalue: Int,\n) -> Int {\nlet first = value +\n1\nif first > 0 {\nreturn first\n}\nelse {\nreturn 0\n}\n}\n';
 		const result = lex(loaded.module, source);
-		const newLines = result.tokens.filter(item => item.kind === 'NewLine').map(item => item.span.start.line);
-		assert.deepEqual(newLines, [3, 4, 5, 6, 7, 9, 10, 11, 12]);
+		const newLines = result.tokens.filter(item => enumTag(item.kind) === 'NewLine').map(item => item.span.start.line);
+		assert.deepEqual(newLines, [3, 5, 6, 7, 9, 10, 11, 12]);
 		assert.deepEqual(result.diagnostics, []);
 	} finally {
 		await rm(loaded.root, { recursive: true, force: true });
@@ -116,6 +116,10 @@ test('frontend lexer reports malformed literals and agrees with Legacy on lexica
 		await rm(loaded.root, { recursive: true, force: true });
 	}
 });
+
+function enumTag(value: ViruneEnum | undefined): string | undefined {
+	return typeof value === 'string' ? value : value?.tag;
+}
 
 function lex(module: FrontendLexerModule, source: string): LexResult {
 	const encoded = module.lexFrontend(source);
