@@ -1,0 +1,10 @@
+{
+  "scopes": [
+    { "kind": "module", "ownerNodeId": 0, "parentScopeId": null },
+    { "kind": "block", "ownerNodeId": 1, "parentScopeId": 9 }
+  ],
+  "symbols": [],
+  "lookups": [
+    { "scopeId": 0, "space": "value", "name": "missing" }
+  ]
+}
