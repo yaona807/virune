@@ -50,7 +50,7 @@ The detailed declaration slice emits:
 - underlying type children for newtype and type aliases;
 - named, generic, tuple, function, list, and optional type-reference nodes.
 
-Malformed fields, variants, generic arguments, and underlying types produce stable parser diagnostics while preserving progress to following declarations. Patterns, lambda internals, and remaining grammar families stay in later bounded slices before Issue #96 can close.
+Malformed fields, variants, generic arguments, and underlying types produce stable parser diagnostics while preserving progress to following declarations. If an unclosed enum payload suppresses its physical newline during lexical normalization, source line positions terminate recovery before the next variant is consumed. Patterns, lambda internals, and remaining grammar families stay in later bounded slices before Issue #96 can close.
 
 ## Documentation comments
 
