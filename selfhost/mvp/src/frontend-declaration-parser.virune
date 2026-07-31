@@ -344,6 +344,9 @@ fn parseRecordBody(stateValue: DetailState, tokens: List<FrontendToken>) -> Pars
 			state = advance(state)
 		} else {
 			state = addDiagnostic(state, tokens, "Expected a record field name")
+			if !atEnd(state, tokens) {
+				state = advance(state)
+			}
 		}
 		state = consumeExpected(state, tokens, ":", "after a record field name")
 		let fieldType = parseTypeReference(state, tokens)
@@ -385,6 +388,9 @@ fn parseEnumBody(stateValue: DetailState, tokens: List<FrontendToken>) -> Parsed
 			state = advance(state)
 		} else {
 			state = addDiagnostic(state, tokens, "Expected an enum variant name")
+			if !atEnd(state, tokens) {
+				state = advance(state)
+			}
 		}
 		let mut payload: List<Int> = []
 		if isText(state, tokens, "(") {

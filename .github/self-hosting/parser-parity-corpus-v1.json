@@ -3,114 +3,229 @@
   "cases": [
     {
       "id": "valid-minimal-function",
-      "tags": ["valid", "declaration", "function"],
+      "tags": [
+        "valid",
+        "declaration",
+        "function"
+      ],
       "source": "pub fn main() -> Int {\n\treturn 1\n}\n",
-      "mutations": ["remove-first-colon", "remove-last-rbrace"]
+      "mutations": [
+        "remove-first-colon",
+        "remove-last-rbrace"
+      ]
     },
     {
       "id": "valid-module-import-attribute",
-      "tags": ["valid", "module", "import", "attribute"],
+      "tags": [
+        "valid",
+        "module",
+        "import",
+        "attribute"
+      ],
       "source": "unsafe module\npub import type { Foo as LocalFoo, Bar } from \"./types.virune\"\nimport js { parse as parseJson } from \"json\"\nimport js defaultValue from \"pkg\"\nimport js * as namespace from \"pkg-ns\"\nimport js \"side-effect\"\n@trace(\"record\", 1)\npub record Box<T> {\n\tvalue: T\n}\n",
-      "mutations": ["remove-first-comma", "remove-last-rbrace"]
+      "mutations": [
+        "remove-first-comma",
+        "remove-last-rbrace"
+      ]
     },
     {
       "id": "valid-data-declarations",
-      "tags": ["valid", "record", "enum", "newtype", "type"],
+      "tags": [
+        "valid",
+        "record",
+        "enum",
+        "newtype",
+        "type"
+      ],
       "source": "pub record Pair<T, U> {\n\tleft: T\n\tright: U\n} derives Eq, Show\npub enum Result<T, E> {\n\tOk(T)\n\tErr(E)\n} derives Eq\npub newtype UserId = Int derives Eq\npub type Mapper<T, U> = (T) -> U\n",
-      "mutations": ["remove-first-colon", "remove-last-rbrace"]
+      "mutations": [
+        "remove-first-colon",
+        "remove-last-rbrace"
+      ]
     },
     {
       "id": "valid-executable-declarations",
-      "tags": ["valid", "function", "test", "top-level"],
+      "tags": [
+        "valid",
+        "function",
+        "test",
+        "top-level"
+      ],
       "source": "@api\npub async fn choose<T, U>(left: T, right?: U) -> U uses io, * {\n\treturn match right {\n\t\tSome(value) => value\n\t\t_ => await fallback(left)\n\t}\n}\nfn identity<T>(value: T) -> T => value\nasync test \"async smoke\" {\n\tdiscard await run()\n}\npub const answer: Int = 42\nlet inferred = answer\n",
-      "mutations": ["remove-first-colon", "remove-first-rparen"]
+      "mutations": [
+        "remove-first-colon",
+        "remove-first-rparen"
+      ]
     },
     {
       "id": "valid-statements",
-      "tags": ["valid", "statement", "control-flow"],
+      "tags": [
+        "valid",
+        "statement",
+        "control-flow"
+      ],
       "source": "pub fn statements(values: List<Int>) -> Int {\n\tlet mut total: Int = 0\n\tlet current = total\n\ttotal = total + 1\n\tif total > 0 {\n\t\tdiscard current\n\t} else if total == 0 {\n\t\tdefer cleanup(total)\n\t} else {\n\t\treturn 0\n\t}\n\twhile total < 10 {\n\t\ttotal = total + 1\n\t\tbreak\n\t}\n\tfor item in values {\n\t\tdiscard item\n\t\tcontinue\n\t}\n\treturn total\n}\n",
-      "mutations": ["remove-first-equals", "remove-last-rbrace"]
+      "mutations": [
+        "remove-first-equals",
+        "remove-last-rbrace"
+      ]
     },
     {
       "id": "valid-aggregate-expressions",
-      "tags": ["valid", "expression", "aggregate", "call"],
+      "tags": [
+        "valid",
+        "expression",
+        "aggregate",
+        "call"
+      ],
       "source": "pub fn aggregate(value: Int, y: Int) -> Int {\n\tlet list = [1, value + 1, y,]\n\tlet grouped = (value + 1)\n\tlet tuple = (value, y)\n\tlet point = Point { x: value, y, }\n\tlet called = build<Result<Int>>(point, list,)\n\tlet updated = point with { x: called, y, }\n\tdiscard grouped\n\tdiscard tuple\n\tdiscard updated\n\treturn called\n}\n",
-      "mutations": ["remove-first-comma", "remove-first-rparen"]
+      "mutations": [
+        "remove-first-comma",
+        "remove-first-rparen"
+      ]
     },
     {
       "id": "valid-conditional-parallel",
-      "tags": ["valid", "expression", "conditional", "parallel"],
-      "source": "pub fn flow(flag: Bool) -> Int {\n\tlet selected = if flag then 1 else 2\n\tlet tasks = parallel {\n\t\tone: work(1)\n\t\ttwo: work(2)\n\t}\n\tlet attempted = parallel try {\n\t\tfirst: work(3)\n\t}\n\tdiscard tasks\n\tdiscard attempted\n\treturn selected\n}\n",
-      "mutations": ["remove-first-colon", "remove-last-rbrace"]
+      "tags": [
+        "valid",
+        "expression",
+        "conditional",
+        "parallel"
+      ],
+      "source": "pub fn flow(flag: Bool) -> Int {\n\tlet selected = if flag then 1 else 2\n\tlet tasks = parallel {\n\t\tone: work(1),\n\t\ttwo: work(2),\n\t}\n\tlet attempted = parallel try {\n\t\tfirst: work(3),\n\t}\n\tdiscard tasks\n\tdiscard attempted\n\treturn selected\n}\n",
+      "mutations": [
+        "remove-first-colon",
+        "remove-last-rbrace"
+      ]
     },
     {
       "id": "valid-match-patterns",
-      "tags": ["valid", "expression", "match", "pattern"],
+      "tags": [
+        "valid",
+        "expression",
+        "match",
+        "pattern"
+      ],
       "source": "pub fn classify(value: Result<Int, String>) -> Int {\n\treturn match value {\n\t\tOk(0..=10) | Ok(20) => 1\n\t\tErr { message } => 2\n\t\tOk([first, ...rest]) => first\n\t\t_ => 0\n\t}\n}\n",
-      "mutations": ["remove-first-fat-arrow", "remove-last-rbrace"]
+      "mutations": [
+        "remove-first-fat-arrow",
+        "remove-last-rbrace"
+      ]
     },
     {
       "id": "valid-lambda-pipeline",
-      "tags": ["valid", "expression", "lambda", "pipeline"],
+      "tags": [
+        "valid",
+        "expression",
+        "lambda",
+        "pipeline"
+      ],
       "source": "pub fn transform(value: Int) -> Int {\n\tlet mapper = |current: Int| -> Int => current + 1\n\treturn value |> mapper |> finish\n}\n",
-      "mutations": ["remove-first-colon", "remove-first-bar"]
+      "mutations": [
+        "remove-first-colon",
+        "remove-first-bar"
+      ]
     },
     {
       "id": "valid-extern",
-      "tags": ["valid", "extern", "interop"],
+      "tags": [
+        "valid",
+        "extern",
+        "interop"
+      ],
       "source": "unsafe extern js \"node:fs\" {\n\tasync fn read(path: String, options?: Int,) -> String uses io = \"readFile\"\n\tfn stat(path: String) -> Int = \"statSync\"\n}\npub fn after() -> Int {\n\treturn 1\n}\n",
-      "mutations": ["remove-first-colon", "remove-last-rbrace"]
+      "mutations": [
+        "remove-first-colon",
+        "remove-last-rbrace"
+      ]
     },
     {
       "id": "valid-type-references",
-      "tags": ["valid", "type-reference"],
-      "source": "pub type Composite<T, E> = Result<List<(T, E?)>, String>\npub type Callback<T> = (T, Int) -> Result<T, String>\npub fn use(value: Composite<Int, String>, callback: Callback<Int>) -> Composite<Int, String> {\n\tdiscard callback\n\treturn value\n}\n",
-      "mutations": ["remove-first-greater", "remove-first-rparen"]
+      "tags": [
+        "valid",
+        "type-reference"
+      ],
+      "source": "pub type Composite<T, E> = Result<List<(T, E?)>, String>\npub type Callback<T> = fn(T, Int) -> Result<T, String>\npub fn use(value: Composite<Int, String>, callback: Callback<Int>) -> Composite<Int, String> {\n\tdiscard callback\n\treturn value\n}\n",
+      "mutations": [
+        "remove-first-greater",
+        "remove-first-rparen"
+      ]
     },
     {
       "id": "valid-comments-newlines",
-      "tags": ["valid", "documentation", "newline"],
+      "tags": [
+        "valid",
+        "documentation",
+        "newline"
+      ],
       "source": "//! Module documentation\n/// Adds values.\npub fn add(\n\tleft: Int,\n\tright: Int,\n) -> Int {\n\treturn left\n\t\t+ right\n}\n",
-      "mutations": ["remove-first-comma", "remove-last-rbrace"]
+      "mutations": [
+        "remove-first-comma",
+        "remove-last-rbrace"
+      ]
     },
     {
       "id": "invalid-lex-character",
-      "tags": ["invalid", "diagnostic", "lexer"],
+      "tags": [
+        "invalid",
+        "diagnostic",
+        "lexer"
+      ],
       "source": "pub fn main() -> Int {\n\treturn $\n}\n",
       "comparePrimaryDiagnostic": true,
       "mutations": []
     },
     {
       "id": "invalid-function-name",
-      "tags": ["invalid", "diagnostic", "declaration"],
+      "tags": [
+        "invalid",
+        "diagnostic",
+        "declaration"
+      ],
       "source": "pub fn () -> Int {\n\treturn 1\n}\n",
       "comparePrimaryDiagnostic": true,
       "mutations": []
     },
     {
       "id": "invalid-parameter-colon",
-      "tags": ["invalid", "diagnostic", "parameter"],
+      "tags": [
+        "invalid",
+        "diagnostic",
+        "parameter"
+      ],
       "source": "pub fn main(value Int) -> Int {\n\treturn value\n}\n",
       "comparePrimaryDiagnostic": true,
       "mutations": []
     },
     {
       "id": "invalid-import-alias",
-      "tags": ["invalid", "diagnostic", "import"],
+      "tags": [
+        "invalid",
+        "diagnostic",
+        "import"
+      ],
       "source": "import { Foo as } from \"./types.virune\"\npub fn main() -> Int {\n\treturn 1\n}\n",
       "comparePrimaryDiagnostic": true,
       "mutations": []
     },
     {
       "id": "invalid-record-field-colon",
-      "tags": ["invalid", "diagnostic", "record"],
+      "tags": [
+        "invalid",
+        "diagnostic",
+        "record"
+      ],
       "source": "pub record Broken {\n\tvalue Int\n}\n",
       "comparePrimaryDiagnostic": true,
       "mutations": []
     },
     {
       "id": "invalid-extern-binding",
-      "tags": ["invalid", "diagnostic", "extern"],
+      "tags": [
+        "invalid",
+        "diagnostic",
+        "extern"
+      ],
       "source": "extern js \"pkg\" {\n\tfn broken(value: Int) -> Int =\n\tfn recovered(value: Int) -> Int = \"ok\"\n}\n",
       "comparePrimaryDiagnostic": false,
       "mutations": []

@@ -220,11 +220,17 @@ function selfhostDiagnosticSignature(diagnostic: ParserDiagnostic): DiagnosticSi
 	const endOffset = diagnostic.code === 'L0002' && diagnostic.span.end.offset > diagnostic.span.start.offset
 		? diagnostic.span.end.offset - 1
 		: diagnostic.span.end.offset;
+	const zeroWidth = endOffset === diagnostic.span.start.offset
+		&& diagnostic.span.end.line === diagnostic.span.start.line;
 	return {
 		code: diagnostic.code,
 		severity: diagnostic.severity,
 		start: diagnostic.span.start,
-		end: { ...diagnostic.span.end, offset: endOffset },
+		end: {
+			...diagnostic.span.end,
+			offset: endOffset,
+			column: zeroWidth ? diagnostic.span.start.column : diagnostic.span.end.column,
+		},
 	};
 }
 
