@@ -1,0 +1,21 @@
+{
+  "scopes": [
+    { "kind": "module", "ownerNodeId": 0, "parentScopeId": null },
+    { "kind": "function", "ownerNodeId": 10, "parentScopeId": 0 },
+    { "kind": "block", "ownerNodeId": 20, "parentScopeId": 1 },
+    { "kind": "block", "ownerNodeId": 30, "parentScopeId": 2 }
+  ],
+  "symbols": [
+    { "scopeId": 0, "space": "value", "name": "item", "sourceNodeId": 1 },
+    { "scopeId": 0, "space": "type", "name": "item", "sourceNodeId": 2 },
+    { "scopeId": 1, "space": "value", "name": "item", "sourceNodeId": 11 },
+    { "scopeId": 2, "space": "capability", "name": "io", "sourceNodeId": 21 },
+    { "scopeId": 3, "space": "value", "name": "local", "sourceNodeId": 31 }
+  ],
+  "lookups": [
+    { "scopeId": 3, "space": "value", "name": "item" },
+    { "scopeId": 3, "space": "type", "name": "item" },
+    { "scopeId": 3, "space": "capability", "name": "io" },
+    { "scopeId": 3, "space": "value", "name": "local" }
+  ]
+}
