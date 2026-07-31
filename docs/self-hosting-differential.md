@@ -93,3 +93,8 @@ node --test --test-timeout=120000 packages/compiler/dist/test/selfhost-semantic-
 ```
 
 This slice does not change the production parser or checker and does not connect the self-host kernel to the production path.
+
+
+## Generic instantiation table
+
+The second semantic slice interns local generic data type applications by declaration ID and canonical argument type IDs. Each instantiation owns substituted member type IDs or an underlying target type. A placeholder is registered before substitution so recursive records and aliases terminate deterministically. Repeated applications reuse one instantiation ID; recursive generic aliases produce `L2042` instead of expanding without bound.
