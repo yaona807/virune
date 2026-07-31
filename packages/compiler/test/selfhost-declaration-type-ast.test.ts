@@ -111,7 +111,7 @@ test('detailed declaration parser recovers after malformed fields and variants',
 		assert.equal(result.accepted, false);
 		assert.ok(result.diagnostics.length >= 2);
 		assert.ok(result.diagnostics.some(item => item.message.includes('Expected :')));
-		assert.ok(result.diagnostics.some(item => item.message.includes('enum payload')));
+		assert.ok(result.diagnostics.some(item => item.message === 'Expected ) after an enum payload'));
 		assert.ok(result.nodes.some(item => item.kind === 'RecordField' && item.text === 'valid'));
 		assert.ok(result.nodes.some(item => item.kind === 'EnumVariant' && item.text === 'Empty'));
 		assert.ok(result.nodes.some(item => item.kind === 'FunctionDeclaration' && item.text === 'main'));
