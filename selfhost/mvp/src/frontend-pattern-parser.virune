@@ -184,6 +184,17 @@ fn parseRestPattern(stateValue: PatternState, tokens: List<FrontendToken>) -> Pa
 	return addNode(state, tokens, "RestPattern", "", start, state.index, [])
 }
 
+fn parseListPatternItem(
+	state: PatternState,
+	tokens: List<FrontendToken>,
+	depth: Int,
+) -> ParsedPattern {
+	if isText(state, tokens, "...") {
+		return parseRestPattern(state, tokens)
+	}
+	return parsePatternDepth(state, tokens, depth + 1)
+}
+
 fn parseListPattern(stateValue: PatternState, tokens: List<FrontendToken>, depth: Int) -> ParsedPattern {
 	let start = stateValue.index
 	let mut state = skipNewLines(advance(stateValue), tokens)
@@ -191,9 +202,7 @@ fn parseListPattern(stateValue: PatternState, tokens: List<FrontendToken>, depth
 	let mut done = false
 	while !atEnd(state, tokens) && !done && !isText(state, tokens, "]") {
 		let before = state.index
-		let item = if isText(state, tokens, "...")
-			then parseRestPattern(state, tokens)
-			else parsePatternDepth(state, tokens, depth + 1)
+		let item = parseListPatternItem(state, tokens, depth)
 		state = item.state
 		if item.id >= 0 {
 			children = List.append(children, item.id)
