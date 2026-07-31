@@ -67,10 +67,9 @@ Smoke commandは、最初は非blocking CI stepとして接続できます。
 
 実際のSelf-host Kernelを接続し、Self-hosting Architectureの昇格条件を満たすまでは非blockingを維持します。その段階で右側のKernelだけを差し替え、corpusとartifact形式は変更しません。
 
-
 ## Parser parity corpus
 
-Version管理された`.github/self-hosting/parser-parity-corpus-v1.json`で、Production Legacy lexer／parserとVirune Stage 0 frontendを比較します。Virune 1.0 grammarの各構文群についてaccepted／rejectedを比較し、単一破損caseでは公開Parser diagnostic契約である`code`、`severity`、source rangeを比較します。Chevrotain由来の歴史的なinclusive `endOffset`だけをHost境界で正規化し、line／columnは変更しません。決定的なbounded mutationで進行保証、canonical arena ID、panic不在を検証します。
+Version管理された`.github/self-hosting/parser-parity-corpus-v1.json`で、Production Legacy lexer／parserとVirune Stage 0 frontendを比較します。Virune 1.0 grammarの各構文群についてaccepted／rejectedを比較し、単一破損caseでは公開Parser diagnostic契約である`code`、`severity`、source rangeを比較します。Chevrotain由来の歴史的なinclusive `endOffset`をHost境界で正規化します。zero-width parser diagnosticではend columnもstart columnへ正規化し、それ以外のline／columnは変更しません。決定的なbounded mutationで進行保証、canonical arena ID、panic不在を検証します。
 
 ローカル実行:
 
