@@ -1,0 +1,522 @@
+//! Detailed declaration and type-reference parser for the self-host frontend.
+
+import {
+	FrontendPosition,
+	FrontendSpan,
+	FrontendToken,
+	FrontendTokenKind,
+} from "./frontend-model.virune"
+import {
+	FrontendAstNode,
+	ParserDiagnostic,
+	ParserPosition,
+	ParserSpan,
+	frontendAstNode,
+	parserDiagnostic,
+	parserPosition,
+	parserSpan,
+} from "./frontend-parser-model.virune"
+
+record DetailState {
+	index: Int
+	baseId: Int
+	nodes: List<FrontendAstNode>
+	diagnostics: List<ParserDiagnostic>
+}
+
+record ParsedDetail {
+	state: DetailState
+	id: Int
+}
+
+record DetailedDeclarationTransport derives Json {
+	nextIndex: Int
+	nodes: List<FrontendAstNode>
+	diagnostics: List<ParserDiagnostic>
+	root: Int
+}
+
+fn fallbackPosition() -> FrontendPosition {
+	return FrontendPosition { offset: 0, line: 1, column: 1 }
+}
+
+fn fallbackSpan() -> FrontendSpan {
+	let value = fallbackPosition()
+	return FrontendSpan { start: value, end: value }
+}
+
+fn fallbackToken() -> FrontendToken {
+	return FrontendToken {
+		kind: FrontendTokenKind.EndOfFile,
+		text: "",
+		span: fallbackSpan(),
+	}
+}
+
+fn tokenAt(tokens: List<FrontendToken>, index: Int) -> FrontendToken {
+	return match List.get(tokens, index) {
+		Some(value) => value
+		None => fallbackToken()
+	}
+}
+
+fn convertPosition(value: FrontendPosition) -> ParserPosition {
+	return parserPosition(value.offset, value.line, value.column)
+}
+
+fn convertSpan(value: FrontendSpan) -> ParserSpan {
+	return parserSpan(convertPosition(value.start), convertPosition(value.end))
+}
+
+fn spanBetween(tokens: List<FrontendToken>, startIndex: Int, endIndex: Int) -> ParserSpan {
+	let first = tokenAt(tokens, startIndex)
+	let last = if endIndex > startIndex then tokenAt(tokens, endIndex - 1) else first
+	return parserSpan(convertPosition(first.span.start), convertPosition(last.span.end))
+}
+
+fn withIndex(state: DetailState, index: Int) -> DetailState {
+	return DetailState {
+		index: index,
+		baseId: state.baseId,
+		nodes: state.nodes,
+		diagnostics: state.diagnostics,
+	}
+}
+
+fn withNodes(state: DetailState, nodes: List<FrontendAstNode>) -> DetailState {
+	return DetailState {
+		index: state.index,
+		baseId: state.baseId,
+		nodes: nodes,
+		diagnostics: state.diagnostics,
+	}
+}
+
+fn withDiagnostics(state: DetailState, diagnostics: List<ParserDiagnostic>) -> DetailState {
+	return DetailState {
+		index: state.index,
+		baseId: state.baseId,
+		nodes: state.nodes,
+		diagnostics: diagnostics,
+	}
+}
+
+fn advance(state: DetailState) -> DetailState {
+	return withIndex(state, state.index + 1)
+}
+
+fn atEnd(state: DetailState, tokens: List<FrontendToken>) -> Bool {
+	return tokenAt(tokens, state.index).kind == FrontendTokenKind.EndOfFile
+}
+
+fn isText(state: DetailState, tokens: List<FrontendToken>, text: String) -> Bool {
+	return tokenAt(tokens, state.index).text == text
+}
+
+fn skipNewLines(stateValue: DetailState, tokens: List<FrontendToken>) -> DetailState {
+	let mut state = stateValue
+	while tokenAt(tokens, state.index).kind == FrontendTokenKind.NewLine {
+		state = advance(state)
+	}
+	return state
+}
+
+fn addDiagnostic(state: DetailState, tokens: List<FrontendToken>, message: String) -> DetailState {
+	let value = tokenAt(tokens, state.index)
+	let diagnostic = parserDiagnostic("P0001", message, convertSpan(value.span))
+	return withDiagnostics(state, List.append(state.diagnostics, diagnostic))
+}
+
+fn addNode(
+	state: DetailState,
+	tokens: List<FrontendToken>,
+	kind: String,
+	text: String,
+	startIndex: Int,
+	endIndex: Int,
+	children: List<Int>,
+	documentation: List<String>,
+) -> ParsedDetail {
+	let id = state.baseId + List.length(state.nodes)
+	let node = frontendAstNode(
+		id,
+		kind,
+		text,
+		spanBetween(tokens, startIndex, endIndex),
+		children,
+		documentation,
+	)
+	return ParsedDetail {
+		state: withNodes(state, List.append(state.nodes, node)),
+		id: id,
+	}
+}
+
+fn consumeExpected(stateValue: DetailState, tokens: List<FrontendToken>, text: String, context: String) -> DetailState {
+	let mut state = stateValue
+	if isText(state, tokens, text) {
+		return advance(state)
+	}
+	state = addDiagnostic(state, tokens, "Expected " + text + " " + context)
+	if !atEnd(state, tokens) {
+		state = advance(state)
+	}
+	return state
+}
+
+fn parseTypePrimary(stateValue: DetailState, tokens: List<FrontendToken>) -> ParsedDetail {
+	let mut state = stateValue
+	let start = state.index
+	let value = tokenAt(tokens, state.index)
+	if value.text == "[" {
+		state = advance(state)
+		let element = parseTypeReference(state, tokens)
+		state = consumeExpected(element.state, tokens, "]", "after a list type")
+		return addNode(state, tokens, "ListTypeReference", "[]", start, state.index, [element.id], [])
+	}
+	if value.text == "(" {
+		state = advance(state)
+		state = skipNewLines(state, tokens)
+		let mut children: List<Int> = []
+		while !atEnd(state, tokens) && !isText(state, tokens, ")") {
+			let item = parseTypeReference(state, tokens)
+			state = item.state
+			if item.id >= 0 {
+				children = List.append(children, item.id)
+			}
+			if isText(state, tokens, ",") {
+				state = skipNewLines(advance(state), tokens)
+			} else if !isText(state, tokens, ")") {
+				state = addDiagnostic(state, tokens, "Expected , or ) in a tuple type")
+				if !atEnd(state, tokens) {
+					state = advance(state)
+				}
+			}
+		}
+		state = consumeExpected(state, tokens, ")", "after a tuple type")
+		let tuple = addNode(state, tokens, "TupleTypeReference", "()", start, state.index, children, [])
+		state = tuple.state
+		if isText(state, tokens, "->") {
+			let resultType = parseTypeReference(advance(state), tokens)
+			state = resultType.state
+			return addNode(
+				state,
+				tokens,
+				"FunctionTypeReference",
+				"->",
+				start,
+				state.index,
+				[tuple.id, resultType.id],
+				[],
+			)
+		}
+		return tuple
+	}
+	if value.kind != FrontendTokenKind.Identifier && value.kind != FrontendTokenKind.Keyword {
+		state = addDiagnostic(state, tokens, "Expected a type reference")
+		return ParsedDetail { state: state, id: -1 }
+	}
+	state = advance(state)
+	let named = addNode(state, tokens, "NamedTypeReference", value.text, start, state.index, [], [])
+	state = named.state
+	let mut rootId = named.id
+	if isText(state, tokens, "<") {
+		state = skipNewLines(advance(state), tokens)
+		let mut children: List<Int> = [rootId]
+		while !atEnd(state, tokens) && !isText(state, tokens, ">") {
+			let argument = parseTypeReference(state, tokens)
+			state = argument.state
+			if argument.id >= 0 {
+				children = List.append(children, argument.id)
+			}
+			if isText(state, tokens, ",") {
+				state = skipNewLines(advance(state), tokens)
+			} else if !isText(state, tokens, ">") {
+				state = addDiagnostic(state, tokens, "Expected , or > in generic arguments")
+				if !atEnd(state, tokens) {
+					state = advance(state)
+				}
+			}
+		}
+		state = consumeExpected(state, tokens, ">", "after generic arguments")
+		let generic = addNode(state, tokens, "GenericTypeReference", value.text, start, state.index, children, [])
+		state = generic.state
+		rootId = generic.id
+	}
+	return ParsedDetail { state: state, id: rootId }
+}
+
+fn parseTypeReference(stateValue: DetailState, tokens: List<FrontendToken>) -> ParsedDetail {
+	let start = stateValue.index
+	let primary = parseTypePrimary(stateValue, tokens)
+	let mut state = primary.state
+	let mut rootId = primary.id
+	while rootId >= 0 && isText(state, tokens, "?") {
+		state = advance(state)
+		let optional = addNode(
+			state,
+			tokens,
+			"OptionalTypeReference",
+			"?",
+			start,
+			state.index,
+			[rootId],
+			[],
+		)
+		state = optional.state
+		rootId = optional.id
+	}
+	return ParsedDetail { state: state, id: rootId }
+}
+
+fn parseTypeParameters(stateValue: DetailState, tokens: List<FrontendToken>) -> ParsedDetail {
+	let start = stateValue.index
+	let mut state = stateValue
+	let mut children: List<Int> = []
+	if !isText(state, tokens, "<") {
+		return addNode(state, tokens, "TypeParameters", "", start, start, [], [])
+	}
+	state = skipNewLines(advance(state), tokens)
+	while !atEnd(state, tokens) && !isText(state, tokens, ">") {
+		let parameterStart = state.index
+		let name = tokenAt(tokens, state.index).text
+		if tokenAt(tokens, state.index).kind == FrontendTokenKind.Identifier {
+			state = advance(state)
+		} else {
+			state = addDiagnostic(state, tokens, "Expected a type parameter name")
+		}
+		let mut parameterChildren: List<Int> = []
+		if isText(state, tokens, ":") {
+			let constraint = parseTypeReference(advance(state), tokens)
+			state = constraint.state
+			if constraint.id >= 0 {
+				parameterChildren = List.append(parameterChildren, constraint.id)
+			}
+		}
+		let parameter = addNode(
+			state,
+			tokens,
+			"TypeParameter",
+			name,
+			parameterStart,
+			state.index,
+			parameterChildren,
+			[],
+		)
+		state = parameter.state
+		children = List.append(children, parameter.id)
+		if isText(state, tokens, ",") {
+			state = skipNewLines(advance(state), tokens)
+		} else if !isText(state, tokens, ">") {
+			state = addDiagnostic(state, tokens, "Expected , or > after a type parameter")
+			if !atEnd(state, tokens) {
+				state = advance(state)
+			}
+		}
+	}
+	state = consumeExpected(state, tokens, ">", "after type parameters")
+	return addNode(state, tokens, "TypeParameters", "", start, state.index, children, [])
+}
+
+fn skipDerives(stateValue: DetailState, tokens: List<FrontendToken>) -> DetailState {
+	let mut state = stateValue
+	if !isText(state, tokens, "derives") {
+		return state
+	}
+	state = advance(state)
+	while !atEnd(state, tokens)
+		&& tokenAt(tokens, state.index).kind != FrontendTokenKind.NewLine
+		&& !isText(state, tokens, "{") {
+		state = advance(state)
+	}
+	return state
+}
+
+fn parseRecordBody(stateValue: DetailState, tokens: List<FrontendToken>) -> ParsedDetail {
+	let start = stateValue.index
+	let mut state = consumeExpected(stateValue, tokens, "{", "to begin a record declaration")
+	state = skipNewLines(state, tokens)
+	let mut fields: List<Int> = []
+	while !atEnd(state, tokens) && !isText(state, tokens, "}") {
+		let fieldStart = state.index
+		let name = tokenAt(tokens, state.index).text
+		if tokenAt(tokens, state.index).kind == FrontendTokenKind.Identifier {
+			state = advance(state)
+		} else {
+			state = addDiagnostic(state, tokens, "Expected a record field name")
+		}
+		state = consumeExpected(state, tokens, ":", "after a record field name")
+		let fieldType = parseTypeReference(state, tokens)
+		state = fieldType.state
+		let mut fieldChildren: List<Int> = []
+		if fieldType.id >= 0 {
+			fieldChildren = List.append(fieldChildren, fieldType.id)
+		}
+		let field = addNode(
+			state,
+			tokens,
+			"RecordField",
+			name,
+			fieldStart,
+			state.index,
+			fieldChildren,
+			[],
+		)
+		state = field.state
+		fields = List.append(fields, field.id)
+		if isText(state, tokens, ",") {
+			state = advance(state)
+		}
+		state = skipNewLines(state, tokens)
+	}
+	state = consumeExpected(state, tokens, "}", "to end a record declaration")
+	return addNode(state, tokens, "RecordBody", "", start, state.index, fields, [])
+}
+
+fn parseEnumBody(stateValue: DetailState, tokens: List<FrontendToken>) -> ParsedDetail {
+	let start = stateValue.index
+	let mut state = consumeExpected(stateValue, tokens, "{", "to begin an enum declaration")
+	state = skipNewLines(state, tokens)
+	let mut variants: List<Int> = []
+	while !atEnd(state, tokens) && !isText(state, tokens, "}") {
+		let variantStart = state.index
+		let name = tokenAt(tokens, state.index).text
+		if tokenAt(tokens, state.index).kind == FrontendTokenKind.Identifier {
+			state = advance(state)
+		} else {
+			state = addDiagnostic(state, tokens, "Expected an enum variant name")
+		}
+		let mut payload: List<Int> = []
+		if isText(state, tokens, "(") {
+			state = skipNewLines(advance(state), tokens)
+			while !atEnd(state, tokens) && !isText(state, tokens, ")") {
+				let payloadType = parseTypeReference(state, tokens)
+				state = payloadType.state
+				if payloadType.id >= 0 {
+					payload = List.append(payload, payloadType.id)
+				}
+				if isText(state, tokens, ",") {
+					state = skipNewLines(advance(state), tokens)
+				} else if !isText(state, tokens, ")") {
+					state = addDiagnostic(state, tokens, "Expected , or ) in an enum payload")
+					if !atEnd(state, tokens) {
+						state = advance(state)
+					}
+				}
+			}
+			state = consumeExpected(state, tokens, ")", "after an enum payload")
+		}
+		let variant = addNode(
+			state,
+			tokens,
+			"EnumVariant",
+			name,
+			variantStart,
+			state.index,
+			payload,
+			[],
+		)
+		state = variant.state
+		variants = List.append(variants, variant.id)
+		if isText(state, tokens, ",") {
+			state = advance(state)
+		}
+		state = skipNewLines(state, tokens)
+	}
+	state = consumeExpected(state, tokens, "}", "to end an enum declaration")
+	return addNode(state, tokens, "EnumBody", "", start, state.index, variants, [])
+}
+
+fn consumeDeclarationLine(stateValue: DetailState, tokens: List<FrontendToken>) -> DetailState {
+	let mut state = stateValue
+	while !atEnd(state, tokens) && tokenAt(tokens, state.index).kind != FrontendTokenKind.NewLine {
+		state = advance(state)
+	}
+	return skipNewLines(state, tokens)
+}
+
+fn parseDetailed(
+	tokens: List<FrontendToken>,
+	startIndex: Int,
+	baseId: Int,
+	kind: String,
+	documentation: List<String>,
+) -> DetailedDeclarationTransport {
+	let start = startIndex
+	let mut state = DetailState {
+		index: startIndex,
+		baseId: baseId,
+		nodes: [],
+		diagnostics: [],
+	}
+	while isText(state, tokens, "pub") || isText(state, tokens, "async") || isText(state, tokens, "unsafe") {
+		state = advance(state)
+	}
+	if !atEnd(state, tokens) {
+		state = advance(state)
+	}
+	let name = tokenAt(tokens, state.index).text
+	if tokenAt(tokens, state.index).kind == FrontendTokenKind.Identifier {
+		state = advance(state)
+	} else {
+		state = addDiagnostic(state, tokens, "Expected a declaration name")
+	}
+	let mut children: List<Int> = []
+	if isText(state, tokens, "<") {
+		let parameters = parseTypeParameters(state, tokens)
+		state = parameters.state
+		children = List.append(children, parameters.id)
+	}
+	if kind == "RecordDeclaration" {
+		state = skipDerives(state, tokens)
+		let body = parseRecordBody(state, tokens)
+		state = skipNewLines(body.state, tokens)
+		children = List.append(children, body.id)
+	} else if kind == "EnumDeclaration" {
+		state = skipDerives(state, tokens)
+		let body = parseEnumBody(state, tokens)
+		state = skipNewLines(body.state, tokens)
+		children = List.append(children, body.id)
+	} else if kind == "NewtypeDeclaration" || kind == "TypeAliasDeclaration" {
+		state = consumeExpected(state, tokens, "=", "before an underlying type")
+		let underlying = parseTypeReference(state, tokens)
+		state = consumeDeclarationLine(underlying.state, tokens)
+		if underlying.id >= 0 {
+			children = List.append(children, underlying.id)
+		}
+	} else {
+		state = consumeDeclarationLine(state, tokens)
+	}
+	let declaration = addNode(
+		state,
+		tokens,
+		kind,
+		name,
+		start,
+		state.index,
+		children,
+		documentation,
+	)
+	return DetailedDeclarationTransport {
+		nextIndex: declaration.state.index,
+		nodes: declaration.state.nodes,
+		diagnostics: declaration.state.diagnostics,
+		root: declaration.id,
+	}
+}
+
+pub fn parseDetailedDeclarationJson(
+	tokensEncoded: String,
+	startIndex: Int,
+	baseId: Int,
+	kind: String,
+	documentationEncoded: String,
+) -> Result<String, List<JsonError>> {
+	let tokensRaw = Json.parse(tokensEncoded)?
+	let tokens = Json.decode<List<FrontendToken>>(tokensRaw)?
+	let documentationRaw = Json.parse(documentationEncoded)?
+	let documentation = Json.decode<List<String>>(documentationRaw)?
+	return Json.encode<DetailedDeclarationTransport>(
+		parseDetailed(tokens, startIndex, baseId, kind, documentation),
+	)
+}
