@@ -1,0 +1,53 @@
+name: Patch parser internal JSON
+
+on:
+  push:
+    branches:
+      - agent/selfhost-frontend-parser-core
+    paths:
+      - .github/workflows/patch-parser-internal-json.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: agent/selfhost-frontend-parser-core
+          fetch-depth: 0
+      - name: Use a non-JS JSON boundary internally
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          lexer_path = Path('selfhost/mvp/src/frontend-lexer.virune')
+          lexer = lexer_path.read_text(encoding='utf-8')
+          old = 'pub fn scanFrontendResult(source: String) -> FrontendLexResult {\n\treturn scanFrontend(source)\n}\n\n@jsExport\npub fn lexFrontend(source: String) -> Result<String, List<JsonError>> {\n\treturn Json.encode<FrontendLexResult>(scanFrontendResult(source))\n}'
+          new = 'pub fn lexFrontendJson(source: String) -> Result<String, List<JsonError>> {\n\treturn Json.encode<FrontendLexResult>(scanFrontend(source))\n}\n\n@jsExport\npub fn lexFrontend(source: String) -> Result<String, List<JsonError>> {\n\treturn lexFrontendJson(source)\n}'
+          if lexer.count(old) != 1:
+              raise SystemExit(f'lexer replacement count: {lexer.count(old)}')
+          lexer_path.write_text(lexer.replace(old, new), encoding='utf-8')
+
+          parser_path = Path('selfhost/mvp/src/frontend-parser-core.virune')
+          parser = parser_path.read_text(encoding='utf-8')
+          import_old = 'import { scanFrontendResult } from "./frontend-lexer.virune"'
+          import_new = 'import { lexFrontendJson } from "./frontend-lexer.virune"'
+          decode_old = 'fn decodeFrontend(source: String) -> Result<FrontendLexResult, List<JsonError>> {\n\treturn Ok(scanFrontendResult(source))\n}'
+          decode_new = 'fn decodeFrontend(source: String) -> Result<FrontendLexResult, List<JsonError>> {\n\tlet payload = lexFrontendJson(source)?\n\treturn Json.decode<FrontendLexResult>(payload)\n}'
+          if parser.count(import_old) != 1:
+              raise SystemExit(f'import replacement count: {parser.count(import_old)}')
+          if parser.count(decode_old) != 1:
+              raise SystemExit(f'decode replacement count: {parser.count(decode_old)}')
+          parser_path.write_text(parser.replace(import_old, import_new).replace(decode_old, decode_new), encoding='utf-8')
+          PY
+      - name: Commit patch and remove helper workflow
+        run: |
+          git rm .github/workflows/patch-parser-internal-json.yml
+          git add selfhost/mvp/src/frontend-lexer.virune selfhost/mvp/src/frontend-parser-core.virune
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git commit -m "fix(selfhost): use non-exported lexer JSON internally"
+          git push origin HEAD:agent/selfhost-frontend-parser-core
