@@ -477,6 +477,8 @@ fn expressionStop(state: CoreState, tokens: List<FrontendToken>, stopAtBrace: Bo
 		return true
 	}
 	return isText(state, tokens, "}")
+		|| isText(state, tokens, ")")
+		|| isText(state, tokens, "]")
 		|| isText(state, tokens, "then")
 		|| isText(state, tokens, "else")
 		|| isText(state, tokens, ",")
@@ -705,69 +707,255 @@ fn parseLambdaExpression(stateValue: CoreState, tokens: List<FrontendToken>) -> 
 	return addNode(state, tokens, "LambdaExpression", text, start, state.index, children, [])
 }
 
-fn parseLambdaPostfix(
+fn synchronizeAggregateItem(
 	stateValue: CoreState,
 	tokens: List<FrontendToken>,
-	start: Int,
-	valueIdValue: Int,
-) -> ParsedNode {
+	close: String,
+) -> CoreState {
 	let mut state = stateValue
-	let mut valueId = valueIdValue
-	let mut done = false
-	while !done && !expressionStop(state, tokens, false) {
-		if isText(state, tokens, "(") {
-			let callArguments = consumeBalanced(state, tokens, "(", ")", "CallArguments")
-			state = callArguments.state
-			let call = addNode(
-				state,
-				tokens,
-				"CallExpression",
-				"call",
-				start,
-				state.index,
-				[valueId, callArguments.id],
-				[],
-			)
-			state = call.state
-			valueId = call.id
-		} else {
-			done = true
-		}
+	while !atEnd(state, tokens)
+		&& currentKind(state, tokens) != FrontendTokenKind.NewLine
+		&& !isText(state, tokens, ",")
+		&& !isText(state, tokens, close) {
+		state = advance(state)
 	}
-	return ParsedNode { state: state, id: valueId }
+	return state
 }
 
-fn parseParenthesizedLambda(
+fn parseListExpression(stateValue: CoreState, tokens: List<FrontendToken>) -> ParsedNode {
+	let start = stateValue.index
+	let mut state = skipNewLines(advance(stateValue), tokens)
+	let mut children: List<Int> = []
+	while !atEnd(state, tokens) && !isText(state, tokens, "]") {
+		let before = state.index
+		let item = parseExpression(state, tokens, 1, false)
+		state = item.state
+		if item.id >= 0 {
+			children = List.append(children, item.id)
+		}
+		if isText(state, tokens, ",") {
+			state = skipNewLines(advance(state), tokens)
+		} else if !isText(state, tokens, "]") {
+			state = addDiagnosticAt(state, tokens, "P0001", "Expected , or ] in a list expression", state.index)
+			state = synchronizeAggregateItem(state, tokens, "]")
+			if isText(state, tokens, ",") {
+				state = skipNewLines(advance(state), tokens)
+			}
+		}
+		if state.index <= before {
+			state = addDiagnosticAt(state, tokens, "P0001", "Parser made no progress in a list expression", state.index)
+			if !atEnd(state, tokens) {
+				state = advance(state)
+			}
+		}
+	}
+	if isText(state, tokens, "]") {
+		state = advance(state)
+	} else {
+		state = addDiagnosticAt(state, tokens, "P0001", "Expected ] to end a list expression", state.index)
+	}
+	return addNode(state, tokens, "ListExpression", "[]", start, state.index, children, [])
+}
+
+fn parseParenthesizedOrTupleExpression(
 	stateValue: CoreState,
 	tokens: List<FrontendToken>,
 ) -> ParsedNode {
 	let start = stateValue.index
-	let mut state = advance(stateValue)
-	let text = currentText(state, tokens)
-	if text != "fn" && !(text == "async" && tokenAt(tokens, state.index + 1).text == "fn") {
-		return consumeBalanced(stateValue, tokens, "(", ")", "ParenthesizedExpression")
+	let mut state = skipNewLines(advance(stateValue), tokens)
+	if isText(state, tokens, ")") {
+		state = addDiagnosticAt(state, tokens, "P0001", "Expected an expression after (", state.index)
+		state = advance(state)
+		return addNode(state, tokens, "ParenthesizedExpression", "()", start, state.index, [], [])
 	}
-	let inner = parseLambdaExpression(state, tokens)
-	state = inner.state
+	let first = parseExpression(state, tokens, 1, false)
+	state = first.state
+	let mut children: List<Int> = []
+	if first.id >= 0 {
+		children = List.append(children, first.id)
+	}
+	if isText(state, tokens, ",") {
+		let mut done = false
+		while isText(state, tokens, ",") && !done {
+			state = skipNewLines(advance(state), tokens)
+			if isText(state, tokens, ")") {
+				state = addDiagnosticAt(state, tokens, "P0001", "Expected a tuple expression after ,", state.index)
+				done = true
+			} else {
+				let item = parseExpression(state, tokens, 1, false)
+				state = item.state
+				if item.id >= 0 {
+					children = List.append(children, item.id)
+				}
+			}
+		}
+		if isText(state, tokens, ")") {
+			state = advance(state)
+		} else {
+			state = addDiagnosticAt(state, tokens, "P0001", "Expected ) to end a tuple expression", state.index)
+			state = synchronizeAggregateItem(state, tokens, ")")
+			if isText(state, tokens, ")") {
+				state = advance(state)
+			}
+		}
+		return addNode(state, tokens, "TupleExpression", "()", start, state.index, children, [])
+	}
 	if isText(state, tokens, ")") {
 		state = advance(state)
 	} else {
-		state = addDiagnosticAt(state, tokens, "P0001", "Expected ) after a parenthesized lambda", state.index)
+		state = addDiagnosticAt(state, tokens, "P0001", "Expected ) after a parenthesized expression", state.index)
+		state = synchronizeAggregateItem(state, tokens, ")")
+		if isText(state, tokens, ")") {
+			state = advance(state)
+		}
 	}
-	let grouped = addNode(
-		state,
-		tokens,
-		"ParenthesizedExpression",
-		"()",
-		start,
-		state.index,
-		[inner.id],
-		[],
-	)
-	return parseLambdaPostfix(grouped.state, tokens, start, grouped.id)
+	return addNode(state, tokens, "ParenthesizedExpression", "()", start, state.index, children, [])
 }
 
-fn parseControlPostfix(
+fn parseRecordEntry(stateValue: CoreState, tokens: List<FrontendToken>) -> ParsedNode {
+	let start = stateValue.index
+	let mut state = stateValue
+	let name = currentText(state, tokens)
+	if currentKind(state, tokens) == FrontendTokenKind.Identifier {
+		state = advance(state)
+	} else {
+		state = addDiagnosticAt(state, tokens, "P0001", "Expected a record entry name", state.index)
+		if !atEnd(state, tokens) {
+			state = advance(state)
+		}
+	}
+	let mut children: List<Int> = []
+	if isText(state, tokens, ":") {
+		let value = parseExpression(advance(state), tokens, 1, false)
+		state = value.state
+		if value.id >= 0 {
+			children = List.append(children, value.id)
+		}
+	}
+	return addNode(state, tokens, "RecordEntry", name, start, state.index, children, [])
+}
+
+fn parseRecordFieldBlock(stateValue: CoreState, tokens: List<FrontendToken>) -> ParsedNode {
+	let start = stateValue.index
+	let mut state = stateValue
+	if isText(state, tokens, "{") {
+		state = skipNewLines(advance(state), tokens)
+	} else {
+		state = addDiagnosticAt(state, tokens, "P0001", "Expected { to begin record entries", state.index)
+	}
+	let mut children: List<Int> = []
+	while !atEnd(state, tokens) && !isText(state, tokens, "}") {
+		let before = state.index
+		let entry = parseRecordEntry(state, tokens)
+		state = entry.state
+		if entry.id >= 0 {
+			children = List.append(children, entry.id)
+		}
+		if isText(state, tokens, ",") {
+			state = skipNewLines(advance(state), tokens)
+		} else if !isText(state, tokens, "}") {
+			state = addDiagnosticAt(state, tokens, "P0001", "Expected , or } after a record entry", state.index)
+			state = synchronizeAggregateItem(state, tokens, "}")
+			if isText(state, tokens, ",") {
+				state = skipNewLines(advance(state), tokens)
+			} else {
+				state = skipNewLines(state, tokens)
+			}
+		}
+		if state.index <= before {
+			state = addDiagnosticAt(state, tokens, "P0001", "Parser made no progress in record entries", state.index)
+			if !atEnd(state, tokens) {
+				state = skipNewLines(advance(state), tokens)
+			}
+		}
+	}
+	if isText(state, tokens, "}") {
+		state = advance(state)
+	} else {
+		state = addDiagnosticAt(state, tokens, "P0001", "Expected } to end record entries", state.index)
+	}
+	return addNode(state, tokens, "RecordFieldBlock", "{}", start, state.index, children, [])
+}
+
+fn parseRecordExpression(
+	stateValue: CoreState,
+	tokens: List<FrontendToken>,
+	name: String,
+) -> ParsedNode {
+	let start = stateValue.index
+	let fields = parseRecordFieldBlock(advance(stateValue), tokens)
+	return addNode(
+		fields.state,
+		tokens,
+		"RecordExpression",
+		name,
+		start,
+		fields.state.index,
+		[fields.id],
+		[],
+	)
+}
+
+fn parseCallArguments(stateValue: CoreState, tokens: List<FrontendToken>) -> ParsedNode {
+	let start = stateValue.index
+	let mut state = skipNewLines(advance(stateValue), tokens)
+	let mut children: List<Int> = []
+	while !atEnd(state, tokens) && !isText(state, tokens, ")") {
+		let before = state.index
+		let argument = parseExpression(state, tokens, 1, false)
+		state = argument.state
+		if argument.id >= 0 {
+			children = List.append(children, argument.id)
+		}
+		if isText(state, tokens, ",") {
+			state = skipNewLines(advance(state), tokens)
+		} else if !isText(state, tokens, ")") {
+			state = addDiagnosticAt(state, tokens, "P0001", "Expected , or ) in call arguments", state.index)
+			state = synchronizeAggregateItem(state, tokens, ")")
+			if isText(state, tokens, ",") {
+				state = skipNewLines(advance(state), tokens)
+			}
+		}
+		if state.index <= before {
+			state = addDiagnosticAt(state, tokens, "P0001", "Parser made no progress in call arguments", state.index)
+			if !atEnd(state, tokens) {
+				state = advance(state)
+			}
+		}
+	}
+	if isText(state, tokens, ")") {
+		state = advance(state)
+	} else {
+		state = addDiagnosticAt(state, tokens, "P0001", "Expected ) to end call arguments", state.index)
+	}
+	return addNode(state, tokens, "CallArguments", "()", start, state.index, children, [])
+}
+
+fn looksLikeTypeArgumentCall(state: CoreState, tokens: List<FrontendToken>) -> Bool {
+	if !isText(state, tokens, "<") {
+		return false
+	}
+	let mut index = state.index
+	let mut depth = 0
+	let mut done = false
+	while tokenAt(tokens, index).kind != FrontendTokenKind.EndOfFile && !done {
+		let text = tokenAt(tokens, index).text
+		if text == "<" {
+			depth = depth + 1
+		} else if text == ">" {
+			depth = depth - 1
+			if depth == 0 {
+				index = index + 1
+				done = true
+				continue
+			}
+		}
+		index = index + 1
+	}
+	return done && tokenAt(tokens, index).text == "("
+}
+
+fn parsePostfix(
 	stateValue: CoreState,
 	tokens: List<FrontendToken>,
 	start: Int,
@@ -777,9 +965,11 @@ fn parseControlPostfix(
 	let mut valueId = valueIdValue
 	let mut done = false
 	while !done && !expressionStop(state, tokens, false) {
-		if isText(state, tokens, "(") {
-			let callArguments = consumeBalanced(state, tokens, "(", ")", "CallArguments")
-			state = callArguments.state
+		if looksLikeTypeArgumentCall(state, tokens) {
+			let typeArguments = consumeBalanced(state, tokens, "<", ">", "TypeArguments")
+			state = typeArguments.state
+			let arguments = parseCallArguments(state, tokens)
+			state = arguments.state
 			let call = addNode(
 				state,
 				tokens,
@@ -787,7 +977,22 @@ fn parseControlPostfix(
 				"call",
 				start,
 				state.index,
-				[valueId, callArguments.id],
+				[valueId, typeArguments.id, arguments.id],
+				[],
+			)
+			state = call.state
+			valueId = call.id
+		} else if isText(state, tokens, "(") {
+			let arguments = parseCallArguments(state, tokens)
+			state = arguments.state
+			let call = addNode(
+				state,
+				tokens,
+				"CallExpression",
+				"call",
+				start,
+				state.index,
+				[valueId, arguments.id],
 				[],
 			)
 			state = call.state
@@ -824,6 +1029,21 @@ fn parseControlPostfix(
 			)
 			state = tried.state
 			valueId = tried.id
+		} else if isText(state, tokens, "with") {
+			let fields = parseRecordFieldBlock(advance(state), tokens)
+			state = fields.state
+			let updated = addNode(
+				state,
+				tokens,
+				"RecordUpdateExpression",
+				"with",
+				start,
+				state.index,
+				[valueId, fields.id],
+				[],
+			)
+			state = updated.state
+			valueId = updated.id
 		} else {
 			done = true
 		}
@@ -831,7 +1051,56 @@ fn parseControlPostfix(
 	return ParsedNode { state: state, id: valueId }
 }
 
-fn parseConditionalExpression(stateValue: CoreState, tokens: List<FrontendToken>) -> ParsedNode {
+fn parseLambdaPostfix(
+	stateValue: CoreState,
+	tokens: List<FrontendToken>,
+	start: Int,
+	valueIdValue: Int,
+) -> ParsedNode {
+	return parsePostfix(stateValue, tokens, start, valueIdValue)
+}
+
+fn parseParenthesizedLambda(
+	stateValue: CoreState,
+	tokens: List<FrontendToken>,
+) -> ParsedNode {
+	let start = stateValue.index
+	let mut state = advance(stateValue)
+	let text = currentText(state, tokens)
+	if text != "fn" && !(text == "async" && tokenAt(tokens, state.index + 1).text == "fn") {
+		let grouped = parseParenthesizedOrTupleExpression(stateValue, tokens)
+		return parsePostfix(grouped.state, tokens, start, grouped.id)
+	}
+	let inner = parseLambdaExpression(state, tokens)
+	state = inner.state
+	if isText(state, tokens, ")") {
+		state = advance(state)
+	} else {
+		state = addDiagnosticAt(state, tokens, "P0001", "Expected ) after a parenthesized lambda", state.index)
+	}
+	let grouped = addNode(
+		state,
+		tokens,
+		"ParenthesizedExpression",
+		"()",
+		start,
+		state.index,
+		[inner.id],
+		[],
+	)
+	return parseLambdaPostfix(grouped.state, tokens, start, grouped.id)
+}
+
+fn parseControlPostfix(
+	stateValue: CoreState,
+	tokens: List<FrontendToken>,
+	start: Int,
+	valueIdValue: Int,
+) -> ParsedNode {
+	return parsePostfix(stateValue, tokens, start, valueIdValue)
+}
+
+fn parseConditionalExpression(fn parseConditionalExpression(stateValue: CoreState, tokens: List<FrontendToken>) -> ParsedNode {
 	let start = stateValue.index
 	let condition = parseExpression(advance(stateValue), tokens, 1, false)
 	let mut state = condition.state
@@ -981,70 +1250,22 @@ fn parsePrimary(stateValue: CoreState, tokens: List<FrontendToken>, stopAtBrace:
 		return parseParenthesizedLambda(state, tokens)
 	}
 	if text == "[" {
-		return consumeBalanced(state, tokens, "[", "]", "ListExpression")
+		let list = parseListExpression(state, tokens)
+		return parsePostfix(list.state, tokens, start, list.id)
+	}
+	if currentKind(state, tokens) == FrontendTokenKind.Identifier
+		&& tokenAt(tokens, state.index + 1).text == "{"
+		&& !stopAtBrace {
+		let record = parseRecordExpression(state, tokens, text)
+		return parsePostfix(record.state, tokens, start, record.id)
 	}
 	let kind = if currentKind(state, tokens) == FrontendTokenKind.Identifier then "IdentifierExpression" else "LiteralExpression"
 	state = advance(state)
 	let added = addNode(state, tokens, kind, text, start, state.index, [], [])
-	state = added.state
-	let mut valueId = added.id
-	let mut done = false
-	while !done && !expressionStop(state, tokens, stopAtBrace) {
-		if isText(state, tokens, "(") {
-			let callArguments = consumeBalanced(state, tokens, "(", ")", "CallArguments")
-			state = callArguments.state
-			let call = addNode(
-				state,
-				tokens,
-				"CallExpression",
-				"call",
-				start,
-				state.index,
-				[valueId, callArguments.id],
-				[],
-			)
-			state = call.state
-			valueId = call.id
-		} else if isText(state, tokens, ".") {
-			state = advance(state)
-			let field = currentText(state, tokens)
-			if !atEnd(state, tokens) {
-				state = advance(state)
-			}
-			let member = addNode(
-				state,
-				tokens,
-				"FieldExpression",
-				field,
-				start,
-				state.index,
-				[valueId],
-				[],
-			)
-			state = member.state
-			valueId = member.id
-		} else if isText(state, tokens, "?") {
-			state = advance(state)
-			let tried = addNode(
-				state,
-				tokens,
-				"TryExpression",
-				"?",
-				start,
-				state.index,
-				[valueId],
-				[],
-			)
-			state = tried.state
-			valueId = tried.id
-		} else {
-			done = true
-		}
-	}
-	return ParsedNode { state: state, id: valueId }
+	return parsePostfix(added.state, tokens, start, added.id)
 }
 
-fn parseExpression(
+fn parseExpression(fn parseExpression(
 	stateValue: CoreState,
 	tokens: List<FrontendToken>,
 	minimumPrecedence: Int,

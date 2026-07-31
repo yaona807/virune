@@ -118,3 +118,10 @@ Parserはmodule documentationをmodule nodeへ、declaration documentationを対
 - lexical rejectionと対応済みsource acceptanceのLegacy Compilerとの一致
 
 この作業ではgrammar、Production Parser、stable Compiler API、Runtime ABI、Interop ABI、公開standard libraryを変更しません。
+
+
+## Aggregate expressionとcall expression
+
+Parser coreはlist item、parenthesized／tuple expression、record entry、call argument、任意のcall type argument、record-update entryをcanonical flat-arena nodeへ詳細化します。Shorthand record entryと明示value entryはchild数で区別でき、callとupdateのcontainerは有効なcanonical node IDだけを参照します。
+
+Comma区切りのrecoveryは次のcomma、closing delimiter、物理line end、または囲んでいるrecord braceで同期します。Virune 1.0 grammarが許可する位置ではtrailing commaを受理し、nested aggregateは同じprecedence-aware expression pathを再利用し、progress guardによりmalformed item listでParserが停止し続けることを防ぎます。Semantic arityとrecord-field validationは後続のType／Effect Checkerで扱います。
