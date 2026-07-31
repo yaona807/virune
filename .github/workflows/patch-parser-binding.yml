@@ -1,0 +1,46 @@
+name: Patch parser reserved binding
+
+on:
+  push:
+    branches:
+      - agent/selfhost-frontend-parser-core
+    paths:
+      - .github/workflows/patch-parser-binding.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: agent/selfhost-frontend-parser-core
+          fetch-depth: 0
+      - name: Rename strict-mode reserved binding
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path('selfhost/mvp/src/frontend-parser-core.virune')
+          content = path.read_text(encoding='utf-8')
+          replacements = {
+              'let arguments = consumeBalanced(state, tokens, "(", ")", "CallArguments")': 'let callArguments = consumeBalanced(state, tokens, "(", ")", "CallArguments")',
+              'state = arguments.state': 'state = callArguments.state',
+              '[valueId, arguments.id]': '[valueId, callArguments.id]',
+          }
+          for old, new in replacements.items():
+              count = content.count(old)
+              if count != 1:
+                  raise SystemExit(f'expected 1 replacement for {old!r}, found {count}')
+              content = content.replace(old, new)
+          path.write_text(content, encoding='utf-8')
+      - name: Commit patch and remove helper workflow
+        run: |
+          git rm .github/workflows/patch-parser-binding.yml
+          git add selfhost/mvp/src/frontend-parser-core.virune
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git commit -m "fix(selfhost): avoid reserved parser binding"
+          git push origin HEAD:agent/selfhost-frontend-parser-core
