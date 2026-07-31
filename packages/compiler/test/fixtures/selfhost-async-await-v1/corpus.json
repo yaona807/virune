@@ -1,0 +1,56 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "id": "diagnostic-ordering",
+      "request": "diagnostic.json",
+      "accepted": false,
+      "diagnosticCodes": ["L2022", "L2076", "L2023", "L2022", "L2023", "L2076"],
+      "canonicalReferences": true,
+      "contexts": [
+        { "kind": "module", "name": "main", "isAsync": false, "declaredEffects": [], "wildcard": false },
+        { "kind": "function", "name": "sync", "isAsync": false, "declaredEffects": [], "wildcard": false },
+        { "kind": "function", "name": "bridge", "isAsync": true, "declaredEffects": [], "wildcard": false }
+      ],
+      "expressions": [
+        { "contextId": 0, "operandKind": "foreign", "operandType": "PromiseLike<Int>", "awaitedType": null, "resultType": null, "contextValid": false, "operandValid": false, "requiredEffects": ["JavaScript"], "missingEffects": ["JavaScript"], "valid": false },
+        { "contextId": 1, "operandKind": "other", "operandType": "Int", "awaitedType": null, "resultType": null, "contextValid": false, "operandValid": false, "requiredEffects": [], "missingEffects": [], "valid": false },
+        { "contextId": 2, "operandKind": "foreign", "operandType": "PromiseLike<String>", "awaitedType": "String", "resultType": "String", "contextValid": true, "operandValid": true, "requiredEffects": ["JavaScript"], "missingEffects": ["JavaScript"], "valid": false }
+      ]
+    },
+    {
+      "id": "malformed-request",
+      "request": "malformed.json",
+      "accepted": false,
+      "diagnosticCodes": ["L1001", "L9001", "L9001", "L9001", "L9001", "L9001", "L9001", "L9001", "L9001"],
+      "canonicalReferences": false,
+      "contexts": [
+        { "kind": "function", "name": "run", "isAsync": true, "declaredEffects": [], "wildcard": false },
+        { "kind": "test", "name": "run", "isAsync": true, "declaredEffects": [], "wildcard": false },
+        { "kind": "block", "name": "", "isAsync": false, "declaredEffects": [], "wildcard": false }
+      ],
+      "expressions": [
+        { "contextId": 9, "operandKind": "future", "operandType": "Future<Int>", "awaitedType": "Int", "resultType": "Int", "contextValid": false, "operandValid": true, "requiredEffects": [], "missingEffects": [], "valid": false },
+        { "contextId": -1, "operandKind": "mystery", "operandType": "", "awaitedType": "", "resultType": null, "contextValid": false, "operandValid": false, "requiredEffects": [], "missingEffects": [], "valid": false },
+        { "contextId": 0, "operandKind": "future", "operandType": "Future<String>", "awaitedType": null, "resultType": null, "contextValid": true, "operandValid": false, "requiredEffects": [], "missingEffects": [], "valid": false }
+      ]
+    },
+    {
+      "id": "valid-await",
+      "request": "valid.json",
+      "accepted": true,
+      "diagnosticCodes": [],
+      "canonicalReferences": true,
+      "contexts": [
+        { "kind": "function", "name": "load", "isAsync": true, "declaredEffects": [], "wildcard": false },
+        { "kind": "test", "name": "browser promise", "isAsync": true, "declaredEffects": [], "wildcard": true },
+        { "kind": "function", "name": "bridge", "isAsync": true, "declaredEffects": ["Console", "JavaScript"], "wildcard": false }
+      ],
+      "expressions": [
+        { "contextId": 0, "operandKind": "future", "operandType": "Future<Int>", "awaitedType": "Int", "resultType": "Int", "contextValid": true, "operandValid": true, "requiredEffects": [], "missingEffects": [], "valid": true },
+        { "contextId": 1, "operandKind": "foreign", "operandType": "PromiseLike<String>", "awaitedType": "String", "resultType": "String", "contextValid": true, "operandValid": true, "requiredEffects": ["JavaScript"], "missingEffects": [], "valid": true },
+        { "contextId": 2, "operandKind": "foreign", "operandType": "PromiseLike<Bool>", "awaitedType": "Bool", "resultType": "Bool", "contextValid": true, "operandValid": true, "requiredEffects": ["JavaScript"], "missingEffects": [], "valid": true }
+      ]
+    }
+  ]
+}

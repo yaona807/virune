@@ -1,0 +1,12 @@
+{
+  "contexts": [
+    { "kind": "function", "name": "run", "isAsync": true, "declaredEffects": [] },
+    { "kind": "test", "name": "run", "isAsync": true, "declaredEffects": [] },
+    { "kind": "block", "name": "", "isAsync": false, "declaredEffects": [] }
+  ],
+  "expressions": [
+    { "contextId": 9, "operandKind": "future", "operandType": "Future<Int>", "awaitedType": "Int" },
+    { "contextId": -1, "operandKind": "mystery", "operandType": "", "awaitedType": "" },
+    { "contextId": 0, "operandKind": "future", "operandType": "Future<String>", "awaitedType": null }
+  ]
+}

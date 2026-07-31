@@ -1,0 +1,12 @@
+{
+  "contexts": [
+    { "kind": "function", "name": "load", "isAsync": true, "declaredEffects": [] },
+    { "kind": "test", "name": "browser promise", "isAsync": true, "declaredEffects": ["*"] },
+    { "kind": "function", "name": "bridge", "isAsync": true, "declaredEffects": ["JavaScript", "Console", "JavaScript"] }
+  ],
+  "expressions": [
+    { "contextId": 0, "operandKind": "future", "operandType": "Future<Int>", "awaitedType": "Int" },
+    { "contextId": 1, "operandKind": "foreign", "operandType": "PromiseLike<String>", "awaitedType": "String" },
+    { "contextId": 2, "operandKind": "foreign", "operandType": "PromiseLike<Bool>", "awaitedType": "Bool" }
+  ]
+}
