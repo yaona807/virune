@@ -10,7 +10,7 @@ import {
 	FrontendToken,
 	FrontendTokenKind,
 } from "./frontend-model.virune"
-import { lexFrontend } from "./frontend-lexer.virune"
+import { scanFrontendResult } from "./frontend-lexer.virune"
 import {
 	FrontendAstNode,
 	FrontendParseResult,
@@ -947,11 +947,7 @@ fn parseModule(lexed: FrontendLexResult) -> FrontendParseResult {
 }
 
 fn decodeFrontend(source: String) -> Result<FrontendLexResult, List<JsonError>> {
-	let exported = lexFrontend(source)?
-	let first = Json.decode<String>(exported)?
-	let second = Json.decode<String>(first)?
-	let payload = Json.decode<String>(second)?
-	return Json.decode<FrontendLexResult>(payload)
+	return Ok(scanFrontendResult(source))
 }
 
 @jsExport
