@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "id": "diagnostic-missing-return",
+      "request": "diagnostic.json",
+      "accepted": false,
+      "diagnosticCodes": ["L3006", "L3001", "L3001", "L3006"],
+      "canonicalReferences": true,
+      "functions": [
+        { "name": "complete", "alwaysTerminates": true, "unreachableNodeIds": [2] },
+        { "name": "missing", "alwaysTerminates": false, "unreachableNodeIds": [] },
+        { "name": "forMissing", "alwaysTerminates": false, "unreachableNodeIds": [] },
+        { "name": "neverEnd", "alwaysTerminates": true, "unreachableNodeIds": [13] }
+      ]
+    },
+    {
+      "id": "malformed-arena",
+      "request": "malformed.json",
+      "accepted": false,
+      "diagnosticCodes": ["L9001", "L9001", "L9001", "L9001", "L1001", "L9001", "L9001", "L9001"],
+      "canonicalReferences": false,
+      "functions": [
+        { "name": "duplicate", "alwaysTerminates": false, "unreachableNodeIds": [] },
+        { "name": "duplicate", "alwaysTerminates": false, "unreachableNodeIds": [] },
+        { "name": "", "alwaysTerminates": false, "unreachableNodeIds": [] }
+      ]
+    },
+    {
+      "id": "valid-termination",
+      "request": "valid.json",
+      "accepted": true,
+      "diagnosticCodes": [],
+      "canonicalReferences": true,
+      "functions": [
+        { "name": "choose", "alwaysTerminates": true, "unreachableNodeIds": [] },
+        { "name": "unitBody", "alwaysTerminates": false, "unreachableNodeIds": [] },
+        { "name": "forever", "alwaysTerminates": true, "unreachableNodeIds": [] }
+      ]
+    }
+  ]
+}
