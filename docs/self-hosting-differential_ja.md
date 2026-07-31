@@ -93,3 +93,8 @@ node --test --test-timeout=120000 packages/compiler/dist/test/selfhost-semantic-
 ```
 
 この段階ではProduction Parser／Checkerを変更せず、Self-host KernelをProduction経路へ接続しません。
+
+
+## Generic instantiation table
+
+意味論第2段階では、同一moduleのgeneric data type適用をdeclaration IDとcanonical argument type ID列でinternします。各instantiationは置換済みmember type IDまたはunderlying target typeを保持します。置換前にplaceholderを登録するためrecursive record／aliasも決定的に停止し、同一適用は1つのinstantiation IDを再利用します。Recursive generic aliasは無限展開せず`L2042`を返します。

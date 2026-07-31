@@ -25,6 +25,7 @@ pub record SemanticType derives Eq, Debug, Json {
 	name: String
 	declarationId: Int?
 	arguments: List<Int>
+	instantiationId: Int?
 	span: SemanticSpan
 }
 
@@ -49,11 +50,29 @@ pub record SemanticDeclaration derives Eq, Debug, Json {
 	span: SemanticSpan
 }
 
+pub record SemanticInstantiatedMember derives Eq, Debug, Json {
+	id: Int
+	instantiationId: Int
+	sourceMemberId: Int
+	typeIds: List<Int>
+}
+
+pub record SemanticInstantiation derives Eq, Debug, Json {
+	id: Int
+	declarationId: Int
+	argumentTypeIds: List<Int>
+	memberIds: List<Int>
+	targetType: Int?
+	span: SemanticSpan
+}
+
 pub record FrontendSemanticResult derives Eq, Debug, Json {
 	accepted: Bool
 	declarations: List<SemanticDeclaration>
 	members: List<SemanticMember>
 	types: List<SemanticType>
+	instantiations: List<SemanticInstantiation>
+	instantiatedMembers: List<SemanticInstantiatedMember>
 	diagnostics: List<SemanticDiagnostic>
 }
 

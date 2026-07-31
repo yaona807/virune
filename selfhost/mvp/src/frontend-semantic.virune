@@ -14,6 +14,8 @@ import {
 	FrontendSemanticResult,
 	SemanticDeclaration,
 	SemanticDiagnostic,
+	SemanticInstantiation,
+	SemanticInstantiatedMember,
 	SemanticMember,
 	SemanticSpan,
 	SemanticType,
@@ -25,6 +27,8 @@ record SemanticState {
 	declarations: List<SemanticDeclaration>
 	members: List<SemanticMember>
 	types: List<SemanticType>
+	instantiations: List<SemanticInstantiation>
+	instantiatedMembers: List<SemanticInstantiatedMember>
 	diagnostics: List<SemanticDiagnostic>
 }
 
@@ -113,34 +117,101 @@ fn declarationAt(declarations: List<SemanticDeclaration>, index: Int) -> Semanti
 	}
 }
 
+fn fallbackType() -> SemanticType {
+	return SemanticType {
+		id: -1,
+		kind: "missing",
+		name: "",
+		declarationId: None,
+		arguments: [],
+		instantiationId: None,
+		span: toSemanticSpan(fallbackSpan()),
+	}
+}
+
+fn fallbackMember() -> SemanticMember {
+	return SemanticMember {
+		id: -1,
+		declarationId: -1,
+		kind: "missing",
+		name: "",
+		typeIds: [],
+		span: toSemanticSpan(fallbackSpan()),
+	}
+}
+
+fn fallbackInstantiation() -> SemanticInstantiation {
+	return SemanticInstantiation {
+		id: -1,
+		declarationId: -1,
+		argumentTypeIds: [],
+		memberIds: [],
+		targetType: None,
+		span: toSemanticSpan(fallbackSpan()),
+	}
+}
+
+fn typeAt(types: List<SemanticType>, index: Int) -> SemanticType {
+	return match List.get(types, index) {
+		Some(value) => value
+		None => fallbackType()
+	}
+}
+
+fn memberAt(members: List<SemanticMember>, index: Int) -> SemanticMember {
+	return match List.get(members, index) {
+		Some(value) => value
+		None => fallbackMember()
+	}
+}
+
+fn instantiationAt(values: List<SemanticInstantiation>, index: Int) -> SemanticInstantiation {
+	return match List.get(values, index) {
+		Some(value) => value
+		None => fallbackInstantiation()
+	}
+}
+
 fn stateWith(
 	declarations: List<SemanticDeclaration>,
 	members: List<SemanticMember>,
 	types: List<SemanticType>,
+	instantiations: List<SemanticInstantiation>,
+	instantiatedMembers: List<SemanticInstantiatedMember>,
 	diagnostics: List<SemanticDiagnostic>,
 ) -> SemanticState {
 	return SemanticState {
 		declarations: declarations,
 		members: members,
 		types: types,
+		instantiations: instantiations,
+		instantiatedMembers: instantiatedMembers,
 		diagnostics: diagnostics,
 	}
 }
 
 fn withDeclarations(state: SemanticState, values: List<SemanticDeclaration>) -> SemanticState {
-	return stateWith(values, state.members, state.types, state.diagnostics)
+	return stateWith(values, state.members, state.types, state.instantiations, state.instantiatedMembers, state.diagnostics)
 }
 
 fn withMembers(state: SemanticState, values: List<SemanticMember>) -> SemanticState {
-	return stateWith(state.declarations, values, state.types, state.diagnostics)
+	return stateWith(state.declarations, values, state.types, state.instantiations, state.instantiatedMembers, state.diagnostics)
 }
 
 fn withTypes(state: SemanticState, values: List<SemanticType>) -> SemanticState {
-	return stateWith(state.declarations, state.members, values, state.diagnostics)
+	return stateWith(state.declarations, state.members, values, state.instantiations, state.instantiatedMembers, state.diagnostics)
+}
+
+fn withInstantiations(state: SemanticState, values: List<SemanticInstantiation>) -> SemanticState {
+	return stateWith(state.declarations, state.members, state.types, values, state.instantiatedMembers, state.diagnostics)
+}
+
+fn withInstantiatedMembers(state: SemanticState, values: List<SemanticInstantiatedMember>) -> SemanticState {
+	return stateWith(state.declarations, state.members, state.types, state.instantiations, values, state.diagnostics)
 }
 
 fn withDiagnostics(state: SemanticState, values: List<SemanticDiagnostic>) -> SemanticState {
-	return stateWith(state.declarations, state.members, state.types, values)
+	return stateWith(state.declarations, state.members, state.types, state.instantiations, state.instantiatedMembers, values)
 }
 
 fn addDiagnostic(state: SemanticState, value: SemanticDiagnostic) -> SemanticState {
@@ -244,7 +315,7 @@ fn collectTypeParameters(node: FrontendAstNode, nodes: List<FrontendAstNode>) ->
 }
 
 fn registerDeclarations(source: String, parsed: FrontendParseResult) -> SemanticState {
-	let mut state = stateWith([], [], [], [])
+	let mut state = stateWith([], [], [], [], [], [])
 	for diagnostic in parsed.diagnostics {
 		state = addDiagnostic(state, parserSemanticDiagnostic(diagnostic))
 	}
@@ -349,6 +420,7 @@ fn appendType(
 		name: name,
 		declarationId: declarationId,
 		arguments: typeArguments,
+		instantiationId: None,
 		span: toSemanticSpan(span),
 	}
 	return ResolvedType { state: withTypes(state, List.append(state.types, value)), id: id }
@@ -558,6 +630,325 @@ fn processDeclaration(
 	return stateValue
 }
 
+fn semanticArenaDiagnostic(
+	code: String,
+	message: String,
+	span: SemanticSpan,
+	help: String?,
+) -> SemanticDiagnostic {
+	return SemanticDiagnostic {
+		code: code,
+		severity: "error",
+		message: message,
+		span: span,
+		help: help,
+	}
+}
+
+fn intListsEqual(left: List<Int>, right: List<Int>) -> Bool {
+	if List.length(left) != List.length(right) {
+		return false
+	}
+	let mut index = 0
+	while index < List.length(left) {
+		let leftValue = match List.get(left, index) { Some(value) => value, None => -1 }
+		let rightValue = match List.get(right, index) { Some(value) => value, None => -2 }
+		if leftValue != rightValue {
+			return false
+		}
+		index = index + 1
+	}
+	return true
+}
+
+fn nameIndex(values: List<String>, name: String) -> Int {
+	let mut index = 0
+	while index < List.length(values) {
+		let value = match List.get(values, index) { Some(item) => item, None => "" }
+		if value == name {
+			return index
+		}
+		index = index + 1
+	}
+	return -1
+}
+
+fn replaceType(state: SemanticState, replacement: SemanticType) -> SemanticState {
+	let mut values: List<SemanticType> = []
+	for value in state.types {
+		values = List.append(values, if value.id == replacement.id then replacement else value)
+	}
+	return withTypes(state, values)
+}
+
+fn replaceInstantiation(state: SemanticState, replacement: SemanticInstantiation) -> SemanticState {
+	let mut values: List<SemanticInstantiation> = []
+	for value in state.instantiations {
+		values = List.append(values, if value.id == replacement.id then replacement else value)
+	}
+	return withInstantiations(state, values)
+}
+
+fn typesEquivalent(
+	leftId: Int,
+	rightId: Int,
+	state: SemanticState,
+	depth: Int,
+) -> Bool {
+	if leftId == rightId {
+		return true
+	}
+	if depth >= 64 {
+		return false
+	}
+	let left = typeAt(state.types, leftId)
+	let right = typeAt(state.types, rightId)
+	if left.id < 0 || right.id < 0
+		|| left.kind != right.kind
+		|| left.name != right.name
+		|| left.declarationId != right.declarationId
+		|| List.length(left.arguments) != List.length(right.arguments) {
+		return false
+	}
+	let mut index = 0
+	while index < List.length(left.arguments) {
+		let leftArgument = match List.get(left.arguments, index) { Some(value) => value, None => -1 }
+		let rightArgument = match List.get(right.arguments, index) { Some(value) => value, None => -2 }
+		if !typesEquivalent(leftArgument, rightArgument, state, depth + 1) {
+			return false
+		}
+		index = index + 1
+	}
+	return true
+}
+
+fn typeListsEquivalent(left: List<Int>, right: List<Int>, state: SemanticState) -> Bool {
+	if List.length(left) != List.length(right) {
+		return false
+	}
+	let mut index = 0
+	while index < List.length(left) {
+		let leftId = match List.get(left, index) { Some(value) => value, None => -1 }
+		let rightId = match List.get(right, index) { Some(value) => value, None => -2 }
+		if !typesEquivalent(leftId, rightId, state, 0) {
+			return false
+		}
+		index = index + 1
+	}
+	return true
+}
+
+fn instantiationIndex(state: SemanticState, declarationId: Int, typeArguments: List<Int>) -> Int {
+	let mut index = 0
+	while index < List.length(state.instantiations) {
+		let value = instantiationAt(state.instantiations, index)
+		if value.declarationId == declarationId && typeListsEquivalent(value.argumentTypeIds, typeArguments, state) {
+			return index
+		}
+		index = index + 1
+	}
+	return -1
+}
+
+fn attachInstantiationToType(state: SemanticState, typeId: Int, instantiationId: Int) -> SemanticState {
+	let value = typeAt(state.types, typeId)
+	return replaceType(state, SemanticType {
+		id: value.id,
+		kind: value.kind,
+		name: value.name,
+		declarationId: value.declarationId,
+		arguments: value.arguments,
+		instantiationId: Some(instantiationId),
+		span: value.span,
+	})
+}
+
+fn substituteType(
+	sourceTypeId: Int,
+	declaration: SemanticDeclaration,
+	typeArguments: List<Int>,
+	stateValue: SemanticState,
+) -> ResolvedType {
+	let sourceType = typeAt(stateValue.types, sourceTypeId)
+	if sourceType.kind == "type-parameter" && sourceType.declarationId == Some(declaration.id) {
+		let parameterIndex = nameIndex(declaration.typeParameters, sourceType.name)
+		if parameterIndex >= 0 {
+			let replacement = match List.get(typeArguments, parameterIndex) { Some(value) => value, None => sourceTypeId }
+			return ResolvedType { state: stateValue, id: replacement }
+		}
+	}
+	let mut state = stateValue
+	let mut substitutedArguments: List<Int> = []
+	for argumentId in sourceType.arguments {
+		let resolved = substituteType(argumentId, declaration, typeArguments, state)
+		state = resolved.state
+		substitutedArguments = List.append(substitutedArguments, resolved.id)
+	}
+	let id = List.length(state.types)
+	let value = SemanticType {
+		id: id,
+		kind: sourceType.kind,
+		name: sourceType.name,
+		declarationId: sourceType.declarationId,
+		arguments: substitutedArguments,
+		instantiationId: None,
+		span: sourceType.span,
+	}
+	return ResolvedType { state: withTypes(state, List.append(state.types, value)), id: id }
+}
+
+fn attachInstantiatedMember(
+	stateValue: SemanticState,
+	instantiationId: Int,
+	sourceMember: SemanticMember,
+	typeIds: List<Int>,
+) -> SemanticState {
+	let mut state = stateValue
+	let id = List.length(state.instantiatedMembers)
+	let member = SemanticInstantiatedMember {
+		id: id,
+		instantiationId: instantiationId,
+		sourceMemberId: sourceMember.id,
+		typeIds: typeIds,
+	}
+	state = withInstantiatedMembers(state, List.append(state.instantiatedMembers, member))
+	let value = instantiationAt(state.instantiations, instantiationId)
+	return replaceInstantiation(state, SemanticInstantiation {
+		id: value.id,
+		declarationId: value.declarationId,
+		argumentTypeIds: value.argumentTypeIds,
+		memberIds: List.append(value.memberIds, id),
+		targetType: value.targetType,
+		span: value.span,
+	})
+}
+
+fn setInstantiationTarget(state: SemanticState, instantiationId: Int, targetType: Int) -> SemanticState {
+	let value = instantiationAt(state.instantiations, instantiationId)
+	return replaceInstantiation(state, SemanticInstantiation {
+		id: value.id,
+		declarationId: value.declarationId,
+		argumentTypeIds: value.argumentTypeIds,
+		memberIds: value.memberIds,
+		targetType: Some(targetType),
+		span: value.span,
+	})
+}
+
+fn optionalTypeId(value: Int?) -> Int {
+	return match value {
+		Some(item) => item
+		None => -1
+	}
+}
+
+fn hasInstantiation(value: SemanticType) -> Bool {
+	return match value.instantiationId {
+		Some(_) => true
+		None => false
+	}
+}
+
+fn internInstantiation(stateValue: SemanticState, typeId: Int) -> SemanticState {
+	let typeValue = typeAt(stateValue.types, typeId)
+	let declarationId = match typeValue.declarationId { Some(value) => value, None => -1 }
+	if declarationId < 0 {
+		return stateValue
+	}
+	let existing = instantiationIndex(stateValue, declarationId, typeValue.arguments)
+	if existing >= 0 {
+		return attachInstantiationToType(stateValue, typeId, existing)
+	}
+	let declaration = declarationAt(stateValue.declarations, declarationId)
+	let instantiationId = List.length(stateValue.instantiations)
+	let placeholder = SemanticInstantiation {
+		id: instantiationId,
+		declarationId: declarationId,
+		argumentTypeIds: typeValue.arguments,
+		memberIds: [],
+		targetType: None,
+		span: typeValue.span,
+	}
+	let mut state = withInstantiations(stateValue, List.append(stateValue.instantiations, placeholder))
+	state = attachInstantiationToType(state, typeId, instantiationId)
+	for memberId in declaration.memberIds {
+		let sourceMember = memberAt(state.members, memberId)
+		let mut substituted: List<Int> = []
+		for sourceTypeId in sourceMember.typeIds {
+			let resolved = substituteType(sourceTypeId, declaration, typeValue.arguments, state)
+			state = resolved.state
+			substituted = List.append(substituted, resolved.id)
+		}
+		state = attachInstantiatedMember(state, instantiationId, sourceMember, substituted)
+	}
+	let sourceTarget = optionalTypeId(declaration.targetType)
+	if sourceTarget >= 0 {
+		let resolved = substituteType(sourceTarget, declaration, typeValue.arguments, state)
+		state = resolved.state
+		state = setInstantiationTarget(state, instantiationId, resolved.id)
+		let target = typeAt(state.types, resolved.id)
+		if declaration.kind == "alias" && target.declarationId == Some(declaration.id) && typeListsEquivalent(target.arguments, typeValue.arguments, state) {
+			state = addDiagnostic(state, semanticArenaDiagnostic(
+				"L2042",
+				"Recursive generic alias " + declaration.name,
+				typeValue.span,
+				Some("Break the alias cycle with a concrete data declaration."),
+			))
+		}
+	}
+	return state
+}
+
+fn containsOpenType(typeId: Int, state: SemanticState) -> Bool {
+	let value = typeAt(state.types, typeId)
+	if value.kind == "type-parameter" {
+		return true
+	}
+	for argumentId in value.arguments {
+		if containsOpenType(argumentId, state) {
+			return true
+		}
+	}
+	return false
+}
+
+fn shouldInstantiate(typeId: Int, state: SemanticState) -> Bool {
+	let value = typeAt(state.types, typeId)
+	if value.kind != "named" || hasInstantiation(value) {
+		return false
+	}
+	let declarationId = match value.declarationId { Some(item) => item, None => -1 }
+	if declarationId < 0 {
+		return false
+	}
+	let declaration = declarationAt(state.declarations, declarationId)
+	return List.length(declaration.typeParameters) > 0
+		&& List.length(declaration.typeParameters) == List.length(value.arguments)
+		&& !containsOpenType(typeId, state)
+}
+
+fn buildInstantiations(stateValue: SemanticState) -> SemanticState {
+	let mut state = stateValue
+	let mut index = 0
+	let mut steps = 0
+	while index < List.length(state.types) && steps < 4096 {
+		if shouldInstantiate(index, state) {
+			state = internInstantiation(state, index)
+		}
+		index = index + 1
+		steps = steps + 1
+	}
+	if index < List.length(state.types) {
+		state = addDiagnostic(state, semanticArenaDiagnostic(
+			"L9001",
+			"Generic instantiation exceeded the bounded expansion limit",
+			toSemanticSpan(fallbackSpan()),
+			Some("Report the generic type graph that exceeded the self-host checker limit."),
+		))
+	}
+	return state
+}
+
 fn semanticAccepted(diagnostics: List<SemanticDiagnostic>) -> Bool {
 	for diagnostic in diagnostics {
 		if diagnostic.severity == "error" {
@@ -581,12 +972,15 @@ pub fn checkFrontendDataTypes(source: String) -> Result<FrontendSemanticResult, 
 		for declaration in declarations {
 			state = processDeclaration(parsed, declaration, state)
 		}
+		state = buildInstantiations(state)
 	}
 	return Ok(FrontendSemanticResult {
 		accepted: parsed.accepted && semanticAccepted(state.diagnostics),
 		declarations: state.declarations,
 		members: state.members,
 		types: state.types,
+		instantiations: state.instantiations,
+		instantiatedMembers: state.instantiatedMembers,
 		diagnostics: state.diagnostics,
 	})
 }
