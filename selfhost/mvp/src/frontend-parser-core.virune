@@ -11,6 +11,7 @@ import {
 	FrontendTokenKind,
 } from "./frontend-model.virune"
 import { lexFrontendJson } from "./frontend-lexer.virune"
+import { parseDetailedDeclarationJson } from "./frontend-declaration-parser.virune"
 import {
 	FrontendAstNode,
 	FrontendParseResult,
@@ -41,6 +42,13 @@ record ParsedNode {
 record ParsedDocumentation {
 	state: CoreState
 	documentation: List<String>
+}
+
+record DetailedDeclarationTransport derives Json {
+	nextIndex: Int
+	nodes: List<FrontendAstNode>
+	diagnostics: List<ParserDiagnostic>
+	root: Int
 }
 
 fn stateWith(
@@ -831,6 +839,57 @@ fn parseLineDeclaration(
 	return addNode(state, tokens, kind, name, start, state.index, [], documentation)
 }
 
+fn loadDetailedDeclaration(
+	state: CoreState,
+	tokens: List<FrontendToken>,
+	kind: String,
+	documentation: List<String>,
+) -> Result<DetailedDeclarationTransport, List<JsonError>> {
+	let tokensEncoded = Json.encode<List<FrontendToken>>(tokens)?
+	let documentationEncoded = Json.encode<List<String>>(documentation)?
+	let encoded = parseDetailedDeclarationJson(
+		tokensEncoded,
+		state.index,
+		List.length(state.nodes),
+		kind,
+		documentationEncoded,
+	)?
+	let raw = Json.parse(encoded)?
+	return Json.decode<DetailedDeclarationTransport>(raw)
+}
+
+fn parseDetailedDeclaration(
+	stateValue: CoreState,
+	tokens: List<FrontendToken>,
+	kind: String,
+	documentation: List<String>,
+) -> ParsedNode {
+	return match loadDetailedDeclaration(stateValue, tokens, kind, documentation) {
+		Ok(value) => {
+			let state = CoreState {
+				index: value.nextIndex,
+				nodes: List.concat(stateValue.nodes, value.nodes),
+				diagnostics: List.concat(stateValue.diagnostics, value.diagnostics),
+				commentIndex: stateValue.commentIndex,
+				pendingDocumentation: stateValue.pendingDocumentation,
+				moduleDocumentation: stateValue.moduleDocumentation,
+				significantSeen: stateValue.significantSeen,
+			}
+			ParsedNode { state: state, id: value.root }
+		}
+		Err(_) => {
+			let failed = addDiagnosticAt(
+				stateValue,
+				tokens,
+				"P9000",
+				"Detailed declaration parser transport failed",
+				stateValue.index,
+			)
+			ParsedNode { state: synchronizeLine(failed, tokens), id: -1 }
+		}
+	}
+}
+
 fn parseDeclaration(stateValue: CoreState, tokens: List<FrontendToken>) -> ParsedNode {
 	let kind = declarationKind(stateValue, tokens)
 	let docs = takeDocumentation(stateValue, tokens, supportsDocumentation(kind))
@@ -838,10 +897,16 @@ fn parseDeclaration(stateValue: CoreState, tokens: List<FrontendToken>) -> Parse
 	if kind == "FunctionDeclaration" {
 		return parseFunction(state, tokens, docs.documentation)
 	}
-	if kind == "RecordDeclaration" || kind == "EnumDeclaration" || kind == "ExternDeclaration" {
+	if kind == "RecordDeclaration"
+		|| kind == "EnumDeclaration"
+		|| kind == "NewtypeDeclaration"
+		|| kind == "TypeAliasDeclaration" {
+		return parseDetailedDeclaration(state, tokens, kind, docs.documentation)
+	}
+	if kind == "ExternDeclaration" {
 		return parseComposite(state, tokens, kind, docs.documentation)
 	}
-	if kind == "NewtypeDeclaration" || kind == "TypeAliasDeclaration" || kind == "TopLevelValueDeclaration" {
+	if kind == "TopLevelValueDeclaration" {
 		return parseLineDeclaration(state, tokens, kind, docs.documentation)
 	}
 	if kind == "TestDeclaration" {
