@@ -1,0 +1,340 @@
+//! Deterministic parallel and parallel-try entry validation.
+
+record FrontendParallelEntry derives Eq, Debug, Json {
+	name: String
+	operandKind: String
+	valueType: String?
+	errorType: String?
+}
+
+record FrontendParallelRequest derives Eq, Debug, Json {
+	tryMode: Bool
+	entries: List<FrontendParallelEntry>
+}
+
+record SemanticParallelEntry derives Eq, Debug, Json {
+	id: Int
+	name: String
+	operandKind: String
+	valueType: String?
+	errorType: String?
+	fieldType: String
+	futureValid: Bool
+	resultValid: Bool
+	errorCompatible: Bool
+	valid: Bool
+}
+
+record SemanticParallelField derives Eq, Debug, Json {
+	name: String
+	typeName: String
+}
+
+record SemanticParallelDiagnostic derives Eq, Debug, Json {
+	code: String
+	severity: String
+	message: String
+	entryId: Int?
+	help: String?
+}
+
+record FrontendParallelResult derives Eq, Debug, Json {
+	accepted: Bool
+	tryMode: Bool
+	entries: List<SemanticParallelEntry>
+	fields: List<SemanticParallelField>
+	commonErrorType: String?
+	resultType: String
+	diagnostics: List<SemanticParallelDiagnostic>
+}
+
+record ParallelBuildResult {
+	entries: List<SemanticParallelEntry>
+	fields: List<SemanticParallelField>
+	commonErrorType: String?
+	diagnostics: List<SemanticParallelDiagnostic>
+}
+
+fn parallelDiagnostic(
+	code: String,
+	message: String,
+	entryId: Int?,
+	help: String?,
+) -> SemanticParallelDiagnostic {
+	return SemanticParallelDiagnostic {
+		code: code,
+		severity: "error",
+		message: message,
+		entryId: entryId,
+		help: help,
+	}
+}
+
+fn optionalStringPresent(value: String?) -> Bool {
+	return match value {
+		Some(item) => String.length(item) > 0
+		None => false
+	}
+}
+
+fn optionalStringValid(value: String?) -> Bool {
+	return match value {
+		Some(item) => String.length(item) > 0
+		None => true
+	}
+}
+
+fn optionalStringOr(value: String?, fallback: String) -> String {
+	return match value {
+		Some(item) => if String.length(item) > 0 then item else fallback
+		None => fallback
+	}
+}
+
+fn duplicateEntry(values: List<SemanticParallelEntry>, name: String) -> Bool {
+	for value in values {
+		if value.name == name {
+			return true
+		}
+	}
+	return false
+}
+
+fn validOperandKind(kind: String) -> Bool {
+	return kind == "future" || kind == "other"
+}
+
+fn sameOptionalString(left: String?, right: String?) -> Bool {
+	return match left {
+		Some(leftValue) => match right {
+			Some(rightValue) => leftValue == rightValue
+			None => false
+		}
+		None => match right {
+			Some(_) => false
+			None => true
+		}
+	}
+}
+
+fn upsertField(
+	values: List<SemanticParallelField>,
+	name: String,
+	typeName: String,
+) -> List<SemanticParallelField> {
+	let mut result: List<SemanticParallelField> = []
+	let mut replaced = false
+	for value in values {
+		if value.name == name {
+			result = List.append(result, SemanticParallelField {
+				name: name,
+				typeName: typeName,
+			})
+			replaced = true
+		} else {
+			result = List.append(result, value)
+		}
+	}
+	if !replaced {
+		result = List.append(result, SemanticParallelField {
+			name: name,
+			typeName: typeName,
+		})
+	}
+	return result
+}
+
+fn buildParallel(request: FrontendParallelRequest) -> ParallelBuildResult {
+	let mut entries: List<SemanticParallelEntry> = []
+	let mut fields: List<SemanticParallelField> = []
+	let mut diagnostics: List<SemanticParallelDiagnostic> = []
+	let mut commonErrorType: String? = None
+	let mut id = 0
+	if List.length(request.entries) == 0 {
+		diagnostics = List.append(diagnostics, parallelDiagnostic(
+			"L9001",
+			"Parallel expression must contain at least one entry",
+			None,
+			Some("Provide one or more canonical parallel entries."),
+		))
+	}
+	for value in request.entries {
+		let nameValid = String.length(value.name) > 0
+		let duplicate = nameValid && duplicateEntry(entries, value.name)
+		let operandKindValid = validOperandKind(value.operandKind)
+		let valueHandleValid = optionalStringValid(value.valueType)
+		let errorHandleValid = optionalStringValid(value.errorType)
+		let mut futureValid = false
+		let mut resultValid = !request.tryMode
+		let mut errorCompatible = true
+		let mut fieldType = "Error"
+		if duplicate {
+			diagnostics = List.append(diagnostics, parallelDiagnostic(
+				"L2036",
+				"Duplicate parallel entry " + value.name,
+				Some(id),
+				Some("Use a unique entry name inside this parallel expression."),
+			))
+		}
+		if !nameValid {
+			diagnostics = List.append(diagnostics, parallelDiagnostic(
+				"L9001",
+				"Parallel entry name cannot be empty",
+				Some(id),
+				Some("Use the canonical record field name for this entry."),
+			))
+		}
+		if !operandKindValid {
+			diagnostics = List.append(diagnostics, parallelDiagnostic(
+				"L9001",
+				"Unknown parallel operand kind " + value.operandKind,
+				Some(id),
+				Some("Use future or other."),
+			))
+		}
+		if !valueHandleValid {
+			diagnostics = List.append(diagnostics, parallelDiagnostic(
+				"L9001",
+				"Parallel value type cannot be empty",
+				Some(id),
+				Some("Pass a non-empty Host-resolved Future value type or null."),
+			))
+		}
+		if operandKindValid && value.operandKind == "future" && !optionalStringPresent(value.valueType) {
+			diagnostics = List.append(diagnostics, parallelDiagnostic(
+				"L9001",
+				"Future parallel entry requires a resolved value type",
+				Some(id),
+				Some("Pass the canonical Future value type as valueType."),
+			))
+		}
+		if !errorHandleValid {
+			diagnostics = List.append(diagnostics, parallelDiagnostic(
+				"L9001",
+				"Parallel error type cannot be empty",
+				Some(id),
+				Some("Pass a non-empty Host-resolved Result error type or null."),
+			))
+		}
+		if operandKindValid && value.operandKind == "other" {
+			diagnostics = List.append(diagnostics, parallelDiagnostic(
+				"L2037",
+				"parallel entries must be async expressions",
+				Some(id),
+				Some("Use an async expression whose type is Future<T>."),
+			))
+		} else if operandKindValid && value.operandKind == "future" && valueHandleValid && optionalStringPresent(value.valueType) {
+			futureValid = true
+			fieldType = optionalStringOr(value.valueType, "Error")
+			if request.tryMode {
+				resultValid = optionalStringPresent(value.errorType)
+				if !resultValid {
+					diagnostics = List.append(diagnostics, parallelDiagnostic(
+						"L2038",
+						"parallel try entries must return Result",
+						Some(id),
+						Some("Use an async expression whose type is Future<Result<T, E>>."),
+					))
+					fieldType = "Error"
+				} else {
+					if optionalStringPresent(commonErrorType) {
+						errorCompatible = sameOptionalString(commonErrorType, value.errorType)
+						if !errorCompatible {
+							diagnostics = List.append(diagnostics, parallelDiagnostic(
+								"L2039",
+								"parallel try entries must share the same error type",
+								Some(id),
+								Some("Use one canonical Result error type across all parallel try entries."),
+							))
+						}
+					} else {
+						commonErrorType = value.errorType
+					}
+				}
+			}
+		}
+		fields = upsertField(fields, value.name, fieldType)
+		entries = List.append(entries, SemanticParallelEntry {
+			id: id,
+			name: value.name,
+			operandKind: value.operandKind,
+			valueType: value.valueType,
+			errorType: value.errorType,
+			fieldType: fieldType,
+			futureValid: futureValid,
+			resultValid: resultValid,
+			errorCompatible: errorCompatible,
+			valid: nameValid
+				&& !duplicate
+				&& operandKindValid
+				&& valueHandleValid
+				&& errorHandleValid
+				&& futureValid
+				&& resultValid
+				&& errorCompatible,
+		})
+		id = id + 1
+	}
+	return ParallelBuildResult {
+		entries: entries,
+		fields: fields,
+		commonErrorType: commonErrorType,
+		diagnostics: diagnostics,
+	}
+}
+
+fn recordType(fields: List<SemanticParallelField>) -> String {
+	let mut result = "{"
+	let mut first = true
+	for field in fields {
+		if !first {
+			result = result + ", "
+		}
+		result = result + field.name + ": " + field.typeName
+		first = false
+	}
+	return result + "}"
+}
+
+fn resultType(
+	tryMode: Bool,
+	fields: List<SemanticParallelField>,
+	commonErrorType: String?,
+) -> String {
+	let recordShape = recordType(fields)
+	if tryMode {
+		return "Future<Result<" + recordShape + ", " + optionalStringOr(commonErrorType, "Error") + ">>"
+	}
+	return "Future<" + recordShape + ">"
+}
+
+fn accepted(values: List<SemanticParallelDiagnostic>) -> Bool {
+	for value in values {
+		if value.severity == "error" {
+			return false
+		}
+	}
+	return true
+}
+
+fn decodeRequest(encoded: String) -> Result<FrontendParallelRequest, List<JsonError>> {
+	let raw = Json.parse(encoded)?
+	return Json.decode<FrontendParallelRequest>(raw)
+}
+
+fn checkFrontendParallel(request: FrontendParallelRequest) -> FrontendParallelResult {
+	let built = buildParallel(request)
+	return FrontendParallelResult {
+		accepted: accepted(built.diagnostics),
+		tryMode: request.tryMode,
+		entries: built.entries,
+		fields: built.fields,
+		commonErrorType: built.commonErrorType,
+		resultType: resultType(request.tryMode, built.fields, built.commonErrorType),
+		diagnostics: built.diagnostics,
+	}
+}
+
+pub fn checkFrontendParallelJson(encoded: String) -> Result<String, List<JsonError>> {
+	return Json.encode<FrontendParallelResult>(checkFrontendParallel(decodeRequest(encoded)?))
+}
