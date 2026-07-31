@@ -1,0 +1,2 @@
+type Loop<T> = Loop<T>
+type IntLoop = Loop<Int>
