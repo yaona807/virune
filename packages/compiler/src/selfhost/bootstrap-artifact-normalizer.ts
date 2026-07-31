@@ -9,7 +9,9 @@ export type JsonValue =
 	| number
 	| string
 	| readonly JsonValue[]
-	| { readonly [key: string]: JsonValue };
+	| JsonObject;
+
+type JsonObject = { readonly [key: string]: JsonValue };
 
 export interface BootstrapArtifactModuleInput {
 	readonly path: string;
@@ -180,9 +182,10 @@ function canonicalizeSourceMap(value: JsonValue, root: string, path: readonly st
 	if (Array.isArray(value)) {
 		return value.map((entry, index) => canonicalizeSourceMap(entry, root, [...path, String(index)]));
 	}
+	const objectValue = value as JsonObject;
 	const normalized: Record<string, JsonValue> = {};
-	for (const key of Object.keys(value).sort(compareText)) {
-		const entry = value[key];
+	for (const key of Object.keys(objectValue).sort(compareText)) {
+		const entry = objectValue[key];
 		if (entry === undefined) throw new Error(`Source map field ${[...path, key].join('.')} is undefined`);
 		normalized[key] = canonicalizeSourceMap(entry, root, [...path, key]);
 	}
@@ -198,9 +201,10 @@ function canonicalizeJson(value: JsonValue, path: readonly string[] = []): JsonV
 	if (Array.isArray(value)) {
 		return value.map((entry, index) => canonicalizeJson(entry, [...path, String(index)]));
 	}
+	const objectValue = value as JsonObject;
 	const normalized: Record<string, JsonValue> = {};
-	for (const key of Object.keys(value).sort(compareText)) {
-		const entry = value[key];
+	for (const key of Object.keys(objectValue).sort(compareText)) {
+		const entry = objectValue[key];
 		if (entry === undefined) throw new Error(`JSON field ${[...path, key].join('.')} is undefined`);
 		normalized[key] = canonicalizeJson(entry, [...path, key]);
 	}
@@ -281,10 +285,12 @@ function collectDiff(
 		}
 		return;
 	}
-	const keys = [...new Set([...Object.keys(before), ...Object.keys(after)])].sort(compareText);
+	const beforeObject = before as JsonObject;
+	const afterObject = after as JsonObject;
+	const keys = [...new Set([...Object.keys(beforeObject), ...Object.keys(afterObject)])].sort(compareText);
 	for (const key of keys) {
 		const childPath = path.length === 0 ? key : `${path}.${key}`;
-		collectDiff(before[key], after[key], childPath, changes);
+		collectDiff(beforeObject[key], afterObject[key], childPath, changes);
 	}
 }
 
