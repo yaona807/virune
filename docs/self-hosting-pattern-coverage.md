@@ -27,7 +27,7 @@ Case IDs are contiguous and follow the canonical language order. Local enum case
 - `Int` and `String` without an unguarded wildcard produce `L3005`.
 - Unknown targets or cases and malformed requests return diagnostics instead of panicking.
 
-The result contains canonical cases, arm reachability, covered case IDs, missing case IDs and names, and the final exhaustiveness decision. Repeating the same request must produce identical JSON.
+The result contains canonical cases, arm reachability, covered case IDs, missing case IDs and names, and the final exhaustiveness decision. Repeating the same request must produce identical JSON. Only the string-based JSON adapter is public; request, result, and semantic transport records remain module-private.
 
 ## Validation
 
