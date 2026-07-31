@@ -1,0 +1,1 @@
+Statement detail implementation trigger.
