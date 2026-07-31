@@ -5,7 +5,7 @@
 //! Host adapts the final payload to Kernel Contract v1. Data types, type
 //! operations, symbol scopes, module visibility, pattern coverage, local
 //! must-use analysis, effect requirements, control-flow termination, defer,
-//! and async／await validation cross module boundaries only as JSON.
+//! async／await, and parallel validation cross module boundaries only as JSON.
 
 import { checkMvpJson } from "./checker.virune"
 import { emitMvpJson } from "./emitter.virune"
@@ -17,6 +17,7 @@ import { lexFrontend } from "./frontend-lexer.virune"
 import { checkFrontendMustUseJson } from "./frontend-must-use.virune"
 import { parseFrontendCore } from "./frontend-parser-core.virune"
 import { checkFrontendPatternCoverageJson } from "./frontend-pattern-coverage.virune"
+import { checkFrontendParallelJson } from "./frontend-parallel.virune"
 import { checkFrontendDataTypesJson } from "./frontend-semantic.virune"
 import { checkFrontendModuleVisibilityJson } from "./frontend-symbol-visibility.virune"
 import { buildFrontendSymbolScopeJson } from "./frontend-symbol-scope.virune"
@@ -90,4 +91,9 @@ pub fn checkFrontendDeferContract(request: String) -> Result<String, List<JsonEr
 @jsExport
 pub fn checkFrontendAsyncAwaitContract(request: String) -> Result<String, List<JsonError>> {
 	return checkFrontendAsyncAwaitJson(request)
+}
+
+@jsExport
+pub fn checkFrontendParallelContract(request: String) -> Result<String, List<JsonError>> {
+	return checkFrontendParallelJson(request)
 }
