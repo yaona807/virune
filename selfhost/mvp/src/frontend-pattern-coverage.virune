@@ -432,6 +432,10 @@ fn buildCoverage(
 	let mut index = 0
 	for arm in check.arms {
 		let key = armKey(arm)
+		let keyValue = match key {
+			Some(value) => value
+			None => ""
+		}
 		let mut reachable = true
 		let mut coveredCaseId = -1
 		if wildcard {
@@ -442,46 +446,39 @@ fn buildCoverage(
 				Some("Remove this arm or move it before the unguarded wildcard arm."),
 			))
 			reachable = false
-		} else {
-			match key {
-				Some(value) => {
-					if !arm.guarded {
-						if containsString(seen, value) {
-							diagnostics = List.append(diagnostics, patternError(
-								"L3002",
-								"Unreachable duplicate pattern " + value,
-								arm.span,
-								Some("Remove the duplicate arm or add a guard that can distinguish it."),
-							))
-							reachable = false
-						} else {
-							seen = List.append(seen, value)
-						}
-						if value == "*" {
-							wildcard = true
-						} else if closedSpace(space.kind) {
-							coveredCaseId = caseId(space.cases, value)
-							if coveredCaseId < 0 {
-								diagnostics = List.append(diagnostics, patternError(
-									"L2040",
-									"Unknown pattern case " + value + " for " + check.target,
-									arm.span,
-									Some("Use a constructor or literal that belongs to the target pattern space."),
-								))
-							} else if !containsInt(covered, coveredCaseId) {
-								covered = List.append(covered, coveredCaseId)
-							}
-						}
-					}
-				}
-				None => {
+		} else if String.length(keyValue) == 0 {
+			diagnostics = List.append(diagnostics, patternError(
+				"L9001",
+				"Malformed pattern coverage arm",
+				arm.span,
+				Some("Use wildcard, constructor, boolean, or literal with the required name."),
+			))
+			reachable = false
+		} else if !arm.guarded {
+			if containsString(seen, keyValue) {
+				diagnostics = List.append(diagnostics, patternError(
+					"L3002",
+					"Unreachable duplicate pattern " + keyValue,
+					arm.span,
+					Some("Remove the duplicate arm or add a guard that can distinguish it."),
+				))
+				reachable = false
+			} else {
+				seen = List.append(seen, keyValue)
+			}
+			if keyValue == "*" {
+				wildcard = true
+			} else if closedSpace(space.kind) {
+				coveredCaseId = caseId(space.cases, keyValue)
+				if coveredCaseId < 0 {
 					diagnostics = List.append(diagnostics, patternError(
-						"L9001",
-						"Malformed pattern coverage arm",
+						"L2040",
+						"Unknown pattern case " + keyValue + " for " + check.target,
 						arm.span,
-						Some("Use wildcard, constructor, boolean, or literal with the required name."),
+						Some("Use a constructor or literal that belongs to the target pattern space."),
 					))
-					reachable = false
+				} else if !containsInt(covered, coveredCaseId) {
+					covered = List.append(covered, coveredCaseId)
 				}
 			}
 		}
