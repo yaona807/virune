@@ -31,11 +31,12 @@ test "frontend parser builds a deterministic flat module AST" {
 }
 
 test "frontend parser recovers and reports multiple malformed constructs" {
-	let source = "pub fn broken(value: Int -> Int {\n\tlet =\n\treturn\n}\npub nonsense\npub fn valid() -> Int {\n\treturn 1\n}\n"
+	let source = "pub fn broken() -> Int {\n\tlet =\n\treturn\n}\npub nonsense\npub fn valid() -> Int {\n\treturn 1\n}\n"
 	let result = encoded(source)
 	expect(String.contains(result, "\"accepted\":false"))
-	expect(String.contains(result, "Unterminated Parameters"))
+	expect(String.contains(result, "Expected a local binding name"))
 	expect(String.contains(result, "Expected a declaration"))
+	expect(String.contains(result, "\"text\":\"valid\""))
 }
 
 test "frontend parser enforces documentation attachment boundaries" {
