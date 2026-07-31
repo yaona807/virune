@@ -1,0 +1,139 @@
+name: Integrate detailed declaration parser
+
+on:
+  push:
+    branches:
+      - agent/selfhost-declaration-type-ast
+    paths:
+      - .github/workflows/integrate-declaration-parser.yml
+
+permissions:
+  contents: write
+
+jobs:
+  integrate:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: agent/selfhost-declaration-type-ast
+          fetch-depth: 0
+      - name: Integrate the declaration parser module
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('selfhost/mvp/src/frontend-parser-core.virune')
+          content = path.read_text(encoding='utf-8')
+
+          import_marker = 'import { lexFrontendJson } from "./frontend-lexer.virune"'
+          import_replacement = import_marker + '\nimport { parseDetailedDeclarationJson } from "./frontend-declaration-parser.virune"'
+          if content.count(import_marker) != 1:
+              raise SystemExit('unexpected lexer import count')
+          content = content.replace(import_marker, import_replacement)
+
+          record_marker = '''record ParsedDocumentation {
+          \tstate: CoreState
+          \tdocumentation: List<String>
+          }'''
+          record_replacement = record_marker + '''
+
+          record DetailedDeclarationTransport derives Json {
+          \tnextIndex: Int
+          \tnodes: List<FrontendAstNode>
+          \tdiagnostics: List<ParserDiagnostic>
+          \troot: Int
+          }'''
+          if content.count(record_marker) != 1:
+              raise SystemExit('unexpected ParsedDocumentation record count')
+          content = content.replace(record_marker, record_replacement)
+
+          helper_marker = '''fn parseDeclaration(stateValue: CoreState, tokens: List<FrontendToken>) -> ParsedNode {'''
+          helper = '''fn loadDetailedDeclaration(
+          \tstate: CoreState,
+          \ttokens: List<FrontendToken>,
+          \tkind: String,
+          \tdocumentation: List<String>,
+          ) -> Result<DetailedDeclarationTransport, List<JsonError>> {
+          \tlet tokensEncoded = Json.encode<List<FrontendToken>>(tokens)?
+          \tlet documentationEncoded = Json.encode<List<String>>(documentation)?
+          \tlet encoded = parseDetailedDeclarationJson(
+          \t\ttokensEncoded,
+          \t\tstate.index,
+          \t\tList.length(state.nodes),
+          \t\tkind,
+          \t\tdocumentationEncoded,
+          \t)?
+          \tlet raw = Json.parse(encoded)?
+          \treturn Json.decode<DetailedDeclarationTransport>(raw)
+          }
+
+          fn parseDetailedDeclaration(
+          \tstateValue: CoreState,
+          \ttokens: List<FrontendToken>,
+          \tkind: String,
+          \tdocumentation: List<String>,
+          ) -> ParsedNode {
+          \treturn match loadDetailedDeclaration(stateValue, tokens, kind, documentation) {
+          \t\tOk(value) => {
+          \t\t\tlet state = CoreState {
+          \t\t\t\tindex: value.nextIndex,
+          \t\t\t\tnodes: List.concat(stateValue.nodes, value.nodes),
+          \t\t\t\tdiagnostics: List.concat(stateValue.diagnostics, value.diagnostics),
+          \t\t\t\tcommentIndex: stateValue.commentIndex,
+          \t\t\t\tpendingDocumentation: stateValue.pendingDocumentation,
+          \t\t\t\tmoduleDocumentation: stateValue.moduleDocumentation,
+          \t\t\t\tsignificantSeen: stateValue.significantSeen,
+          \t\t\t}
+          \t\t\tParsedNode { state: state, id: value.root }
+          \t\t}
+          \t\tErr(_) => {
+          \t\t\tlet failed = addDiagnosticAt(
+          \t\t\t\tstateValue,
+          \t\t\t\ttokens,
+          \t\t\t\t"P9000",
+          \t\t\t\t"Detailed declaration parser transport failed",
+          \t\t\t\tstateValue.index,
+          \t\t\t)
+          \t\t\tParsedNode { state: synchronizeLine(failed, tokens), id: -1 }
+          \t\t}
+          \t}
+          }
+
+          ''' + helper_marker
+          if content.count(helper_marker) != 1:
+              raise SystemExit('unexpected parseDeclaration count')
+          content = content.replace(helper_marker, helper)
+
+          old_dispatch = '''\tif kind == "RecordDeclaration" || kind == "EnumDeclaration" || kind == "ExternDeclaration" {
+          \t\treturn parseComposite(state, tokens, kind, docs.documentation)
+          \t}
+          \tif kind == "NewtypeDeclaration" || kind == "TypeAliasDeclaration" || kind == "TopLevelValueDeclaration" {
+          \t\treturn parseLineDeclaration(state, tokens, kind, docs.documentation)
+          \t}'''
+          new_dispatch = '''\tif kind == "RecordDeclaration"
+          \t\t|| kind == "EnumDeclaration"
+          \t\t|| kind == "NewtypeDeclaration"
+          \t\t|| kind == "TypeAliasDeclaration" {
+          \t\treturn parseDetailedDeclaration(state, tokens, kind, docs.documentation)
+          \t}
+          \tif kind == "ExternDeclaration" {
+          \t\treturn parseComposite(state, tokens, kind, docs.documentation)
+          \t}
+          \tif kind == "TopLevelValueDeclaration" {
+          \t\treturn parseLineDeclaration(state, tokens, kind, docs.documentation)
+          \t}'''
+          if content.count(old_dispatch) != 1:
+              raise SystemExit('unexpected declaration dispatch count')
+          content = content.replace(old_dispatch, new_dispatch)
+
+          path.write_text(content, encoding='utf-8')
+          PY
+      - name: Commit integration and remove helper workflow
+        run: |
+          git rm .github/workflows/integrate-declaration-parser.yml
+          git add selfhost/mvp/src/frontend-parser-core.virune
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git commit -m "feat(selfhost): integrate detailed declaration AST"
+          git push origin HEAD:agent/selfhost-declaration-type-ast
