@@ -375,7 +375,7 @@ fn resolveNamed(
 			Some("Supply exactly the declared number of type arguments."),
 		))
 	}
-	let kind = "named"
+	let mut kind = "named"
 	if containsName(declaration.typeParameters, node.text) {
 		kind = "type-parameter"
 	} else if builtinArity(node.text) >= 0 {
