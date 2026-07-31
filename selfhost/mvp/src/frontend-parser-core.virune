@@ -968,8 +968,8 @@ fn parsePostfix(
 		if looksLikeTypeArgumentCall(state, tokens) {
 			let typeArguments = consumeBalanced(state, tokens, "<", ">", "TypeArguments")
 			state = typeArguments.state
-			let arguments = parseCallArguments(state, tokens)
-			state = arguments.state
+			let callArguments = parseCallArguments(state, tokens)
+			state = callArguments.state
 			let call = addNode(
 				state,
 				tokens,
@@ -977,14 +977,14 @@ fn parsePostfix(
 				"call",
 				start,
 				state.index,
-				[valueId, typeArguments.id, arguments.id],
+				[valueId, typeArguments.id, callArguments.id],
 				[],
 			)
 			state = call.state
 			valueId = call.id
 		} else if isText(state, tokens, "(") {
-			let arguments = parseCallArguments(state, tokens)
-			state = arguments.state
+			let callArguments = parseCallArguments(state, tokens)
+			state = callArguments.state
 			let call = addNode(
 				state,
 				tokens,
@@ -992,7 +992,7 @@ fn parsePostfix(
 				"call",
 				start,
 				state.index,
-				[valueId, arguments.id],
+				[valueId, callArguments.id],
 				[],
 			)
 			state = call.state
@@ -1256,8 +1256,8 @@ fn parsePrimary(stateValue: CoreState, tokens: List<FrontendToken>, stopAtBrace:
 	if currentKind(state, tokens) == FrontendTokenKind.Identifier
 		&& tokenAt(tokens, state.index + 1).text == "{"
 		&& !stopAtBrace {
-		let record = parseRecordExpression(state, tokens, text)
-		return parsePostfix(record.state, tokens, start, record.id)
+		let recordValue = parseRecordExpression(state, tokens, text)
+		return parsePostfix(recordValue.state, tokens, start, recordValue.id)
 	}
 	let kind = if currentKind(state, tokens) == FrontendTokenKind.Identifier then "IdentifierExpression" else "LiteralExpression"
 	state = advance(state)
