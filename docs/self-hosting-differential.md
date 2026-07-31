@@ -94,7 +94,21 @@ node --test --test-timeout=120000 packages/compiler/dist/test/selfhost-semantic-
 
 This slice does not change the production parser or checker and does not connect the self-host kernel to the production path.
 
-
 ## Generic instantiation table
 
 The second semantic slice interns local generic data type applications by declaration ID and canonical argument type IDs. Each instantiation owns substituted member type IDs or an underlying target type. A placeholder is registered before substitution so recursive records and aliases terminate deterministically. Repeated applications reuse one instantiation ID; recursive generic aliases produce `L2042` instead of expanding without bound.
+
+## Collection type operations
+
+The third semantic slice evaluates pure type relations over the canonical semantic arena. It covers structural tuple, `List`, `Map`, `Set`, `Option`, and `Result` relations; `Never` and `Unknown` boundaries; optional lifting; alias transparency; and recursive `Eq`, `Hash`, `Json`, and `Debug` capability checks. Newtypes remain nominal for assignability while their underlying type participates in capability checks, matching the Legacy checker boundary.
+
+The JSON contract accepts type aliases as stable operation handles and returns canonical type IDs, component IDs, relation results, and common-type results. Incompatible common types produce `L2042`; missing operation targets produce `L2040`. Repeated requests must serialize identically and every returned ID is validated by the Host test.
+
+Run the focused validation with:
+
+```bash
+npm run build
+node --test --test-timeout=120000 packages/compiler/dist/test/selfhost-type-operations.test.js
+```
+
+This module remains isolated from the Production Checker and does not alter the grammar, stable Compiler API, Runtime ABI, Interop ABI, or public standard library.
