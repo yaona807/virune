@@ -19,21 +19,23 @@ import {
 	loadBootstrapCompilerCandidate,
 	materializeBootstrapCompilerCandidate,
 } from './bootstrap-execution-probe.js';
-import type { SelfhostMvpModule, ViruneResultValue } from './mvp-adapter.js';
+import type { SelfhostMvpModule } from './mvp-adapter.js';
+import {
+	hasSelfhostProjectCompilerExports,
+	readProjectCompilerCapability,
+	type ProjectCompilerCapabilityV1,
+} from './project-compiler-adapter.js';
 import {
 	createKernelSourceManifest,
 	type KernelSourceManifestResultV1,
 } from './source-manifest.js';
 
-export const BOOTSTRAP_STAGE_READINESS_POLICY_VERSION = 1 as const;
-
-export interface SelfhostProjectCompilerModule extends SelfhostMvpModule {
-	readonly compileProjectMvp: (request: string) => ViruneResultValue<string>;
-}
+export const BOOTSTRAP_STAGE_READINESS_POLICY_VERSION = 2 as const;
 
 export type BootstrapStageReadinessBlocker =
 	| 'multi-module-project-requires-project-compiler'
-	| 'project-compiler-export-missing';
+	| 'project-compiler-export-missing'
+	| 'project-compiler-not-ready';
 
 export interface BootstrapStageReadinessOptions
 	extends Omit<BootstrapArtifactSnapshotOptions, 'stage'> {
@@ -50,7 +52,9 @@ export interface BootstrapStageReadinessEvidence {
 	readonly sourceManifestSha256: string;
 	readonly sourceCount: number;
 	readonly entryPath: string;
-	readonly requiredExport: 'compileProjectMvp';
+	readonly requiredExports: readonly ['projectCompilerCapability', 'compileProjectMvp'];
+	readonly capabilityReady: boolean;
+	readonly capabilityBlockers: readonly string[];
 	readonly blockers: readonly BootstrapStageReadinessBlocker[];
 }
 
@@ -65,10 +69,8 @@ export interface BootstrapStageReadinessResult {
 /**
  * Evaluate the last honest precondition before Stage 1／Stage 2 generation.
  *
- * The existing Self-host MVP exports compileMvp(source), whose Host adapter is
- * intentionally single-source. The compiler project itself is multi-module.
- * Therefore Stage 1 must not be claimed until the generated candidate exports a
- * project compiler boundary that consumes the complete canonical source set.
+ * Both project compiler exports and a versioned ready capability are required.
+ * A stub function export must never clear this gate.
  */
 export async function evaluateSelfhostStageBootstrapReadiness(
 	projectRoot: string,
@@ -90,7 +92,12 @@ export async function evaluateSelfhostStageBootstrapReadiness(
 			temporaryDirectory,
 			options.stage0EntryModulePath ?? 'dist/main.js',
 		);
-		const blockers = readinessBlockers(module, input.sources.length);
+		const capability = readProjectCompilerCapability(module);
+		const blockers = readinessBlockersFromCapability(
+			hasSelfhostProjectCompilerExports(module),
+			capability,
+			input.sources.length,
+		);
 		const evidence: BootstrapStageReadinessEvidence = {
 			policyVersion: BOOTSTRAP_STAGE_READINESS_POLICY_VERSION,
 			claim: 'stage1-stage2-bootstrap-readiness',
@@ -100,7 +107,9 @@ export async function evaluateSelfhostStageBootstrapReadiness(
 			sourceManifestSha256: sourceManifest.sha256,
 			sourceCount: input.sources.length,
 			entryPath: input.entryPath,
-			requiredExport: 'compileProjectMvp',
+			requiredExports: ['projectCompilerCapability', 'compileProjectMvp'],
+			capabilityReady: capability?.ready ?? false,
+			capabilityBlockers: capability?.blockers ?? [],
 			blockers,
 		};
 		const serialized = JSON.stringify(evidence);
@@ -116,25 +125,33 @@ export async function evaluateSelfhostStageBootstrapReadiness(
 	}
 }
 
-export function hasSelfhostProjectCompiler(
-	module: SelfhostMvpModule,
-): module is SelfhostProjectCompilerModule {
-	return typeof (module as { readonly compileProjectMvp?: unknown }).compileProjectMvp === 'function';
-}
-
 export function readinessBlockers(
 	module: SelfhostMvpModule,
+	sourceCount: number,
+): readonly BootstrapStageReadinessBlocker[] {
+	return readinessBlockersFromCapability(
+		hasSelfhostProjectCompilerExports(module),
+		readProjectCompilerCapability(module),
+		sourceCount,
+	);
+}
+
+export function readinessBlockersFromCapability(
+	exportsAvailable: boolean,
+	capability: ProjectCompilerCapabilityV1 | null,
 	sourceCount: number,
 ): readonly BootstrapStageReadinessBlocker[] {
 	if (!Number.isSafeInteger(sourceCount) || sourceCount <= 0) {
 		throw new Error('sourceCount must be a positive safe integer');
 	}
-	const projectCompilerAvailable = hasSelfhostProjectCompiler(module);
+	const ready = exportsAvailable && capability?.ready === true;
 	const blockers = new Set<BootstrapStageReadinessBlocker>();
-	if (sourceCount > 1 && !projectCompilerAvailable) {
-		blockers.add('multi-module-project-requires-project-compiler');
+	if (sourceCount > 1 && !ready) blockers.add('multi-module-project-requires-project-compiler');
+	if (!exportsAvailable || capability === null) {
+		blockers.add('project-compiler-export-missing');
+	} else if (!capability.ready) {
+		blockers.add('project-compiler-not-ready');
 	}
-	if (!projectCompilerAvailable) blockers.add('project-compiler-export-missing');
 	return [...blockers].sort();
 }
 

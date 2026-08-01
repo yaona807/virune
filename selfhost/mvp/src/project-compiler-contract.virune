@@ -1,0 +1,192 @@
+//! Versioned fail-closed project compiler boundary.
+//!
+//! This module fixes the public JSON shape before project-wide semantic linking
+//! is implemented. The current capability is intentionally not ready, and a
+//! valid compile request returns deterministic blocker evidence rather than a
+//! false Stage 1 compiler artifact.
+
+record ProjectCompilerCapabilityV1 derives Eq, Debug, Json {
+	contractVersion: String
+	ready: Bool
+	requestSchema: String
+	resultSchema: String
+	blockers: List<String>
+}
+
+record ProjectCompilerSourceV1 derives Eq, Debug, Json {
+	path: String
+	text: String
+}
+
+record ProjectCompilerEmitV1 derives Eq, Debug, Json {
+	target: String
+	sourceMap: Bool
+	sourcesContent: Bool
+}
+
+record ProjectCompilerRequestV1 derives Eq, Debug, Json {
+	contractVersion: String
+	languageVersion: String
+	platform: String
+	entryPath: String
+	sources: List<ProjectCompilerSourceV1>
+	emit: ProjectCompilerEmitV1
+}
+
+record ProjectCompilerDiagnosticV1 derives Eq, Debug, Json {
+	code: String
+	severity: String
+	message: String
+}
+
+record ProjectCompilerEmittedModuleV1 derives Eq, Debug, Json {
+	sourcePath: String
+	outputPath: String
+	code: String
+	sourceMap: String
+}
+
+record ProjectCompilerDependencyV1 derives Eq, Debug, Json {
+	modulePath: String
+	sourceKind: String
+	specifier: String
+	resolvedPath: String?
+	typeOnly: Bool
+	public: Bool
+}
+
+record ProjectCompilerExportedSymbolV1 derives Eq, Debug, Json {
+	modulePath: String
+	name: String
+	declarationKind: String
+}
+
+record ProjectCompilerStatsV1 derives Eq, Debug, Json {
+	parsedModules: Int
+	reusedParsedModules: Int
+	checkedModules: Int
+	reusedCheckedModules: Int
+	emittedModules: Int
+	reusedEmittedModules: Int
+	invalidatedModules: Int
+}
+
+record ProjectCompilerResultV1 derives Eq, Debug, Json {
+	contractVersion: String
+	languageVersion: String
+	platform: String
+	entryPath: String
+	accepted: Bool
+	diagnostics: List<ProjectCompilerDiagnosticV1>
+	emittedModules: List<ProjectCompilerEmittedModuleV1>
+	dependencies: List<ProjectCompilerDependencyV1>
+	exportedSymbols: List<ProjectCompilerExportedSymbolV1>
+	stats: ProjectCompilerStatsV1
+}
+
+fn diagnostic(code: String, message: String) -> ProjectCompilerDiagnosticV1 {
+	return ProjectCompilerDiagnosticV1 {
+		code: code,
+		severity: "error",
+		message: message,
+	}
+}
+
+fn emptyStats() -> ProjectCompilerStatsV1 {
+	return ProjectCompilerStatsV1 {
+		parsedModules: 0,
+		reusedParsedModules: 0,
+		checkedModules: 0,
+		reusedCheckedModules: 0,
+		emittedModules: 0,
+		reusedEmittedModules: 0,
+		invalidatedModules: 0,
+	}
+}
+
+fn containsPath(values: List<String>, value: String) -> Bool {
+	for item in values {
+		if item == value {
+			return true
+		}
+	}
+	return false
+}
+
+fn validateRequest(request: ProjectCompilerRequestV1) -> List<ProjectCompilerDiagnosticV1> {
+	let mut diagnostics: List<ProjectCompilerDiagnosticV1> = []
+	if request.contractVersion != "1" {
+		diagnostics = List.append(diagnostics, diagnostic("SHP1001", "Unsupported project compiler contract version"))
+	}
+	if request.languageVersion != "1.0" {
+		diagnostics = List.append(diagnostics, diagnostic("SHP1002", "Unsupported language version"))
+	}
+	if request.platform != "node" {
+		diagnostics = List.append(diagnostics, diagnostic("SHP1003", "Project compiler currently requires the node platform"))
+	}
+	if String.length(request.entryPath) == 0 {
+		diagnostics = List.append(diagnostics, diagnostic("SHP1004", "Project entry path cannot be empty"))
+	}
+	if List.isEmpty(request.sources) {
+		diagnostics = List.append(diagnostics, diagnostic("SHP1005", "Project compiler requires at least one source"))
+	}
+	let mut paths: List<String> = []
+	let mut entryFound = false
+	for source in request.sources {
+		if String.length(source.path) == 0 {
+			diagnostics = List.append(diagnostics, diagnostic("SHP1006", "Source path cannot be empty"))
+		}
+		if containsPath(paths, source.path) {
+			diagnostics = List.append(diagnostics, diagnostic("SHP1007", "Duplicate source path " + source.path))
+		} else {
+			paths = List.append(paths, source.path)
+		}
+		if source.path == request.entryPath {
+			entryFound = true
+		}
+	}
+	if String.length(request.entryPath) > 0 && !entryFound {
+		diagnostics = List.append(diagnostics, diagnostic("SHP1008", "Project entry path is missing from sources"))
+	}
+	if request.emit.target != "es2022" {
+		diagnostics = List.append(diagnostics, diagnostic("SHP1009", "Project compiler currently requires the es2022 target"))
+	}
+	if request.emit.sourceMap {
+		diagnostics = List.append(diagnostics, diagnostic("SHP1010", "Project compiler boundary requires source maps to be disabled"))
+	}
+	if !request.emit.sourcesContent {
+		diagnostics = List.append(diagnostics, diagnostic("SHP1011", "Project compiler boundary requires sourcesContent"))
+	}
+	return diagnostics
+}
+
+pub fn projectCompilerCapabilityJson() -> Result<String, List<JsonError>> {
+	return Json.encode<ProjectCompilerCapabilityV1>(ProjectCompilerCapabilityV1 {
+		contractVersion: "1",
+		ready: false,
+		requestSchema: "virune.selfhost.project-compiler.request.v1",
+		resultSchema: "virune.selfhost.project-compiler.result.v1",
+		blockers: ["project-semantics-not-implemented"],
+	})
+}
+
+pub fn compileProjectMvpJson(encoded: String) -> Result<String, List<JsonError>> {
+	let raw = Json.parse(encoded)?
+	let request = Json.decode<ProjectCompilerRequestV1>(raw)?
+	let diagnostics = validateRequest(request)
+	let resultDiagnostics = if List.isEmpty(diagnostics) then [
+		diagnostic("SHP2000", "Project-wide parsing, linking, checking, and emission are not implemented"),
+	] else diagnostics
+	return Json.encode<ProjectCompilerResultV1>(ProjectCompilerResultV1 {
+		contractVersion: "1",
+		languageVersion: "1.0",
+		platform: "node",
+		entryPath: request.entryPath,
+		accepted: false,
+		diagnostics: resultDiagnostics,
+		emittedModules: [],
+		dependencies: [],
+		exportedSymbols: [],
+		stats: emptyStats(),
+	})
+}
