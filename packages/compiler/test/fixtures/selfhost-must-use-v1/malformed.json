@@ -1,0 +1,7 @@
+{
+	"source": "@mustUse\npub record Token {\n\tvalue: String,\n}\n@mustUse\npub enum Decision {\n\tYes\n\tNo\n}\n@mustUse\npub newtype Handle = Int\npub type TokenAlias = Token\npub type TokenAlias2 = TokenAlias\npub type ResultAlias = Result<Int, String>\npub type Plain = Int\n",
+	"values": [
+		{"typeName":"MissingType","disposition":"expression","span":{"start":{"offset":400,"line":40,"column":1},"end":{"offset":405,"line":40,"column":6}}},
+		{"typeName":"Plain","disposition":"drop","span":{"start":{"offset":410,"line":41,"column":1},"end":{"offset":415,"line":41,"column":6}}}
+	]
+}

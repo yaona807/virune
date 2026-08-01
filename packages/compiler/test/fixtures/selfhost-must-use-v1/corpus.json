@@ -1,0 +1,58 @@
+{
+	"version": 1,
+	"cases": [
+		{
+			"id": "ignored-values",
+			"request": "ignored.json",
+			"accepted": false,
+			"diagnosticCodes": ["L2097", "L2097", "L2097"],
+			"sortDiagnosticCodes": false,
+			"declarationNames": ["Token", "Decision", "Handle"],
+			"classifications": [
+				{"typeName":"Token","mustUse":true,"reason":"attribute","consumed":false,"typeId":"known"},
+				{"typeName":"TokenAlias2","mustUse":true,"reason":"alias","consumed":false,"typeId":"known"},
+				{"typeName":"Result","mustUse":true,"reason":"result","consumed":false,"typeId":"known"},
+				{"typeName":"Plain","mustUse":false,"reason":"ordinary","consumed":false,"typeId":"known"}
+			]
+		},
+		{
+			"id": "invalid-attribute-targets",
+			"request": "invalid-attributes.json",
+			"accepted": false,
+			"diagnosticCodes": ["L2090", "L2090", "L2091"],
+			"sortDiagnosticCodes": true,
+			"declarationNames": ["InvalidArgs"],
+			"classifications": []
+		},
+		{
+			"id": "malformed-request-values",
+			"request": "malformed.json",
+			"accepted": false,
+			"diagnosticCodes": ["L2040", "L9001"],
+			"sortDiagnosticCodes": false,
+			"declarationNames": ["Token", "Decision", "Handle"],
+			"classifications": [
+				{"typeName":"MissingType","consumed":false,"typeId":"null"},
+				{"typeName":"Plain","mustUse":false,"reason":"ordinary","consumed":false,"typeId":"known"}
+			]
+		},
+		{
+			"id": "valid-consumption",
+			"request": "valid.json",
+			"accepted": true,
+			"diagnosticCodes": [],
+			"sortDiagnosticCodes": false,
+			"declarationNames": ["Token", "Decision", "Handle"],
+			"classifications": [
+				{"typeName":"Token","mustUse":true,"reason":"attribute","consumed":true,"typeId":"known"},
+				{"typeName":"Decision","mustUse":true,"reason":"attribute","consumed":true,"typeId":"null"},
+				{"typeName":"Handle","mustUse":true,"reason":"attribute","consumed":true,"typeId":"known"},
+				{"typeName":"TokenAlias","mustUse":true,"reason":"alias","consumed":true,"typeId":"known"},
+				{"typeName":"TokenAlias2","mustUse":true,"reason":"alias","consumed":true,"typeId":"known"},
+				{"typeName":"ResultAlias","mustUse":true,"reason":"alias","consumed":true,"typeId":"known"},
+				{"typeName":"Result","mustUse":true,"reason":"result","consumed":true,"typeId":"known"},
+				{"typeName":"Plain","mustUse":false,"reason":"ordinary","consumed":false,"typeId":"known"}
+			]
+		}
+	]
+}
