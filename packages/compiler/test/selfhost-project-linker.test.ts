@@ -81,6 +81,72 @@ test('project linker extracts imports and public declarations from parser AST', 
 	}
 });
 
+test('project linker canonicalizes metadata independently of module and declaration order', async () => {
+	const loaded = await loadLinker();
+	try {
+		const a = 'pub fn beta() -> Int {\n\treturn 1\n}\n';
+		const z = [
+			'pub fn zebra() -> Int {',
+			'\treturn 2',
+			'}',
+			'',
+			'pub fn alpha() -> Int {',
+			'\treturn 3',
+			'}',
+			'',
+		].join('\n');
+		const main = [
+			'import { zebra } from "./z.virune"',
+			'import { beta } from "./a.virune"',
+			'pub fn main() -> Int {',
+			'\treturn 0',
+			'}',
+			'',
+		].join('\n');
+		const modules = [
+			{ path: 'src/z.virune', source: z, parse: parse(loaded.parser, z) },
+			{ path: 'src/main.virune', source: main, parse: parse(loaded.parser, main) },
+			{ path: 'src/a.virune', source: a, parse: parse(loaded.parser, a) },
+		];
+		const first = link(loaded, 'src/main.virune', modules);
+		const second = link(loaded, 'src/main.virune', [...modules].reverse());
+		const expectedDependencies = [
+			{
+				modulePath: 'src/main.virune',
+				sourceKind: 'virune',
+				specifier: './a.virune',
+				resolvedPath: 'src/a.virune',
+				typeOnly: false,
+				public: false,
+			},
+			{
+				modulePath: 'src/main.virune',
+				sourceKind: 'virune',
+				specifier: './z.virune',
+				resolvedPath: 'src/z.virune',
+				typeOnly: false,
+				public: false,
+			},
+		];
+		const expectedExports = [
+			{ modulePath: 'src/a.virune', name: 'beta', declarationKind: 'FunctionDeclaration' },
+			{ modulePath: 'src/main.virune', name: 'main', declarationKind: 'FunctionDeclaration' },
+			{ modulePath: 'src/z.virune', name: 'alpha', declarationKind: 'FunctionDeclaration' },
+			{ modulePath: 'src/z.virune', name: 'zebra', declarationKind: 'FunctionDeclaration' },
+		];
+		assert.equal(first.accepted, true);
+		assert.equal(second.accepted, true);
+		assert.deepEqual(first.diagnostics, []);
+		assert.deepEqual(second.diagnostics, []);
+		assert.deepEqual(first.dependencies, expectedDependencies);
+		assert.deepEqual(second.dependencies, expectedDependencies);
+		assert.deepEqual(first.exportedSymbols, expectedExports);
+		assert.deepEqual(second.exportedSymbols, expectedExports);
+	} finally {
+		await rm(loaded.root, { recursive: true, force: true });
+	}
+});
+
 test('project linker reports cycles, duplicate imports, and missing targets deterministically', async () => {
 	const loaded = await loadLinker();
 	try {

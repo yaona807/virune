@@ -164,6 +164,74 @@ fn dependencyKey(value: ProjectLinkDependency) -> String {
 	return value.modulePath + "|" + value.sourceKind + "|" + value.specifier + "|" + optionText(value.resolvedPath) + "|" + boolText(value.typeOnly) + "|" + boolText(value.public)
 }
 
+fn dependencyLessThan(left: ProjectLinkDependency, right: ProjectLinkDependency) -> Bool {
+	if left.modulePath != right.modulePath {
+		return left.modulePath < right.modulePath
+	}
+	if left.sourceKind != right.sourceKind {
+		return left.sourceKind < right.sourceKind
+	}
+	return left.specifier < right.specifier
+}
+
+fn insertDependency(values: List<ProjectLinkDependency>, value: ProjectLinkDependency) -> List<ProjectLinkDependency> {
+	let mut result: List<ProjectLinkDependency> = []
+	let mut inserted = false
+	for current in values {
+		if !inserted && dependencyLessThan(value, current) {
+			result = List.append(result, value)
+			inserted = true
+		}
+		result = List.append(result, current)
+	}
+	if !inserted {
+		result = List.append(result, value)
+	}
+	return result
+}
+
+fn sortDependencies(values: List<ProjectLinkDependency>) -> List<ProjectLinkDependency> {
+	let mut result: List<ProjectLinkDependency> = []
+	for value in values {
+		result = insertDependency(result, value)
+	}
+	return result
+}
+
+fn exportedSymbolLessThan(left: ProjectLinkExport, right: ProjectLinkExport) -> Bool {
+	if left.modulePath != right.modulePath {
+		return left.modulePath < right.modulePath
+	}
+	if left.name != right.name {
+		return left.name < right.name
+	}
+	return left.declarationKind < right.declarationKind
+}
+
+fn insertExportedSymbol(values: List<ProjectLinkExport>, value: ProjectLinkExport) -> List<ProjectLinkExport> {
+	let mut result: List<ProjectLinkExport> = []
+	let mut inserted = false
+	for current in values {
+		if !inserted && exportedSymbolLessThan(value, current) {
+			result = List.append(result, value)
+			inserted = true
+		}
+		result = List.append(result, current)
+	}
+	if !inserted {
+		result = List.append(result, value)
+	}
+	return result
+}
+
+fn sortExports(values: List<ProjectLinkExport>) -> List<ProjectLinkExport> {
+	let mut result: List<ProjectLinkExport> = []
+	for value in values {
+		result = insertExportedSymbol(result, value)
+	}
+	return result
+}
+
 fn collectDependencies(projectModule: ProjectLinkModule) -> List<ProjectLinkDependency> {
 	let mut dependencies: List<ProjectLinkDependency> = []
 	for node in projectModule.parse.nodes {
@@ -326,8 +394,8 @@ pub fn linkProject(request: ProjectLinkRequest) -> ProjectLinkResult {
 	}
 	return ProjectLinkResult {
 		accepted: List.length(diagnostics) == 0,
-		dependencies: dependencies,
-		exportedSymbols: exportedSymbols,
+		dependencies: sortDependencies(dependencies),
+		exportedSymbols: sortExports(exportedSymbols),
 		reachableModules: reachableModules,
 		unreachableModules: unreachableModules,
 		diagnostics: diagnostics,
