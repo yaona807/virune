@@ -194,7 +194,7 @@ test('full-language lowering blocker inventory is deterministic for the canonica
 		assert.equal(inventory.sourceCount, input.sources.length);
 		assert.equal(inventory.parsedModules, input.sources.length);
 		assert.ok(inventory.entries.length > 0);
-		assert.ok(inventory.boundaryBlockers.includes('non-canonical-dependency-metadata'));
+		assert.deepEqual(inventory.boundaryBlockers, []);
 		await mkdir(dirname(inventoryEvidencePath), { recursive: true });
 		await writeFile(inventoryEvidencePath, `${JSON.stringify(inventory)}\n`, 'utf8');
 		console.log(`SELFHOST_FULL_LANGUAGE_INVENTORY ${JSON.stringify(inventory)}`);
