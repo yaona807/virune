@@ -70,16 +70,16 @@ fn containsText(values: List<String>, expected: String) -> Bool {
 }
 
 fn moduleExists(modules: List<ProjectSemanticModule>, path: String) -> Bool {
-	for module in modules {
-		if module.path == path {
+	for projectModule in modules {
+		if projectModule.path == path {
 			return true
 		}
 	}
 	return false
 }
 
-fn symbolExists(module: ProjectSemanticModule, name: String) -> Bool {
-	for symbol in module.symbols {
+fn symbolExists(projectModule: ProjectSemanticModule, name: String) -> Bool {
+	for symbol in projectModule.symbols {
 		if symbol.name == name {
 			return true
 		}
@@ -87,8 +87,8 @@ fn symbolExists(module: ProjectSemanticModule, name: String) -> Bool {
 	return false
 }
 
-fn symbolPublic(module: ProjectSemanticModule, name: String) -> Bool {
-	for symbol in module.symbols {
+fn symbolPublic(projectModule: ProjectSemanticModule, name: String) -> Bool {
+	for symbol in projectModule.symbols {
 		if symbol.name == name {
 			return symbol.public
 		}
@@ -101,9 +101,9 @@ fn targetSymbolExists(
 	modulePath: String,
 	name: String,
 ) -> Bool {
-	for module in modules {
-		if module.path == modulePath {
-			return symbolExists(module, name)
+	for projectModule in modules {
+		if projectModule.path == modulePath {
+			return symbolExists(projectModule, name)
 		}
 	}
 	return false
@@ -114,23 +114,23 @@ fn targetSymbolPublic(
 	modulePath: String,
 	name: String,
 ) -> Bool {
-	for module in modules {
-		if module.path == modulePath {
-			return symbolPublic(module, name)
+	for projectModule in modules {
+		if projectModule.path == modulePath {
+			return symbolPublic(projectModule, name)
 		}
 	}
 	return false
 }
 
-fn duplicateSymbolDiagnostics(module: ProjectSemanticModule) -> List<ProjectSemanticDiagnostic> {
+fn duplicateSymbolDiagnostics(projectModule: ProjectSemanticModule) -> List<ProjectSemanticDiagnostic> {
 	let mut diagnostics: List<ProjectSemanticDiagnostic> = []
 	let mut seen: List<String> = []
-	for symbol in module.symbols {
+	for symbol in projectModule.symbols {
 		if String.length(symbol.name) == 0 {
 			diagnostics = List.append(diagnostics, semanticDiagnostic(
 				"SHP3001",
 				"Project symbol name must not be empty",
-				module.path,
+				projectModule.path,
 				Some(symbol.name),
 				None,
 				None,
@@ -139,7 +139,7 @@ fn duplicateSymbolDiagnostics(module: ProjectSemanticModule) -> List<ProjectSema
 			diagnostics = List.append(diagnostics, semanticDiagnostic(
 				"SHP3002",
 				"Duplicate project symbol " + symbol.name,
-				module.path,
+				projectModule.path,
 				Some(symbol.name),
 				None,
 				None,
@@ -153,15 +153,15 @@ fn duplicateSymbolDiagnostics(module: ProjectSemanticModule) -> List<ProjectSema
 
 fn referenceDiagnostics(
 	modules: List<ProjectSemanticModule>,
-	module: ProjectSemanticModule,
+	projectModule: ProjectSemanticModule,
 ) -> List<ProjectSemanticDiagnostic> {
 	let mut diagnostics: List<ProjectSemanticDiagnostic> = []
-	for reference in module.references {
+	for reference in projectModule.references {
 		if !moduleExists(modules, reference.targetModulePath) {
 			diagnostics = List.append(diagnostics, semanticDiagnostic(
 				"SHP3101",
 				"Reference target module does not exist",
-				module.path,
+				projectModule.path,
 				Some(reference.name),
 				Some(reference.targetModulePath),
 				Some(reference.targetName),
@@ -170,28 +170,28 @@ fn referenceDiagnostics(
 			diagnostics = List.append(diagnostics, semanticDiagnostic(
 				"SHP3102",
 				"Reference target symbol does not exist",
-				module.path,
+				projectModule.path,
 				Some(reference.name),
 				Some(reference.targetModulePath),
 				Some(reference.targetName),
 			))
-		} else if reference.targetModulePath != module.path
+		} else if reference.targetModulePath != projectModule.path
 			&& !targetSymbolPublic(modules, reference.targetModulePath, reference.targetName) {
 			diagnostics = List.append(diagnostics, semanticDiagnostic(
 				"SHP3103",
 				"Cross-module reference targets a private symbol",
-				module.path,
+				projectModule.path,
 				Some(reference.name),
 				Some(reference.targetModulePath),
 				Some(reference.targetName),
 			))
 		}
 		if String.length(reference.requiredEffect) > 0
-			&& !containsText(module.allowedEffects, reference.requiredEffect) {
+			&& !containsText(projectModule.allowedEffects, reference.requiredEffect) {
 			diagnostics = List.append(diagnostics, semanticDiagnostic(
 				"SHP3201",
 				"Reference requires unavailable effect " + reference.requiredEffect,
-				module.path,
+				projectModule.path,
 				Some(reference.name),
 				Some(reference.targetModulePath),
 				Some(reference.targetName),
@@ -204,34 +204,34 @@ fn referenceDiagnostics(
 pub fn checkProjectSemantics(request: ProjectSemanticRequest) -> ProjectSemanticResult {
 	let mut diagnostics: List<ProjectSemanticDiagnostic> = []
 	let mut seenModules: List<String> = []
-	for module in request.modules {
-		if String.length(module.path) == 0 {
+	for projectModule in request.modules {
+		if String.length(projectModule.path) == 0 {
 			diagnostics = List.append(diagnostics, semanticDiagnostic(
 				"SHP3000",
 				"Project module path must not be empty",
-				module.path,
+				projectModule.path,
 				None,
 				None,
 				None,
 			))
-		} else if containsText(seenModules, module.path) {
+		} else if containsText(seenModules, projectModule.path) {
 			diagnostics = List.append(diagnostics, semanticDiagnostic(
 				"SHP3003",
-				"Duplicate project module " + module.path,
-				module.path,
+				"Duplicate project module " + projectModule.path,
+				projectModule.path,
 				None,
-				Some(module.path),
+				Some(projectModule.path),
 				None,
 			))
 		} else {
-			seenModules = List.append(seenModules, module.path)
+			seenModules = List.append(seenModules, projectModule.path)
 		}
-		for diagnostic in duplicateSymbolDiagnostics(module) {
+		for diagnostic in duplicateSymbolDiagnostics(projectModule) {
 			diagnostics = List.append(diagnostics, diagnostic)
 		}
 	}
-	for module in request.modules {
-		for diagnostic in referenceDiagnostics(request.modules, module) {
+	for projectModule in request.modules {
+		for diagnostic in referenceDiagnostics(request.modules, projectModule) {
 			diagnostics = List.append(diagnostics, diagnostic)
 		}
 	}
