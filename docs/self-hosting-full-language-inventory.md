@@ -11,4 +11,6 @@ The inventory groups diagnostics by code and message, counts occurrences, record
 - the obsolete `SHP2001` project-linking placeholder never reappears;
 - non-canonical dependency or exported-symbol metadata is measured explicitly instead of being hidden by Host normalization.
 
-The CI log line begins with `SELFHOST_FULL_LANGUAGE_INVENTORY`. That machine-readable JSON is the input for splitting the remaining work into canonical project metadata, declaration/type, expression/control-flow, effect/async, and runtime/derive lanes. The test is intentionally removed or inverted as each measured blocker is eliminated and the full source set becomes accepted.
+The deterministic JSON evidence is written to `.cache/ci-timings/selfhost-full-language-inventory.json`. The existing core-test evidence upload includes that directory, so successful CI runs retain the inventory even though `--failure-output-only` suppresses stdout from passing unit tests. When the test is run without output suppression, it also emits a line beginning with `SELFHOST_FULL_LANGUAGE_INVENTORY`.
+
+That machine-readable JSON is the input for splitting the remaining work into canonical project metadata, declaration/type, expression/control-flow, effect/async, and runtime/derive lanes. The test is intentionally removed or inverted as each measured blocker is eliminated and the full source set becomes accepted.
