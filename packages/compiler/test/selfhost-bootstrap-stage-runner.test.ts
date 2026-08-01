@@ -28,7 +28,7 @@ const capability = (ready: boolean, blockers: readonly string[]) => JSON.stringi
 	blockers,
 });
 
-test('current multi-module Self-host MVP remains blocked by its non-ready capability', async () => {
+test('current multi-module Self-host MVP remains blocked by its non-ready linking capability', async () => {
 	await mkdir(temporaryRoot, { recursive: true });
 	try {
 		const first = await evaluateSelfhostStageBootstrapReadiness(mvpRoot, options);
@@ -44,7 +44,7 @@ test('current multi-module Self-host MVP remains blocked by its non-ready capabi
 		assert.equal(first.evidence.entryPath, 'src/main.virune');
 		assert.deepEqual(first.evidence.requiredExports, ['projectCompilerCapability', 'compileProjectMvp']);
 		assert.equal(first.evidence.capabilityReady, false);
-		assert.deepEqual(first.evidence.capabilityBlockers, ['project-semantics-not-implemented']);
+		assert.deepEqual(first.evidence.capabilityBlockers, ['project-linking-not-implemented']);
 		assert.equal(first.evidence.compilerArtifactSha256, first.stage0Compiler.sha256);
 		assert.equal(first.evidence.sourceManifestSha256, first.sourceManifest.sha256);
 		assert.deepEqual(first.evidence.blockers, [
@@ -74,7 +74,7 @@ test('function stubs do not clear readiness without a ready capability', () => {
 		...singleSource,
 		projectCompilerCapability: () => ({
 			$tag: 'Ok' as const,
-			$values: [capability(false, ['project-semantics-not-implemented'])] as const,
+			$values: [capability(false, ['project-linking-not-implemented'])] as const,
 		}),
 		compileProjectMvp: (_request: string) => ({ $tag: 'Ok' as const, $values: ['{}'] as const }),
 	};
