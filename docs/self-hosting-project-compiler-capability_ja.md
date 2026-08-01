@@ -13,7 +13,7 @@ capability objectは次を含む。
 
 - `contractVersion`: `1`
 - `requestSchema`: `virune.selfhost.project-compiler.request.v1`
-- `resultSchema`: `virune.selfhost.project-compiler.result.v1`
+- `resultSchema`: `virune.selfhost.project-compiler.result.v2`
 - `ready`: candidateが完全なproject compiler artifactを生成可能か
 - `blockers`: `ready`がfalseの場合のsort済みmachine-readable理由
 
@@ -24,7 +24,7 @@ capability objectは次を含む。
   "contractVersion": "1",
   "ready": false,
   "requestSchema": "virune.selfhost.project-compiler.request.v1",
-  "resultSchema": "virune.selfhost.project-compiler.result.v1",
+  "resultSchema": "virune.selfhost.project-compiler.result.v2",
   "blockers": ["project-linking-not-implemented"]
 }
 ```
@@ -56,7 +56,9 @@ source集合が未sortの場合はparse前に`SHP1012`で失敗する。その�
 
 1つのsourceがmalformedでも全sourceをparseするため、結果は決定的であり、`stats.parsedModules`はrequestのsource集合全体を表す。parser errorがあればlinkingとemitへ進まない。全sourceのparseに成功した場合は、project-wide linking、checking、emissionが未実装であることを`SHP2001`で返す。
 
-## Compile result v1
+## Compile result v2
+
+result schema v2では、path-aware diagnosticを持たない旧v1 payloadと明示的に区別する。project compiler protocolとrequest schemaはv1のままであり、consumerはprotocol versionだけでresult shapeを推定せず、capabilityの`resultSchema`を確認する。
 
 result transportは、top-level schemaを再変更せずに将来のStage 1 compiler artifactを運べる構造を持つ。
 
