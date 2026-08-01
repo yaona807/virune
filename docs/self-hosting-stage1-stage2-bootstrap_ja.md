@@ -1,31 +1,33 @@
-# 実際のStage 1／Stage 2 bootstrap
+# Stage 1／Stage 2 bootstrap readiness
 
-Stage bootstrap runnerは、実行可能なSelf-host MVP境界を通してCompilerを実際に2回生成する。
+readiness evaluatorは、実際のStage 1／Stage 2生成へ進む直前の前提条件を正直に検証する。
 
-1. 既存のStage 0 project buildを正規化し、実行可能なcompiler候補としてloadする。
-2. Stage 0がcanonical Self-host MVP source inputをcompileし、Stage 1 compiler artifactを生成する。
-3. Stage 1 artifactをmaterialize・loadし、次のcompiler候補とする。
-4. Stage 1が同じsource inputをcompileし、Stage 2を生成する。
-5. 既存のbootstrap shadow reportで、Stage 1とStage 2の差分が`metadata.stage`だけであることを必須にする。
+現在の生成済みSelf-host MVP候補は`compileMvp(source: string)`をexportする。Host adapterは意図的にsource moduleを1件だけ受け付ける。一方、Self-host compiler project本体はmulti-moduleであるため、この境界ではCompiler全体の正しいStage 1 artifactを生成できない。
 
-## 証拠の境界
+## evaluatorが行うこと
 
-両Stageは同じcanonical source-manifest SHA-256へ拘束される。各生成では次を含む独立した証拠を出力する。
+- 実際のStage 0 compiler artifactをbuild・正規化する
+- 生成済みStage 0 entry moduleをmaterialize・loadする
+- project内の全sourceから完全なcanonical Kernel Contract inputを構築する
+- inputをcanonical source-manifest SHA-256へ拘束する
+- 必須exportである`compileProjectMvp`の有無を確認する
+- 決定的かつ昇格不可のreadiness evidenceを出力する
 
-- 生成したStage
-- 生成を実行したcompiler artifactのSHA-256
-- source manifestのSHA-256
-- 生成したartifactのSHA-256
-- 生成compilerのentry module
+証拠のclaimは`stage1-stage2-bootstrap-readiness`で、`productionEligible`は常に`false`である。
 
-入力compiler SHAは、意図的にnormalized artifact metadataの外へ置く。Stage 1はStage 0、Stage 2はStage 1によって生成されるため、このSHAをartifact内へ入れると、正当だが再現不能なStage 1／Stage 2差分になる。
+## 現在の結果
 
-generation evidence単体では昇格できず、常に`productionEligible: false`を記録する。
+現在のSelf-host MVPでは、次の2 blockerを報告することが期待される。
 
-## 現在の範囲
+- `multi-module-project-requires-project-compiler`
+- `project-compiler-export-missing`
 
-現在のrunnerはsingle-source Self-host MVP compilerを対象とする。Production Parser／Checkerの切替、固定Seedの更新、workflow／branch protectionの変更、昇格承認は行わない。multi-module Kernelの自己生成は同じ境界を拡張する後続段階である。
+これはFail Closed検査の成功結果であり、Stage 1の失敗でもStage 1 artifactでもない。single-source compilerをself-host完了と誤表示することを防ぐ。
 
-## Fail Closed方針
+## 次に必要な実装
 
-compileがrejectされた場合、error diagnosticが出た場合、compiler entryが欠落または複数存在する場合、生成artifactに予期しないsource mapが含まれる場合、Stage 1／Stage 2 shadow reportに未説明差分がある場合は失敗として停止する。
+生成済みcompiler候補へ、完全なcanonical source集合、module graph、entry path、emit optionを受け取るversioned `compileProjectMvp`境界を追加する必要がある。このexportが実装されると同じreadiness gateが通過し、Stage 0→Stage 1→Stage 2生成とStage 1／Stage 2 artifact一致検証へ進める。
+
+## 境界
+
+このevaluatorはStage 1／Stage 2を生成せず、Production Parser／Checkerの切替、固定Seed更新、workflow／branch protection変更、昇格承認も行わない。
