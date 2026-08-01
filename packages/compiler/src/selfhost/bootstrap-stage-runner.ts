@@ -129,9 +129,12 @@ export function readinessBlockers(
 	if (!Number.isSafeInteger(sourceCount) || sourceCount <= 0) {
 		throw new Error('sourceCount must be a positive safe integer');
 	}
+	const projectCompilerAvailable = hasSelfhostProjectCompiler(module);
 	const blockers = new Set<BootstrapStageReadinessBlocker>();
-	if (sourceCount > 1) blockers.add('multi-module-project-requires-project-compiler');
-	if (!hasSelfhostProjectCompiler(module)) blockers.add('project-compiler-export-missing');
+	if (sourceCount > 1 && !projectCompilerAvailable) {
+		blockers.add('multi-module-project-requires-project-compiler');
+	}
+	if (!projectCompilerAvailable) blockers.add('project-compiler-export-missing');
 	return [...blockers].sort();
 }
 
