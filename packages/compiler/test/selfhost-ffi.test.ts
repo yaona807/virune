@@ -72,9 +72,9 @@ test('canonical FFI boundary decisions are deterministic and reference-safe', as
 		const request = {
 			types: baseTypes,
 			externs: [{
-				module: 'node:fs',
-				unsafe: false,
-				moduleUnsafe: false,
+				moduleName: 'node:fs',
+				isUnsafe: false,
+				containingModuleUnsafe: false,
 				sourcePath: 'service.virune',
 				platform: 'node',
 				functions: [{
@@ -86,7 +86,7 @@ test('canonical FFI boundary decisions are deterministic and reference-safe', as
 			exports: [{
 				name: 'encodePayload',
 				declarationKind: 'function',
-				public: true,
+				isPublic: true,
 				generic: false,
 				attributeArgumentCount: 0,
 				parameterTypeIds: [10],
@@ -124,9 +124,9 @@ test('safe extern and module policy diagnostics preserve Legacy ordering', async
 			types: baseTypes,
 			externs: [
 				{
-					module: 'node:fs',
-					unsafe: false,
-					moduleUnsafe: false,
+					moduleName: 'node:fs',
+					isUnsafe: false,
+					containingModuleUnsafe: false,
 					sourcePath: 'service.virune',
 					platform: 'browser',
 					functions: [{
@@ -139,17 +139,17 @@ test('safe extern and module policy diagnostics preserve Legacy ordering', async
 					}],
 				},
 				{
-					module: 'legacy',
-					unsafe: true,
-					moduleUnsafe: false,
+					moduleName: 'legacy',
+					isUnsafe: true,
+					containingModuleUnsafe: false,
 					sourcePath: 'service.virune',
 					platform: 'neutral',
 					functions: [{ name: 'unsafeCall', parameters: [], returnTypeId: 6 }],
 				},
 				{
-					module: 'legacy',
-					unsafe: true,
-					moduleUnsafe: true,
+					moduleName: 'legacy',
+					isUnsafe: true,
+					containingModuleUnsafe: true,
 					sourcePath: 'outside.virune',
 					platform: 'neutral',
 					functions: [],
@@ -192,7 +192,7 @@ test('@jsExport and malformed arena diagnostics remain bounded', async () => {
 			exports: [{
 				name: 'bad',
 				declarationKind: 'record',
-				public: false,
+				isPublic: false,
 				generic: true,
 				attributeArgumentCount: 1,
 				parameterTypeIds: [6],
