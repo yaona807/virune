@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { mkdir, rm } from 'node:fs/promises';
+import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildProject } from '../src/project/project.js';
@@ -18,6 +18,12 @@ import {
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../../..');
 const mvpRoot = join(repositoryRoot, 'selfhost', 'mvp');
 const temporaryRoot = join(repositoryRoot, '.test-tmp');
+const inventoryEvidencePath = join(
+	repositoryRoot,
+	'.cache',
+	'ci-timings',
+	'selfhost-full-language-inventory.json',
+);
 const snapshotOptions = {
 	stage: 'stage0' as const,
 	compilerVersion: '1.0.0',
@@ -189,6 +195,8 @@ test('full-language lowering blocker inventory is deterministic for the canonica
 		assert.equal(inventory.parsedModules, input.sources.length);
 		assert.ok(inventory.entries.length > 0);
 		assert.ok(inventory.boundaryBlockers.includes('non-canonical-dependency-metadata'));
+		await mkdir(dirname(inventoryEvidencePath), { recursive: true });
+		await writeFile(inventoryEvidencePath, `${JSON.stringify(inventory)}\n`, 'utf8');
 		console.log(`SELFHOST_FULL_LANGUAGE_INVENTORY ${JSON.stringify(inventory)}`);
 	} finally {
 		await rm(root, { recursive: true, force: true });
