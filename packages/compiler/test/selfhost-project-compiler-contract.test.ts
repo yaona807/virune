@@ -51,7 +51,7 @@ test('generated compiler exposes deterministic non-ready linking capability', as
 			contractVersion: '1',
 			ready: false,
 			requestSchema: 'virune.selfhost.project-compiler.request.v1',
-			resultSchema: 'virune.selfhost.project-compiler.result.v1',
+			resultSchema: 'virune.selfhost.project-compiler.result.v2',
 			blockers: ['project-linking-not-implemented'],
 		});
 	});
