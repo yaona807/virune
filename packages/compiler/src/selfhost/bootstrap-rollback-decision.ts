@@ -163,12 +163,15 @@ function positiveSafeInteger(value: unknown, path: string): number {
 }
 
 function compareGate(left: RollbackGateEvidenceInput, right: RollbackGateEvidenceInput): number {
-	return left.name < right.name ? -1 : left.name > right.name ? 1 : 0;
+	return compareText(left.name, right.name);
 }
 
 function compareReason(left: BootstrapRollbackReason, right: BootstrapRollbackReason): number {
-	return compareGate({ ...left, candidateSha256: '', checkedAt: '', status: 'pass', evidenceSha256: '' }, { ...right, candidateSha256: '', checkedAt: '', status: 'pass', evidenceSha256: '' })
-		|| (left.code < right.code ? -1 : left.code > right.code ? 1 : 0);
+	return compareText(left.gate, right.gate) || compareText(left.code, right.code);
+}
+
+function compareText(left: string, right: string): number {
+	return left < right ? -1 : left > right ? 1 : 0;
 }
 
 function sha256(value: string): string {
