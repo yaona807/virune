@@ -4,11 +4,11 @@ import { fileURLToPath } from 'node:url';
 
 const POLICY_PATH = '.github/self-hosting/promotion-policy-v1.json';
 const STAGES = [
-	['pr-informational', false, 'pull-request'],
-	['nightly-shadow', false, 'nightly'],
-	['required-selfhost', true, 'selfhost-related'],
-	['required-compiler', true, 'compiler-changes'],
-	['production-default', true, 'production'],
+	['pr-informational', false, 'pull-request', 0, 0],
+	['nightly-shadow', false, 'nightly', 0, 0],
+	['required-selfhost', true, 'selfhost-related', 14, 14],
+	['required-compiler', true, 'compiler-changes', 28, 28],
+	['production-default', true, 'production', 30, 30],
 ];
 const PRODUCTION_EVIDENCE = [
 	'compiler-api-compatibility',
@@ -31,7 +31,7 @@ export async function verifySelfhostPromotionPolicy(root = process.cwd()) {
 	let previousEvidence = new Set();
 	let previousRuns = 0;
 	let previousDays = 0;
-	for (const [index, [id, blocking, scope]] of STAGES.entries()) {
+	for (const [index, [id, blocking, scope, minimumRuns, minimumDays]] of STAGES.entries()) {
 		const stage = stages[index];
 		if (!isRecord(stage)) {
 			errors.push(`stages[${index}] must be an object`);
@@ -56,6 +56,12 @@ export async function verifySelfhostPromotionPolicy(root = process.cwd()) {
 		const runs = integer(requirements.minimumConsecutiveSuccessfulRuns, `${id}.minimumConsecutiveSuccessfulRuns`, errors);
 		const days = integer(requirements.minimumObservationDays, `${id}.minimumObservationDays`, errors);
 		integer(requirements.minimumStableReleaseCycles, `${id}.minimumStableReleaseCycles`, errors);
+		if (runs < minimumRuns) {
+			errors.push(`${id}.minimumConsecutiveSuccessfulRuns must be at least ${minimumRuns}`);
+		}
+		if (days < minimumDays) {
+			errors.push(`${id}.minimumObservationDays must be at least ${minimumDays}`);
+		}
 		if (runs < previousRuns) errors.push(`${id} reduces the successful-run threshold`);
 		if (days < previousDays) errors.push(`${id} reduces the observation-day threshold`);
 		previousRuns = runs;

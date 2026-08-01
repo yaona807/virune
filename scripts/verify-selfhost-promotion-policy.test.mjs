@@ -75,3 +75,32 @@ test('rejects reduced observation thresholds', async t => {
 	t.after(() => rm(root, { recursive: true, force: true }));
 	await assert.rejects(verifySelfhostPromotionPolicy(root), /reduces the observation-day threshold/u);
 });
+
+test('rejects lowering all blocking stages below the self-host floor', async t => {
+	const root = await fixture(policy => {
+		for (const stage of policy.stages.filter(item => item.blocking)) {
+			stage.promotionRequirements.minimumConsecutiveSuccessfulRuns = 1;
+			stage.promotionRequirements.minimumObservationDays = 1;
+		}
+		return policy;
+	});
+	t.after(() => rm(root, { recursive: true, force: true }));
+	await assert.rejects(
+		verifySelfhostPromotionPolicy(root),
+		/required-selfhost\.minimumConsecutiveSuccessfulRuns must be at least 14/u,
+	);
+});
+
+test('rejects lowering the production observation floor', async t => {
+	const root = await fixture(policy => {
+		const production = policy.stages.at(-1);
+		production.promotionRequirements.minimumConsecutiveSuccessfulRuns = 29;
+		production.promotionRequirements.minimumObservationDays = 29;
+		return policy;
+	});
+	t.after(() => rm(root, { recursive: true, force: true }));
+	await assert.rejects(
+		verifySelfhostPromotionPolicy(root),
+		/production-default\.minimumObservationDays must be at least 30/u,
+	);
+});
