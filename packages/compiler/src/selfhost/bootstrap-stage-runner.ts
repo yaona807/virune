@@ -8,193 +8,143 @@ import {
 	KERNEL_LANGUAGE_VERSION,
 	normalizeKernelPath,
 	validateKernelInput,
-	type JsonValue,
 	type KernelInputV1,
-	type KernelOutputV1,
 } from './contract.js';
 import {
-	BOOTSTRAP_ARTIFACT_POLICY_VERSION,
-	normalizeBootstrapArtifact,
-	type NormalizedBootstrapArtifactResult,
-} from './bootstrap-artifact-normalizer.js';
-import { snapshotProjectBuild } from './bootstrap-artifact-snapshot.js';
-import {
-	createBootstrapShadowReport,
-	type BootstrapShadowReportResult,
-} from './bootstrap-shadow-report.js';
+	snapshotProjectBuild,
+	type BootstrapArtifactSnapshotOptions,
+} from './bootstrap-artifact-snapshot.js';
+import type { NormalizedBootstrapArtifactResult } from './bootstrap-artifact-normalizer.js';
 import {
 	loadBootstrapCompilerCandidate,
 	materializeBootstrapCompilerCandidate,
 } from './bootstrap-execution-probe.js';
-import { compileWithSelfhostMvp } from './mvp-adapter.js';
+import type { SelfhostMvpModule, ViruneResultValue } from './mvp-adapter.js';
 import {
 	createKernelSourceManifest,
 	type KernelSourceManifestResultV1,
 } from './source-manifest.js';
 
-export const BOOTSTRAP_STAGE_GENERATION_EVIDENCE_VERSION = 1 as const;
+export const BOOTSTRAP_STAGE_READINESS_POLICY_VERSION = 1 as const;
 
-export interface SelfhostStageBootstrapOptions {
+export interface SelfhostProjectCompilerModule extends SelfhostMvpModule {
+	readonly compileProjectMvp: (request: string) => ViruneResultValue<string>;
+}
+
+export type BootstrapStageReadinessBlocker =
+	| 'multi-module-project-requires-project-compiler'
+	| 'project-compiler-export-missing';
+
+export interface BootstrapStageReadinessOptions
+	extends Omit<BootstrapArtifactSnapshotOptions, 'stage'> {
 	readonly temporaryRoot: string;
-	readonly compilerVersion: string;
-	readonly runtimeAbi: string;
-	readonly interopAbi: string;
-	readonly seedSha256?: string;
 	readonly stage0EntryModulePath?: string;
 }
 
-export interface BootstrapStageGenerationEvidence {
-	readonly policyVersion: typeof BOOTSTRAP_STAGE_GENERATION_EVIDENCE_VERSION;
-	readonly claim: 'selfhost-compiler-stage-generation';
+export interface BootstrapStageReadinessEvidence {
+	readonly policyVersion: typeof BOOTSTRAP_STAGE_READINESS_POLICY_VERSION;
+	readonly claim: 'stage1-stage2-bootstrap-readiness';
 	readonly productionEligible: false;
-	readonly stage: 'stage1' | 'stage2';
+	readonly ready: boolean;
 	readonly compilerArtifactSha256: string;
 	readonly sourceManifestSha256: string;
-	readonly outputArtifactSha256: string;
-	readonly entryModulePath: string;
+	readonly sourceCount: number;
+	readonly entryPath: string;
+	readonly requiredExport: 'compileProjectMvp';
+	readonly blockers: readonly BootstrapStageReadinessBlocker[];
 }
 
-export interface BootstrapGeneratedStage {
-	readonly artifact: NormalizedBootstrapArtifactResult;
-	readonly evidence: BootstrapStageGenerationEvidence;
-	readonly serializedEvidence: string;
-	readonly evidenceSha256: string;
-}
-
-export interface SelfhostStageBootstrapResult {
+export interface BootstrapStageReadinessResult {
 	readonly stage0Compiler: NormalizedBootstrapArtifactResult;
 	readonly sourceManifest: KernelSourceManifestResultV1;
-	readonly stage1: BootstrapGeneratedStage;
-	readonly stage2: BootstrapGeneratedStage;
-	readonly shadowReport: BootstrapShadowReportResult;
+	readonly evidence: BootstrapStageReadinessEvidence;
+	readonly serialized: string;
+	readonly sha256: string;
 }
-
-export class BootstrapStageMismatchError extends Error {
-	public override readonly name = 'BootstrapStageMismatchError';
-	public constructor(public readonly shadowReport: BootstrapShadowReportResult) {
-		super(`Stage 1／Stage 2 bootstrap mismatch: ${shadowReport.report.unexpectedChanges.length} unexpected change(s)`);
-	}
-}
-
-const diagnosticsSchema: JsonValue = {
-	type: 'object',
-	required: ['code', 'severity', 'message', 'span'],
-	properties: {
-		code: { type: 'string' },
-		severity: { enum: ['error', 'warning', 'information', 'hint'] },
-		message: { type: 'string' },
-		span: { type: 'object', required: ['start', 'end'] },
-	},
-};
 
 /**
- * Generate the current MVP compiler twice through the executable self-host
- * boundary. Stage 1 is produced by the Stage 0 artifact; Stage 2 is produced by
- * loading Stage 1. The normalized artifacts may differ only by metadata.stage.
+ * Evaluate the last honest precondition before Stage 1／Stage 2 generation.
+ *
+ * The existing Self-host MVP exports compileMvp(source), whose Host adapter is
+ * intentionally single-source. The compiler project itself is multi-module.
+ * Therefore Stage 1 must not be claimed until the generated candidate exports a
+ * project compiler boundary that consumes the complete canonical source set.
  */
-export async function runSelfhostStageBootstrap(
+export async function evaluateSelfhostStageBootstrapReadiness(
 	projectRoot: string,
-	options: SelfhostStageBootstrapOptions,
-): Promise<SelfhostStageBootstrapResult> {
+	options: BootstrapStageReadinessOptions,
+): Promise<BootstrapStageReadinessResult> {
 	const build = await buildProject(projectRoot, { write: false });
 	const input = kernelInputFromBuild(build);
 	const sourceManifest = createKernelSourceManifest(input);
 	const stage0Compiler = snapshotProjectBuild(build, {
+		...options,
 		stage: 'stage0',
-		compilerVersion: options.compilerVersion,
-		runtimeAbi: options.runtimeAbi,
-		interopAbi: options.interopAbi,
-		...(options.seedSha256 === undefined ? {} : { seedSha256: options.seedSha256 }),
 	});
-
-	const stage1 = await generateStage(
+	const temporaryDirectory = await materializeBootstrapCompilerCandidate(
 		stage0Compiler,
-		options.stage0EntryModulePath ?? 'dist/main.js',
-		input,
-		'stage1',
-		sourceManifest.sha256,
-		options,
+		options.temporaryRoot,
 	);
-	const stage1Entry = compilerEntryModulePath(stage1.artifact);
-	const stage2 = await generateStage(
-		stage1.artifact,
-		stage1Entry,
-		input,
-		'stage2',
-		sourceManifest.sha256,
-		options,
-	);
-	const shadowReport = createBootstrapShadowReport({
-		baseline: {
-			label: 'stage1',
-			stage: 'stage1',
-			compilerVersion: options.compilerVersion,
-			artifact: stage1.artifact,
-		},
-		candidate: {
-			label: 'stage2',
-			stage: 'stage2',
-			compilerVersion: options.compilerVersion,
-			artifact: stage2.artifact,
-		},
-	});
-	if (shadowReport.report.status !== 'equivalent') throw new BootstrapStageMismatchError(shadowReport);
-	return { stage0Compiler, sourceManifest, stage1, stage2, shadowReport };
-}
-
-export function snapshotKernelOutputAsBootstrapArtifact(
-	output: KernelOutputV1,
-	stage: 'stage1' | 'stage2',
-	sourceManifestSha256: string,
-	options: Pick<SelfhostStageBootstrapOptions, 'compilerVersion' | 'runtimeAbi' | 'interopAbi' | 'seedSha256'>,
-): NormalizedBootstrapArtifactResult {
-	assertSuccessfulCompilerOutput(output, stage);
-	assertSha256(sourceManifestSha256, 'sourceManifestSha256');
-	const modules = output.emittedModules.map(module => {
-		if (module.sourceMap !== '') throw new Error(`${stage} emitted an unexpected source map for ${module.outputPath}`);
-		return {
-			path: module.outputPath,
-			code: module.code,
-			sourceMap: '',
-			exports: output.exportedSymbols
-				.filter(symbol => symbol.modulePath === module.sourcePath)
-				.map(symbol => symbol.name),
+	try {
+		const module = await loadBootstrapCompilerCandidate(
+			temporaryDirectory,
+			options.stage0EntryModulePath ?? 'dist/main.js',
+		);
+		const blockers = readinessBlockers(module, input.sources.length);
+		const evidence: BootstrapStageReadinessEvidence = {
+			policyVersion: BOOTSTRAP_STAGE_READINESS_POLICY_VERSION,
+			claim: 'stage1-stage2-bootstrap-readiness',
+			productionEligible: false,
+			ready: blockers.length === 0,
+			compilerArtifactSha256: stage0Compiler.sha256,
+			sourceManifestSha256: sourceManifest.sha256,
+			sourceCount: input.sources.length,
+			entryPath: input.entryPath,
+			requiredExport: 'compileProjectMvp',
+			blockers,
 		};
-	});
-	return normalizeBootstrapArtifact({
-		policyVersion: BOOTSTRAP_ARTIFACT_POLICY_VERSION,
-		root: '.selfhost-output',
-		modules,
-		diagnosticsSchema,
-		metadata: {
-			stage,
-			compilerVersion: options.compilerVersion,
-			languageVersion: output.languageVersion,
-			platform: output.platform,
-			target: 'es2022',
-			runtimeAbi: options.runtimeAbi,
-			interopAbi: options.interopAbi,
-			sourceMap: false,
-			sourcesContent: true,
-			sourceManifestSha256,
-			...(options.seedSha256 === undefined ? {} : { seedSha256: options.seedSha256.toLowerCase() }),
-		},
-		checksumManifest: modules.map(module => ({
-			path: module.path,
-			sha256: sha256(module.code),
-		})),
-	});
+		const serialized = JSON.stringify(evidence);
+		return {
+			stage0Compiler,
+			sourceManifest,
+			evidence,
+			serialized,
+			sha256: sha256(serialized),
+		};
+	} finally {
+		await rm(temporaryDirectory, { recursive: true, force: true });
+	}
 }
 
-function kernelInputFromBuild(build: ProjectBuildResult): KernelInputV1 {
-	if (build.config.platform !== 'node') throw new Error('Self-host MVP bootstrap requires the node platform');
+export function hasSelfhostProjectCompiler(
+	module: SelfhostMvpModule,
+): module is SelfhostProjectCompilerModule {
+	return typeof (module as { readonly compileProjectMvp?: unknown }).compileProjectMvp === 'function';
+}
+
+export function readinessBlockers(
+	module: SelfhostMvpModule,
+	sourceCount: number,
+): readonly BootstrapStageReadinessBlocker[] {
+	if (!Number.isSafeInteger(sourceCount) || sourceCount <= 0) {
+		throw new Error('sourceCount must be a positive safe integer');
+	}
+	const blockers = new Set<BootstrapStageReadinessBlocker>();
+	if (sourceCount > 1) blockers.add('multi-module-project-requires-project-compiler');
+	if (!hasSelfhostProjectCompiler(module)) blockers.add('project-compiler-export-missing');
+	return [...blockers].sort();
+}
+
+export function kernelInputFromProjectBuild(build: ProjectBuildResult): KernelInputV1 {
+	if (build.config.platform !== 'node') throw new Error('Self-host bootstrap requires the node platform');
+	const errors = build.diagnostics.filter(diagnostic => diagnostic.severity === 'error');
+	if (errors.length > 0) {
+		throw new Error(`Self-host project build failed with ${errors.length} error diagnostic(s)`);
+	}
 	const sources = build.modules.map(module => ({
 		path: normalizeKernelPath(relative(build.root, module.source.path).replaceAll('\\', '/')),
 		text: module.source.text,
 	}));
-	if (sources.length !== 1) {
-		throw new Error(`Self-host MVP bootstrap requires exactly one source module, received ${sources.length}`);
-	}
 	return validateKernelInput({
 		contractVersion: KERNEL_CONTRACT_VERSION,
 		languageVersion: KERNEL_LANGUAGE_VERSION,
@@ -206,66 +156,8 @@ function kernelInputFromBuild(build: ProjectBuildResult): KernelInputV1 {
 	});
 }
 
-async function generateStage(
-	compilerArtifact: NormalizedBootstrapArtifactResult,
-	compilerEntryModulePath: string,
-	input: KernelInputV1,
-	stage: 'stage1' | 'stage2',
-	sourceManifestSha256: string,
-	options: SelfhostStageBootstrapOptions,
-): Promise<BootstrapGeneratedStage> {
-	const temporaryDirectory = await materializeBootstrapCompilerCandidate(compilerArtifact, options.temporaryRoot);
-	try {
-		const compiler = await loadBootstrapCompilerCandidate(temporaryDirectory, compilerEntryModulePath);
-		const output = await compileWithSelfhostMvp(compiler, input);
-		const artifact = snapshotKernelOutputAsBootstrapArtifact(output, stage, sourceManifestSha256, options);
-		const entryModulePath = compilerEntryModulePathForOutput(artifact);
-		const evidence: BootstrapStageGenerationEvidence = {
-			policyVersion: BOOTSTRAP_STAGE_GENERATION_EVIDENCE_VERSION,
-			claim: 'selfhost-compiler-stage-generation',
-			productionEligible: false,
-			stage,
-			compilerArtifactSha256: compilerArtifact.sha256,
-			sourceManifestSha256,
-			outputArtifactSha256: artifact.sha256,
-			entryModulePath,
-		};
-		const serializedEvidence = JSON.stringify(evidence);
-		return {
-			artifact,
-			evidence,
-			serializedEvidence,
-			evidenceSha256: sha256(serializedEvidence),
-		};
-	} finally {
-		await rm(temporaryDirectory, { recursive: true, force: true });
-	}
-}
-
-function assertSuccessfulCompilerOutput(output: KernelOutputV1, stage: string): void {
-	const errors = output.diagnostics.filter(diagnostic => diagnostic.severity === 'error');
-	if (!output.accepted || errors.length > 0) {
-		throw new Error(`${stage} compiler generation failed with ${errors.length} error diagnostic(s)`);
-	}
-	if (output.emittedModules.length !== 1) {
-		throw new Error(`${stage} compiler generation must emit exactly one module, received ${output.emittedModules.length}`);
-	}
-}
-
-function compilerEntryModulePath(artifact: NormalizedBootstrapArtifactResult): string {
-	return compilerEntryModulePathForOutput(artifact);
-}
-
-function compilerEntryModulePathForOutput(artifact: NormalizedBootstrapArtifactResult): string {
-	const entries = artifact.artifact.modules.filter(module => module.exports.includes('compileMvp'));
-	if (entries.length !== 1) {
-		throw new Error(`Bootstrap compiler artifact must contain exactly one compileMvp entry module, received ${entries.length}`);
-	}
-	return entries[0]!.path;
-}
-
-function assertSha256(value: string, name: string): void {
-	if (!/^[0-9a-f]{64}$/u.test(value)) throw new Error(`${name} must be a lowercase SHA-256 value`);
+function kernelInputFromBuild(build: ProjectBuildResult): KernelInputV1 {
+	return kernelInputFromProjectBuild(build);
 }
 
 function sha256(value: string): string {
