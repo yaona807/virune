@@ -26,6 +26,7 @@ import {
 	ProjectEmitterDependency,
 	ProjectEmitterExport,
 	ProjectEmitterModule,
+	ProjectEmitterRequest,
 	ProjectEmitterResult,
 	ProjectEmittedModule,
 	emitProject,
@@ -34,10 +35,8 @@ import {
 	ProjectLinkDependency,
 	ProjectLinkDiagnostic,
 	ProjectLinkExport,
-	ProjectLinkModule,
-	ProjectLinkRequest,
 	ProjectLinkResult,
-	linkProject,
+	linkProjectJson,
 } from "./project-linker.virune"
 import {
 	ProjectSemanticDiagnostic,
@@ -131,9 +130,20 @@ record ProjectCompilerResultV1 derives Eq, Debug, Json {
 	stats: ProjectCompilerStatsV1
 }
 
+record ProjectLinkModulePayload derives Json {
+	path: String
+	source: String
+	parse: FrontendParseResult
+}
+
+record ProjectLinkRequestPayload derives Json {
+	entryPath: String
+	modules: List<ProjectLinkModulePayload>
+}
+
 record ProjectParseSummary {
 	diagnostics: List<ProjectCompilerDiagnosticV1>
-	modules: List<ProjectLinkModule>
+	modules: List<ProjectLinkModulePayload>
 	parsedModules: Int
 }
 
@@ -327,7 +337,7 @@ fn validateRequest(request: ProjectCompilerRequestV1) -> List<ProjectCompilerDia
 
 fn parseProjectSources(sources: List<ProjectCompilerSourceV1>) -> Result<ProjectParseSummary, List<JsonError>> {
 	let mut diagnostics: List<ProjectCompilerDiagnosticV1> = []
-	let mut modules: List<ProjectLinkModule> = []
+	let mut modules: List<ProjectLinkModulePayload> = []
 	let mut parsedModules = 0
 	for source in sources {
 		let encoded = parseFrontendCore(source.text)?
@@ -337,7 +347,7 @@ fn parseProjectSources(sources: List<ProjectCompilerSourceV1>) -> Result<Project
 		for value in parsed.diagnostics {
 			diagnostics = List.append(diagnostics, sourceDiagnostic(source.path, value))
 		}
-		modules = List.append(modules, ProjectLinkModule {
+		modules = List.append(modules, ProjectLinkModulePayload {
 			path: source.path,
 			source: source.text,
 			parse: parsed,
@@ -430,7 +440,7 @@ fn semanticSymbols(modulePath: String, values: List<ProjectLinkExport>) -> List<
 	return symbols
 }
 
-fn semanticRequest(modules: List<ProjectLinkModule>, exports: List<ProjectLinkExport>) -> ProjectSemanticRequest {
+fn semanticRequest(modules: List<ProjectLinkModulePayload>, exports: List<ProjectLinkExport>) -> ProjectSemanticRequest {
 	let mut values: List<ProjectSemanticModule> = []
 	for projectModule in modules {
 		values = List.append(values, ProjectSemanticModule {
@@ -510,7 +520,10 @@ fn compilerModules(values: List<ProjectEmittedModule>) -> List<ProjectCompilerEm
 	return result
 }
 
-fn appendLinkDiagnostics(diagnostics: List<ProjectCompilerDiagnosticV1>, values: List<ProjectLinkDiagnostic>) -> List<ProjectCompilerDiagnosticV1> {
+fn appendLinkDiagnostics(
+	diagnostics: List<ProjectCompilerDiagnosticV1>,
+	values: List<ProjectLinkDiagnostic>,
+) -> List<ProjectCompilerDiagnosticV1> {
 	let mut result = diagnostics
 	for value in values {
 		result = List.append(result, linkDiagnostic(value))
@@ -518,7 +531,10 @@ fn appendLinkDiagnostics(diagnostics: List<ProjectCompilerDiagnosticV1>, values:
 	return result
 }
 
-fn appendSemanticDiagnostics(diagnostics: List<ProjectCompilerDiagnosticV1>, values: List<ProjectSemanticDiagnostic>) -> List<ProjectCompilerDiagnosticV1> {
+fn appendSemanticDiagnostics(
+	diagnostics: List<ProjectCompilerDiagnosticV1>,
+	values: List<ProjectSemanticDiagnostic>,
+) -> List<ProjectCompilerDiagnosticV1> {
 	let mut result = diagnostics
 	for value in values {
 		result = List.append(result, semanticDiagnostic(value))
@@ -593,24 +609,48 @@ pub fn compileProjectMvpJson(encoded: String) -> Result<String, List<JsonError>>
 		return rejectedResult(request, parsed.diagnostics, emptyCompilerDependencies(), emptyCompilerExports(), parsed.parsedModules, 0)
 	}
 
-	let linked: ProjectLinkResult = linkProject(ProjectLinkRequest {
+	let linkRequest = Json.encode<ProjectLinkRequestPayload>(ProjectLinkRequestPayload {
 		entryPath: request.entryPath,
 		modules: parsed.modules,
-	})
+	})?
+	let linkEncoded = linkProjectJson(linkRequest)?
+	let linkRaw = Json.parse(linkEncoded)?
+	let linked = Json.decode<ProjectLinkResult>(linkRaw)?
 	let dependencies = compilerDependencies(linked.dependencies)
 	let exportedSymbols = compilerExports(linked.exportedSymbols)
 	if !linked.accepted {
-		return rejectedResult(request, appendLinkDiagnostics(emptyCompilerDiagnostics(), linked.diagnostics), dependencies, exportedSymbols, parsed.parsedModules, 0)
+		return rejectedResult(
+			request,
+			appendLinkDiagnostics(emptyCompilerDiagnostics(), linked.diagnostics),
+			dependencies,
+			exportedSymbols,
+			parsed.parsedModules,
+			0,
+		)
 	}
 
 	let semantics: ProjectSemanticResult = checkProjectSemantics(semanticRequest(parsed.modules, linked.exportedSymbols))
 	if !semantics.accepted {
-		return rejectedResult(request, appendSemanticDiagnostics(emptyCompilerDiagnostics(), semantics.diagnostics), dependencies, exportedSymbols, parsed.parsedModules, semantics.checkedModules)
+		return rejectedResult(
+			request,
+			appendSemanticDiagnostics(emptyCompilerDiagnostics(), semantics.diagnostics),
+			dependencies,
+			exportedSymbols,
+			parsed.parsedModules,
+			semantics.checkedModules,
+		)
 	}
 
 	let lowered = lowerProjectSources(request.sources)?
 	if !List.isEmpty(lowered.diagnostics) {
-		return rejectedResult(request, lowered.diagnostics, dependencies, exportedSymbols, parsed.parsedModules, lowered.checkedModules)
+		return rejectedResult(
+			request,
+			lowered.diagnostics,
+			dependencies,
+			exportedSymbols,
+			parsed.parsedModules,
+			lowered.checkedModules,
+		)
 	}
 
 	let emitted: ProjectEmitterResult = emitProject(ProjectEmitterRequest {
@@ -620,8 +660,24 @@ pub fn compileProjectMvpJson(encoded: String) -> Result<String, List<JsonError>>
 		exportedSymbols: emitterExports(linked.exportedSymbols),
 	})
 	if !emitted.accepted {
-		return rejectedResult(request, [diagnostic("SHP4000", "Deterministic project emission rejected the normalized module set")], dependencies, exportedSymbols, parsed.parsedModules, lowered.checkedModules)
+		return rejectedResult(
+			request,
+			[diagnostic("SHP4000", "Deterministic project emission rejected the normalized module set")],
+			dependencies,
+			exportedSymbols,
+			parsed.parsedModules,
+			lowered.checkedModules,
+		)
 	}
 
-	return encodeResult(request, true, emptyCompilerDiagnostics(), compilerModules(emitted.emittedModules), dependencies, exportedSymbols, parsed.parsedModules, lowered.checkedModules)
+	return encodeResult(
+		request,
+		true,
+		emptyCompilerDiagnostics(),
+		compilerModules(emitted.emittedModules),
+		dependencies,
+		exportedSymbols,
+		parsed.parsedModules,
+		lowered.checkedModules,
+	)
 }
