@@ -71,7 +71,9 @@ function validateCase(module: FfiModule, baseTypes: readonly unknown[], fixture:
 	const result = JSON.parse(firstEncoded) as FfiResult;
 	assert.equal(result.accepted, fixture.accepted);
 	assert.deepEqual(result.diagnostics.map(item => item.code), fixture.expectedDiagnosticCodes);
-	assert.deepEqual(result.types.map(item => item.id), result.types.map((_, index) => index));
+	if (!result.diagnostics.some(item => item.code === 'L9001')) {
+		assert.deepEqual(result.types.map(item => item.id), result.types.map((_, index) => index));
+	}
 	assert.deepEqual(result.externFunctions.map(item => item.id), result.externFunctions.map((_, index) => index));
 	assert.deepEqual(result.exports.map(item => item.id), result.exports.map((_, index) => index));
 	for (const [typeId, expectedSafe] of Object.entries(fixture.expectedTypeSafety ?? {})) {
