@@ -12,7 +12,7 @@ import {
 
 export const PROJECT_COMPILER_CONTRACT_VERSION = '1' as const;
 export const PROJECT_COMPILER_REQUEST_SCHEMA = 'virune.selfhost.project-compiler.request.v1' as const;
-export const PROJECT_COMPILER_RESULT_SCHEMA = 'virune.selfhost.project-compiler.result.v1' as const;
+export const PROJECT_COMPILER_RESULT_SCHEMA = 'virune.selfhost.project-compiler.result.v2' as const;
 
 export interface SelfhostProjectCompilerModule extends SelfhostMvpModule {
 	readonly projectCompilerCapability: () => ViruneResultValue<string>;
