@@ -1,0 +1,651 @@
+//! Deterministic JavaScript FFI boundary semantic validation.
+
+record FrontendFfiTypeNode derives Eq, Debug, Json {
+	id: Int
+	kind: String
+	name: String?
+	children: List<Int>
+	keyId: Int?
+	valueId: Int?
+	openGeneric: Bool
+	shapeKnown: Bool
+}
+
+record FrontendFfiParameter derives Eq, Debug, Json {
+	name: String
+	typeId: Int
+	optional: Bool
+}
+
+record FrontendFfiFunction derives Eq, Debug, Json {
+	name: String
+	parameters: List<FrontendFfiParameter>
+	returnTypeId: Int
+}
+
+record FrontendFfiExtern derives Eq, Debug, Json {
+	module: String
+	unsafe: Bool
+	moduleUnsafe: Bool
+	sourcePath: String
+	platform: String
+	functions: List<FrontendFfiFunction>
+}
+
+record FrontendFfiExport derives Eq, Debug, Json {
+	name: String
+	declarationKind: String
+	public: Bool
+	generic: Bool
+	attributeArgumentCount: Int
+	parameterTypeIds: List<Int>
+	returnTypeId: Int
+}
+
+record FrontendFfiRequest derives Eq, Debug, Json {
+	types: List<FrontendFfiTypeNode>
+	externs: List<FrontendFfiExtern>
+	exports: List<FrontendFfiExport>
+}
+
+record SemanticFfiType derives Eq, Debug, Json {
+	id: Int
+	kind: String
+	name: String?
+	safe: Bool
+	primitiveKey: Bool
+	valid: Bool
+}
+
+record SemanticFfiExternFunction derives Eq, Debug, Json {
+	id: Int
+	externId: Int
+	name: String
+	safe: Bool
+	valid: Bool
+}
+
+record SemanticFfiExport derives Eq, Debug, Json {
+	id: Int
+	name: String
+	safe: Bool
+	valid: Bool
+}
+
+record SemanticFfiDiagnostic derives Eq, Debug, Json {
+	code: String
+	severity: String
+	message: String
+	entryKind: String
+	entryId: Int?
+	typeId: Int?
+	help: String?
+}
+
+record FrontendFfiResult derives Eq, Debug, Json {
+	accepted: Bool
+	types: List<SemanticFfiType>
+	externFunctions: List<SemanticFfiExternFunction>
+	exports: List<SemanticFfiExport>
+	diagnostics: List<SemanticFfiDiagnostic>
+}
+
+record TypeDecision {
+	safe: Bool
+	primitiveKey: Bool
+	valid: Bool
+}
+
+record TypeBuildResult {
+	types: List<SemanticFfiType>
+	diagnostics: List<SemanticFfiDiagnostic>
+}
+
+record ExternBuildResult {
+	functions: List<SemanticFfiExternFunction>
+	diagnostics: List<SemanticFfiDiagnostic>
+}
+
+record ExportBuildResult {
+	exports: List<SemanticFfiExport>
+	diagnostics: List<SemanticFfiDiagnostic>
+}
+
+fn ffiDiagnostic(
+	code: String,
+	message: String,
+	entryKind: String,
+	entryId: Int?,
+	typeId: Int?,
+	help: String?,
+) -> SemanticFfiDiagnostic {
+	return SemanticFfiDiagnostic {
+		code: code,
+		severity: "error",
+		message: message,
+		entryKind: entryKind,
+		entryId: entryId,
+		typeId: typeId,
+		help: help,
+	}
+}
+
+fn containsInt(values: List<Int>, expected: Int) -> Bool {
+	for value in values {
+		if value == expected {
+			return true
+		}
+	}
+	return false
+}
+
+fn validTypeId(values: List<FrontendFfiTypeNode>, id: Int) -> Bool {
+	return id >= 0 && id < List.length(values)
+}
+
+fn fallbackTypeNode() -> FrontendFfiTypeNode {
+	return FrontendFfiTypeNode {
+		id: -1,
+		kind: "invalid",
+		name: None,
+		children: [],
+		keyId: None,
+		valueId: None,
+		openGeneric: false,
+		shapeKnown: false,
+	}
+}
+
+fn typeNodeAt(values: List<FrontendFfiTypeNode>, id: Int) -> FrontendFfiTypeNode {
+	return match List.get(values, id) {
+		Some(value) => value
+		None => fallbackTypeNode()
+	}
+}
+
+fn optionalIntValid(values: List<FrontendFfiTypeNode>, value: Int?) -> Bool {
+	return match value {
+		Some(id) => validTypeId(values, id)
+		None => false
+	}
+}
+
+fn optionalIntOr(value: Int?, fallback: Int) -> Int {
+	return match value {
+		Some(id) => id
+		None => fallback
+	}
+}
+
+fn validTypeKind(kind: String) -> Bool {
+	return kind == "primitive"
+		|| kind == "function"
+		|| kind == "foreign"
+		|| kind == "typeVariable"
+		|| kind == "list"
+		|| kind == "tuple"
+		|| kind == "option"
+		|| kind == "future"
+		|| kind == "result"
+		|| kind == "map"
+		|| kind == "set"
+		|| kind == "named"
+}
+
+fn primitiveNameValid(name: String?) -> Bool {
+	return match name {
+		Some(value) => String.length(value) > 0
+		None => false
+	}
+}
+
+fn primitiveSafe(name: String?) -> Bool {
+	return match name {
+		Some(value) => value != "Never" && value != "InvalidType" && String.length(value) > 0
+		None => false
+	}
+}
+
+fn primitiveKey(name: String?) -> Bool {
+	return match name {
+		Some(value) => value == "Bool"
+			|| value == "Int"
+			|| value == "Float"
+			|| value == "BigInt"
+			|| value == "String"
+		None => false
+	}
+}
+
+fn allChildrenSafe(
+	values: List<FrontendFfiTypeNode>,
+	children: List<Int>,
+	path: List<Int>,
+) -> TypeDecision {
+	let mut valid = true
+	for child in children {
+		let decision = classifyType(values, child, path)
+		if !decision.valid {
+			valid = false
+		}
+		if !decision.safe {
+			return TypeDecision { safe: false, primitiveKey: false, valid: valid }
+		}
+	}
+	return TypeDecision { safe: true, primitiveKey: false, valid: valid }
+}
+
+fn classifyType(
+	values: List<FrontendFfiTypeNode>,
+	id: Int,
+	path: List<Int>,
+) -> TypeDecision {
+	if !validTypeId(values, id) {
+		return TypeDecision { safe: false, primitiveKey: false, valid: false }
+	}
+	if containsInt(path, id) {
+		return TypeDecision { safe: false, primitiveKey: false, valid: true }
+	}
+	let value = typeNodeAt(values, id)
+	if value.id != id || !validTypeKind(value.kind) {
+		return TypeDecision { safe: false, primitiveKey: false, valid: false }
+	}
+	let nextPath = List.append(path, id)
+	if value.kind == "primitive" {
+		return TypeDecision {
+			safe: primitiveSafe(value.name),
+			primitiveKey: primitiveKey(value.name),
+			valid: primitiveNameValid(value.name),
+		}
+	}
+	if value.kind == "function" || value.kind == "foreign" || value.kind == "typeVariable" {
+		return TypeDecision { safe: false, primitiveKey: false, valid: true }
+	}
+	if value.kind == "list" || value.kind == "option" || value.kind == "future" || value.kind == "set" {
+		if List.length(value.children) != 1 {
+			return TypeDecision { safe: false, primitiveKey: false, valid: false }
+		}
+		let child = classifyType(values, optionalIntOr(List.get(value.children, 0), -1), nextPath)
+		if value.kind == "set" {
+			return TypeDecision { safe: child.primitiveKey, primitiveKey: false, valid: child.valid }
+		}
+		return TypeDecision { safe: child.safe, primitiveKey: false, valid: child.valid }
+	}
+	if value.kind == "tuple" {
+		return allChildrenSafe(values, value.children, nextPath)
+	}
+	if value.kind == "result" {
+		if List.length(value.children) != 2 {
+			return TypeDecision { safe: false, primitiveKey: false, valid: false }
+		}
+		return allChildrenSafe(values, value.children, nextPath)
+	}
+	if value.kind == "map" {
+		let keyValid = optionalIntValid(values, value.keyId)
+		let valueValid = optionalIntValid(values, value.valueId)
+		if !keyValid || !valueValid {
+			return TypeDecision { safe: false, primitiveKey: false, valid: false }
+		}
+		let key = classifyType(values, optionalIntOr(value.keyId, -1), nextPath)
+		let item = classifyType(values, optionalIntOr(value.valueId, -1), nextPath)
+		return TypeDecision {
+			safe: key.primitiveKey && item.safe,
+			primitiveKey: false,
+			valid: key.valid && item.valid,
+		}
+	}
+	if value.kind == "named" {
+		if value.openGeneric || !value.shapeKnown {
+			return TypeDecision { safe: false, primitiveKey: false, valid: true }
+		}
+		return allChildrenSafe(values, value.children, nextPath)
+	}
+	return TypeDecision { safe: false, primitiveKey: false, valid: false }
+}
+
+fn typeName(value: FrontendFfiTypeNode) -> String {
+	return match value.name {
+		Some(name) => name
+		None => value.kind
+	}
+}
+
+fn buildTypes(values: List<FrontendFfiTypeNode>) -> TypeBuildResult {
+	let mut types: List<SemanticFfiType> = []
+	let mut diagnostics: List<SemanticFfiDiagnostic> = []
+	let mut id = 0
+	for value in values {
+		let decision = classifyType(values, id, [])
+		if value.id != id {
+			diagnostics = List.append(diagnostics, ffiDiagnostic(
+				"L9001",
+				"FFI type arena IDs must be contiguous",
+				"type",
+				Some(id),
+				Some(value.id),
+				Some("Use the list index as the canonical type ID."),
+			))
+		}
+		if !validTypeKind(value.kind) {
+			diagnostics = List.append(diagnostics, ffiDiagnostic(
+				"L9001",
+				"Unknown FFI type kind " + value.kind,
+				"type",
+				Some(id),
+				Some(id),
+				Some("Use a supported canonical FFI type kind."),
+			))
+		} else if !decision.valid {
+			diagnostics = List.append(diagnostics, ffiDiagnostic(
+				"L9001",
+				"Malformed canonical FFI type " + typeName(value),
+				"type",
+				Some(id),
+				Some(id),
+				Some("Provide valid canonical child references and type metadata."),
+			))
+		}
+		types = List.append(types, SemanticFfiType {
+			id: id,
+			kind: value.kind,
+			name: value.name,
+			safe: decision.safe,
+			primitiveKey: decision.primitiveKey,
+			valid: decision.valid,
+		})
+		id = id + 1
+	}
+	return TypeBuildResult { types: types, diagnostics: diagnostics }
+}
+
+fn semanticTypeAt(values: List<SemanticFfiType>, id: Int) -> SemanticFfiType {
+	return match List.get(values, id) {
+		Some(value) => value
+		None => SemanticFfiType {
+			id: -1,
+			kind: "invalid",
+			name: None,
+			safe: false,
+			primitiveKey: false,
+			valid: false,
+		}
+	}
+}
+
+fn isResultLike(types: List<FrontendFfiTypeNode>, typeId: Int) -> Bool {
+	if !validTypeId(types, typeId) {
+		return false
+	}
+	let value = typeNodeAt(types, typeId)
+	if value.kind == "result" {
+		return true
+	}
+	if value.kind != "future" || List.length(value.children) != 1 {
+		return false
+	}
+	let childId = optionalIntOr(List.get(value.children, 0), -1)
+	return validTypeId(types, childId) && typeNodeAt(types, childId).kind == "result"
+}
+
+fn inFfiDirectory(path: String) -> Bool {
+	return path == "ffi" || String.startsWith(path, "ffi/")
+}
+
+fn nodeModule(moduleName: String) -> Bool {
+	return String.startsWith(moduleName, "node:")
+}
+
+fn appendUnsafeTypeDiagnostic(
+	diagnosticsValue: List<SemanticFfiDiagnostic>,
+	types: List<SemanticFfiType>,
+	typeId: Int,
+	entryKind: String,
+	entryId: Int,
+	message: String,
+) -> List<SemanticFfiDiagnostic> {
+	let mut diagnostics = diagnosticsValue
+	let value = semanticTypeAt(types, typeId)
+	if value.id < 0 {
+		diagnostics = List.append(diagnostics, ffiDiagnostic(
+			"L9001",
+			"FFI entry references an unknown type",
+			entryKind,
+			Some(entryId),
+			Some(typeId),
+			Some("Reference a type ID from the canonical FFI type arena."),
+		))
+	} else if !value.safe {
+		diagnostics = List.append(diagnostics, ffiDiagnostic(
+			"L4213",
+			message,
+			entryKind,
+			Some(entryId),
+			Some(typeId),
+			Some("Use Unknown and decode explicitly, or wrap the value in a safe Virune type."),
+		))
+	}
+	return diagnostics
+}
+
+fn buildExterns(
+	values: List<FrontendFfiExtern>,
+	typeNodes: List<FrontendFfiTypeNode>,
+	types: List<SemanticFfiType>,
+	diagnosticsValue: List<SemanticFfiDiagnostic>,
+) -> ExternBuildResult {
+	let mut functions: List<SemanticFfiExternFunction> = []
+	let mut diagnostics = diagnosticsValue
+	let mut externId = 0
+	let mut functionId = 0
+	for declaration in values {
+		let inFfi = inFfiDirectory(declaration.sourcePath)
+		if nodeModule(declaration.module) && declaration.platform != "node" {
+			diagnostics = List.append(diagnostics, ffiDiagnostic(
+				"L4006",
+				"Node.js module " + declaration.module + " is not available for platform " + declaration.platform,
+				"extern",
+				Some(externId),
+				None,
+				Some("Use platform node or select a platform-compatible JavaScript module."),
+			))
+		}
+		if declaration.unsafe && !declaration.moduleUnsafe {
+			diagnostics = List.append(diagnostics, ffiDiagnostic(
+				"L4007",
+				"unsafe extern requires an unsafe module declaration",
+				"extern",
+				Some(externId),
+				None,
+				Some("Mark the containing module unsafe or use a safe extern boundary."),
+			))
+		}
+		if declaration.unsafe && !inFfi {
+			diagnostics = List.append(diagnostics, ffiDiagnostic(
+				"L4008",
+				"unsafe extern is allowed only under the source ffi/ directory",
+				"extern",
+				Some(externId),
+				None,
+				Some("Move the declaration under ffi/ or remove unsafe."),
+			))
+		}
+		if declaration.moduleUnsafe && !inFfi {
+			diagnostics = List.append(diagnostics, ffiDiagnostic(
+				"L4009",
+				"unsafe module is allowed only under the source ffi/ directory",
+				"extern",
+				Some(externId),
+				None,
+				Some("Move the module under ffi/ or remove the unsafe module declaration."),
+			))
+		}
+		for fnValue in declaration.functions {
+			let before = List.length(diagnostics)
+			let mut optionalSeen = false
+			for parameter in fnValue.parameters {
+				if parameter.optional {
+					optionalSeen = true
+				} else if optionalSeen {
+					diagnostics = List.append(diagnostics, ffiDiagnostic(
+						"L2115",
+						"Optional extern parameters must be trailing",
+						"externFunction",
+						Some(functionId),
+						Some(parameter.typeId),
+						Some("Move required parameters before optional parameters."),
+					))
+				}
+				if !declaration.unsafe {
+					diagnostics = appendUnsafeTypeDiagnostic(
+						diagnostics,
+						types,
+						parameter.typeId,
+						"externFunction",
+						functionId,
+						"Safe extern parameter " + parameter.name + " cannot be fully validated",
+					)
+				}
+			}
+			if !declaration.unsafe {
+				if !isResultLike(typeNodes, fnValue.returnTypeId) {
+					diagnostics = List.append(diagnostics, ffiDiagnostic(
+						"L4001",
+						"Safe extern function " + fnValue.name + " must return Result",
+						"externFunction",
+						Some(functionId),
+						Some(fnValue.returnTypeId),
+						Some("Return Result<T, E> or Future<Result<T, E>>."),
+					))
+				}
+				diagnostics = appendUnsafeTypeDiagnostic(
+					diagnostics,
+					types,
+					fnValue.returnTypeId,
+					"externFunction",
+					functionId,
+					"Safe extern return type cannot be fully validated",
+				)
+			}
+			functions = List.append(functions, SemanticFfiExternFunction {
+				id: functionId,
+				externId: externId,
+				name: fnValue.name,
+				safe: !declaration.unsafe,
+				valid: List.length(diagnostics) == before,
+			})
+			functionId = functionId + 1
+		}
+		externId = externId + 1
+	}
+	return ExternBuildResult { functions: functions, diagnostics: diagnostics }
+}
+
+fn buildExports(
+	values: List<FrontendFfiExport>,
+	types: List<SemanticFfiType>,
+	diagnosticsValue: List<SemanticFfiDiagnostic>,
+) -> ExportBuildResult {
+	let mut exports: List<SemanticFfiExport> = []
+	let mut diagnostics = diagnosticsValue
+	let mut id = 0
+	for value in values {
+		let before = List.length(diagnostics)
+		if value.declarationKind != "function" {
+			diagnostics = List.append(diagnostics, ffiDiagnostic(
+				"L2052",
+				"@jsExport can be used only on functions",
+				"export",
+				Some(id),
+				None,
+				Some("Move @jsExport to a function declaration."),
+			))
+		}
+		if !value.public {
+			diagnostics = List.append(diagnostics, ffiDiagnostic(
+				"L2053",
+				"@jsExport function must be public",
+				"export",
+				Some(id),
+				None,
+				Some("Declare the exported function with pub."),
+			))
+		}
+		if value.generic {
+			diagnostics = List.append(diagnostics, ffiDiagnostic(
+				"L2054",
+				"@jsExport does not support generic functions",
+				"export",
+				Some(id),
+				None,
+				Some("Export a non-generic adapter with concrete boundary types."),
+			))
+		}
+		if value.attributeArgumentCount > 0 {
+			diagnostics = List.append(diagnostics, ffiDiagnostic(
+				"L2055",
+				"@jsExport does not accept arguments",
+				"export",
+				Some(id),
+				None,
+				Some("Remove arguments from @jsExport."),
+			))
+		}
+		for typeId in value.parameterTypeIds {
+			diagnostics = appendUnsafeTypeDiagnostic(
+				diagnostics,
+				types,
+				typeId,
+				"export",
+				id,
+				"@jsExport parameter cannot be fully validated",
+			)
+		}
+		diagnostics = appendUnsafeTypeDiagnostic(
+			diagnostics,
+			types,
+			value.returnTypeId,
+			"export",
+			id,
+			"@jsExport return type cannot be fully validated",
+		)
+		exports = List.append(exports, SemanticFfiExport {
+			id: id,
+			name: value.name,
+			safe: true,
+			valid: List.length(diagnostics) == before,
+		})
+		id = id + 1
+	}
+	return ExportBuildResult { exports: exports, diagnostics: diagnostics }
+}
+
+fn accepted(values: List<SemanticFfiDiagnostic>) -> Bool {
+	for value in values {
+		if value.severity == "error" {
+			return false
+		}
+	}
+	return true
+}
+
+fn decodeRequest(encoded: String) -> Result<FrontendFfiRequest, List<JsonError>> {
+	let raw = Json.parse(encoded)?
+	return Json.decode<FrontendFfiRequest>(raw)
+}
+
+fn checkFrontendFfi(request: FrontendFfiRequest) -> FrontendFfiResult {
+	let typeResult = buildTypes(request.types)
+	let externResult = buildExterns(request.externs, request.types, typeResult.types, typeResult.diagnostics)
+	let exportResult = buildExports(request.exports, typeResult.types, externResult.diagnostics)
+	return FrontendFfiResult {
+		accepted: accepted(exportResult.diagnostics),
+		types: typeResult.types,
+		externFunctions: externResult.functions,
+		exports: exportResult.exports,
+		diagnostics: exportResult.diagnostics,
+	}
+}
+
+pub fn checkFrontendFfiJson(encoded: String) -> Result<String, List<JsonError>> {
+	return Json.encode<FrontendFfiResult>(checkFrontendFfi(decodeRequest(encoded)?))
+}
