@@ -39,11 +39,49 @@ record ProjectCompilerDiagnosticV1 derives Eq, Debug, Json {
 	message: String
 }
 
+record ProjectCompilerEmittedModuleV1 derives Eq, Debug, Json {
+	sourcePath: String
+	outputPath: String
+	code: String
+	sourceMap: String
+}
+
+record ProjectCompilerDependencyV1 derives Eq, Debug, Json {
+	modulePath: String
+	sourceKind: String
+	specifier: String
+	resolvedPath: String?
+	typeOnly: Bool
+	public: Bool
+}
+
+record ProjectCompilerExportedSymbolV1 derives Eq, Debug, Json {
+	modulePath: String
+	name: String
+	declarationKind: String
+}
+
+record ProjectCompilerStatsV1 derives Eq, Debug, Json {
+	parsedModules: Int
+	reusedParsedModules: Int
+	checkedModules: Int
+	reusedCheckedModules: Int
+	emittedModules: Int
+	reusedEmittedModules: Int
+	invalidatedModules: Int
+}
+
 record ProjectCompilerResultV1 derives Eq, Debug, Json {
 	contractVersion: String
+	languageVersion: String
+	platform: String
+	entryPath: String
 	accepted: Bool
 	diagnostics: List<ProjectCompilerDiagnosticV1>
-	emittedModuleCount: Int
+	emittedModules: List<ProjectCompilerEmittedModuleV1>
+	dependencies: List<ProjectCompilerDependencyV1>
+	exportedSymbols: List<ProjectCompilerExportedSymbolV1>
+	stats: ProjectCompilerStatsV1
 }
 
 fn diagnostic(code: String, message: String) -> ProjectCompilerDiagnosticV1 {
@@ -51,6 +89,18 @@ fn diagnostic(code: String, message: String) -> ProjectCompilerDiagnosticV1 {
 		code: code,
 		severity: "error",
 		message: message,
+	}
+}
+
+fn emptyStats() -> ProjectCompilerStatsV1 {
+	return ProjectCompilerStatsV1 {
+		parsedModules: 0,
+		reusedParsedModules: 0,
+		checkedModules: 0,
+		reusedCheckedModules: 0,
+		emittedModules: 0,
+		reusedEmittedModules: 0,
+		invalidatedModules: 0,
 	}
 }
 
@@ -129,8 +179,14 @@ pub fn compileProjectMvpJson(encoded: String) -> Result<String, List<JsonError>>
 	] else diagnostics
 	return Json.encode<ProjectCompilerResultV1>(ProjectCompilerResultV1 {
 		contractVersion: "1",
+		languageVersion: "1.0",
+		platform: "node",
+		entryPath: request.entryPath,
 		accepted: false,
 		diagnostics: resultDiagnostics,
-		emittedModuleCount: 0,
+		emittedModules: [],
+		dependencies: [],
+		exportedSymbols: [],
+		stats: emptyStats(),
 	})
 }
