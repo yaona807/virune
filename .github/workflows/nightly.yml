@@ -130,3 +130,39 @@ jobs:
           path: .cache/reproducible-release/
           if-no-files-found: error
           retention-days: 30
+
+  selfhost-stage0-evidence:
+    name: Self-host Stage 0 execution evidence
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Build Host and compiler packages
+        run: npm run build
+      - name: Execute the Stage 0 compiler candidate
+        run: >-
+          node scripts/run-selfhost-nightly-shadow.mjs
+          --candidate-sha=${{ github.sha }}
+          --run-id=${{ github.run_id }}-${{ github.run_attempt }}
+      - name: Build the Self-host MVP
+        if: always()
+        run: npm run selfhost:mvp:build
+      - name: Run the MVP differential suite
+        if: always()
+        run: >-
+          node scripts/run-selfhost-mvp-differential.mjs
+          --output=.cache/selfhost-nightly-shadow/differential
+      - name: Upload non-promotable self-host evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: selfhost-stage0-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .cache/selfhost-nightly-shadow/
+          if-no-files-found: warn
+          retention-days: 30
