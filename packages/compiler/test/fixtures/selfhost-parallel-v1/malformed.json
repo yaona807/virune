@@ -1,0 +1,23 @@
+{
+  "tryMode": false,
+  "entries": [
+    {
+      "name": "",
+      "operandKind": "mystery",
+      "valueType": "",
+      "errorType": ""
+    },
+    {
+      "name": "run",
+      "operandKind": "future",
+      "valueType": null,
+      "errorType": null
+    },
+    {
+      "name": "run",
+      "operandKind": "future",
+      "valueType": "Int",
+      "errorType": null
+    }
+  ]
+}
