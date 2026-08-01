@@ -210,13 +210,17 @@ function parseReport(value: unknown, path: string): { readonly report: Bootstrap
 	const rawArtifactEqual = boolean(report.rawArtifactEqual, `${path}.rawArtifactEqual`);
 	const expectedChanges = parseChanges(report.expectedChanges, `${path}.expectedChanges`);
 	const unexpectedChanges = parseChanges(report.unexpectedChanges, `${path}.unexpectedChanges`);
-	for (const [index, change] of expectedChanges.entries()) {
-		if (change.section !== 'metadata' || change.path !== 'metadata.stage') {
-			throw new BootstrapShadowHistoryError(
-				`${path}.expectedChanges[${index}]`,
-				'only metadata.stage may be an expected change',
-			);
-		}
+	if (
+		expectedChanges.length !== 1
+		|| expectedChanges[0]!.section !== 'metadata'
+		|| expectedChanges[0]!.path !== 'metadata.stage'
+		|| expectedChanges[0]!.before !== JSON.stringify('stage1')
+		|| expectedChanges[0]!.after !== JSON.stringify('stage2')
+	) {
+		throw new BootstrapShadowHistoryError(
+			`${path}.expectedChanges`,
+			'expected exactly the canonical stage1 to stage2 metadata.stage change',
+		);
 	}
 	if (status !== (unexpectedChanges.length === 0 ? 'equivalent' : 'mismatch')) {
 		throw new BootstrapShadowHistoryError(`${path}.status`, 'status does not match unexpectedChanges');
@@ -384,9 +388,9 @@ function normalizedSha256(value: unknown, path: string): string {
 }
 
 function normalizedCandidateSha(value: unknown, path: string): string {
-	const result = string(value, path).toLowerCase();
+	const result = string(value, path);
 	if (!candidateShaPattern.test(result)) {
-		throw new BootstrapShadowHistoryError(path, 'expected a 40- or 64-character hexadecimal SHA');
+		throw new BootstrapShadowHistoryError(path, 'expected a lowercase 40- or 64-character hexadecimal SHA');
 	}
 	return result;
 }
