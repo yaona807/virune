@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import test from 'node:test';
 import {
 	createBootstrapShadowHistory,
@@ -88,11 +89,33 @@ test('shadow history validation fails closed on stale, duplicate, unordered, tam
 		/expected 111111/u,
 	);
 	assert.throws(
+		() => createBootstrapShadowHistory({
+			...history([first]),
+			candidateSha: 'A'.repeat(40),
+		}),
+		/lowercase 40- or 64-character hexadecimal SHA/u,
+	);
+	assert.throws(
 		() => createBootstrapShadowHistory(history([{
 			...first,
 			reportSha256: '0'.repeat(64),
 		}])),
 		/reportSha256/u,
+	);
+	const tamperedReport = {
+		...first.report,
+		expectedChanges: first.report.expectedChanges.map(change => ({
+			...change,
+			before: JSON.stringify('stage0'),
+		})),
+	};
+	assert.throws(
+		() => createBootstrapShadowHistory(history([{
+			...first,
+			report: tamperedReport,
+			reportSha256: sha256(JSON.stringify(tamperedReport)),
+		}])),
+		/canonical stage1 to stage2/u,
 	);
 	assert.throws(
 		() => createBootstrapShadowHistory(history([
@@ -169,4 +192,8 @@ function artifact(stage: BootstrapShadowStage, mismatch = false): NormalizedBoot
 			sha256: (mismatch ? 'b' : 'a').repeat(64),
 		}],
 	});
+}
+
+function sha256(value: string): string {
+	return createHash('sha256').update(value, 'utf8').digest('hex');
 }
