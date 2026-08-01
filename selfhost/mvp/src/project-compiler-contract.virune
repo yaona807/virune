@@ -1,9 +1,18 @@
 //! Versioned fail-closed project compiler boundary.
 //!
-//! This module fixes the public JSON shape before project-wide semantic linking
-//! is implemented. The current capability is intentionally not ready, and a
-//! valid compile request returns deterministic blocker evidence rather than a
-//! false Stage 1 compiler artifact.
+//! This module fixes the public JSON shape and performs the first real project
+//! compilation slice: deterministic parsing of every canonical Virune source.
+//! Linking, checking, and emission remain explicitly unavailable.
+
+import { parseFrontendCore } from "./frontend-parser-core.virune"
+import {
+	FrontendParseResult,
+	ParserDiagnostic,
+	ParserPosition,
+	ParserSpan,
+	parserPosition,
+	parserSpan,
+} from "./frontend-parser-model.virune"
 
 record ProjectCompilerCapabilityV1 derives Eq, Debug, Json {
 	contractVersion: String
@@ -37,6 +46,9 @@ record ProjectCompilerDiagnosticV1 derives Eq, Debug, Json {
 	code: String
 	severity: String
 	message: String
+	sourcePath: String?
+	span: ParserSpan
+	notes: List<String>
 }
 
 record ProjectCompilerEmittedModuleV1 derives Eq, Debug, Json {
@@ -84,17 +96,45 @@ record ProjectCompilerResultV1 derives Eq, Debug, Json {
 	stats: ProjectCompilerStatsV1
 }
 
+record ProjectParseSummary {
+	diagnostics: List<ProjectCompilerDiagnosticV1>
+	parsedModules: Int
+}
+
+fn fallbackPosition() -> ParserPosition {
+	return parserPosition(0, 1, 1)
+}
+
+fn fallbackSpan() -> ParserSpan {
+	let position = fallbackPosition()
+	return parserSpan(position, position)
+}
+
 fn diagnostic(code: String, message: String) -> ProjectCompilerDiagnosticV1 {
 	return ProjectCompilerDiagnosticV1 {
 		code: code,
 		severity: "error",
 		message: message,
+		sourcePath: None,
+		span: fallbackSpan(),
+		notes: [],
 	}
 }
 
-fn emptyStats() -> ProjectCompilerStatsV1 {
+fn sourceDiagnostic(path: String, value: ParserDiagnostic) -> ProjectCompilerDiagnosticV1 {
+	return ProjectCompilerDiagnosticV1 {
+		code: value.code,
+		severity: value.severity,
+		message: value.message,
+		sourcePath: Some(path),
+		span: value.span,
+		notes: [],
+	}
+}
+
+fn stats(parsedModules: Int) -> ProjectCompilerStatsV1 {
 	return ProjectCompilerStatsV1 {
-		parsedModules: 0,
+		parsedModules: parsedModules,
 		reusedParsedModules: 0,
 		checkedModules: 0,
 		reusedCheckedModules: 0,
@@ -132,6 +172,9 @@ fn validateRequest(request: ProjectCompilerRequestV1) -> List<ProjectCompilerDia
 	}
 	let mut paths: List<String> = []
 	let mut entryFound = false
+	let mut previousPath = ""
+	let mut hasPreviousPath = false
+	let mut orderingDiagnosticAdded = false
 	for source in request.sources {
 		if String.length(source.path) == 0 {
 			diagnostics = List.append(diagnostics, diagnostic("SHP1006", "Source path cannot be empty"))
@@ -141,6 +184,12 @@ fn validateRequest(request: ProjectCompilerRequestV1) -> List<ProjectCompilerDia
 		} else {
 			paths = List.append(paths, source.path)
 		}
+		if hasPreviousPath && source.path < previousPath && !orderingDiagnosticAdded {
+			diagnostics = List.append(diagnostics, diagnostic("SHP1012", "Project sources must be sorted by canonical path"))
+			orderingDiagnosticAdded = true
+		}
+		previousPath = source.path
+		hasPreviousPath = true
 		if source.path == request.entryPath {
 			entryFound = true
 		}
@@ -160,33 +209,63 @@ fn validateRequest(request: ProjectCompilerRequestV1) -> List<ProjectCompilerDia
 	return diagnostics
 }
 
-pub fn projectCompilerCapabilityJson() -> Result<String, List<JsonError>> {
-	return Json.encode<ProjectCompilerCapabilityV1>(ProjectCompilerCapabilityV1 {
-		contractVersion: "1",
-		ready: false,
-		requestSchema: "virune.selfhost.project-compiler.request.v1",
-		resultSchema: "virune.selfhost.project-compiler.result.v1",
-		blockers: ["project-semantics-not-implemented"],
+fn parseProjectSources(sources: List<ProjectCompilerSourceV1>) -> Result<ProjectParseSummary, List<JsonError>> {
+	let mut diagnostics: List<ProjectCompilerDiagnosticV1> = []
+	let mut parsedModules = 0
+	for source in sources {
+		let encoded = parseFrontendCore(source.text)?
+		let raw = Json.parse(encoded)?
+		let parsed = Json.decode<FrontendParseResult>(raw)?
+		parsedModules = parsedModules + 1
+		for value in parsed.diagnostics {
+			diagnostics = List.append(diagnostics, sourceDiagnostic(source.path, value))
+		}
+	}
+	return Ok(ProjectParseSummary {
+		diagnostics: diagnostics,
+		parsedModules: parsedModules,
 	})
 }
 
-pub fn compileProjectMvpJson(encoded: String) -> Result<String, List<JsonError>> {
-	let raw = Json.parse(encoded)?
-	let request = Json.decode<ProjectCompilerRequestV1>(raw)?
-	let diagnostics = validateRequest(request)
-	let resultDiagnostics = if List.isEmpty(diagnostics) then [
-		diagnostic("SHP2000", "Project-wide parsing, linking, checking, and emission are not implemented"),
-	] else diagnostics
+fn encodeResult(
+	request: ProjectCompilerRequestV1,
+	diagnostics: List<ProjectCompilerDiagnosticV1>,
+	parsedModules: Int,
+) -> Result<String, List<JsonError>> {
 	return Json.encode<ProjectCompilerResultV1>(ProjectCompilerResultV1 {
 		contractVersion: "1",
 		languageVersion: "1.0",
 		platform: "node",
 		entryPath: request.entryPath,
 		accepted: false,
-		diagnostics: resultDiagnostics,
+		diagnostics: diagnostics,
 		emittedModules: [],
 		dependencies: [],
 		exportedSymbols: [],
-		stats: emptyStats(),
+		stats: stats(parsedModules),
 	})
+}
+
+pub fn projectCompilerCapabilityJson() -> Result<String, List<JsonError>> {
+	return Json.encode<ProjectCompilerCapabilityV1>(ProjectCompilerCapabilityV1 {
+		contractVersion: "1",
+		ready: false,
+		requestSchema: "virune.selfhost.project-compiler.request.v1",
+		resultSchema: "virune.selfhost.project-compiler.result.v1",
+		blockers: ["project-linking-not-implemented"],
+	})
+}
+
+pub fn compileProjectMvpJson(encoded: String) -> Result<String, List<JsonError>> {
+	let raw = Json.parse(encoded)?
+	let request = Json.decode<ProjectCompilerRequestV1>(raw)?
+	let requestDiagnostics = validateRequest(request)
+	if !List.isEmpty(requestDiagnostics) {
+		return encodeResult(request, requestDiagnostics, 0)
+	}
+	let parsed = parseProjectSources(request.sources)?
+	let resultDiagnostics = if List.isEmpty(parsed.diagnostics) then [
+		diagnostic("SHP2001", "Project-wide linking, checking, and emission are not implemented"),
+	] else parsed.diagnostics
+	return encodeResult(request, resultDiagnostics, parsed.parsedModules)
 }
