@@ -25,6 +25,10 @@ import { buildFrontendSymbolScopeJson } from "./frontend-symbol-scope.virune"
 import { checkFrontendTypeOperationsJson } from "./frontend-type-operations.virune"
 import { lexMvpJson } from "./lexer.virune"
 import { parseMvpJson } from "./parser.virune"
+import {
+	compileProjectMvpJson,
+	projectCompilerCapabilityJson,
+} from "./project-compiler-contract.virune"
 
 @jsExport
 pub fn compileMvp(source: String) -> Result<String, List<JsonError>> {
@@ -32,6 +36,16 @@ pub fn compileMvp(source: String) -> Result<String, List<JsonError>> {
 	let parsed = parseMvpJson(lexed)?
 	let checked = checkMvpJson(parsed)?
 	return emitMvpJson(checked)
+}
+
+@jsExport
+pub fn projectCompilerCapability() -> Result<String, List<JsonError>> {
+	return projectCompilerCapabilityJson()
+}
+
+@jsExport
+pub fn compileProjectMvp(request: String) -> Result<String, List<JsonError>> {
+	return compileProjectMvpJson(request)
 }
 
 @jsExport
