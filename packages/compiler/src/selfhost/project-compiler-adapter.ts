@@ -1,4 +1,9 @@
-import { validateKernelInput, type KernelInputV1 } from './contract.js';
+import {
+	KERNEL_LANGUAGE_VERSION,
+	normalizeKernelPath,
+	validateKernelInput,
+	type KernelInputV1,
+} from './contract.js';
 import {
 	SelfhostMvpError,
 	type SelfhostMvpModule,
@@ -28,11 +33,49 @@ export interface ProjectCompilerDiagnosticV1 {
 	readonly message: string;
 }
 
+export interface ProjectCompilerEmittedModuleV1 {
+	readonly sourcePath: string;
+	readonly outputPath: string;
+	readonly code: string;
+	readonly sourceMap: string;
+}
+
+export interface ProjectCompilerDependencyV1 {
+	readonly modulePath: string;
+	readonly sourceKind: 'virune' | 'javascript';
+	readonly specifier: string;
+	readonly resolvedPath: string | null;
+	readonly typeOnly: boolean;
+	readonly public: boolean;
+}
+
+export interface ProjectCompilerExportedSymbolV1 {
+	readonly modulePath: string;
+	readonly name: string;
+	readonly declarationKind: string;
+}
+
+export interface ProjectCompilerStatsV1 {
+	readonly parsedModules: number;
+	readonly reusedParsedModules: number;
+	readonly checkedModules: number;
+	readonly reusedCheckedModules: number;
+	readonly emittedModules: number;
+	readonly reusedEmittedModules: number;
+	readonly invalidatedModules: number;
+}
+
 export interface ProjectCompilerResultV1 {
 	readonly contractVersion: typeof PROJECT_COMPILER_CONTRACT_VERSION;
+	readonly languageVersion: typeof KERNEL_LANGUAGE_VERSION;
+	readonly platform: 'node';
+	readonly entryPath: string;
 	readonly accepted: boolean;
 	readonly diagnostics: readonly ProjectCompilerDiagnosticV1[];
-	readonly emittedModuleCount: number;
+	readonly emittedModules: readonly ProjectCompilerEmittedModuleV1[];
+	readonly dependencies: readonly ProjectCompilerDependencyV1[];
+	readonly exportedSymbols: readonly ProjectCompilerExportedSymbolV1[];
+	readonly stats: ProjectCompilerStatsV1;
 }
 
 export function hasSelfhostProjectCompilerExports(
@@ -76,11 +119,14 @@ export function compileWithProjectCompilerBoundary(
 		})),
 		'Virune project compiler request failed',
 	);
-	return validateProjectCompilerResult(JSON.parse(encoded) as unknown);
+	return validateProjectCompilerResult(JSON.parse(encoded) as unknown, input);
 }
 
 function validateProjectCompilerInput(value: unknown): KernelInputV1 {
 	const input = validateKernelInput(value);
+	if (input.platform !== 'node') {
+		throw new SelfhostMvpError('Project compiler capability v1 requires the node platform');
+	}
 	if (input.interopManifest.modules.length !== 0) {
 		throw new SelfhostMvpError('Project compiler capability v1 does not accept JavaScript interop yet');
 	}
@@ -102,10 +148,7 @@ function validateCapability(value: unknown): ProjectCompilerCapabilityV1 {
 	if (typeof record.ready !== 'boolean') throw new SelfhostMvpError('$.ready must be boolean');
 	if (!Array.isArray(record.blockers)) throw new SelfhostMvpError('$.blockers must be an array');
 	const blockers = record.blockers.map((item, index) => text(item, `$.blockers[${index}]`));
-	if (new Set(blockers).size !== blockers.length) throw new SelfhostMvpError('$.blockers must be unique');
-	if (JSON.stringify([...blockers].sort()) !== JSON.stringify(blockers)) {
-		throw new SelfhostMvpError('$.blockers must be sorted');
-	}
+	assertCanonical(blockers, value => value, '$.blockers');
 	if (record.ready && blockers.length > 0) throw new SelfhostMvpError('ready capability cannot contain blockers');
 	if (!record.ready && blockers.length === 0) throw new SelfhostMvpError('non-ready capability must contain a blocker');
 	return {
@@ -117,30 +160,77 @@ function validateCapability(value: unknown): ProjectCompilerCapabilityV1 {
 	};
 }
 
-function validateProjectCompilerResult(value: unknown): ProjectCompilerResultV1 {
+function validateProjectCompilerResult(
+	value: unknown,
+	input: KernelInputV1,
+): ProjectCompilerResultV1 {
 	const record = object(value, '$');
-	exactKeys(record, ['contractVersion', 'accepted', 'diagnostics', 'emittedModuleCount'], '$');
+	exactKeys(record, [
+		'contractVersion',
+		'languageVersion',
+		'platform',
+		'entryPath',
+		'accepted',
+		'diagnostics',
+		'emittedModules',
+		'dependencies',
+		'exportedSymbols',
+		'stats',
+	], '$');
 	if (record.contractVersion !== PROJECT_COMPILER_CONTRACT_VERSION) {
 		throw new SelfhostMvpError('$.contractVersion must be project compiler contract version 1');
 	}
+	if (record.languageVersion !== KERNEL_LANGUAGE_VERSION) {
+		throw new SelfhostMvpError(`$.languageVersion must be ${KERNEL_LANGUAGE_VERSION}`);
+	}
+	if (record.platform !== 'node') throw new SelfhostMvpError('$.platform must be node');
+	const entryPath = canonicalPath(record.entryPath, '$.entryPath');
+	if (entryPath !== input.entryPath) throw new SelfhostMvpError('$.entryPath must match the request entryPath');
 	if (typeof record.accepted !== 'boolean') throw new SelfhostMvpError('$.accepted must be boolean');
-	if (!Array.isArray(record.diagnostics)) throw new SelfhostMvpError('$.diagnostics must be an array');
-	const emittedModuleCount = integer(record.emittedModuleCount, '$.emittedModuleCount', 0);
-	const diagnostics = record.diagnostics.map((item, index) => validateDiagnostic(item, `$.diagnostics[${index}]`));
+	const diagnostics = array(record.diagnostics, '$.diagnostics')
+		.map((item, index) => validateDiagnostic(item, `$.diagnostics[${index}]`));
+	const emittedModules = array(record.emittedModules, '$.emittedModules')
+		.map((item, index) => validateEmittedModule(item, `$.emittedModules[${index}]`));
+	const dependencies = array(record.dependencies, '$.dependencies')
+		.map((item, index) => validateDependency(item, `$.dependencies[${index}]`));
+	const exportedSymbols = array(record.exportedSymbols, '$.exportedSymbols')
+		.map((item, index) => validateExportedSymbol(item, `$.exportedSymbols[${index}]`));
+	const stats = validateStats(record.stats, '$.stats');
+
+	assertCanonical(emittedModules, item => item.outputPath, '$.emittedModules');
+	assertCanonical(
+		dependencies,
+		item => `${item.modulePath}\0${item.sourceKind}\0${item.specifier}`,
+		'$.dependencies',
+	);
+	assertCanonical(
+		exportedSymbols,
+		item => `${item.modulePath}\0${item.name}\0${item.declarationKind}`,
+		'$.exportedSymbols',
+	);
+	if (stats.emittedModules !== emittedModules.length) {
+		throw new SelfhostMvpError('$.stats.emittedModules must match $.emittedModules length');
+	}
 	if (record.accepted && diagnostics.some(item => item.severity === 'error')) {
 		throw new SelfhostMvpError('accepted project compiler result cannot contain errors');
 	}
 	if (!record.accepted && diagnostics.length === 0) {
 		throw new SelfhostMvpError('rejected project compiler result must contain a diagnostic');
 	}
-	if (!record.accepted && emittedModuleCount !== 0) {
+	if (!record.accepted && emittedModules.length !== 0) {
 		throw new SelfhostMvpError('rejected project compiler result cannot emit modules');
 	}
 	return {
 		contractVersion: PROJECT_COMPILER_CONTRACT_VERSION,
+		languageVersion: KERNEL_LANGUAGE_VERSION,
+		platform: 'node',
+		entryPath,
 		accepted: record.accepted,
 		diagnostics,
-		emittedModuleCount,
+		emittedModules,
+		dependencies,
+		exportedSymbols,
+		stats,
 	};
 }
 
@@ -152,6 +242,68 @@ function validateDiagnostic(value: unknown, path: string): ProjectCompilerDiagno
 		code: text(record.code, `${path}.code`),
 		severity: 'error',
 		message: text(record.message, `${path}.message`),
+	};
+}
+
+function validateEmittedModule(value: unknown, path: string): ProjectCompilerEmittedModuleV1 {
+	const record = object(value, path);
+	exactKeys(record, ['sourcePath', 'outputPath', 'code', 'sourceMap'], path);
+	return {
+		sourcePath: canonicalPath(record.sourcePath, `${path}.sourcePath`),
+		outputPath: canonicalPath(record.outputPath, `${path}.outputPath`),
+		code: string(record.code, `${path}.code`),
+		sourceMap: string(record.sourceMap, `${path}.sourceMap`),
+	};
+}
+
+function validateDependency(value: unknown, path: string): ProjectCompilerDependencyV1 {
+	const record = object(value, path);
+	exactKeys(record, ['modulePath', 'sourceKind', 'specifier', 'resolvedPath', 'typeOnly', 'public'], path);
+	if (record.sourceKind !== 'virune' && record.sourceKind !== 'javascript') {
+		throw new SelfhostMvpError(`${path}.sourceKind must be virune or javascript`);
+	}
+	const resolvedPath = record.resolvedPath === null
+		? null
+		: canonicalPath(record.resolvedPath, `${path}.resolvedPath`);
+	return {
+		modulePath: canonicalPath(record.modulePath, `${path}.modulePath`),
+		sourceKind: record.sourceKind,
+		specifier: text(record.specifier, `${path}.specifier`),
+		resolvedPath,
+		typeOnly: boolean(record.typeOnly, `${path}.typeOnly`),
+		public: boolean(record.public, `${path}.public`),
+	};
+}
+
+function validateExportedSymbol(value: unknown, path: string): ProjectCompilerExportedSymbolV1 {
+	const record = object(value, path);
+	exactKeys(record, ['modulePath', 'name', 'declarationKind'], path);
+	return {
+		modulePath: canonicalPath(record.modulePath, `${path}.modulePath`),
+		name: text(record.name, `${path}.name`),
+		declarationKind: text(record.declarationKind, `${path}.declarationKind`),
+	};
+}
+
+function validateStats(value: unknown, path: string): ProjectCompilerStatsV1 {
+	const record = object(value, path);
+	exactKeys(record, [
+		'parsedModules',
+		'reusedParsedModules',
+		'checkedModules',
+		'reusedCheckedModules',
+		'emittedModules',
+		'reusedEmittedModules',
+		'invalidatedModules',
+	], path);
+	return {
+		parsedModules: integer(record.parsedModules, `${path}.parsedModules`, 0),
+		reusedParsedModules: integer(record.reusedParsedModules, `${path}.reusedParsedModules`, 0),
+		checkedModules: integer(record.checkedModules, `${path}.checkedModules`, 0),
+		reusedCheckedModules: integer(record.reusedCheckedModules, `${path}.reusedCheckedModules`, 0),
+		emittedModules: integer(record.emittedModules, `${path}.emittedModules`, 0),
+		reusedEmittedModules: integer(record.reusedEmittedModules, `${path}.reusedEmittedModules`, 0),
+		invalidatedModules: integer(record.invalidatedModules, `${path}.invalidatedModules`, 0),
 	};
 }
 
@@ -173,8 +325,24 @@ function object(value: unknown, path: string): Record<string, unknown> {
 	return value as Record<string, unknown>;
 }
 
+function array(value: unknown, path: string): readonly unknown[] {
+	if (!Array.isArray(value)) throw new SelfhostMvpError(`${path} must be an array`);
+	return value;
+}
+
+function string(value: unknown, path: string): string {
+	if (typeof value !== 'string') throw new SelfhostMvpError(`${path} must be a string`);
+	return value;
+}
+
 function text(value: unknown, path: string): string {
-	if (typeof value !== 'string' || value.length === 0) throw new SelfhostMvpError(`${path} must be non-empty string`);
+	const result = string(value, path);
+	if (result.length === 0) throw new SelfhostMvpError(`${path} must be non-empty string`);
+	return result;
+}
+
+function boolean(value: unknown, path: string): boolean {
+	if (typeof value !== 'boolean') throw new SelfhostMvpError(`${path} must be boolean`);
 	return value;
 }
 
@@ -185,9 +353,28 @@ function integer(value: unknown, path: string, minimum: number): number {
 	return value as number;
 }
 
+function canonicalPath(value: unknown, path: string): string {
+	try {
+		return normalizeKernelPath(string(value, path), path);
+	} catch (error) {
+		throw new SelfhostMvpError(error instanceof Error ? error.message : `${path} must be a canonical path`);
+	}
+}
+
+function assertCanonical<T>(values: readonly T[], key: (value: T) => string, path: string): void {
+	const keys = values.map(key);
+	if (new Set(keys).size !== keys.length) throw new SelfhostMvpError(`${path} must be unique`);
+	const sorted = [...keys].sort(compareText);
+	if (JSON.stringify(keys) !== JSON.stringify(sorted)) throw new SelfhostMvpError(`${path} must be sorted`);
+}
+
+function compareText(left: string, right: string): number {
+	return left < right ? -1 : left > right ? 1 : 0;
+}
+
 function exactKeys(value: Record<string, unknown>, keys: readonly string[], path: string): void {
-	const expected = [...keys].sort();
-	const actual = Object.keys(value).sort();
+	const expected = [...keys].sort(compareText);
+	const actual = Object.keys(value).sort(compareText);
 	if (JSON.stringify(actual) !== JSON.stringify(expected)) {
 		throw new SelfhostMvpError(`${path} keys must be exactly ${expected.join(', ')}`);
 	}
