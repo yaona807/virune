@@ -1,0 +1,9 @@
+{
+	"source": "@mustUse\npub record Token {\n\tvalue: String,\n}\n@mustUse\npub enum Decision {\n\tYes\n\tNo\n}\n@mustUse\npub newtype Handle = Int\npub type TokenAlias = Token\npub type TokenAlias2 = TokenAlias\npub type ResultAlias = Result<Int, String>\npub type Plain = Int\n",
+	"values": [
+		{"typeName":"Token","disposition":"expression","span":{"start":{"offset":300,"line":30,"column":1},"end":{"offset":305,"line":30,"column":6}}},
+		{"typeName":"TokenAlias2","disposition":"expression","span":{"start":{"offset":310,"line":31,"column":1},"end":{"offset":315,"line":31,"column":6}}},
+		{"typeName":"Result","disposition":"expression","span":{"start":{"offset":320,"line":32,"column":1},"end":{"offset":325,"line":32,"column":6}}},
+		{"typeName":"Plain","disposition":"expression","span":{"start":{"offset":330,"line":33,"column":1},"end":{"offset":335,"line":33,"column":6}}}
+	]
+}
