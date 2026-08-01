@@ -48,12 +48,7 @@ pub record ProjectLinkResult derives Eq, Debug, Json {
 	diagnostics: List<ProjectLinkDiagnostic>
 }
 
-fn linkDiagnostic(
-	code: String,
-	message: String,
-	modulePath: String?,
-	specifier: String?,
-) -> ProjectLinkDiagnostic {
+fn linkDiagnostic(code: String, message: String, modulePath: String?, specifier: String?) -> ProjectLinkDiagnostic {
 	return ProjectLinkDiagnostic {
 		code: code,
 		severity: "error",
@@ -161,22 +156,10 @@ fn boolText(value: Bool) -> String {
 }
 
 fn dependencyKey(value: ProjectLinkDependency) -> String {
-	return value.modulePath
-		+ "|"
-		+ value.sourceKind
-		+ "|"
-		+ value.specifier
-		+ "|"
-		+ optionText(value.resolvedPath)
-		+ "|"
-		+ boolText(value.typeOnly)
-		+ "|"
-		+ boolText(value.public)
+	return value.modulePath + "|" + value.sourceKind + "|" + value.specifier + "|" + optionText(value.resolvedPath) + "|" + boolText(value.typeOnly) + "|" + boolText(value.public)
 }
 
-fn collectDependencies(
-	projectModule: ProjectLinkModule,
-) -> List<ProjectLinkDependency> {
+fn collectDependencies(projectModule: ProjectLinkModule) -> List<ProjectLinkDependency> {
 	let mut dependencies: List<ProjectLinkDependency> = []
 	for node in projectModule.parse.nodes {
 		if node.kind == "ImportDeclaration" {
@@ -188,9 +171,7 @@ fn collectDependencies(
 					modulePath: projectModule.path,
 					sourceKind: sourceKind,
 					specifier: specifier,
-					resolvedPath: if sourceKind == "virune"
-						then resolveViruneImport(projectModule.path, rawSpecifier)
-						else None,
+					resolvedPath: if sourceKind == "virune" then resolveViruneImport(projectModule.path, rawSpecifier) else None,
 					typeOnly: String.contains(node.text, " type"),
 					public: String.contains(node.text, " public"),
 				})
@@ -201,13 +182,7 @@ fn collectDependencies(
 }
 
 fn declarationKind(kind: String) -> Bool {
-	return kind == "FunctionDeclaration"
-		|| kind == "RecordDeclaration"
-		|| kind == "EnumDeclaration"
-		|| kind == "NewtypeDeclaration"
-		|| kind == "TypeAliasDeclaration"
-		|| kind == "ExternDeclaration"
-		|| kind == "TopLevelValueDeclaration"
+	return kind == "FunctionDeclaration" || kind == "RecordDeclaration" || kind == "EnumDeclaration" || kind == "NewtypeDeclaration" || kind == "TypeAliasDeclaration" || kind == "ExternDeclaration" || kind == "TopLevelValueDeclaration"
 }
 
 fn sourceSlice(source: String, node: FrontendAstNode) -> String {
@@ -222,8 +197,7 @@ fn sourceSlice(source: String, node: FrontendAstNode) -> String {
 fn collectExports(projectModule: ProjectLinkModule) -> List<ProjectLinkExport> {
 	let mut exports: List<ProjectLinkExport> = []
 	for node in projectModule.parse.nodes {
-		if declarationKind(node.kind)
-			&& String.startsWith(sourceSlice(projectModule.source, node), "pub ") {
+		if declarationKind(node.kind) && String.startsWith(sourceSlice(projectModule.source, node), "pub ") {
 			exports = List.append(exports, ProjectLinkExport {
 				modulePath: projectModule.path,
 				name: node.text,
@@ -250,12 +224,7 @@ fn dependencyTarget(value: ProjectLinkDependency) -> String {
 	return optionText(value.resolvedPath)
 }
 
-fn reachable(
-	dependencies: List<ProjectLinkDependency>,
-	current: String,
-	target: String,
-	visited: List<String>,
-) -> Bool {
+fn reachable(dependencies: List<ProjectLinkDependency>, current: String, target: String, visited: List<String>) -> Bool {
 	if current == target {
 		return true
 	}
@@ -266,8 +235,7 @@ fn reachable(
 	for dependency in dependencies {
 		if dependency.modulePath == current {
 			let nextPath = dependencyTarget(dependency)
-			if String.length(nextPath) > 0
-				&& reachable(dependencies, nextPath, target, nextVisited) {
+			if String.length(nextPath) > 0 && reachable(dependencies, nextPath, target, nextVisited) {
 				return true
 			}
 		}
@@ -275,11 +243,7 @@ fn reachable(
 	return false
 }
 
-fn collectReachable(
-	dependencies: List<ProjectLinkDependency>,
-	current: String,
-	visited: List<String>,
-) -> List<String> {
+fn collectReachable(dependencies: List<ProjectLinkDependency>, current: String, visited: List<String>) -> List<String> {
 	if containsText(visited, current) {
 		return visited
 	}
@@ -295,62 +259,29 @@ fn collectReachable(
 	return result
 }
 
-fn graphDiagnostics(
-	request: ProjectLinkRequest,
-	dependencies: List<ProjectLinkDependency>,
-) -> List<ProjectLinkDiagnostic> {
+fn graphDiagnostics(request: ProjectLinkRequest, dependencies: List<ProjectLinkDependency>) -> List<ProjectLinkDiagnostic> {
 	let mut diagnostics: List<ProjectLinkDiagnostic> = []
 	let mut seenDependencies: List<String> = []
 	if !moduleExists(request.modules, request.entryPath) {
-		diagnostics = List.append(diagnostics, linkDiagnostic(
-			"SHP2101",
-			"Project entry module does not exist",
-			Some(request.entryPath),
-			None,
-		))
+		diagnostics = List.append(diagnostics, linkDiagnostic("SHP2101", "Project entry module does not exist", Some(request.entryPath), None))
 	}
 	for dependency in dependencies {
 		let key = dependencyKey(dependency)
 		if containsText(seenDependencies, key) {
-			diagnostics = List.append(diagnostics, linkDiagnostic(
-				"SHP2102",
-				"Duplicate module import " + dependency.specifier,
-				Some(dependency.modulePath),
-				Some(dependency.specifier),
-			))
+			diagnostics = List.append(diagnostics, linkDiagnostic("SHP2102", "Duplicate module import " + dependency.specifier, Some(dependency.modulePath), Some(dependency.specifier)))
 		} else {
 			seenDependencies = List.append(seenDependencies, key)
 		}
 		if dependency.sourceKind == "virune" {
 			let targetPath = optionText(dependency.resolvedPath)
 			if String.length(targetPath) == 0 {
-				diagnostics = List.append(diagnostics, linkDiagnostic(
-					"SHP2106",
-					"Virune import specifier must be a resolvable relative path",
-					Some(dependency.modulePath),
-					Some(dependency.specifier),
-				))
+				diagnostics = List.append(diagnostics, linkDiagnostic("SHP2106", "Virune import specifier must be a resolvable relative path", Some(dependency.modulePath), Some(dependency.specifier)))
 			} else if targetPath == dependency.modulePath {
-				diagnostics = List.append(diagnostics, linkDiagnostic(
-					"SHP2103",
-					"Module cannot import itself",
-					Some(dependency.modulePath),
-					Some(dependency.specifier),
-				))
+				diagnostics = List.append(diagnostics, linkDiagnostic("SHP2103", "Module cannot import itself", Some(dependency.modulePath), Some(dependency.specifier)))
 			} else if !moduleExists(request.modules, targetPath) {
-				diagnostics = List.append(diagnostics, linkDiagnostic(
-					"SHP2104",
-					"Imported Virune module does not exist",
-					Some(dependency.modulePath),
-					Some(dependency.specifier),
-				))
+				diagnostics = List.append(diagnostics, linkDiagnostic("SHP2104", "Imported Virune module does not exist", Some(dependency.modulePath), Some(dependency.specifier)))
 			} else if reachable(dependencies, targetPath, dependency.modulePath, []) {
-				diagnostics = List.append(diagnostics, linkDiagnostic(
-					"SHP2105",
-					"Virune import cycle detected",
-					Some(dependency.modulePath),
-					Some(dependency.specifier),
-				))
+				diagnostics = List.append(diagnostics, linkDiagnostic("SHP2105", "Virune import cycle detected", Some(dependency.modulePath), Some(dependency.specifier)))
 			}
 		}
 	}
@@ -364,12 +295,7 @@ pub fn linkProject(request: ProjectLinkRequest) -> ProjectLinkResult {
 	let mut seenModules: List<String> = []
 	for projectModule in request.modules {
 		if containsText(seenModules, projectModule.path) {
-			diagnostics = List.append(diagnostics, linkDiagnostic(
-				"SHP2100",
-				"Duplicate project module " + projectModule.path,
-				Some(projectModule.path),
-				None,
-			))
+			diagnostics = List.append(diagnostics, linkDiagnostic("SHP2100", "Duplicate project module " + projectModule.path, Some(projectModule.path), None))
 		} else {
 			seenModules = List.append(seenModules, projectModule.path)
 		}
@@ -383,9 +309,7 @@ pub fn linkProject(request: ProjectLinkRequest) -> ProjectLinkResult {
 	for diagnostic in graphDiagnostics(request, dependencies) {
 		diagnostics = List.append(diagnostics, diagnostic)
 	}
-	let reachableSet = if moduleExists(request.modules, request.entryPath)
-		then collectReachable(dependencies, request.entryPath, [])
-		else []
+	let reachableSet = if moduleExists(request.modules, request.entryPath) then collectReachable(dependencies, request.entryPath, []) else []
 	let mut reachableModules: List<String> = []
 	let mut unreachableModules: List<String> = []
 	for projectModule in request.modules {
