@@ -1,0 +1,29 @@
+{
+  "tryMode": true,
+  "entries": [
+    {
+      "name": "dup",
+      "operandKind": "future",
+      "valueType": "Int",
+      "errorType": "IoError"
+    },
+    {
+      "name": "dup",
+      "operandKind": "other",
+      "valueType": null,
+      "errorType": null
+    },
+    {
+      "name": "plain",
+      "operandKind": "future",
+      "valueType": "Bool",
+      "errorType": null
+    },
+    {
+      "name": "wrong",
+      "operandKind": "future",
+      "valueType": "String",
+      "errorType": "OtherError"
+    }
+  ]
+}

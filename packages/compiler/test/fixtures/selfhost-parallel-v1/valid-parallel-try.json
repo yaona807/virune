@@ -1,0 +1,17 @@
+{
+  "tryMode": true,
+  "entries": [
+    {
+      "name": "left",
+      "operandKind": "future",
+      "valueType": "Int",
+      "errorType": "IoError"
+    },
+    {
+      "name": "right",
+      "operandKind": "future",
+      "valueType": "String",
+      "errorType": "IoError"
+    }
+  ]
+}

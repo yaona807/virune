@@ -1,0 +1,226 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "id": "diagnostic-ordering",
+      "request": "diagnostic.json",
+      "accepted": false,
+      "tryMode": true,
+      "diagnosticCodes": [
+        "L2036",
+        "L2037",
+        "L2038",
+        "L2039"
+      ],
+      "entries": [
+        {
+          "name": "dup",
+          "operandKind": "future",
+          "valueType": "Int",
+          "errorType": "IoError",
+          "fieldType": "Int",
+          "futureValid": true,
+          "resultValid": true,
+          "errorCompatible": true,
+          "valid": true
+        },
+        {
+          "name": "dup",
+          "operandKind": "other",
+          "valueType": null,
+          "errorType": null,
+          "fieldType": "Error",
+          "futureValid": false,
+          "resultValid": false,
+          "errorCompatible": true,
+          "valid": false
+        },
+        {
+          "name": "plain",
+          "operandKind": "future",
+          "valueType": "Bool",
+          "errorType": null,
+          "fieldType": "Error",
+          "futureValid": true,
+          "resultValid": false,
+          "errorCompatible": true,
+          "valid": false
+        },
+        {
+          "name": "wrong",
+          "operandKind": "future",
+          "valueType": "String",
+          "errorType": "OtherError",
+          "fieldType": "String",
+          "futureValid": true,
+          "resultValid": true,
+          "errorCompatible": false,
+          "valid": false
+        }
+      ],
+      "fields": [
+        {
+          "name": "dup",
+          "typeName": "Error"
+        },
+        {
+          "name": "plain",
+          "typeName": "Error"
+        },
+        {
+          "name": "wrong",
+          "typeName": "String"
+        }
+      ],
+      "commonErrorType": "IoError",
+      "resultType": "Future<Result<{dup: Error, plain: Error, wrong: String}, IoError>>"
+    },
+    {
+      "id": "malformed-request",
+      "request": "malformed.json",
+      "accepted": false,
+      "tryMode": false,
+      "diagnosticCodes": [
+        "L9001",
+        "L9001",
+        "L9001",
+        "L9001",
+        "L9001",
+        "L2036"
+      ],
+      "entries": [
+        {
+          "name": "",
+          "operandKind": "mystery",
+          "valueType": "",
+          "errorType": "",
+          "fieldType": "Error",
+          "futureValid": false,
+          "resultValid": true,
+          "errorCompatible": true,
+          "valid": false
+        },
+        {
+          "name": "run",
+          "operandKind": "future",
+          "valueType": null,
+          "errorType": null,
+          "fieldType": "Error",
+          "futureValid": false,
+          "resultValid": true,
+          "errorCompatible": true,
+          "valid": false
+        },
+        {
+          "name": "run",
+          "operandKind": "future",
+          "valueType": "Int",
+          "errorType": null,
+          "fieldType": "Int",
+          "futureValid": true,
+          "resultValid": true,
+          "errorCompatible": true,
+          "valid": false
+        }
+      ],
+      "fields": [
+        {
+          "name": "",
+          "typeName": "Error"
+        },
+        {
+          "name": "run",
+          "typeName": "Int"
+        }
+      ],
+      "commonErrorType": null,
+      "resultType": "Future<{: Error, run: Int}>"
+    },
+    {
+      "id": "valid-parallel",
+      "request": "valid-parallel.json",
+      "accepted": true,
+      "tryMode": false,
+      "diagnosticCodes": [],
+      "entries": [
+        {
+          "name": "left",
+          "operandKind": "future",
+          "valueType": "Int",
+          "errorType": null,
+          "fieldType": "Int",
+          "futureValid": true,
+          "resultValid": true,
+          "errorCompatible": true,
+          "valid": true
+        },
+        {
+          "name": "right",
+          "operandKind": "future",
+          "valueType": "String",
+          "errorType": null,
+          "fieldType": "String",
+          "futureValid": true,
+          "resultValid": true,
+          "errorCompatible": true,
+          "valid": true
+        }
+      ],
+      "fields": [
+        {
+          "name": "left",
+          "typeName": "Int"
+        },
+        {
+          "name": "right",
+          "typeName": "String"
+        }
+      ],
+      "commonErrorType": null,
+      "resultType": "Future<{left: Int, right: String}>"
+    },
+    {
+      "id": "valid-parallel-try",
+      "request": "valid-parallel-try.json",
+      "accepted": true,
+      "tryMode": true,
+      "diagnosticCodes": [],
+      "entries": [
+        {
+          "name": "left",
+          "operandKind": "future",
+          "valueType": "Int",
+          "errorType": "IoError",
+          "fieldType": "Int",
+          "futureValid": true,
+          "resultValid": true,
+          "errorCompatible": true,
+          "valid": true
+        },
+        {
+          "name": "right",
+          "operandKind": "future",
+          "valueType": "String",
+          "errorType": "IoError",
+          "fieldType": "String",
+          "futureValid": true,
+          "resultValid": true,
+          "errorCompatible": true,
+          "valid": true
+        }
+      ],
+      "fields": [
+        {
+          "name": "left",
+          "typeName": "Int"
+        },
+        {
+          "name": "right",
+          "typeName": "String"
+        }
+      ],
+      "commonErrorType": "IoError",
+      "resultType": "Future<Result<{left: Int, right: String}, IoError>>"
+    }
+  ]
+}
