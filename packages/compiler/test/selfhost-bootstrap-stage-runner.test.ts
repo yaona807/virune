@@ -5,7 +5,6 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
 	evaluateSelfhostStageBootstrapReadiness,
-	hasSelfhostProjectCompiler,
 	readinessBlockers,
 } from '../src/selfhost/bootstrap-stage-runner.js';
 import type { SelfhostMvpModule } from '../src/selfhost/mvp-adapter.js';
@@ -21,25 +20,36 @@ const options = {
 	seedSha256: 'c'.repeat(64),
 };
 
-test('current multi-module Self-host MVP fails Stage 1 readiness honestly and deterministically', async () => {
+const capability = (ready: boolean, blockers: readonly string[]) => JSON.stringify({
+	contractVersion: '1',
+	ready,
+	requestSchema: 'virune.selfhost.project-compiler.request.v1',
+	resultSchema: 'virune.selfhost.project-compiler.result.v1',
+	blockers,
+});
+
+test('current multi-module Self-host MVP remains blocked by its non-ready capability', async () => {
 	await mkdir(temporaryRoot, { recursive: true });
 	try {
 		const first = await evaluateSelfhostStageBootstrapReadiness(mvpRoot, options);
 		const second = await evaluateSelfhostStageBootstrapReadiness(mvpRoot, options);
 
 		assert.equal(first.stage0Compiler.artifact.metadata.stage, 'stage0');
+		assert.equal(first.evidence.policyVersion, 2);
 		assert.equal(first.evidence.claim, 'stage1-stage2-bootstrap-readiness');
 		assert.equal(first.evidence.productionEligible, false);
 		assert.equal(first.evidence.ready, false);
 		assert.ok(first.evidence.sourceCount > 1);
 		assert.equal(first.evidence.sourceCount, first.sourceManifest.manifest.sources.length);
 		assert.equal(first.evidence.entryPath, 'src/main.virune');
-		assert.equal(first.evidence.requiredExport, 'compileProjectMvp');
+		assert.deepEqual(first.evidence.requiredExports, ['projectCompilerCapability', 'compileProjectMvp']);
+		assert.equal(first.evidence.capabilityReady, false);
+		assert.deepEqual(first.evidence.capabilityBlockers, ['project-semantics-not-implemented']);
 		assert.equal(first.evidence.compilerArtifactSha256, first.stage0Compiler.sha256);
 		assert.equal(first.evidence.sourceManifestSha256, first.sourceManifest.sha256);
 		assert.deepEqual(first.evidence.blockers, [
 			'multi-module-project-requires-project-compiler',
-			'project-compiler-export-missing',
+			'project-compiler-not-ready',
 		]);
 		assert.equal(first.serialized, second.serialized);
 		assert.equal(first.sha256, second.sha256);
@@ -50,22 +60,36 @@ test('current multi-module Self-host MVP fails Stage 1 readiness honestly and de
 	}
 });
 
-test('project compiler capability clears the multi-module readiness blockers', () => {
+test('function stubs do not clear readiness without a ready capability', () => {
 	const singleSource: SelfhostMvpModule = {
 		compileMvp: (_source: string) => ({ $tag: 'Ok', $values: ['{}'] }),
 	};
-	assert.equal(hasSelfhostProjectCompiler(singleSource), false);
 	assert.deepEqual(readinessBlockers(singleSource, 1), ['project-compiler-export-missing']);
 	assert.deepEqual(readinessBlockers(singleSource, 20), [
 		'multi-module-project-requires-project-compiler',
 		'project-compiler-export-missing',
 	]);
 
-	const projectCompiler = {
+	const nonReadyProjectCompiler = {
 		...singleSource,
+		projectCompilerCapability: () => ({
+			$tag: 'Ok' as const,
+			$values: [capability(false, ['project-semantics-not-implemented'])] as const,
+		}),
 		compileProjectMvp: (_request: string) => ({ $tag: 'Ok' as const, $values: ['{}'] as const }),
 	};
-	assert.equal(hasSelfhostProjectCompiler(projectCompiler), true);
-	assert.deepEqual(readinessBlockers(projectCompiler, 20), []);
-	assert.throws(() => readinessBlockers(projectCompiler, 0), /positive safe integer/u);
+	assert.deepEqual(readinessBlockers(nonReadyProjectCompiler, 20), [
+		'multi-module-project-requires-project-compiler',
+		'project-compiler-not-ready',
+	]);
+
+	const readyProjectCompiler = {
+		...nonReadyProjectCompiler,
+		projectCompilerCapability: () => ({
+			$tag: 'Ok' as const,
+			$values: [capability(true, [])] as const,
+		}),
+	};
+	assert.deepEqual(readinessBlockers(readyProjectCompiler, 20), []);
+	assert.throws(() => readinessBlockers(readyProjectCompiler, 0), /positive safe integer/u);
 });
