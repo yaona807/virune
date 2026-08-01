@@ -57,15 +57,50 @@ test('generated compiler exposes deterministic non-ready project capability', as
 	});
 });
 
-test('valid project request returns deterministic not-implemented evidence', async () => {
+test('valid project request returns deterministic complete not-implemented transport', async () => {
 	await withGeneratedCompiler((module, input) => {
 		const first = compileWithProjectCompilerBoundary(module, input);
 		const second = compileWithProjectCompilerBoundary(module, input);
 		assert.deepEqual(first, second);
 		assert.equal(first.contractVersion, '1');
+		assert.equal(first.languageVersion, '1.0');
+		assert.equal(first.platform, 'node');
+		assert.equal(first.entryPath, input.entryPath);
 		assert.equal(first.accepted, false);
-		assert.equal(first.emittedModuleCount, 0);
 		assert.deepEqual(first.diagnostics.map(item => item.code), ['SHP2000']);
+		assert.deepEqual(first.emittedModules, []);
+		assert.deepEqual(first.dependencies, []);
+		assert.deepEqual(first.exportedSymbols, []);
+		assert.deepEqual(first.stats, {
+			parsedModules: 0,
+			reusedParsedModules: 0,
+			checkedModules: 0,
+			reusedCheckedModules: 0,
+			emittedModules: 0,
+			reusedEmittedModules: 0,
+			invalidatedModules: 0,
+		});
+	});
+});
+
+test('legacy count-only result shape is rejected before project semantics land', async () => {
+	await withGeneratedCompiler((module, input) => {
+		const legacyShape = {
+			...module,
+			compileProjectMvp: (_request: string) => ({
+				$tag: 'Ok' as const,
+				$values: [JSON.stringify({
+					contractVersion: '1',
+					accepted: false,
+					diagnostics: [{ code: 'SHP2000', severity: 'error', message: 'not implemented' }],
+					emittedModuleCount: 0,
+				})] as const,
+			}),
+		};
+		assert.throws(
+			() => compileWithProjectCompilerBoundary(legacyShape, input),
+			/keys must be exactly/u,
+		);
 	});
 });
 
@@ -86,9 +121,15 @@ test('invalid contract data and malformed JSON fail closed', async () => {
 		const result = JSON.parse(invalidVersion.$values[0] as string) as {
 			readonly accepted: boolean;
 			readonly diagnostics: readonly { readonly code: string }[];
+			readonly emittedModules: readonly unknown[];
+			readonly dependencies: readonly unknown[];
+			readonly exportedSymbols: readonly unknown[];
 		};
 		assert.equal(result.accepted, false);
 		assert.deepEqual(result.diagnostics.map(item => item.code), ['SHP1001']);
+		assert.deepEqual(result.emittedModules, []);
+		assert.deepEqual(result.dependencies, []);
+		assert.deepEqual(result.exportedSymbols, []);
 
 		const malformed = module.compileProjectMvp('{');
 		assert.equal(malformed.$tag, 'Err');
