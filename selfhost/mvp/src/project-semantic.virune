@@ -41,14 +41,7 @@ pub record ProjectSemanticResult derives Eq, Debug, Json {
 	diagnostics: List<ProjectSemanticDiagnostic>
 }
 
-fn semanticDiagnostic(
-	code: String,
-	message: String,
-	modulePath: String,
-	symbolName: String?,
-	targetModulePath: String?,
-	targetName: String?,
-) -> ProjectSemanticDiagnostic {
+fn semanticDiagnostic(code: String, message: String, modulePath: String, symbolName: String?, targetModulePath: String?, targetName: String?) -> ProjectSemanticDiagnostic {
 	return ProjectSemanticDiagnostic {
 		code: code,
 		severity: "error",
@@ -96,11 +89,7 @@ fn symbolPublic(projectModule: ProjectSemanticModule, name: String) -> Bool {
 	return false
 }
 
-fn targetSymbolExists(
-	modules: List<ProjectSemanticModule>,
-	modulePath: String,
-	name: String,
-) -> Bool {
+fn targetSymbolExists(modules: List<ProjectSemanticModule>, modulePath: String, name: String) -> Bool {
 	for projectModule in modules {
 		if projectModule.path == modulePath {
 			return symbolExists(projectModule, name)
@@ -109,11 +98,7 @@ fn targetSymbolExists(
 	return false
 }
 
-fn targetSymbolPublic(
-	modules: List<ProjectSemanticModule>,
-	modulePath: String,
-	name: String,
-) -> Bool {
+fn targetSymbolPublic(modules: List<ProjectSemanticModule>, modulePath: String, name: String) -> Bool {
 	for projectModule in modules {
 		if projectModule.path == modulePath {
 			return symbolPublic(projectModule, name)
@@ -127,23 +112,9 @@ fn duplicateSymbolDiagnostics(projectModule: ProjectSemanticModule) -> List<Proj
 	let mut seen: List<String> = []
 	for symbol in projectModule.symbols {
 		if String.length(symbol.name) == 0 {
-			diagnostics = List.append(diagnostics, semanticDiagnostic(
-				"SHP3001",
-				"Project symbol name must not be empty",
-				projectModule.path,
-				Some(symbol.name),
-				None,
-				None,
-			))
+			diagnostics = List.append(diagnostics, semanticDiagnostic("SHP3001", "Project symbol name must not be empty", projectModule.path, Some(symbol.name), None, None))
 		} else if containsText(seen, symbol.name) {
-			diagnostics = List.append(diagnostics, semanticDiagnostic(
-				"SHP3002",
-				"Duplicate project symbol " + symbol.name,
-				projectModule.path,
-				Some(symbol.name),
-				None,
-				None,
-			))
+			diagnostics = List.append(diagnostics, semanticDiagnostic("SHP3002", "Duplicate project symbol " + symbol.name, projectModule.path, Some(symbol.name), None, None))
 		} else {
 			seen = List.append(seen, symbol.name)
 		}
@@ -151,51 +122,18 @@ fn duplicateSymbolDiagnostics(projectModule: ProjectSemanticModule) -> List<Proj
 	return diagnostics
 }
 
-fn referenceDiagnostics(
-	modules: List<ProjectSemanticModule>,
-	projectModule: ProjectSemanticModule,
-) -> List<ProjectSemanticDiagnostic> {
+fn referenceDiagnostics(modules: List<ProjectSemanticModule>, projectModule: ProjectSemanticModule) -> List<ProjectSemanticDiagnostic> {
 	let mut diagnostics: List<ProjectSemanticDiagnostic> = []
 	for reference in projectModule.references {
 		if !moduleExists(modules, reference.targetModulePath) {
-			diagnostics = List.append(diagnostics, semanticDiagnostic(
-				"SHP3101",
-				"Reference target module does not exist",
-				projectModule.path,
-				Some(reference.name),
-				Some(reference.targetModulePath),
-				Some(reference.targetName),
-			))
+			diagnostics = List.append(diagnostics, semanticDiagnostic("SHP3101", "Reference target module does not exist", projectModule.path, Some(reference.name), Some(reference.targetModulePath), Some(reference.targetName)))
 		} else if !targetSymbolExists(modules, reference.targetModulePath, reference.targetName) {
-			diagnostics = List.append(diagnostics, semanticDiagnostic(
-				"SHP3102",
-				"Reference target symbol does not exist",
-				projectModule.path,
-				Some(reference.name),
-				Some(reference.targetModulePath),
-				Some(reference.targetName),
-			))
-		} else if reference.targetModulePath != projectModule.path
-			&& !targetSymbolPublic(modules, reference.targetModulePath, reference.targetName) {
-			diagnostics = List.append(diagnostics, semanticDiagnostic(
-				"SHP3103",
-				"Cross-module reference targets a private symbol",
-				projectModule.path,
-				Some(reference.name),
-				Some(reference.targetModulePath),
-				Some(reference.targetName),
-			))
+			diagnostics = List.append(diagnostics, semanticDiagnostic("SHP3102", "Reference target symbol does not exist", projectModule.path, Some(reference.name), Some(reference.targetModulePath), Some(reference.targetName)))
+		} else if reference.targetModulePath != projectModule.path && !targetSymbolPublic(modules, reference.targetModulePath, reference.targetName) {
+			diagnostics = List.append(diagnostics, semanticDiagnostic("SHP3103", "Cross-module reference targets a private symbol", projectModule.path, Some(reference.name), Some(reference.targetModulePath), Some(reference.targetName)))
 		}
-		if String.length(reference.requiredEffect) > 0
-			&& !containsText(projectModule.allowedEffects, reference.requiredEffect) {
-			diagnostics = List.append(diagnostics, semanticDiagnostic(
-				"SHP3201",
-				"Reference requires unavailable effect " + reference.requiredEffect,
-				projectModule.path,
-				Some(reference.name),
-				Some(reference.targetModulePath),
-				Some(reference.targetName),
-			))
+		if String.length(reference.requiredEffect) > 0 && !containsText(projectModule.allowedEffects, reference.requiredEffect) {
+			diagnostics = List.append(diagnostics, semanticDiagnostic("SHP3201", "Reference requires unavailable effect " + reference.requiredEffect, projectModule.path, Some(reference.name), Some(reference.targetModulePath), Some(reference.targetName)))
 		}
 	}
 	return diagnostics
@@ -206,23 +144,9 @@ pub fn checkProjectSemantics(request: ProjectSemanticRequest) -> ProjectSemantic
 	let mut seenModules: List<String> = []
 	for projectModule in request.modules {
 		if String.length(projectModule.path) == 0 {
-			diagnostics = List.append(diagnostics, semanticDiagnostic(
-				"SHP3000",
-				"Project module path must not be empty",
-				projectModule.path,
-				None,
-				None,
-				None,
-			))
+			diagnostics = List.append(diagnostics, semanticDiagnostic("SHP3000", "Project module path must not be empty", projectModule.path, None, None, None))
 		} else if containsText(seenModules, projectModule.path) {
-			diagnostics = List.append(diagnostics, semanticDiagnostic(
-				"SHP3003",
-				"Duplicate project module " + projectModule.path,
-				projectModule.path,
-				None,
-				Some(projectModule.path),
-				None,
-			))
+			diagnostics = List.append(diagnostics, semanticDiagnostic("SHP3003", "Duplicate project module " + projectModule.path, projectModule.path, None, Some(projectModule.path), None))
 		} else {
 			seenModules = List.append(seenModules, projectModule.path)
 		}
@@ -248,7 +172,5 @@ fn decodeProjectSemanticRequest(encoded: String) -> Result<ProjectSemanticReques
 }
 
 pub fn checkProjectSemanticsJson(encoded: String) -> Result<String, List<JsonError>> {
-	return Json.encode<ProjectSemanticResult>(
-		checkProjectSemantics(decodeProjectSemanticRequest(encoded)?),
-	)
+	return Json.encode<ProjectSemanticResult>(checkProjectSemantics(decodeProjectSemanticRequest(encoded)?))
 }
