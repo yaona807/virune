@@ -24,7 +24,7 @@ const capability = (ready: boolean, blockers: readonly string[]) => JSON.stringi
 	contractVersion: '1',
 	ready,
 	requestSchema: 'virune.selfhost.project-compiler.request.v1',
-	resultSchema: 'virune.selfhost.project-compiler.result.v1',
+	resultSchema: 'virune.selfhost.project-compiler.result.v2',
 	blockers,
 });
 
