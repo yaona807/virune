@@ -13,7 +13,7 @@ The capability object contains:
 
 - `contractVersion`: `1`
 - `requestSchema`: `virune.selfhost.project-compiler.request.v1`
-- `resultSchema`: `virune.selfhost.project-compiler.result.v1`
+- `resultSchema`: `virune.selfhost.project-compiler.result.v2`
 - `ready`: whether the candidate may generate a complete project compiler artifact
 - `blockers`: sorted machine-readable reasons when `ready` is false
 
@@ -24,7 +24,7 @@ The current candidate reports:
   "contractVersion": "1",
   "ready": false,
   "requestSchema": "virune.selfhost.project-compiler.request.v1",
-  "resultSchema": "virune.selfhost.project-compiler.result.v1",
+  "resultSchema": "virune.selfhost.project-compiler.result.v2",
   "blockers": ["project-linking-not-implemented"]
 }
 ```
@@ -56,7 +56,9 @@ For a structurally valid request, the generated compiler calls its existing Viru
 
 All sources are parsed even when one source is malformed, so the result remains deterministic and `stats.parsedModules` covers the complete request source set. A parser failure prevents linking and emission. When all sources parse successfully, the result returns `SHP2001` to state that project-wide linking, checking, and emission are not implemented.
 
-## Compile result v1
+## Compile result v2
+
+Result schema v2 explicitly distinguishes the path-aware diagnostic shape from the former v1 payload. The project compiler protocol and request schema remain v1; consumers must use the `resultSchema` capability field instead of assuming that all protocol-v1 results share one payload shape.
 
 The result transport can carry a future Stage 1 compiler artifact without another top-level schema change. It contains:
 
