@@ -127,7 +127,10 @@ function emit(module: EmitterApi, request: unknown): EmitterResult {
 }
 
 async function loadEmitter(): Promise<{ readonly root: string; readonly module: EmitterApi }> {
-	const result = await buildProject(mvpRoot, { write: false });
+	const result = await buildProject(mvpRoot, {
+		write: false,
+		additionalEntries: ['src/project-emitter.virune'],
+	});
 	const errors = result.diagnostics.filter(item => item.severity === 'error');
 	assert.deepEqual(errors.map(item => `${item.code}:${item.message}`), []);
 
