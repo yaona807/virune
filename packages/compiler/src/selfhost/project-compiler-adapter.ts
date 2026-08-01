@@ -27,10 +27,24 @@ export interface ProjectCompilerCapabilityV1 {
 	readonly blockers: readonly string[];
 }
 
+export interface ProjectCompilerPositionV1 {
+	readonly offset: number;
+	readonly line: number;
+	readonly column: number;
+}
+
+export interface ProjectCompilerSpanV1 {
+	readonly start: ProjectCompilerPositionV1;
+	readonly end: ProjectCompilerPositionV1;
+}
+
 export interface ProjectCompilerDiagnosticV1 {
 	readonly code: string;
 	readonly severity: 'error';
 	readonly message: string;
+	readonly sourcePath: string | null;
+	readonly span: ProjectCompilerSpanV1;
+	readonly notes: readonly string[];
 }
 
 export interface ProjectCompilerEmittedModuleV1 {
@@ -148,7 +162,7 @@ function validateCapability(value: unknown): ProjectCompilerCapabilityV1 {
 	if (typeof record.ready !== 'boolean') throw new SelfhostMvpError('$.ready must be boolean');
 	if (!Array.isArray(record.blockers)) throw new SelfhostMvpError('$.blockers must be an array');
 	const blockers = record.blockers.map((item, index) => text(item, `$.blockers[${index}]`));
-	assertCanonical(blockers, value => value, '$.blockers');
+	assertCanonical(blockers, item => item, '$.blockers');
 	if (record.ready && blockers.length > 0) throw new SelfhostMvpError('ready capability cannot contain blockers');
 	if (!record.ready && blockers.length === 0) throw new SelfhostMvpError('non-ready capability must contain a blocker');
 	return {
@@ -197,6 +211,12 @@ function validateProjectCompilerResult(
 		.map((item, index) => validateExportedSymbol(item, `$.exportedSymbols[${index}]`));
 	const stats = validateStats(record.stats, '$.stats');
 
+	const inputPaths = new Set(input.sources.map(source => source.path));
+	for (const diagnostic of diagnostics) {
+		if (diagnostic.sourcePath !== null && !inputPaths.has(diagnostic.sourcePath)) {
+			throw new SelfhostMvpError('$.diagnostics sourcePath must identify a request source');
+		}
+	}
 	assertCanonical(emittedModules, item => item.outputPath, '$.emittedModules');
 	assertCanonical(
 		dependencies,
@@ -208,6 +228,9 @@ function validateProjectCompilerResult(
 		item => `${item.modulePath}\0${item.name}\0${item.declarationKind}`,
 		'$.exportedSymbols',
 	);
+	if (stats.parsedModules + stats.reusedParsedModules !== input.sources.length) {
+		throw new SelfhostMvpError('parsed and reused parsed module counts must cover every request source');
+	}
 	if (stats.emittedModules !== emittedModules.length) {
 		throw new SelfhostMvpError('$.stats.emittedModules must match $.emittedModules length');
 	}
@@ -236,12 +259,37 @@ function validateProjectCompilerResult(
 
 function validateDiagnostic(value: unknown, path: string): ProjectCompilerDiagnosticV1 {
 	const record = object(value, path);
-	exactKeys(record, ['code', 'severity', 'message'], path);
+	exactKeys(record, ['code', 'severity', 'message', 'sourcePath', 'span', 'notes'], path);
 	if (record.severity !== 'error') throw new SelfhostMvpError(`${path}.severity must be error`);
+	const sourcePath = record.sourcePath === null
+		? null
+		: canonicalPath(record.sourcePath, `${path}.sourcePath`);
 	return {
 		code: text(record.code, `${path}.code`),
 		severity: 'error',
 		message: text(record.message, `${path}.message`),
+		sourcePath,
+		span: validateSpan(record.span, `${path}.span`),
+		notes: array(record.notes, `${path}.notes`).map((item, index) => text(item, `${path}.notes[${index}]`)),
+	};
+}
+
+function validateSpan(value: unknown, path: string): ProjectCompilerSpanV1 {
+	const record = object(value, path);
+	exactKeys(record, ['start', 'end'], path);
+	const start = validatePosition(record.start, `${path}.start`);
+	const end = validatePosition(record.end, `${path}.end`);
+	if (end.offset < start.offset) throw new SelfhostMvpError(`${path}.end must not precede start`);
+	return { start, end };
+}
+
+function validatePosition(value: unknown, path: string): ProjectCompilerPositionV1 {
+	const record = object(value, path);
+	exactKeys(record, ['offset', 'line', 'column'], path);
+	return {
+		offset: integer(record.offset, `${path}.offset`, 0),
+		line: integer(record.line, `${path}.line`, 1),
+		column: integer(record.column, `${path}.column`, 1),
 	};
 }
 
