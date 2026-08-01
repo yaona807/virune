@@ -15,7 +15,7 @@ const input: KernelInputV1 = {
 	platform: 'node',
 	entryPath: 'src/main.virune',
 	sources: [{ path: 'src/main.virune', text: 'pub fn main() -> Int {\n\treturn 0\n}\n' }],
-	interopManifest: { version: 1, modules: [] },
+	interopManifest: { version: '1', modules: [] },
 	emit: { target: 'es2022', sourceMap: false, sourcesContent: true },
 };
 
