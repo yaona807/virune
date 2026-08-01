@@ -1,0 +1,344 @@
+//! Module declaration, import, export, and graph collection for the self-host compiler.
+
+import {
+	FrontendAstNode,
+	FrontendParseResult,
+} from "./frontend-parser-model.virune"
+
+pub record ProjectLinkModule derives Eq, Debug, Json {
+	path: String
+	source: String
+	parse: FrontendParseResult
+}
+
+pub record ProjectLinkRequest derives Eq, Debug, Json {
+	entryPath: String
+	modules: List<ProjectLinkModule>
+}
+
+pub record ProjectLinkDependency derives Eq, Debug, Json {
+	modulePath: String
+	sourceKind: String
+	specifier: String
+	resolvedPath: String?
+	typeOnly: Bool
+	public: Bool
+}
+
+pub record ProjectLinkExport derives Eq, Debug, Json {
+	modulePath: String
+	name: String
+	declarationKind: String
+}
+
+pub record ProjectLinkDiagnostic derives Eq, Debug, Json {
+	code: String
+	severity: String
+	message: String
+	modulePath: String?
+	specifier: String?
+}
+
+pub record ProjectLinkResult derives Eq, Debug, Json {
+	accepted: Bool
+	dependencies: List<ProjectLinkDependency>
+	exportedSymbols: List<ProjectLinkExport>
+	reachableModules: List<String>
+	unreachableModules: List<String>
+	diagnostics: List<ProjectLinkDiagnostic>
+}
+
+fn linkDiagnostic(code: String, message: String, modulePath: String?, specifier: String?) -> ProjectLinkDiagnostic {
+	return ProjectLinkDiagnostic {
+		code: code,
+		severity: "error",
+		message: message,
+		modulePath: modulePath,
+		specifier: specifier,
+	}
+}
+
+fn containsText(values: List<String>, expected: String) -> Bool {
+	for value in values {
+		if value == expected {
+			return true
+		}
+	}
+	return false
+}
+
+fn emptyTextList() -> List<String> {
+	let values: List<String> = []
+	return values
+}
+
+fn charAt(value: String, index: Int) -> String {
+	return String.slice(value, index, Some(index + 1))
+}
+
+fn directory(path: String) -> String {
+	let mut lastSlash = -1
+	let mut index = 0
+	while index < String.length(path) {
+		if charAt(path, index) == "/" {
+			lastSlash = index
+		}
+		index = index + 1
+	}
+	if lastSlash < 0 {
+		return ""
+	}
+	return String.slice(path, 0, Some(lastSlash))
+}
+
+fn parentDirectory(path: String) -> String {
+	if String.length(path) == 0 {
+		return ""
+	}
+	return directory(path)
+}
+
+fn joinPath(base: String, rest: String) -> String {
+	if String.length(base) == 0 {
+		return rest
+	}
+	if String.length(rest) == 0 {
+		return base
+	}
+	return base + "/" + rest
+}
+
+fn unquote(value: String) -> String {
+	let length = String.length(value)
+	if length >= 2 && charAt(value, 0) == "\"" && charAt(value, length - 1) == "\"" {
+		return String.slice(value, 1, Some(length - 1))
+	}
+	return value
+}
+
+fn resolveViruneImport(modulePath: String, specifierValue: String) -> String? {
+	let specifier = unquote(specifierValue)
+	let mut base = directory(modulePath)
+	let mut rest = specifier
+	if String.startsWith(rest, "./") {
+		rest = String.slice(rest, 2, None)
+	} else if !String.startsWith(rest, "../") {
+		return None
+	}
+	while String.startsWith(rest, "../") {
+		if String.length(base) == 0 {
+			return None
+		}
+		base = parentDirectory(base)
+		rest = String.slice(rest, 3, None)
+	}
+	if String.length(rest) == 0 {
+		return None
+	}
+	return Some(joinPath(base, rest))
+}
+
+fn optionText(value: String?) -> String {
+	return match value {
+		Some(text) => text
+		None => ""
+	}
+}
+
+fn importSourceText(node: FrontendAstNode, nodes: List<FrontendAstNode>) -> String {
+	for childId in node.children {
+		for child in nodes {
+			if child.id == childId && child.kind == "ImportSource" {
+				return child.text
+			}
+		}
+	}
+	return ""
+}
+
+fn boolText(value: Bool) -> String {
+	return if value then "1" else "0"
+}
+
+fn dependencyKey(value: ProjectLinkDependency) -> String {
+	return value.modulePath + "|" + value.sourceKind + "|" + value.specifier + "|" + optionText(value.resolvedPath) + "|" + boolText(value.typeOnly) + "|" + boolText(value.public)
+}
+
+fn collectDependencies(projectModule: ProjectLinkModule) -> List<ProjectLinkDependency> {
+	let mut dependencies: List<ProjectLinkDependency> = []
+	for node in projectModule.parse.nodes {
+		if node.kind == "ImportDeclaration" {
+			let rawSpecifier = importSourceText(node, projectModule.parse.nodes)
+			if String.length(rawSpecifier) > 0 {
+				let sourceKind = if String.startsWith(node.text, "javascript") then "javascript" else "virune"
+				let specifier = unquote(rawSpecifier)
+				dependencies = List.append(dependencies, ProjectLinkDependency {
+					modulePath: projectModule.path,
+					sourceKind: sourceKind,
+					specifier: specifier,
+					resolvedPath: if sourceKind == "virune" then resolveViruneImport(projectModule.path, rawSpecifier) else None,
+					typeOnly: String.contains(node.text, " type"),
+					public: String.contains(node.text, " public"),
+				})
+			}
+		}
+	}
+	return dependencies
+}
+
+fn declarationKind(kind: String) -> Bool {
+	return kind == "FunctionDeclaration" || kind == "RecordDeclaration" || kind == "EnumDeclaration" || kind == "NewtypeDeclaration" || kind == "TypeAliasDeclaration" || kind == "ExternDeclaration" || kind == "TopLevelValueDeclaration"
+}
+
+fn sourceSlice(source: String, node: FrontendAstNode) -> String {
+	let start = node.span.start.offset
+	let end = node.span.end.offset
+	if start < 0 || end < start || end > String.length(source) {
+		return ""
+	}
+	return String.slice(source, start, Some(end))
+}
+
+fn collectExports(projectModule: ProjectLinkModule) -> List<ProjectLinkExport> {
+	let mut exports: List<ProjectLinkExport> = []
+	for node in projectModule.parse.nodes {
+		if declarationKind(node.kind) && String.startsWith(sourceSlice(projectModule.source, node), "pub ") {
+			exports = List.append(exports, ProjectLinkExport {
+				modulePath: projectModule.path,
+				name: node.text,
+				declarationKind: node.kind,
+			})
+		}
+	}
+	return exports
+}
+
+fn moduleExists(modules: List<ProjectLinkModule>, path: String) -> Bool {
+	for projectModule in modules {
+		if projectModule.path == path {
+			return true
+		}
+	}
+	return false
+}
+
+fn dependencyTarget(value: ProjectLinkDependency) -> String {
+	if value.sourceKind != "virune" {
+		return ""
+	}
+	return optionText(value.resolvedPath)
+}
+
+fn reachable(dependencies: List<ProjectLinkDependency>, current: String, target: String, visited: List<String>) -> Bool {
+	if current == target {
+		return true
+	}
+	if containsText(visited, current) {
+		return false
+	}
+	let nextVisited = List.append(visited, current)
+	for dependency in dependencies {
+		if dependency.modulePath == current {
+			let nextPath = dependencyTarget(dependency)
+			if String.length(nextPath) > 0 && reachable(dependencies, nextPath, target, nextVisited) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+fn collectReachable(dependencies: List<ProjectLinkDependency>, current: String, visited: List<String>) -> List<String> {
+	if containsText(visited, current) {
+		return visited
+	}
+	let mut result = List.append(visited, current)
+	for dependency in dependencies {
+		if dependency.modulePath == current {
+			let nextPath = dependencyTarget(dependency)
+			if String.length(nextPath) > 0 {
+				result = collectReachable(dependencies, nextPath, result)
+			}
+		}
+	}
+	return result
+}
+
+fn graphDiagnostics(request: ProjectLinkRequest, dependencies: List<ProjectLinkDependency>) -> List<ProjectLinkDiagnostic> {
+	let mut diagnostics: List<ProjectLinkDiagnostic> = []
+	let mut seenDependencies: List<String> = []
+	if !moduleExists(request.modules, request.entryPath) {
+		diagnostics = List.append(diagnostics, linkDiagnostic("SHP2101", "Project entry module does not exist", Some(request.entryPath), None))
+	}
+	for dependency in dependencies {
+		let key = dependencyKey(dependency)
+		if containsText(seenDependencies, key) {
+			diagnostics = List.append(diagnostics, linkDiagnostic("SHP2102", "Duplicate module import " + dependency.specifier, Some(dependency.modulePath), Some(dependency.specifier)))
+		} else {
+			seenDependencies = List.append(seenDependencies, key)
+		}
+		if dependency.sourceKind == "virune" {
+			let targetPath = optionText(dependency.resolvedPath)
+			if String.length(targetPath) == 0 {
+				diagnostics = List.append(diagnostics, linkDiagnostic("SHP2106", "Virune import specifier must be a resolvable relative path", Some(dependency.modulePath), Some(dependency.specifier)))
+			} else if targetPath == dependency.modulePath {
+				diagnostics = List.append(diagnostics, linkDiagnostic("SHP2103", "Module cannot import itself", Some(dependency.modulePath), Some(dependency.specifier)))
+			} else if !moduleExists(request.modules, targetPath) {
+				diagnostics = List.append(diagnostics, linkDiagnostic("SHP2104", "Imported Virune module does not exist", Some(dependency.modulePath), Some(dependency.specifier)))
+			} else if reachable(dependencies, targetPath, dependency.modulePath, emptyTextList()) {
+				diagnostics = List.append(diagnostics, linkDiagnostic("SHP2105", "Virune import cycle detected", Some(dependency.modulePath), Some(dependency.specifier)))
+			}
+		}
+	}
+	return diagnostics
+}
+
+pub fn linkProject(request: ProjectLinkRequest) -> ProjectLinkResult {
+	let mut diagnostics: List<ProjectLinkDiagnostic> = []
+	let mut dependencies: List<ProjectLinkDependency> = []
+	let mut exportedSymbols: List<ProjectLinkExport> = []
+	let mut seenModules: List<String> = []
+	for projectModule in request.modules {
+		if containsText(seenModules, projectModule.path) {
+			diagnostics = List.append(diagnostics, linkDiagnostic("SHP2100", "Duplicate project module " + projectModule.path, Some(projectModule.path), None))
+		} else {
+			seenModules = List.append(seenModules, projectModule.path)
+		}
+		for dependency in collectDependencies(projectModule) {
+			dependencies = List.append(dependencies, dependency)
+		}
+		for exported in collectExports(projectModule) {
+			exportedSymbols = List.append(exportedSymbols, exported)
+		}
+	}
+	for diagnostic in graphDiagnostics(request, dependencies) {
+		diagnostics = List.append(diagnostics, diagnostic)
+	}
+	let reachableSet: List<String> = if moduleExists(request.modules, request.entryPath) then collectReachable(dependencies, request.entryPath, emptyTextList()) else emptyTextList()
+	let mut reachableModules: List<String> = []
+	let mut unreachableModules: List<String> = []
+	for projectModule in request.modules {
+		if containsText(reachableSet, projectModule.path) {
+			reachableModules = List.append(reachableModules, projectModule.path)
+		} else {
+			unreachableModules = List.append(unreachableModules, projectModule.path)
+		}
+	}
+	return ProjectLinkResult {
+		accepted: List.length(diagnostics) == 0,
+		dependencies: dependencies,
+		exportedSymbols: exportedSymbols,
+		reachableModules: reachableModules,
+		unreachableModules: unreachableModules,
+		diagnostics: diagnostics,
+	}
+}
+
+fn decodeProjectLinkRequest(encoded: String) -> Result<ProjectLinkRequest, List<JsonError>> {
+	let raw = Json.parse(encoded)?
+	return Json.decode<ProjectLinkRequest>(raw)
+}
+
+pub fn linkProjectJson(encoded: String) -> Result<String, List<JsonError>> {
+	return Json.encode<ProjectLinkResult>(linkProject(decodeProjectLinkRequest(encoded)?))
+}
