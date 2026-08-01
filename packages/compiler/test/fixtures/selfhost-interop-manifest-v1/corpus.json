@@ -1,0 +1,79 @@
+{
+	"version": 1,
+	"cases": [
+		{
+			"id": "canonical-order",
+			"accepted": true,
+			"input": {
+				"contractVersion": "1",
+				"languageVersion": "1.0",
+				"platform": "node",
+				"entryPath": ".\\src\\main.virune",
+				"sources": [
+					{"path":"src\\z.virune","text":"fn z() -> Int { return 2 }\n"},
+					{"path":"./src/part/../main.virune","text":"pub fn main() -> Int { return 1 }\n"}
+				],
+				"interopManifest": {
+					"version": "1",
+					"modules": [
+						{"specifier":"zeta","metadata":{"z":1,"nested":{"b":true,"a":false},"a":2}},
+						{"specifier":"@scope/alpha","metadata":{"values":[{"b":2,"a":1}],"flag":true}}
+					]
+				},
+				"emit": {"target":"es2022","sourceMap":true,"sourcesContent":true}
+			},
+			"entryPath": "src/main.virune",
+			"sourcePaths": ["src/main.virune", "src/z.virune"],
+			"moduleSpecifiers": ["@scope/alpha", "zeta"],
+			"metadataKeys": [["flag", "values"], ["a", "nested", "z"]]
+		},
+		{
+			"id": "duplicate-specifier",
+			"accepted": false,
+			"input": {
+				"contractVersion":"1","languageVersion":"1.0","platform":"neutral","entryPath":"main.virune",
+				"sources":[{"path":"main.virune","text":"pub fn main() -> Int { return 1 }\n"}],
+				"interopManifest":{"version":"1","modules":[{"specifier":"example","metadata":{}},{"specifier":"example","metadata":{"a":1}}]},
+				"emit":{"target":"es2022","sourceMap":false,"sourcesContent":false}
+			},
+			"errorPath": "$.interopManifest.modules",
+			"errorIncludes": "duplicate specifier example"
+		},
+		{
+			"id": "empty-specifier",
+			"accepted": false,
+			"input": {
+				"contractVersion":"1","languageVersion":"1.0","platform":"browser","entryPath":"main.virune",
+				"sources":[{"path":"main.virune","text":"pub fn main() -> Int { return 1 }\n"}],
+				"interopManifest":{"version":"1","modules":[{"specifier":"","metadata":{}}]},
+				"emit":{"target":"es2022","sourceMap":true,"sourcesContent":false}
+			},
+			"errorPath": "$.interopManifest.modules[0].specifier",
+			"errorIncludes": "string must not be empty"
+		},
+		{
+			"id": "stale-version",
+			"accepted": false,
+			"input": {
+				"contractVersion":"1","languageVersion":"1.0","platform":"node","entryPath":"main.virune",
+				"sources":[{"path":"main.virune","text":"pub fn main() -> Int { return 1 }\n"}],
+				"interopManifest":{"version":"2","modules":[]},
+				"emit":{"target":"es2022","sourceMap":true,"sourcesContent":true}
+			},
+			"errorPath": "$.interopManifest.version",
+			"errorIncludes": "expected \"1\""
+		},
+		{
+			"id": "unknown-module-property",
+			"accepted": false,
+			"input": {
+				"contractVersion":"1","languageVersion":"1.0","platform":"node","entryPath":"main.virune",
+				"sources":[{"path":"main.virune","text":"pub fn main() -> Int { return 1 }\n"}],
+				"interopManifest":{"version":"1","modules":[{"specifier":"example","metadata":{},"extra":true}]},
+				"emit":{"target":"es2022","sourceMap":true,"sourcesContent":true}
+			},
+			"errorPath": "$.interopManifest.modules[0].extra",
+			"errorIncludes": "unknown property"
+		}
+	]
+}
