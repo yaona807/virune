@@ -42,6 +42,19 @@ The request carries contract version, language version, platform, canonical entr
 - ES2022 target;
 - disabled source maps and enabled sources content.
 
+## Compile result v1
+
+The result transport is complete enough to carry a future Stage 1 compiler artifact without changing the top-level schema. It contains:
+
+- echoed language version, platform, and canonical entry path;
+- accepted／rejected state and deterministic diagnostics;
+- canonical emitted modules with source path, output path, JavaScript, and source map text;
+- canonical dependency metadata;
+- canonical exported-symbol metadata;
+- parsed, checked, emitted, reused, and invalidated module statistics.
+
+The current non-ready implementation returns empty artifact／metadata arrays and zero statistics. A rejected result cannot contain emitted modules, and the Host verifies canonical ordering, uniqueness, path normalization, exact keys, and the correspondence between emitted modules and statistics. The former count-only shape is rejected because it could not transport an actual Stage 1 artifact.
+
 A structurally valid request receives deterministic rejected evidence with diagnostic `SHP2000`. Invalid contract data receives stable `SHP1001`–`SHP1011` diagnostics. Malformed JSON fails through the Result error channel.
 
 ## What remains
