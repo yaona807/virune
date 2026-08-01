@@ -1,0 +1,116 @@
+{
+  "version": 1,
+  "types": [
+    { "id": 0, "kind": "primitive", "name": "Int", "children": [], "keyId": null, "valueId": null, "openGeneric": false, "shapeKnown": true },
+    { "id": 1, "kind": "primitive", "name": "String", "children": [], "keyId": null, "valueId": null, "openGeneric": false, "shapeKnown": true },
+    { "id": 2, "kind": "named", "name": "JsError", "children": [1], "keyId": null, "valueId": null, "openGeneric": false, "shapeKnown": true },
+    { "id": 3, "kind": "result", "name": null, "children": [0, 2], "keyId": null, "valueId": null, "openGeneric": false, "shapeKnown": true },
+    { "id": 4, "kind": "future", "name": null, "children": [3], "keyId": null, "valueId": null, "openGeneric": false, "shapeKnown": true },
+    { "id": 5, "kind": "function", "name": null, "children": [], "keyId": null, "valueId": null, "openGeneric": false, "shapeKnown": true },
+    { "id": 6, "kind": "foreign", "name": "Date", "children": [], "keyId": null, "valueId": null, "openGeneric": false, "shapeKnown": true },
+    { "id": 7, "kind": "map", "name": null, "children": [], "keyId": 0, "valueId": 1, "openGeneric": false, "shapeKnown": true },
+    { "id": 8, "kind": "map", "name": null, "children": [], "keyId": 2, "valueId": 1, "openGeneric": false, "shapeKnown": true },
+    { "id": 9, "kind": "set", "name": null, "children": [1], "keyId": null, "valueId": null, "openGeneric": false, "shapeKnown": true },
+    { "id": 10, "kind": "named", "name": "Payload", "children": [0, 1], "keyId": null, "valueId": null, "openGeneric": false, "shapeKnown": true },
+    { "id": 11, "kind": "named", "name": "OpenBox", "children": [0], "keyId": null, "valueId": null, "openGeneric": true, "shapeKnown": true },
+    { "id": 12, "kind": "named", "name": "Cycle", "children": [12], "keyId": null, "valueId": null, "openGeneric": false, "shapeKnown": true },
+    { "id": 13, "kind": "primitive", "name": "Never", "children": [], "keyId": null, "valueId": null, "openGeneric": false, "shapeKnown": true }
+  ],
+  "cases": [
+    {
+      "id": "01-valid-safe-boundary",
+      "accepted": true,
+      "externs": [
+        {
+          "moduleName": "node:fs",
+          "isUnsafe": false,
+          "containingModuleUnsafe": false,
+          "sourcePath": "service.virune",
+          "platform": "node",
+          "functions": [
+            {
+              "name": "readCount",
+              "parameters": [{ "name": "path", "typeId": 1, "optional": false }],
+              "returnTypeId": 3
+            }
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "name": "encodePayload",
+          "declarationKind": "function",
+          "isPublic": true,
+          "generic": false,
+          "attributeArgumentCount": 0,
+          "parameterTypeIds": [10],
+          "returnTypeId": 1
+        }
+      ],
+      "expectedDiagnosticCodes": [],
+      "expectedTypeSafety": { "0": true, "7": true, "8": false, "11": false, "12": false, "13": false }
+    },
+    {
+      "id": "02-extern-policy-diagnostics",
+      "accepted": false,
+      "externs": [
+        {
+          "moduleName": "node:fs",
+          "isUnsafe": false,
+          "containingModuleUnsafe": false,
+          "sourcePath": "service.virune",
+          "platform": "browser",
+          "functions": [
+            {
+              "name": "broken",
+              "parameters": [
+                { "name": "callback", "typeId": 5, "optional": true },
+                { "name": "value", "typeId": 6, "optional": false }
+              ],
+              "returnTypeId": 5
+            }
+          ]
+        },
+        {
+          "moduleName": "legacy",
+          "isUnsafe": true,
+          "containingModuleUnsafe": false,
+          "sourcePath": "service.virune",
+          "platform": "neutral",
+          "functions": [{ "name": "unsafeCall", "parameters": [], "returnTypeId": 6 }]
+        },
+        {
+          "moduleName": "legacy",
+          "isUnsafe": true,
+          "containingModuleUnsafe": true,
+          "sourcePath": "outside.virune",
+          "platform": "neutral",
+          "functions": []
+        }
+      ],
+      "exports": [],
+      "expectedDiagnosticCodes": ["L4006", "L4213", "L2115", "L4213", "L4001", "L4213", "L4007", "L4008", "L4008", "L4009"]
+    },
+    {
+      "id": "03-export-and-malformed-diagnostics",
+      "accepted": false,
+      "additionalTypes": [
+        { "id": 14, "kind": "list", "name": null, "children": [99], "keyId": null, "valueId": null, "openGeneric": false, "shapeKnown": true },
+        { "id": 22, "kind": "mystery", "name": null, "children": [], "keyId": null, "valueId": null, "openGeneric": false, "shapeKnown": false }
+      ],
+      "externs": [],
+      "exports": [
+        {
+          "name": "bad",
+          "declarationKind": "record",
+          "isPublic": false,
+          "generic": true,
+          "attributeArgumentCount": 1,
+          "parameterTypeIds": [6],
+          "returnTypeId": 5
+        }
+      ],
+      "expectedDiagnosticCodes": ["L9001", "L9001", "L9001", "L2052", "L2053", "L2054", "L2055", "L4213", "L4213"]
+    }
+  ]
+}
