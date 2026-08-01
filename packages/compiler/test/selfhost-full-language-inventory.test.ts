@@ -92,6 +92,7 @@ test('full-language lowering blocker inventory is deterministic for the canonica
 	try {
 		const module = await loadBootstrapCompilerCandidate(root, 'dist/main.js');
 		const capability = readProjectCompilerCapability(module);
+		assert.ok(capability);
 		assert.equal(capability.ready, false);
 		assert.deepEqual(capability.blockers, ['full-language-lowering-not-implemented']);
 
