@@ -1,0 +1,13 @@
+{
+	"source": "@mustUse\npub record Token {\n\tvalue: String,\n}\n@mustUse\npub enum Decision {\n\tYes\n\tNo\n}\n@mustUse\npub newtype Handle = Int\npub type TokenAlias = Token\npub type TokenAlias2 = TokenAlias\npub type ResultAlias = Result<Int, String>\npub type Plain = Int\n",
+	"values": [
+		{"typeName":"Token","disposition":"bind","span":{"start":{"offset":200,"line":20,"column":1},"end":{"offset":205,"line":20,"column":6}}},
+		{"typeName":"Decision","disposition":"return","span":{"start":{"offset":210,"line":21,"column":1},"end":{"offset":215,"line":21,"column":6}}},
+		{"typeName":"Handle","disposition":"handle","span":{"start":{"offset":220,"line":22,"column":1},"end":{"offset":225,"line":22,"column":6}}},
+		{"typeName":"TokenAlias","disposition":"await","span":{"start":{"offset":230,"line":23,"column":1},"end":{"offset":235,"line":23,"column":6}}},
+		{"typeName":"TokenAlias2","disposition":"handle","span":{"start":{"offset":240,"line":24,"column":1},"end":{"offset":245,"line":24,"column":6}}},
+		{"typeName":"ResultAlias","disposition":"bind","span":{"start":{"offset":250,"line":25,"column":1},"end":{"offset":255,"line":25,"column":6}}},
+		{"typeName":"Result","disposition":"handle","span":{"start":{"offset":260,"line":26,"column":1},"end":{"offset":265,"line":26,"column":6}}},
+		{"typeName":"Plain","disposition":"expression","span":{"start":{"offset":270,"line":27,"column":1},"end":{"offset":275,"line":27,"column":6}}}
+	]
+}
