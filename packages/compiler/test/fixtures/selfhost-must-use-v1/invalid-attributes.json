@@ -1,0 +1,4 @@
+{
+	"source": "@mustUse(reason)\nrecord InvalidArgs {\n\tvalue: Int,\n}\n@mustUse\ntype InvalidAlias = Int\n@mustUse\nfn invalidFunction() -> Unit {\n\treturn Unit\n}\n",
+	"values": []
+}
