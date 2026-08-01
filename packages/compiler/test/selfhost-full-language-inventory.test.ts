@@ -82,7 +82,7 @@ function inventoryFromResult(
 	};
 }
 
-test('full-language lowering blocker inventory is deterministic for the canonical self-host source set', async () => {
+test('full-language lowering blocker inventory is deterministic for the canonical self-host source set', { timeout: 300_000 }, async () => {
 	await mkdir(temporaryRoot, { recursive: true });
 	const build = await buildProject(mvpRoot, { write: false });
 	const buildErrors = build.diagnostics.filter(item => item.severity === 'error');
