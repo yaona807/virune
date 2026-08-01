@@ -1,0 +1,39 @@
+{
+	"version": 1,
+	"cases": [
+		{
+			"id": "malformed-references",
+			"request": "malformed.json",
+			"accepted": false,
+			"diagnosticCodes": ["L1001", "L9001", "L9001", "L9001"],
+			"sortDiagnosticCodes": true,
+			"functionDeclaredEffects": [[], ["Console"], []],
+			"functionWildcards": [false, false, false],
+			"requirementMissingEffects": [[], []],
+			"requirementSatisfied": [false, false]
+		},
+		{
+			"id": "missing-and-unknown-effects",
+			"request": "missing.json",
+			"accepted": false,
+			"diagnosticCodes": ["L2076", "L2076", "L2085", "L2085"],
+			"sortDiagnosticCodes": true,
+			"functionDeclaredEffects": [["Console"], ["Network"]],
+			"functionWildcards": [false, false],
+			"requirementMissingEffects": [["File"], ["Timer"]],
+			"requirementSatisfied": [false, false]
+		},
+		{
+			"id": "valid-canonical-effects",
+			"request": "valid.json",
+			"accepted": true,
+			"diagnosticCodes": [],
+			"sortDiagnosticCodes": false,
+			"functionDeclaredEffects": [["Console", "File"], ["Console"], []],
+			"functionWildcards": [false, true, false],
+			"requirementRequiredEffects": [["Console", "File"], ["Network", "Timer", "JavaScript"], []],
+			"requirementMissingEffects": [[], [], []],
+			"requirementSatisfied": [true, true, true]
+		}
+	]
+}

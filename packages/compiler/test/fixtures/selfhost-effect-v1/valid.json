@@ -1,0 +1,12 @@
+{
+	"functions": [
+		{"name":"readConfig","declaredEffects":["File","Console","File"]},
+		{"name":"entry","declaredEffects":["*","Console"]},
+		{"name":"pure","declaredEffects":[]}
+	],
+	"requirements": [
+		{"functionId":0,"requiredEffects":["Console","File","Console"]},
+		{"functionId":1,"requiredEffects":["JavaScript","Network","Timer"]},
+		{"functionId":2,"requiredEffects":[]}
+	]
+}

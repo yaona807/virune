@@ -1,0 +1,11 @@
+{
+	"functions": [
+		{"name":"entry","declaredEffects":[]},
+		{"name":"entry","declaredEffects":["Console"]},
+		{"name":"","declaredEffects":[]}
+	],
+	"requirements": [
+		{"functionId":9,"requiredEffects":["Console"]},
+		{"functionId":-1,"requiredEffects":[]}
+	]
+}

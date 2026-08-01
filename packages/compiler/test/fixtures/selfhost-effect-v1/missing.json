@@ -1,0 +1,10 @@
+{
+	"functions": [
+		{"name":"worker","declaredEffects":["Console","MadeUp","MadeUp"]},
+		{"name":"network","declaredEffects":["Network"]}
+	],
+	"requirements": [
+		{"functionId":0,"requiredEffects":["Console","File","Ghost","File"]},
+		{"functionId":1,"requiredEffects":["Network","Timer"]}
+	]
+}
