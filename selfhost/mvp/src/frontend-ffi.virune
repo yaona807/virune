@@ -24,9 +24,9 @@ record FrontendFfiFunction derives Eq, Debug, Json {
 }
 
 record FrontendFfiExtern derives Eq, Debug, Json {
-	module: String
-	unsafe: Bool
-	moduleUnsafe: Bool
+	moduleName: String
+	isUnsafe: Bool
+	containingModuleUnsafe: Bool
 	sourcePath: String
 	platform: String
 	functions: List<FrontendFfiFunction>
@@ -35,7 +35,7 @@ record FrontendFfiExtern derives Eq, Debug, Json {
 record FrontendFfiExport derives Eq, Debug, Json {
 	name: String
 	declarationKind: String
-	public: Bool
+	isPublic: Bool
 	generic: Bool
 	attributeArgumentCount: Int
 	parameterTypeIds: List<Int>
@@ -439,17 +439,17 @@ fn buildExterns(
 	let mut functionId = 0
 	for declaration in values {
 		let inFfi = inFfiDirectory(declaration.sourcePath)
-		if nodeModule(declaration.module) && declaration.platform != "node" {
+		if nodeModule(declaration.moduleName) && declaration.platform != "node" {
 			diagnostics = List.append(diagnostics, ffiDiagnostic(
 				"L4006",
-				"Node.js module " + declaration.module + " is not available for platform " + declaration.platform,
+				"Node.js module " + declaration.moduleName + " is not available for platform " + declaration.platform,
 				"extern",
 				Some(externId),
 				None,
 				Some("Use platform node or select a platform-compatible JavaScript module."),
 			))
 		}
-		if declaration.unsafe && !declaration.moduleUnsafe {
+		if declaration.isUnsafe && !declaration.containingModuleUnsafe {
 			diagnostics = List.append(diagnostics, ffiDiagnostic(
 				"L4007",
 				"unsafe extern requires an unsafe module declaration",
@@ -459,7 +459,7 @@ fn buildExterns(
 				Some("Mark the containing module unsafe or use a safe extern boundary."),
 			))
 		}
-		if declaration.unsafe && !inFfi {
+		if declaration.isUnsafe && !inFfi {
 			diagnostics = List.append(diagnostics, ffiDiagnostic(
 				"L4008",
 				"unsafe extern is allowed only under the source ffi/ directory",
@@ -469,7 +469,7 @@ fn buildExterns(
 				Some("Move the declaration under ffi/ or remove unsafe."),
 			))
 		}
-		if declaration.moduleUnsafe && !inFfi {
+		if declaration.containingModuleUnsafe && !inFfi {
 			diagnostics = List.append(diagnostics, ffiDiagnostic(
 				"L4009",
 				"unsafe module is allowed only under the source ffi/ directory",
@@ -495,7 +495,7 @@ fn buildExterns(
 						Some("Move required parameters before optional parameters."),
 					))
 				}
-				if !declaration.unsafe {
+				if !declaration.isUnsafe {
 					diagnostics = appendUnsafeTypeDiagnostic(
 						diagnostics,
 						types,
@@ -506,7 +506,7 @@ fn buildExterns(
 					)
 				}
 			}
-			if !declaration.unsafe {
+			if !declaration.isUnsafe {
 				if !isResultLike(typeNodes, fnValue.returnTypeId) {
 					diagnostics = List.append(diagnostics, ffiDiagnostic(
 						"L4001",
@@ -530,7 +530,7 @@ fn buildExterns(
 				id: functionId,
 				externId: externId,
 				name: fnValue.name,
-				safe: !declaration.unsafe,
+				safe: !declaration.isUnsafe,
 				valid: List.length(diagnostics) == before,
 			})
 			functionId = functionId + 1
@@ -560,7 +560,7 @@ fn buildExports(
 				Some("Move @jsExport to a function declaration."),
 			))
 		}
-		if !value.public {
+		if !value.isPublic {
 			diagnostics = List.append(diagnostics, ffiDiagnostic(
 				"L2053",
 				"@jsExport function must be public",
