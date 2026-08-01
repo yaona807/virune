@@ -172,7 +172,11 @@ test('full-language lowering blocker inventory is deterministic for the canonica
 		const secondValue = module.compileProjectMvp(request);
 		assert.deepEqual(firstValue, secondValue);
 		if (firstValue.$tag !== 'Ok') throw new Error('Generated project compiler rejected the inventory request transport');
-		const first = JSON.parse(firstValue.$values[0]) as RawProjectCompilerResult;
+		const encoded = firstValue.$values[0];
+		if (typeof encoded !== 'string') {
+			throw new Error('Generated project compiler returned a non-string Ok payload');
+		}
+		const first = JSON.parse(encoded) as RawProjectCompilerResult;
 		assert.equal(first.accepted, false);
 		assert.equal(first.stats.parsedModules, input.sources.length);
 		assert.equal(first.stats.emittedModules, 0);
