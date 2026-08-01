@@ -140,7 +140,10 @@ async function loadLinker(): Promise<{
 	readonly parser: ParserApi;
 	readonly linker: LinkerApi;
 }> {
-	const result = await buildProject(mvpRoot, { write: false });
+	const result = await buildProject(mvpRoot, {
+		write: false,
+		additionalEntries: ['src/project-linker.virune'],
+	});
 	const errors = result.diagnostics.filter(item => item.severity === 'error');
 	assert.deepEqual(errors.map(item => `${item.code}:${item.message}`), []);
 
