@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { buildProject, type ProjectBuildResult } from '../project/project.js';
+import { buildProject } from '../project/project.js';
 import {
 	normalizeKernelPath,
 	validateKernelInput,
@@ -67,13 +67,12 @@ export async function runBootstrapExecutionProbe(
 		...options,
 		stage: 'stage0',
 	});
-	const temporaryDirectory = await materializeCompilerCandidate(
-		build,
+	const temporaryDirectory = await materializeBootstrapCompilerCandidate(
 		compilerArtifact,
 		options.temporaryRoot,
 	);
 	try {
-		const module = await loadCompilerCandidate(
+		const module = await loadBootstrapCompilerCandidate(
 			temporaryDirectory,
 			options.entryModulePath ?? 'dist/main.js',
 		);
@@ -103,17 +102,13 @@ export function validateSelfhostMvpModule(value: unknown): SelfhostMvpModule {
 	return value as SelfhostMvpModule;
 }
 
-async function materializeCompilerCandidate(
-	build: ProjectBuildResult,
+/** Materialize a normalized compiler artifact without changing repository outputs. */
+export async function materializeBootstrapCompilerCandidate(
 	compilerArtifact: NormalizedBootstrapArtifactResult,
 	temporaryRoot: string,
 ): Promise<string> {
-	const errors = build.diagnostics.filter(diagnostic => diagnostic.severity === 'error');
-	if (errors.length > 0) {
-		throw new Error(`Cannot materialize a failed compiler build: ${errors.length} error diagnostic(s)`);
-	}
 	await mkdir(temporaryRoot, { recursive: true });
-	const root = await mkdtemp(join(temporaryRoot, 'selfhost-bootstrap-probe-'));
+	const root = await mkdtemp(join(temporaryRoot, 'selfhost-bootstrap-candidate-'));
 	try {
 		for (const module of compilerArtifact.artifact.modules) {
 			const outputPath = join(root, module.path);
@@ -127,7 +122,11 @@ async function materializeCompilerCandidate(
 	}
 }
 
-async function loadCompilerCandidate(root: string, entryModulePath: string): Promise<SelfhostMvpModule> {
+/** Load the declared compiler entry from an isolated materialized artifact. */
+export async function loadBootstrapCompilerCandidate(
+	root: string,
+	entryModulePath: string,
+): Promise<SelfhostMvpModule> {
 	const canonicalEntryPath = normalizeKernelPath(entryModulePath, '$.entryModulePath');
 	if (!canonicalEntryPath.endsWith('.js')) throw new Error('Bootstrap compiler entry module must be JavaScript');
 	const moduleUrl = new URL(pathToFileURL(join(root, canonicalEntryPath)).href);
