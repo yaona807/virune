@@ -225,8 +225,11 @@ function parseReport(value: unknown, path: string): { readonly report: Bootstrap
 	if (status !== (unexpectedChanges.length === 0 ? 'equivalent' : 'mismatch')) {
 		throw new BootstrapShadowHistoryError(`${path}.status`, 'status does not match unexpectedChanges');
 	}
-	if (rawArtifactEqual && (expectedChanges.length !== 0 || unexpectedChanges.length !== 0)) {
-		throw new BootstrapShadowHistoryError(`${path}.rawArtifactEqual`, 'equal artifacts cannot contain changes');
+	if (rawArtifactEqual) {
+		throw new BootstrapShadowHistoryError(
+			`${path}.rawArtifactEqual`,
+			'equal artifacts cannot contain the canonical stage change',
+		);
 	}
 	const unexpectedSections = parseSections(report.unexpectedSections, `${path}.unexpectedSections`);
 	const expectedSections = summarizeSections(unexpectedChanges);
