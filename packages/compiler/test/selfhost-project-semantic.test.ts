@@ -127,7 +127,10 @@ function check(module: SemanticModuleApi, modules: readonly SemanticModule[]): S
 }
 
 async function loadSemanticModule(): Promise<{ readonly root: string; readonly module: SemanticModuleApi }> {
-	const result = await buildProject(mvpRoot, { write: false });
+	const result = await buildProject(mvpRoot, {
+		write: false,
+		additionalEntries: ['src/project-semantic.virune'],
+	});
 	const errors = result.diagnostics.filter(item => item.severity === 'error');
 	assert.deepEqual(errors.map(item => `${item.code}:${item.message}`), []);
 
