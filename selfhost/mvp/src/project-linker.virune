@@ -67,6 +67,11 @@ fn containsText(values: List<String>, expected: String) -> Bool {
 	return false
 }
 
+fn emptyTextList() -> List<String> {
+	let values: List<String> = []
+	return values
+}
+
 fn charAt(value: String, index: Int) -> String {
 	return String.slice(value, index, Some(index + 1))
 }
@@ -280,7 +285,7 @@ fn graphDiagnostics(request: ProjectLinkRequest, dependencies: List<ProjectLinkD
 				diagnostics = List.append(diagnostics, linkDiagnostic("SHP2103", "Module cannot import itself", Some(dependency.modulePath), Some(dependency.specifier)))
 			} else if !moduleExists(request.modules, targetPath) {
 				diagnostics = List.append(diagnostics, linkDiagnostic("SHP2104", "Imported Virune module does not exist", Some(dependency.modulePath), Some(dependency.specifier)))
-			} else if reachable(dependencies, targetPath, dependency.modulePath, []) {
+			} else if reachable(dependencies, targetPath, dependency.modulePath, emptyTextList()) {
 				diagnostics = List.append(diagnostics, linkDiagnostic("SHP2105", "Virune import cycle detected", Some(dependency.modulePath), Some(dependency.specifier)))
 			}
 		}
@@ -309,7 +314,7 @@ pub fn linkProject(request: ProjectLinkRequest) -> ProjectLinkResult {
 	for diagnostic in graphDiagnostics(request, dependencies) {
 		diagnostics = List.append(diagnostics, diagnostic)
 	}
-	let reachableSet = if moduleExists(request.modules, request.entryPath) then collectReachable(dependencies, request.entryPath, []) else []
+	let reachableSet: List<String> = if moduleExists(request.modules, request.entryPath) then collectReachable(dependencies, request.entryPath, emptyTextList()) else emptyTextList()
 	let mut reachableModules: List<String> = []
 	let mut unreachableModules: List<String> = []
 	for projectModule in request.modules {
