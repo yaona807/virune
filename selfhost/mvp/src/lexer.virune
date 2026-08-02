@@ -31,6 +31,10 @@ fn isHorizontalWhitespace(value: String) -> Bool {
 	return value == " " || value == "\t" || value == "\r"
 }
 
+fn isWhitespace(value: String) -> Bool {
+	return isHorizontalWhitespace(value) || value == "\n"
+}
+
 fn position(offset: Int, line: Int, column: Int) -> MvpPosition {
 	return MvpPosition { offset: offset, line: line, column: column }
 }
@@ -41,6 +45,163 @@ fn token(kind: MvpTokenKind, text: String, start: MvpPosition, end: MvpPosition)
 
 fn current(chars: List<String>, index: Int) -> String? {
 	return List.get(chars, index)
+}
+
+fn character(chars: List<String>, index: Int) -> String {
+	return match current(chars, index) {
+		Some(value) => value
+		None => ""
+	}
+}
+
+fn matchesWord(chars: List<String>, index: Int, expected: String) -> Bool {
+	let expectedChars = String.codePoints(expected)
+	let expectedLength = List.length(expectedChars)
+	if index < 0 || index + expectedLength > List.length(chars) {
+		return false
+	}
+	if index > 0 && isIdentifierPart(character(chars, index - 1)) {
+		return false
+	}
+	let mut offset = 0
+	while offset < expectedLength {
+		if character(chars, index + offset) != character(expectedChars, offset) {
+			return false
+		}
+		offset = offset + 1
+	}
+	let after = index + expectedLength
+	if after < List.length(chars) && isIdentifierPart(character(chars, after)) {
+		return false
+	}
+	return true
+}
+
+fn skipWhitespace(chars: List<String>, index: Int) -> Int {
+	let mut cursor = index
+	while cursor < List.length(chars) && isWhitespace(character(chars, cursor)) {
+		cursor = cursor + 1
+	}
+	return cursor
+}
+
+fn skipString(chars: List<String>, index: Int) -> Int {
+	let mut cursor = index + 1
+	let mut escaped = false
+	while cursor < List.length(chars) {
+		let value = character(chars, cursor)
+		if value == "\n" {
+			return cursor
+		}
+		if value == "\"" && !escaped {
+			return cursor + 1
+		}
+		if value == "\\" && !escaped {
+			escaped = true
+		} else {
+			escaped = false
+		}
+		cursor = cursor + 1
+	}
+	return cursor
+}
+
+fn skipLineComment(chars: List<String>, index: Int) -> Int {
+	let mut cursor = index + 2
+	while cursor < List.length(chars) && character(chars, cursor) != "\n" {
+		cursor = cursor + 1
+	}
+	return cursor
+}
+
+fn isRecordDeclarationStart(chars: List<String>, index: Int) -> Bool {
+	if matchesWord(chars, index, "record") {
+		return true
+	}
+	if !matchesWord(chars, index, "pub") {
+		return false
+	}
+	return matchesWord(chars, skipWhitespace(chars, index + 3), "record")
+}
+
+fn recordDeclarationEnd(chars: List<String>, index: Int) -> Int? {
+	let mut cursor = index
+	let mut depth = 0
+	let mut opened = false
+	while cursor < List.length(chars) {
+		let value = character(chars, cursor)
+		let next = character(chars, cursor + 1)
+		if value == "\"" {
+			cursor = skipString(chars, cursor)
+			continue
+		}
+		if value == "/" && next == "/" {
+			cursor = skipLineComment(chars, cursor)
+			continue
+		}
+		if value == "{" {
+			opened = true
+			depth = depth + 1
+		} else if value == "}" && opened {
+			depth = depth - 1
+			if depth == 0 {
+				return Some(cursor + 1)
+			}
+		}
+		cursor = cursor + 1
+	}
+	return None
+}
+
+/// The full frontend parser already owns record AST and export metadata.
+/// The Pure Core runtime lowerer erases balanced record declarations because
+/// they are type-only and do not emit JavaScript. Newlines and offsets remain
+/// stable so diagnostics from later declarations retain source coordinates.
+fn lowerTypeOnlyRecordDeclarations(source: String) -> String {
+	let chars = String.codePoints(source)
+	let mut result = ""
+	let mut index = 0
+	let mut braceDepth = 0
+	while index < List.length(chars) {
+		let value = character(chars, index)
+		let next = character(chars, index + 1)
+		if value == "\"" {
+			let end = skipString(chars, index)
+			while index < end {
+				result = result + character(chars, index)
+				index = index + 1
+			}
+			continue
+		}
+		if value == "/" && next == "/" {
+			let end = skipLineComment(chars, index)
+			while index < end {
+				result = result + character(chars, index)
+				index = index + 1
+			}
+			continue
+		}
+		if braceDepth == 0 && isRecordDeclarationStart(chars, index) {
+			let declarationEnd = recordDeclarationEnd(chars, index)
+			if match declarationEnd { Some(_) => true, None => false } {
+				let end = match declarationEnd { Some(value) => value, None => index }
+				while index < end {
+					let skipped = character(chars, index)
+					result = result + if skipped == "\n" then "\n" else " "
+					index = index + 1
+				}
+				continue
+			}
+		}
+		result = result + value
+		if value == "{" {
+			braceDepth = braceDepth + 1
+		} else if value == "}" && braceDepth > 0 {
+			braceDepth = braceDepth - 1
+		}
+		index = index + 1
+	}
+	return result
 }
 
 fn isDoubleSymbol(value: String) -> Bool {
@@ -64,7 +225,7 @@ fn isSingleSymbol(value: String) -> Bool {
 }
 
 fn lexMvp(source: String) -> MvpLexResult {
-	let chars = String.codePoints(source)
+	let chars = String.codePoints(lowerTypeOnlyRecordDeclarations(source))
 	let mut index = 0
 	let mut line = 1
 	let mut column = 1
