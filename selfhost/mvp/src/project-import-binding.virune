@@ -25,6 +25,7 @@ pub record ProjectImportBindingDiagnostic derives Eq, Debug, Json {
 	severity: String
 	message: String
 	modulePath: String
+	targetModulePath: String
 	specifier: String
 	importedName: String
 	localName: String
