@@ -2,15 +2,10 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { mkdir, rm } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { buildProject } from '../src/project/project.js';
 import { snapshotProjectBuild } from '../src/selfhost/bootstrap-artifact-snapshot.js';
-import {
-	loadBootstrapCompilerCandidate,
-	materializeBootstrapCompilerCandidate,
-} from '../src/selfhost/bootstrap-execution-probe.js';
-import { kernelInputFromProjectBuild } from '../src/selfhost/bootstrap-stage-runner.js';
-import { compileWithProjectCompilerBoundary } from '../src/selfhost/project-compiler-adapter.js';
+import { materializeBootstrapCompilerCandidate } from '../src/selfhost/bootstrap-execution-probe.js';
 
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../../..');
 const mvpRoot = join(repositoryRoot, 'selfhost', 'mvp');
@@ -23,12 +18,62 @@ const snapshotOptions = {
 	seedSha256: 'd'.repeat(64),
 };
 
-type ProjectInput = ReturnType<typeof kernelInputFromProjectBuild>;
-type GeneratedCompiler = Awaited<ReturnType<typeof loadBootstrapCompilerCandidate>>;
+interface CanonicalModule {
+	readonly canonicalizeProjectCompilerResultJson: (encoded: string) => {
+		readonly $tag: 'Ok' | 'Err';
+		readonly $values: readonly unknown[];
+	};
+}
 
-async function withGeneratedCompiler<T>(
-	run: (module: GeneratedCompiler, input: ProjectInput) => T | Promise<T>,
-): Promise<T> {
+interface Diagnostic {
+	readonly code: string;
+	readonly severity: string;
+	readonly message: string;
+	readonly sourcePath: string | null;
+	readonly span: {
+		readonly start: { readonly offset: number; readonly line: number; readonly column: number };
+		readonly end: { readonly offset: number; readonly line: number; readonly column: number };
+	};
+	readonly notes: readonly string[];
+}
+
+const diagnostic = (code: string, offset: number, notes: readonly string[] = []): Diagnostic => ({
+	code,
+	severity: 'error',
+	message: `message ${code}`,
+	sourcePath: 'src/main.virune',
+	span: {
+		start: { offset, line: offset + 1, column: 1 },
+		end: { offset: offset + 1, line: offset + 1, column: 2 },
+	},
+	notes,
+});
+
+const firstDiagnostic = diagnostic('L1001', 1, ['first']);
+const secondDiagnostic = diagnostic('L1002', 2, ['second']);
+
+const unorderedResult = {
+	contractVersion: '1',
+	languageVersion: '1.0',
+	platform: 'node',
+	entryPath: 'src/main.virune',
+	accepted: false,
+	diagnostics: [secondDiagnostic, firstDiagnostic, firstDiagnostic],
+	emittedModules: [],
+	dependencies: [],
+	exportedSymbols: [],
+	stats: {
+		parsedModules: 1,
+		reusedParsedModules: 0,
+		checkedModules: 0,
+		reusedCheckedModules: 0,
+		emittedModules: 0,
+		reusedEmittedModules: 0,
+		invalidatedModules: 0,
+	},
+};
+
+test('generated project result boundary sorts and deduplicates diagnostics deterministically', async () => {
 	await mkdir(temporaryRoot, { recursive: true });
 	const build = await buildProject(mvpRoot, { write: false });
 	const errors = build.diagnostics.filter(item => item.severity === 'error');
@@ -36,46 +81,23 @@ async function withGeneratedCompiler<T>(
 	const artifact = snapshotProjectBuild(build, snapshotOptions);
 	const root = await materializeBootstrapCompilerCandidate(artifact, temporaryRoot);
 	try {
-		const module = await loadBootstrapCompilerCandidate(root, 'dist/main.js');
-		return await run(module, kernelInputFromProjectBuild(build));
+		const moduleUrl = `${pathToFileURL(join(root, 'dist/project-compiler-canonical.js')).href}?test=${Date.now()}`;
+		const module = await import(moduleUrl) as CanonicalModule;
+		const encoded = JSON.stringify(unorderedResult);
+		const first = module.canonicalizeProjectCompilerResultJson(encoded);
+		const second = module.canonicalizeProjectCompilerResultJson(encoded);
+		assert.equal(first.$tag, 'Ok');
+		assert.equal(second.$tag, 'Ok');
+		assert.equal(first.$values[0], second.$values[0]);
+		assert.equal(typeof first.$values[0], 'string');
+		const canonical = JSON.parse(first.$values[0] as string) as typeof unorderedResult;
+		assert.deepEqual(canonical.diagnostics, [firstDiagnostic, secondDiagnostic]);
+		assert.deepEqual(canonical.emittedModules, unorderedResult.emittedModules);
+		assert.deepEqual(canonical.dependencies, unorderedResult.dependencies);
+		assert.deepEqual(canonical.exportedSymbols, unorderedResult.exportedSymbols);
+		assert.deepEqual(canonical.stats, unorderedResult.stats);
 	} finally {
 		await rm(root, { recursive: true, force: true });
 		await rm(temporaryRoot, { recursive: true, force: true });
 	}
-}
-
-const duplicateMissingImportSource = `import { missingA } from "./a.virune"
-import { missingZ } from "./z.virune"
-
-pub fn main() -> Int {
-	return 1
-}
-`;
-
-test('generated project boundary sorts and deduplicates equivalent diagnostics', async () => {
-	await withGeneratedCompiler((module, input) => {
-		const projectInput: ProjectInput = {
-			...input,
-			entryPath: 'src/main.virune',
-			sources: [{ path: 'src/main.virune', text: duplicateMissingImportSource }],
-		};
-		const first = compileWithProjectCompilerBoundary(module, projectInput);
-		const second = compileWithProjectCompilerBoundary(module, projectInput);
-		assert.deepEqual(first, second);
-		assert.equal(first.accepted, false);
-		assert.deepEqual(first.diagnostics.map(item => ({
-			code: item.code,
-			sourcePath: item.sourcePath,
-			message: item.message,
-		})), [{
-			code: 'SHP2104',
-			sourcePath: 'src/main.virune',
-			message: 'Imported Virune module does not exist',
-		}]);
-		assert.deepEqual(first.dependencies.map(item => item.specifier), [
-			'./a.virune',
-			'./z.virune',
-		]);
-		assert.deepEqual(first.emittedModules, []);
-	});
 });
