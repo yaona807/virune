@@ -3,11 +3,14 @@ import type { KernelInputV1 } from './contract.js';
 import type { SelfhostMvpModule } from './mvp-adapter.js';
 import {
 	compileWithProjectCompilerBoundary,
+	type ProjectCompilerDependencyV1,
 	type ProjectCompilerEmittedModuleV1,
+	type ProjectCompilerExportedSymbolV1,
 	type ProjectCompilerResultV1,
+	type ProjectCompilerStatsV1,
 } from './project-compiler-adapter.js';
 
-export const BOOTSTRAP_STAGE_EXECUTOR_VERSION = 1 as const;
+export const BOOTSTRAP_STAGE_EXECUTOR_VERSION = 2 as const;
 
 export interface BootstrapStageCompiler {
 	readonly compile: (input: KernelInputV1) => ProjectCompilerResultV1;
@@ -25,12 +28,16 @@ export interface BootstrapStageArtifact {
 	readonly stage: 'stage1' | 'stage2';
 	readonly entryPath: string;
 	readonly modules: readonly BootstrapStageModule[];
+	readonly dependencies: readonly ProjectCompilerDependencyV1[];
+	readonly exportedSymbols: readonly ProjectCompilerExportedSymbolV1[];
+	readonly stats: ProjectCompilerStatsV1;
 	readonly serializedPayload: string;
 	readonly sha256: string;
 }
 
 export interface BootstrapStageDifference {
-	readonly outputPath: string;
+	readonly section: 'metadata' | 'module' | 'dependency' | 'exported-symbol' | 'stats';
+	readonly path: string;
 	readonly stage1Sha256: string | null;
 	readonly stage2Sha256: string | null;
 }
@@ -62,7 +69,7 @@ export async function executeBootstrapStages(
 	const stage1Compiler = await loadStage1(stage1);
 	const stage2Result = requireAccepted(stage1Compiler.compile(input), 'Stage 2');
 	const stage2 = stageArtifact('stage2', stage2Result);
-	const differences = compareStageModules(stage1.modules, stage2.modules);
+	const differences = compareStageArtifacts(stage1, stage2);
 	return {
 		stage1,
 		stage2,
@@ -76,10 +83,22 @@ export function stageArtifact(
 	result: ProjectCompilerResultV1,
 ): BootstrapStageArtifact {
 	const accepted = requireAccepted(result, stage === 'stage1' ? 'Stage 1' : 'Stage 2');
-	const modules = accepted.emittedModules.map(normalizeModule);
+	const modules = accepted.emittedModules
+		.map(normalizeModule)
+		.sort((left, right) => compareText(left.outputPath, right.outputPath)
+			|| compareText(left.sourcePath, right.sourcePath));
+	assertUnique(modules, module => module.outputPath, 'emitted module outputPath');
+	const dependencies = [...accepted.dependencies]
+		.sort((left, right) => compareText(dependencyKey(left), dependencyKey(right)));
+	const exportedSymbols = [...accepted.exportedSymbols]
+		.sort((left, right) => compareText(exportedSymbolKey(left), exportedSymbolKey(right)));
+	const stats = { ...accepted.stats };
 	const payload = {
 		entryPath: accepted.entryPath,
 		modules,
+		dependencies,
+		exportedSymbols,
+		stats,
 	};
 	const serializedPayload = JSON.stringify(payload);
 	return {
@@ -87,29 +106,77 @@ export function stageArtifact(
 		stage,
 		entryPath: accepted.entryPath,
 		modules,
+		dependencies,
+		exportedSymbols,
+		stats,
 		serializedPayload,
 		sha256: sha256(serializedPayload),
 	};
+}
+
+export function compareStageArtifacts(
+	stage1: BootstrapStageArtifact,
+	stage2: BootstrapStageArtifact,
+): readonly BootstrapStageDifference[] {
+	return [
+		...compareSingleton('metadata', 'entryPath', stage1.entryPath, stage2.entryPath),
+		...compareStageModules(stage1.modules, stage2.modules),
+		...compareCollections(
+			'dependency',
+			stage1.dependencies,
+			stage2.dependencies,
+			dependencyKey,
+		),
+		...compareCollections(
+			'exported-symbol',
+			stage1.exportedSymbols,
+			stage2.exportedSymbols,
+			exportedSymbolKey,
+		),
+		...compareSingleton('stats', 'stats', stage1.stats, stage2.stats),
+	].sort(compareDifference);
 }
 
 export function compareStageModules(
 	stage1: readonly BootstrapStageModule[],
 	stage2: readonly BootstrapStageModule[],
 ): readonly BootstrapStageDifference[] {
-	const left = new Map(stage1.map(module => [module.outputPath, module] as const));
-	const right = new Map(stage2.map(module => [module.outputPath, module] as const));
-	const outputPaths = [...new Set([...left.keys(), ...right.keys()])].sort();
+	return compareCollections('module', stage1, stage2, module => module.outputPath);
+}
+
+function compareCollections<T>(
+	section: BootstrapStageDifference['section'],
+	stage1: readonly T[],
+	stage2: readonly T[],
+	key: (value: T) => string,
+): readonly BootstrapStageDifference[] {
+	const left = new Map(stage1.map(value => [key(value), value] as const));
+	const right = new Map(stage2.map(value => [key(value), value] as const));
+	const paths = [...new Set([...left.keys(), ...right.keys()])].sort(compareText);
 	const differences: BootstrapStageDifference[] = [];
-	for (const outputPath of outputPaths) {
-		const leftModule = left.get(outputPath);
-		const rightModule = right.get(outputPath);
-		const stage1Sha256 = leftModule === undefined ? null : sha256(JSON.stringify(leftModule));
-		const stage2Sha256 = rightModule === undefined ? null : sha256(JSON.stringify(rightModule));
+	for (const path of paths) {
+		const leftValue = left.get(path);
+		const rightValue = right.get(path);
+		const stage1Sha256 = leftValue === undefined ? null : sha256(JSON.stringify(leftValue));
+		const stage2Sha256 = rightValue === undefined ? null : sha256(JSON.stringify(rightValue));
 		if (stage1Sha256 !== stage2Sha256) {
-			differences.push({ outputPath, stage1Sha256, stage2Sha256 });
+			differences.push({ section, path, stage1Sha256, stage2Sha256 });
 		}
 	}
 	return differences;
+}
+
+function compareSingleton(
+	section: BootstrapStageDifference['section'],
+	path: string,
+	stage1: unknown,
+	stage2: unknown,
+): readonly BootstrapStageDifference[] {
+	const stage1Sha256 = sha256(JSON.stringify(stage1));
+	const stage2Sha256 = sha256(JSON.stringify(stage2));
+	return stage1Sha256 === stage2Sha256
+		? []
+		: [{ section, path, stage1Sha256, stage2Sha256 }];
 }
 
 function requireAccepted(
@@ -135,8 +202,36 @@ function normalizeModule(module: ProjectCompilerEmittedModuleV1): BootstrapStage
 	};
 }
 
+function dependencyKey(value: ProjectCompilerDependencyV1): string {
+	return [
+		value.modulePath,
+		value.sourceKind,
+		value.specifier,
+		value.resolvedPath ?? '',
+		value.typeOnly ? '1' : '0',
+		value.public ? '1' : '0',
+	].join('\0');
+}
+
+function exportedSymbolKey(value: ProjectCompilerExportedSymbolV1): string {
+	return [value.modulePath, value.name, value.declarationKind].join('\0');
+}
+
+function assertUnique<T>(values: readonly T[], key: (value: T) => string, label: string): void {
+	const keys = values.map(key);
+	if (new Set(keys).size !== keys.length) throw new Error(`Bootstrap stage ${label} values must be unique`);
+}
+
+function compareDifference(left: BootstrapStageDifference, right: BootstrapStageDifference): number {
+	return compareText(left.section, right.section) || compareText(left.path, right.path);
+}
+
 function normalizeText(value: string): string {
 	return value.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
+}
+
+function compareText(left: string, right: string): number {
+	return left < right ? -1 : left > right ? 1 : 0;
 }
 
 function sha256(value: string): string {
