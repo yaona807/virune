@@ -7,15 +7,44 @@ export type JsonValue = JsonPrimitive | JsonObject | readonly JsonValue[];
 export interface JsonObject { readonly [key: string]: JsonValue; }
 
 export type KernelPlatform = 'node' | 'browser' | 'neutral';
+export type KernelInteropImportKind = 'named' | 'default' | 'namespace' | 'type-only' | 'side-effect';
+export type KernelRuntimeFormat = 'esm' | 'commonjs' | 'builtin' | 'bundler' | 'unknown';
 
 export interface KernelSourceV1 {
 	readonly path: string;
 	readonly text: string;
 }
 
+export interface KernelInteropImportV1 extends JsonObject {
+	readonly kind: KernelInteropImportKind;
+	readonly importedName?: string;
+}
+
+export interface KernelModuleResolutionWitnessV1 extends JsonObject {
+	readonly moduleSpecifier: string;
+	readonly packageName?: string;
+	readonly packageVersion?: string;
+	readonly declarationPackageName?: string;
+	readonly declarationPackageVersion?: string;
+	readonly declarationEntry?: string;
+	readonly runtimeEntry?: string;
+	readonly runtimeFormat?: KernelRuntimeFormat;
+	readonly conditions: readonly string[];
+	readonly platform: KernelPlatform;
+	readonly providerVersion: string;
+	readonly declarationGraphHash?: string;
+	readonly packageJsonHash?: string;
+	readonly declarationPackageJsonHash?: string;
+}
+
+export interface KernelInteropMetadataV1 extends JsonObject {
+	readonly imports?: readonly KernelInteropImportV1[];
+	readonly resolutionWitness?: KernelModuleResolutionWitnessV1;
+}
+
 export interface KernelInteropModuleV1 {
 	readonly specifier: string;
-	readonly metadata: JsonObject;
+	readonly metadata: KernelInteropMetadataV1;
 }
 
 export interface KernelInteropManifestV1 {
@@ -171,7 +200,7 @@ export function validateKernelInput(value: unknown): KernelInputV1 {
 		paths.add(source.path);
 	}
 	if (!paths.has(entryPath)) throw new KernelContractError('$.entryPath', 'entryPath must match one source path');
-	const interopManifest = validateInteropManifest(input.interopManifest, '$.interopManifest');
+	const interopManifest = validateInteropManifest(input.interopManifest, '$.interopManifest', platform);
 	const emit = validateEmit(input.emit, '$.emit');
 	return {
 		contractVersion: KERNEL_CONTRACT_VERSION,
@@ -218,17 +247,18 @@ function validateSource(value: unknown, path: string): KernelSourceV1 {
 	};
 }
 
-function validateInteropManifest(value: unknown, path: string): KernelInteropManifestV1 {
+function validateInteropManifest(value: unknown, path: string, platform: KernelPlatform): KernelInteropManifestV1 {
 	const manifest = record(value, path);
 	exactKeys(manifest, ['version', 'modules'], path);
 	validateInteropManifestVersion(manifest.version, `${path}.version`);
 	const modules = array(manifest.modules, `${path}.modules`).map((item, index) => {
-		const module = record(item, `${path}.modules[${index}]`);
-		exactKeys(module, ['specifier', 'metadata'], `${path}.modules[${index}]`);
-		const metadata = record(module.metadata, `${path}.modules[${index}].metadata`);
+		const modulePath = `${path}.modules[${index}]`;
+		const module = record(item, modulePath);
+		exactKeys(module, ['specifier', 'metadata'], modulePath);
+		const specifier = nonEmptyString(module.specifier, `${modulePath}.specifier`);
 		return {
-			specifier: nonEmptyString(module.specifier, `${path}.modules[${index}].specifier`),
-			metadata: canonicalJsonObject(metadata),
+			specifier,
+			metadata: validateInteropMetadata(module.metadata, `${modulePath}.metadata`, specifier, platform),
 		};
 	});
 	const specifiers = new Set<string>();
@@ -237,6 +267,79 @@ function validateInteropManifest(value: unknown, path: string): KernelInteropMan
 		specifiers.add(module.specifier);
 	}
 	return { version: KERNEL_INTEROP_MANIFEST_VERSION, modules: [...modules].sort((left, right) => left.specifier.localeCompare(right.specifier)) };
+}
+
+function validateInteropMetadata(value: unknown, path: string, specifier: string, platform: KernelPlatform): KernelInteropMetadataV1 {
+	const metadata = record(value, path);
+	const output: Record<string, JsonValue> = { ...canonicalJsonObject(metadata) };
+	if (Object.hasOwn(metadata, 'imports')) output.imports = validateInteropImports(metadata.imports, `${path}.imports`);
+	if (Object.hasOwn(metadata, 'resolutionWitness')) {
+		output.resolutionWitness = validateResolutionWitness(metadata.resolutionWitness, `${path}.resolutionWitness`, specifier, platform);
+	}
+	return output as KernelInteropMetadataV1;
+}
+
+function validateInteropImports(value: unknown, path: string): readonly KernelInteropImportV1[] {
+	const imports = array(value, path).map((item, index) => {
+		const importPath = `${path}[${index}]`;
+		const entry = record(item, importPath);
+		allowedKeys(entry, ['kind', 'importedName'], importPath);
+		requiredKeys(entry, ['kind'], importPath);
+		const kind = oneOf(entry.kind, ['named', 'default', 'namespace', 'type-only', 'side-effect'] as const, `${importPath}.kind`);
+		const hasImportedName = Object.hasOwn(entry, 'importedName');
+		if (kind === 'named' || kind === 'type-only') {
+			if (!hasImportedName) throw new KernelContractError(`${importPath}.importedName`, `importedName is required for ${kind} imports`);
+			return { kind, importedName: nonEmptyString(entry.importedName, `${importPath}.importedName`) };
+		}
+		if (hasImportedName) throw new KernelContractError(`${importPath}.importedName`, `importedName is not allowed for ${kind} imports`);
+		return { kind };
+	});
+	const canonical = [...imports].sort((left, right) => {
+		const kind = left.kind.localeCompare(right.kind);
+		if (kind !== 0) return kind;
+		return (left.importedName ?? '').localeCompare(right.importedName ?? '');
+	});
+	const seen = new Set<string>();
+	for (const entry of canonical) {
+		const key = `${entry.kind}\0${entry.importedName ?? ''}`;
+		if (seen.has(key)) throw new KernelContractError(path, `duplicate import ${entry.kind}${entry.importedName === undefined ? '' : `:${entry.importedName}`}`);
+		seen.add(key);
+	}
+	return canonical;
+}
+
+function validateResolutionWitness(value: unknown, path: string, specifier: string, inputPlatform: KernelPlatform): KernelModuleResolutionWitnessV1 {
+	const witness = record(value, path);
+	const allowed = [
+		'moduleSpecifier', 'packageName', 'packageVersion', 'declarationPackageName', 'declarationPackageVersion',
+		'declarationEntry', 'runtimeEntry', 'runtimeFormat', 'conditions', 'platform', 'providerVersion',
+		'declarationGraphHash', 'packageJsonHash', 'declarationPackageJsonHash',
+	] as const;
+	allowedKeys(witness, allowed, path);
+	requiredKeys(witness, ['moduleSpecifier', 'conditions', 'platform', 'providerVersion'], path);
+	const moduleSpecifier = nonEmptyString(witness.moduleSpecifier, `${path}.moduleSpecifier`);
+	if (moduleSpecifier !== specifier) throw new KernelContractError(`${path}.moduleSpecifier`, `must match module specifier ${JSON.stringify(specifier)}`);
+	const platform = oneOf(witness.platform, ['node', 'browser', 'neutral'] as const, `${path}.platform`);
+	if (platform !== inputPlatform) throw new KernelContractError(`${path}.platform`, `must match input platform ${JSON.stringify(inputPlatform)}`);
+	const conditions = array(witness.conditions, `${path}.conditions`).map((item, index) => nonEmptyString(item, `${path}.conditions[${index}]`)).sort();
+	const conditionSet = new Set<string>();
+	for (const condition of conditions) {
+		if (conditionSet.has(condition)) throw new KernelContractError(`${path}.conditions`, `duplicate condition ${condition}`);
+		conditionSet.add(condition);
+	}
+	const output: Record<string, JsonValue> = {
+		moduleSpecifier,
+		conditions,
+		platform,
+		providerVersion: nonEmptyString(witness.providerVersion, `${path}.providerVersion`),
+	};
+	for (const key of ['packageName', 'packageVersion', 'declarationPackageName', 'declarationPackageVersion', 'declarationEntry', 'runtimeEntry', 'declarationGraphHash', 'packageJsonHash', 'declarationPackageJsonHash'] as const) {
+		if (Object.hasOwn(witness, key)) output[key] = nonEmptyString(witness[key], `${path}.${key}`);
+	}
+	if (Object.hasOwn(witness, 'runtimeFormat')) {
+		output.runtimeFormat = oneOf(witness.runtimeFormat, ['esm', 'commonjs', 'builtin', 'bundler', 'unknown'] as const, `${path}.runtimeFormat`);
+	}
+	return canonicalJsonObject(output) as KernelModuleResolutionWitnessV1;
 }
 
 function validateInteropManifestVersion(value: unknown, path: string): typeof KERNEL_INTEROP_MANIFEST_VERSION {
@@ -361,8 +464,16 @@ function oneOf<const T extends readonly string[]>(value: unknown, allowed: T, pa
 	return value as T[number];
 }
 
-function exactKeys(value: Record<string, unknown>, allowed: readonly string[], path: string): void {
+function allowedKeys(value: Record<string, unknown>, allowed: readonly string[], path: string): void {
 	const allowedSet = new Set(allowed);
 	for (const key of Object.keys(value)) if (!allowedSet.has(key)) throw new KernelContractError(`${path}.${key}`, 'unknown property');
-	for (const key of allowed) if (!Object.hasOwn(value, key)) throw new KernelContractError(`${path}.${key}`, 'missing property');
+}
+
+function requiredKeys(value: Record<string, unknown>, required: readonly string[], path: string): void {
+	for (const key of required) if (!Object.hasOwn(value, key)) throw new KernelContractError(`${path}.${key}`, 'missing property');
+}
+
+function exactKeys(value: Record<string, unknown>, allowed: readonly string[], path: string): void {
+	allowedKeys(value, allowed, path);
+	requiredKeys(value, allowed, path);
 }
