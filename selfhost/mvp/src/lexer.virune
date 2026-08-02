@@ -122,17 +122,18 @@ fn attributeLineEnd(chars: List<String>, index: Int) -> Int {
 	return cursor
 }
 
-fn isRecordDeclarationStart(chars: List<String>, index: Int) -> Bool {
-	if matchesWord(chars, index, "record") {
+fn isTypeOnlyDeclarationStart(chars: List<String>, index: Int) -> Bool {
+	if matchesWord(chars, index, "record") || matchesWord(chars, index, "enum") {
 		return true
 	}
 	if !matchesWord(chars, index, "pub") {
 		return false
 	}
-	return matchesWord(chars, skipWhitespace(chars, index + 3), "record")
+	let afterPublic = skipWhitespace(chars, index + 3)
+	return matchesWord(chars, afterPublic, "record") || matchesWord(chars, afterPublic, "enum")
 }
 
-fn recordDeclarationEnd(chars: List<String>, index: Int) -> Int? {
+fn typeOnlyDeclarationEnd(chars: List<String>, index: Int) -> Int? {
 	let mut cursor = index
 	let mut depth = 0
 	let mut opened = false
@@ -161,8 +162,8 @@ fn recordDeclarationEnd(chars: List<String>, index: Int) -> Int? {
 	return None
 }
 
-/// The full frontend parser owns record and attribute AST metadata.
-/// The Pure Core runtime lowerer erases balanced type-only records and
+/// The full frontend parser owns record, enum, and attribute AST metadata.
+/// The Pure Core runtime lowerer erases balanced type-only declarations and
 /// top-level attribute annotation lines before its function-only parser runs.
 /// Newlines and offsets remain stable for downstream diagnostics.
 fn lowerTypeOnlyDeclarations(source: String) -> String {
@@ -197,8 +198,8 @@ fn lowerTypeOnlyDeclarations(source: String) -> String {
 			}
 			continue
 		}
-		if braceDepth == 0 && isRecordDeclarationStart(chars, index) {
-			let declarationEnd = recordDeclarationEnd(chars, index)
+		if braceDepth == 0 && isTypeOnlyDeclarationStart(chars, index) {
+			let declarationEnd = typeOnlyDeclarationEnd(chars, index)
 			if match declarationEnd { Some(_) => true, None => false } {
 				let end = match declarationEnd { Some(declarationLimit) => declarationLimit, None => index }
 				while index < end {
