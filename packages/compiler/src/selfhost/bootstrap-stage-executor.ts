@@ -7,7 +7,6 @@ import {
 	type ProjectCompilerEmittedModuleV1,
 	type ProjectCompilerExportedSymbolV1,
 	type ProjectCompilerResultV1,
-	type ProjectCompilerStatsV1,
 } from './project-compiler-adapter.js';
 
 export const BOOTSTRAP_STAGE_EXECUTOR_VERSION = 2 as const;
@@ -30,13 +29,12 @@ export interface BootstrapStageArtifact {
 	readonly modules: readonly BootstrapStageModule[];
 	readonly dependencies: readonly ProjectCompilerDependencyV1[];
 	readonly exportedSymbols: readonly ProjectCompilerExportedSymbolV1[];
-	readonly stats: ProjectCompilerStatsV1;
 	readonly serializedPayload: string;
 	readonly sha256: string;
 }
 
 export interface BootstrapStageDifference {
-	readonly section: 'metadata' | 'module' | 'dependency' | 'exported-symbol' | 'stats';
+	readonly section: 'metadata' | 'module' | 'dependency' | 'exported-symbol';
 	readonly path: string;
 	readonly stage1Sha256: string | null;
 	readonly stage2Sha256: string | null;
@@ -90,15 +88,15 @@ export function stageArtifact(
 	assertUnique(modules, module => module.outputPath, 'emitted module outputPath');
 	const dependencies = [...accepted.dependencies]
 		.sort((left, right) => compareText(dependencyKey(left), dependencyKey(right)));
+	assertUnique(dependencies, dependencyKey, 'dependency metadata');
 	const exportedSymbols = [...accepted.exportedSymbols]
 		.sort((left, right) => compareText(exportedSymbolKey(left), exportedSymbolKey(right)));
-	const stats = { ...accepted.stats };
+	assertUnique(exportedSymbols, exportedSymbolKey, 'export metadata');
 	const payload = {
 		entryPath: accepted.entryPath,
 		modules,
 		dependencies,
 		exportedSymbols,
-		stats,
 	};
 	const serializedPayload = JSON.stringify(payload);
 	return {
@@ -108,7 +106,6 @@ export function stageArtifact(
 		modules,
 		dependencies,
 		exportedSymbols,
-		stats,
 		serializedPayload,
 		sha256: sha256(serializedPayload),
 	};
@@ -133,7 +130,6 @@ export function compareStageArtifacts(
 			stage2.exportedSymbols,
 			exportedSymbolKey,
 		),
-		...compareSingleton('stats', 'stats', stage1.stats, stage2.stats),
 	].sort(compareDifference);
 }
 
