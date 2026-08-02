@@ -52,6 +52,30 @@
 			"errorIncludes": "string must not be empty"
 		},
 		{
+			"id": "invalid-version-type",
+			"accepted": false,
+			"input": {
+				"contractVersion":"1","languageVersion":"1.0","platform":"node","entryPath":"main.virune",
+				"sources":[{"path":"main.virune","text":"pub fn main() -> Int { return 1 }\n"}],
+				"interopManifest":{"version":1,"modules":[]},
+				"emit":{"target":"es2022","sourceMap":true,"sourcesContent":true}
+			},
+			"errorPath": "$.interopManifest.version",
+			"errorIncludes": "unsupported Interop Manifest version 1; expected \"1\""
+		},
+		{
+			"id": "metadata-array",
+			"accepted": false,
+			"input": {
+				"contractVersion":"1","languageVersion":"1.0","platform":"node","entryPath":"main.virune",
+				"sources":[{"path":"main.virune","text":"pub fn main() -> Int { return 1 }\n"}],
+				"interopManifest":{"version":"1","modules":[{"specifier":"example","metadata":[]}]},
+				"emit":{"target":"es2022","sourceMap":true,"sourcesContent":true}
+			},
+			"errorPath": "$.interopManifest.modules[0].metadata",
+			"errorIncludes": "expected an object"
+		},
+		{
 			"id": "stale-version",
 			"accepted": false,
 			"input": {
@@ -61,7 +85,7 @@
 				"emit":{"target":"es2022","sourceMap":true,"sourcesContent":true}
 			},
 			"errorPath": "$.interopManifest.version",
-			"errorIncludes": "expected \"1\""
+			"errorIncludes": "unsupported Interop Manifest version \"2\"; expected \"1\""
 		},
 		{
 			"id": "unknown-module-property",
