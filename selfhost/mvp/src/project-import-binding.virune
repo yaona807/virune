@@ -168,15 +168,13 @@ pub fn validateProjectImportBindings(request: ProjectImportBindingRequest) -> Pr
 			seenLocalBindings = List.append(seenLocalBindings, localKey)
 		}
 		let exported = findExport(request.exportedSymbols, binding.targetModulePath, binding.importedName)
-		match exported {
-			Some(symbol) => {
-				if binding.typeOnly && !isTypeDeclaration(symbol.declarationKind) {
-					diagnostics = List.append(diagnostics, bindingDiagnostic("SHP2203", "Type-only import requires a type declaration", binding))
-				}
+		if match exported { Some(_) => true, None => false } {
+			let declarationKind = match exported { Some(symbol) => symbol.declarationKind, None => "" }
+			if binding.typeOnly && !isTypeDeclaration(declarationKind) {
+				diagnostics = List.append(diagnostics, bindingDiagnostic("SHP2203", "Type-only import requires a type declaration", binding))
 			}
-			None => {
-				diagnostics = List.append(diagnostics, bindingDiagnostic("SHP2202", "Imported symbol is not publicly exported by target module", binding))
-			}
+		} else {
+			diagnostics = List.append(diagnostics, bindingDiagnostic("SHP2202", "Imported symbol is not publicly exported by target module", binding))
 		}
 	}
 	let canonicalDiagnostics = sortDiagnostics(diagnostics)
