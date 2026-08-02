@@ -18,6 +18,7 @@ import {
 	listType,
 	optionalType,
 	span,
+	typeName,
 } from "./model.virune"
 
 record MvpLexTransport derives Json {
@@ -138,6 +139,37 @@ fn decodedString(token: MvpToken) -> Result<String, MvpDiagnostic> {
 	return Ok(String.slice(token.text, 1, Some(String.length(token.text) - 1)))
 }
 
+fn parseNamedType(cursor: Cursor) -> Result<ParsedName, MvpDiagnostic> {
+	let base = parseQualifiedName(cursor)?
+	let mut current = base.cursor
+	let mut text = base.text
+	let mut end = base.span.end
+	if tokenAt(current).text != "<" {
+		return Ok(base)
+	}
+	text = text + "<"
+	current = advance(current)
+	if tokenAt(current).text == ">" {
+		return Err(parseError("Expected generic type argument", tokenAt(current)))
+	}
+	let mut first = true
+	while tokenAt(current).text != ">" {
+		if !first {
+			current = expectText(current, ",")?
+			text = text + ", "
+		}
+		let argument = parseType(current)?
+		text = text + typeName(argument.value)
+		current = argument.cursor
+		first = false
+	}
+	let close = tokenAt(current)
+	current = advance(current)
+	text = text + ">"
+	end = close.span.end
+	return Ok(ParsedName { cursor: current, text: text, span: span(base.span.start, end) })
+}
+
 fn parseBaseType(cursor: Cursor) -> Result<ParsedType, MvpDiagnostic> {
 	let token = tokenAt(cursor)
 	if token.text == "List" {
@@ -146,14 +178,18 @@ fn parseBaseType(cursor: Cursor) -> Result<ParsedType, MvpDiagnostic> {
 		let afterClose = expectText(elementType.cursor, ">")?
 		return match listType(elementType.value) {
 			Some(value) => Ok(ParsedType { cursor: afterClose, value: value })
-			None => Err(parseError("MVP List element type must be Bool, Int, Float, String, or Unit", token))
+			None => Err(parseError("MVP List element type must be a scalar or named type", token))
 		}
 	}
 	let parsed = if token.text == "Bool" then MvpType.BoolType else if token.text == "Int" then MvpType.IntType else if token.text == "Float" then MvpType.FloatType else if token.text == "String" then MvpType.StringType else if token.text == "Unit" then MvpType.UnitType else MvpType.ErrorType
-	if parsed == MvpType.ErrorType {
-		return Err(parseError("Unknown MVP type " + token.text, token))
+	if parsed != MvpType.ErrorType {
+		return Ok(ParsedType { cursor: advance(cursor), value: parsed })
 	}
-	return Ok(ParsedType { cursor: advance(cursor), value: parsed })
+	if token.kind != MvpTokenKind.Identifier {
+		return Err(parseError("Expected type name", token))
+	}
+	let named = parseNamedType(cursor)?
+	return Ok(ParsedType { cursor: named.cursor, value: MvpType.NamedType(named.text) })
 }
 
 fn parseType(cursor: Cursor) -> Result<ParsedType, MvpDiagnostic> {
@@ -163,7 +199,7 @@ fn parseType(cursor: Cursor) -> Result<ParsedType, MvpDiagnostic> {
 	}
 	return match optionalType(parsed.value) {
 		Some(value) => Ok(ParsedType { cursor: advance(parsed.cursor), value: value })
-		None => Err(parseError("MVP optional type must wrap Bool, Int, Float, String, Unit, or a scalar List", tokenAt(parsed.cursor)))
+		None => Err(parseError("MVP optional type must wrap a scalar, named, or scalar/named List type", tokenAt(parsed.cursor)))
 	}
 }
 

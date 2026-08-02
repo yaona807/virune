@@ -55,6 +55,10 @@ pub enum MvpType derives Eq, Hash, Debug, Json {
 	UnitType
 	ListType(MvpListElementType)
 	OptionalType(MvpOptionalElementType)
+	NamedType(String)
+	NamedListType(String)
+	NamedOptionalType(String)
+	NamedListOptionalType(String)
 	ErrorType
 }
 
@@ -187,6 +191,7 @@ pub fn listType(elementType: MvpType) -> MvpType? {
 		FloatType => Some(MvpType.ListType(MvpListElementType.FloatElement))
 		StringType => Some(MvpType.ListType(MvpListElementType.StringElement))
 		UnitType => Some(MvpType.ListType(MvpListElementType.UnitElement))
+		NamedType(name) => Some(MvpType.NamedListType(name))
 		_ => None
 	}
 }
@@ -198,6 +203,7 @@ pub fn listElementType(value: MvpType) -> MvpType? {
 		ListType(FloatElement) => Some(MvpType.FloatType)
 		ListType(StringElement) => Some(MvpType.StringType)
 		ListType(UnitElement) => Some(MvpType.UnitType)
+		NamedListType(name) => Some(MvpType.NamedType(name))
 		_ => None
 	}
 }
@@ -214,6 +220,8 @@ pub fn optionalType(elementType: MvpType) -> MvpType? {
 		ListType(FloatElement) => Some(MvpType.OptionalType(MvpOptionalElementType.FloatListOptionalElement))
 		ListType(StringElement) => Some(MvpType.OptionalType(MvpOptionalElementType.StringListOptionalElement))
 		ListType(UnitElement) => Some(MvpType.OptionalType(MvpOptionalElementType.UnitListOptionalElement))
+		NamedType(name) => Some(MvpType.NamedOptionalType(name))
+		NamedListType(name) => Some(MvpType.NamedListOptionalType(name))
 		_ => None
 	}
 }
@@ -230,6 +238,8 @@ pub fn optionalElementType(value: MvpType) -> MvpType? {
 		OptionalType(FloatListOptionalElement) => Some(MvpType.ListType(MvpListElementType.FloatElement))
 		OptionalType(StringListOptionalElement) => Some(MvpType.ListType(MvpListElementType.StringElement))
 		OptionalType(UnitListOptionalElement) => Some(MvpType.ListType(MvpListElementType.UnitElement))
+		NamedOptionalType(name) => Some(MvpType.NamedType(name))
+		NamedListOptionalType(name) => Some(MvpType.NamedListType(name))
 		_ => None
 	}
 }
@@ -243,6 +253,10 @@ pub fn typeName(value: MvpType) -> String {
 		UnitType => "Unit"
 		ListType(elementType) => "List<" + listElementTypeName(elementType) + ">"
 		OptionalType(elementType) => optionalElementTypeName(elementType) + "?"
+		NamedType(name) => name
+		NamedListType(name) => "List<" + name + ">"
+		NamedOptionalType(name) => name + "?"
+		NamedListOptionalType(name) => "List<" + name + ">?"
 		ErrorType => "<error>"
 	}
 }
