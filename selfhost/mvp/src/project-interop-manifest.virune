@@ -1,0 +1,376 @@
+//! Virune-authored Interop Manifest v1 validation for the project kernel.
+//!
+//! The Host remains responsible for package and declaration discovery. This
+//! module validates only canonical data: module specifiers, import shapes, and
+//! module-resolution witnesses.
+
+pub record ProjectInteropImport derives Eq, Debug, Json {
+	kind: String
+	importedName: String?
+}
+
+pub record ProjectResolutionWitness derives Eq, Debug, Json {
+	moduleSpecifier: String
+	runtimeFormat: String?
+	conditions: List<String>
+	platform: String
+	providerVersion: String
+}
+
+pub record ProjectInteropModule derives Eq, Debug, Json {
+	specifier: String
+	imports: List<ProjectInteropImport>
+	resolutionWitness: ProjectResolutionWitness?
+}
+
+pub record ProjectInteropManifestRequest derives Eq, Debug, Json {
+	version: String
+	platform: String
+	modules: List<ProjectInteropModule>
+}
+
+pub record ProjectInteropManifestDiagnostic derives Eq, Debug, Json {
+	code: String
+	severity: String
+	message: String
+	specifier: String?
+}
+
+pub record ProjectInteropManifestResult derives Eq, Debug, Json {
+	accepted: Bool
+	version: String
+	platform: String
+	modules: List<ProjectInteropModule>
+	diagnostics: List<ProjectInteropManifestDiagnostic>
+}
+
+record ProjectInteropImportValidation {
+	imports: List<ProjectInteropImport>
+	diagnostics: List<ProjectInteropManifestDiagnostic>
+}
+
+record ProjectResolutionWitnessValidation {
+	witness: ProjectResolutionWitness
+	diagnostics: List<ProjectInteropManifestDiagnostic>
+}
+
+record ProjectInteropModuleValidation {
+	moduleValue: ProjectInteropModule
+	diagnostics: List<ProjectInteropManifestDiagnostic>
+}
+
+fn optionText(value: String?) -> String {
+	return match value {
+		Some(text) => text
+		None => ""
+	}
+}
+
+fn diagnostic(code: String, message: String, specifier: String?) -> ProjectInteropManifestDiagnostic {
+	return ProjectInteropManifestDiagnostic {
+		code: code,
+		severity: "error",
+		message: message,
+		specifier: specifier,
+	}
+}
+
+fn containsText(values: List<String>, expected: String) -> Bool {
+	for value in values {
+		if value == expected {
+			return true
+		}
+	}
+	return false
+}
+
+fn importKey(value: ProjectInteropImport) -> String {
+	return value.kind + "|" + optionText(value.importedName)
+}
+
+fn importLessThan(left: ProjectInteropImport, right: ProjectInteropImport) -> Bool {
+	return importKey(left) < importKey(right)
+}
+
+fn insertImport(values: List<ProjectInteropImport>, value: ProjectInteropImport) -> List<ProjectInteropImport> {
+	let mut result: List<ProjectInteropImport> = []
+	let mut inserted = false
+	for current in values {
+		if !inserted && importLessThan(value, current) {
+			result = List.append(result, value)
+			inserted = true
+		}
+		result = List.append(result, current)
+	}
+	if !inserted {
+		result = List.append(result, value)
+	}
+	return result
+}
+
+fn sortImports(values: List<ProjectInteropImport>) -> List<ProjectInteropImport> {
+	let mut result: List<ProjectInteropImport> = []
+	for value in values {
+		result = insertImport(result, value)
+	}
+	return result
+}
+
+fn insertText(values: List<String>, value: String) -> List<String> {
+	let mut result: List<String> = []
+	let mut inserted = false
+	for current in values {
+		if !inserted && value < current {
+			result = List.append(result, value)
+			inserted = true
+		}
+		result = List.append(result, current)
+	}
+	if !inserted {
+		result = List.append(result, value)
+	}
+	return result
+}
+
+fn sortText(values: List<String>) -> List<String> {
+	let mut result: List<String> = []
+	for value in values {
+		result = insertText(result, value)
+	}
+	return result
+}
+
+fn moduleLessThan(left: ProjectInteropModule, right: ProjectInteropModule) -> Bool {
+	return left.specifier < right.specifier
+}
+
+fn insertModule(values: List<ProjectInteropModule>, value: ProjectInteropModule) -> List<ProjectInteropModule> {
+	let mut result: List<ProjectInteropModule> = []
+	let mut inserted = false
+	for current in values {
+		if !inserted && moduleLessThan(value, current) {
+			result = List.append(result, value)
+			inserted = true
+		}
+		result = List.append(result, current)
+	}
+	if !inserted {
+		result = List.append(result, value)
+	}
+	return result
+}
+
+fn sortModules(values: List<ProjectInteropModule>) -> List<ProjectInteropModule> {
+	let mut result: List<ProjectInteropModule> = []
+	for value in values {
+		result = insertModule(result, value)
+	}
+	return result
+}
+
+fn diagnosticKey(value: ProjectInteropManifestDiagnostic) -> String {
+	return optionText(value.specifier) + "|" + value.code + "|" + value.message
+}
+
+fn diagnosticLessThan(left: ProjectInteropManifestDiagnostic, right: ProjectInteropManifestDiagnostic) -> Bool {
+	return diagnosticKey(left) < diagnosticKey(right)
+}
+
+fn insertDiagnostic(values: List<ProjectInteropManifestDiagnostic>, value: ProjectInteropManifestDiagnostic) -> List<ProjectInteropManifestDiagnostic> {
+	let mut result: List<ProjectInteropManifestDiagnostic> = []
+	let mut inserted = false
+	for current in values {
+		if !inserted && diagnosticLessThan(value, current) {
+			result = List.append(result, value)
+			inserted = true
+		}
+		result = List.append(result, current)
+	}
+	if !inserted {
+		result = List.append(result, value)
+	}
+	return result
+}
+
+fn sortDiagnostics(values: List<ProjectInteropManifestDiagnostic>) -> List<ProjectInteropManifestDiagnostic> {
+	let mut result: List<ProjectInteropManifestDiagnostic> = []
+	for value in values {
+		result = insertDiagnostic(result, value)
+	}
+	return result
+}
+
+fn appendDiagnostics(
+	current: List<ProjectInteropManifestDiagnostic>,
+	additional: List<ProjectInteropManifestDiagnostic>,
+) -> List<ProjectInteropManifestDiagnostic> {
+	let mut result = current
+	for value in additional {
+		result = List.append(result, value)
+	}
+	return result
+}
+
+fn validPlatform(value: String) -> Bool {
+	return value == "node" || value == "browser" || value == "neutral"
+}
+
+fn validRuntimeFormat(value: String) -> Bool {
+	return value == "esm" || value == "commonjs" || value == "builtin" || value == "bundler" || value == "unknown"
+}
+
+fn validImportKind(value: String) -> Bool {
+	return value == "named" || value == "default" || value == "namespace" || value == "type-only" || value == "side-effect"
+}
+
+fn importRequiresName(value: String) -> Bool {
+	return value == "named" || value == "type-only"
+}
+
+fn validateImports(specifier: String, values: List<ProjectInteropImport>) -> ProjectInteropImportValidation {
+	let imports = sortImports(values)
+	let mut diagnostics: List<ProjectInteropManifestDiagnostic> = []
+	let mut seen: List<String> = []
+	for value in imports {
+		if !validImportKind(value.kind) {
+			diagnostics = List.append(diagnostics, diagnostic("SHP2304", "Unsupported interop import kind " + value.kind, Some(specifier)))
+		}
+		let importedName = optionText(value.importedName)
+		if importRequiresName(value.kind) && String.length(importedName) == 0 {
+			diagnostics = List.append(diagnostics, diagnostic("SHP2305", "Interop import kind " + value.kind + " requires importedName", Some(specifier)))
+		}
+		if !importRequiresName(value.kind) && String.length(importedName) > 0 {
+			diagnostics = List.append(diagnostics, diagnostic("SHP2306", "Interop import kind " + value.kind + " cannot contain importedName", Some(specifier)))
+		}
+		let key = importKey(value)
+		if containsText(seen, key) {
+			diagnostics = List.append(diagnostics, diagnostic("SHP2307", "Duplicate interop import " + key, Some(specifier)))
+		} else {
+			seen = List.append(seen, key)
+		}
+	}
+	return ProjectInteropImportValidation { imports: imports, diagnostics: diagnostics }
+}
+
+fn runtimeFormatDiagnostics(specifier: String, value: String?) -> List<ProjectInteropManifestDiagnostic> {
+	let format = optionText(value)
+	if String.length(format) > 0 && !validRuntimeFormat(format) {
+		return [diagnostic("SHP2313", "Unsupported runtime format " + format, Some(specifier))]
+	}
+	return []
+}
+
+fn validateWitness(
+	specifier: String,
+	platform: String,
+	value: ProjectResolutionWitness,
+) -> ProjectResolutionWitnessValidation {
+	let mut diagnostics: List<ProjectInteropManifestDiagnostic> = []
+	if value.moduleSpecifier != specifier {
+		diagnostics = List.append(diagnostics, diagnostic("SHP2310", "Resolution witness moduleSpecifier must match module specifier", Some(specifier)))
+	}
+	if value.platform != platform {
+		diagnostics = List.append(diagnostics, diagnostic("SHP2311", "Resolution witness platform must match manifest platform", Some(specifier)))
+	}
+	if String.length(value.providerVersion) == 0 {
+		diagnostics = List.append(diagnostics, diagnostic("SHP2312", "Resolution witness providerVersion cannot be empty", Some(specifier)))
+	}
+	diagnostics = appendDiagnostics(diagnostics, runtimeFormatDiagnostics(specifier, value.runtimeFormat))
+	let conditions = sortText(value.conditions)
+	let mut seen: List<String> = []
+	for condition in conditions {
+		if String.length(condition) == 0 {
+			diagnostics = List.append(diagnostics, diagnostic("SHP2314", "Resolution condition cannot be empty", Some(specifier)))
+		}
+		if containsText(seen, condition) {
+			diagnostics = List.append(diagnostics, diagnostic("SHP2315", "Duplicate resolution condition " + condition, Some(specifier)))
+		} else {
+			seen = List.append(seen, condition)
+		}
+	}
+	return ProjectResolutionWitnessValidation {
+		witness: ProjectResolutionWitness {
+			moduleSpecifier: value.moduleSpecifier,
+			runtimeFormat: value.runtimeFormat,
+			conditions: conditions,
+			platform: value.platform,
+			providerVersion: value.providerVersion,
+		},
+		diagnostics: diagnostics,
+	}
+}
+
+fn validateModule(
+	platform: String,
+	value: ProjectInteropModule,
+) -> ProjectInteropModuleValidation {
+	let mut diagnostics: List<ProjectInteropManifestDiagnostic> = []
+	if String.length(value.specifier) == 0 {
+		diagnostics = List.append(diagnostics, diagnostic("SHP2303", "Interop module specifier cannot be empty", None))
+	}
+	let importValidation = validateImports(value.specifier, value.imports)
+	diagnostics = appendDiagnostics(diagnostics, importValidation.diagnostics)
+	let mut witness = value.resolutionWitness
+	if match value.resolutionWitness { Some(_) => true, None => false } {
+		let currentWitness = match value.resolutionWitness {
+			Some(foundWitness) => foundWitness
+			None => ProjectResolutionWitness {
+				moduleSpecifier: value.specifier,
+				runtimeFormat: None,
+				conditions: [],
+				platform: platform,
+				providerVersion: "",
+			}
+		}
+		let witnessValidation = validateWitness(value.specifier, platform, currentWitness)
+		witness = Some(witnessValidation.witness)
+		diagnostics = appendDiagnostics(diagnostics, witnessValidation.diagnostics)
+	}
+	return ProjectInteropModuleValidation {
+		moduleValue: ProjectInteropModule {
+			specifier: value.specifier,
+			imports: importValidation.imports,
+			resolutionWitness: witness,
+		},
+		diagnostics: diagnostics,
+	}
+}
+
+pub fn validateProjectInteropManifest(request: ProjectInteropManifestRequest) -> ProjectInteropManifestResult {
+	let mut diagnostics: List<ProjectInteropManifestDiagnostic> = []
+	if request.version != "1" {
+		diagnostics = List.append(diagnostics, diagnostic("SHP2300", "Unsupported Interop Manifest version", None))
+	}
+	if !validPlatform(request.platform) {
+		diagnostics = List.append(diagnostics, diagnostic("SHP2301", "Unsupported Interop Manifest platform " + request.platform, None))
+	}
+	let mut modules: List<ProjectInteropModule> = []
+	for value in request.modules {
+		let validation = validateModule(request.platform, value)
+		modules = List.append(modules, validation.moduleValue)
+		diagnostics = appendDiagnostics(diagnostics, validation.diagnostics)
+	}
+	modules = sortModules(modules)
+	let mut seenSpecifiers: List<String> = []
+	for value in modules {
+		if containsText(seenSpecifiers, value.specifier) {
+			diagnostics = List.append(diagnostics, diagnostic("SHP2302", "Duplicate Interop Manifest module " + value.specifier, Some(value.specifier)))
+		} else {
+			seenSpecifiers = List.append(seenSpecifiers, value.specifier)
+		}
+	}
+	let canonicalDiagnostics = sortDiagnostics(diagnostics)
+	return ProjectInteropManifestResult {
+		accepted: List.isEmpty(canonicalDiagnostics),
+		version: request.version,
+		platform: request.platform,
+		modules: modules,
+		diagnostics: canonicalDiagnostics,
+	}
+}
+
+pub fn validateProjectInteropManifestJson(encoded: String) -> Result<String, List<JsonError>> {
+	let raw = Json.parse(encoded)?
+	let request = Json.decode<ProjectInteropManifestRequest>(raw)?
+	return Json.encode<ProjectInteropManifestResult>(validateProjectInteropManifest(request))
+}
