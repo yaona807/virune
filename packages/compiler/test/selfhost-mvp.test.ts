@@ -33,6 +33,10 @@ const input = (text: string): KernelInputV1 => ({
 const arithmeticSource = 'pub fn add(left: Int, right: Int) -> Int {\n\treturn left + right\n}\n\npub fn main() -> Int {\n\tlet value = add(20, 22)\n\treturn value * 2\n}\n';
 const diagnosticSource = 'pub fn main() -> Int {\n\treturn missing\n}\n';
 const qualifiedAccessSource = 'pub fn main() -> Int {\n\treturn List.length\n}\n';
+const listIndexSource = 'pub fn main() -> Int {\n\tlet values: List<Int> = [20, 22, 24]\n\treturn values[1]\n}\n';
+const heterogeneousListSource = 'pub fn main() -> Int {\n\tlet values = [1, "two"]\n\treturn 0\n}\n';
+const invalidIndexSource = 'pub fn main() -> Int {\n\tlet values = [1, 2]\n\treturn values[true]\n}\n';
+const emptyListSource = 'pub fn main() -> Int {\n\tlet values = []\n\treturn 0\n}\n';
 
 test('Stage 0 builds the Virune MVP and Legacy/Self-host accepted output is identical', async () => {
 	const loaded = await loadMvpModule();
@@ -84,6 +88,57 @@ test('qualified access reaches semantic resolution instead of lexer or parser re
 		assert.equal(output.diagnostics[0]?.code, 'L1010');
 		assert.equal(output.diagnostics[0]?.message, 'Unknown name List.length');
 		assert.ok(output.diagnostics.every(item => item.code !== 'L0001' && item.code !== 'L0002'));
+	} finally {
+		await rm(loaded.root, { recursive: true, force: true });
+	}
+});
+
+test('List literals and index access lower through checker, emitter, and Node execution', async () => {
+	const loaded = await loadMvpModule();
+	try {
+		const request = input(listIndexSource);
+		const output = await createSelfhostMvpKernel(loaded.module).compile(request);
+		assert.equal(output.accepted, true, JSON.stringify(output.diagnostics, null, 2));
+		assert.deepEqual(output.diagnostics, []);
+		const runtime = await executeKernelOutputWithNode(request, output);
+		assert.equal(runtime.returnValue, 22);
+		assert.equal(runtime.panic, null);
+	} finally {
+		await rm(loaded.root, { recursive: true, force: true });
+	}
+});
+
+test('List literals reject heterogeneous element types', async () => {
+	const loaded = await loadMvpModule();
+	try {
+		const output = await createSelfhostMvpKernel(loaded.module).compile(input(heterogeneousListSource));
+		assert.equal(output.accepted, false);
+		assert.equal(output.diagnostics[0]?.code, 'L2043');
+		assert.equal(output.diagnostics[0]?.message, 'String cannot be used as Int');
+	} finally {
+		await rm(loaded.root, { recursive: true, force: true });
+	}
+});
+
+test('index access requires an Int index', async () => {
+	const loaded = await loadMvpModule();
+	try {
+		const output = await createSelfhostMvpKernel(loaded.module).compile(input(invalidIndexSource));
+		assert.equal(output.accepted, false);
+		assert.equal(output.diagnostics[0]?.code, 'L2043');
+		assert.equal(output.diagnostics[0]?.message, 'Bool cannot be used as Int');
+	} finally {
+		await rm(loaded.root, { recursive: true, force: true });
+	}
+});
+
+test('empty List literals require an inferable element type', async () => {
+	const loaded = await loadMvpModule();
+	try {
+		const output = await createSelfhostMvpKernel(loaded.module).compile(input(emptyListSource));
+		assert.equal(output.accepted, false);
+		assert.equal(output.diagnostics[0]?.code, 'L2020');
+		assert.equal(output.diagnostics[0]?.message, 'Cannot infer the element type of an empty List');
 	} finally {
 		await rm(loaded.root, { recursive: true, force: true });
 	}
