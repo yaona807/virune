@@ -288,6 +288,9 @@ fn parseFunction(cursor: Cursor) -> Result<ParsedFunction, MvpDiagnostic> {
 			parameters = List.append(parameters, parsed.value)
 			if tokenAt(current).text == "," {
 				current = advance(current)
+				if tokenAt(current).text == ")" {
+					break
+				}
 				continue
 			}
 			break
