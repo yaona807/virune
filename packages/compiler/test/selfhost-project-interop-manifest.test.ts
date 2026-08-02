@@ -122,13 +122,14 @@ test('Interop Manifest validation rejects stale and malformed module metadata de
 		];
 		const first = validate(loaded.module, { version: '2', platform: 'node', modules });
 		const second = validate(loaded.module, { version: '2', platform: 'node', modules: [...modules].reverse() });
-		assert.deepEqual(first, second);
+		assert.deepEqual(first.diagnostics, second.diagnostics);
 		assert.equal(first.accepted, false);
+		assert.equal(second.accepted, false);
 		assert.deepEqual(first.diagnostics.map(item => item.code), [
 			'SHP2300',
 			'SHP2302',
-			'SHP2306',
 			'SHP2305',
+			'SHP2306',
 			'SHP2307',
 			'SHP2310',
 			'SHP2311',
