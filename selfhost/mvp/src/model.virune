@@ -101,7 +101,6 @@ pub record MvpFunction derives Json {
 }
 
 pub record MvpModule derives Json {
-	imports: List<MvpImport>
 	functions: List<MvpFunction>
 }
 
