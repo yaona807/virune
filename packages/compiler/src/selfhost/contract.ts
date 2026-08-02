@@ -221,7 +221,7 @@ function validateSource(value: unknown, path: string): KernelSourceV1 {
 function validateInteropManifest(value: unknown, path: string): KernelInteropManifestV1 {
 	const manifest = record(value, path);
 	exactKeys(manifest, ['version', 'modules'], path);
-	literal(manifest.version, KERNEL_INTEROP_MANIFEST_VERSION, `${path}.version`);
+	validateInteropManifestVersion(manifest.version, `${path}.version`);
 	const modules = array(manifest.modules, `${path}.modules`).map((item, index) => {
 		const module = record(item, `${path}.modules[${index}]`);
 		exactKeys(module, ['specifier', 'metadata'], `${path}.modules[${index}]`);
@@ -237,6 +237,21 @@ function validateInteropManifest(value: unknown, path: string): KernelInteropMan
 		specifiers.add(module.specifier);
 	}
 	return { version: KERNEL_INTEROP_MANIFEST_VERSION, modules: [...modules].sort((left, right) => left.specifier.localeCompare(right.specifier)) };
+}
+
+function validateInteropManifestVersion(value: unknown, path: string): typeof KERNEL_INTEROP_MANIFEST_VERSION {
+	if (value !== KERNEL_INTEROP_MANIFEST_VERSION) {
+		throw new KernelContractError(
+			path,
+			`unsupported Interop Manifest version ${describeJsonValue(value)}; expected ${JSON.stringify(KERNEL_INTEROP_MANIFEST_VERSION)}`,
+		);
+	}
+	return KERNEL_INTEROP_MANIFEST_VERSION;
+}
+
+function describeJsonValue(value: unknown): string {
+	const encoded = JSON.stringify(value);
+	return encoded === undefined ? typeof value : encoded;
 }
 
 function validateEmit(value: unknown, path: string): KernelEmitOptionsV1 {
