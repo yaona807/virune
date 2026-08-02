@@ -199,9 +199,12 @@ fn canonicalResult(value: CanonicalProjectCompilerResultV1) -> CanonicalProjectC
 	}
 }
 
-pub fn compileProjectMvpCanonicalJson(request: String) -> Result<String, List<JsonError>> {
-	let encoded = compileProjectMvpJson(request)?
+pub fn canonicalizeProjectCompilerResultJson(encoded: String) -> Result<String, List<JsonError>> {
 	let raw = Json.parse(encoded)?
 	let decoded = Json.decode<CanonicalProjectCompilerResultV1>(raw)?
 	return Json.encode<CanonicalProjectCompilerResultV1>(canonicalResult(decoded))
+}
+
+pub fn compileProjectMvpCanonicalJson(request: String) -> Result<String, List<JsonError>> {
+	return canonicalizeProjectCompilerResultJson(compileProjectMvpJson(request)?)
 }
