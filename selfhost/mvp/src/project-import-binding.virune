@@ -1,0 +1,193 @@
+//! Canonical named-import binding validation for the self-host project kernel.
+//!
+//! The project linker can collect module dependencies and public declarations
+//! without filesystem or TypeScript state. This module validates the next
+//! data-only boundary: imported names, local aliases, and type-only bindings.
+
+pub record ProjectImportBinding derives Eq, Debug, Json {
+	modulePath: String
+	targetModulePath: String
+	specifier: String
+	importedName: String
+	localName: String
+	typeOnly: Bool
+	public: Bool
+}
+
+pub record ProjectImportExport derives Eq, Debug, Json {
+	modulePath: String
+	name: String
+	declarationKind: String
+}
+
+pub record ProjectImportBindingDiagnostic derives Eq, Debug, Json {
+	code: String
+	severity: String
+	message: String
+	modulePath: String
+	specifier: String
+	importedName: String
+	localName: String
+}
+
+pub record ProjectImportBindingRequest derives Eq, Debug, Json {
+	bindings: List<ProjectImportBinding>
+	exportedSymbols: List<ProjectImportExport>
+}
+
+pub record ProjectImportBindingResult derives Eq, Debug, Json {
+	accepted: Bool
+	bindings: List<ProjectImportBinding>
+	diagnostics: List<ProjectImportBindingDiagnostic>
+}
+
+fn boolText(value: Bool) -> String {
+	return if value then "1" else "0"
+}
+
+fn bindingKey(value: ProjectImportBinding) -> String {
+	return value.modulePath + "|" + value.localName + "|" + value.targetModulePath + "|" + value.importedName + "|" + value.specifier + "|" + boolText(value.typeOnly) + "|" + boolText(value.public)
+}
+
+fn bindingLessThan(left: ProjectImportBinding, right: ProjectImportBinding) -> Bool {
+	return bindingKey(left) < bindingKey(right)
+}
+
+fn insertBinding(values: List<ProjectImportBinding>, value: ProjectImportBinding) -> List<ProjectImportBinding> {
+	let mut result: List<ProjectImportBinding> = []
+	let mut inserted = false
+	for current in values {
+		if !inserted && bindingLessThan(value, current) {
+			result = List.append(result, value)
+			inserted = true
+		}
+		result = List.append(result, current)
+	}
+	if !inserted {
+		result = List.append(result, value)
+	}
+	return result
+}
+
+fn sortBindings(values: List<ProjectImportBinding>) -> List<ProjectImportBinding> {
+	let mut result: List<ProjectImportBinding> = []
+	for value in values {
+		result = insertBinding(result, value)
+	}
+	return result
+}
+
+fn diagnosticKey(value: ProjectImportBindingDiagnostic) -> String {
+	return value.modulePath + "|" + value.localName + "|" + value.code + "|" + value.targetModulePath + "|" + value.importedName
+}
+
+fn diagnosticLessThan(left: ProjectImportBindingDiagnostic, right: ProjectImportBindingDiagnostic) -> Bool {
+	return diagnosticKey(left) < diagnosticKey(right)
+}
+
+fn insertDiagnostic(values: List<ProjectImportBindingDiagnostic>, value: ProjectImportBindingDiagnostic) -> List<ProjectImportBindingDiagnostic> {
+	let mut result: List<ProjectImportBindingDiagnostic> = []
+	let mut inserted = false
+	for current in values {
+		if !inserted && diagnosticLessThan(value, current) {
+			result = List.append(result, value)
+			inserted = true
+		}
+		result = List.append(result, current)
+	}
+	if !inserted {
+		result = List.append(result, value)
+	}
+	return result
+}
+
+fn sortDiagnostics(values: List<ProjectImportBindingDiagnostic>) -> List<ProjectImportBindingDiagnostic> {
+	let mut result: List<ProjectImportBindingDiagnostic> = []
+	for value in values {
+		result = insertDiagnostic(result, value)
+	}
+	return result
+}
+
+fn bindingDiagnostic(code: String, message: String, value: ProjectImportBinding) -> ProjectImportBindingDiagnostic {
+	return ProjectImportBindingDiagnostic {
+		code: code,
+		severity: "error",
+		message: message,
+		modulePath: value.modulePath,
+		targetModulePath: value.targetModulePath,
+		specifier: value.specifier,
+		importedName: value.importedName,
+		localName: value.localName,
+	}
+}
+
+fn localBindingKey(value: ProjectImportBinding) -> String {
+	return value.modulePath + "|" + value.localName
+}
+
+fn containsText(values: List<String>, expected: String) -> Bool {
+	for value in values {
+		if value == expected {
+			return true
+		}
+	}
+	return false
+}
+
+fn findExport(values: List<ProjectImportExport>, modulePath: String, name: String) -> ProjectImportExport? {
+	for value in values {
+		if value.modulePath == modulePath && value.name == name {
+			return Some(value)
+		}
+	}
+	return None
+}
+
+fn isTypeDeclaration(kind: String) -> Bool {
+	return kind == "RecordDeclaration" || kind == "EnumDeclaration" || kind == "NewtypeDeclaration" || kind == "TypeAliasDeclaration"
+}
+
+fn hasEmptyIdentity(value: ProjectImportBinding) -> Bool {
+	return String.length(value.modulePath) == 0 || String.length(value.targetModulePath) == 0 || String.length(value.specifier) == 0 || String.length(value.importedName) == 0 || String.length(value.localName) == 0
+}
+
+pub fn validateProjectImportBindings(request: ProjectImportBindingRequest) -> ProjectImportBindingResult {
+	let bindings = sortBindings(request.bindings)
+	let mut diagnostics: List<ProjectImportBindingDiagnostic> = []
+	let mut seenLocalBindings: List<String> = []
+	for binding in bindings {
+		if hasEmptyIdentity(binding) {
+			diagnostics = List.append(diagnostics, bindingDiagnostic("SHP2200", "Import binding identity fields cannot be empty", binding))
+		}
+		let localKey = localBindingKey(binding)
+		if containsText(seenLocalBindings, localKey) {
+			diagnostics = List.append(diagnostics, bindingDiagnostic("SHP2201", "Duplicate local import binding " + binding.localName, binding))
+		} else {
+			seenLocalBindings = List.append(seenLocalBindings, localKey)
+		}
+		let exported = findExport(request.exportedSymbols, binding.targetModulePath, binding.importedName)
+		match exported {
+			Some(symbol) => {
+				if binding.typeOnly && !isTypeDeclaration(symbol.declarationKind) {
+					diagnostics = List.append(diagnostics, bindingDiagnostic("SHP2203", "Type-only import requires a type declaration", binding))
+				}
+			}
+			None => {
+				diagnostics = List.append(diagnostics, bindingDiagnostic("SHP2202", "Imported symbol is not publicly exported by target module", binding))
+			}
+		}
+	}
+	let canonicalDiagnostics = sortDiagnostics(diagnostics)
+	return ProjectImportBindingResult {
+		accepted: List.isEmpty(canonicalDiagnostics),
+		bindings: bindings,
+		diagnostics: canonicalDiagnostics,
+	}
+}
+
+pub fn validateProjectImportBindingsJson(encoded: String) -> Result<String, List<JsonError>> {
+	let raw = Json.parse(encoded)?
+	let request = Json.decode<ProjectImportBindingRequest>(raw)?
+	return Json.encode<ProjectImportBindingResult>(validateProjectImportBindings(request))
+}
