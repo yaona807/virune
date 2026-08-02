@@ -60,6 +60,14 @@ fn emitList(expression: MvpHirExpression, expressions: List<MvpHirExpression>) -
 	return "[" + String.join(emitArguments(expression.children, expressions), ", ") + "]"
 }
 
+fn emitRecordField(expression: MvpHirExpression, expressions: List<MvpHirExpression>) -> String {
+	return expression.text + ": " + emitExpression(childAt(expression, 0), expressions)
+}
+
+fn emitRecord(expression: MvpHirExpression, expressions: List<MvpHirExpression>) -> String {
+	return "({" + String.join(emitArguments(expression.children, expressions), ", ") + "})"
+}
+
 fn emitIndex(expression: MvpHirExpression, expressions: List<MvpHirExpression>) -> String {
 	let target = emitExpression(childAt(expression, 0), expressions)
 	let index = emitExpression(childAt(expression, 1), expressions)
@@ -119,6 +127,12 @@ fn emitExpression(expressionId: Int, expressions: List<MvpHirExpression>) -> Str
 	}
 	if expression.kind == "list" {
 		return emitList(expression, expressions)
+	}
+	if expression.kind == "recordField" {
+		return emitRecordField(expression, expressions)
+	}
+	if expression.kind == "record" {
+		return emitRecord(expression, expressions)
 	}
 	if expression.kind == "index" {
 		return emitIndex(expression, expressions)

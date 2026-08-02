@@ -588,6 +588,50 @@ fn parseListLiteral(cursor: Cursor, expressions: List<MvpExpression>) -> Result<
 	}))
 }
 
+fn parseRecordLiteral(name: ParsedName, expressions: List<MvpExpression>) -> Result<ParsedExpression, MvpDiagnostic> {
+	let mut current = skipNewLines(advance(name.cursor))
+	let mut arena = expressions
+	let mut children: List<Int> = []
+	if tokenAt(current).text != "}" {
+		while true {
+			let field = tokenAt(current)
+			if field.kind != MvpTokenKind.Identifier {
+				return Err(parseError("Expected record field name", field))
+			}
+			current = skipNewLines(expectText(advance(current), ":")?)
+			let parsedValue = parseExpression(current, arena)?
+			let value = expressionAt(parsedValue.expressions, parsedValue.expressionId, field.span)?
+			let parsedField = addExpression(parsedValue.cursor, parsedValue.expressions, MvpExpression {
+				kind: "recordField",
+				text: field.text,
+				literalType: None,
+				children: [parsedValue.expressionId],
+				span: span(field.span.start, value.span.end),
+			})
+			children = List.append(children, parsedField.expressionId)
+			arena = parsedField.expressions
+			current = skipNewLines(parsedField.cursor)
+			if tokenAt(current).text == "," {
+				current = skipNewLines(advance(current))
+				if tokenAt(current).text == "}" {
+					break
+				}
+				continue
+			}
+			break
+		}
+	}
+	let close = tokenAt(current)
+	let afterClose = expectText(current, "}")?
+	return Ok(addExpression(afterClose, arena, MvpExpression {
+		kind: "record",
+		text: name.text,
+		literalType: None,
+		children: children,
+		span: span(name.span.start, close.span.end),
+	}))
+}
+
 fn parsePrimary(cursor: Cursor, expressions: List<MvpExpression>) -> Result<ParsedExpression, MvpDiagnostic> {
 	let token = tokenAt(cursor)
 	if token.text == "true" || token.text == "false" {
@@ -621,6 +665,9 @@ fn parsePrimary(cursor: Cursor, expressions: List<MvpExpression>) -> Result<Pars
 	if token.kind == MvpTokenKind.Identifier {
 		let name = parseQualifiedName(cursor)?
 		let afterName = name.cursor
+		if tokenAt(afterName).text == "{" {
+			return parseRecordLiteral(name, expressions)
+		}
 		if tokenAt(afterName).text != "(" {
 			return Ok(addExpression(afterName, expressions, MvpExpression {
 				kind: "identifier", text: name.text, literalType: None, children: [], span: name.span,
