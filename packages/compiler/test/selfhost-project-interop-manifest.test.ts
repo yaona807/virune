@@ -126,7 +126,6 @@ test('Interop Manifest validation rejects stale and malformed module metadata de
 		assert.equal(first.accepted, false);
 		assert.equal(second.accepted, false);
 		assert.deepEqual(first.diagnostics.map(item => item.code), [
-			'SHP2300',
 			'SHP2302',
 			'SHP2305',
 			'SHP2306',
@@ -137,6 +136,7 @@ test('Interop Manifest validation rejects stale and malformed module metadata de
 			'SHP2313',
 			'SHP2314',
 			'SHP2315',
+			'SHP2300',
 		]);
 		assert.ok(first.diagnostics.every(item => item.severity === 'error'));
 	} finally {
