@@ -228,6 +228,7 @@ function validateProjectCompilerResult(
 		assertRequestSource(symbol.modulePath, inputPaths, '$.exportedSymbols modulePath');
 	}
 
+	assertCanonical(diagnostics, diagnosticKey, '$.diagnostics');
 	assertCanonical(emittedModules, item => item.outputPath, '$.emittedModules');
 	assertCanonical(
 		dependencies,
@@ -442,6 +443,25 @@ function canonicalPath(value: unknown, path: string): string {
 	} catch (error) {
 		throw new SelfhostMvpError(error instanceof Error ? error.message : `${path} must be a canonical path`);
 	}
+}
+
+function diagnosticKey(value: ProjectCompilerDiagnosticV1): string {
+	return [
+		value.sourcePath ?? '',
+		sortableInteger(value.span.start.offset),
+		sortableInteger(value.span.end.offset),
+		sortableInteger(value.span.start.line),
+		sortableInteger(value.span.start.column),
+		sortableInteger(value.span.end.line),
+		sortableInteger(value.span.end.column),
+		value.code,
+		value.message,
+		value.notes.join('\0'),
+	].join('\0');
+}
+
+function sortableInteger(value: number): string {
+	return value.toString().padStart(16, '0');
 }
 
 function assertCanonical<T>(values: readonly T[], key: (value: T) => string, path: string): void {
