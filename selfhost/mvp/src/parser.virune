@@ -14,6 +14,7 @@ import {
 	MvpType,
 	errorDiagnostic,
 	listType,
+	optionalType,
 	span,
 } from "./model.virune"
 
@@ -123,7 +124,7 @@ fn expectText(cursor: Cursor, text: String) -> Result<Cursor, MvpDiagnostic> {
 	return Ok(advance(cursor))
 }
 
-fn parseType(cursor: Cursor) -> Result<ParsedType, MvpDiagnostic> {
+fn parseBaseType(cursor: Cursor) -> Result<ParsedType, MvpDiagnostic> {
 	let token = tokenAt(cursor)
 	if token.text == "List" {
 		let afterOpen = expectText(advance(cursor), "<")?
@@ -139,6 +140,17 @@ fn parseType(cursor: Cursor) -> Result<ParsedType, MvpDiagnostic> {
 		return Err(parseError("Unknown MVP type " + token.text, token))
 	}
 	return Ok(ParsedType { cursor: advance(cursor), value: parsed })
+}
+
+fn parseType(cursor: Cursor) -> Result<ParsedType, MvpDiagnostic> {
+	let parsed = parseBaseType(cursor)?
+	if tokenAt(parsed.cursor).text != "?" {
+		return Ok(parsed)
+	}
+	return match optionalType(parsed.value) {
+		Some(value) => Ok(ParsedType { cursor: advance(parsed.cursor), value: value })
+		None => Err(parseError("MVP optional type must wrap Bool, Int, Float, String, Unit, or a scalar List", tokenAt(parsed.cursor)))
+	}
 }
 
 fn parseParameter(cursor: Cursor) -> Result<ParsedParameter, MvpDiagnostic> {
