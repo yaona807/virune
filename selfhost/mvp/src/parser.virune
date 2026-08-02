@@ -279,15 +279,15 @@ fn parseFunction(cursor: Cursor) -> Result<ParsedFunction, MvpDiagnostic> {
 	if nameToken.kind != MvpTokenKind.Identifier {
 		return Err(parseError("Expected function name", nameToken))
 	}
-	let mut current = expectText(advance(afterFn), "(")?
+	let mut current = skipNewLines(expectText(advance(afterFn), "(")?)
 	let mut parameters: List<MvpParameter> = []
 	if tokenAt(current).text != ")" {
 		while true {
 			let parsed = parseParameter(current)?
-			current = parsed.cursor
+			current = skipNewLines(parsed.cursor)
 			parameters = List.append(parameters, parsed.value)
 			if tokenAt(current).text == "," {
-				current = advance(current)
+				current = skipNewLines(advance(current))
 				if tokenAt(current).text == ")" {
 					break
 				}
