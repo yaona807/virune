@@ -58,6 +58,18 @@ pub enum MvpType derives Eq, Hash, Debug, Json {
 	ErrorType
 }
 
+pub record MvpImportBinding derives Eq, Debug, Json {
+	importedName: String
+	localName: String
+	span: MvpSpan
+}
+
+pub record MvpImport derives Eq, Debug, Json {
+	specifier: String
+	bindings: List<MvpImportBinding>
+	span: MvpSpan
+}
+
 /// Flat AST node. Child expressions are arena indexes in `MvpFunction.expressions`.
 pub record MvpExpression derives Json {
 	kind: String
