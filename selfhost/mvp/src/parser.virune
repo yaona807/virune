@@ -53,6 +53,12 @@ record ParsedParameter {
 	value: MvpParameter
 }
 
+record ParsedName {
+	cursor: Cursor
+	text: String
+	span: MvpSpan
+}
+
 record MvpParseResult derives Json {
 	parsedModule: MvpModule?
 	diagnostics: List<MvpDiagnostic>
@@ -384,6 +390,27 @@ fn parseUnary(cursor: Cursor, expressions: List<MvpExpression>) -> Result<Parsed
 	return parsePrimary(cursor, expressions)
 }
 
+fn parseQualifiedName(cursor: Cursor) -> Result<ParsedName, MvpDiagnostic> {
+	let first = tokenAt(cursor)
+	if first.kind != MvpTokenKind.Identifier {
+		return Err(parseError("Expected identifier", first))
+	}
+	let mut current = advance(cursor)
+	let mut text = first.text
+	let mut end = first.span.end
+	while tokenAt(current).text == "." {
+		let memberCursor = advance(current)
+		let member = tokenAt(memberCursor)
+		if member.kind != MvpTokenKind.Identifier {
+			return Err(parseError("Expected identifier after .", member))
+		}
+		text = text + "." + member.text
+		end = member.span.end
+		current = advance(memberCursor)
+	}
+	return Ok(ParsedName { cursor: current, text: text, span: span(first.span.start, end) })
+}
+
 fn parsePrimary(cursor: Cursor, expressions: List<MvpExpression>) -> Result<ParsedExpression, MvpDiagnostic> {
 	let token = tokenAt(cursor)
 	if token.text == "true" || token.text == "false" {
@@ -412,10 +439,11 @@ fn parsePrimary(cursor: Cursor, expressions: List<MvpExpression>) -> Result<Pars
 		return Ok(ParsedExpression { cursor: expectText(parsed.cursor, ")")?, expressionId: parsed.expressionId, expressions: parsed.expressions })
 	}
 	if token.kind == MvpTokenKind.Identifier {
-		let afterName = advance(cursor)
+		let name = parseQualifiedName(cursor)?
+		let afterName = name.cursor
 		if tokenAt(afterName).text != "(" {
 			return Ok(addExpression(afterName, expressions, MvpExpression {
-				kind: "identifier", text: token.text, literalType: None, children: [], span: token.span,
+				kind: "identifier", text: name.text, literalType: None, children: [], span: name.span,
 			}))
 		}
 		let mut current = advance(afterName)
@@ -436,7 +464,7 @@ fn parsePrimary(cursor: Cursor, expressions: List<MvpExpression>) -> Result<Pars
 		}
 		let close = tokenAt(current)
 		return Ok(addExpression(expectText(current, ")")?, arena, MvpExpression {
-			kind: "call", text: token.text, literalType: None, children: children, span: span(token.span.start, close.span.end),
+			kind: "call", text: name.text, literalType: None, children: children, span: span(name.span.start, close.span.end),
 		}))
 	}
 	return Err(parseError("Expected expression", token))
