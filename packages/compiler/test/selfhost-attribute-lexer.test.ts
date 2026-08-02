@@ -19,6 +19,10 @@ interface LexTransport {
 			readonly values: readonly unknown[];
 		};
 		readonly text: string;
+		readonly span: {
+			readonly start: { readonly offset: number; readonly line: number; readonly column: number };
+			readonly end: { readonly offset: number; readonly line: number; readonly column: number };
+		};
 	}[];
 	readonly diagnostics: readonly {
 		readonly code: string;
@@ -33,7 +37,7 @@ interface LexerModule {
 	};
 }
 
-test('Pure Core lexer tokenizes attribute markers without a character diagnostic', async () => {
+test('Pure Core lowering erases attribute annotations without shifting following tokens', async () => {
 	const loaded = await loadLexerModule();
 	try {
 		const result = loaded.module.lexMvpJson('@mustUse\npub fn value() -> Int {\n\treturn 1\n}\n');
@@ -45,11 +49,16 @@ test('Pure Core lexer tokenizes attribute markers without a character diagnostic
 		assert.deepEqual(
 			lexed.tokens.slice(0, 3).map(token => [token.kind.tag, token.text]),
 			[
-				['Symbol', '@'],
-				['Identifier', 'mustUse'],
 				['NewLine', '\n'],
+				['Identifier', 'pub'],
+				['Identifier', 'fn'],
 			],
 		);
+		assert.deepEqual(lexed.tokens[0]?.span, {
+			start: { offset: 8, line: 1, column: 9 },
+			end: { offset: 9, line: 2, column: 1 },
+		});
+		assert.ok(lexed.tokens.every(token => token.text !== '@' && token.text !== 'mustUse'));
 	} finally {
 		await rm(loaded.root, { recursive: true, force: true });
 	}

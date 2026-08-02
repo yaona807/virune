@@ -114,6 +114,14 @@ fn skipLineComment(chars: List<String>, index: Int) -> Int {
 	return cursor
 }
 
+fn attributeLineEnd(chars: List<String>, index: Int) -> Int {
+	let mut cursor = index
+	while cursor < List.length(chars) && charAtOrEmpty(chars, cursor) != "\n" {
+		cursor = cursor + 1
+	}
+	return cursor
+}
+
 fn isRecordDeclarationStart(chars: List<String>, index: Int) -> Bool {
 	if matchesWord(chars, index, "record") {
 		return true
@@ -153,11 +161,11 @@ fn recordDeclarationEnd(chars: List<String>, index: Int) -> Int? {
 	return None
 }
 
-/// The full frontend parser already owns record AST and export metadata.
-/// The Pure Core runtime lowerer erases balanced record declarations because
-/// they are type-only and do not emit JavaScript. Newlines and offsets remain
-/// stable so diagnostics from later declarations retain source coordinates.
-fn lowerTypeOnlyRecordDeclarations(source: String) -> String {
+/// The full frontend parser owns record and attribute AST metadata.
+/// The Pure Core runtime lowerer erases balanced type-only records and
+/// top-level attribute annotation lines before its function-only parser runs.
+/// Newlines and offsets remain stable for downstream diagnostics.
+fn lowerTypeOnlyDeclarations(source: String) -> String {
 	let chars = String.codePoints(source)
 	let mut result = ""
 	let mut index = 0
@@ -177,6 +185,14 @@ fn lowerTypeOnlyRecordDeclarations(source: String) -> String {
 			let end = skipLineComment(chars, index)
 			while index < end {
 				result = result + charAtOrEmpty(chars, index)
+				index = index + 1
+			}
+			continue
+		}
+		if braceDepth == 0 && value == "@" {
+			let annotationEnd = attributeLineEnd(chars, index)
+			while index < annotationEnd {
+				result = result + " "
 				index = index + 1
 			}
 			continue
@@ -225,7 +241,7 @@ fn isSingleSymbol(value: String) -> Bool {
 }
 
 fn lexMvp(source: String) -> MvpLexResult {
-	let chars = String.codePoints(lowerTypeOnlyRecordDeclarations(source))
+	let chars = String.codePoints(lowerTypeOnlyDeclarations(source))
 	let mut index = 0
 	let mut line = 1
 	let mut column = 1
