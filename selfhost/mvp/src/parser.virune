@@ -635,8 +635,28 @@ fn parseRecordLiteral(name: ParsedName, expressions: List<MvpExpression>) -> Res
 	}))
 }
 
+fn parseConditionalExpression(cursor: Cursor, expressions: List<MvpExpression>) -> Result<ParsedExpression, MvpDiagnostic> {
+	let start = tokenAt(cursor)
+	let condition = parseExpression(skipNewLines(advance(cursor)), expressions)?
+	let afterThen = skipNewLines(expectText(skipNewLines(condition.cursor), "then")?)
+	let consequent = parseExpression(afterThen, condition.expressions)?
+	let afterElse = skipNewLines(expectText(skipNewLines(consequent.cursor), "else")?)
+	let alternate = parseExpression(afterElse, consequent.expressions)?
+	let alternateValue = expressionAt(alternate.expressions, alternate.expressionId, start.span)?
+	return Ok(addExpression(alternate.cursor, alternate.expressions, MvpExpression {
+		kind: "if",
+		text: "if",
+		literalType: None,
+		children: [condition.expressionId, consequent.expressionId, alternate.expressionId],
+		span: span(start.span.start, alternateValue.span.end),
+	}))
+}
+
 fn parsePrimary(cursor: Cursor, expressions: List<MvpExpression>) -> Result<ParsedExpression, MvpDiagnostic> {
 	let token = tokenAt(cursor)
+	if token.text == "if" {
+		return parseConditionalExpression(cursor, expressions)
+	}
 	if token.text == "true" || token.text == "false" {
 		return Ok(addExpression(advance(cursor), expressions, MvpExpression {
 			kind: "bool", text: token.text, literalType: Some(MvpType.BoolType), children: [], span: token.span,

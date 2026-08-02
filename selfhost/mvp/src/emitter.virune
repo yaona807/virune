@@ -68,6 +68,13 @@ fn emitRecord(expression: MvpHirExpression, expressions: List<MvpHirExpression>)
 	return "({" + String.join(emitArguments(expression.children, expressions), ", ") + "})"
 }
 
+fn emitConditional(expression: MvpHirExpression, expressions: List<MvpHirExpression>) -> String {
+	let condition = emitExpression(childAt(expression, 0), expressions)
+	let consequent = emitExpression(childAt(expression, 1), expressions)
+	let alternate = emitExpression(childAt(expression, 2), expressions)
+	return "(" + condition + " ? " + consequent + " : " + alternate + ")"
+}
+
 fn emitIndex(expression: MvpHirExpression, expressions: List<MvpHirExpression>) -> String {
 	let target = emitExpression(childAt(expression, 0), expressions)
 	let index = emitExpression(childAt(expression, 1), expressions)
@@ -133,6 +140,9 @@ fn emitExpression(expressionId: Int, expressions: List<MvpHirExpression>) -> Str
 	}
 	if expression.kind == "record" {
 		return emitRecord(expression, expressions)
+	}
+	if expression.kind == "if" {
+		return emitConditional(expression, expressions)
 	}
 	if expression.kind == "index" {
 		return emitIndex(expression, expressions)

@@ -297,6 +297,30 @@ fn checkBinary(node: MvpExpression, context: CheckContext, expressions: List<Mvp
 	return Ok(checkedBinary(node, left, right, left.valueType))
 }
 
+fn checkConditional(node: MvpExpression, context: CheckContext, expressions: List<MvpHirExpression>) -> Result<CheckedExpression, MvpDiagnostic> {
+	let conditionSourceId = childAt(node, 0)?
+	let consequentSourceId = childAt(node, 1)?
+	let alternateSourceId = childAt(node, 2)?
+	let condition = checkExpression(conditionSourceId, context, expressions)?
+	if condition.valueType != MvpType.BoolType {
+		let source = sourceExpressionAt(context, conditionSourceId)?
+		return Err(typeMismatch(condition.valueType, MvpType.BoolType, source.span))
+	}
+	let consequent = checkExpression(consequentSourceId, context, condition.expressions)?
+	let alternate = checkExpression(alternateSourceId, context, consequent.expressions)?
+	if alternate.valueType != consequent.valueType {
+		let source = sourceExpressionAt(context, alternateSourceId)?
+		return Err(typeMismatch(alternate.valueType, consequent.valueType, source.span))
+	}
+	return Ok(addHir(alternate.expressions, MvpHirExpression {
+		kind: "if",
+		text: node.text,
+		valueType: consequent.valueType,
+		children: [condition.expressionId, consequent.expressionId, alternate.expressionId],
+		span: node.span,
+	}, consequent.valueType))
+}
+
 fn checkList(node: MvpExpression, context: CheckContext, expressions: List<MvpHirExpression>) -> Result<CheckedExpression, MvpDiagnostic> {
 	if List.isEmpty(node.children) {
 		return Err(errorDiagnostic("L2020", "Cannot infer the element type of an empty List", node.span))
@@ -408,6 +432,9 @@ fn checkExpression(expressionId: Int, context: CheckContext, expressions: List<M
 	}
 	if node.kind == "binary" {
 		return checkBinary(node, context, expressions)
+	}
+	if node.kind == "if" {
+		return checkConditional(node, context, expressions)
 	}
 	if node.kind == "list" {
 		return checkList(node, context, expressions)
