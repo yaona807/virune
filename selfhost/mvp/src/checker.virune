@@ -355,6 +355,43 @@ fn checkIndex(node: MvpExpression, context: CheckContext, expressions: List<MvpH
 	}
 }
 
+fn checkRecordField(node: MvpExpression, context: CheckContext, expressions: List<MvpHirExpression>) -> Result<CheckedExpression, MvpDiagnostic> {
+	let sourceId = childAt(node, 0)?
+	let checked = checkExpression(sourceId, context, expressions)?
+	return Ok(addHir(checked.expressions, MvpHirExpression {
+		kind: "recordField",
+		text: node.text,
+		valueType: checked.valueType,
+		children: [checked.expressionId],
+		span: node.span,
+	}, checked.valueType))
+}
+
+fn checkRecord(node: MvpExpression, context: CheckContext, expressions: List<MvpHirExpression>) -> Result<CheckedExpression, MvpDiagnostic> {
+	let mut expressionIds: List<Int> = []
+	let mut arena = expressions
+	let mut index = 0
+	while index < List.length(node.children) {
+		let sourceId = childAt(node, index)?
+		let source = sourceExpressionAt(context, sourceId)?
+		if source.kind != "recordField" {
+			return Err(errorDiagnostic("L9001", "Record construction contains a non-field child", source.span))
+		}
+		let checked = checkRecordField(source, context, arena)?
+		expressionIds = List.append(expressionIds, checked.expressionId)
+		arena = checked.expressions
+		index = index + 1
+	}
+	let valueType = MvpType.NamedType(node.text)
+	return Ok(addHir(arena, MvpHirExpression {
+		kind: "record",
+		text: node.text,
+		valueType: valueType,
+		children: expressionIds,
+		span: node.span,
+	}, valueType))
+}
+
 fn checkExpression(expressionId: Int, context: CheckContext, expressions: List<MvpHirExpression>) -> Result<CheckedExpression, MvpDiagnostic> {
 	let node = sourceExpressionAt(context, expressionId)?
 	if node.kind == "bool" || node.kind == "number" || node.kind == "string" || node.kind == "unit" {
@@ -377,6 +414,12 @@ fn checkExpression(expressionId: Int, context: CheckContext, expressions: List<M
 	}
 	if node.kind == "index" {
 		return checkIndex(node, context, expressions)
+	}
+	if node.kind == "recordField" {
+		return checkRecordField(node, context, expressions)
+	}
+	if node.kind == "record" {
+		return checkRecord(node, context, expressions)
 	}
 	return Err(errorDiagnostic("L9001", "Unknown MVP expression kind " + node.kind, node.span))
 }
