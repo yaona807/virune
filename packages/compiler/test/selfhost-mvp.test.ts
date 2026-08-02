@@ -32,6 +32,7 @@ const input = (text: string): KernelInputV1 => ({
 
 const arithmeticSource = 'pub fn add(left: Int, right: Int) -> Int {\n\treturn left + right\n}\n\npub fn main() -> Int {\n\tlet value = add(20, 22)\n\treturn value * 2\n}\n';
 const diagnosticSource = 'pub fn main() -> Int {\n\treturn missing\n}\n';
+const qualifiedAccessSource = 'pub fn main() -> Int {\n\treturn List.length\n}\n';
 
 test('Stage 0 builds the Virune MVP and Legacy/Self-host accepted output is identical', async () => {
 	const loaded = await loadMvpModule();
@@ -70,6 +71,19 @@ test('Legacy/Self-host rejected output has identical diagnostic code, message, a
 		assert.equal(report.passed, true);
 		assert.deepEqual(report.differences, []);
 		assert.equal(report.right.compiler.output?.diagnostics[0]?.code, 'L1010');
+	} finally {
+		await rm(loaded.root, { recursive: true, force: true });
+	}
+});
+
+test('qualified access reaches semantic resolution instead of lexer or parser rejection', async () => {
+	const loaded = await loadMvpModule();
+	try {
+		const output = await createSelfhostMvpKernel(loaded.module).compile(input(qualifiedAccessSource));
+		assert.equal(output.accepted, false);
+		assert.equal(output.diagnostics[0]?.code, 'L1010');
+		assert.equal(output.diagnostics[0]?.message, 'Unknown name List.length');
+		assert.ok(output.diagnostics.every(item => item.code !== 'L0001' && item.code !== 'L0002'));
 	} finally {
 		await rm(loaded.root, { recursive: true, force: true });
 	}
