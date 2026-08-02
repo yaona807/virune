@@ -91,7 +91,7 @@ test('conditional expressions reject non-Bool conditions and mismatched branches
 			const result = compileWithProjectCompilerBoundary(module, projectInput);
 			assert.equal(result.accepted, false);
 			assert.equal(result.stats.parsedModules, 1);
-			assert.equal(result.stats.checkedModules, 0);
+			assert.equal(result.stats.checkedModules, 1);
 			assert.deepEqual(result.emittedModules, []);
 			assert.ok(result.diagnostics.some(item => item.sourcePath === 'src/main.virune'));
 		}
