@@ -1,0 +1,210 @@
+//! Canonical project compiler result boundary.
+//!
+//! The Host contract requires diagnostics to be unique and ordered by source,
+//! full span, code, message, and notes. Keep that normalization in Virune so
+//! Stage artifacts do not depend on incidental traversal order.
+
+import {
+	ParserSpan,
+} from "./frontend-parser-model.virune"
+import {
+	compileProjectMvpJson,
+} from "./project-compiler-contract.virune"
+
+record CanonicalProjectCompilerDiagnosticV1 derives Eq, Debug, Json {
+	code: String
+	severity: String
+	message: String
+	sourcePath: String?
+	span: ParserSpan
+	notes: List<String>
+}
+
+record CanonicalProjectCompilerEmittedModuleV1 derives Eq, Debug, Json {
+	sourcePath: String
+	outputPath: String
+	code: String
+	sourceMap: String
+}
+
+record CanonicalProjectCompilerDependencyV1 derives Eq, Debug, Json {
+	modulePath: String
+	sourceKind: String
+	specifier: String
+	resolvedPath: String?
+	typeOnly: Bool
+	public: Bool
+}
+
+record CanonicalProjectCompilerExportedSymbolV1 derives Eq, Debug, Json {
+	modulePath: String
+	name: String
+	declarationKind: String
+}
+
+record CanonicalProjectCompilerStatsV1 derives Eq, Debug, Json {
+	parsedModules: Int
+	reusedParsedModules: Int
+	checkedModules: Int
+	reusedCheckedModules: Int
+	emittedModules: Int
+	reusedEmittedModules: Int
+	invalidatedModules: Int
+}
+
+record CanonicalProjectCompilerResultV1 derives Eq, Debug, Json {
+	contractVersion: String
+	languageVersion: String
+	platform: String
+	entryPath: String
+	accepted: Bool
+	diagnostics: List<CanonicalProjectCompilerDiagnosticV1>
+	emittedModules: List<CanonicalProjectCompilerEmittedModuleV1>
+	dependencies: List<CanonicalProjectCompilerDependencyV1>
+	exportedSymbols: List<CanonicalProjectCompilerExportedSymbolV1>
+	stats: CanonicalProjectCompilerStatsV1
+}
+
+fn optionText(value: String?) -> String {
+	return match value {
+		Some(text) => text
+		None => ""
+	}
+}
+
+fn compareText(left: String, right: String) -> Int {
+	if left < right {
+		return -1
+	}
+	if left > right {
+		return 1
+	}
+	return 0
+}
+
+fn compareInt(left: Int, right: Int) -> Int {
+	if left < right {
+		return -1
+	}
+	if left > right {
+		return 1
+	}
+	return 0
+}
+
+fn compareNotes(left: List<String>, right: List<String>) -> Int {
+	let common = if List.length(left) < List.length(right) then List.length(left) else List.length(right)
+	let mut index = 0
+	while index < common {
+		let leftValue = match List.get(left, index) { Some(value) => value, None => "" }
+		let rightValue = match List.get(right, index) { Some(value) => value, None => "" }
+		let comparison = compareText(leftValue, rightValue)
+		if comparison != 0 {
+			return comparison
+		}
+		index = index + 1
+	}
+	return compareInt(List.length(left), List.length(right))
+}
+
+fn compareDiagnostic(
+	left: CanonicalProjectCompilerDiagnosticV1,
+	right: CanonicalProjectCompilerDiagnosticV1,
+) -> Int {
+	let sourceComparison = compareText(optionText(left.sourcePath), optionText(right.sourcePath))
+	if sourceComparison != 0 {
+		return sourceComparison
+	}
+	let startOffsetComparison = compareInt(left.span.start.offset, right.span.start.offset)
+	if startOffsetComparison != 0 {
+		return startOffsetComparison
+	}
+	let endOffsetComparison = compareInt(left.span.end.offset, right.span.end.offset)
+	if endOffsetComparison != 0 {
+		return endOffsetComparison
+	}
+	let startLineComparison = compareInt(left.span.start.line, right.span.start.line)
+	if startLineComparison != 0 {
+		return startLineComparison
+	}
+	let startColumnComparison = compareInt(left.span.start.column, right.span.start.column)
+	if startColumnComparison != 0 {
+		return startColumnComparison
+	}
+	let endLineComparison = compareInt(left.span.end.line, right.span.end.line)
+	if endLineComparison != 0 {
+		return endLineComparison
+	}
+	let endColumnComparison = compareInt(left.span.end.column, right.span.end.column)
+	if endColumnComparison != 0 {
+		return endColumnComparison
+	}
+	let codeComparison = compareText(left.code, right.code)
+	if codeComparison != 0 {
+		return codeComparison
+	}
+	let messageComparison = compareText(left.message, right.message)
+	if messageComparison != 0 {
+		return messageComparison
+	}
+	return compareNotes(left.notes, right.notes)
+}
+
+fn insertDiagnostic(
+	values: List<CanonicalProjectCompilerDiagnosticV1>,
+	value: CanonicalProjectCompilerDiagnosticV1,
+) -> List<CanonicalProjectCompilerDiagnosticV1> {
+	let mut result: List<CanonicalProjectCompilerDiagnosticV1> = []
+	let mut inserted = false
+	let mut duplicate = false
+	for current in values {
+		let comparison = compareDiagnostic(value, current)
+		if comparison == 0 {
+			duplicate = true
+		}
+		if !inserted && !duplicate && comparison < 0 {
+			result = List.append(result, value)
+			inserted = true
+		}
+		result = List.append(result, current)
+	}
+	if !inserted && !duplicate {
+		result = List.append(result, value)
+	}
+	return result
+}
+
+fn canonicalDiagnostics(
+	values: List<CanonicalProjectCompilerDiagnosticV1>,
+) -> List<CanonicalProjectCompilerDiagnosticV1> {
+	let mut result: List<CanonicalProjectCompilerDiagnosticV1> = []
+	for value in values {
+		result = insertDiagnostic(result, value)
+	}
+	return result
+}
+
+fn canonicalResult(value: CanonicalProjectCompilerResultV1) -> CanonicalProjectCompilerResultV1 {
+	return CanonicalProjectCompilerResultV1 {
+		contractVersion: value.contractVersion,
+		languageVersion: value.languageVersion,
+		platform: value.platform,
+		entryPath: value.entryPath,
+		accepted: value.accepted,
+		diagnostics: canonicalDiagnostics(value.diagnostics),
+		emittedModules: value.emittedModules,
+		dependencies: value.dependencies,
+		exportedSymbols: value.exportedSymbols,
+		stats: value.stats,
+	}
+}
+
+pub fn canonicalizeProjectCompilerResultJson(encoded: String) -> Result<String, List<JsonError>> {
+	let raw = Json.parse(encoded)?
+	let decoded = Json.decode<CanonicalProjectCompilerResultV1>(raw)?
+	return Json.encode<CanonicalProjectCompilerResultV1>(canonicalResult(decoded))
+}
+
+pub fn compileProjectMvpCanonicalJson(request: String) -> Result<String, List<JsonError>> {
+	return canonicalizeProjectCompilerResultJson(compileProjectMvpJson(request)?)
+}
