@@ -28,9 +28,10 @@ const snapshotOptions = {
 };
 
 type ProjectInput = ReturnType<typeof kernelInputFromProjectBuild>;
+type GeneratedCompiler = Awaited<ReturnType<typeof loadBootstrapCompilerCandidate>>;
 
 async function withGeneratedCompiler<T>(
-	run: (module: Awaited<ReturnType<typeof loadBootstrapCompilerCandidate>>, input: ProjectInput) => T | Promise<T>,
+	run: (module: GeneratedCompiler, input: ProjectInput) => T | Promise<T>,
 ): Promise<T> {
 	await mkdir(temporaryRoot, { recursive: true });
 	const build = await buildProject(mvpRoot, { write: false });
@@ -53,6 +54,16 @@ function focusedProjectInput(input: ProjectInput): ProjectInput {
 			{ path: 'src/helper.virune', text: '' },
 			{ path: 'src/main.virune', text: '' },
 		],
+	};
+}
+
+function compilerReturning(module: GeneratedCompiler, result: unknown): GeneratedCompiler {
+	return {
+		...module,
+		compileProjectMvp: (_request: string) => ({
+			$tag: 'Ok' as const,
+			$values: [JSON.stringify(result)] as const,
+		}),
 	};
 }
 
@@ -259,5 +270,96 @@ test('invalid contract data and malformed JSON fail closed', async () => {
 
 		const malformed = module.compileProjectMvp('{');
 		assert.equal(malformed.$tag, 'Err');
+	});
+});
+
+test('project result paths cannot escape the request source set', async () => {
+	await withGeneratedCompiler((module, input) => {
+		const projectInput = focusedProjectInput(input);
+		const valid = compileWithProjectCompilerBoundary(module, projectInput);
+		const invalidResults = [
+			{
+				value: {
+					...valid,
+					emittedModules: valid.emittedModules.map((item, index) => index === 0
+						? { ...item, sourcePath: 'src/ghost.virune' }
+						: item),
+				},
+				expected: /\$\.emittedModules sourcePath must identify a request source/u,
+			},
+			{
+				value: {
+					...valid,
+					dependencies: [{
+						modulePath: 'src/ghost.virune',
+						sourceKind: 'virune',
+						specifier: './helper.virune',
+						resolvedPath: 'src/helper.virune',
+						typeOnly: false,
+						public: false,
+					}],
+				},
+				expected: /\$\.dependencies modulePath must identify a request source/u,
+			},
+			{
+				value: {
+					...valid,
+					dependencies: [{
+						modulePath: 'src/main.virune',
+						sourceKind: 'virune',
+						specifier: './ghost.virune',
+						resolvedPath: 'src/ghost.virune',
+						typeOnly: false,
+						public: false,
+					}],
+				},
+				expected: /\$\.dependencies resolvedPath must identify a request source/u,
+			},
+			{
+				value: {
+					...valid,
+					exportedSymbols: [{
+						modulePath: 'src/ghost.virune',
+						name: 'ghost',
+						declarationKind: 'FunctionDeclaration',
+					}],
+				},
+				expected: /\$\.exportedSymbols modulePath must identify a request source/u,
+			},
+		];
+		for (const invalid of invalidResults) {
+			assert.throws(
+				() => compileWithProjectCompilerBoundary(compilerReturning(module, invalid.value), projectInput),
+				invalid.expected,
+			);
+		}
+	});
+});
+
+test('accepted project results must report coherent module coverage', async () => {
+	await withGeneratedCompiler((module, input) => {
+		const projectInput = focusedProjectInput(input);
+		const valid = compileWithProjectCompilerBoundary(module, projectInput);
+		assert.throws(
+			() => compileWithProjectCompilerBoundary(compilerReturning(module, {
+				...valid,
+				stats: { ...valid.stats, checkedModules: 1 },
+			}), projectInput),
+			/accepted result must check every request source/u,
+		);
+		assert.throws(
+			() => compileWithProjectCompilerBoundary(compilerReturning(module, {
+				...valid,
+				stats: { ...valid.stats, checkedModules: 3 },
+			}), projectInput),
+			/checked and reused checked module counts cannot exceed parsed module counts/u,
+		);
+		assert.throws(
+			() => compileWithProjectCompilerBoundary(compilerReturning(module, {
+				...valid,
+				stats: { ...valid.stats, invalidatedModules: 3 },
+			}), projectInput),
+			/invalidatedModules cannot exceed request source count/u,
+		);
 	});
 });
