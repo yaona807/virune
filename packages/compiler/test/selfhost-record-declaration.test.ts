@@ -64,13 +64,16 @@ test('project lowering preserves record AST metadata while erasing its runtime d
 		const result = compileWithProjectCompilerBoundary(module, projectInput);
 		assert.equal(result.accepted, true, JSON.stringify(result.diagnostics, null, 2));
 		assert.deepEqual(result.diagnostics, []);
+		assert.deepEqual(result.dependencies, []);
 		assert.deepEqual(result.exportedSymbols, [
 			{ modulePath: 'src/main.virune', name: 'User', declarationKind: 'RecordDeclaration' },
 			{ modulePath: 'src/main.virune', name: 'main', declarationKind: 'FunctionDeclaration' },
 		]);
 		assert.equal(result.stats.parsedModules, 1);
 		assert.equal(result.stats.checkedModules, 1);
+		assert.equal(result.stats.emittedModules, 1);
 		assert.equal(result.emittedModules.length, 1);
+		assert.equal(result.emittedModules[0]?.sourcePath, 'src/main.virune');
 		assert.match(result.emittedModules[0]?.code ?? '', /export function main/u);
 		assert.doesNotMatch(result.emittedModules[0]?.code ?? '', /record User/u);
 	});
