@@ -47,9 +47,9 @@ fn current(chars: List<String>, index: Int) -> String? {
 	return List.get(chars, index)
 }
 
-fn character(chars: List<String>, index: Int) -> String {
+fn charAtOrEmpty(chars: List<String>, index: Int) -> String {
 	return match current(chars, index) {
-		Some(value) => value
+		Some(foundCharacter) => foundCharacter
 		None => ""
 	}
 }
@@ -60,18 +60,18 @@ fn matchesWord(chars: List<String>, index: Int, expected: String) -> Bool {
 	if index < 0 || index + expectedLength > List.length(chars) {
 		return false
 	}
-	if index > 0 && isIdentifierPart(character(chars, index - 1)) {
+	if index > 0 && isIdentifierPart(charAtOrEmpty(chars, index - 1)) {
 		return false
 	}
 	let mut offset = 0
 	while offset < expectedLength {
-		if character(chars, index + offset) != character(expectedChars, offset) {
+		if charAtOrEmpty(chars, index + offset) != charAtOrEmpty(expectedChars, offset) {
 			return false
 		}
 		offset = offset + 1
 	}
 	let after = index + expectedLength
-	if after < List.length(chars) && isIdentifierPart(character(chars, after)) {
+	if after < List.length(chars) && isIdentifierPart(charAtOrEmpty(chars, after)) {
 		return false
 	}
 	return true
@@ -79,7 +79,7 @@ fn matchesWord(chars: List<String>, index: Int, expected: String) -> Bool {
 
 fn skipWhitespace(chars: List<String>, index: Int) -> Int {
 	let mut cursor = index
-	while cursor < List.length(chars) && isWhitespace(character(chars, cursor)) {
+	while cursor < List.length(chars) && isWhitespace(charAtOrEmpty(chars, cursor)) {
 		cursor = cursor + 1
 	}
 	return cursor
@@ -89,7 +89,7 @@ fn skipString(chars: List<String>, index: Int) -> Int {
 	let mut cursor = index + 1
 	let mut escaped = false
 	while cursor < List.length(chars) {
-		let value = character(chars, cursor)
+		let value = charAtOrEmpty(chars, cursor)
 		if value == "\n" {
 			return cursor
 		}
@@ -108,7 +108,7 @@ fn skipString(chars: List<String>, index: Int) -> Int {
 
 fn skipLineComment(chars: List<String>, index: Int) -> Int {
 	let mut cursor = index + 2
-	while cursor < List.length(chars) && character(chars, cursor) != "\n" {
+	while cursor < List.length(chars) && charAtOrEmpty(chars, cursor) != "\n" {
 		cursor = cursor + 1
 	}
 	return cursor
@@ -129,8 +129,8 @@ fn recordDeclarationEnd(chars: List<String>, index: Int) -> Int? {
 	let mut depth = 0
 	let mut opened = false
 	while cursor < List.length(chars) {
-		let value = character(chars, cursor)
-		let next = character(chars, cursor + 1)
+		let value = charAtOrEmpty(chars, cursor)
+		let next = charAtOrEmpty(chars, cursor + 1)
 		if value == "\"" {
 			cursor = skipString(chars, cursor)
 			continue
@@ -163,12 +163,12 @@ fn lowerTypeOnlyRecordDeclarations(source: String) -> String {
 	let mut index = 0
 	let mut braceDepth = 0
 	while index < List.length(chars) {
-		let value = character(chars, index)
-		let next = character(chars, index + 1)
+		let value = charAtOrEmpty(chars, index)
+		let next = charAtOrEmpty(chars, index + 1)
 		if value == "\"" {
 			let end = skipString(chars, index)
 			while index < end {
-				result = result + character(chars, index)
+				result = result + charAtOrEmpty(chars, index)
 				index = index + 1
 			}
 			continue
@@ -176,7 +176,7 @@ fn lowerTypeOnlyRecordDeclarations(source: String) -> String {
 		if value == "/" && next == "/" {
 			let end = skipLineComment(chars, index)
 			while index < end {
-				result = result + character(chars, index)
+				result = result + charAtOrEmpty(chars, index)
 				index = index + 1
 			}
 			continue
@@ -186,7 +186,7 @@ fn lowerTypeOnlyRecordDeclarations(source: String) -> String {
 			if match declarationEnd { Some(_) => true, None => false } {
 				let end = match declarationEnd { Some(value) => value, None => index }
 				while index < end {
-					let skipped = character(chars, index)
+					let skipped = charAtOrEmpty(chars, index)
 					result = result + if skipped == "\n" then "\n" else " "
 					index = index + 1
 				}
