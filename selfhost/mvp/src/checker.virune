@@ -16,6 +16,8 @@ import {
 	MvpStatement,
 	MvpType,
 	errorDiagnostic,
+	listElementType,
+	listType,
 	span,
 	typeName,
 } from "./model.virune"
@@ -295,6 +297,64 @@ fn checkBinary(node: MvpExpression, context: CheckContext, expressions: List<Mvp
 	return Ok(checkedBinary(node, left, right, left.valueType))
 }
 
+fn checkList(node: MvpExpression, context: CheckContext, expressions: List<MvpHirExpression>) -> Result<CheckedExpression, MvpDiagnostic> {
+	if List.isEmpty(node.children) {
+		return Err(errorDiagnostic("L2020", "Cannot infer the element type of an empty List", node.span))
+	}
+	let firstSourceId = childAt(node, 0)?
+	let first = checkExpression(firstSourceId, context, expressions)?
+	let elementType = first.valueType
+	let mut expressionIds: List<Int> = [first.expressionId]
+	let mut arena = first.expressions
+	let mut index = 1
+	while index < List.length(node.children) {
+		let sourceId = childAt(node, index)?
+		let checked = checkExpression(sourceId, context, arena)?
+		if checked.valueType != elementType {
+			let source = sourceExpressionAt(context, sourceId)?
+			return Err(typeMismatch(checked.valueType, elementType, source.span))
+		}
+		expressionIds = List.append(expressionIds, checked.expressionId)
+		arena = checked.expressions
+		index = index + 1
+	}
+	let valueType = match listType(elementType) {
+		Some(value) => value
+		None => MvpType.ErrorType
+	}
+	if valueType == MvpType.ErrorType {
+		return Err(errorDiagnostic("L2022", "MVP List elements must be Bool, Int, Float, String, or Unit", node.span))
+	}
+	return Ok(addHir(arena, MvpHirExpression {
+		kind: "list",
+		text: node.text,
+		valueType: valueType,
+		children: expressionIds,
+		span: node.span,
+	}, valueType))
+}
+
+fn checkIndex(node: MvpExpression, context: CheckContext, expressions: List<MvpHirExpression>) -> Result<CheckedExpression, MvpDiagnostic> {
+	let targetSourceId = childAt(node, 0)?
+	let indexSourceId = childAt(node, 1)?
+	let target = checkExpression(targetSourceId, context, expressions)?
+	let index = checkExpression(indexSourceId, context, target.expressions)?
+	if index.valueType != MvpType.IntType {
+		let source = sourceExpressionAt(context, indexSourceId)?
+		return Err(typeMismatch(index.valueType, MvpType.IntType, source.span))
+	}
+	return match listElementType(target.valueType) {
+		Some(elementType) => Ok(addHir(index.expressions, MvpHirExpression {
+			kind: "index",
+			text: node.text,
+			valueType: elementType,
+			children: [target.expressionId, index.expressionId],
+			span: node.span,
+		}, elementType))
+		None => Err(errorDiagnostic("L2021", "Index access requires List, received " + typeName(target.valueType), node.span))
+	}
+}
+
 fn checkExpression(expressionId: Int, context: CheckContext, expressions: List<MvpHirExpression>) -> Result<CheckedExpression, MvpDiagnostic> {
 	let node = sourceExpressionAt(context, expressionId)?
 	if node.kind == "bool" || node.kind == "number" || node.kind == "string" || node.kind == "unit" {
@@ -311,6 +371,12 @@ fn checkExpression(expressionId: Int, context: CheckContext, expressions: List<M
 	}
 	if node.kind == "binary" {
 		return checkBinary(node, context, expressions)
+	}
+	if node.kind == "list" {
+		return checkList(node, context, expressions)
+	}
+	if node.kind == "index" {
+		return checkIndex(node, context, expressions)
 	}
 	return Err(errorDiagnostic("L9001", "Unknown MVP expression kind " + node.kind, node.span))
 }

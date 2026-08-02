@@ -13,6 +13,7 @@ import {
 	MvpTokenKind,
 	MvpType,
 	errorDiagnostic,
+	listType,
 	span,
 } from "./model.virune"
 
@@ -124,6 +125,15 @@ fn expectText(cursor: Cursor, text: String) -> Result<Cursor, MvpDiagnostic> {
 
 fn parseType(cursor: Cursor) -> Result<ParsedType, MvpDiagnostic> {
 	let token = tokenAt(cursor)
+	if token.text == "List" {
+		let afterOpen = expectText(advance(cursor), "<")?
+		let elementType = parseType(afterOpen)?
+		let afterClose = expectText(elementType.cursor, ">")?
+		return match listType(elementType.value) {
+			Some(value) => Ok(ParsedType { cursor: afterClose, value: value })
+			None => Err(parseError("MVP List element type must be Bool, Int, Float, String, or Unit", token))
+		}
+	}
 	let parsed = if token.text == "Bool" then MvpType.BoolType else if token.text == "Int" then MvpType.IntType else if token.text == "Float" then MvpType.FloatType else if token.text == "String" then MvpType.StringType else if token.text == "Unit" then MvpType.UnitType else MvpType.ErrorType
 	if parsed == MvpType.ErrorType {
 		return Err(parseError("Unknown MVP type " + token.text, token))
@@ -387,7 +397,31 @@ fn parseUnary(cursor: Cursor, expressions: List<MvpExpression>) -> Result<Parsed
 			span: span(token.span.start, operand.span.end),
 		}))
 	}
-	return parsePrimary(cursor, expressions)
+	return parsePostfix(cursor, expressions)
+}
+
+fn parsePostfix(cursor: Cursor, expressions: List<MvpExpression>) -> Result<ParsedExpression, MvpDiagnostic> {
+	let parsed = parsePrimary(cursor, expressions)?
+	let mut current = parsed.cursor
+	let mut expressionId = parsed.expressionId
+	let mut arena = parsed.expressions
+	while tokenAt(current).text == "[" {
+		let base = expressionAt(arena, expressionId, tokenAt(current).span)?
+		let parsedIndex = parseExpression(advance(current), arena)?
+		let close = tokenAt(parsedIndex.cursor)
+		let afterClose = expectText(parsedIndex.cursor, "]")?
+		let added = addExpression(afterClose, parsedIndex.expressions, MvpExpression {
+			kind: "index",
+			text: "[]",
+			literalType: None,
+			children: [expressionId, parsedIndex.expressionId],
+			span: span(base.span.start, close.span.end),
+		})
+		current = added.cursor
+		expressionId = added.expressionId
+		arena = added.expressions
+	}
+	return Ok(ParsedExpression { cursor: current, expressionId: expressionId, expressions: arena })
 }
 
 fn parseQualifiedName(cursor: Cursor) -> Result<ParsedName, MvpDiagnostic> {
@@ -409,6 +443,35 @@ fn parseQualifiedName(cursor: Cursor) -> Result<ParsedName, MvpDiagnostic> {
 		current = advance(memberCursor)
 	}
 	return Ok(ParsedName { cursor: current, text: text, span: span(first.span.start, end) })
+}
+
+fn parseListLiteral(cursor: Cursor, expressions: List<MvpExpression>) -> Result<ParsedExpression, MvpDiagnostic> {
+	let open = tokenAt(cursor)
+	let mut current = advance(cursor)
+	let mut arena = expressions
+	let mut children: List<Int> = []
+	if tokenAt(current).text != "]" {
+		while true {
+			let parsedElement = parseExpression(current, arena)?
+			children = List.append(children, parsedElement.expressionId)
+			arena = parsedElement.expressions
+			current = parsedElement.cursor
+			if tokenAt(current).text == "," {
+				current = advance(current)
+				continue
+			}
+			break
+		}
+	}
+	let close = tokenAt(current)
+	let afterClose = expectText(current, "]")?
+	return Ok(addExpression(afterClose, arena, MvpExpression {
+		kind: "list",
+		text: "[]",
+		literalType: None,
+		children: children,
+		span: span(open.span.start, close.span.end),
+	}))
 }
 
 fn parsePrimary(cursor: Cursor, expressions: List<MvpExpression>) -> Result<ParsedExpression, MvpDiagnostic> {
@@ -433,6 +496,9 @@ fn parsePrimary(cursor: Cursor, expressions: List<MvpExpression>) -> Result<Pars
 		return Ok(addExpression(advance(cursor), expressions, MvpExpression {
 			kind: "unit", text: token.text, literalType: Some(MvpType.UnitType), children: [], span: token.span,
 		}))
+	}
+	if token.text == "[" {
+		return parseListLiteral(cursor, expressions)
 	}
 	if token.text == "(" {
 		let parsed = parseExpression(advance(cursor), expressions)?

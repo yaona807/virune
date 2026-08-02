@@ -26,12 +26,21 @@ pub record MvpToken derives Eq, Debug, Json {
 	span: MvpSpan
 }
 
+pub enum MvpListElementType derives Eq, Hash, Debug, Json {
+	BoolElement
+	IntElement
+	FloatElement
+	StringElement
+	UnitElement
+}
+
 pub enum MvpType derives Eq, Hash, Debug, Json {
 	BoolType
 	IntType
 	FloatType
 	StringType
 	UnitType
+	ListType(MvpListElementType)
 	ErrorType
 }
 
@@ -120,6 +129,38 @@ pub fn span(start: MvpPosition, end: MvpPosition) -> MvpSpan {
 	return MvpSpan { start: start, end: end }
 }
 
+fn listElementTypeName(value: MvpListElementType) -> String {
+	return match value {
+		BoolElement => "Bool"
+		IntElement => "Int"
+		FloatElement => "Float"
+		StringElement => "String"
+		UnitElement => "Unit"
+	}
+}
+
+pub fn listType(elementType: MvpType) -> MvpType? {
+	return match elementType {
+		BoolType => Some(MvpType.ListType(MvpListElementType.BoolElement))
+		IntType => Some(MvpType.ListType(MvpListElementType.IntElement))
+		FloatType => Some(MvpType.ListType(MvpListElementType.FloatElement))
+		StringType => Some(MvpType.ListType(MvpListElementType.StringElement))
+		UnitType => Some(MvpType.ListType(MvpListElementType.UnitElement))
+		_ => None
+	}
+}
+
+pub fn listElementType(value: MvpType) -> MvpType? {
+	return match value {
+		ListType(BoolElement) => Some(MvpType.BoolType)
+		ListType(IntElement) => Some(MvpType.IntType)
+		ListType(FloatElement) => Some(MvpType.FloatType)
+		ListType(StringElement) => Some(MvpType.StringType)
+		ListType(UnitElement) => Some(MvpType.UnitType)
+		_ => None
+	}
+}
+
 pub fn typeName(value: MvpType) -> String {
 	return match value {
 		BoolType => "Bool"
@@ -127,6 +168,7 @@ pub fn typeName(value: MvpType) -> String {
 		FloatType => "Float"
 		StringType => "String"
 		UnitType => "Unit"
+		ListType(elementType) => "List<" + listElementTypeName(elementType) + ">"
 		ErrorType => "<error>"
 	}
 }
