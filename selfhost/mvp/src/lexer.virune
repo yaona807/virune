@@ -184,7 +184,7 @@ fn lowerTypeOnlyRecordDeclarations(source: String) -> String {
 		if braceDepth == 0 && isRecordDeclarationStart(chars, index) {
 			let declarationEnd = recordDeclarationEnd(chars, index)
 			if match declarationEnd { Some(_) => true, None => false } {
-				let end = match declarationEnd { Some(value) => value, None => index }
+				let end = match declarationEnd { Some(declarationLimit) => declarationLimit, None => index }
 				while index < end {
 					let skipped = charAtOrEmpty(chars, index)
 					result = result + if skipped == "\n" then "\n" else " "
