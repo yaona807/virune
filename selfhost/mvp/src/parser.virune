@@ -611,6 +611,28 @@ fn parsePrimary(cursor: Cursor, expressions: List<MvpExpression>) -> Result<Pars
 	return Err(parseError("Expected expression", token))
 }
 
+fn hasImportLocalName(names: List<String>, name: String) -> Bool {
+	for value in names {
+		if value == name {
+			return true
+		}
+	}
+	return false
+}
+
+fn validateImports(imports: List<MvpImport>) -> Result<Unit, MvpDiagnostic> {
+	let mut localNames: List<String> = []
+	for importValue in imports {
+		for binding in importValue.bindings {
+			if hasImportLocalName(localNames, binding.localName) {
+				return Err(errorDiagnostic("L1001", "Duplicate imported name " + binding.localName, binding.span))
+			}
+			localNames = List.append(localNames, binding.localName)
+		}
+	}
+	return Ok(Unit)
+}
+
 fn parseModule(tokens: List<MvpToken>) -> Result<MvpModule, MvpDiagnostic> {
 	let mut cursor = skipNewLines(Cursor { tokens: tokens, index: 0 })
 	let mut imports: List<MvpImport> = []
@@ -626,7 +648,8 @@ fn parseModule(tokens: List<MvpToken>) -> Result<MvpModule, MvpDiagnostic> {
 		functions = List.append(functions, parsed.value)
 		cursor = skipNewLines(parsed.cursor)
 	}
-	return Ok(MvpModule { imports: imports, functions: functions })
+	validateImports(imports)?
+	return Ok(MvpModule { functions: functions })
 }
 
 fn parseMvp(tokens: List<MvpToken>) -> MvpParseResult {
