@@ -32,10 +32,22 @@ const snapshotOptions = {
 	seedSha256: 'f'.repeat(64),
 };
 
+interface RawPosition {
+	readonly offset: number;
+	readonly line: number;
+	readonly column: number;
+}
+
+interface RawSpan {
+	readonly start: RawPosition;
+	readonly end: RawPosition;
+}
+
 interface RawDiagnostic {
 	readonly code: string;
 	readonly message: string;
 	readonly sourcePath: string | null;
+	readonly span: RawSpan;
 }
 
 interface RawDependency {
@@ -75,6 +87,13 @@ interface InventoryCodeCount {
 	readonly count: number;
 }
 
+interface InventoryFirstDiagnostic {
+	readonly sourcePath: string;
+	readonly code: string;
+	readonly message: string;
+	readonly span: RawSpan;
+}
+
 interface Inventory {
 	readonly sourceCount: number;
 	readonly parsedModules: number;
@@ -86,6 +105,7 @@ interface Inventory {
 	readonly boundaryBlockers: readonly string[];
 	readonly codeCounts: readonly InventoryCodeCount[];
 	readonly entries: readonly InventoryEntry[];
+	readonly firstDiagnostics: readonly InventoryFirstDiagnostic[];
 }
 
 function canonical<T>(values: readonly T[], key: (value: T) => string): boolean {
@@ -128,6 +148,15 @@ function boundaryBlockers(
 	return blockers.sort();
 }
 
+function diagnosticPositionKey(diagnostic: RawDiagnostic): string {
+	return [
+		diagnostic.span.start.offset.toString().padStart(12, '0'),
+		diagnostic.span.end.offset.toString().padStart(12, '0'),
+		diagnostic.code,
+		diagnostic.message,
+	].join('\0');
+}
+
 function inventoryFromResult(
 	sourcePaths: readonly string[],
 	result: RawProjectCompilerResult,
@@ -139,6 +168,7 @@ function inventoryFromResult(
 	}>();
 	const codeCounts = new Map<string, number>();
 	const sourcesWithDiagnostics = new Set<string>();
+	const firstDiagnosticBySource = new Map<string, RawDiagnostic>();
 	for (const diagnostic of result.diagnostics) {
 		const key = `${diagnostic.code}\u0000${diagnostic.message}`;
 		const current = groups.get(key) ?? {
@@ -151,6 +181,10 @@ function inventoryFromResult(
 		if (diagnostic.sourcePath !== null) {
 			current.sourcePaths.add(diagnostic.sourcePath);
 			sourcesWithDiagnostics.add(diagnostic.sourcePath);
+			const previous = firstDiagnosticBySource.get(diagnostic.sourcePath);
+			if (previous === undefined || diagnosticPositionKey(diagnostic) < diagnosticPositionKey(previous)) {
+				firstDiagnosticBySource.set(diagnostic.sourcePath, diagnostic);
+			}
 		}
 		groups.set(key, current);
 	}
@@ -170,6 +204,14 @@ function inventoryFromResult(
 	const sourcesWithoutDiagnostics = sourcePaths
 		.filter(sourcePath => !sourcesWithDiagnostics.has(sourcePath))
 		.sort();
+	const firstDiagnostics = [...firstDiagnosticBySource.entries()]
+		.sort(([left], [right]) => left.localeCompare(right))
+		.map(([sourcePath, diagnostic]) => ({
+			sourcePath,
+			code: diagnostic.code,
+			message: diagnostic.message,
+			span: diagnostic.span,
+		}));
 	return {
 		sourceCount: sourcePaths.length,
 		parsedModules: result.stats.parsedModules,
@@ -183,6 +225,7 @@ function inventoryFromResult(
 			.sort(([left], [right]) => left.localeCompare(right))
 			.map(([code, count]) => ({ code, count })),
 		entries,
+		firstDiagnostics,
 	};
 }
 
@@ -241,6 +284,12 @@ test('full-language lowering blocker inventory is deterministic for the canonica
 			inventory.codeCounts.reduce((total, entry) => total + entry.count, 0),
 			inventory.diagnosticCount,
 		);
+		assert.equal(inventory.firstDiagnostics.length, inventory.diagnosticSourceCount);
+		assert.deepEqual(
+			inventory.firstDiagnostics.map(item => item.sourcePath),
+			inventory.sourcesWithDiagnostics,
+		);
+		assert.ok(inventory.firstDiagnostics.every(item => item.span.end.offset >= item.span.start.offset));
 		assert.deepEqual(inventory.boundaryBlockers, []);
 		await mkdir(dirname(inventoryEvidencePath), { recursive: true });
 		await writeFile(inventoryEvidencePath, `${JSON.stringify(inventory)}\n`, 'utf8');
