@@ -41,13 +41,59 @@
         "text": { "type": "string" }
       }
     },
+    "interopImport": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind"],
+      "properties": {
+        "kind": { "enum": ["named", "default", "namespace", "type-only", "side-effect"] },
+        "importedName": { "type": "string", "minLength": 1 }
+      }
+    },
+    "resolutionWitness": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["moduleSpecifier", "conditions", "platform", "providerVersion"],
+      "properties": {
+        "moduleSpecifier": { "type": "string", "minLength": 1 },
+        "packageName": { "type": "string", "minLength": 1 },
+        "packageVersion": { "type": "string", "minLength": 1 },
+        "declarationPackageName": { "type": "string", "minLength": 1 },
+        "declarationPackageVersion": { "type": "string", "minLength": 1 },
+        "declarationEntry": { "type": "string", "minLength": 1 },
+        "runtimeEntry": { "type": "string", "minLength": 1 },
+        "runtimeFormat": { "enum": ["esm", "commonjs", "builtin", "bundler", "unknown"] },
+        "conditions": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "platform": { "enum": ["node", "browser", "neutral"] },
+        "providerVersion": { "type": "string", "minLength": 1 },
+        "declarationGraphHash": { "type": "string", "minLength": 1 },
+        "packageJsonHash": { "type": "string", "minLength": 1 },
+        "declarationPackageJsonHash": { "type": "string", "minLength": 1 }
+      }
+    },
+    "interopMetadata": {
+      "type": "object",
+      "properties": {
+        "imports": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/interopImport" }
+        },
+        "resolutionWitness": { "$ref": "#/$defs/resolutionWitness" }
+      },
+      "additionalProperties": true
+    },
     "interopModule": {
       "type": "object",
       "additionalProperties": false,
       "required": ["specifier", "metadata"],
       "properties": {
         "specifier": { "type": "string", "minLength": 1 },
-        "metadata": { "type": "object" }
+        "metadata": { "$ref": "#/$defs/interopMetadata" }
       }
     },
     "interopManifest": {
