@@ -34,6 +34,19 @@ pub enum MvpListElementType derives Eq, Hash, Debug, Json {
 	UnitElement
 }
 
+pub enum MvpOptionalElementType derives Eq, Hash, Debug, Json {
+	BoolOptionalElement
+	IntOptionalElement
+	FloatOptionalElement
+	StringOptionalElement
+	UnitOptionalElement
+	BoolListOptionalElement
+	IntListOptionalElement
+	FloatListOptionalElement
+	StringListOptionalElement
+	UnitListOptionalElement
+}
+
 pub enum MvpType derives Eq, Hash, Debug, Json {
 	BoolType
 	IntType
@@ -41,6 +54,7 @@ pub enum MvpType derives Eq, Hash, Debug, Json {
 	StringType
 	UnitType
 	ListType(MvpListElementType)
+	OptionalType(MvpOptionalElementType)
 	ErrorType
 }
 
@@ -139,6 +153,21 @@ fn listElementTypeName(value: MvpListElementType) -> String {
 	}
 }
 
+fn optionalElementTypeName(value: MvpOptionalElementType) -> String {
+	return match value {
+		BoolOptionalElement => "Bool"
+		IntOptionalElement => "Int"
+		FloatOptionalElement => "Float"
+		StringOptionalElement => "String"
+		UnitOptionalElement => "Unit"
+		BoolListOptionalElement => "List<Bool>"
+		IntListOptionalElement => "List<Int>"
+		FloatListOptionalElement => "List<Float>"
+		StringListOptionalElement => "List<String>"
+		UnitListOptionalElement => "List<Unit>"
+	}
+}
+
 pub fn listType(elementType: MvpType) -> MvpType? {
 	return match elementType {
 		BoolType => Some(MvpType.ListType(MvpListElementType.BoolElement))
@@ -161,6 +190,38 @@ pub fn listElementType(value: MvpType) -> MvpType? {
 	}
 }
 
+pub fn optionalType(elementType: MvpType) -> MvpType? {
+	return match elementType {
+		BoolType => Some(MvpType.OptionalType(MvpOptionalElementType.BoolOptionalElement))
+		IntType => Some(MvpType.OptionalType(MvpOptionalElementType.IntOptionalElement))
+		FloatType => Some(MvpType.OptionalType(MvpOptionalElementType.FloatOptionalElement))
+		StringType => Some(MvpType.OptionalType(MvpOptionalElementType.StringOptionalElement))
+		UnitType => Some(MvpType.OptionalType(MvpOptionalElementType.UnitOptionalElement))
+		ListType(BoolElement) => Some(MvpType.OptionalType(MvpOptionalElementType.BoolListOptionalElement))
+		ListType(IntElement) => Some(MvpType.OptionalType(MvpOptionalElementType.IntListOptionalElement))
+		ListType(FloatElement) => Some(MvpType.OptionalType(MvpOptionalElementType.FloatListOptionalElement))
+		ListType(StringElement) => Some(MvpType.OptionalType(MvpOptionalElementType.StringListOptionalElement))
+		ListType(UnitElement) => Some(MvpType.OptionalType(MvpOptionalElementType.UnitListOptionalElement))
+		_ => None
+	}
+}
+
+pub fn optionalElementType(value: MvpType) -> MvpType? {
+	return match value {
+		OptionalType(BoolOptionalElement) => Some(MvpType.BoolType)
+		OptionalType(IntOptionalElement) => Some(MvpType.IntType)
+		OptionalType(FloatOptionalElement) => Some(MvpType.FloatType)
+		OptionalType(StringOptionalElement) => Some(MvpType.StringType)
+		OptionalType(UnitOptionalElement) => Some(MvpType.UnitType)
+		OptionalType(BoolListOptionalElement) => Some(MvpType.ListType(MvpListElementType.BoolElement))
+		OptionalType(IntListOptionalElement) => Some(MvpType.ListType(MvpListElementType.IntElement))
+		OptionalType(FloatListOptionalElement) => Some(MvpType.ListType(MvpListElementType.FloatElement))
+		OptionalType(StringListOptionalElement) => Some(MvpType.ListType(MvpListElementType.StringElement))
+		OptionalType(UnitListOptionalElement) => Some(MvpType.ListType(MvpListElementType.UnitElement))
+		_ => None
+	}
+}
+
 pub fn typeName(value: MvpType) -> String {
 	return match value {
 		BoolType => "Bool"
@@ -169,6 +230,7 @@ pub fn typeName(value: MvpType) -> String {
 		StringType => "String"
 		UnitType => "Unit"
 		ListType(elementType) => "List<" + listElementTypeName(elementType) + ">"
+		OptionalType(elementType) => optionalElementTypeName(elementType) + "?"
 		ErrorType => "<error>"
 	}
 }
