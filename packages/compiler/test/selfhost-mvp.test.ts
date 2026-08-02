@@ -152,8 +152,9 @@ test('optional type suffixes lower through signatures, local annotations, and HI
 		const output = await createSelfhostMvpKernel(loaded.module).compile(request);
 		assert.equal(output.accepted, true, JSON.stringify(output.diagnostics, null, 2));
 		assert.deepEqual(output.diagnostics, []);
-		assert.ok(output.code.includes('function keep('));
-		assert.ok(output.code.includes('function keepList('));
+		const emittedCode = output.emittedModules.map(module => module.code).join('\n');
+		assert.ok(emittedCode.includes('function keep('));
+		assert.ok(emittedCode.includes('function keepList('));
 		const runtime = await executeKernelOutputWithNode(request, output);
 		assert.equal(runtime.returnValue, 1);
 		assert.equal(runtime.panic, null);
