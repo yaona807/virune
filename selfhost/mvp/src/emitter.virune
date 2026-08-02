@@ -56,6 +56,16 @@ fn emitCall(expression: MvpHirExpression, expressions: List<MvpHirExpression>) -
 	return expression.text + "(" + String.join(values, ", ") + ", $ctx)"
 }
 
+fn emitList(expression: MvpHirExpression, expressions: List<MvpHirExpression>) -> String {
+	return "[" + String.join(emitArguments(expression.children, expressions), ", ") + "]"
+}
+
+fn emitIndex(expression: MvpHirExpression, expressions: List<MvpHirExpression>) -> String {
+	let target = emitExpression(childAt(expression, 0), expressions)
+	let index = emitExpression(childAt(expression, 1), expressions)
+	return "(" + target + ")[" + index + "]"
+}
+
 fn emitUnary(expression: MvpHirExpression, expressions: List<MvpHirExpression>) -> String {
 	let value = emitExpression(childAt(expression, 0), expressions)
 	if expression.text == "-" && expression.valueType == MvpType.IntType {
@@ -106,6 +116,12 @@ fn emitExpression(expressionId: Int, expressions: List<MvpHirExpression>) -> Str
 	}
 	if expression.kind == "call" {
 		return emitCall(expression, expressions)
+	}
+	if expression.kind == "list" {
+		return emitList(expression, expressions)
+	}
+	if expression.kind == "index" {
+		return emitIndex(expression, expressions)
 	}
 	if expression.kind == "unary" {
 		return emitUnary(expression, expressions)
