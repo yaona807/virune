@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { createHash } from 'node:crypto';
 import { mkdir, rm } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -20,22 +21,29 @@ const options = {
 	seedSha256: 'c'.repeat(64),
 };
 
-const capability = (ready: boolean, blockers: readonly string[]) => JSON.stringify({
-	contractVersion: '1',
+const capabilityValue = (ready: boolean, blockers: readonly string[]) => ({
+	contractVersion: '1' as const,
 	ready,
-	requestSchema: 'virune.selfhost.project-compiler.request.v1',
-	resultSchema: 'virune.selfhost.project-compiler.result.v2',
+	requestSchema: 'virune.selfhost.project-compiler.request.v1' as const,
+	resultSchema: 'virune.selfhost.project-compiler.result.v2' as const,
 	blockers,
 });
+
+const capability = (ready: boolean, blockers: readonly string[]) => JSON.stringify(
+	capabilityValue(ready, blockers),
+);
+
+const sha256 = (value: string): string => createHash('sha256').update(value).digest('hex');
 
 test('current multi-module Self-host MVP remains blocked by its non-ready full-language lowering capability', async () => {
 	await mkdir(temporaryRoot, { recursive: true });
 	try {
 		const first = await evaluateSelfhostStageBootstrapReadiness(mvpRoot, options);
 		const second = await evaluateSelfhostStageBootstrapReadiness(mvpRoot, options);
+		const expectedCapability = capabilityValue(false, ['full-language-lowering-not-implemented']);
 
 		assert.equal(first.stage0Compiler.artifact.metadata.stage, 'stage0');
-		assert.equal(first.evidence.policyVersion, 2);
+		assert.equal(first.evidence.policyVersion, 3);
 		assert.equal(first.evidence.claim, 'stage1-stage2-bootstrap-readiness');
 		assert.equal(first.evidence.productionEligible, false);
 		assert.equal(first.evidence.ready, false);
@@ -43,6 +51,9 @@ test('current multi-module Self-host MVP remains blocked by its non-ready full-l
 		assert.equal(first.evidence.sourceCount, first.sourceManifest.manifest.sources.length);
 		assert.equal(first.evidence.entryPath, 'src/main.virune');
 		assert.deepEqual(first.evidence.requiredExports, ['projectCompilerCapability', 'compileProjectMvp']);
+		assert.deepEqual(first.evidence.capability, expectedCapability);
+		assert.equal(first.evidence.capabilitySha256, sha256(JSON.stringify(expectedCapability)));
+		assert.match(first.evidence.capabilitySha256 ?? '', /^[0-9a-f]{64}$/u);
 		assert.equal(first.evidence.capabilityReady, false);
 		assert.deepEqual(first.evidence.capabilityBlockers, ['full-language-lowering-not-implemented']);
 		assert.equal(first.evidence.compilerArtifactSha256, first.stage0Compiler.sha256);
