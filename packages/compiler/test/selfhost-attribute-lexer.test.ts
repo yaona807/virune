@@ -14,7 +14,10 @@ const temporaryRoot = join(repositoryRoot, '.test-tmp');
 
 interface LexTransport {
 	readonly tokens: readonly {
-		readonly kind: string;
+		readonly kind: {
+			readonly tag: string;
+			readonly values: readonly unknown[];
+		};
 		readonly text: string;
 	}[];
 	readonly diagnostics: readonly {
@@ -40,7 +43,7 @@ test('Pure Core lexer tokenizes attribute markers without a character diagnostic
 		const lexed = JSON.parse(encoded as string) as LexTransport;
 		assert.deepEqual(lexed.diagnostics, []);
 		assert.deepEqual(
-			lexed.tokens.slice(0, 3).map(token => [token.kind, token.text]),
+			lexed.tokens.slice(0, 3).map(token => [token.kind.tag, token.text]),
 			[
 				['Symbol', '@'],
 				['Identifier', 'mustUse'],
