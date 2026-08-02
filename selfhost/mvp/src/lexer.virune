@@ -60,7 +60,7 @@ fn twoCharacterSymbol(first: String, second: String?) -> String? {
 }
 
 fn isSingleSymbol(value: String) -> Bool {
-	return value == "(" || value == ")" || value == "{" || value == "}" || value == "[" || value == "]" || value == ":" || value == "," || value == "." || value == "?" || value == "+" || value == "-" || value == "*" || value == "/" || value == "%" || value == "<" || value == ">" || value == "=" || value == "!"
+	return value == "(" || value == ")" || value == "{" || value == "}" || value == "[" || value == "]" || value == ":" || value == "," || value == "." || value == "?" || value == "@" || value == "+" || value == "-" || value == "*" || value == "/" || value == "%" || value == "<" || value == ">" || value == "=" || value == "!"
 }
 
 fn lexMvp(source: String) -> MvpLexResult {
