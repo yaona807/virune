@@ -213,10 +213,21 @@ function validateProjectCompilerResult(
 
 	const inputPaths = new Set(input.sources.map(source => source.path));
 	for (const diagnostic of diagnostics) {
-		if (diagnostic.sourcePath !== null && !inputPaths.has(diagnostic.sourcePath)) {
-			throw new SelfhostMvpError('$.diagnostics sourcePath must identify a request source');
+		assertRequestSource(diagnostic.sourcePath, inputPaths, '$.diagnostics sourcePath', true);
+	}
+	for (const module of emittedModules) {
+		assertRequestSource(module.sourcePath, inputPaths, '$.emittedModules sourcePath');
+	}
+	for (const dependency of dependencies) {
+		assertRequestSource(dependency.modulePath, inputPaths, '$.dependencies modulePath');
+		if (dependency.sourceKind === 'virune' && dependency.resolvedPath !== null) {
+			assertRequestSource(dependency.resolvedPath, inputPaths, '$.dependencies resolvedPath');
 		}
 	}
+	for (const symbol of exportedSymbols) {
+		assertRequestSource(symbol.modulePath, inputPaths, '$.exportedSymbols modulePath');
+	}
+
 	assertCanonical(emittedModules, item => item.outputPath, '$.emittedModules');
 	assertCanonical(
 		dependencies,
@@ -228,11 +239,22 @@ function validateProjectCompilerResult(
 		item => `${item.modulePath}\0${item.name}\0${item.declarationKind}`,
 		'$.exportedSymbols',
 	);
-	if (stats.parsedModules + stats.reusedParsedModules !== input.sources.length) {
+	const parsedModuleCount = stats.parsedModules + stats.reusedParsedModules;
+	if (parsedModuleCount !== input.sources.length) {
 		throw new SelfhostMvpError('parsed and reused parsed module counts must cover every request source');
+	}
+	const checkedModuleCount = stats.checkedModules + stats.reusedCheckedModules;
+	if (checkedModuleCount > parsedModuleCount) {
+		throw new SelfhostMvpError('checked and reused checked module counts cannot exceed parsed module counts');
+	}
+	if (record.accepted && checkedModuleCount !== input.sources.length) {
+		throw new SelfhostMvpError('accepted result must check every request source');
 	}
 	if (stats.emittedModules !== emittedModules.length) {
 		throw new SelfhostMvpError('$.stats.emittedModules must match $.emittedModules length');
+	}
+	if (stats.invalidatedModules > input.sources.length) {
+		throw new SelfhostMvpError('$.stats.invalidatedModules cannot exceed request source count');
 	}
 	if (record.accepted && diagnostics.some(item => item.severity === 'error')) {
 		throw new SelfhostMvpError('accepted project compiler result cannot contain errors');
@@ -255,6 +277,19 @@ function validateProjectCompilerResult(
 		exportedSymbols,
 		stats,
 	};
+}
+
+function assertRequestSource(
+	value: string | null,
+	inputPaths: ReadonlySet<string>,
+	path: string,
+	nullable = false,
+): void {
+	if (value === null) {
+		if (nullable) return;
+		throw new SelfhostMvpError(`${path} must identify a request source`);
+	}
+	if (!inputPaths.has(value)) throw new SelfhostMvpError(`${path} must identify a request source`);
 }
 
 function validateDiagnostic(value: unknown, path: string): ProjectCompilerDiagnosticV1 {
