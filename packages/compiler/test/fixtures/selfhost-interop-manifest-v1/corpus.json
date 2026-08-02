@@ -52,6 +52,30 @@
 			"errorIncludes": "string must not be empty"
 		},
 		{
+			"id": "invalid-import-kind",
+			"accepted": false,
+			"input": {
+				"contractVersion":"1","languageVersion":"1.0","platform":"node","entryPath":"main.virune",
+				"sources":[{"path":"main.virune","text":"pub fn main() -> Int { return 1 }\n"}],
+				"interopManifest":{"version":"1","modules":[{"specifier":"example","metadata":{"imports":[{"kind":"dynamic"}]}}]},
+				"emit":{"target":"es2022","sourceMap":true,"sourcesContent":true}
+			},
+			"errorPath": "$.interopManifest.modules[0].metadata.imports[0].kind",
+			"errorIncludes": "expected one of named, default, namespace, type-only, side-effect"
+		},
+		{
+			"id": "invalid-runtime-format",
+			"accepted": false,
+			"input": {
+				"contractVersion":"1","languageVersion":"1.0","platform":"node","entryPath":"main.virune",
+				"sources":[{"path":"main.virune","text":"pub fn main() -> Int { return 1 }\n"}],
+				"interopManifest":{"version":"1","modules":[{"specifier":"example","metadata":{"resolutionWitness":{"moduleSpecifier":"example","conditions":[],"platform":"node","providerVersion":"1","runtimeFormat":"amd"}}}]},
+				"emit":{"target":"es2022","sourceMap":true,"sourcesContent":true}
+			},
+			"errorPath": "$.interopManifest.modules[0].metadata.resolutionWitness.runtimeFormat",
+			"errorIncludes": "expected one of esm, commonjs, builtin, bundler, unknown"
+		},
+		{
 			"id": "invalid-version-type",
 			"accepted": false,
 			"input": {
@@ -76,6 +100,18 @@
 			"errorIncludes": "expected an object"
 		},
 		{
+			"id": "named-import-missing-name",
+			"accepted": false,
+			"input": {
+				"contractVersion":"1","languageVersion":"1.0","platform":"node","entryPath":"main.virune",
+				"sources":[{"path":"main.virune","text":"pub fn main() -> Int { return 1 }\n"}],
+				"interopManifest":{"version":"1","modules":[{"specifier":"example","metadata":{"imports":[{"kind":"named"}]}}]},
+				"emit":{"target":"es2022","sourceMap":true,"sourcesContent":true}
+			},
+			"errorPath": "$.interopManifest.modules[0].metadata.imports[0].importedName",
+			"errorIncludes": "importedName is required for named imports"
+		},
+		{
 			"id": "stale-version",
 			"accepted": false,
 			"input": {
@@ -88,6 +124,20 @@
 			"errorIncludes": "unsupported Interop Manifest version \"2\"; expected \"1\""
 		},
 		{
+			"id": "typed-imports-and-witness",
+			"accepted": true,
+			"input": {
+				"contractVersion":"1","languageVersion":"1.0","platform":"node","entryPath":"main.virune",
+				"sources":[{"path":"main.virune","text":"pub fn main() -> Int { return 1 }\n"}],
+				"interopManifest":{"version":"1","modules":[{"specifier":"example","metadata":{"legacy":true,"imports":[{"kind":"type-only","importedName":"Shape"},{"kind":"default"},{"kind":"named","importedName":"value"},{"kind":"namespace"},{"kind":"side-effect"}],"resolutionWitness":{"moduleSpecifier":"example","conditions":["node","import"],"platform":"node","providerVersion":"1","runtimeFormat":"esm"}}}]},
+				"emit":{"target":"es2022","sourceMap":true,"sourcesContent":true}
+			},
+			"entryPath": "main.virune",
+			"sourcePaths": ["main.virune"],
+			"moduleSpecifiers": ["example"],
+			"metadataKeys": [["imports", "legacy", "resolutionWitness"]]
+		},
+		{
 			"id": "unknown-module-property",
 			"accepted": false,
 			"input": {
@@ -98,6 +148,18 @@
 			},
 			"errorPath": "$.interopManifest.modules[0].extra",
 			"errorIncludes": "unknown property"
+		},
+		{
+			"id": "witness-platform-mismatch",
+			"accepted": false,
+			"input": {
+				"contractVersion":"1","languageVersion":"1.0","platform":"node","entryPath":"main.virune",
+				"sources":[{"path":"main.virune","text":"pub fn main() -> Int { return 1 }\n"}],
+				"interopManifest":{"version":"1","modules":[{"specifier":"example","metadata":{"resolutionWitness":{"moduleSpecifier":"example","conditions":[],"platform":"browser","providerVersion":"1"}}}]},
+				"emit":{"target":"es2022","sourceMap":true,"sourcesContent":true}
+			},
+			"errorPath": "$.interopManifest.modules[0].metadata.resolutionWitness.platform",
+			"errorIncludes": "must match input platform \"node\""
 		}
 	]
 }
