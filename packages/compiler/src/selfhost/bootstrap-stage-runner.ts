@@ -30,7 +30,7 @@ import {
 	type KernelSourceManifestResultV1,
 } from './source-manifest.js';
 
-export const BOOTSTRAP_STAGE_READINESS_POLICY_VERSION = 2 as const;
+export const BOOTSTRAP_STAGE_READINESS_POLICY_VERSION = 3 as const;
 
 export type BootstrapStageReadinessBlocker =
 	| 'multi-module-project-requires-project-compiler'
@@ -53,6 +53,8 @@ export interface BootstrapStageReadinessEvidence {
 	readonly sourceCount: number;
 	readonly entryPath: string;
 	readonly requiredExports: readonly ['projectCompilerCapability', 'compileProjectMvp'];
+	readonly capability: ProjectCompilerCapabilityV1 | null;
+	readonly capabilitySha256: string | null;
 	readonly capabilityReady: boolean;
 	readonly capabilityBlockers: readonly string[];
 	readonly blockers: readonly BootstrapStageReadinessBlocker[];
@@ -93,6 +95,7 @@ export async function evaluateSelfhostStageBootstrapReadiness(
 			options.stage0EntryModulePath ?? 'dist/main.js',
 		);
 		const capability = readProjectCompilerCapability(module);
+		const capabilitySerialized = capability === null ? null : JSON.stringify(capability);
 		const blockers = readinessBlockersFromCapability(
 			hasSelfhostProjectCompilerExports(module),
 			capability,
@@ -108,6 +111,8 @@ export async function evaluateSelfhostStageBootstrapReadiness(
 			sourceCount: input.sources.length,
 			entryPath: input.entryPath,
 			requiredExports: ['projectCompilerCapability', 'compileProjectMvp'],
+			capability,
+			capabilitySha256: capabilitySerialized === null ? null : sha256(capabilitySerialized),
 			capabilityReady: capability?.ready ?? false,
 			capabilityBlockers: capability?.blockers ?? [],
 			blockers,
