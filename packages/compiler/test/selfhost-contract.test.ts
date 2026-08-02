@@ -41,6 +41,75 @@ test('kernel input is canonical, deterministic JSON data', () => {
 	assert.deepEqual(roundTripKernelInput(input), input);
 });
 
+test('Interop Manifest reserved metadata is typed, canonical, and platform-bound', () => {
+	const input = validateKernelInput(kernelInput({
+		interopManifest: {
+			version: '1',
+			modules: [{
+				specifier: 'example',
+				metadata: {
+					legacy: true,
+					imports: [
+						{ kind: 'type-only', importedName: 'Shape' },
+						{ kind: 'side-effect' },
+						{ kind: 'named', importedName: 'value' },
+						{ kind: 'namespace' },
+						{ kind: 'default' },
+					],
+					resolutionWitness: {
+						moduleSpecifier: 'example',
+						conditions: ['node', 'import'],
+						platform: 'node',
+						providerVersion: '1',
+						runtimeFormat: 'esm',
+					},
+				},
+			}],
+		},
+	}));
+	const metadata = input.interopManifest.modules[0]!.metadata;
+	assert.deepEqual(metadata.imports, [
+		{ kind: 'default' },
+		{ kind: 'named', importedName: 'value' },
+		{ kind: 'namespace' },
+		{ kind: 'side-effect' },
+		{ kind: 'type-only', importedName: 'Shape' },
+	]);
+	assert.deepEqual(metadata.resolutionWitness?.conditions, ['import', 'node']);
+	assert.equal(metadata.resolutionWitness?.runtimeFormat, 'esm');
+	assert.equal(metadata.legacy, true);
+	assert.deepEqual(roundTripKernelInput(input), input);
+});
+
+test('Interop Manifest reserved metadata rejects malformed import and resolution witnesses', () => {
+	assert.throws(() => validateKernelInput({
+		...kernelInput(),
+		interopManifest: { version: '1', modules: [{ specifier: 'example', metadata: { imports: [{ kind: 'named' }] } }] },
+	}), /importedName is required for named imports/u);
+	assert.throws(() => validateKernelInput({
+		...kernelInput(),
+		interopManifest: { version: '1', modules: [{ specifier: 'example', metadata: { imports: [{ kind: 'side-effect', importedName: 'value' }] } }] },
+	}), /importedName is not allowed for side-effect imports/u);
+	assert.throws(() => validateKernelInput({
+		...kernelInput(),
+		interopManifest: { version: '1', modules: [{ specifier: 'example', metadata: { resolutionWitness: {
+			moduleSpecifier: 'other', conditions: [], platform: 'node', providerVersion: '1',
+		} } }] },
+	}), /must match module specifier "example"/u);
+	assert.throws(() => validateKernelInput({
+		...kernelInput(),
+		interopManifest: { version: '1', modules: [{ specifier: 'example', metadata: { resolutionWitness: {
+			moduleSpecifier: 'example', conditions: [], platform: 'browser', providerVersion: '1',
+		} } }] },
+	}), /must match input platform "node"/u);
+	assert.throws(() => validateKernelInput({
+		...kernelInput(),
+		interopManifest: { version: '1', modules: [{ specifier: 'example', metadata: { resolutionWitness: {
+			moduleSpecifier: 'example', conditions: [], platform: 'node', providerVersion: '1', runtimeFormat: 'amd',
+		} } }] },
+	}), /expected one of esm, commonjs, builtin, bundler, unknown/u);
+});
+
 test('kernel boundary rejects version drift, host objects, callbacks, and escaping paths', () => {
 	assert.throws(() => validateKernelInput({ ...kernelInput(), contractVersion: '2' }), KernelContractError);
 	assert.throws(() => validateKernelInput({ ...kernelInput(), entryPath: '../main.virune' }), /must not escape/u);
