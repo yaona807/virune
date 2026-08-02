@@ -70,12 +70,21 @@ interface InventoryEntry {
 	readonly sourcePaths: readonly string[];
 }
 
+interface InventoryCodeCount {
+	readonly code: string;
+	readonly count: number;
+}
+
 interface Inventory {
 	readonly sourceCount: number;
 	readonly parsedModules: number;
 	readonly checkedModules: number;
 	readonly diagnosticCount: number;
+	readonly diagnosticSourceCount: number;
+	readonly sourcesWithDiagnostics: readonly string[];
+	readonly sourcesWithoutDiagnostics: readonly string[];
 	readonly boundaryBlockers: readonly string[];
+	readonly codeCounts: readonly InventoryCodeCount[];
 	readonly entries: readonly InventoryEntry[];
 }
 
@@ -89,8 +98,21 @@ function canonical<T>(values: readonly T[], key: (value: T) => string): boolean 
 	return true;
 }
 
-function boundaryBlockers(result: RawProjectCompilerResult): readonly string[] {
+function boundaryBlockers(
+	sourcePaths: readonly string[],
+	result: RawProjectCompilerResult,
+): readonly string[] {
 	const blockers: string[] = [];
+	const sourcePathSet = new Set(sourcePaths);
+	if (result.stats.parsedModules !== sourcePaths.length) {
+		blockers.push('parsed-module-coverage-mismatch');
+	}
+	if (result.stats.checkedModules > sourcePaths.length) {
+		blockers.push('checked-module-count-exceeds-source-count');
+	}
+	if (result.diagnostics.some(item => item.sourcePath !== null && !sourcePathSet.has(item.sourcePath))) {
+		blockers.push('diagnostic-references-unknown-source');
+	}
 	if (!canonical(
 		result.dependencies,
 		item => `${item.modulePath}\0${item.sourceKind}\0${item.specifier}`,
@@ -107,7 +129,7 @@ function boundaryBlockers(result: RawProjectCompilerResult): readonly string[] {
 }
 
 function inventoryFromResult(
-	sourceCount: number,
+	sourcePaths: readonly string[],
 	result: RawProjectCompilerResult,
 ): Inventory {
 	const groups = new Map<string, {
@@ -115,6 +137,8 @@ function inventoryFromResult(
 		count: number;
 		sourcePaths: Set<string>;
 	}>();
+	const codeCounts = new Map<string, number>();
+	const sourcesWithDiagnostics = new Set<string>();
 	for (const diagnostic of result.diagnostics) {
 		const key = `${diagnostic.code}\u0000${diagnostic.message}`;
 		const current = groups.get(key) ?? {
@@ -123,7 +147,11 @@ function inventoryFromResult(
 			sourcePaths: new Set<string>(),
 		};
 		current.count += 1;
-		if (diagnostic.sourcePath !== null) current.sourcePaths.add(diagnostic.sourcePath);
+		codeCounts.set(diagnostic.code, (codeCounts.get(diagnostic.code) ?? 0) + 1);
+		if (diagnostic.sourcePath !== null) {
+			current.sourcePaths.add(diagnostic.sourcePath);
+			sourcesWithDiagnostics.add(diagnostic.sourcePath);
+		}
 		groups.set(key, current);
 	}
 	const entries = [...groups.entries()]
@@ -138,12 +166,22 @@ function inventoryFromResult(
 			if (code !== 0) return code;
 			return left.message.localeCompare(right.message);
 		});
+	const sortedSourcesWithDiagnostics = [...sourcesWithDiagnostics].sort();
+	const sourcesWithoutDiagnostics = sourcePaths
+		.filter(sourcePath => !sourcesWithDiagnostics.has(sourcePath))
+		.sort();
 	return {
-		sourceCount,
+		sourceCount: sourcePaths.length,
 		parsedModules: result.stats.parsedModules,
 		checkedModules: result.stats.checkedModules,
 		diagnosticCount: result.diagnostics.length,
-		boundaryBlockers: boundaryBlockers(result),
+		diagnosticSourceCount: sortedSourcesWithDiagnostics.length,
+		sourcesWithDiagnostics: sortedSourcesWithDiagnostics,
+		sourcesWithoutDiagnostics,
+		boundaryBlockers: boundaryBlockers(sourcePaths, result),
+		codeCounts: [...codeCounts.entries()]
+			.sort(([left], [right]) => left.localeCompare(right))
+			.map(([code, count]) => ({ code, count })),
 		entries,
 	};
 }
@@ -190,10 +228,19 @@ test('full-language lowering blocker inventory is deterministic for the canonica
 		assert.ok(first.diagnostics.length > 0);
 		assert.ok(first.diagnostics.every(item => item.code !== 'SHP2001'));
 
-		const inventory = inventoryFromResult(input.sources.length, first);
+		const sourcePaths = input.sources.map(source => source.path);
+		const inventory = inventoryFromResult(sourcePaths, first);
 		assert.equal(inventory.sourceCount, input.sources.length);
 		assert.equal(inventory.parsedModules, input.sources.length);
 		assert.ok(inventory.entries.length > 0);
+		assert.equal(
+			inventory.sourcesWithDiagnostics.length + inventory.sourcesWithoutDiagnostics.length,
+			inventory.sourceCount,
+		);
+		assert.equal(
+			inventory.codeCounts.reduce((total, entry) => total + entry.count, 0),
+			inventory.diagnosticCount,
+		);
 		assert.deepEqual(inventory.boundaryBlockers, []);
 		await mkdir(dirname(inventoryEvidencePath), { recursive: true });
 		await writeFile(inventoryEvidencePath, `${JSON.stringify(inventory)}\n`, 'utf8');
