@@ -37,6 +37,7 @@ const listIndexSource = 'pub fn main() -> Int {\n\tlet values: List<Int> = [20, 
 const heterogeneousListSource = 'pub fn main() -> Int {\n\tlet values = [1, "two"]\n\treturn 0\n}\n';
 const invalidIndexSource = 'pub fn main() -> Int {\n\tlet values = [1, 2]\n\treturn values[true]\n}\n';
 const emptyListSource = 'pub fn main() -> Int {\n\tlet values = []\n\treturn 0\n}\n';
+const optionalTypeSource = 'fn keep(value: Int?) -> Int? {\n\tlet current: Int? = value\n\treturn current\n}\n\nfn keepList(values: List<Int>?) -> List<Int>? {\n\treturn values\n}\n\npub fn main() -> Int {\n\treturn 1\n}\n';
 
 test('Stage 0 builds the Virune MVP and Legacy/Self-host accepted output is identical', async () => {
 	const loaded = await loadMvpModule();
@@ -139,6 +140,24 @@ test('empty List literals require an inferable element type', async () => {
 		assert.equal(output.accepted, false);
 		assert.equal(output.diagnostics[0]?.code, 'L2020');
 		assert.equal(output.diagnostics[0]?.message, 'Cannot infer the element type of an empty List');
+	} finally {
+		await rm(loaded.root, { recursive: true, force: true });
+	}
+});
+
+test('optional type suffixes lower through signatures, local annotations, and HIR', async () => {
+	const loaded = await loadMvpModule();
+	try {
+		const request = input(optionalTypeSource);
+		const output = await createSelfhostMvpKernel(loaded.module).compile(request);
+		assert.equal(output.accepted, true, JSON.stringify(output.diagnostics, null, 2));
+		assert.deepEqual(output.diagnostics, []);
+		const emittedCode = output.emittedModules.map(module => module.code).join('\n');
+		assert.ok(emittedCode.includes('function keep('));
+		assert.ok(emittedCode.includes('function keepList('));
+		const runtime = await executeKernelOutputWithNode(request, output);
+		assert.equal(runtime.returnValue, 1);
+		assert.equal(runtime.panic, null);
 	} finally {
 		await rm(loaded.root, { recursive: true, force: true });
 	}
