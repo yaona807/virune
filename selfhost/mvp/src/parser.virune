@@ -561,7 +561,7 @@ fn parseQualifiedName(cursor: Cursor) -> Result<ParsedName, MvpDiagnostic> {
 
 fn parseListLiteral(cursor: Cursor, expressions: List<MvpExpression>) -> Result<ParsedExpression, MvpDiagnostic> {
 	let open = tokenAt(cursor)
-	let mut current = advance(cursor)
+	let mut current = skipNewLines(advance(cursor))
 	let mut arena = expressions
 	let mut children: List<Int> = []
 	if tokenAt(current).text != "]" {
@@ -569,9 +569,12 @@ fn parseListLiteral(cursor: Cursor, expressions: List<MvpExpression>) -> Result<
 			let parsedElement = parseExpression(current, arena)?
 			children = List.append(children, parsedElement.expressionId)
 			arena = parsedElement.expressions
-			current = parsedElement.cursor
+			current = skipNewLines(parsedElement.cursor)
 			if tokenAt(current).text == "," {
-				current = advance(current)
+				current = skipNewLines(advance(current))
+				if tokenAt(current).text == "]" {
+					break
+				}
 				continue
 			}
 			break
@@ -673,7 +676,7 @@ fn parsePrimary(cursor: Cursor, expressions: List<MvpExpression>) -> Result<Pars
 				kind: "identifier", text: name.text, literalType: None, children: [], span: name.span,
 			}))
 		}
-		let mut current = advance(afterName)
+		let mut current = skipNewLines(advance(afterName))
 		let mut arena = expressions
 		let mut children: List<Int> = []
 		if tokenAt(current).text != ")" {
@@ -681,9 +684,12 @@ fn parsePrimary(cursor: Cursor, expressions: List<MvpExpression>) -> Result<Pars
 				let parsedArgument = parseExpression(current, arena)?
 				children = List.append(children, parsedArgument.expressionId)
 				arena = parsedArgument.expressions
-				current = parsedArgument.cursor
+				current = skipNewLines(parsedArgument.cursor)
 				if tokenAt(current).text == "," {
-					current = advance(current)
+					current = skipNewLines(advance(current))
+					if tokenAt(current).text == ")" {
+						break
+					}
 					continue
 				}
 				break
