@@ -57,7 +57,7 @@ function focusedProjectInput(input: ProjectInput): ProjectInput {
 	};
 }
 
-function compilerReturning(module: GeneratedCompiler, result: unknown): GeneratedCompiler {
+function compilerReturning(module: GeneratedCompiler, result: unknown) {
 	return {
 		...module,
 		compileProjectMvp: (_request: string) => ({
