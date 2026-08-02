@@ -112,23 +112,41 @@ fn compareDiagnostic(
 	right: CanonicalProjectCompilerDiagnosticV1,
 ) -> Int {
 	let sourceComparison = compareText(optionText(left.sourcePath), optionText(right.sourcePath))
-	if sourceComparison != 0 { return sourceComparison }
+	if sourceComparison != 0 {
+		return sourceComparison
+	}
 	let startOffsetComparison = compareInt(left.span.start.offset, right.span.start.offset)
-	if startOffsetComparison != 0 { return startOffsetComparison }
+	if startOffsetComparison != 0 {
+		return startOffsetComparison
+	}
 	let endOffsetComparison = compareInt(left.span.end.offset, right.span.end.offset)
-	if endOffsetComparison != 0 { return endOffsetComparison }
+	if endOffsetComparison != 0 {
+		return endOffsetComparison
+	}
 	let startLineComparison = compareInt(left.span.start.line, right.span.start.line)
-	if startLineComparison != 0 { return startLineComparison }
+	if startLineComparison != 0 {
+		return startLineComparison
+	}
 	let startColumnComparison = compareInt(left.span.start.column, right.span.start.column)
-	if startColumnComparison != 0 { return startColumnComparison }
+	if startColumnComparison != 0 {
+		return startColumnComparison
+	}
 	let endLineComparison = compareInt(left.span.end.line, right.span.end.line)
-	if endLineComparison != 0 { return endLineComparison }
+	if endLineComparison != 0 {
+		return endLineComparison
+	}
 	let endColumnComparison = compareInt(left.span.end.column, right.span.end.column)
-	if endColumnComparison != 0 { return endColumnComparison }
+	if endColumnComparison != 0 {
+		return endColumnComparison
+	}
 	let codeComparison = compareText(left.code, right.code)
-	if codeComparison != 0 { return codeComparison }
+	if codeComparison != 0 {
+		return codeComparison
+	}
 	let messageComparison = compareText(left.message, right.message)
-	if messageComparison != 0 { return messageComparison }
+	if messageComparison != 0 {
+		return messageComparison
+	}
 	return compareNotes(left.notes, right.notes)
 }
 
