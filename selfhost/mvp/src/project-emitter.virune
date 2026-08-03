@@ -160,14 +160,12 @@ fn sortDependencies(values: List<ProjectEmitterDependency>) -> List<ProjectEmitt
 	return result
 }
 
+fn exportKey(value: ProjectEmitterExport) -> String {
+	return value.modulePath + "|" + value.name + "|" + value.declarationKind
+}
+
 fn exportLessThan(left: ProjectEmitterExport, right: ProjectEmitterExport) -> Bool {
-	if left.modulePath != right.modulePath {
-		return left.modulePath < right.modulePath
-	}
-	if left.name != right.name {
-		return left.name < right.name
-	}
-	return left.declarationKind < right.declarationKind
+	return exportKey(left) < exportKey(right)
 }
 
 fn insertExport(values: List<ProjectEmitterExport>, value: ProjectEmitterExport) -> List<ProjectEmitterExport> {
@@ -192,6 +190,86 @@ fn sortExports(values: List<ProjectEmitterExport>) -> List<ProjectEmitterExport>
 		result = insertExport(result, value)
 	}
 	return result
+}
+
+fn moduleExists(values: List<ProjectEmitterModule>, sourcePath: String) -> Bool {
+	for projectModule in values {
+		if projectModule.sourcePath == sourcePath {
+			return true
+		}
+	}
+	return false
+}
+
+fn validateMetadata(
+	modules: List<ProjectEmitterModule>,
+	dependencies: List<ProjectEmitterDependency>,
+	exportedSymbols: List<ProjectEmitterExport>,
+) -> List<ProjectEmitterDiagnostic> {
+	let mut diagnostics: List<ProjectEmitterDiagnostic> = []
+	let mut seenDependencies: List<String> = []
+	for dependency in dependencies {
+		let key = dependencyKey(dependency)
+		if containsText(seenDependencies, key) {
+			diagnostics = List.append(diagnostics, emitterDiagnostic(
+				"SHP4012",
+				"Duplicate emitter dependency metadata " + key,
+				Some(dependency.modulePath),
+				None,
+			))
+		} else {
+			seenDependencies = List.append(seenDependencies, key)
+		}
+		if !moduleExists(modules, dependency.modulePath) {
+			diagnostics = List.append(diagnostics, emitterDiagnostic(
+				"SHP4009",
+				"Emitter dependency module path is not present in the module set " + dependency.modulePath,
+				Some(dependency.modulePath),
+				None,
+			))
+		}
+		if dependency.sourceKind == "virune" {
+			let targetPath = optionText(dependency.resolvedPath)
+			if String.length(targetPath) == 0 {
+				diagnostics = List.append(diagnostics, emitterDiagnostic(
+					"SHP4010",
+					"Emitter Virune dependency target must be resolved for " + dependency.specifier,
+					Some(dependency.modulePath),
+					None,
+				))
+			} else if !moduleExists(modules, targetPath) {
+				diagnostics = List.append(diagnostics, emitterDiagnostic(
+					"SHP4010",
+					"Emitter Virune dependency target is not present in the module set " + targetPath,
+					Some(dependency.modulePath),
+					None,
+				))
+			}
+		}
+	}
+	let mut seenExports: List<String> = []
+	for exported in exportedSymbols {
+		let key = exportKey(exported)
+		if containsText(seenExports, key) {
+			diagnostics = List.append(diagnostics, emitterDiagnostic(
+				"SHP4013",
+				"Duplicate emitter exported symbol metadata " + key,
+				Some(exported.modulePath),
+				None,
+			))
+		} else {
+			seenExports = List.append(seenExports, key)
+		}
+		if !moduleExists(modules, exported.modulePath) {
+			diagnostics = List.append(diagnostics, emitterDiagnostic(
+				"SHP4011",
+				"Emitter export module path is not present in the module set " + exported.modulePath,
+				Some(exported.modulePath),
+				None,
+			))
+		}
+	}
+	return diagnostics
 }
 
 fn validLine(value: String) -> Bool {
@@ -314,6 +392,9 @@ pub fn emitProject(request: ProjectEmitterRequest) -> ProjectEmitterResult {
 			Some(request.entryPath),
 			None,
 		))
+	}
+	for diagnostic in validateMetadata(modules, dependencies, exportedSymbols) {
+		diagnostics = List.append(diagnostics, diagnostic)
 	}
 	let accepted = List.length(diagnostics) == 0
 	return ProjectEmitterResult {
