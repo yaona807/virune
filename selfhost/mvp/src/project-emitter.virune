@@ -78,6 +78,122 @@ fn containsText(values: List<String>, expected: String) -> Bool {
 	return false
 }
 
+fn optionText(value: String?) -> String {
+	return match value {
+		Some(text) => text
+		None => ""
+	}
+}
+
+fn boolText(value: Bool) -> String {
+	return if value then "1" else "0"
+}
+
+fn moduleLessThan(left: ProjectEmitterModule, right: ProjectEmitterModule) -> Bool {
+	if left.sourcePath != right.sourcePath {
+		return left.sourcePath < right.sourcePath
+	}
+	return left.outputPath < right.outputPath
+}
+
+fn insertModule(values: List<ProjectEmitterModule>, value: ProjectEmitterModule) -> List<ProjectEmitterModule> {
+	let mut result: List<ProjectEmitterModule> = []
+	let mut inserted = false
+	for current in values {
+		if !inserted && moduleLessThan(value, current) {
+			result = List.append(result, value)
+			inserted = true
+		}
+		result = List.append(result, current)
+	}
+	if !inserted {
+		result = List.append(result, value)
+	}
+	return result
+}
+
+fn sortModules(values: List<ProjectEmitterModule>) -> List<ProjectEmitterModule> {
+	let mut result: List<ProjectEmitterModule> = []
+	for value in values {
+		result = insertModule(result, value)
+	}
+	return result
+}
+
+fn dependencyKey(value: ProjectEmitterDependency) -> String {
+	return value.modulePath + "|" +
+		value.sourceKind + "|" +
+		value.specifier + "|" +
+		optionText(value.resolvedPath) + "|" +
+		boolText(value.typeOnly) + "|" +
+		boolText(value.public)
+}
+
+fn dependencyLessThan(left: ProjectEmitterDependency, right: ProjectEmitterDependency) -> Bool {
+	return dependencyKey(left) < dependencyKey(right)
+}
+
+fn insertDependency(
+	values: List<ProjectEmitterDependency>,
+	value: ProjectEmitterDependency,
+) -> List<ProjectEmitterDependency> {
+	let mut result: List<ProjectEmitterDependency> = []
+	let mut inserted = false
+	for current in values {
+		if !inserted && dependencyLessThan(value, current) {
+			result = List.append(result, value)
+			inserted = true
+		}
+		result = List.append(result, current)
+	}
+	if !inserted {
+		result = List.append(result, value)
+	}
+	return result
+}
+
+fn sortDependencies(values: List<ProjectEmitterDependency>) -> List<ProjectEmitterDependency> {
+	let mut result: List<ProjectEmitterDependency> = []
+	for value in values {
+		result = insertDependency(result, value)
+	}
+	return result
+}
+
+fn exportLessThan(left: ProjectEmitterExport, right: ProjectEmitterExport) -> Bool {
+	if left.modulePath != right.modulePath {
+		return left.modulePath < right.modulePath
+	}
+	if left.name != right.name {
+		return left.name < right.name
+	}
+	return left.declarationKind < right.declarationKind
+}
+
+fn insertExport(values: List<ProjectEmitterExport>, value: ProjectEmitterExport) -> List<ProjectEmitterExport> {
+	let mut result: List<ProjectEmitterExport> = []
+	let mut inserted = false
+	for current in values {
+		if !inserted && exportLessThan(value, current) {
+			result = List.append(result, value)
+			inserted = true
+		}
+		result = List.append(result, current)
+	}
+	if !inserted {
+		result = List.append(result, value)
+	}
+	return result
+}
+
+fn sortExports(values: List<ProjectEmitterExport>) -> List<ProjectEmitterExport> {
+	let mut result: List<ProjectEmitterExport> = []
+	for value in values {
+		result = insertExport(result, value)
+	}
+	return result
+}
+
 fn validLine(value: String) -> Bool {
 	return !String.contains(value, "\n") && !String.contains(value, "\r")
 }
@@ -172,12 +288,15 @@ fn validateModule(
 }
 
 pub fn emitProject(request: ProjectEmitterRequest) -> ProjectEmitterResult {
+	let modules = sortModules(request.modules)
+	let dependencies = sortDependencies(request.dependencies)
+	let exportedSymbols = sortExports(request.exportedSymbols)
 	let mut diagnostics: List<ProjectEmitterDiagnostic> = []
 	let mut seenSources: List<String> = []
 	let mut seenOutputs: List<String> = []
 	let mut emittedModules: List<ProjectEmittedModule> = []
 	let mut entryFound = false
-	for projectModule in request.modules {
+	for projectModule in modules {
 		for diagnostic in validateModule(projectModule, seenSources, seenOutputs) {
 			diagnostics = List.append(diagnostics, diagnostic)
 		}
@@ -201,8 +320,8 @@ pub fn emitProject(request: ProjectEmitterRequest) -> ProjectEmitterResult {
 		accepted: accepted,
 		entryPath: request.entryPath,
 		emittedModules: if accepted then emittedModules else [],
-		dependencies: request.dependencies,
-		exportedSymbols: request.exportedSymbols,
+		dependencies: dependencies,
+		exportedSymbols: exportedSymbols,
 		diagnostics: diagnostics,
 	}
 }
