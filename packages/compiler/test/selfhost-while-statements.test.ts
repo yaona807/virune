@@ -67,7 +67,7 @@ test('while statements lower through the generated compiler and execute', async 
 		assert.equal(output.accepted, true, JSON.stringify(output.diagnostics, null, 2));
 		assert.deepEqual(output.diagnostics, []);
 		const emittedCode = output.emittedModules.map(module => module.code).join('\n');
-		assert.match(emittedCode, /while \(value < 4\) \{/);
+		assert.match(emittedCode, /while \(\(value < 4\)\) \{/);
 		const runtime = await executeKernelOutputWithNode(request, output);
 		assert.equal(runtime.returnValue, 4);
 		assert.equal(runtime.panic, null);
