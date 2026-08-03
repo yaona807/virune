@@ -1,0 +1,137 @@
+//! Virune-authored executable entry-point validation over canonical Host facts.
+//!
+//! The Host remains responsible for parsing declarations and resolving semantic
+//! types. The self-host Kernel consumes only versioned, data-only facts and
+//! reproduces the stable `virune run` diagnostics without filesystem or
+//! TypeScript AST dependencies.
+
+pub record ProjectEntryPointRequest derives Eq, Debug, Json {
+	version: String
+	analyzed: Bool
+	entryPath: String
+	candidateModulePath: String
+	hasMain: Bool
+	declarationKind: String
+	isPublic: Bool
+	typeParameterCount: Int
+	parameterCount: Int
+	firstParameterType: String
+	returnKind: String
+}
+
+pub record ProjectEntryPointDiagnostic derives Eq, Debug, Json {
+	code: String
+	severity: String
+	message: String
+	sourcePath: String
+}
+
+pub record ProjectEntryPointResult derives Eq, Debug, Json {
+	accepted: Bool
+	version: String
+	entryPath: String
+	diagnostics: List<ProjectEntryPointDiagnostic>
+}
+
+fn diagnostic(code: String, message: String, sourcePath: String) -> ProjectEntryPointDiagnostic {
+	return ProjectEntryPointDiagnostic {
+		code: code,
+		severity: "error",
+		message: message,
+		sourcePath: sourcePath,
+	}
+}
+
+fn result(request: ProjectEntryPointRequest, diagnostics: List<ProjectEntryPointDiagnostic>) -> ProjectEntryPointResult {
+	return ProjectEntryPointResult {
+		accepted: List.isEmpty(diagnostics),
+		version: request.version,
+		entryPath: request.entryPath,
+		diagnostics: diagnostics,
+	}
+}
+
+fn candidateIsEntryFunction(request: ProjectEntryPointRequest) -> Bool {
+	return request.hasMain &&
+		request.candidateModulePath == request.entryPath &&
+		request.declarationKind == "FunctionDeclaration"
+}
+
+fn validReturnKind(kind: String) -> Bool {
+	return kind == "unit" || kind == "result-unit"
+}
+
+pub fn validateProjectEntryPoint(request: ProjectEntryPointRequest) -> ProjectEntryPointResult {
+	if request.version != "1" {
+		return result(request, [diagnostic(
+			"SHP2400",
+			"Unsupported entry-point contract version " + request.version,
+			request.entryPath,
+		)])
+	}
+	if request.typeParameterCount < 0 || request.parameterCount < 0 {
+		return result(request, [diagnostic(
+			"SHP2401",
+			"Entry-point contract counts must be non-negative",
+			request.entryPath,
+		)])
+	}
+	if !request.analyzed {
+		return result(request, [diagnostic(
+			"L5010",
+			"Entry module could not be analyzed",
+			request.entryPath,
+		)])
+	}
+	if !candidateIsEntryFunction(request) {
+		return result(request, [diagnostic(
+			"L5011",
+			"Entry module must declare pub fn main",
+			request.entryPath,
+		)])
+	}
+
+	let mut diagnostics: List<ProjectEntryPointDiagnostic> = []
+	if !request.isPublic {
+		diagnostics = List.append(diagnostics, diagnostic(
+			"L5012",
+			"Entry function main must be public",
+			request.entryPath,
+		))
+	}
+	if request.typeParameterCount > 0 {
+		diagnostics = List.append(diagnostics, diagnostic(
+			"L5013",
+			"Entry function main cannot be generic",
+			request.entryPath,
+		))
+	}
+	if request.parameterCount > 1 {
+		diagnostics = List.append(diagnostics, diagnostic(
+			"L5014",
+			"Entry function main accepts zero parameters or one List<String> parameter",
+			request.entryPath,
+		))
+	} else if request.parameterCount == 1 && request.firstParameterType != "List<String>" {
+		diagnostics = List.append(diagnostics, diagnostic(
+			"L5015",
+			"Entry function main parameter must be List<String>",
+			request.entryPath,
+		))
+	}
+	if !validReturnKind(request.returnKind) {
+		diagnostics = List.append(diagnostics, diagnostic(
+			"L5016",
+			"Entry function main must return Unit or Result<Unit, E>",
+			request.entryPath,
+		))
+	}
+	return result(request, diagnostics)
+}
+
+@jsExport
+pub fn validateProjectEntryPointJson(encoded: String) -> Result<String, List<JsonError>> {
+	let raw = Json.parse(encoded)?
+	let request = Json.decode<ProjectEntryPointRequest>(raw)?
+	return Json.encode<ProjectEntryPointResult>(validateProjectEntryPoint(request))
+}
