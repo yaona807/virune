@@ -33,6 +33,13 @@ fn expressionAt(expressions: List<MvpHirExpression>, expressionId: Int) -> MvpHi
 	}
 }
 
+fn statementAt(statements: List<MvpHirStatement>, statementId: Int) -> MvpHirStatement {
+	return match List.get(statements, statementId) {
+		Some(value) => value
+		None => panic("Missing HIR statement arena entry")
+	}
+}
+
 fn childAt(expression: MvpHirExpression, index: Int) -> Int {
 	return match List.get(expression.children, index) {
 		Some(value) => value
@@ -156,18 +163,31 @@ fn emitExpression(expressionId: Int, expressions: List<MvpHirExpression>) -> Str
 	return panic("Unknown HIR expression kind " + expression.kind)
 }
 
-fn emitStatement(statement: MvpHirStatement, expressions: List<MvpHirExpression>) -> String {
+fn indentation(depth: Int) -> String {
+	let mut value = ""
+	let mut index = 0
+	while index < depth {
+		value = value + "\t"
+		index = index + 1
+	}
+	return value
+}
+
+fn emitStatement(statementId: Int, statements: List<MvpHirStatement>, expressions: List<MvpHirExpression>, depth: Int) -> String {
+	let statement = statementAt(statements, statementId)
+	let prefix = indentation(depth)
 	return match statement {
-		HirLet(name, mutable, _, expressionId, _) => "\t\t" + (if mutable then "let " else "const ") + name + " = " + emitExpression(expressionId, expressions) + ";\n"
-		HirAssign(name, _, expressionId, _) => "\t\t" + name + " = " + emitExpression(expressionId, expressions) + ";\n"
-		HirReturn(expressionId, _) => "\t\treturn " + emitExpression(expressionId, expressions) + ";\n"
+		HirLet(name, mutable, _, expressionId, _) => prefix + (if mutable then "let " else "const ") + name + " = " + emitExpression(expressionId, expressions) + ";\n"
+		HirAssign(name, _, expressionId, _) => prefix + name + " = " + emitExpression(expressionId, expressions) + ";\n"
+		HirFor(name, _, iterableExpressionId, bodyStatementIds, _) => prefix + "for (const " + name + " of " + emitExpression(iterableExpressionId, expressions) + ") {\n" + emitStatements(bodyStatementIds, statements, expressions, depth + 1) + prefix + "}\n"
+		HirReturn(expressionId, _) => prefix + "return " + emitExpression(expressionId, expressions) + ";\n"
 	}
 }
 
-fn emitStatements(statements: List<MvpHirStatement>, expressions: List<MvpHirExpression>) -> String {
+fn emitStatements(statementIds: List<Int>, statements: List<MvpHirStatement>, expressions: List<MvpHirExpression>, depth: Int) -> String {
 	let mut code = ""
-	for statement in statements {
-		code = code + emitStatement(statement, expressions)
+	for statementId in statementIds {
+		code = code + emitStatement(statementId, statements, expressions, depth)
 	}
 	return code
 }
@@ -178,7 +198,7 @@ fn emitFunction(function: MvpHirFunction) -> String {
 	let prefix = if function.isPublic then "export " else ""
 	return prefix + "function " + function.name + "(" + parameters + ") {\n" +
 		"\ttry {\n" +
-		emitStatements(function.statements, function.expressions) +
+		emitStatements(function.statementIds, function.statements, function.expressions, 2) +
 		"\t} catch ($error) {\n" +
 		"\t\tif (isPropagation($error)) return $error.value;\n" +
 		"\t\tthrow $error;\n" +

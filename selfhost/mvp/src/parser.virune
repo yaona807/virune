@@ -44,7 +44,8 @@ record ParsedExpression {
 
 record ParsedStatement {
 	cursor: Cursor
-	value: MvpStatement
+	statementId: Int
+	statements: List<MvpStatement>
 	expressions: List<MvpExpression>
 }
 
@@ -105,6 +106,15 @@ fn addExpression(cursor: Cursor, expressions: List<MvpExpression>, expression: M
 		cursor: cursor,
 		expressionId: List.length(expressions),
 		expressions: List.append(expressions, expression),
+	}
+}
+
+fn addStatement(cursor: Cursor, statements: List<MvpStatement>, expressions: List<MvpExpression>, statement: MvpStatement) -> ParsedStatement {
+	return ParsedStatement {
+		cursor: cursor,
+		statementId: List.length(statements),
+		statements: List.append(statements, statement),
+		expressions: expressions,
 	}
 }
 
@@ -301,11 +311,13 @@ fn parseFunction(cursor: Cursor) -> Result<ParsedFunction, MvpDiagnostic> {
 	let parsedReturn = parseType(current)?
 	current = expectText(parsedReturn.cursor, "{")?
 	current = skipNewLines(current)
+	let mut statementIds: List<Int> = []
 	let mut statements: List<MvpStatement> = []
 	let mut expressions: List<MvpExpression> = []
 	while tokenAt(current).text != "}" && tokenAt(current).kind != MvpTokenKind.EndOfFile {
-		let parsedStatement = parseStatement(current, expressions)?
-		statements = List.append(statements, parsedStatement.value)
+		let parsedStatement = parseStatement(current, statements, expressions)?
+		statementIds = List.append(statementIds, parsedStatement.statementId)
+		statements = parsedStatement.statements
 		expressions = parsedStatement.expressions
 		current = skipNewLines(parsedStatement.cursor)
 	}
@@ -319,6 +331,7 @@ fn parseFunction(cursor: Cursor) -> Result<ParsedFunction, MvpDiagnostic> {
 			parameters: parameters,
 			returnType: parsedReturn.value,
 			expressions: expressions,
+			statementIds: statementIds,
 			statements: statements,
 			span: span(startToken.span.start, closeToken.span.end),
 		},
@@ -336,7 +349,24 @@ fn consumeLineEnd(cursor: Cursor) -> Result<Cursor, MvpDiagnostic> {
 	return Err(parseError("Expected end of statement", token))
 }
 
-fn parseStatement(cursor: Cursor, expressions: List<MvpExpression>) -> Result<ParsedStatement, MvpDiagnostic> {
+fn parseForIterable(cursor: Cursor, expressions: List<MvpExpression>) -> Result<ParsedExpression, MvpDiagnostic> {
+	let token = tokenAt(cursor)
+	if token.kind == MvpTokenKind.Identifier {
+		let name = parseQualifiedName(cursor)?
+		if tokenAt(name.cursor).text == "{" {
+			return Ok(addExpression(name.cursor, expressions, MvpExpression {
+				kind: "identifier",
+				text: name.text,
+				literalType: None,
+				children: [],
+				span: name.span,
+			}))
+		}
+	}
+	return parseExpression(cursor, expressions)
+}
+
+fn parseStatement(cursor: Cursor, statements: List<MvpStatement>, expressions: List<MvpExpression>) -> Result<ParsedStatement, MvpDiagnostic> {
 	let start = tokenAt(cursor)
 	if start.text == "let" {
 		let afterLet = advance(cursor)
@@ -356,11 +386,40 @@ fn parseStatement(cursor: Cursor, expressions: List<MvpExpression>) -> Result<Pa
 		current = expectText(current, "=")?
 		let parsedExpression = parseExpression(current, expressions)?
 		let expression = expressionAt(parsedExpression.expressions, parsedExpression.expressionId, start.span)?
-		return Ok(ParsedStatement {
-			cursor: consumeLineEnd(parsedExpression.cursor)?,
-			value: MvpStatement.LetValue(nameToken.text, mutable, annotation, parsedExpression.expressionId, span(start.span.start, expression.span.end)),
-			expressions: parsedExpression.expressions,
-		})
+		return Ok(addStatement(
+			consumeLineEnd(parsedExpression.cursor)?,
+			statements,
+			parsedExpression.expressions,
+			MvpStatement.LetValue(nameToken.text, mutable, annotation, parsedExpression.expressionId, span(start.span.start, expression.span.end)),
+		))
+	}
+	if start.text == "for" {
+		let nameCursor = advance(cursor)
+		let nameToken = tokenAt(nameCursor)
+		if nameToken.kind != MvpTokenKind.Identifier {
+			return Err(parseError("Expected loop variable name", nameToken))
+		}
+		let afterIn = expectText(advance(nameCursor), "in")?
+		let parsedIterable = parseForIterable(afterIn, expressions)?
+		let mut current = skipNewLines(expectText(skipNewLines(parsedIterable.cursor), "{")?)
+		let mut bodyStatementIds: List<Int> = []
+		let mut statementArena = statements
+		let mut expressionArena = parsedIterable.expressions
+		while tokenAt(current).text != "}" && tokenAt(current).kind != MvpTokenKind.EndOfFile {
+			let parsedBodyStatement = parseStatement(current, statementArena, expressionArena)?
+			bodyStatementIds = List.append(bodyStatementIds, parsedBodyStatement.statementId)
+			statementArena = parsedBodyStatement.statements
+			expressionArena = parsedBodyStatement.expressions
+			current = skipNewLines(parsedBodyStatement.cursor)
+		}
+		let closeToken = tokenAt(current)
+		current = expectText(current, "}")?
+		return Ok(addStatement(
+			consumeLineEnd(current)?,
+			statementArena,
+			expressionArena,
+			MvpStatement.ForValue(nameToken.text, parsedIterable.expressionId, bodyStatementIds, span(start.span.start, closeToken.span.end)),
+		))
 	}
 	if start.text == "return" {
 		let next = tokenAt(advance(cursor))
@@ -372,30 +431,33 @@ fn parseStatement(cursor: Cursor, expressions: List<MvpExpression>) -> Result<Pa
 				children: [],
 				span: start.span,
 			})
-			return Ok(ParsedStatement {
-				cursor: consumeLineEnd(parsedUnit.cursor)?,
-				value: MvpStatement.ReturnValue(parsedUnit.expressionId, start.span),
-				expressions: parsedUnit.expressions,
-			})
+			return Ok(addStatement(
+				consumeLineEnd(parsedUnit.cursor)?,
+				statements,
+				parsedUnit.expressions,
+				MvpStatement.ReturnValue(parsedUnit.expressionId, start.span),
+			))
 		}
 		let parsedExpression = parseExpression(advance(cursor), expressions)?
 		let expression = expressionAt(parsedExpression.expressions, parsedExpression.expressionId, start.span)?
-		return Ok(ParsedStatement {
-			cursor: consumeLineEnd(parsedExpression.cursor)?,
-			value: MvpStatement.ReturnValue(parsedExpression.expressionId, span(start.span.start, expression.span.end)),
-			expressions: parsedExpression.expressions,
-		})
+		return Ok(addStatement(
+			consumeLineEnd(parsedExpression.cursor)?,
+			statements,
+			parsedExpression.expressions,
+			MvpStatement.ReturnValue(parsedExpression.expressionId, span(start.span.start, expression.span.end)),
+		))
 	}
 	if start.kind == MvpTokenKind.Identifier && tokenAt(advance(cursor)).text == "=" {
 		let parsedExpression = parseExpression(advance(advance(cursor)), expressions)?
 		let expression = expressionAt(parsedExpression.expressions, parsedExpression.expressionId, start.span)?
-		return Ok(ParsedStatement {
-			cursor: consumeLineEnd(parsedExpression.cursor)?,
-			value: MvpStatement.AssignValue(start.text, parsedExpression.expressionId, span(start.span.start, expression.span.end)),
-			expressions: parsedExpression.expressions,
-		})
+		return Ok(addStatement(
+			consumeLineEnd(parsedExpression.cursor)?,
+			statements,
+			parsedExpression.expressions,
+			MvpStatement.AssignValue(start.text, parsedExpression.expressionId, span(start.span.start, expression.span.end)),
+		))
 	}
-	return Err(parseError("MVP supports only let, assignment, and return statements", start))
+	return Err(parseError("MVP supports only let, assignment, for, and return statements", start))
 }
 
 fn appendBinary(operator: MvpToken, leftId: Int, right: ParsedExpression, arena: List<MvpExpression>) -> Result<ParsedExpression, MvpDiagnostic> {
