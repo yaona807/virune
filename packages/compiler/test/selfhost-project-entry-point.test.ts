@@ -13,6 +13,8 @@ const mvpRoot = join(repositoryRoot, 'selfhost', 'mvp');
 const temporaryRoot = join(repositoryRoot, '.test-tmp');
 
 type ViruneResult<T> = { readonly $tag: 'Ok' | 'Err'; readonly $values: readonly [T] };
+type Position = { readonly offset: number; readonly line: number; readonly column: number };
+type Span = { readonly start: Position; readonly end: Position };
 type EntryPointRequest = {
 	readonly version: string;
 	readonly analyzed: boolean;
@@ -25,12 +27,17 @@ type EntryPointRequest = {
 	readonly parameterCount: number;
 	readonly firstParameterType: string;
 	readonly returnKind: string;
+	readonly moduleSpan: Span;
+	readonly candidateSpan: Span;
+	readonly parameterSpan: Span;
+	readonly returnSpan: Span;
 };
 type EntryPointDiagnostic = {
 	readonly code: string;
 	readonly severity: 'error';
 	readonly message: string;
 	readonly sourcePath: string;
+	readonly span: Span;
 };
 type EntryPointResult = {
 	readonly accepted: boolean;
@@ -41,6 +48,13 @@ type EntryPointResult = {
 type EntryPointModule = {
 	readonly validateProjectEntryPointJson: (request: string) => ViruneResult<string>;
 };
+
+const position = (offset: number, line: number, column: number): Position => ({ offset, line, column });
+const span = (start: Position, end: Position): Span => ({ start, end });
+const moduleSpan = span(position(0, 1, 1), position(120, 8, 2));
+const candidateSpan = span(position(20, 2, 1), position(118, 7, 2));
+const parameterSpan = span(position(32, 2, 13), position(50, 2, 31));
+const returnSpan = span(position(55, 2, 36), position(59, 2, 40));
 
 const validRequest: EntryPointRequest = {
 	version: '1',
@@ -54,6 +68,10 @@ const validRequest: EntryPointRequest = {
 	parameterCount: 0,
 	firstParameterType: '',
 	returnKind: 'unit',
+	moduleSpan,
+	candidateSpan,
+	parameterSpan,
+	returnSpan,
 };
 
 test('project entry-point contract accepts canonical executable signatures', async () => {
@@ -79,24 +97,24 @@ test('project entry-point contract accepts canonical executable signatures', asy
 	}
 });
 
-test('project entry-point contract preserves Legacy L5010-L5016 diagnostics', async () => {
+test('project entry-point contract preserves Legacy L5010-L5016 diagnostics and spans', async () => {
 	const loaded = await loadEntryPointModule();
 	try {
-		assert.deepEqual(
-			validate(loaded.module, { ...validRequest, analyzed: false }).diagnostics.map(item => item.code),
-			['L5010'],
-		);
-		assert.deepEqual(
-			validate(loaded.module, { ...validRequest, hasMain: false }).diagnostics.map(item => item.code),
-			['L5011'],
-		);
-		assert.deepEqual(
-			validate(loaded.module, {
-				...validRequest,
-				candidateModulePath: 'src/other.virune',
-			}).diagnostics.map(item => item.code),
-			['L5011'],
-		);
+		const unanalyzed = validate(loaded.module, { ...validRequest, analyzed: false });
+		assert.deepEqual(unanalyzed.diagnostics.map(item => item.code), ['L5010']);
+		assert.deepEqual(unanalyzed.diagnostics[0]?.span, moduleSpan);
+
+		const missing = validate(loaded.module, { ...validRequest, hasMain: false });
+		assert.deepEqual(missing.diagnostics.map(item => item.code), ['L5011']);
+		assert.deepEqual(missing.diagnostics[0]?.span, moduleSpan);
+
+		const staleCandidate = validate(loaded.module, {
+			...validRequest,
+			candidateModulePath: 'src/other.virune',
+		});
+		assert.deepEqual(staleCandidate.diagnostics.map(item => item.code), ['L5011']);
+		assert.deepEqual(staleCandidate.diagnostics[0]?.span, candidateSpan);
+
 		const invalidFunction = validate(loaded.module, {
 			...validRequest,
 			isPublic: false,
@@ -110,13 +128,18 @@ test('project entry-point contract preserves Legacy L5010-L5016 diagnostics', as
 			['L5012', 'L5013', 'L5014', 'L5016'],
 		);
 		assert.deepEqual(
-			validate(loaded.module, {
-				...validRequest,
-				parameterCount: 1,
-				firstParameterType: 'Int',
-			}).diagnostics.map(item => item.code),
-			['L5015'],
+			invalidFunction.diagnostics.map(item => item.span),
+			[candidateSpan, candidateSpan, candidateSpan, returnSpan],
 		);
+
+		const invalidParameter = validate(loaded.module, {
+			...validRequest,
+			parameterCount: 1,
+			firstParameterType: 'Int',
+		});
+		assert.deepEqual(invalidParameter.diagnostics.map(item => item.code), ['L5015']);
+		assert.deepEqual(invalidParameter.diagnostics[0]?.span, parameterSpan);
+
 		assert.ok(invalidFunction.diagnostics.every(item => (
 			item.severity === 'error' && item.sourcePath === validRequest.entryPath
 		)));
@@ -137,14 +160,14 @@ test('project entry-point contract preserves Legacy L5010-L5016 diagnostics', as
 test('project entry-point JSON boundary rejects stale and malformed facts', async () => {
 	const loaded = await loadEntryPointModule();
 	try {
-		assert.deepEqual(
-			validate(loaded.module, { ...validRequest, version: '2' }).diagnostics.map(item => item.code),
-			['SHP2400'],
-		);
-		assert.deepEqual(
-			validate(loaded.module, { ...validRequest, parameterCount: -1 }).diagnostics.map(item => item.code),
-			['SHP2401'],
-		);
+		const unsupported = validate(loaded.module, { ...validRequest, version: '2' });
+		assert.deepEqual(unsupported.diagnostics.map(item => item.code), ['SHP2400']);
+		assert.deepEqual(unsupported.diagnostics[0]?.span, moduleSpan);
+
+		const invalidCounts = validate(loaded.module, { ...validRequest, parameterCount: -1 });
+		assert.deepEqual(invalidCounts.diagnostics.map(item => item.code), ['SHP2401']);
+		assert.deepEqual(invalidCounts.diagnostics[0]?.span, moduleSpan);
+
 		assert.equal(loaded.module.validateProjectEntryPointJson('{').$tag, 'Err');
 		assert.equal(loaded.module.validateProjectEntryPointJson('{}').$tag, 'Err');
 	} finally {
