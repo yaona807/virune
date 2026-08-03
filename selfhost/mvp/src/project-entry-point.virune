@@ -1,0 +1,161 @@
+//! Virune-authored executable entry-point validation over canonical Host facts.
+//!
+//! The Host remains responsible for parsing declarations and resolving semantic
+//! types. The self-host Kernel consumes only versioned, data-only facts and
+//! reproduces the stable `virune run` diagnostics without filesystem or
+//! TypeScript AST dependencies.
+
+import { MvpSpan } from "./model.virune"
+
+pub record ProjectEntryPointRequest derives Eq, Debug, Json {
+	version: String
+	analyzed: Bool
+	entryPath: String
+	candidateModulePath: String
+	hasMain: Bool
+	declarationKind: String
+	isPublic: Bool
+	typeParameterCount: Int
+	parameterCount: Int
+	firstParameterType: String
+	returnKind: String
+	moduleSpan: MvpSpan
+	candidateSpan: MvpSpan
+	parameterSpan: MvpSpan
+	returnSpan: MvpSpan
+}
+
+pub record ProjectEntryPointDiagnostic derives Eq, Debug, Json {
+	code: String
+	severity: String
+	message: String
+	sourcePath: String
+	span: MvpSpan
+}
+
+pub record ProjectEntryPointResult derives Eq, Debug, Json {
+	accepted: Bool
+	version: String
+	entryPath: String
+	diagnostics: List<ProjectEntryPointDiagnostic>
+}
+
+fn diagnostic(request: ProjectEntryPointRequest, code: String, message: String, valueSpan: MvpSpan) -> ProjectEntryPointDiagnostic {
+	return ProjectEntryPointDiagnostic {
+		code: code,
+		severity: "error",
+		message: message,
+		sourcePath: request.entryPath,
+		span: valueSpan,
+	}
+}
+
+fn result(request: ProjectEntryPointRequest, diagnostics: List<ProjectEntryPointDiagnostic>) -> ProjectEntryPointResult {
+	return ProjectEntryPointResult {
+		accepted: List.isEmpty(diagnostics),
+		version: request.version,
+		entryPath: request.entryPath,
+		diagnostics: diagnostics,
+	}
+}
+
+fn candidateIsEntryFunction(request: ProjectEntryPointRequest) -> Bool {
+	return request.hasMain &&
+		request.candidateModulePath == request.entryPath &&
+		request.declarationKind == "FunctionDeclaration"
+}
+
+fn missingMainSpan(request: ProjectEntryPointRequest) -> MvpSpan {
+	if request.hasMain {
+		return request.candidateSpan
+	}
+	return request.moduleSpan
+}
+
+fn validReturnKind(kind: String) -> Bool {
+	return kind == "unit" || kind == "result-unit"
+}
+
+pub fn validateProjectEntryPoint(request: ProjectEntryPointRequest) -> ProjectEntryPointResult {
+	if request.version != "1" {
+		return result(request, [diagnostic(
+			request,
+			"SHP2400",
+			"Unsupported entry-point contract version " + request.version,
+			request.moduleSpan,
+		)])
+	}
+	if request.typeParameterCount < 0 || request.parameterCount < 0 {
+		return result(request, [diagnostic(
+			request,
+			"SHP2401",
+			"Entry-point contract counts must be non-negative",
+			request.moduleSpan,
+		)])
+	}
+	if !request.analyzed {
+		return result(request, [diagnostic(
+			request,
+			"L5010",
+			"Entry module could not be analyzed",
+			request.moduleSpan,
+		)])
+	}
+	if !candidateIsEntryFunction(request) {
+		return result(request, [diagnostic(
+			request,
+			"L5011",
+			"Entry module must declare pub fn main",
+			missingMainSpan(request),
+		)])
+	}
+
+	let mut diagnostics: List<ProjectEntryPointDiagnostic> = []
+	if !request.isPublic {
+		diagnostics = List.append(diagnostics, diagnostic(
+			request,
+			"L5012",
+			"Entry function main must be public",
+			request.candidateSpan,
+		))
+	}
+	if request.typeParameterCount > 0 {
+		diagnostics = List.append(diagnostics, diagnostic(
+			request,
+			"L5013",
+			"Entry function main cannot be generic",
+			request.candidateSpan,
+		))
+	}
+	if request.parameterCount > 1 {
+		diagnostics = List.append(diagnostics, diagnostic(
+			request,
+			"L5014",
+			"Entry function main accepts zero parameters or one List<String> parameter",
+			request.candidateSpan,
+		))
+	} else if request.parameterCount == 1 && request.firstParameterType != "List<String>" {
+		diagnostics = List.append(diagnostics, diagnostic(
+			request,
+			"L5015",
+			"Entry function main parameter must be List<String>",
+			request.parameterSpan,
+		))
+	}
+	if !validReturnKind(request.returnKind) {
+		diagnostics = List.append(diagnostics, diagnostic(
+			request,
+			"L5016",
+			"Entry function main must return Unit or Result<Unit, E>",
+			request.returnSpan,
+		))
+	}
+	return result(request, diagnostics)
+}
+
+@jsExport
+pub fn validateProjectEntryPointJson(encoded: String) -> Result<String, List<JsonError>> {
+	let raw = Json.parse(encoded)?
+	let request = Json.decode<ProjectEntryPointRequest>(raw)?
+	return Json.encode<ProjectEntryPointResult>(validateProjectEntryPoint(request))
+}
