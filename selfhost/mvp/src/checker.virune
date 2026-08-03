@@ -837,6 +837,21 @@ fn checkFor(name: String, sourceIterableId: Int, bodyStatementIds: List<Int>, st
 	))
 }
 
+fn checkWhile(sourceConditionId: Int, bodyStatementIds: List<Int>, statementSpan: MvpSpan, context: CheckContext, statements: List<MvpHirStatement>, expressions: List<MvpHirExpression>) -> Result<CheckedStatement, MvpDiagnostic> {
+	let checkedCondition = checkExpression(sourceConditionId, context, expressions)?
+	if !typesCompatible(checkedCondition.valueType, MvpType.BoolType) {
+		let source = sourceExpressionAt(context, sourceConditionId)?
+		return Err(typeMismatch(checkedCondition.valueType, MvpType.BoolType, source.span))
+	}
+	let checkedBody = checkBlock(bodyStatementIds, context, statements, checkedCondition.expressions)?
+	return Ok(addHirStatement(
+		checkedBody.statements,
+		checkedBody.expressions,
+		context.bindings,
+		MvpHirStatement.HirWhile(checkedCondition.expressionId, checkedBody.statementIds, statementSpan),
+	))
+}
+
 fn checkIf(sourceConditionId: Int, consequentStatementIds: List<Int>, alternateStatementIds: List<Int>, statementSpan: MvpSpan, context: CheckContext, statements: List<MvpHirStatement>, expressions: List<MvpHirExpression>) -> Result<CheckedStatement, MvpDiagnostic> {
 	let checkedCondition = checkExpression(sourceConditionId, context, expressions)?
 	if !typesCompatible(checkedCondition.valueType, MvpType.BoolType) {
@@ -872,6 +887,7 @@ fn checkStatement(statementId: Int, context: CheckContext, statements: List<MvpH
 		LetValue(name, mutable, annotation, expressionId, valueSpan) => checkLet(name, mutable, annotation, expressionId, valueSpan, context, statements, expressions)
 		AssignValue(name, expressionId, valueSpan) => checkAssignment(name, expressionId, valueSpan, context, statements, expressions)
 		ForValue(name, iterableId, bodyStatementIds, valueSpan) => checkFor(name, iterableId, bodyStatementIds, valueSpan, context, statements, expressions)
+		WhileValue(conditionId, bodyStatementIds, valueSpan) => checkWhile(conditionId, bodyStatementIds, valueSpan, context, statements, expressions)
 		IfValue(conditionId, consequentStatementIds, alternateStatementIds, valueSpan) => checkIf(conditionId, consequentStatementIds, alternateStatementIds, valueSpan, context, statements, expressions)
 		ReturnValue(expressionId, valueSpan) => checkReturn(expressionId, valueSpan, context, statements, expressions)
 	}
