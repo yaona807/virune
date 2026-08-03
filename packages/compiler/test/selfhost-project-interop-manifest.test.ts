@@ -94,7 +94,7 @@ test('Interop Manifest validation canonicalizes modules, imports, and witness co
 	}
 });
 
-test('Interop Manifest validation rejects stale and malformed module metadata deterministically', async () => {
+test('Interop Manifest validation canonicalizes duplicate modules and diagnostics independently of request order', async () => {
 	const loaded = await loadManifestModule();
 	try {
 		const modules: readonly InteropModule[] = [
@@ -122,9 +122,14 @@ test('Interop Manifest validation rejects stale and malformed module metadata de
 		];
 		const first = validate(loaded.module, { version: '2', platform: 'node', modules });
 		const second = validate(loaded.module, { version: '2', platform: 'node', modules: [...modules].reverse() });
-		assert.deepEqual(first.diagnostics, second.diagnostics);
+		assert.deepEqual(first, second);
 		assert.equal(first.accepted, false);
-		assert.equal(second.accepted, false);
+		assert.deepEqual(first.modules[0], {
+			specifier: 'pkg',
+			imports: [],
+			resolutionWitness: null,
+		});
+		assert.equal(first.modules[1]?.imports.length, 4);
 		assert.deepEqual(first.diagnostics.map(item => item.code), [
 			'SHP2302',
 			'SHP2305',

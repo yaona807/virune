@@ -85,6 +85,13 @@ fn containsText(values: List<String>, expected: String) -> Bool {
 }
 
 fn importKey(value: ProjectInteropImport) -> String {
+	return match Json.encode<ProjectInteropImport>(value) {
+		Ok(encoded) => encoded
+		Err(_) => value.kind + "|" + optionText(value.importedName)
+	}
+}
+
+fn importDisplayKey(value: ProjectInteropImport) -> String {
 	return value.kind + "|" + optionText(value.importedName)
 }
 
@@ -140,8 +147,15 @@ fn sortText(values: List<String>) -> List<String> {
 	return result
 }
 
+fn moduleKey(value: ProjectInteropModule) -> String {
+	return match Json.encode<ProjectInteropModule>(value) {
+		Ok(encoded) => encoded
+		Err(_) => value.specifier
+	}
+}
+
 fn moduleLessThan(left: ProjectInteropModule, right: ProjectInteropModule) -> Bool {
-	return left.specifier < right.specifier
+	return moduleKey(left) < moduleKey(right)
 }
 
 fn insertModule(values: List<ProjectInteropModule>, value: ProjectInteropModule) -> List<ProjectInteropModule> {
@@ -244,7 +258,7 @@ fn validateImports(specifier: String, values: List<ProjectInteropImport>) -> Pro
 		}
 		let key = importKey(value)
 		if containsText(seen, key) {
-			diagnostics = List.append(diagnostics, diagnostic("SHP2307", "Duplicate interop import " + key, Some(specifier)))
+			diagnostics = List.append(diagnostics, diagnostic("SHP2307", "Duplicate interop import " + importDisplayKey(value), Some(specifier)))
 		} else {
 			seen = List.append(seen, key)
 		}
