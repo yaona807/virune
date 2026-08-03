@@ -142,6 +142,14 @@ fn expectText(cursor: Cursor, text: String) -> Result<Cursor, MvpDiagnostic> {
 	return Ok(advance(cursor))
 }
 
+fn expectFatArrow(cursor: Cursor) -> Result<Cursor, MvpDiagnostic> {
+	let first = tokenAt(cursor)
+	if first.text != "=" || tokenAt(advance(cursor)).text != ">" {
+		return Err(parseError("Expected => but found " + first.text, first))
+	}
+	return Ok(advance(advance(cursor)))
+}
+
 fn decodedString(token: MvpToken) -> Result<String, MvpDiagnostic> {
 	if token.kind != MvpTokenKind.StringLiteral || String.length(token.text) < 2 {
 		return Err(parseError("Expected import specifier string", token))
@@ -764,10 +772,129 @@ fn parseConditionalExpression(cursor: Cursor, expressions: List<MvpExpression>) 
 	}))
 }
 
+fn isUppercaseStart(value: String) -> Bool {
+	let first = String.slice(value, 0, Some(1))
+	return first >= "A" && first <= "Z"
+}
+
+fn parsePattern(cursor: Cursor, expressions: List<MvpExpression>) -> Result<ParsedExpression, MvpDiagnostic> {
+	let token = tokenAt(cursor)
+	if token.text == "_" {
+		return Ok(addExpression(advance(cursor), expressions, MvpExpression {
+			kind: "patternWildcard", text: token.text, literalType: None, children: [], span: token.span,
+		}))
+	}
+	if token.text == "true" || token.text == "false" {
+		return Ok(addExpression(advance(cursor), expressions, MvpExpression {
+			kind: "patternLiteral", text: token.text, literalType: Some(MvpType.BoolType), children: [], span: token.span,
+		}))
+	}
+	if token.kind == MvpTokenKind.Number {
+		let numberType = if String.contains(token.text, ".") then MvpType.FloatType else MvpType.IntType
+		return Ok(addExpression(advance(cursor), expressions, MvpExpression {
+			kind: "patternLiteral", text: token.text, literalType: Some(numberType), children: [], span: token.span,
+		}))
+	}
+	if token.kind == MvpTokenKind.StringLiteral {
+		return Ok(addExpression(advance(cursor), expressions, MvpExpression {
+			kind: "patternLiteral", text: token.text, literalType: Some(MvpType.StringType), children: [], span: token.span,
+		}))
+	}
+	if token.kind != MvpTokenKind.Identifier {
+		return Err(parseError("Expected match pattern", token))
+	}
+	let name = parseQualifiedName(cursor)?
+	let mut current = name.cursor
+	let mut arena = expressions
+	let mut children: List<Int> = []
+	if tokenAt(current).text == "(" {
+		current = skipNewLines(advance(current))
+		if tokenAt(current).text != ")" {
+			while true {
+				let parsedChild = parsePattern(current, arena)?
+				children = List.append(children, parsedChild.expressionId)
+				arena = parsedChild.expressions
+				current = skipNewLines(parsedChild.cursor)
+				if tokenAt(current).text == "," {
+					current = skipNewLines(advance(current))
+					if tokenAt(current).text == ")" {
+						break
+					}
+					continue
+				}
+				break
+			}
+		}
+		let close = tokenAt(current)
+		return Ok(addExpression(expectText(current, ")")?, arena, MvpExpression {
+			kind: "patternVariant",
+			text: name.text,
+			literalType: None,
+			children: children,
+			span: span(name.span.start, close.span.end),
+		}))
+	}
+	let kind = if isUppercaseStart(name.text) then "patternVariant" else "patternBinding"
+	return Ok(addExpression(current, arena, MvpExpression {
+		kind: kind,
+		text: name.text,
+		literalType: None,
+		children: [],
+		span: name.span,
+	}))
+}
+
+fn parseMatchExpression(cursor: Cursor, expressions: List<MvpExpression>) -> Result<ParsedExpression, MvpDiagnostic> {
+	let start = tokenAt(cursor)
+	let target = parseExpression(skipNewLines(advance(cursor)), expressions)?
+	let mut current = skipNewLines(expectText(skipNewLines(target.cursor), "{")?)
+	let mut arena = target.expressions
+	let mut armIds: List<Int> = []
+	while tokenAt(current).text != "}" && tokenAt(current).kind != MvpTokenKind.EndOfFile {
+		let pattern = parsePattern(current, arena)?
+		current = skipNewLines(expectFatArrow(skipNewLines(pattern.cursor))?)
+		let body = parseExpression(current, pattern.expressions)?
+		let patternValue = expressionAt(body.expressions, pattern.expressionId, start.span)?
+		let bodyValue = expressionAt(body.expressions, body.expressionId, start.span)?
+		let arm = addExpression(body.cursor, body.expressions, MvpExpression {
+			kind: "matchArm",
+			text: "=>",
+			literalType: None,
+			children: [pattern.expressionId, body.expressionId],
+			span: span(patternValue.span.start, bodyValue.span.end),
+		})
+		armIds = List.append(armIds, arm.expressionId)
+		arena = arm.expressions
+		current = skipNewLines(arm.cursor)
+		if tokenAt(current).text == "," {
+			current = skipNewLines(advance(current))
+		}
+	}
+	if List.isEmpty(armIds) {
+		return Err(parseError("Expected at least one match arm", tokenAt(current)))
+	}
+	let close = tokenAt(current)
+	let afterClose = expectText(current, "}")?
+	let mut children: List<Int> = [target.expressionId]
+	for armId in armIds {
+		children = List.append(children, armId)
+	}
+	return Ok(addExpression(afterClose, arena, MvpExpression {
+		kind: "match",
+		text: "match",
+		literalType: None,
+		children: children,
+		span: span(start.span.start, close.span.end),
+	}))
+}
+
 fn parsePrimary(cursor: Cursor, expressions: List<MvpExpression>) -> Result<ParsedExpression, MvpDiagnostic> {
 	let token = tokenAt(cursor)
 	if token.text == "if" {
 		return parseConditionalExpression(cursor, expressions)
+	}
+	if token.text == "match" {
+		return parseMatchExpression(cursor, expressions)
 	}
 	if token.text == "true" || token.text == "false" {
 		return Ok(addExpression(advance(cursor), expressions, MvpExpression {
