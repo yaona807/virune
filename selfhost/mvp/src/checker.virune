@@ -46,6 +46,7 @@ record CheckContext {
 	bindings: List<Binding>
 	returnType: MvpType
 	sourceExpressions: List<MvpExpression>
+	sourceStatements: List<MvpStatement>
 }
 
 record CheckedExpression {
@@ -60,8 +61,9 @@ record CheckedArguments {
 }
 
 record CheckedStatement {
-	value: MvpHirStatement
+	statementId: Int
 	bindings: List<Binding>
+	statements: List<MvpHirStatement>
 	expressions: List<MvpHirExpression>
 }
 
@@ -123,6 +125,13 @@ fn sourceExpressionAt(context: CheckContext, expressionId: Int) -> Result<MvpExp
 	}
 }
 
+fn sourceStatementAt(context: CheckContext, statementId: Int) -> Result<MvpStatement, MvpDiagnostic> {
+	return match List.get(context.sourceStatements, statementId) {
+		Some(value) => Ok(value)
+		None => Err(errorDiagnostic("L9001", "Missing source statement arena entry", zeroSpan()))
+	}
+}
+
 fn childAt(node: MvpExpression, index: Int) -> Result<Int, MvpDiagnostic> {
 	return match List.get(node.children, index) {
 		Some(value) => Ok(value)
@@ -142,6 +151,15 @@ fn addHir(expressions: List<MvpHirExpression>, node: MvpHirExpression, valueType
 		expressionId: List.length(expressions),
 		expressions: List.append(expressions, node),
 		valueType: valueType,
+	}
+}
+
+fn addHirStatement(statements: List<MvpHirStatement>, expressions: List<MvpHirExpression>, bindings: List<Binding>, statement: MvpHirStatement) -> CheckedStatement {
+	return CheckedStatement {
+		statementId: List.length(statements),
+		bindings: bindings,
+		statements: List.append(statements, statement),
+		expressions: expressions,
 	}
 }
 
@@ -452,7 +470,7 @@ fn checkExpression(expressionId: Int, context: CheckContext, expressions: List<M
 	return Err(errorDiagnostic("L9001", "Unknown MVP expression kind " + node.kind, node.span))
 }
 
-fn checkLet(name: String, mutable: Bool, annotation: MvpType?, sourceExpressionId: Int, statementSpan: MvpSpan, context: CheckContext, expressions: List<MvpHirExpression>) -> Result<CheckedStatement, MvpDiagnostic> {
+fn checkLet(name: String, mutable: Bool, annotation: MvpType?, sourceExpressionId: Int, statementSpan: MvpSpan, context: CheckContext, statements: List<MvpHirStatement>, expressions: List<MvpHirExpression>) -> Result<CheckedStatement, MvpDiagnostic> {
 	if match findBinding(context.bindings, name) { Some(_) => true, None => false } {
 		return Err(errorDiagnostic("L1007", "Local name " + name + " shadows an existing name", statementSpan))
 	}
@@ -462,14 +480,15 @@ fn checkLet(name: String, mutable: Bool, annotation: MvpType?, sourceExpressionI
 		let source = sourceExpressionAt(context, sourceExpressionId)?
 		return Err(typeMismatch(checked.valueType, expected, source.span))
 	}
-	return Ok(CheckedStatement {
-		value: MvpHirStatement.HirLet(name, mutable, expected, checked.expressionId, statementSpan),
-		bindings: List.append(context.bindings, Binding { name: name, valueType: expected, mutable: mutable }),
-		expressions: checked.expressions,
-	})
+	return Ok(addHirStatement(
+		statements,
+		checked.expressions,
+		List.append(context.bindings, Binding { name: name, valueType: expected, mutable: mutable }),
+		MvpHirStatement.HirLet(name, mutable, expected, checked.expressionId, statementSpan),
+	))
 }
 
-fn checkAssignment(name: String, sourceExpressionId: Int, statementSpan: MvpSpan, context: CheckContext, expressions: List<MvpHirExpression>) -> Result<CheckedStatement, MvpDiagnostic> {
+fn checkAssignment(name: String, sourceExpressionId: Int, statementSpan: MvpSpan, context: CheckContext, statements: List<MvpHirStatement>, expressions: List<MvpHirExpression>) -> Result<CheckedStatement, MvpDiagnostic> {
 	let found = findBinding(context.bindings, name)
 	if match found { Some(_) => false, None => true } {
 		return Err(errorDiagnostic("L1009", "Unknown name " + name, statementSpan))
@@ -486,14 +505,15 @@ fn checkAssignment(name: String, sourceExpressionId: Int, statementSpan: MvpSpan
 		let source = sourceExpressionAt(context, sourceExpressionId)?
 		return Err(typeMismatch(checked.valueType, binding.valueType, source.span))
 	}
-	return Ok(CheckedStatement {
-		value: MvpHirStatement.HirAssign(name, binding.valueType, checked.expressionId, statementSpan),
-		bindings: context.bindings,
-		expressions: checked.expressions,
-	})
+	return Ok(addHirStatement(
+		statements,
+		checked.expressions,
+		context.bindings,
+		MvpHirStatement.HirAssign(name, binding.valueType, checked.expressionId, statementSpan),
+	))
 }
 
-fn checkFor(name: String, sourceIterableId: Int, body: List<MvpStatement>, statementSpan: MvpSpan, context: CheckContext, expressions: List<MvpHirExpression>) -> Result<CheckedStatement, MvpDiagnostic> {
+fn checkFor(name: String, sourceIterableId: Int, bodyStatementIds: List<Int>, statementSpan: MvpSpan, context: CheckContext, statements: List<MvpHirStatement>, expressions: List<MvpHirExpression>) -> Result<CheckedStatement, MvpDiagnostic> {
 	if match findBinding(context.bindings, name) { Some(_) => true, None => false } {
 		return Err(errorDiagnostic("L1008", "Loop variable " + name + " shadows an existing name", statementSpan))
 	}
@@ -508,44 +528,50 @@ fn checkFor(name: String, sourceIterableId: Int, body: List<MvpStatement>, state
 		None => MvpType.ErrorType
 	}
 	let mut bodyBindings = List.append(context.bindings, Binding { name: name, valueType: loopType, mutable: false })
-	let mut checkedBody: List<MvpHirStatement> = []
-	let mut arena = checkedIterable.expressions
-	for statement in body {
-		let checked = checkStatement(statement, CheckContext {
+	let mut checkedBodyStatementIds: List<Int> = []
+	let mut statementArena = statements
+	let mut expressionArena = checkedIterable.expressions
+	for sourceStatementId in bodyStatementIds {
+		let checked = checkStatement(sourceStatementId, CheckContext {
 			signatures: context.signatures,
 			bindings: bodyBindings,
 			returnType: context.returnType,
 			sourceExpressions: context.sourceExpressions,
-		}, arena)?
-		checkedBody = List.append(checkedBody, checked.value)
+			sourceStatements: context.sourceStatements,
+		}, statementArena, expressionArena)?
+		checkedBodyStatementIds = List.append(checkedBodyStatementIds, checked.statementId)
 		bodyBindings = checked.bindings
-		arena = checked.expressions
+		statementArena = checked.statements
+		expressionArena = checked.expressions
 	}
-	return Ok(CheckedStatement {
-		value: MvpHirStatement.HirFor(name, loopType, checkedIterable.expressionId, checkedBody, statementSpan),
-		bindings: context.bindings,
-		expressions: arena,
-	})
+	return Ok(addHirStatement(
+		statementArena,
+		expressionArena,
+		context.bindings,
+		MvpHirStatement.HirFor(name, loopType, checkedIterable.expressionId, checkedBodyStatementIds, statementSpan),
+	))
 }
 
-fn checkReturn(sourceExpressionId: Int, statementSpan: MvpSpan, context: CheckContext, expressions: List<MvpHirExpression>) -> Result<CheckedStatement, MvpDiagnostic> {
+fn checkReturn(sourceExpressionId: Int, statementSpan: MvpSpan, context: CheckContext, statements: List<MvpHirStatement>, expressions: List<MvpHirExpression>) -> Result<CheckedStatement, MvpDiagnostic> {
 	let checked = checkExpression(sourceExpressionId, context, expressions)?
 	if checked.valueType != context.returnType {
 		return Err(typeMismatch(checked.valueType, context.returnType, statementSpan))
 	}
-	return Ok(CheckedStatement {
-		value: MvpHirStatement.HirReturn(checked.expressionId, statementSpan),
-		bindings: context.bindings,
-		expressions: checked.expressions,
-	})
+	return Ok(addHirStatement(
+		statements,
+		checked.expressions,
+		context.bindings,
+		MvpHirStatement.HirReturn(checked.expressionId, statementSpan),
+	))
 }
 
-fn checkStatement(statement: MvpStatement, context: CheckContext, expressions: List<MvpHirExpression>) -> Result<CheckedStatement, MvpDiagnostic> {
+fn checkStatement(statementId: Int, context: CheckContext, statements: List<MvpHirStatement>, expressions: List<MvpHirExpression>) -> Result<CheckedStatement, MvpDiagnostic> {
+	let statement = sourceStatementAt(context, statementId)?
 	return match statement {
-		LetValue(name, mutable, annotation, expressionId, valueSpan) => checkLet(name, mutable, annotation, expressionId, valueSpan, context, expressions)
-		AssignValue(name, expressionId, valueSpan) => checkAssignment(name, expressionId, valueSpan, context, expressions)
-		ForValue(name, iterableId, body, valueSpan) => checkFor(name, iterableId, body, valueSpan, context, expressions)
-		ReturnValue(expressionId, valueSpan) => checkReturn(expressionId, valueSpan, context, expressions)
+		LetValue(name, mutable, annotation, expressionId, valueSpan) => checkLet(name, mutable, annotation, expressionId, valueSpan, context, statements, expressions)
+		AssignValue(name, expressionId, valueSpan) => checkAssignment(name, expressionId, valueSpan, context, statements, expressions)
+		ForValue(name, iterableId, bodyStatementIds, valueSpan) => checkFor(name, iterableId, bodyStatementIds, valueSpan, context, statements, expressions)
+		ReturnValue(expressionId, valueSpan) => checkReturn(expressionId, valueSpan, context, statements, expressions)
 	}
 }
 
@@ -562,17 +588,20 @@ fn parameterBindings(parameters: List<MvpParameter>) -> Result<List<Binding>, Mv
 
 fn checkFunction(function: MvpFunction, signatures: List<Signature>) -> Result<MvpHirFunction, MvpDiagnostic> {
 	let mut bindings = parameterBindings(function.parameters)?
+	let mut statementIds: List<Int> = []
 	let mut statements: List<MvpHirStatement> = []
 	let mut expressions: List<MvpHirExpression> = []
-	for statement in function.statements {
-		let checked = checkStatement(statement, CheckContext {
+	for sourceStatementId in function.statementIds {
+		let checked = checkStatement(sourceStatementId, CheckContext {
 			signatures: signatures,
 			bindings: bindings,
 			returnType: function.returnType,
 			sourceExpressions: function.expressions,
-		}, expressions)?
-		statements = List.append(statements, checked.value)
+			sourceStatements: function.statements,
+		}, statements, expressions)?
+		statementIds = List.append(statementIds, checked.statementId)
 		bindings = checked.bindings
+		statements = checked.statements
 		expressions = checked.expressions
 	}
 	return Ok(MvpHirFunction {
@@ -581,6 +610,7 @@ fn checkFunction(function: MvpFunction, signatures: List<Signature>) -> Result<M
 		parameters: function.parameters,
 		returnType: function.returnType,
 		expressions: expressions,
+		statementIds: statementIds,
 		statements: statements,
 		span: function.span,
 	})
