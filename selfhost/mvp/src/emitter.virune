@@ -158,7 +158,8 @@ fn emitExpression(expressionId: Int, expressions: List<MvpHirExpression>) -> Str
 
 fn emitStatement(statement: MvpHirStatement, expressions: List<MvpHirExpression>) -> String {
 	return match statement {
-		HirLet(name, _, expressionId, _) => "\t\tconst " + name + " = " + emitExpression(expressionId, expressions) + ";\n"
+		HirLet(name, mutable, _, expressionId, _) => "\t\t" + (if mutable then "let " else "const ") + name + " = " + emitExpression(expressionId, expressions) + ";\n"
+		HirAssign(name, _, expressionId, _) => "\t\t" + name + " = " + emitExpression(expressionId, expressions) + ";\n"
 		HirReturn(expressionId, _) => "\t\treturn " + emitExpression(expressionId, expressions) + ";\n"
 	}
 }
