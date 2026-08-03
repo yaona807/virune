@@ -27,7 +27,12 @@ type EmitterResult = {
 	}[];
 	readonly dependencies: readonly unknown[];
 	readonly exportedSymbols: readonly unknown[];
-	readonly diagnostics: readonly { readonly code: string }[];
+	readonly diagnostics: readonly {
+		readonly code: string;
+		readonly message: string;
+		readonly sourcePath: string | null;
+		readonly outputPath: string | null;
+	}[];
 };
 
 test('project emitter canonicalizes modules and metadata independently of request order', async () => {
@@ -139,6 +144,108 @@ test('project emitter fails closed for duplicate outputs, multiline entries, and
 		assert.equal(result.accepted, false);
 		assert.deepEqual(result.emittedModules, []);
 		assert.deepEqual(result.diagnostics.map(item => item.code), ['SHP4006', 'SHP4004', 'SHP4008']);
+	} finally {
+		await rm(loaded.root, { recursive: true, force: true });
+	}
+});
+
+test('project emitter rejects dangling and duplicate metadata deterministically', async () => {
+	const loaded = await loadEmitter();
+	try {
+		const modules = [
+			{
+				sourcePath: 'src/main.virune',
+				outputPath: 'dist/main.js',
+				preamble: [],
+				statements: ['export function main() {}'],
+				sourceMap: '',
+			},
+			{
+				sourcePath: 'src/helper.virune',
+				outputPath: 'dist/helper.js',
+				preamble: [],
+				statements: ['export const value = 1;'],
+				sourceMap: '',
+			},
+		];
+		const validDependency = {
+			modulePath: 'src/main.virune',
+			sourceKind: 'virune',
+			specifier: './helper.virune',
+			resolvedPath: 'src/helper.virune',
+			typeOnly: false,
+			public: false,
+		};
+		const dependencies = [
+			{
+				modulePath: 'src/main.virune',
+				sourceKind: 'virune',
+				specifier: './unresolved.virune',
+				resolvedPath: null,
+				typeOnly: false,
+				public: false,
+			},
+			validDependency,
+			{
+				modulePath: 'src/ghost.virune',
+				sourceKind: 'javascript',
+				specifier: 'node:fs',
+				resolvedPath: null,
+				typeOnly: false,
+				public: false,
+			},
+			{
+				modulePath: 'src/main.virune',
+				sourceKind: 'virune',
+				specifier: './missing.virune',
+				resolvedPath: 'src/missing.virune',
+				typeOnly: false,
+				public: false,
+			},
+			validDependency,
+		];
+		const validExport = {
+			modulePath: 'src/main.virune',
+			name: 'main',
+			declarationKind: 'FunctionDeclaration',
+		};
+		const exportedSymbols = [
+			validExport,
+			{ modulePath: 'src/ghost.virune', name: 'ghost', declarationKind: 'FunctionDeclaration' },
+			validExport,
+		];
+		const first = emit(loaded.module, {
+			entryPath: 'src/main.virune',
+			modules,
+			dependencies,
+			exportedSymbols,
+		});
+		const second = emit(loaded.module, {
+			entryPath: 'src/main.virune',
+			modules: [...modules].reverse(),
+			dependencies: [...dependencies].reverse(),
+			exportedSymbols: [...exportedSymbols].reverse(),
+		});
+		assert.equal(first.accepted, false);
+		assert.equal(second.accepted, false);
+		assert.deepEqual(first, second);
+		assert.deepEqual(first.emittedModules, []);
+		assert.deepEqual(first.diagnostics.map(item => item.code), [
+			'SHP4009',
+			'SHP4012',
+			'SHP4010',
+			'SHP4010',
+			'SHP4011',
+			'SHP4013',
+		]);
+		assert.deepEqual(first.diagnostics.map(item => item.sourcePath), [
+			'src/ghost.virune',
+			'src/main.virune',
+			'src/main.virune',
+			'src/main.virune',
+			'src/ghost.virune',
+			'src/main.virune',
+		]);
 	} finally {
 		await rm(loaded.root, { recursive: true, force: true });
 	}
