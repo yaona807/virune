@@ -125,6 +125,64 @@ fn emitBinary(expression: MvpHirExpression, expressions: List<MvpHirExpression>)
 	return "(" + leftCode + " " + expression.text + " " + rightCode + ")"
 }
 
+fn patternPayload(valueCode: String, index: Int) -> String {
+	return "(" + valueCode + ").$values[" + Debug.format(index) + "]"
+}
+
+fn emitPatternCondition(patternId: Int, valueCode: String, expressions: List<MvpHirExpression>) -> String {
+	let pattern = expressionAt(expressions, patternId)
+	if pattern.kind == "patternWildcard" || pattern.kind == "patternBinding" {
+		return "true"
+	}
+	if pattern.kind == "patternLiteral" {
+		return "viruneEquals(" + valueCode + ", " + pattern.text + ")"
+	}
+	if pattern.kind == "patternVariant" {
+		let mut conditions: List<String> = ["(" + valueCode + "?.$tag === \"" + pattern.text + "\")"]
+		let mut index = 0
+		for childId in pattern.children {
+			conditions = List.append(conditions, emitPatternCondition(childId, patternPayload(valueCode, index), expressions))
+			index = index + 1
+		}
+		return "(" + String.join(conditions, " && ") + ")"
+	}
+	return panic("Unknown HIR match pattern kind " + pattern.kind)
+}
+
+fn emitPatternBindings(patternId: Int, valueCode: String, expressions: List<MvpHirExpression>, depth: Int) -> String {
+	let pattern = expressionAt(expressions, patternId)
+	if pattern.kind == "patternBinding" {
+		return indentation(depth) + "const " + pattern.text + " = " + valueCode + ";\n"
+	}
+	if pattern.kind != "patternVariant" {
+		return ""
+	}
+	let mut code = ""
+	let mut index = 0
+	for childId in pattern.children {
+		code = code + emitPatternBindings(childId, patternPayload(valueCode, index), expressions, depth)
+		index = index + 1
+	}
+	return code
+}
+
+fn emitMatch(expressionId: Int, expression: MvpHirExpression, expressions: List<MvpHirExpression>) -> String {
+	let targetCode = emitExpression(childAt(expression, 0), expressions)
+	let temporary = "$match" + Debug.format(expressionId)
+	let mut code = "(() => {\n\tconst " + temporary + " = " + targetCode + ";\n"
+	let mut index = 1
+	while index < List.length(expression.children) {
+		let arm = expressionAt(expressions, childAt(expression, index))
+		let patternId = childAt(arm, 0)
+		let bodyId = childAt(arm, 1)
+		let condition = emitPatternCondition(patternId, temporary, expressions)
+		let bindings = emitPatternBindings(patternId, temporary, expressions, 2)
+		code = code + "\tif (" + condition + ") {\n" + bindings + "\t\treturn " + emitExpression(bodyId, expressions) + ";\n\t}\n"
+		index = index + 1
+	}
+	return code + "\tthrow new Error(\"Non-exhaustive match\");\n})()"
+}
+
 fn emitExpression(expressionId: Int, expressions: List<MvpHirExpression>) -> String {
 	let expression = expressionAt(expressions, expressionId)
 	if expression.kind == "bool" || expression.kind == "number" || expression.kind == "string" {
@@ -150,6 +208,9 @@ fn emitExpression(expressionId: Int, expressions: List<MvpHirExpression>) -> Str
 	}
 	if expression.kind == "if" {
 		return emitConditional(expression, expressions)
+	}
+	if expression.kind == "match" {
+		return emitMatch(expressionId, expression, expressions)
 	}
 	if expression.kind == "index" {
 		return emitIndex(expression, expressions)
