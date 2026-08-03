@@ -58,11 +58,15 @@ const earlyReturnSource = [
 ].join('\n');
 
 const scopedLocalSource = [
-	'pub fn main() -> Int {',
-	'\tif true {',
+	'pub fn scoped(flag: Bool) -> Int {',
+	'\tif flag {',
 	'\t\tlet inner = 1',
 	'\t}',
 	'\treturn inner',
+	'}',
+	'',
+	'pub fn main() -> Int {',
+	'\treturn scoped(true)',
 	'}',
 	'',
 ].join('\n');
