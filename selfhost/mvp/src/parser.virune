@@ -349,7 +349,7 @@ fn consumeLineEnd(cursor: Cursor) -> Result<Cursor, MvpDiagnostic> {
 	return Err(parseError("Expected end of statement", token))
 }
 
-fn parseForIterable(cursor: Cursor, expressions: List<MvpExpression>) -> Result<ParsedExpression, MvpDiagnostic> {
+fn parseExpressionBeforeBlock(cursor: Cursor, expressions: List<MvpExpression>) -> Result<ParsedExpression, MvpDiagnostic> {
 	let token = tokenAt(cursor)
 	if token.kind == MvpTokenKind.Identifier {
 		let name = parseQualifiedName(cursor)?
@@ -393,6 +393,43 @@ fn parseStatement(cursor: Cursor, statements: List<MvpStatement>, expressions: L
 			MvpStatement.LetValue(nameToken.text, mutable, annotation, parsedExpression.expressionId, span(start.span.start, expression.span.end)),
 		))
 	}
+	if start.text == "if" {
+		let parsedCondition = parseExpressionBeforeBlock(skipNewLines(advance(cursor)), expressions)?
+		let mut current = skipNewLines(expectText(skipNewLines(parsedCondition.cursor), "{")?)
+		let mut consequentStatementIds: List<Int> = []
+		let mut statementArena = statements
+		let mut expressionArena = parsedCondition.expressions
+		while tokenAt(current).text != "}" && tokenAt(current).kind != MvpTokenKind.EndOfFile {
+			let parsedConsequent = parseStatement(current, statementArena, expressionArena)?
+			consequentStatementIds = List.append(consequentStatementIds, parsedConsequent.statementId)
+			statementArena = parsedConsequent.statements
+			expressionArena = parsedConsequent.expressions
+			current = skipNewLines(parsedConsequent.cursor)
+		}
+		let consequentClose = tokenAt(current)
+		current = expectText(current, "}")?
+		let mut alternateStatementIds: List<Int> = []
+		let mut endPosition = consequentClose.span.end
+		if tokenAt(current).text == "else" {
+			current = skipNewLines(expectText(skipNewLines(advance(current)), "{")?)
+			while tokenAt(current).text != "}" && tokenAt(current).kind != MvpTokenKind.EndOfFile {
+				let parsedAlternate = parseStatement(current, statementArena, expressionArena)?
+				alternateStatementIds = List.append(alternateStatementIds, parsedAlternate.statementId)
+				statementArena = parsedAlternate.statements
+				expressionArena = parsedAlternate.expressions
+				current = skipNewLines(parsedAlternate.cursor)
+			}
+			let alternateClose = tokenAt(current)
+			endPosition = alternateClose.span.end
+			current = expectText(current, "}")?
+		}
+		return Ok(addStatement(
+			consumeLineEnd(current)?,
+			statementArena,
+			expressionArena,
+			MvpStatement.IfValue(parsedCondition.expressionId, consequentStatementIds, alternateStatementIds, span(start.span.start, endPosition)),
+		))
+	}
 	if start.text == "for" {
 		let nameCursor = advance(cursor)
 		let nameToken = tokenAt(nameCursor)
@@ -400,7 +437,7 @@ fn parseStatement(cursor: Cursor, statements: List<MvpStatement>, expressions: L
 			return Err(parseError("Expected loop variable name", nameToken))
 		}
 		let afterIn = expectText(advance(nameCursor), "in")?
-		let parsedIterable = parseForIterable(afterIn, expressions)?
+		let parsedIterable = parseExpressionBeforeBlock(afterIn, expressions)?
 		let mut current = skipNewLines(expectText(skipNewLines(parsedIterable.cursor), "{")?)
 		let mut bodyStatementIds: List<Int> = []
 		let mut statementArena = statements
@@ -457,7 +494,7 @@ fn parseStatement(cursor: Cursor, statements: List<MvpStatement>, expressions: L
 			MvpStatement.AssignValue(start.text, parsedExpression.expressionId, span(start.span.start, expression.span.end)),
 		))
 	}
-	return Err(parseError("MVP supports only let, assignment, for, and return statements", start))
+	return Err(parseError("MVP supports only let, assignment, if, for, and return statements", start))
 }
 
 fn appendBinary(operator: MvpToken, leftId: Int, right: ParsedExpression, arena: List<MvpExpression>) -> Result<ParsedExpression, MvpDiagnostic> {
