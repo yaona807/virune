@@ -425,6 +425,28 @@ fn parseStatement(cursor: Cursor, statements: List<MvpStatement>, expressions: L
 			MvpStatement.IfValue(parsedCondition.expressionId, consequentStatementIds, alternateStatementIds, span(start.span.start, endPosition)),
 		))
 	}
+	if start.text == "while" {
+		let parsedCondition = parseExpressionBeforeBlock(skipNewLines(advance(cursor)), expressions)?
+		let mut current = skipNewLines(expectText(skipNewLines(parsedCondition.cursor), "{")?)
+		let mut bodyStatementIds: List<Int> = []
+		let mut statementArena = statements
+		let mut expressionArena = parsedCondition.expressions
+		while tokenAt(current).text != "}" && tokenAt(current).kind != MvpTokenKind.EndOfFile {
+			let parsedBodyStatement = parseStatement(current, statementArena, expressionArena)?
+			bodyStatementIds = List.append(bodyStatementIds, parsedBodyStatement.statementId)
+			statementArena = parsedBodyStatement.statements
+			expressionArena = parsedBodyStatement.expressions
+			current = skipNewLines(parsedBodyStatement.cursor)
+		}
+		let closeToken = tokenAt(current)
+		current = expectText(current, "}")?
+		return Ok(addStatement(
+			consumeLineEnd(current)?,
+			statementArena,
+			expressionArena,
+			MvpStatement.WhileValue(parsedCondition.expressionId, bodyStatementIds, span(start.span.start, closeToken.span.end)),
+		))
+	}
 	if start.text == "for" {
 		let nameCursor = advance(cursor)
 		let nameToken = tokenAt(nameCursor)
@@ -489,7 +511,7 @@ fn parseStatement(cursor: Cursor, statements: List<MvpStatement>, expressions: L
 			MvpStatement.AssignValue(start.text, parsedExpression.expressionId, span(start.span.start, expression.span.end)),
 		))
 	}
-	return Err(parseError("MVP supports only let, assignment, if, for, and return statements", start))
+	return Err(parseError("MVP supports only let, assignment, if, while, for, and return statements", start))
 }
 
 fn appendBinary(operator: MvpToken, leftId: Int, right: ParsedExpression, arena: List<MvpExpression>) -> Result<ParsedExpression, MvpDiagnostic> {
