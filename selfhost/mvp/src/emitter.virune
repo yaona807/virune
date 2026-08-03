@@ -180,6 +180,7 @@ fn emitStatement(statementId: Int, statements: List<MvpHirStatement>, expression
 		HirLet(name, mutable, _, expressionId, _) => prefix + (if mutable then "let " else "const ") + name + " = " + emitExpression(expressionId, expressions) + ";\n"
 		HirAssign(name, _, expressionId, _) => prefix + name + " = " + emitExpression(expressionId, expressions) + ";\n"
 		HirFor(name, _, iterableExpressionId, bodyStatementIds, _) => prefix + "for (const " + name + " of " + emitExpression(iterableExpressionId, expressions) + ") {\n" + emitStatements(bodyStatementIds, statements, expressions, depth + 1) + prefix + "}\n"
+		HirIf(conditionExpressionId, consequentStatementIds, alternateStatementIds, _) => prefix + "if (" + emitExpression(conditionExpressionId, expressions) + ") {\n" + emitStatements(consequentStatementIds, statements, expressions, depth + 1) + prefix + "}" + (if List.isEmpty(alternateStatementIds) then "\n" else " else {\n" + emitStatements(alternateStatementIds, statements, expressions, depth + 1) + prefix + "}\n")
 		HirReturn(expressionId, _) => prefix + "return " + emitExpression(expressionId, expressions) + ";\n"
 	}
 }
