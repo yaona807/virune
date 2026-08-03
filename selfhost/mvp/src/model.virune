@@ -84,7 +84,8 @@ pub record MvpExpression derives Json {
 }
 
 pub enum MvpStatement derives Json {
-	LetValue(String, MvpType?, Int, MvpSpan)
+	LetValue(String, Bool, MvpType?, Int, MvpSpan)
+	AssignValue(String, Int, MvpSpan)
 	ReturnValue(Int, MvpSpan)
 }
 
@@ -118,7 +119,8 @@ pub record MvpHirExpression derives Json {
 }
 
 pub enum MvpHirStatement derives Json {
-	HirLet(String, MvpType, Int, MvpSpan)
+	HirLet(String, Bool, MvpType, Int, MvpSpan)
+	HirAssign(String, MvpType, Int, MvpSpan)
 	HirReturn(Int, MvpSpan)
 }
 
