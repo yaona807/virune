@@ -470,9 +470,13 @@ fn checkLet(name: String, mutable: Bool, annotation: MvpType?, sourceExpressionI
 }
 
 fn checkAssignment(name: String, sourceExpressionId: Int, statementSpan: MvpSpan, context: CheckContext, expressions: List<MvpHirExpression>) -> Result<CheckedStatement, MvpDiagnostic> {
-	let binding = match findBinding(context.bindings, name) {
+	let found = findBinding(context.bindings, name)
+	if match found { Some(_) => false, None => true } {
+		return Err(errorDiagnostic("L1009", "Unknown name " + name, statementSpan))
+	}
+	let binding = match found {
 		Some(value) => value
-		None => return Err(errorDiagnostic("L1009", "Unknown name " + name, statementSpan))
+		None => Binding { name: name, valueType: MvpType.ErrorType, mutable: false }
 	}
 	if !binding.mutable {
 		return Err(errorDiagnostic("L2010", "Cannot assign to immutable name " + name, statementSpan))
