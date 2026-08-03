@@ -38,6 +38,7 @@ record Signature {
 record Binding {
 	name: String
 	valueType: MvpType
+	mutable: Bool
 }
 
 record CheckContext {
@@ -451,7 +452,7 @@ fn checkExpression(expressionId: Int, context: CheckContext, expressions: List<M
 	return Err(errorDiagnostic("L9001", "Unknown MVP expression kind " + node.kind, node.span))
 }
 
-fn checkLet(name: String, annotation: MvpType?, sourceExpressionId: Int, statementSpan: MvpSpan, context: CheckContext, expressions: List<MvpHirExpression>) -> Result<CheckedStatement, MvpDiagnostic> {
+fn checkLet(name: String, mutable: Bool, annotation: MvpType?, sourceExpressionId: Int, statementSpan: MvpSpan, context: CheckContext, expressions: List<MvpHirExpression>) -> Result<CheckedStatement, MvpDiagnostic> {
 	if match findBinding(context.bindings, name) { Some(_) => true, None => false } {
 		return Err(errorDiagnostic("L1007", "Local name " + name + " shadows an existing name", statementSpan))
 	}
@@ -462,8 +463,32 @@ fn checkLet(name: String, annotation: MvpType?, sourceExpressionId: Int, stateme
 		return Err(typeMismatch(checked.valueType, expected, source.span))
 	}
 	return Ok(CheckedStatement {
-		value: MvpHirStatement.HirLet(name, expected, checked.expressionId, statementSpan),
-		bindings: List.append(context.bindings, Binding { name: name, valueType: expected }),
+		value: MvpHirStatement.HirLet(name, mutable, expected, checked.expressionId, statementSpan),
+		bindings: List.append(context.bindings, Binding { name: name, valueType: expected, mutable: mutable }),
+		expressions: checked.expressions,
+	})
+}
+
+fn checkAssignment(name: String, sourceExpressionId: Int, statementSpan: MvpSpan, context: CheckContext, expressions: List<MvpHirExpression>) -> Result<CheckedStatement, MvpDiagnostic> {
+	let found = findBinding(context.bindings, name)
+	if match found { Some(_) => false, None => true } {
+		return Err(errorDiagnostic("L1009", "Unknown name " + name, statementSpan))
+	}
+	let binding = match found {
+		Some(value) => value
+		None => Binding { name: name, valueType: MvpType.ErrorType, mutable: false }
+	}
+	if !binding.mutable {
+		return Err(errorDiagnostic("L2010", "Cannot assign to immutable name " + name, statementSpan))
+	}
+	let checked = checkExpression(sourceExpressionId, context, expressions)?
+	if checked.valueType != binding.valueType {
+		let source = sourceExpressionAt(context, sourceExpressionId)?
+		return Err(typeMismatch(checked.valueType, binding.valueType, source.span))
+	}
+	return Ok(CheckedStatement {
+		value: MvpHirStatement.HirAssign(name, binding.valueType, checked.expressionId, statementSpan),
+		bindings: context.bindings,
 		expressions: checked.expressions,
 	})
 }
@@ -482,7 +507,8 @@ fn checkReturn(sourceExpressionId: Int, statementSpan: MvpSpan, context: CheckCo
 
 fn checkStatement(statement: MvpStatement, context: CheckContext, expressions: List<MvpHirExpression>) -> Result<CheckedStatement, MvpDiagnostic> {
 	return match statement {
-		LetValue(name, annotation, expressionId, valueSpan) => checkLet(name, annotation, expressionId, valueSpan, context, expressions)
+		LetValue(name, mutable, annotation, expressionId, valueSpan) => checkLet(name, mutable, annotation, expressionId, valueSpan, context, expressions)
+		AssignValue(name, expressionId, valueSpan) => checkAssignment(name, expressionId, valueSpan, context, expressions)
 		ReturnValue(expressionId, valueSpan) => checkReturn(expressionId, valueSpan, context, expressions)
 	}
 }
@@ -493,7 +519,7 @@ fn parameterBindings(parameters: List<MvpParameter>) -> Result<List<Binding>, Mv
 		if match findBinding(bindings, parameter.name) { Some(_) => true, None => false } {
 			return Err(errorDiagnostic("L1003", "Duplicate parameter " + parameter.name, parameter.span))
 		}
-		bindings = List.append(bindings, Binding { name: parameter.name, valueType: parameter.valueType })
+		bindings = List.append(bindings, Binding { name: parameter.name, valueType: parameter.valueType, mutable: false })
 	}
 	return Ok(bindings)
 }
