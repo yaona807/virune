@@ -350,19 +350,6 @@ fn consumeLineEnd(cursor: Cursor) -> Result<Cursor, MvpDiagnostic> {
 }
 
 fn parseExpressionBeforeBlock(cursor: Cursor, expressions: List<MvpExpression>) -> Result<ParsedExpression, MvpDiagnostic> {
-	let token = tokenAt(cursor)
-	if token.kind == MvpTokenKind.Identifier {
-		let name = parseQualifiedName(cursor)?
-		if tokenAt(name.cursor).text == "{" {
-			return Ok(addExpression(name.cursor, expressions, MvpExpression {
-				kind: "identifier",
-				text: name.text,
-				literalType: None,
-				children: [],
-				span: name.span,
-			}))
-		}
-	}
 	return parseExpression(cursor, expressions)
 }
 
@@ -702,6 +689,20 @@ fn parseListLiteral(cursor: Cursor, expressions: List<MvpExpression>) -> Result<
 	}))
 }
 
+fn looksLikeRecordLiteral(cursor: Cursor) -> Bool {
+	if tokenAt(cursor).text != "{" {
+		return false
+	}
+	let first = skipNewLines(advance(cursor))
+	if tokenAt(first).text == "}" {
+		return true
+	}
+	if tokenAt(first).kind != MvpTokenKind.Identifier {
+		return false
+	}
+	return tokenAt(advance(first)).text == ":"
+}
+
 fn parseRecordLiteral(name: ParsedName, expressions: List<MvpExpression>) -> Result<ParsedExpression, MvpDiagnostic> {
 	let mut current = skipNewLines(advance(name.cursor))
 	let mut arena = expressions
@@ -799,7 +800,7 @@ fn parsePrimary(cursor: Cursor, expressions: List<MvpExpression>) -> Result<Pars
 	if token.kind == MvpTokenKind.Identifier {
 		let name = parseQualifiedName(cursor)?
 		let afterName = name.cursor
-		if tokenAt(afterName).text == "{" {
+		if looksLikeRecordLiteral(afterName) {
 			return parseRecordLiteral(name, expressions)
 		}
 		if tokenAt(afterName).text != "(" {
