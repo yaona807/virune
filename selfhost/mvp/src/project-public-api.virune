@@ -1,0 +1,185 @@
+//! Virune-authored project public API validation over canonical Host facts.
+//!
+//! The Host remains responsible for parsing declarations, collecting local type
+//! visibility, and extracting referenced type names in Legacy insertion order.
+//! The self-host Kernel consumes only versioned, data-only facts and reproduces
+//! the stable `L4010` diagnostics without filesystem or TypeScript AST access.
+
+import { MvpSpan } from "./model.virune"
+
+pub record ProjectPublicApiTypeFact derives Eq, Debug, Json {
+	name: String
+	isPublic: Bool
+}
+
+pub record ProjectPublicApiDeclarationFact derives Eq, Debug, Json {
+	id: Int
+	name: String
+	kind: String
+	isPublic: Bool
+	referencedTypeNames: List<String>
+	span: MvpSpan
+}
+
+pub record ProjectPublicApiRequest derives Eq, Debug, Json {
+	version: String
+	sourcePath: String
+	moduleSpan: MvpSpan
+	localTypes: List<ProjectPublicApiTypeFact>
+	declarations: List<ProjectPublicApiDeclarationFact>
+}
+
+pub record ProjectPublicApiDiagnostic derives Eq, Debug, Json {
+	code: String
+	severity: String
+	message: String
+	sourcePath: String
+	span: MvpSpan
+}
+
+pub record ProjectPublicApiResult derives Eq, Debug, Json {
+	accepted: Bool
+	version: String
+	sourcePath: String
+	diagnostics: List<ProjectPublicApiDiagnostic>
+}
+
+record ProjectPublicApiTypeLookup {
+	found: Bool
+	isPublic: Bool
+}
+
+fn diagnostic(
+	request: ProjectPublicApiRequest,
+	code: String,
+	message: String,
+	valueSpan: MvpSpan,
+) -> ProjectPublicApiDiagnostic {
+	return ProjectPublicApiDiagnostic {
+		code: code,
+		severity: "error",
+		message: message,
+		sourcePath: request.sourcePath,
+		span: valueSpan,
+	}
+}
+
+fn result(
+	request: ProjectPublicApiRequest,
+	diagnostics: List<ProjectPublicApiDiagnostic>,
+) -> ProjectPublicApiResult {
+	return ProjectPublicApiResult {
+		accepted: List.isEmpty(diagnostics),
+		version: request.version,
+		sourcePath: request.sourcePath,
+		diagnostics: diagnostics,
+	}
+}
+
+fn declarationKindSupported(kind: String) -> Bool {
+	return kind == "FunctionDeclaration"
+		|| kind == "RecordDeclaration"
+		|| kind == "EnumDeclaration"
+		|| kind == "NewtypeDeclaration"
+		|| kind == "TypeAliasDeclaration"
+		|| kind == "TopLevelLetDeclaration"
+}
+
+fn containsString(values: List<String>, expected: String) -> Bool {
+	for value in values {
+		if value == expected {
+			return true
+		}
+	}
+	return false
+}
+
+fn lookupLocalType(
+	values: List<ProjectPublicApiTypeFact>,
+	name: String,
+) -> ProjectPublicApiTypeLookup {
+	let mut found = false
+	let mut isPublic = false
+	for value in values {
+		if value.name == name {
+			found = true
+			isPublic = value.isPublic
+		}
+	}
+	return ProjectPublicApiTypeLookup { found: found, isPublic: isPublic }
+}
+
+fn malformed(
+	request: ProjectPublicApiRequest,
+	message: String,
+	valueSpan: MvpSpan,
+) -> ProjectPublicApiResult {
+	return result(request, [diagnostic(request, "SHP2411", message, valueSpan)])
+}
+
+pub fn validateProjectPublicApi(request: ProjectPublicApiRequest) -> ProjectPublicApiResult {
+	if request.version != "1" {
+		return result(request, [diagnostic(
+			request,
+			"SHP2410",
+			"Unsupported public API contract version " + request.version,
+			request.moduleSpan,
+		)])
+	}
+	if String.length(request.sourcePath) == 0 {
+		return malformed(request, "Public API contract source path must be non-empty", request.moduleSpan)
+	}
+	for localType in request.localTypes {
+		if String.length(localType.name) == 0 {
+			return malformed(request, "Public API local type names must be non-empty", request.moduleSpan)
+		}
+	}
+
+	let mut expectedId = 0
+	for declaration in request.declarations {
+		if declaration.id != expectedId {
+			return malformed(request, "Public API declaration IDs must be contiguous", declaration.span)
+		}
+		if String.length(declaration.name) == 0 {
+			return malformed(request, "Public API declaration names must be non-empty", declaration.span)
+		}
+		if !declarationKindSupported(declaration.kind) {
+			return malformed(request, "Unknown public API declaration kind " + declaration.kind, declaration.span)
+		}
+		for referencedTypeName in declaration.referencedTypeNames {
+			if String.length(referencedTypeName) == 0 {
+				return malformed(request, "Public API referenced type names must be non-empty", declaration.span)
+			}
+		}
+		expectedId = expectedId + 1
+	}
+
+	let mut diagnostics: List<ProjectPublicApiDiagnostic> = []
+	for declaration in request.declarations {
+		if declaration.isPublic && declaration.kind != "NewtypeDeclaration" {
+			let mut seen: List<String> = []
+			for referencedTypeName in declaration.referencedTypeNames {
+				if !containsString(seen, referencedTypeName) {
+					seen = List.append(seen, referencedTypeName)
+					let visibility = lookupLocalType(request.localTypes, referencedTypeName)
+					if visibility.found && !visibility.isPublic {
+						diagnostics = List.append(diagnostics, diagnostic(
+							request,
+							"L4010",
+							"Public declaration " + declaration.name + " exposes private type " + referencedTypeName,
+							declaration.span,
+						))
+					}
+				}
+			}
+		}
+	}
+	return result(request, diagnostics)
+}
+
+@jsExport
+pub fn validateProjectPublicApiJson(encoded: String) -> Result<String, List<JsonError>> {
+	let raw = Json.parse(encoded)?
+	let request = Json.decode<ProjectPublicApiRequest>(raw)?
+	return Json.encode<ProjectPublicApiResult>(validateProjectPublicApi(request))
+}
