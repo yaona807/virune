@@ -339,11 +339,14 @@ fn consumeLineEnd(cursor: Cursor) -> Result<Cursor, MvpDiagnostic> {
 fn parseStatement(cursor: Cursor, expressions: List<MvpExpression>) -> Result<ParsedStatement, MvpDiagnostic> {
 	let start = tokenAt(cursor)
 	if start.text == "let" {
-		let nameToken = tokenAt(advance(cursor))
+		let afterLet = advance(cursor)
+		let mutable = tokenAt(afterLet).text == "mut"
+		let nameCursor = if mutable then advance(afterLet) else afterLet
+		let nameToken = tokenAt(nameCursor)
 		if nameToken.kind != MvpTokenKind.Identifier {
 			return Err(parseError("Expected local name", nameToken))
 		}
-		let mut current = advance(advance(cursor))
+		let mut current = advance(nameCursor)
 		let mut annotation: MvpType? = None
 		if tokenAt(current).text == ":" {
 			let parsedType = parseType(advance(current))?
@@ -355,7 +358,7 @@ fn parseStatement(cursor: Cursor, expressions: List<MvpExpression>) -> Result<Pa
 		let expression = expressionAt(parsedExpression.expressions, parsedExpression.expressionId, start.span)?
 		return Ok(ParsedStatement {
 			cursor: consumeLineEnd(parsedExpression.cursor)?,
-			value: MvpStatement.LetValue(nameToken.text, annotation, parsedExpression.expressionId, span(start.span.start, expression.span.end)),
+			value: MvpStatement.LetValue(nameToken.text, mutable, annotation, parsedExpression.expressionId, span(start.span.start, expression.span.end)),
 			expressions: parsedExpression.expressions,
 		})
 	}
@@ -383,7 +386,16 @@ fn parseStatement(cursor: Cursor, expressions: List<MvpExpression>) -> Result<Pa
 			expressions: parsedExpression.expressions,
 		})
 	}
-	return Err(parseError("MVP supports only let and return statements", start))
+	if start.kind == MvpTokenKind.Identifier && tokenAt(advance(cursor)).text == "=" {
+		let parsedExpression = parseExpression(advance(advance(cursor)), expressions)?
+		let expression = expressionAt(parsedExpression.expressions, parsedExpression.expressionId, start.span)?
+		return Ok(ParsedStatement {
+			cursor: consumeLineEnd(parsedExpression.cursor)?,
+			value: MvpStatement.AssignValue(start.text, parsedExpression.expressionId, span(start.span.start, expression.span.end)),
+			expressions: parsedExpression.expressions,
+		})
+	}
+	return Err(parseError("MVP supports only let, assignment, and return statements", start))
 }
 
 fn appendBinary(operator: MvpToken, leftId: Int, right: ParsedExpression, arena: List<MvpExpression>) -> Result<ParsedExpression, MvpDiagnostic> {
