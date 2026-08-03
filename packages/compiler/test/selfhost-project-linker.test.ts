@@ -81,7 +81,7 @@ test('project linker extracts imports and public declarations from parser AST', 
 	}
 });
 
-test('project linker canonicalizes metadata independently of module and declaration order', async () => {
+test('project linker canonicalizes metadata and reachability independently of module order', async () => {
 	const loaded = await loadLinker();
 	try {
 		const a = 'pub fn beta() -> Int {\n\treturn 1\n}\n';
@@ -103,8 +103,10 @@ test('project linker canonicalizes metadata independently of module and declarat
 			'}',
 			'',
 		].join('\n');
+		const unused = 'pub fn unused() -> Int {\n\treturn 4\n}\n';
 		const modules = [
 			{ path: 'src/z.virune', source: z, parse: parse(loaded.parser, z) },
+			{ path: 'src/unused.virune', source: unused, parse: parse(loaded.parser, unused) },
 			{ path: 'src/main.virune', source: main, parse: parse(loaded.parser, main) },
 			{ path: 'src/a.virune', source: a, parse: parse(loaded.parser, a) },
 		];
@@ -131,17 +133,18 @@ test('project linker canonicalizes metadata independently of module and declarat
 		const expectedExports = [
 			{ modulePath: 'src/a.virune', name: 'beta', declarationKind: 'FunctionDeclaration' },
 			{ modulePath: 'src/main.virune', name: 'main', declarationKind: 'FunctionDeclaration' },
+			{ modulePath: 'src/unused.virune', name: 'unused', declarationKind: 'FunctionDeclaration' },
 			{ modulePath: 'src/z.virune', name: 'alpha', declarationKind: 'FunctionDeclaration' },
 			{ modulePath: 'src/z.virune', name: 'zebra', declarationKind: 'FunctionDeclaration' },
 		];
 		assert.equal(first.accepted, true);
 		assert.equal(second.accepted, true);
+		assert.deepEqual(first, second);
 		assert.deepEqual(first.diagnostics, []);
-		assert.deepEqual(second.diagnostics, []);
 		assert.deepEqual(first.dependencies, expectedDependencies);
-		assert.deepEqual(second.dependencies, expectedDependencies);
 		assert.deepEqual(first.exportedSymbols, expectedExports);
-		assert.deepEqual(second.exportedSymbols, expectedExports);
+		assert.deepEqual(first.reachableModules, ['src/a.virune', 'src/main.virune', 'src/z.virune']);
+		assert.deepEqual(first.unreachableModules, ['src/unused.virune']);
 	} finally {
 		await rm(loaded.root, { recursive: true, force: true });
 	}
@@ -166,12 +169,16 @@ test('project linker reports cycles, duplicate imports, and missing targets dete
 			'}',
 			'',
 		].join('\n');
-		const result = link(loaded, 'src/a.virune', [
+		const modules = [
 			{ path: 'src/a.virune', source: a, parse: parse(loaded.parser, a) },
 			{ path: 'src/b.virune', source: b, parse: parse(loaded.parser, b) },
-		]);
-		assert.equal(result.accepted, false);
-		assert.deepEqual(result.diagnostics.map(item => item.code), [
+		];
+		const first = link(loaded, 'src/a.virune', modules);
+		const second = link(loaded, 'src/a.virune', [...modules].reverse());
+		assert.equal(first.accepted, false);
+		assert.equal(second.accepted, false);
+		assert.deepEqual(first.diagnostics, second.diagnostics);
+		assert.deepEqual(first.diagnostics.map(item => item.code), [
 			'SHP2105',
 			'SHP2102',
 			'SHP2105',
