@@ -83,10 +83,11 @@ pub record MvpExpression derives Json {
 	span: MvpSpan
 }
 
+/// Flat statement node. Nested statement bodies are arena indexes in `MvpFunction.statements`.
 pub enum MvpStatement derives Json {
 	LetValue(String, Bool, MvpType?, Int, MvpSpan)
 	AssignValue(String, Int, MvpSpan)
-	ForValue(String, Int, List<MvpStatement>, MvpSpan)
+	ForValue(String, Int, List<Int>, MvpSpan)
 	ReturnValue(Int, MvpSpan)
 }
 
@@ -102,6 +103,7 @@ pub record MvpFunction derives Json {
 	parameters: List<MvpParameter>
 	returnType: MvpType
 	expressions: List<MvpExpression>
+	statementIds: List<Int>
 	statements: List<MvpStatement>
 	span: MvpSpan
 }
@@ -119,10 +121,11 @@ pub record MvpHirExpression derives Json {
 	span: MvpSpan
 }
 
+/// Flat checked HIR statement. Nested bodies are arena indexes in `MvpHirFunction.statements`.
 pub enum MvpHirStatement derives Json {
 	HirLet(String, Bool, MvpType, Int, MvpSpan)
 	HirAssign(String, MvpType, Int, MvpSpan)
-	HirFor(String, MvpType, Int, List<MvpHirStatement>, MvpSpan)
+	HirFor(String, MvpType, Int, List<Int>, MvpSpan)
 	HirReturn(Int, MvpSpan)
 }
 
@@ -132,6 +135,7 @@ pub record MvpHirFunction derives Json {
 	parameters: List<MvpParameter>
 	returnType: MvpType
 	expressions: List<MvpHirExpression>
+	statementIds: List<Int>
 	statements: List<MvpHirStatement>
 	span: MvpSpan
 }
