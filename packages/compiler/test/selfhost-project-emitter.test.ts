@@ -30,19 +30,12 @@ type EmitterResult = {
 	readonly diagnostics: readonly { readonly code: string }[];
 };
 
-test('project emitter assembles deterministic modules and preserves metadata', async () => {
+test('project emitter canonicalizes modules and metadata independently of request order', async () => {
 	const loaded = await loadEmitter();
 	try {
 		const request = {
 			entryPath: 'src/main.virune',
 			modules: [
-				{
-					sourcePath: 'src/helper.virune',
-					outputPath: 'dist/helper.js',
-					preamble: [],
-					statements: ['export const value = 1;'],
-					sourceMap: '',
-				},
 				{
 					sourcePath: 'src/main.virune',
 					outputPath: 'dist/main.js',
@@ -50,26 +43,51 @@ test('project emitter assembles deterministic modules and preserves metadata', a
 					statements: ['export function main() {', '\treturn value;', '}'],
 					sourceMap: '',
 				},
+				{
+					sourcePath: 'src/helper.virune',
+					outputPath: 'dist/helper.js',
+					preamble: [],
+					statements: ['export const value = 1;'],
+					sourceMap: '',
+				},
 			],
-			dependencies: [{
-				modulePath: 'src/main.virune',
-				sourceKind: 'virune',
-				specifier: './helper.virune',
-				resolvedPath: 'src/helper.virune',
-				typeOnly: false,
-				public: false,
-			}],
+			dependencies: [
+				{
+					modulePath: 'src/main.virune',
+					sourceKind: 'virune',
+					specifier: './helper.virune',
+					resolvedPath: 'src/helper.virune',
+					typeOnly: false,
+					public: false,
+				},
+				{
+					modulePath: 'src/helper.virune',
+					sourceKind: 'javascript',
+					specifier: 'node:process',
+					resolvedPath: null,
+					typeOnly: false,
+					public: false,
+				},
+			],
 			exportedSymbols: [
-				{ modulePath: 'src/helper.virune', name: 'value', declarationKind: 'TopLevelValueDeclaration' },
 				{ modulePath: 'src/main.virune', name: 'main', declarationKind: 'FunctionDeclaration' },
+				{ modulePath: 'src/helper.virune', name: 'value', declarationKind: 'TopLevelValueDeclaration' },
 			],
 		};
 		const first = emit(loaded.module, request);
-		const second = emit(loaded.module, request);
-		assert.deepEqual(first, second);
+		const reordered = emit(loaded.module, {
+			...request,
+			modules: [...request.modules].reverse(),
+			dependencies: [...request.dependencies].reverse(),
+			exportedSymbols: [...request.exportedSymbols].reverse(),
+		});
+		assert.deepEqual(first, reordered);
 		assert.equal(first.accepted, true);
 		assert.deepEqual(first.diagnostics, []);
-		assert.equal(first.emittedModules.length, 2);
+		assert.deepEqual(
+			first.emittedModules.map(item => item.sourcePath),
+			['src/helper.virune', 'src/main.virune'],
+		);
 		assert.equal(
 			first.emittedModules[1]?.code,
 			[
@@ -81,8 +99,14 @@ test('project emitter assembles deterministic modules and preserves metadata', a
 				'',
 			].join('\n'),
 		);
-		assert.deepEqual(first.dependencies, request.dependencies);
-		assert.deepEqual(first.exportedSymbols, request.exportedSymbols);
+		assert.deepEqual(first.dependencies, [
+			request.dependencies[1],
+			request.dependencies[0],
+		]);
+		assert.deepEqual(first.exportedSymbols, [
+			request.exportedSymbols[1],
+			request.exportedSymbols[0],
+		]);
 	} finally {
 		await rm(loaded.root, { recursive: true, force: true });
 	}
