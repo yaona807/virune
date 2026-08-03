@@ -72,6 +72,30 @@ fn emptyTextList() -> List<String> {
 	return values
 }
 
+fn insertText(values: List<String>, value: String) -> List<String> {
+	let mut result: List<String> = []
+	let mut inserted = false
+	for current in values {
+		if !inserted && value < current {
+			result = List.append(result, value)
+			inserted = true
+		}
+		result = List.append(result, current)
+	}
+	if !inserted {
+		result = List.append(result, value)
+	}
+	return result
+}
+
+fn sortTexts(values: List<String>) -> List<String> {
+	let mut result: List<String> = []
+	for value in values {
+		result = insertText(result, value)
+	}
+	return result
+}
+
 fn charAt(value: String, index: Int) -> String {
 	return String.slice(value, index, Some(index + 1))
 }
@@ -165,13 +189,7 @@ fn dependencyKey(value: ProjectLinkDependency) -> String {
 }
 
 fn dependencyLessThan(left: ProjectLinkDependency, right: ProjectLinkDependency) -> Bool {
-	if left.modulePath != right.modulePath {
-		return left.modulePath < right.modulePath
-	}
-	if left.sourceKind != right.sourceKind {
-		return left.sourceKind < right.sourceKind
-	}
-	return left.specifier < right.specifier
+	return dependencyKey(left) < dependencyKey(right)
 }
 
 fn insertDependency(values: List<ProjectLinkDependency>, value: ProjectLinkDependency) -> List<ProjectLinkDependency> {
@@ -379,10 +397,11 @@ pub fn linkProject(request: ProjectLinkRequest) -> ProjectLinkResult {
 			exportedSymbols = List.append(exportedSymbols, exported)
 		}
 	}
-	for diagnostic in graphDiagnostics(request, dependencies) {
+	let sortedDependencies = sortDependencies(dependencies)
+	for diagnostic in graphDiagnostics(request, sortedDependencies) {
 		diagnostics = List.append(diagnostics, diagnostic)
 	}
-	let reachableSet: List<String> = if moduleExists(request.modules, request.entryPath) then collectReachable(dependencies, request.entryPath, emptyTextList()) else emptyTextList()
+	let reachableSet: List<String> = if moduleExists(request.modules, request.entryPath) then collectReachable(sortedDependencies, request.entryPath, emptyTextList()) else emptyTextList()
 	let mut reachableModules: List<String> = []
 	let mut unreachableModules: List<String> = []
 	for projectModule in request.modules {
@@ -394,10 +413,10 @@ pub fn linkProject(request: ProjectLinkRequest) -> ProjectLinkResult {
 	}
 	return ProjectLinkResult {
 		accepted: List.length(diagnostics) == 0,
-		dependencies: sortDependencies(dependencies),
+		dependencies: sortedDependencies,
 		exportedSymbols: sortExports(exportedSymbols),
-		reachableModules: reachableModules,
-		unreachableModules: unreachableModules,
+		reachableModules: sortTexts(reachableModules),
+		unreachableModules: sortTexts(unreachableModules),
 		diagnostics: diagnostics,
 	}
 }
