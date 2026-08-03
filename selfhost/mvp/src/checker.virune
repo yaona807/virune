@@ -493,6 +493,41 @@ fn checkAssignment(name: String, sourceExpressionId: Int, statementSpan: MvpSpan
 	})
 }
 
+fn checkFor(name: String, sourceIterableId: Int, body: List<MvpStatement>, statementSpan: MvpSpan, context: CheckContext, expressions: List<MvpHirExpression>) -> Result<CheckedStatement, MvpDiagnostic> {
+	if match findBinding(context.bindings, name) { Some(_) => true, None => false } {
+		return Err(errorDiagnostic("L1008", "Loop variable " + name + " shadows an existing name", statementSpan))
+	}
+	let checkedIterable = checkExpression(sourceIterableId, context, expressions)?
+	let itemType = if checkedIterable.valueType == MvpType.StringType then Some(MvpType.StringType) else listElementType(checkedIterable.valueType)
+	if match itemType { Some(_) => false, None => true } {
+		let source = sourceExpressionAt(context, sourceIterableId)?
+		return Err(errorDiagnostic("L2004", "for requires an iterable List, Set, Map, or String value", source.span))
+	}
+	let loopType = match itemType {
+		Some(value) => value
+		None => MvpType.ErrorType
+	}
+	let mut bodyBindings = List.append(context.bindings, Binding { name: name, valueType: loopType, mutable: false })
+	let mut checkedBody: List<MvpHirStatement> = []
+	let mut arena = checkedIterable.expressions
+	for statement in body {
+		let checked = checkStatement(statement, CheckContext {
+			signatures: context.signatures,
+			bindings: bodyBindings,
+			returnType: context.returnType,
+			sourceExpressions: context.sourceExpressions,
+		}, arena)?
+		checkedBody = List.append(checkedBody, checked.value)
+		bodyBindings = checked.bindings
+		arena = checked.expressions
+	}
+	return Ok(CheckedStatement {
+		value: MvpHirStatement.HirFor(name, loopType, checkedIterable.expressionId, checkedBody, statementSpan),
+		bindings: context.bindings,
+		expressions: arena,
+	})
+}
+
 fn checkReturn(sourceExpressionId: Int, statementSpan: MvpSpan, context: CheckContext, expressions: List<MvpHirExpression>) -> Result<CheckedStatement, MvpDiagnostic> {
 	let checked = checkExpression(sourceExpressionId, context, expressions)?
 	if checked.valueType != context.returnType {
@@ -509,6 +544,7 @@ fn checkStatement(statement: MvpStatement, context: CheckContext, expressions: L
 	return match statement {
 		LetValue(name, mutable, annotation, expressionId, valueSpan) => checkLet(name, mutable, annotation, expressionId, valueSpan, context, expressions)
 		AssignValue(name, expressionId, valueSpan) => checkAssignment(name, expressionId, valueSpan, context, expressions)
+		ForValue(name, iterableId, body, valueSpan) => checkFor(name, iterableId, body, valueSpan, context, expressions)
 		ReturnValue(expressionId, valueSpan) => checkReturn(expressionId, valueSpan, context, expressions)
 	}
 }
