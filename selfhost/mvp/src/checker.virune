@@ -67,6 +67,12 @@ record CheckedStatement {
 	expressions: List<MvpHirExpression>
 }
 
+record CheckedBlock {
+	statementIds: List<Int>
+	statements: List<MvpHirStatement>
+	expressions: List<MvpHirExpression>
+}
+
 record MvpCheckResult derives Json {
 	hirModule: MvpHirModule?
 	diagnostics: List<MvpDiagnostic>
@@ -513,6 +519,27 @@ fn checkAssignment(name: String, sourceExpressionId: Int, statementSpan: MvpSpan
 	))
 }
 
+fn checkBlock(sourceStatementIds: List<Int>, context: CheckContext, statements: List<MvpHirStatement>, expressions: List<MvpHirExpression>) -> Result<CheckedBlock, MvpDiagnostic> {
+	let mut blockBindings = context.bindings
+	let mut checkedStatementIds: List<Int> = []
+	let mut statementArena = statements
+	let mut expressionArena = expressions
+	for sourceStatementId in sourceStatementIds {
+		let checked = checkStatement(sourceStatementId, CheckContext {
+			signatures: context.signatures,
+			bindings: blockBindings,
+			returnType: context.returnType,
+			sourceExpressions: context.sourceExpressions,
+			sourceStatements: context.sourceStatements,
+		}, statementArena, expressionArena)?
+		checkedStatementIds = List.append(checkedStatementIds, checked.statementId)
+		blockBindings = checked.bindings
+		statementArena = checked.statements
+		expressionArena = checked.expressions
+	}
+	return Ok(CheckedBlock { statementIds: checkedStatementIds, statements: statementArena, expressions: expressionArena })
+}
+
 fn checkFor(name: String, sourceIterableId: Int, bodyStatementIds: List<Int>, statementSpan: MvpSpan, context: CheckContext, statements: List<MvpHirStatement>, expressions: List<MvpHirExpression>) -> Result<CheckedStatement, MvpDiagnostic> {
 	if match findBinding(context.bindings, name) { Some(_) => true, None => false } {
 		return Err(errorDiagnostic("L1008", "Loop variable " + name + " shadows an existing name", statementSpan))
@@ -527,28 +554,35 @@ fn checkFor(name: String, sourceIterableId: Int, bodyStatementIds: List<Int>, st
 		Some(value) => value
 		None => MvpType.ErrorType
 	}
-	let mut bodyBindings = List.append(context.bindings, Binding { name: name, valueType: loopType, mutable: false })
-	let mut checkedBodyStatementIds: List<Int> = []
-	let mut statementArena = statements
-	let mut expressionArena = checkedIterable.expressions
-	for sourceStatementId in bodyStatementIds {
-		let checked = checkStatement(sourceStatementId, CheckContext {
-			signatures: context.signatures,
-			bindings: bodyBindings,
-			returnType: context.returnType,
-			sourceExpressions: context.sourceExpressions,
-			sourceStatements: context.sourceStatements,
-		}, statementArena, expressionArena)?
-		checkedBodyStatementIds = List.append(checkedBodyStatementIds, checked.statementId)
-		bodyBindings = checked.bindings
-		statementArena = checked.statements
-		expressionArena = checked.expressions
+	let loopContext = CheckContext {
+		signatures: context.signatures,
+		bindings: List.append(context.bindings, Binding { name: name, valueType: loopType, mutable: false }),
+		returnType: context.returnType,
+		sourceExpressions: context.sourceExpressions,
+		sourceStatements: context.sourceStatements,
 	}
+	let checkedBody = checkBlock(bodyStatementIds, loopContext, statements, checkedIterable.expressions)?
 	return Ok(addHirStatement(
-		statementArena,
-		expressionArena,
+		checkedBody.statements,
+		checkedBody.expressions,
 		context.bindings,
-		MvpHirStatement.HirFor(name, loopType, checkedIterable.expressionId, checkedBodyStatementIds, statementSpan),
+		MvpHirStatement.HirFor(name, loopType, checkedIterable.expressionId, checkedBody.statementIds, statementSpan),
+	))
+}
+
+fn checkIf(sourceConditionId: Int, consequentStatementIds: List<Int>, alternateStatementIds: List<Int>, statementSpan: MvpSpan, context: CheckContext, statements: List<MvpHirStatement>, expressions: List<MvpHirExpression>) -> Result<CheckedStatement, MvpDiagnostic> {
+	let checkedCondition = checkExpression(sourceConditionId, context, expressions)?
+	if checkedCondition.valueType != MvpType.BoolType {
+		let source = sourceExpressionAt(context, sourceConditionId)?
+		return Err(typeMismatch(checkedCondition.valueType, MvpType.BoolType, source.span))
+	}
+	let checkedConsequent = checkBlock(consequentStatementIds, context, statements, checkedCondition.expressions)?
+	let checkedAlternate = checkBlock(alternateStatementIds, context, checkedConsequent.statements, checkedConsequent.expressions)?
+	return Ok(addHirStatement(
+		checkedAlternate.statements,
+		checkedAlternate.expressions,
+		context.bindings,
+		MvpHirStatement.HirIf(checkedCondition.expressionId, checkedConsequent.statementIds, checkedAlternate.statementIds, statementSpan),
 	))
 }
 
@@ -571,6 +605,7 @@ fn checkStatement(statementId: Int, context: CheckContext, statements: List<MvpH
 		LetValue(name, mutable, annotation, expressionId, valueSpan) => checkLet(name, mutable, annotation, expressionId, valueSpan, context, statements, expressions)
 		AssignValue(name, expressionId, valueSpan) => checkAssignment(name, expressionId, valueSpan, context, statements, expressions)
 		ForValue(name, iterableId, bodyStatementIds, valueSpan) => checkFor(name, iterableId, bodyStatementIds, valueSpan, context, statements, expressions)
+		IfValue(conditionId, consequentStatementIds, alternateStatementIds, valueSpan) => checkIf(conditionId, consequentStatementIds, alternateStatementIds, valueSpan, context, statements, expressions)
 		ReturnValue(expressionId, valueSpan) => checkReturn(expressionId, valueSpan, context, statements, expressions)
 	}
 }
