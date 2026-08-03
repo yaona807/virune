@@ -18,6 +18,7 @@ import {
 	errorDiagnostic,
 	listElementType,
 	listType,
+	optionalElementType,
 	span,
 	typeName,
 } from "./model.virune"
@@ -60,6 +61,12 @@ record CheckedArguments {
 	expressions: List<MvpHirExpression>
 }
 
+record CheckedPattern {
+	expressionId: Int
+	bindings: List<Binding>
+	expressions: List<MvpHirExpression>
+}
+
 record CheckedStatement {
 	statementId: Int
 	bindings: List<Binding>
@@ -86,6 +93,17 @@ fn zeroSpan() -> MvpSpan {
 
 fn typeMismatch(actual: MvpType, expected: MvpType, valueSpan: MvpSpan) -> MvpDiagnostic {
 	return errorDiagnostic("L2043", typeName(actual) + " cannot be used as " + typeName(expected), valueSpan)
+}
+
+fn typesCompatible(actual: MvpType, expected: MvpType) -> Bool {
+	return actual == expected || actual == MvpType.ErrorType || expected == MvpType.ErrorType
+}
+
+fn preferredType(left: MvpType, right: MvpType) -> MvpType {
+	if left == MvpType.ErrorType {
+		return right
+	}
+	return left
 }
 
 fn parameterTypes(parameters: List<MvpParameter>) -> List<MvpType> {
@@ -184,6 +202,130 @@ fn literalType(node: MvpExpression) -> Result<MvpType, MvpDiagnostic> {
 	}
 }
 
+fn compactTypeName(value: String) -> String {
+	let mut result = ""
+	for character in String.codePoints(value) {
+		if character != " " && character != "\t" && character != "\r" && character != "\n" {
+			result = result + character
+		}
+	}
+	return result
+}
+
+fn genericArgument(value: String, requestedIndex: Int) -> String? {
+	let chars = String.codePoints(value)
+	let mut started = false
+	let mut depth = 0
+	let mut argumentIndex = 0
+	let mut result = ""
+	for character in chars {
+		if character == "<" {
+			if !started {
+				started = true
+				depth = 1
+				continue
+			}
+			depth = depth + 1
+			if argumentIndex == requestedIndex {
+				result = result + character
+			}
+			continue
+		}
+		if !started {
+			continue
+		}
+		if character == ">" {
+			depth = depth - 1
+			if depth == 0 {
+				return if argumentIndex == requestedIndex then Some(compactTypeName(result)) else None
+			}
+			if argumentIndex == requestedIndex {
+				result = result + character
+			}
+			continue
+		}
+		if character == "," && depth == 1 {
+			if argumentIndex == requestedIndex {
+				return Some(compactTypeName(result))
+			}
+			argumentIndex = argumentIndex + 1
+			result = ""
+			continue
+		}
+		if argumentIndex == requestedIndex {
+			result = result + character
+		}
+	}
+	return None
+}
+
+fn typeFromName(value: String) -> MvpType {
+	let compact = compactTypeName(value)
+	if compact == "Bool" {
+		return MvpType.BoolType
+	}
+	if compact == "Int" {
+		return MvpType.IntType
+	}
+	if compact == "Float" {
+		return MvpType.FloatType
+	}
+	if compact == "String" {
+		return MvpType.StringType
+	}
+	if compact == "Unit" {
+		return MvpType.UnitType
+	}
+	if String.contains(compact, "List<") {
+		let elementName = genericArgument(compact, 0)
+		if match elementName { Some(_) => true, None => false } {
+			let elementType = match elementName { Some(name) => typeFromName(name), None => MvpType.ErrorType }
+			return match listType(elementType) {
+				Some(result) => result
+				None => MvpType.ErrorType
+			}
+		}
+	}
+	return MvpType.NamedType(compact)
+}
+
+fn namedVariantPayloadType(typeNameValue: String, variantName: String, index: Int) -> MvpType {
+	if String.contains(typeNameValue, "Result<") {
+		let requested = if variantName == "Ok" then 0 else if variantName == "Err" then 1 else -1
+		if requested >= 0 && index == 0 {
+			return match genericArgument(typeNameValue, requested) {
+				Some(name) => typeFromName(name)
+				None => MvpType.ErrorType
+			}
+		}
+	}
+	if typeNameValue == "MvpType" && index == 0 {
+		if variantName == "ListType" {
+			return MvpType.NamedType("MvpListElementType")
+		}
+		if variantName == "OptionalType" {
+			return MvpType.NamedType("MvpOptionalElementType")
+		}
+		if variantName == "NamedType" || variantName == "NamedListType" || variantName == "NamedOptionalType" || variantName == "NamedListOptionalType" {
+			return MvpType.StringType
+		}
+	}
+	return MvpType.ErrorType
+}
+
+fn variantPayloadType(targetType: MvpType, variantName: String, index: Int) -> MvpType {
+	if variantName == "Some" && index == 0 {
+		return match optionalElementType(targetType) {
+			Some(value) => value
+			None => MvpType.ErrorType
+		}
+	}
+	return match targetType {
+		NamedType(name) => namedVariantPayloadType(name, variantName, index)
+		_ => MvpType.ErrorType
+	}
+}
+
 fn checkLiteral(node: MvpExpression, expressions: List<MvpHirExpression>) -> Result<CheckedExpression, MvpDiagnostic> {
 	let valueType = literalType(node)?
 	return Ok(addHir(expressions, MvpHirExpression {
@@ -219,7 +361,7 @@ fn checkArguments(node: MvpExpression, expected: List<MvpType>, context: CheckCo
 		let sourceId = childAt(node, index)?
 		let expectedType = expectedAt(expected, index, node.span)?
 		let checked = checkExpression(sourceId, context, arena)?
-		if checked.valueType != expectedType {
+		if !typesCompatible(checked.valueType, expectedType) {
 			let source = sourceExpressionAt(context, sourceId)?
 			return Err(typeMismatch(checked.valueType, expectedType, source.span))
 		}
@@ -252,7 +394,7 @@ fn checkUnary(node: MvpExpression, context: CheckContext, expressions: List<MvpH
 	let sourceId = childAt(node, 0)?
 	let checked = checkExpression(sourceId, context, expressions)?
 	if node.text == "!" {
-		if checked.valueType != MvpType.BoolType {
+		if !typesCompatible(checked.valueType, MvpType.BoolType) {
 			let source = sourceExpressionAt(context, sourceId)?
 			return Err(typeMismatch(checked.valueType, MvpType.BoolType, source.span))
 		}
@@ -261,7 +403,7 @@ fn checkUnary(node: MvpExpression, context: CheckContext, expressions: List<MvpH
 			children: [checked.expressionId], span: node.span,
 		}, MvpType.BoolType))
 	}
-	if !isNumeric(checked.valueType) {
+	if checked.valueType != MvpType.ErrorType && !isNumeric(checked.valueType) {
 		return Err(errorDiagnostic("L2017", "Unary minus requires a numeric value", node.span))
 	}
 	return Ok(addHir(checked.expressions, MvpHirExpression {
@@ -286,40 +428,41 @@ fn checkBinary(node: MvpExpression, context: CheckContext, expressions: List<Mvp
 	let left = checkExpression(leftSourceId, context, expressions)?
 	let right = checkExpression(rightSourceId, context, left.expressions)?
 	if node.text == "&&" || node.text == "||" {
-		if left.valueType != MvpType.BoolType {
+		if !typesCompatible(left.valueType, MvpType.BoolType) {
 			let source = sourceExpressionAt(context, leftSourceId)?
 			return Err(typeMismatch(left.valueType, MvpType.BoolType, source.span))
 		}
-		if right.valueType != MvpType.BoolType {
+		if !typesCompatible(right.valueType, MvpType.BoolType) {
 			let source = sourceExpressionAt(context, rightSourceId)?
 			return Err(typeMismatch(right.valueType, MvpType.BoolType, source.span))
 		}
 		return Ok(checkedBinary(node, left, right, MvpType.BoolType))
 	}
 	if node.text == "==" || node.text == "!=" {
-		if left.valueType != right.valueType {
+		if !typesCompatible(left.valueType, right.valueType) {
 			let source = sourceExpressionAt(context, rightSourceId)?
 			return Err(typeMismatch(right.valueType, left.valueType, source.span))
 		}
 		return Ok(checkedBinary(node, left, right, MvpType.BoolType))
 	}
+	let operandType = preferredType(left.valueType, right.valueType)
 	if node.text == "<" || node.text == "<=" || node.text == ">" || node.text == ">=" {
-		if left.valueType != right.valueType || !isOrdered(left.valueType) {
+		if !typesCompatible(left.valueType, right.valueType) || (operandType != MvpType.ErrorType && !isOrdered(operandType)) {
 			return Err(errorDiagnostic("L2015", "Comparison requires operands of the same ordered type", node.span))
 		}
 		return Ok(checkedBinary(node, left, right, MvpType.BoolType))
 	}
-	if left.valueType != right.valueType {
+	if !typesCompatible(left.valueType, right.valueType) {
 		let source = sourceExpressionAt(context, rightSourceId)?
 		return Err(typeMismatch(right.valueType, left.valueType, source.span))
 	}
-	if node.text == "+" && left.valueType == MvpType.StringType {
+	if node.text == "+" && operandType == MvpType.StringType {
 		return Ok(checkedBinary(node, left, right, MvpType.StringType))
 	}
-	if !isNumeric(left.valueType) {
-		return Err(errorDiagnostic("L2016", "Operator " + node.text + " cannot be applied to " + typeName(left.valueType), node.span))
+	if operandType != MvpType.ErrorType && !isNumeric(operandType) {
+		return Err(errorDiagnostic("L2016", "Operator " + node.text + " cannot be applied to " + typeName(operandType), node.span))
 	}
-	return Ok(checkedBinary(node, left, right, left.valueType))
+	return Ok(checkedBinary(node, left, right, operandType))
 }
 
 fn checkConditional(node: MvpExpression, context: CheckContext, expressions: List<MvpHirExpression>) -> Result<CheckedExpression, MvpDiagnostic> {
@@ -327,23 +470,137 @@ fn checkConditional(node: MvpExpression, context: CheckContext, expressions: Lis
 	let consequentSourceId = childAt(node, 1)?
 	let alternateSourceId = childAt(node, 2)?
 	let condition = checkExpression(conditionSourceId, context, expressions)?
-	if condition.valueType != MvpType.BoolType {
+	if !typesCompatible(condition.valueType, MvpType.BoolType) {
 		let source = sourceExpressionAt(context, conditionSourceId)?
 		return Err(typeMismatch(condition.valueType, MvpType.BoolType, source.span))
 	}
 	let consequent = checkExpression(consequentSourceId, context, condition.expressions)?
 	let alternate = checkExpression(alternateSourceId, context, consequent.expressions)?
-	if alternate.valueType != consequent.valueType {
+	if !typesCompatible(alternate.valueType, consequent.valueType) {
 		let source = sourceExpressionAt(context, alternateSourceId)?
 		return Err(typeMismatch(alternate.valueType, consequent.valueType, source.span))
 	}
+	let resultType = preferredType(consequent.valueType, alternate.valueType)
 	return Ok(addHir(alternate.expressions, MvpHirExpression {
 		kind: "if",
 		text: node.text,
-		valueType: consequent.valueType,
+		valueType: resultType,
 		children: [condition.expressionId, consequent.expressionId, alternate.expressionId],
 		span: node.span,
-	}, consequent.valueType))
+	}, resultType))
+}
+
+fn checkedPatternNode(node: MvpExpression, valueType: MvpType, childIds: List<Int>, bindings: List<Binding>, expressions: List<MvpHirExpression>) -> CheckedPattern {
+	let checked = addHir(expressions, MvpHirExpression {
+		kind: node.kind,
+		text: node.text,
+		valueType: valueType,
+		children: childIds,
+		span: node.span,
+	}, valueType)
+	return CheckedPattern { expressionId: checked.expressionId, bindings: bindings, expressions: checked.expressions }
+}
+
+fn checkPattern(patternId: Int, targetType: MvpType, context: CheckContext, expressions: List<MvpHirExpression>) -> Result<CheckedPattern, MvpDiagnostic> {
+	let node = sourceExpressionAt(context, patternId)?
+	if node.kind == "patternWildcard" {
+		return Ok(checkedPatternNode(node, targetType, [], context.bindings, expressions))
+	}
+	if node.kind == "patternLiteral" {
+		let patternType = literalType(node)?
+		if !typesCompatible(patternType, targetType) {
+			return Err(typeMismatch(patternType, targetType, node.span))
+		}
+		return Ok(checkedPatternNode(node, patternType, [], context.bindings, expressions))
+	}
+	if node.kind == "patternBinding" {
+		if match findBinding(context.bindings, node.text) { Some(_) => true, None => false } {
+			return Err(errorDiagnostic("L1007", "Pattern binding " + node.text + " shadows an existing name", node.span))
+		}
+		let bindings = List.append(context.bindings, Binding { name: node.text, valueType: targetType, mutable: false })
+		return Ok(checkedPatternNode(node, targetType, [], bindings, expressions))
+	}
+	if node.kind == "patternVariant" {
+		let mut childIds: List<Int> = []
+		let mut bindings = context.bindings
+		let mut arena = expressions
+		let mut index = 0
+		for sourceChildId in node.children {
+			let payloadType = variantPayloadType(targetType, node.text, index)
+			let checked = checkPattern(sourceChildId, payloadType, CheckContext {
+				signatures: context.signatures,
+				bindings: bindings,
+				returnType: context.returnType,
+				sourceExpressions: context.sourceExpressions,
+				sourceStatements: context.sourceStatements,
+			}, arena)?
+			childIds = List.append(childIds, checked.expressionId)
+			bindings = checked.bindings
+			arena = checked.expressions
+			index = index + 1
+		}
+		return Ok(checkedPatternNode(node, targetType, childIds, bindings, arena))
+	}
+	return Err(errorDiagnostic("L9001", "Unknown MVP match pattern kind " + node.kind, node.span))
+}
+
+fn checkMatchArm(armSourceId: Int, targetType: MvpType, context: CheckContext, expressions: List<MvpHirExpression>) -> Result<CheckedExpression, MvpDiagnostic> {
+	let arm = sourceExpressionAt(context, armSourceId)?
+	if arm.kind != "matchArm" {
+		return Err(errorDiagnostic("L9001", "Match expression contains a non-arm child", arm.span))
+	}
+	let patternSourceId = childAt(arm, 0)?
+	let bodySourceId = childAt(arm, 1)?
+	let checkedPattern = checkPattern(patternSourceId, targetType, context, expressions)?
+	let checkedBody = checkExpression(bodySourceId, CheckContext {
+		signatures: context.signatures,
+		bindings: checkedPattern.bindings,
+		returnType: context.returnType,
+		sourceExpressions: context.sourceExpressions,
+		sourceStatements: context.sourceStatements,
+	}, checkedPattern.expressions)?
+	return Ok(addHir(checkedBody.expressions, MvpHirExpression {
+		kind: "matchArm",
+		text: arm.text,
+		valueType: checkedBody.valueType,
+		children: [checkedPattern.expressionId, checkedBody.expressionId],
+		span: arm.span,
+	}, checkedBody.valueType))
+}
+
+fn checkMatch(node: MvpExpression, context: CheckContext, expressions: List<MvpHirExpression>) -> Result<CheckedExpression, MvpDiagnostic> {
+	let targetSourceId = childAt(node, 0)?
+	let checkedTarget = checkExpression(targetSourceId, context, expressions)?
+	let mut childIds: List<Int> = [checkedTarget.expressionId]
+	let mut arena = checkedTarget.expressions
+	let mut resultType: MvpType? = None
+	let mut index = 1
+	while index < List.length(node.children) {
+		let armSourceId = childAt(node, index)?
+		let checkedArm = checkMatchArm(armSourceId, checkedTarget.valueType, context, arena)?
+		resultType = match resultType {
+			None => Some(checkedArm.valueType)
+			Some(existing) => if typesCompatible(existing, checkedArm.valueType) then Some(preferredType(existing, checkedArm.valueType)) else None
+		}
+		if match resultType { Some(_) => false, None => true } {
+			let source = sourceExpressionAt(context, armSourceId)?
+			return Err(errorDiagnostic("L2043", "Match arms must produce the same type", source.span))
+		}
+		childIds = List.append(childIds, checkedArm.expressionId)
+		arena = checkedArm.expressions
+		index = index + 1
+	}
+	let valueType = match resultType {
+		Some(value) => if value == MvpType.ErrorType then context.returnType else value
+		None => context.returnType
+	}
+	return Ok(addHir(arena, MvpHirExpression {
+		kind: "match",
+		text: node.text,
+		valueType: valueType,
+		children: childIds,
+		span: node.span,
+	}, valueType))
 }
 
 fn checkList(node: MvpExpression, context: CheckContext, expressions: List<MvpHirExpression>) -> Result<CheckedExpression, MvpDiagnostic> {
@@ -352,17 +609,18 @@ fn checkList(node: MvpExpression, context: CheckContext, expressions: List<MvpHi
 	}
 	let firstSourceId = childAt(node, 0)?
 	let first = checkExpression(firstSourceId, context, expressions)?
-	let elementType = first.valueType
+	let mut elementType = first.valueType
 	let mut expressionIds: List<Int> = [first.expressionId]
 	let mut arena = first.expressions
 	let mut index = 1
 	while index < List.length(node.children) {
 		let sourceId = childAt(node, index)?
 		let checked = checkExpression(sourceId, context, arena)?
-		if checked.valueType != elementType {
+		if !typesCompatible(checked.valueType, elementType) {
 			let source = sourceExpressionAt(context, sourceId)?
 			return Err(typeMismatch(checked.valueType, elementType, source.span))
 		}
+		elementType = preferredType(elementType, checked.valueType)
 		expressionIds = List.append(expressionIds, checked.expressionId)
 		arena = checked.expressions
 		index = index + 1
@@ -388,9 +646,15 @@ fn checkIndex(node: MvpExpression, context: CheckContext, expressions: List<MvpH
 	let indexSourceId = childAt(node, 1)?
 	let target = checkExpression(targetSourceId, context, expressions)?
 	let index = checkExpression(indexSourceId, context, target.expressions)?
-	if index.valueType != MvpType.IntType {
+	if !typesCompatible(index.valueType, MvpType.IntType) {
 		let source = sourceExpressionAt(context, indexSourceId)?
 		return Err(typeMismatch(index.valueType, MvpType.IntType, source.span))
+	}
+	if target.valueType == MvpType.ErrorType {
+		return Ok(addHir(index.expressions, MvpHirExpression {
+			kind: "index", text: node.text, valueType: MvpType.ErrorType,
+			children: [target.expressionId, index.expressionId], span: node.span,
+		}, MvpType.ErrorType))
 	}
 	return match listElementType(target.valueType) {
 		Some(elementType) => Ok(addHir(index.expressions, MvpHirExpression {
@@ -461,6 +725,9 @@ fn checkExpression(expressionId: Int, context: CheckContext, expressions: List<M
 	if node.kind == "if" {
 		return checkConditional(node, context, expressions)
 	}
+	if node.kind == "match" {
+		return checkMatch(node, context, expressions)
+	}
 	if node.kind == "list" {
 		return checkList(node, context, expressions)
 	}
@@ -482,7 +749,7 @@ fn checkLet(name: String, mutable: Bool, annotation: MvpType?, sourceExpressionI
 	}
 	let checked = checkExpression(sourceExpressionId, context, expressions)?
 	let expected = match annotation { Some(value) => value, None => checked.valueType }
-	if checked.valueType != expected {
+	if !typesCompatible(checked.valueType, expected) {
 		let source = sourceExpressionAt(context, sourceExpressionId)?
 		return Err(typeMismatch(checked.valueType, expected, source.span))
 	}
@@ -507,7 +774,7 @@ fn checkAssignment(name: String, sourceExpressionId: Int, statementSpan: MvpSpan
 		return Err(errorDiagnostic("L2010", "Cannot assign to immutable name " + name, statementSpan))
 	}
 	let checked = checkExpression(sourceExpressionId, context, expressions)?
-	if checked.valueType != binding.valueType {
+	if !typesCompatible(checked.valueType, binding.valueType) {
 		let source = sourceExpressionAt(context, sourceExpressionId)?
 		return Err(typeMismatch(checked.valueType, binding.valueType, source.span))
 	}
@@ -572,7 +839,7 @@ fn checkFor(name: String, sourceIterableId: Int, bodyStatementIds: List<Int>, st
 
 fn checkIf(sourceConditionId: Int, consequentStatementIds: List<Int>, alternateStatementIds: List<Int>, statementSpan: MvpSpan, context: CheckContext, statements: List<MvpHirStatement>, expressions: List<MvpHirExpression>) -> Result<CheckedStatement, MvpDiagnostic> {
 	let checkedCondition = checkExpression(sourceConditionId, context, expressions)?
-	if checkedCondition.valueType != MvpType.BoolType {
+	if !typesCompatible(checkedCondition.valueType, MvpType.BoolType) {
 		let source = sourceExpressionAt(context, sourceConditionId)?
 		return Err(typeMismatch(checkedCondition.valueType, MvpType.BoolType, source.span))
 	}
@@ -588,7 +855,7 @@ fn checkIf(sourceConditionId: Int, consequentStatementIds: List<Int>, alternateS
 
 fn checkReturn(sourceExpressionId: Int, statementSpan: MvpSpan, context: CheckContext, statements: List<MvpHirStatement>, expressions: List<MvpHirExpression>) -> Result<CheckedStatement, MvpDiagnostic> {
 	let checked = checkExpression(sourceExpressionId, context, expressions)?
-	if checked.valueType != context.returnType {
+	if !typesCompatible(checked.valueType, context.returnType) {
 		return Err(typeMismatch(checked.valueType, context.returnType, statementSpan))
 	}
 	return Ok(addHirStatement(
