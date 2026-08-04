@@ -42,6 +42,11 @@ const multilineSource = [
 	'\t\t4',
 	'}',
 	'',
+	'pub fn compose(prefix: String) -> String {',
+	'\treturn prefix + "function " +',
+	'\t\t"body"',
+	'}',
+	'',
 	'pub fn grouped() -> Bool {',
 	'\treturn (',
 	'\t\tfalse',
@@ -73,8 +78,10 @@ test('multiline binary expressions preserve precedence and execute through the g
 		assert.deepEqual(output.diagnostics, []);
 		const emittedCode = output.emittedModules.map(module => module.code).join('\n');
 		assert.match(emittedCode, /\|\|/);
+		assert.match(emittedCode, /&&/);
 		assert.match(emittedCode, /intAdd\(/);
 		assert.match(emittedCode, /intMultiply\(/);
+		assert.match(emittedCode, /"function " \+ "body"/);
 		const runtime = await executeKernelOutputWithNode(request, output);
 		assert.equal(runtime.returnValue, 18);
 		assert.equal(runtime.panic, null);
