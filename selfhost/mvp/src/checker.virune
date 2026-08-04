@@ -4188,10 +4188,10 @@ fn checkLet(name: String, mutable: Bool, annotation: MvpType?, sourceExpressionI
 	if match findBinding(context.bindings, name) { Some(_) => true, None => false } {
 		return Err(errorDiagnostic("L1007", "Local name " + name + " shadows an existing name", statementSpan))
 	}
-	let checked = match annotation {
+	let checked = (match annotation {
 		Some(expectedType) => checkExpectedExpression(sourceExpressionId, expectedType, context, expressions)
 		None => checkExpression(sourceExpressionId, context, expressions)
-	}?
+	})?
 	let expected = match annotation { Some(value) => value, None => checked.valueType }
 	return Ok(addHirStatement(
 		statements,
