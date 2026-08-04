@@ -1,11 +1,10 @@
-name: Temporary self-host postfix member parser implementation
+name: Temporary self-host postfix member parser repair
 
 on:
   pull_request:
     branches:
       - feat/selfhost-multiline-binary
     types:
-      - opened
       - synchronize
       - reopened
 
@@ -27,253 +26,47 @@ jobs:
           node-version-file: .node-version
           cache: npm
       - run: npm ci
-      - name: Apply postfix member parser and arena tests
+      - name: Apply repaired postfix parser and arena tests
         shell: bash
         run: |
           python - <<'PY'
           from pathlib import Path
+          import subprocess
 
-          parser_path = Path('selfhost/mvp/src/parser.virune')
-          parser = parser_path.read_text()
-          start = parser.index('fn parsePostfix(')
-          end = parser.index('\nfn parseQualifiedName(', start)
-          replacement = '''fn parsePostfix(cursor: Cursor, expressions: List<MvpExpression>) -> Result<ParsedExpression, MvpDiagnostic> {
-          \tlet parsed = parsePrimary(cursor, expressions)?
-          \tlet mut current = parsed.cursor
-          \tlet mut expressionId = parsed.expressionId
-          \tlet mut arena = parsed.expressions
-          \twhile true {
-          \t\tif tokenAt(current).text == "[" {
-          \t\t\tlet base = expressionAt(arena, expressionId, tokenAt(current).span)?
-          \t\t\tlet parsedIndex = parseExpression(skipNewLines(advance(current)), arena)?
-          \t\t\tlet closeCursor = skipNewLines(parsedIndex.cursor)
-          \t\t\tlet close = tokenAt(closeCursor)
-          \t\t\tlet afterClose = expectText(closeCursor, "]")?
-          \t\t\tlet added = addExpression(afterClose, parsedIndex.expressions, MvpExpression {
-          \t\t\t\tkind: "index",
-          \t\t\t\ttext: "[]",
-          \t\t\t\tliteralType: None,
-          \t\t\t\tchildren: [expressionId, parsedIndex.expressionId],
-          \t\t\t\tspan: span(base.span.start, close.span.end),
-          \t\t\t})
-          \t\t\tcurrent = added.cursor
-          \t\t\texpressionId = added.expressionId
-          \t\t\tarena = added.expressions
-          \t\t\tcontinue
-          \t\t}
-          \t\tif tokenAt(current).text == "." {
-          \t\t\tlet base = expressionAt(arena, expressionId, tokenAt(current).span)?
-          \t\t\tlet memberCursor = advance(current)
-          \t\t\tlet member = tokenAt(memberCursor)
-          \t\t\tif member.kind != MvpTokenKind.Identifier {
-          \t\t\t\treturn Err(parseError("Expected identifier after .", member))
-          \t\t\t}
-          \t\t\tlet added = addExpression(advance(memberCursor), arena, MvpExpression {
-          \t\t\t\tkind: "field",
-          \t\t\t\ttext: member.text,
-          \t\t\t\tliteralType: None,
-          \t\t\t\tchildren: [expressionId],
-          \t\t\t\tspan: span(base.span.start, member.span.end),
-          \t\t\t})
-          \t\t\tcurrent = added.cursor
-          \t\t\texpressionId = added.expressionId
-          \t\t\tarena = added.expressions
-          \t\t\tcontinue
-          \t\t}
-          \t\tif tokenAt(current).text == "(" {
-          \t\t\tlet base = expressionAt(arena, expressionId, tokenAt(current).span)?
-          \t\t\tlet mut argumentCursor = skipNewLines(advance(current))
-          \t\t\tlet mut childIds: List<Int> = [expressionId]
-          \t\t\tif tokenAt(argumentCursor).text != ")" {
-          \t\t\t\twhile true {
-          \t\t\t\t\tlet parsedArgument = parseExpression(argumentCursor, arena)?
-          \t\t\t\t\tchildIds = List.append(childIds, parsedArgument.expressionId)
-          \t\t\t\t\tarena = parsedArgument.expressions
-          \t\t\t\t\targumentCursor = skipNewLines(parsedArgument.cursor)
-          \t\t\t\t\tif tokenAt(argumentCursor).text == "," {
-          \t\t\t\t\t\targumentCursor = skipNewLines(advance(argumentCursor))
-          \t\t\t\t\t\tif tokenAt(argumentCursor).text == ")" {
-          \t\t\t\t\t\t\tbreak
-          \t\t\t\t\t\t}
-          \t\t\t\t\t\tcontinue
-          \t\t\t\t\t}
-          \t\t\t\t\tbreak
-          \t\t\t\t}
-          \t\t\t}
-          \t\t\tlet close = tokenAt(argumentCursor)
-          \t\t\tlet added = addExpression(expectText(argumentCursor, ")")?, arena, MvpExpression {
-          \t\t\t\tkind: "invoke",
-          \t\t\t\ttext: "()",
-          \t\t\t\tliteralType: None,
-          \t\t\t\tchildren: childIds,
-          \t\t\t\tspan: span(base.span.start, close.span.end),
-          \t\t\t})
-          \t\t\tcurrent = added.cursor
-          \t\t\texpressionId = added.expressionId
-          \t\t\tarena = added.expressions
-          \t\t\tcontinue
-          \t\t}
-          \t\tbreak
-          \t}
-          \treturn Ok(ParsedExpression { cursor: current, expressionId: expressionId, expressions: arena })
-          }
-          '''
-          parser_path.write_text(parser[:start] + replacement.rstrip() + parser[end:])
+          workflow_path = '.github/workflows/tmp-selfhost-postfix-member-parser-pr.yml'
+          previous = subprocess.check_output(
+              ['git', 'show', f'HEAD^:{workflow_path}'],
+              text=True,
+          )
+          opener = "          python - <<'PY'\n"
+          start = previous.index(opener) + len(opener)
+          end = previous.index("\n          PY", start)
+          script = previous[start:end]
+          script = "\n".join(
+              line[10:] if line.startswith("          ") else line
+              for line in script.splitlines()
+          ) + "\n"
 
-          Path('packages/compiler/test/selfhost-postfix-member-parser.test.ts').write_text('''import assert from 'node:assert/strict';
-          import test from 'node:test';
-          import { execFile } from 'node:child_process';
-          import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
-          import { dirname, join, relative, resolve } from 'node:path';
-          import { promisify } from 'node:util';
-          import { fileURLToPath, pathToFileURL } from 'node:url';
-          import { buildProject } from '../src/project/project.js';
+          marker = "replacement = '''fn parsePostfix"
+          replacement_start = script.index(marker)
+          outer_loop = script.index(r'\twhile true {', replacement_start)
+          script = (
+              script[:outer_loop]
+              + r'\twhile tokenAt(current).text == "[" || tokenAt(current).text == "." || tokenAt(current).text == "(" {'
+              + script[outer_loop + len(r'\twhile true {'):]
+          )
+          outer_break = "\\t\\tbreak\n\\t}\n\\treturn Ok("
+          if outer_break not in script:
+              raise RuntimeError('outer postfix loop terminator was not found')
+          script = script.replace(
+              outer_break,
+              "\\t}\n\\treturn Ok(",
+              1,
+          )
 
-          const execFileAsync = promisify(execFile);
-          const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../../..');
-          const mvpRoot = join(repositoryRoot, 'selfhost', 'mvp');
-          const temporaryRoot = join(repositoryRoot, '.test-tmp');
-
-          type ViruneResult<T> = { readonly $tag: 'Ok' | 'Err'; readonly $values: readonly [T] };
-          type MvpStageModule = {
-          \treadonly lexMvpJson: (source: string) => ViruneResult<string>;
-          \treadonly parseMvpJson: (encoded: string) => ViruneResult<string>;
-          };
-          type ExpressionNode = {
-          \treadonly kind: string;
-          \treadonly text: string;
-          \treadonly children: readonly number[];
-          };
-          type ParseResult = {
-          \treadonly diagnostics: readonly { readonly code: string; readonly message: string }[];
-          \treadonly parsedModule: unknown;
-          };
-
-          const source = [
-          \t'pub fn direct(values: List<Int>, index: Int) -> Int {',
-          \t'\\treturn declarationAt(values, index).name',
-          \t'}',
-          \t'',
-          \t'pub fn chained() -> Int {',
-          \t'\\treturn create().child()(1).name',
-          \t'}',
-          \t'',
-          \t'pub fn indexed(values: List<Int>) -> Int {',
-          \t'\\treturn values[0].name',
-          \t'}',
-          \t'',
-          \t'pub fn grouped() -> Int {',
-          \t'\\treturn (create()).name',
-          \t'}',
-          \t'',
-          ].join('\\n');
-
-          test('Pure Core parser builds field and invoke postfix chains for arbitrary expressions', async () => {
-          \tconst loaded = await loadParserStages();
-          \ttry {
-          \t\tconst result = parse(loaded.module, source);
-          \t\tassert.deepEqual(result.diagnostics, []);
-          \t\tconst expressions = findExpressionArena(result.parsedModule);
-          \t\tassert.ok(expressions, 'missing expression arena');
-          \t\tfor (const node of expressions) {
-          \t\t\tfor (const child of node.children) {
-          \t\t\t\tassert.ok(child >= 0 && child < expressions.length, `invalid child ${child}`);
-          \t\t\t}
-          \t\t}
-
-          \t\tconst declarationField = expressions.find((node, id) =>
-          \t\t\tnode.kind === 'field'
-          \t\t\t&& node.text === 'name'
-          \t\t\t&& expressions[node.children[0] ?? -1]?.kind === 'call'
-          \t\t\t&& expressions[node.children[0] ?? -1]?.text === 'declarationAt'
-          \t\t\t&& id >= 0);
-          \t\tassert.ok(declarationField);
-
-          \t\tconst childFieldId = expressions.findIndex(node =>
-          \t\t\tnode.kind === 'field'
-          \t\t\t&& node.text === 'child'
-          \t\t\t&& expressions[node.children[0] ?? -1]?.kind === 'call'
-          \t\t\t&& expressions[node.children[0] ?? -1]?.text === 'create');
-          \t\tassert.ok(childFieldId >= 0);
-          \t\tconst invokes = expressions.filter(node => node.kind === 'invoke');
-          \t\tassert.equal(invokes.length, 2);
-          \t\tassert.ok(invokes.some(node => node.children[0] === childFieldId && node.children.length === 1));
-          \t\tassert.ok(invokes.some(node => expressions[node.children[0] ?? -1]?.kind === 'invoke' && node.children.length === 2));
-
-          \t\tconst indexedField = expressions.find(node =>
-          \t\t\tnode.kind === 'field'
-          \t\t\t&& node.text === 'name'
-          \t\t\t&& expressions[node.children[0] ?? -1]?.kind === 'index');
-          \t\tassert.ok(indexedField);
-          \t} finally {
-          \t\tawait rm(loaded.root, { recursive: true, force: true });
-          \t}
-          });
-
-          function parse(module: MvpStageModule, text: string): ParseResult {
-          \tconst lexed = module.lexMvpJson(text);
-          \tassert.equal(lexed.$tag, 'Ok', JSON.stringify(lexed));
-          \tconst parsed = module.parseMvpJson(lexed.$values[0]);
-          \tassert.equal(parsed.$tag, 'Ok', JSON.stringify(parsed));
-          \treturn JSON.parse(parsed.$values[0]) as ParseResult;
-          }
-
-          function findExpressionArena(value: unknown): ExpressionNode[] | undefined {
-          \tif (Array.isArray(value)) {
-          \t\tfor (const item of value) {
-          \t\t\tconst found = findExpressionArena(item);
-          \t\t\tif (found !== undefined) return found;
-          \t\t}
-          \t\treturn undefined;
-          \t}
-          \tif (value === null || typeof value !== 'object') return undefined;
-          \tconst record = value as Record<string, unknown>;
-          \tif (Array.isArray(record.expressions) && record.expressions.every(isExpressionNode)) {
-          \t\treturn record.expressions as ExpressionNode[];
-          \t}
-          \tfor (const child of Object.values(record)) {
-          \t\tconst found = findExpressionArena(child);
-          \t\tif (found !== undefined) return found;
-          \t}
-          \treturn undefined;
-          }
-
-          function isExpressionNode(value: unknown): value is ExpressionNode {
-          \tif (value === null || typeof value !== 'object') return false;
-          \tconst record = value as Record<string, unknown>;
-          \treturn typeof record.kind === 'string'
-          \t\t&& typeof record.text === 'string'
-          \t\t&& Array.isArray(record.children)
-          \t\t&& record.children.every(item => Number.isInteger(item));
-          }
-
-          async function loadParserStages(): Promise<{ readonly root: string; readonly module: MvpStageModule }> {
-          \tconst result = await buildProject(mvpRoot, { write: false });
-          \tconst errors = result.diagnostics.filter(item => item.severity === 'error');
-          \tassert.deepEqual(errors.map(item => `${item.code}:${item.message}`), []);
-          \tawait mkdir(temporaryRoot, { recursive: true });
-          \tconst root = await mkdtemp(join(temporaryRoot, 'selfhost-postfix-member-parser-'));
-          \tconst configuredOutDir = resolve(mvpRoot, 'dist');
-          \tconst outputPaths: string[] = [];
-          \tfor (const built of result.modules) {
-          \t\tif (built.output === undefined || built.outputPath === undefined) continue;
-          \t\tconst outputPath = join(root, relative(configuredOutDir, built.outputPath));
-          \t\tawait mkdir(dirname(outputPath), { recursive: true });
-          \t\tawait writeFile(outputPath, built.output.code);
-          \t\toutputPaths.push(outputPath);
-          \t}
-          \tfor (const outputPath of outputPaths.sort()) {
-          \t\tawait execFileAsync(process.execPath, ['--check', outputPath]);
-          \t}
-          \tconst lexerUrl = `${pathToFileURL(join(root, 'lexer.js')).href}?test=${Date.now()}`;
-          \tconst parserUrl = `${pathToFileURL(join(root, 'parser.js')).href}?test=${Date.now()}`;
-          \tconst lexer = await import(lexerUrl) as Pick<MvpStageModule, 'lexMvpJson'>;
-          \tconst parser = await import(parserUrl) as Pick<MvpStageModule, 'parseMvpJson'>;
-          \treturn { root, module: { ...lexer, ...parser } };
-          }
-          ''')
-
-          Path('.github/workflows/tmp-selfhost-postfix-member-parser-pr.yml').unlink()
+          repair_script = Path('/tmp/apply-postfix-member-parser.py')
+          repair_script.write_text(script)
+          subprocess.run(['python', str(repair_script)], check=True)
           PY
       - run: npm run build
       - run: node --test --test-timeout=120000 packages/compiler/dist/test/selfhost-postfix-member-parser.test.js
