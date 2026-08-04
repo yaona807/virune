@@ -1,0 +1,66 @@
+name: Temporary PR 270 Json.parse call fix
+
+on:
+  pull_request:
+    branches:
+      - main
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: tmp/selfhost-try-rebuild-run-20260804
+          fetch-depth: 0
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - name: Patch and validate direct qualified Json.parse call
+        shell: bash
+        run: |
+          set -euo pipefail
+          branch='feat/selfhost-generic-json-type-arguments'
+          expected_head='8ed1b0e825fbbd67ce339ff6da18dbf2e4be1590'
+          git fetch --no-tags origin '+refs/heads/*:refs/remotes/origin/*'
+          test "$(git rev-parse origin/$branch)" = "$expected_head"
+          git checkout -B "$branch" "origin/$branch"
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('selfhost/mvp/src/checker.virune')
+          source = path.read_text()
+          anchor = '''fn checkCall(node: MvpExpression, context: CheckContext, expressions: List<MvpHirExpression>) -> Result<CheckedExpression, MvpDiagnostic> {
+          \tlet constructorName = standardConstructorName(node.text)
+          '''
+          replacement = '''fn checkCall(node: MvpExpression, context: CheckContext, expressions: List<MvpHirExpression>) -> Result<CheckedExpression, MvpDiagnostic> {
+          \tif node.text == "Json.parse" {
+          \t\treturn checkKnownCall(node, Signature {
+          \t\t\tname: "Json.parse",
+          \t\t\tparameters: [MvpType.StringType],
+          \t\t\treturnType: MvpType.NamedType("Result<JsonValue,List<JsonError>>"),
+          \t\t\tisPublic: false,
+          \t\t\tspan: node.span,
+          \t\t}, context, expressions)
+          \t}
+          \tlet constructorName = standardConstructorName(node.text)
+          '''
+          if source.count(anchor) != 1:
+              raise RuntimeError(f'expected one checkCall anchor, found {source.count(anchor)}')
+          path.write_text(source.replace(anchor, replacement, 1))
+          PY
+          test "$(git diff --name-only)" = 'selfhost/mvp/src/checker.virune'
+          git diff --check
+          npm ci
+          npm run build
+          node --test --test-timeout=900000 packages/compiler/dist/test/selfhost-generic-json-type-arguments.test.js
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add selfhost/mvp/src/checker.virune
+          git commit -m 'fix(selfhost): check direct Json.parse calls'
+          git push --force-with-lease=refs/heads/$branch:"$expected_head" origin HEAD:$branch
