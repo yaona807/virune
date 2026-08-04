@@ -22,13 +22,21 @@ const input = (text: string): KernelInputV1 => ({
 });
 
 const source = [
+	'fn identityOption(value: Int?) -> Int? {',
+	'\treturn value',
+	'}',
+	'',
+	'fn identityResult(value: Result<Int, String>) -> Result<Int, String> {',
+	'\treturn value',
+	'}',
+	'',
 	'pub fn propagateOption(value: Int?, fallback: Int?) -> Int? {',
-	'\tlet ignored = value?',
+	'\tlet ignored = identityOption(value)?',
 	'\treturn fallback',
 	'}',
 	'',
 	'pub fn propagateResult(value: Result<Int, String>, fallback: Result<Int, String>) -> Result<Int, String> {',
-	'\tlet ignored = value?',
+	'\tlet ignored = identityResult(value)?',
 	'\treturn fallback',
 	'}',
 	'',
@@ -54,7 +62,7 @@ const incompatibleResultError = [
 	'',
 ].join('\n');
 
-test('postfix ? propagates Option and Result values and preserves Legacy diagnostics', async () => {
+test('postfix ? propagates Option and Result call results and preserves Legacy diagnostics', async () => {
 	const loaded = await loadMvpModule();
 	let runtimeRoot = '';
 	try {
@@ -62,7 +70,7 @@ test('postfix ? propagates Option and Result values and preserves Legacy diagnos
 		const output = await createSelfhostMvpKernel(loaded.module).compile(request);
 		assert.equal(output.accepted, true, JSON.stringify(output.diagnostics, null, 2));
 		assert.deepEqual(output.diagnostics, []);
-		assert.match(output.emittedModules.map(item => item.code).join('\n'), /propagate\(/);
+		assert.match(output.emittedModules.map(item => item.code).join('\n'), /propagate\(identity(?:Option|Result)\(/);
 		const materialized = await materializeOutput(request, output);
 		runtimeRoot = materialized.root;
 		const module = materialized.module as {
