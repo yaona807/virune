@@ -1,4 +1,4 @@
-name: Temporary self-host try propagation rebuild runner
+name: Temporary self-host member-chain validation runner
 
 on:
   pull_request:
@@ -10,12 +10,12 @@ on:
       - reopened
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  rebuild:
+  validate:
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v6
         with:
@@ -25,60 +25,39 @@ jobs:
         with:
           node-version-file: .node-version
           cache: npm
-      - name: Rebuild postfix try propagation on current main
+      - name: Validate member-chain feature commit on normalized PR 264 head
         shell: bash
         run: |
           set -euo pipefail
-          expected_feature_head='33f856431604a2a7e75380b7d8ff248071bf8cd8'
           git fetch --no-tags origin '+refs/heads/*:refs/remotes/origin/*'
-          test "$(git rev-parse origin/feat/selfhost-try-propagation)" = "$expected_feature_head"
-          git checkout -B feat/selfhost-try-propagation origin/main
-          git cherry-pick --no-commit \
-            d6517f4de360609e76f57fe46c4f0fe15ef82f6d \
-            1b71d15af9495c5af5086ad45c22223d6976ce01
-          python - <<'PY'
-          from pathlib import Path
-
-          path = Path('selfhost/mvp/src/checker.virune')
-          source = path.read_text()
-          old_definition = 'fn resultPayloadType(value: MvpType, index: Int) -> MvpType? {'
-          new_definition = 'fn propagationResultPayloadType(value: MvpType, index: Int) -> MvpType? {'
-          if source.count(old_definition) != 1:
-              raise RuntimeError(f'expected one propagation helper definition, found {source.count(old_definition)}')
-          source = source.replace(old_definition, new_definition, 1)
-          old_call = 'resultPayloadType('
-          constructor_definition = 'fn resultPayloadType(expectedType: MvpType, constructorName: String) -> MvpType? {'
-          if source.count(constructor_definition) != 1:
-              raise RuntimeError('existing Result-constructor helper is missing or duplicated')
-          check_try_start = source.index('fn checkTry(')
-          check_try_end = source.index('\nfn checkRecordField(', check_try_start)
-          before = source[:check_try_start]
-          check_try = source[check_try_start:check_try_end]
-          after = source[check_try_end:]
-          call_count = check_try.count(old_call)
-          if call_count != 4:
-              raise RuntimeError(f'expected four propagation helper calls, found {call_count}')
-          check_try = check_try.replace(old_call, 'propagationResultPayloadType(')
-          source = before + check_try + after
-          if source.count(new_definition) != 1:
-              raise RuntimeError('propagation helper definition count is invalid')
-          if source.count('propagationResultPayloadType(') != 5:
-              raise RuntimeError('propagation helper definition/call count is invalid')
-          path.write_text(source)
-          PY
-          git add selfhost/mvp/src/checker.virune
+          test "$(git rev-parse origin/feat/selfhost-try-propagation)" = 'f505238e9cc8ecc24d8cb4b8ddbcaf2300d7417b'
+          git checkout -B member-chain-validation f505238e9cc8ecc24d8cb4b8ddbcaf2300d7417b
+          git cherry-pick --no-commit a1eb1ddc2501cd23b8ae16f452576f0b3afbf3da
           expected_paths="$(printf '%s\n' \
-            packages/compiler/test/selfhost-try-propagation.test.ts \
+            packages/compiler/test/selfhost-member-chain-integration.test.ts \
             selfhost/mvp/src/checker.virune \
-            selfhost/mvp/src/emitter.virune \
-            selfhost/mvp/src/parser.virune | sort)"
+            selfhost/mvp/src/emitter.virune | sort)"
           actual_paths="$(git diff --cached --name-only | sort)"
           test "$actual_paths" = "$expected_paths"
           git diff --cached --check
           npm ci
           npm run build
-          node --test --test-timeout=180000 packages/compiler/dist/test/selfhost-try-propagation.test.js
-          git config user.name github-actions[bot]
-          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git commit -m 'feat(selfhost): support postfix try propagation'
-          git push --force-with-lease=refs/heads/feat/selfhost-try-propagation:"$expected_feature_head" origin HEAD:feat/selfhost-try-propagation
+          node --test --test-timeout=180000 packages/compiler/dist/test/selfhost-member-chain-integration.test.js
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('packages/compiler/dist/test/selfhost-full-language-inventory.test.js')
+          source = path.read_text()
+          replacements = [
+              ('timeout: 420_000', 'timeout: 720_000'),
+              ('timeout: 420000', 'timeout: 720000'),
+          ]
+          for old, new in replacements:
+              if old in source:
+                  path.write_text(source.replace(old, new, 1))
+                  break
+          else:
+              raise RuntimeError('inventory internal timeout not found in generated test')
+          PY
+          node --test --test-timeout=720000 packages/compiler/dist/test/selfhost-full-language-inventory.test.js
+          echo 'SELFHOST_MEMBER_CHAIN_UPDATED_INVENTORY_JSON'
+          cat .cache/ci-timings/selfhost-full-language-inventory.json
