@@ -47,6 +47,7 @@ record CheckContext {
 	signatures: List<Signature>
 	bindings: List<Binding>
 	returnType: MvpType
+	loopDepth: Int
 	sourceExpressions: List<MvpExpression>
 	sourceStatements: List<MvpStatement>
 }
@@ -521,6 +522,7 @@ fn checkExpectedMatchArm(armSourceId: Int, targetType: MvpType, expectedType: Mv
 		signatures: context.signatures,
 		bindings: checkedPattern.bindings,
 		returnType: context.returnType,
+		loopDepth: context.loopDepth,
 		sourceExpressions: context.sourceExpressions,
 		sourceStatements: context.sourceStatements,
 	}, checkedPattern.expressions)?
@@ -718,6 +720,7 @@ fn checkPattern(patternId: Int, targetType: MvpType, context: CheckContext, expr
 				signatures: context.signatures,
 				bindings: bindings,
 				returnType: context.returnType,
+				loopDepth: context.loopDepth,
 				sourceExpressions: context.sourceExpressions,
 				sourceStatements: context.sourceStatements,
 			}, arena)?
@@ -743,6 +746,7 @@ fn checkMatchArm(armSourceId: Int, targetType: MvpType, context: CheckContext, e
 		signatures: context.signatures,
 		bindings: checkedPattern.bindings,
 		returnType: context.returnType,
+		loopDepth: context.loopDepth,
 		sourceExpressions: context.sourceExpressions,
 		sourceStatements: context.sourceStatements,
 	}, checkedPattern.expressions)?
@@ -976,6 +980,7 @@ fn checkBlock(sourceStatementIds: List<Int>, context: CheckContext, statements: 
 			signatures: context.signatures,
 			bindings: blockBindings,
 			returnType: context.returnType,
+			loopDepth: context.loopDepth,
 			sourceExpressions: context.sourceExpressions,
 			sourceStatements: context.sourceStatements,
 		}, statementArena, expressionArena)?
@@ -1005,6 +1010,7 @@ fn checkFor(name: String, sourceIterableId: Int, bodyStatementIds: List<Int>, st
 		signatures: context.signatures,
 		bindings: List.append(context.bindings, Binding { name: name, valueType: loopType, mutable: false }),
 		returnType: context.returnType,
+		loopDepth: context.loopDepth + 1,
 		sourceExpressions: context.sourceExpressions,
 		sourceStatements: context.sourceStatements,
 	}
@@ -1023,7 +1029,15 @@ fn checkWhile(sourceConditionId: Int, bodyStatementIds: List<Int>, statementSpan
 		let source = sourceExpressionAt(context, sourceConditionId)?
 		return Err(typeMismatch(checkedCondition.valueType, MvpType.BoolType, source.span))
 	}
-	let checkedBody = checkBlock(bodyStatementIds, context, statements, checkedCondition.expressions)?
+	let loopContext = CheckContext {
+		signatures: context.signatures,
+		bindings: context.bindings,
+		returnType: context.returnType,
+		loopDepth: context.loopDepth + 1,
+		sourceExpressions: context.sourceExpressions,
+		sourceStatements: context.sourceStatements,
+	}
+	let checkedBody = checkBlock(bodyStatementIds, loopContext, statements, checkedCondition.expressions)?
 	return Ok(addHirStatement(
 		checkedBody.statements,
 		checkedBody.expressions,
@@ -1057,6 +1071,31 @@ fn checkReturn(sourceExpressionId: Int, statementSpan: MvpSpan, context: CheckCo
 		MvpHirStatement.HirReturn(checked.expressionId, statementSpan),
 	))
 }
+
+fn checkBreak(statementSpan: MvpSpan, context: CheckContext, statements: List<MvpHirStatement>, expressions: List<MvpHirExpression>) -> Result<CheckedStatement, MvpDiagnostic> {
+	if context.loopDepth == 0 {
+		return Err(errorDiagnostic("L2095", "break can be used only inside a loop", statementSpan))
+	}
+	return Ok(addHirStatement(
+		statements,
+		expressions,
+		context.bindings,
+		MvpHirStatement.HirBreak(statementSpan),
+	))
+}
+
+fn checkContinue(statementSpan: MvpSpan, context: CheckContext, statements: List<MvpHirStatement>, expressions: List<MvpHirExpression>) -> Result<CheckedStatement, MvpDiagnostic> {
+	if context.loopDepth == 0 {
+		return Err(errorDiagnostic("L2096", "continue can be used only inside a loop", statementSpan))
+	}
+	return Ok(addHirStatement(
+		statements,
+		expressions,
+		context.bindings,
+		MvpHirStatement.HirContinue(statementSpan),
+	))
+}
+
 fn checkStatement(statementId: Int, context: CheckContext, statements: List<MvpHirStatement>, expressions: List<MvpHirExpression>) -> Result<CheckedStatement, MvpDiagnostic> {
 	let statement = sourceStatementAt(context, statementId)?
 	return match statement {
@@ -1065,6 +1104,8 @@ fn checkStatement(statementId: Int, context: CheckContext, statements: List<MvpH
 		ForValue(name, iterableId, bodyStatementIds, valueSpan) => checkFor(name, iterableId, bodyStatementIds, valueSpan, context, statements, expressions)
 		WhileValue(conditionId, bodyStatementIds, valueSpan) => checkWhile(conditionId, bodyStatementIds, valueSpan, context, statements, expressions)
 		IfValue(conditionId, consequentStatementIds, alternateStatementIds, valueSpan) => checkIf(conditionId, consequentStatementIds, alternateStatementIds, valueSpan, context, statements, expressions)
+		BreakValue(valueSpan) => checkBreak(valueSpan, context, statements, expressions)
+		ContinueValue(valueSpan) => checkContinue(valueSpan, context, statements, expressions)
 		ReturnValue(expressionId, valueSpan) => checkReturn(expressionId, valueSpan, context, statements, expressions)
 	}
 }
@@ -1090,6 +1131,7 @@ fn checkFunction(function: MvpFunction, signatures: List<Signature>) -> Result<M
 			signatures: signatures,
 			bindings: bindings,
 			returnType: function.returnType,
+			loopDepth: 0,
 			sourceExpressions: function.expressions,
 			sourceStatements: function.statements,
 		}, statements, expressions)?
