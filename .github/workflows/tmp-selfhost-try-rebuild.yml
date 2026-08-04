@@ -10,49 +10,44 @@ on:
       - reopened
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  diagnose:
+  rebuild:
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v6
         with:
           ref: tmp/selfhost-try-rebuild-run-20260804
           fetch-depth: 0
-      - name: Reproduce exact feature commits on current main
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - name: Rebuild postfix try propagation on current main
         shell: bash
         run: |
           set -euo pipefail
+          expected_feature_head='33f856431604a2a7e75380b7d8ff248071bf8cd8'
           git fetch --no-tags origin '+refs/heads/*:refs/remotes/origin/*'
-          git checkout -B rebuild origin/main
-          set +e
-          git cherry-pick --no-commit d6517f4de360609e76f57fe46c4f0fe15ef82f6d
-          implementation_status=$?
-          set -e
-          echo "IMPLEMENTATION_STATUS=$implementation_status"
-          git status --short
-          echo 'UNMERGED_PATHS_AFTER_IMPLEMENTATION'
-          git diff --name-only --diff-filter=U
-          echo 'CONFLICT_MARKERS_AFTER_IMPLEMENTATION'
-          for path in $(git diff --name-only --diff-filter=U); do
-            echo "--- $path"
-            sed -n '/^<<<<<<< /,/^>>>>>>> /p' "$path"
-          done
-          if [ "$implementation_status" -eq 0 ]; then
-            set +e
-            git cherry-pick --no-commit 1b71d15af9495c5af5086ad45c22223d6976ce01
-            test_status=$?
-            set -e
-            echo "TEST_STATUS=$test_status"
-            git status --short
-            echo 'UNMERGED_PATHS_AFTER_TEST'
-            git diff --name-only --diff-filter=U
-            echo 'CONFLICT_MARKERS_AFTER_TEST'
-            for path in $(git diff --name-only --diff-filter=U); do
-              echo "--- $path"
-              sed -n '/^<<<<<<< /,/^>>>>>>> /p' "$path"
-            done
-          fi
-          exit 1
+          test "$(git rev-parse origin/feat/selfhost-try-propagation)" = "$expected_feature_head"
+          git checkout -B feat/selfhost-try-propagation origin/main
+          git cherry-pick --no-commit \
+            d6517f4de360609e76f57fe46c4f0fe15ef82f6d \
+            1b71d15af9495c5af5086ad45c22223d6976ce01
+          expected_paths="$(printf '%s\n' \
+            packages/compiler/test/selfhost-try-propagation.test.ts \
+            selfhost/mvp/src/checker.virune \
+            selfhost/mvp/src/emitter.virune \
+            selfhost/mvp/src/parser.virune | sort)"
+          actual_paths="$(git diff --cached --name-only | sort)"
+          test "$actual_paths" = "$expected_paths"
+          git diff --cached --check
+          npm ci
+          npm run build
+          node --test --test-timeout=180000 packages/compiler/dist/test/selfhost-try-propagation.test.js
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git commit -m 'feat(selfhost): support postfix try propagation'
+          git push --force-with-lease=refs/heads/feat/selfhost-try-propagation:"$expected_feature_head" origin HEAD:feat/selfhost-try-propagation
