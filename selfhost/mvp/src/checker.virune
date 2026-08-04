@@ -4235,8 +4235,11 @@ fn checkRecordField(node: MvpExpression, context: CheckContext, expressions: Lis
 
 fn checkExpectedRecordField(node: MvpExpression, recordName: String, context: CheckContext, expressions: List<MvpHirExpression>) -> Result<CheckedExpression, MvpDiagnostic> {
 	let sourceId = childAt(node, 0)?
+	let source = sourceExpressionAt(context, sourceId)?
 	let expectedType = namedFieldType(recordName, node.text)
-	let checkedResult = if expectedType == MvpType.ErrorType then checkExpression(sourceId, context, expressions) else checkExpectedExpression(sourceId, expectedType, context, expressions)
+	let constructorName = standardConstructorName(source.text)
+	let needsExpectedType = source.kind == "list" || constructorName == "Some" || constructorName == "None"
+	let checkedResult = if expectedType != MvpType.ErrorType && needsExpectedType then checkExpectedExpression(sourceId, expectedType, context, expressions) else checkExpression(sourceId, context, expressions)
 	let checked = checkedResult?
 	return Ok(addHir(checked.expressions, MvpHirExpression {
 		kind: "recordField",
