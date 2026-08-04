@@ -101,6 +101,24 @@ fn expressionAt(expressions: List<MvpExpression>, expressionId: Int, valueSpan: 
 	}
 }
 
+fn statementAt(statements: List<MvpStatement>, statementId: Int, valueSpan: MvpSpan) -> Result<MvpStatement, MvpDiagnostic> {
+	return match List.get(statements, statementId) {
+		Some(value) => Ok(value)
+		None => Err(errorDiagnostic("L9001", "Missing MVP statement arena entry", valueSpan))
+	}
+}
+
+fn statementSpan(value: MvpStatement) -> MvpSpan {
+	return match value {
+		LetValue(_, _, _, _, valueSpan) => valueSpan
+		AssignValue(_, _, valueSpan) => valueSpan
+		ForValue(_, _, _, valueSpan) => valueSpan
+		WhileValue(_, _, valueSpan) => valueSpan
+		IfValue(_, _, _, valueSpan) => valueSpan
+		ReturnValue(_, valueSpan) => valueSpan
+	}
+}
+
 fn addExpression(cursor: Cursor, expressions: List<MvpExpression>, expression: MvpExpression) -> ParsedExpression {
 	return ParsedExpression {
 		cursor: cursor,
@@ -405,21 +423,35 @@ fn parseStatement(cursor: Cursor, statements: List<MvpStatement>, expressions: L
 		current = expectText(current, "}")?
 		let mut alternateStatementIds: List<Int> = []
 		let mut endPosition = consequentClose.span.end
+		let mut lineEndConsumed = false
 		if tokenAt(current).text == "else" {
-			current = skipNewLines(expectText(skipNewLines(advance(current)), "{")?)
-			while tokenAt(current).text != "}" && tokenAt(current).kind != MvpTokenKind.EndOfFile {
-				let parsedAlternate = parseStatement(current, statementArena, expressionArena)?
-				alternateStatementIds = List.append(alternateStatementIds, parsedAlternate.statementId)
+			let afterElse = skipNewLines(advance(current))
+			if tokenAt(afterElse).text == "if" {
+				let parsedAlternate = parseStatement(afterElse, statementArena, expressionArena)?
+				alternateStatementIds = [parsedAlternate.statementId]
 				statementArena = parsedAlternate.statements
 				expressionArena = parsedAlternate.expressions
-				current = skipNewLines(parsedAlternate.cursor)
+				current = parsedAlternate.cursor
+				let nested = statementAt(statementArena, parsedAlternate.statementId, start.span)?
+				endPosition = statementSpan(nested).end
+				lineEndConsumed = true
+			} else {
+				current = skipNewLines(expectText(afterElse, "{")?)
+				while tokenAt(current).text != "}" && tokenAt(current).kind != MvpTokenKind.EndOfFile {
+					let parsedAlternate = parseStatement(current, statementArena, expressionArena)?
+					alternateStatementIds = List.append(alternateStatementIds, parsedAlternate.statementId)
+					statementArena = parsedAlternate.statements
+					expressionArena = parsedAlternate.expressions
+					current = skipNewLines(parsedAlternate.cursor)
+				}
+				let alternateClose = tokenAt(current)
+				endPosition = alternateClose.span.end
+				current = expectText(current, "}")?
 			}
-			let alternateClose = tokenAt(current)
-			endPosition = alternateClose.span.end
-			current = expectText(current, "}")?
 		}
+		let afterStatement = if lineEndConsumed then current else consumeLineEnd(current)?
 		return Ok(addStatement(
-			consumeLineEnd(current)?,
+			afterStatement,
 			statementArena,
 			expressionArena,
 			MvpStatement.IfValue(parsedCondition.expressionId, consequentStatementIds, alternateStatementIds, span(start.span.start, endPosition)),
