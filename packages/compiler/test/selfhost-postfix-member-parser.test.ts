@@ -76,6 +76,13 @@ test('Pure Core parser builds field and invoke postfix chains for arbitrary expr
 			&& node.text === 'name'
 			&& expressions[node.children[0] ?? -1]?.kind === 'index');
 		assert.ok(indexedField);
+
+		const groupedFields = expressions.filter(node =>
+			node.kind === 'field'
+			&& node.text === 'name'
+			&& expressions[node.children[0] ?? -1]?.kind === 'call'
+			&& expressions[node.children[0] ?? -1]?.text === 'create');
+		assert.equal(groupedFields.length, 1);
 	} finally {
 		await rm(loaded.root, { recursive: true, force: true });
 	}
