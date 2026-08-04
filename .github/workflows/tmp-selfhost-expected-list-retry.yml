@@ -1,0 +1,44 @@
+name: Temporary self-host expected List retry
+
+on:
+  pull_request:
+    branches:
+      - main
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: write
+
+jobs:
+  retry:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: tmp/selfhost-try-rebuild-run-20260804
+          fetch-depth: 0
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - name: Retry with intent-to-add path guard
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import textwrap
+
+          workflow = Path('.github/workflows/tmp-selfhost-generic-json-retry.yml').read_text()
+          marker = '        run: |\n'
+          if workflow.count(marker) != 1:
+              raise RuntimeError(f'expected one run block, found {workflow.count(marker)}')
+          script = textwrap.dedent(workflow.split(marker, 1)[1])
+          old = 'actual_paths="$(git diff --name-only | sort)"'
+          new = 'git add -N packages/compiler/test/selfhost-expected-list-literals.test.ts\nactual_paths="$(git diff --name-only | sort)"'
+          if script.count(old) != 1:
+              raise RuntimeError(f'expected one path guard, found {script.count(old)}')
+          Path('/tmp/expected-list-retry.sh').write_text(script.replace(old, new, 1))
+          PY
+          bash /tmp/expected-list-retry.sh
