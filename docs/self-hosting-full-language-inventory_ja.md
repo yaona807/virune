@@ -1,18 +1,52 @@
-# Full-language Lowering Inventory
+# Full-languageセルフホストInventory
 
-`selfhost-full-language-inventory.test.ts`は、canonicalなViruneセルフホストsource setを生成済みStage 0 project compilerへ投入し、決定的なdiagnostic inventoryを1件出力する。
+CanonicalなFull-language Inventoryは、生成済みStage 0 Project Compilerの状態を確認するRepository-owned診断コマンドである。ViruneのセルフホストSourceをすべてParse・Checkできるかを確認し、残存Diagnosticを集約し、Project Compiler境界の回帰を失敗として検出する。
 
-inventoryはdiagnosticをcodeとmessageで集約し、発生件数と該当source pathのソート済み集合を記録する。さらに、生成結果の契約違反を`boundaryBlockers`へ記録する。次を検証する。
+## コマンド
 
-- 生成済みcompilerが明示的な`full-language-lowering-not-implemented` capability blockerを維持している
-- canonical sourceをすべてparse・checkする
-- 現在のfull self-host projectはfail-closedのままである
-- raw project compileを反復してもresultとinventoryが完全一致する
-- 廃止済みの`SHP2001` project-linking placeholderが再発しない
-- dependencyとexported-symbol metadataがcanonicalなtuple順で出力される
+```bash
+npm run selfhost:inventory
+npm run selfhost:inventory:built
+npm run selfhost:inventory -- --json
+npm run selfhost:inventory -- --output=.cache/selfhost/custom-inventory.json
+```
 
-project linkerはdependency metadataを`(modulePath, sourceKind, specifier)`、exported symbolを`(modulePath, name, declarationKind)`でcanonical化する。これによりproject module、import、declarationの入力順が公開metadataの結果を変えない。`boundaryBlockers`の期待値は空配列であり、今後値が入った場合はfull-language lowering diagnosticではなくproject compiler boundaryの回帰として扱う。
+`selfhost:inventory`はRepositoryをBuildしてからInventoryを実行する。`selfhost:inventory:built`は既存Buildを再利用する。既定のJSON出力先は`.cache/selfhost/full-language-inventory.json`である。
 
-決定的なJSON evidenceは`.cache/ci-timings/selfhost-full-language-inventory.json`へ書き出す。既存のcore-test evidence uploadはこのdirectoryを含むため、`--failure-output-only`が成功したunit testのstdoutを抑制しても、CI artifactからinventoryを回収できる。出力抑制なしでtestを実行した場合は、`SELFHOST_FULL_LANGUAGE_INVENTORY`で始まる行も出力する。
+正常終了には次の2状態がある。
 
-project metadataのcanonical化後に残る実測diagnosticは、Pure Core MVP lexer／parserで未対応の記号とdeclaration形式に属する。このmachine-readable JSONを、declaration／type、expression／control-flow、effect／async、runtime／deriveの独立レーンへ残作業を分割する入力として使う。各blockerの解消とfull source setの受理に応じて、このtestは削除または成功条件へ反転する。
+- `incomplete`: Project Compiler境界は正常だが、Language loweringのDiagnosticが残っている
+- `ready`: Canonical source setがDiagnosticなしで受理され、正常にEmitされている
+
+どちらもExit code 0とする。Build失敗、不正なCompiler出力、反復実行の非決定性、Parser／Checker到達率の低下、未知Source参照、Metadata順序違反、Capability矛盾、出力Path違反は非0で失敗する。
+
+## 単一実装
+
+Inventoryは内部的に次の3層へ分離する。
+
+- `full-language-inventory.ts`: Machine-readable modelの検証とCanonical化
+- `full-language-inventory-runner.ts`: MVP CompilerのBuild、Stage 0 Candidate生成、同一Requestの2回実行、Inventory返却
+- `run-selfhost-full-language-inventory.mjs`: Repository CLI
+
+統合TestとCLIは同じRunnerを利用する。CLIからTest Processを呼び出さず、Inventoryロジックも複製しない。
+
+## 決定性と実行分離
+
+JSONには実行日時、処理時間、Absolute path、Temporary directory名を含めない。同じCommitとSource setであれば、反復出力はByte単位で一致する。
+
+各実行は専用の`.test-tmp/selfhost-inventory-*` Directoryを作成し、自分が作成したDirectoryだけを削除する。並行するTestやCommandが互いのTemporary stateを削除しない。
+
+Inventoryでは次を検証する。
+
+- Parsed／Checked module数がCanonical source数と一致する
+- Emitted module統計が実際の返却Module数と一致する
+- DiagnosticがCanonical source以外を参照しない
+- Dependency、Exported symbol、Capability blockerがCanonical順である
+- 廃止済み`SHP2001` Project-linking placeholderが再発しない
+- Capability stateと`incomplete`／`ready`が矛盾しない
+
+## CI Evidence
+
+既存の統合Testは決定的なEvidenceを`.cache/ci-timings/selfhost-full-language-inventory.json`へ書き出す。既存Core TestのArtifact uploadがこのDirectoryを保持するため、追加Workflowや900秒級Inventoryの二重実行は導入しない。
+
+生成JSONは診断Evidenceであり、RepositoryへCommitしない。
