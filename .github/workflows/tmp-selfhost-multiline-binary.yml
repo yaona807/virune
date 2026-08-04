@@ -1,0 +1,309 @@
+name: Temporary self-host multiline binary implementation
+
+on:
+  push:
+    branches:
+      - feat/selfhost-multiline-binary
+
+permissions:
+  contents: write
+
+jobs:
+  implement:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: feat/selfhost-multiline-binary
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - run: npm ci
+      - name: Apply parser and regression-test changes
+        shell: bash
+        run: |
+          node <<'NODE'
+          import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+          import { dirname } from 'node:path';
+
+          const parserPath = 'selfhost/mvp/src/parser.virune';
+          const testPath = 'packages/compiler/test/selfhost-multiline-binary-expressions.test.ts';
+          const workflowPath = '.github/workflows/tmp-selfhost-multiline-binary.yml';
+          let parser = readFileSync(parserPath, 'utf8');
+
+          const precedenceStart = parser.indexOf('fn parseOr(');
+          const precedenceEnd = parser.indexOf('fn parseUnary(', precedenceStart);
+          if (precedenceStart < 0 || precedenceEnd < 0) {
+            throw new Error('Unable to locate binary precedence parser block');
+          }
+
+          const precedenceBlock = `fn parseOr(cursor: Cursor, expressions: List<MvpExpression>) -> Result<ParsedExpression, MvpDiagnostic> {
+          \tlet parsed = parseAnd(cursor, expressions)?
+          \tlet mut current = parsed.cursor
+          \tlet mut expressionId = parsed.expressionId
+          \tlet mut arena = parsed.expressions
+          \twhile true {
+          \t\tlet operatorCursor = skipNewLines(current)
+          \t\tif tokenAt(operatorCursor).text != "||" {
+          \t\t\tbreak
+          \t\t}
+          \t\tlet operator = tokenAt(operatorCursor)
+          \t\tlet right = parseAnd(skipNewLines(advance(operatorCursor)), arena)?
+          \t\tlet added = appendBinary(operator, expressionId, right, arena)?
+          \t\tcurrent = added.cursor
+          \t\texpressionId = added.expressionId
+          \t\tarena = added.expressions
+          \t}
+          \treturn Ok(ParsedExpression { cursor: current, expressionId: expressionId, expressions: arena })
+          }
+
+          fn parseAnd(cursor: Cursor, expressions: List<MvpExpression>) -> Result<ParsedExpression, MvpDiagnostic> {
+          \tlet parsed = parseEquality(cursor, expressions)?
+          \tlet mut current = parsed.cursor
+          \tlet mut expressionId = parsed.expressionId
+          \tlet mut arena = parsed.expressions
+          \twhile true {
+          \t\tlet operatorCursor = skipNewLines(current)
+          \t\tif tokenAt(operatorCursor).text != "&&" {
+          \t\t\tbreak
+          \t\t}
+          \t\tlet operator = tokenAt(operatorCursor)
+          \t\tlet right = parseEquality(skipNewLines(advance(operatorCursor)), arena)?
+          \t\tlet added = appendBinary(operator, expressionId, right, arena)?
+          \t\tcurrent = added.cursor
+          \t\texpressionId = added.expressionId
+          \t\tarena = added.expressions
+          \t}
+          \treturn Ok(ParsedExpression { cursor: current, expressionId: expressionId, expressions: arena })
+          }
+
+          fn parseEquality(cursor: Cursor, expressions: List<MvpExpression>) -> Result<ParsedExpression, MvpDiagnostic> {
+          \tlet parsed = parseComparison(cursor, expressions)?
+          \tlet mut current = parsed.cursor
+          \tlet mut expressionId = parsed.expressionId
+          \tlet mut arena = parsed.expressions
+          \twhile true {
+          \t\tlet operatorCursor = skipNewLines(current)
+          \t\tlet operatorText = tokenAt(operatorCursor).text
+          \t\tif operatorText != "==" && operatorText != "!=" {
+          \t\t\tbreak
+          \t\t}
+          \t\tlet operator = tokenAt(operatorCursor)
+          \t\tlet right = parseComparison(skipNewLines(advance(operatorCursor)), arena)?
+          \t\tlet added = appendBinary(operator, expressionId, right, arena)?
+          \t\tcurrent = added.cursor
+          \t\texpressionId = added.expressionId
+          \t\tarena = added.expressions
+          \t}
+          \treturn Ok(ParsedExpression { cursor: current, expressionId: expressionId, expressions: arena })
+          }
+
+          fn parseComparison(cursor: Cursor, expressions: List<MvpExpression>) -> Result<ParsedExpression, MvpDiagnostic> {
+          \tlet parsed = parseAdditive(cursor, expressions)?
+          \tlet mut current = parsed.cursor
+          \tlet mut expressionId = parsed.expressionId
+          \tlet mut arena = parsed.expressions
+          \twhile true {
+          \t\tlet operatorCursor = skipNewLines(current)
+          \t\tlet operatorText = tokenAt(operatorCursor).text
+          \t\tif operatorText != "<" && operatorText != "<=" && operatorText != ">" && operatorText != ">=" {
+          \t\t\tbreak
+          \t\t}
+          \t\tlet operator = tokenAt(operatorCursor)
+          \t\tlet right = parseAdditive(skipNewLines(advance(operatorCursor)), arena)?
+          \t\tlet added = appendBinary(operator, expressionId, right, arena)?
+          \t\tcurrent = added.cursor
+          \t\texpressionId = added.expressionId
+          \t\tarena = added.expressions
+          \t}
+          \treturn Ok(ParsedExpression { cursor: current, expressionId: expressionId, expressions: arena })
+          }
+
+          fn parseAdditive(cursor: Cursor, expressions: List<MvpExpression>) -> Result<ParsedExpression, MvpDiagnostic> {
+          \tlet parsed = parseMultiplicative(cursor, expressions)?
+          \tlet mut current = parsed.cursor
+          \tlet mut expressionId = parsed.expressionId
+          \tlet mut arena = parsed.expressions
+          \twhile true {
+          \t\tlet operatorCursor = skipNewLines(current)
+          \t\tlet operatorText = tokenAt(operatorCursor).text
+          \t\tif operatorText != "+" && operatorText != "-" {
+          \t\t\tbreak
+          \t\t}
+          \t\tlet operator = tokenAt(operatorCursor)
+          \t\tlet right = parseMultiplicative(skipNewLines(advance(operatorCursor)), arena)?
+          \t\tlet added = appendBinary(operator, expressionId, right, arena)?
+          \t\tcurrent = added.cursor
+          \t\texpressionId = added.expressionId
+          \t\tarena = added.expressions
+          \t}
+          \treturn Ok(ParsedExpression { cursor: current, expressionId: expressionId, expressions: arena })
+          }
+
+          fn parseMultiplicative(cursor: Cursor, expressions: List<MvpExpression>) -> Result<ParsedExpression, MvpDiagnostic> {
+          \tlet parsed = parseUnary(cursor, expressions)?
+          \tlet mut current = parsed.cursor
+          \tlet mut expressionId = parsed.expressionId
+          \tlet mut arena = parsed.expressions
+          \twhile true {
+          \t\tlet operatorCursor = skipNewLines(current)
+          \t\tlet operatorText = tokenAt(operatorCursor).text
+          \t\tif operatorText != "*" && operatorText != "/" && operatorText != "%" {
+          \t\t\tbreak
+          \t\t}
+          \t\tlet operator = tokenAt(operatorCursor)
+          \t\tlet right = parseUnary(skipNewLines(advance(operatorCursor)), arena)?
+          \t\tlet added = appendBinary(operator, expressionId, right, arena)?
+          \t\tcurrent = added.cursor
+          \t\texpressionId = added.expressionId
+          \t\tarena = added.expressions
+          \t}
+          \treturn Ok(ParsedExpression { cursor: current, expressionId: expressionId, expressions: arena })
+          }
+
+          `;
+          parser = parser.slice(0, precedenceStart) + precedenceBlock + parser.slice(precedenceEnd);
+
+          const parenthesizedBefore = 'return Ok(ParsedExpression { cursor: expectText(parsed.cursor, ")")?, expressionId: parsed.expressionId, expressions: parsed.expressions })';
+          const parenthesizedAfter = 'return Ok(ParsedExpression { cursor: expectText(skipNewLines(parsed.cursor), ")")?, expressionId: parsed.expressionId, expressions: parsed.expressions })';
+          if (!parser.includes(parenthesizedBefore)) {
+            throw new Error('Unable to locate parenthesized expression close');
+          }
+          parser = parser.replace(parenthesizedBefore, parenthesizedAfter);
+
+          const indexBefore = `\t\tlet close = tokenAt(parsedIndex.cursor)
+          \t\tlet afterClose = expectText(parsedIndex.cursor, "]")?`;
+          const indexAfter = `\t\tlet closeCursor = skipNewLines(parsedIndex.cursor)
+          \t\tlet close = tokenAt(closeCursor)
+          \t\tlet afterClose = expectText(closeCursor, "]")?`;
+          if (!parser.includes(indexBefore)) {
+            throw new Error('Unable to locate index expression close');
+          }
+          parser = parser.replace(indexBefore, indexAfter);
+          writeFileSync(parserPath, parser);
+
+          const testContent = `import assert from 'node:assert/strict';
+          import test from 'node:test';
+          import { execFile } from 'node:child_process';
+          import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+          import { dirname, join, relative, resolve } from 'node:path';
+          import { promisify } from 'node:util';
+          import { fileURLToPath, pathToFileURL } from 'node:url';
+          import { buildProject } from '../src/project/project.js';
+          import {
+          \tcreateSelfhostMvpKernel,
+          \ttype SelfhostMvpModule,
+          } from '../src/selfhost/mvp-adapter.js';
+          import { executeKernelOutputWithNode } from '../src/selfhost/node-executor.js';
+          import type { KernelInputV1 } from '../src/selfhost/contract.js';
+
+          const execFileAsync = promisify(execFile);
+          const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../../..');
+          const mvpRoot = join(repositoryRoot, 'selfhost', 'mvp');
+          const temporaryRoot = join(repositoryRoot, '.test-tmp');
+
+          const input = (text: string): KernelInputV1 => ({
+          \tcontractVersion: '1',
+          \tlanguageVersion: '1.0',
+          \tplatform: 'node',
+          \tentryPath: 'src/main.virune',
+          \tsources: [{ path: 'src/main.virune', text }],
+          \tinteropManifest: { version: '1', modules: [] },
+          \temit: { target: 'es2022', sourceMap: false, sourcesContent: true },
+          });
+
+          const multilineSource = [
+          \t'pub fn classify(kind: String, enabled: Bool) -> Bool {',
+          \t'\\treturn kind == "block"',
+          \t'\\t\\t|| kind == "return"',
+          \t'\\t\\t|| kind == "expression"',
+          \t'\\t\\t&& enabled',
+          \t'}',
+          \t'',
+          \t'pub fn total() -> Int {',
+          \t'\\treturn 1 +',
+          \t'\\t\\t2 * 3 +',
+          \t'\\t\\t4',
+          \t'}',
+          \t'',
+          \t'pub fn grouped() -> Bool {',
+          \t'\\treturn (',
+          \t'\\t\\tfalse',
+          \t'\\t\\t|| true',
+          \t'\\t) && true',
+          \t'}',
+          \t'',
+          \t'pub fn indexed(values: List<Int>) -> Int {',
+          \t'\\treturn values[',
+          \t'\\t\\t1',
+          \t'\\t]',
+          \t'}',
+          \t'',
+          \t'pub fn main() -> Int {',
+          \t'\\tif classify("return", false) && grouped() {',
+          \t'\\t\\treturn total() + indexed([5, 7])',
+          \t'\\t}',
+          \t'\\treturn 0',
+          \t'}',
+          \t'',
+          ].join('\\n');
+
+          test('multiline binary expressions preserve precedence and execute through the generated compiler', async () => {
+          \tconst loaded = await loadMvpModule();
+          \ttry {
+          \t\tconst request = input(multilineSource);
+          \t\tconst output = await createSelfhostMvpKernel(loaded.module).compile(request);
+          \t\tassert.equal(output.accepted, true, JSON.stringify(output.diagnostics, null, 2));
+          \t\tassert.deepEqual(output.diagnostics, []);
+          \t\tconst emittedCode = output.emittedModules.map(module => module.code).join('\\n');
+          \t\tassert.match(emittedCode, /\\|\\|/);
+          \t\tassert.match(emittedCode, /intAdd\\(/);
+          \t\tassert.match(emittedCode, /intMultiply\\(/);
+          \t\tconst runtime = await executeKernelOutputWithNode(request, output);
+          \t\tassert.equal(runtime.returnValue, 18);
+          \t\tassert.equal(runtime.panic, null);
+          \t} finally {
+          \t\tawait rm(loaded.root, { recursive: true, force: true });
+          \t}
+          });
+
+          async function loadMvpModule(): Promise<{ readonly root: string; readonly module: SelfhostMvpModule }> {
+          \tconst result = await buildProject(mvpRoot, { write: false });
+          \tconst errors = result.diagnostics.filter(item => item.severity === 'error');
+          \tassert.deepEqual(errors.map(item => item.code + ':' + item.message), []);
+
+          \tawait mkdir(temporaryRoot, { recursive: true });
+          \tconst root = await mkdtemp(join(temporaryRoot, 'selfhost-multiline-binary-'));
+          \tconst configuredOutDir = resolve(mvpRoot, 'dist');
+          \tconst outputPaths: string[] = [];
+          \tfor (const built of result.modules) {
+          \t\tif (built.output === undefined || built.outputPath === undefined) continue;
+          \t\tconst outputPath = join(root, relative(configuredOutDir, built.outputPath));
+          \t\tawait mkdir(dirname(outputPath), { recursive: true });
+          \t\tawait writeFile(outputPath, built.output.code);
+          \t\toutputPaths.push(outputPath);
+          \t}
+          \tfor (const outputPath of outputPaths.sort()) {
+          \t\tawait execFileAsync(process.execPath, ['--check', outputPath]);
+          \t}
+          \tconst moduleUrl = pathToFileURL(join(root, 'main.js')).href + '?test=' + Date.now();
+          \treturn { root, module: await import(moduleUrl) as SelfhostMvpModule };
+          }
+          `;
+          mkdirSync(dirname(testPath), { recursive: true });
+          writeFileSync(testPath, testContent);
+          rmSync(workflowPath);
+          NODE
+      - run: npm run build
+      - run: node --test --test-timeout=120000 packages/compiler/dist/test/selfhost-multiline-binary-expressions.test.js
+      - name: Commit implementation
+        shell: bash
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add selfhost/mvp/src/parser.virune packages/compiler/test/selfhost-multiline-binary-expressions.test.ts .github/workflows/tmp-selfhost-multiline-binary.yml
+          git commit -m "feat(selfhost): support multiline binary expressions"
+          git push origin HEAD:feat/selfhost-multiline-binary
