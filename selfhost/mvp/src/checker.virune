@@ -565,7 +565,10 @@ fn checkExpectedExpression(expressionId: Int, expectedType: MvpType, context: Ch
 		return checkExpectedConditional(node, expectedType, context, expressions)
 	}
 	if node.kind == "match" {
-		return checkExpectedMatch(node, expectedType, context, expressions)
+		return match checkMatch(node, context, expressions) {
+			Ok(checked) => if typesCompatible(checked.valueType, expectedType) then Ok(checked) else Err(typeMismatch(checked.valueType, expectedType, node.span))
+			Err(diagnostic) => if diagnostic.code == "L2020" then checkExpectedMatch(node, expectedType, context, expressions) else Err(diagnostic)
+		}
 	}
 	let checked = checkExpression(expressionId, context, expressions)?
 	if !typesCompatible(checked.valueType, expectedType) {
