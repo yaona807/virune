@@ -1,4 +1,4 @@
-name: Temporary self-host generic Json branch promotion
+name: Temporary self-host expected List validation
 
 on:
   pull_request:
@@ -10,9 +10,9 @@ permissions:
   contents: write
 
 jobs:
-  promote:
+  validate:
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v6
         with:
@@ -22,55 +22,184 @@ jobs:
         with:
           node-version-file: .node-version
           cache: npm
-      - name: Apply validated generic Json support to formal branch
+      - name: Validate and publish expected List literal propagation
         shell: bash
         run: |
           set -euo pipefail
-          expected_main='27c445c37b5a306436088f4f64a569bf7fe5e6ad'
-          expected_branch_head='27c445c37b5a306436088f4f64a569bf7fe5e6ad'
-          branch='feat/selfhost-generic-json-type-arguments'
+          branch='feat/selfhost-expected-list-literals'
+          expected_head='a0f6eb0708e8d412708e3dcb9b37f3292c885ca4'
           git fetch --no-tags origin '+refs/heads/*:refs/remotes/origin/*'
-          test "$(git rev-parse origin/main)" = "$expected_main"
-          test "$(git rev-parse origin/$branch)" = "$expected_branch_head"
-          test "$(git rev-parse "$expected_main:selfhost/mvp/src/parser.virune")" = 'bfa9a235f80dc544516ccb6ad1c131e19e551ef4'
-          test "$(git rev-parse "$expected_main:selfhost/mvp/src/checker.virune")" = '4a5b42c92aef87c864227ba11c6d93da7be8db37'
-          python - <<'PY'
-          from pathlib import Path
-          import re
-          import textwrap
-          workflow = Path('.github/workflows/tmp-selfhost-try-rebuild.yml').read_text()
-          match = re.search(r"python - <<'PY'\n(?P<body>.*?)\n          PY", workflow, re.DOTALL)
-          if match is None:
-              raise RuntimeError('validated transformation heredoc not found')
-          Path('/tmp/generic-json-transform.py').write_text(textwrap.dedent(match.group('body')))
-          PY
+          test "$(git rev-parse origin/$branch)" = "$expected_head"
           git checkout -B "$branch" "origin/$branch"
-          python /tmp/generic-json-transform.py
           python - <<'PY'
           from pathlib import Path
-          path = Path('selfhost/mvp/src/checker.virune')
-          source = path.read_text()
-          old_start = 'fn sourceQualifiedName(expressionId: Int, context: CheckContext) -> Result<String?, MvpDiagnostic> {\n\tlet node = sourceExpressionAt(context, expressionId)?'
-          new_start = 'fn sourceQualifiedName(expressionId: Int, context: CheckContext) -> Result<String?, MvpDiagnostic> {\n\tlet missing: String? = None\n\tlet node = sourceExpressionAt(context, expressionId)?'
-          if source.count(old_start) != 1:
-              raise RuntimeError(f'sourceQualifiedName start count is {source.count(old_start)}')
-          source = source.replace(old_start, new_start, 1)
-          if source.count('None => Ok(None)') != 1:
-              raise RuntimeError(f'Ok(None) match-arm count is {source.count("None => Ok(None)")}')
-          source = source.replace('None => Ok(None)', 'None => Ok(missing)', 1)
-          if source.count('return Ok(None)') != 1:
-              raise RuntimeError(f'return Ok(None) count is {source.count("return Ok(None)")}')
-          source = source.replace('return Ok(None)', 'return Ok(missing)', 1)
-          path.write_text(source)
+
+          checker_path = Path('selfhost/mvp/src/checker.virune')
+          checker = checker_path.read_text()
+          anchor = '''fn checkExpectedExpression(expressionId: Int, expectedType: MvpType, context: CheckContext, expressions: List<MvpHirExpression>) -> Result<CheckedExpression, MvpDiagnostic> {
+          '''
+          implementation = '''fn checkExpectedList(node: MvpExpression, expectedType: MvpType, context: CheckContext, expressions: List<MvpHirExpression>) -> Result<CheckedExpression, MvpDiagnostic> {
+          \tlet elementTypeValue = listElementType(expectedType)
+          \tif match elementTypeValue { Some(_) => false, None => true } {
+          \t\treturn Err(errorDiagnostic("L2043", "List literal requires a List expected type, received " + typeName(expectedType), node.span))
+          \t}
+          \tlet elementType = match elementTypeValue {
+          \t\tSome(value) => value
+          \t\tNone => MvpType.ErrorType
+          \t}
+          \tlet mut expressionIds: List<Int> = []
+          \tlet mut arena = expressions
+          \tlet mut index = 0
+          \twhile index < List.length(node.children) {
+          \t\tlet sourceId = childAt(node, index)?
+          \t\tlet checked = checkExpectedExpression(sourceId, elementType, context, arena)?
+          \t\texpressionIds = List.append(expressionIds, checked.expressionId)
+          \t\tarena = checked.expressions
+          \t\tindex = index + 1
+          \t}
+          \treturn Ok(addHir(arena, MvpHirExpression {
+          \t\tkind: "list",
+          \t\ttext: node.text,
+          \t\tvalueType: expectedType,
+          \t\tchildren: expressionIds,
+          \t\tspan: node.span,
+          \t}, expectedType))
+          }
+
+          fn checkExpectedExpression(expressionId: Int, expectedType: MvpType, context: CheckContext, expressions: List<MvpHirExpression>) -> Result<CheckedExpression, MvpDiagnostic> {
+          '''
+          if checker.count(anchor) != 1:
+              raise RuntimeError(f'expected one checkExpectedExpression anchor, found {checker.count(anchor)}')
+          checker = checker.replace(anchor, implementation, 1)
+          dispatch_anchor = '''\tif node.kind == "if" {
+          \t\treturn checkExpectedConditional(node, expectedType, context, expressions)
+          \t}
+          '''
+          dispatch_replacement = '''\tif node.kind == "list" {
+          \t\treturn checkExpectedList(node, expectedType, context, expressions)
+          \t}
+          \tif node.kind == "if" {
+          \t\treturn checkExpectedConditional(node, expectedType, context, expressions)
+          \t}
+          '''
+          if checker.count(dispatch_anchor) != 1:
+              raise RuntimeError(f'expected one expected-expression dispatch anchor, found {checker.count(dispatch_anchor)}')
+          checker_path.write_text(checker.replace(dispatch_anchor, dispatch_replacement, 1))
+
+          test_path = Path('packages/compiler/test/selfhost-expected-list-literals.test.ts')
+          if test_path.exists():
+              raise RuntimeError('focused test already exists')
+          test_path.write_text('''import assert from 'node:assert/strict';
+          import test from 'node:test';
+          import { execFile } from 'node:child_process';
+          import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+          import { dirname, join, relative, resolve } from 'node:path';
+          import { promisify } from 'node:util';
+          import { fileURLToPath, pathToFileURL } from 'node:url';
+          import { buildProject } from '../src/project/project.js';
+          import { createSelfhostMvpKernel, type SelfhostMvpModule } from '../src/selfhost/mvp-adapter.js';
+          import type { KernelInputV1 } from '../src/selfhost/contract.js';
+
+          const execFileAsync = promisify(execFile);
+          const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../../..');
+          const mvpRoot = join(repositoryRoot, 'selfhost', 'mvp');
+          const temporaryRoot = join(repositoryRoot, '.test-tmp');
+
+          const input = (text: string): KernelInputV1 => ({
+          \tcontractVersion: '1',
+          \tlanguageVersion: '1.0',
+          \tplatform: 'node',
+          \tentryPath: 'src/main.virune',
+          \tsources: [{ path: 'src/main.virune', text }],
+          \tinteropManifest: { version: '1', modules: [] },
+          \temit: { target: 'es2022', sourceMap: false, sourcesContent: true },
+          });
+
+          const expectedSource = [
+          \t'fn emptyValues() -> List<Int> {',
+          \t'\\treturn []',
+          \t'}',
+          \t'',
+          \t'pub fn main() -> Int {',
+          \t'\\tlet values: List<Int> = []',
+          \t'\\treturn 0',
+          \t'}',
+          \t'',
+          ].join('\\n');
+
+          const untypedSource = [
+          \t'pub fn main() -> Int {',
+          \t'\\tlet values = []',
+          \t'\\treturn 0',
+          \t'}',
+          \t'',
+          ].join('\\n');
+
+          test('expected List types permit empty literals without weakening untyped diagnostics', async () => {
+          \tconst loaded = await loadMvpModule();
+          \ttry {
+          \t\tconst accepted = await createSelfhostMvpKernel(loaded.module).compile(input(expectedSource));
+          \t\tassert.equal(accepted.accepted, true, JSON.stringify(accepted.diagnostics, null, 2));
+          \t\tassert.deepEqual(accepted.diagnostics, []);
+
+          \t\tconst rejected = await createSelfhostMvpKernel(loaded.module).compile(input(untypedSource));
+          \t\tassert.equal(rejected.accepted, false);
+          \t\tassert.equal(rejected.diagnostics[0]?.code, 'L2020');
+          \t\tassert.equal(rejected.diagnostics[0]?.message, 'Cannot infer the element type of an empty List');
+          \t} finally {
+          \t\tawait rm(loaded.root, { recursive: true, force: true });
+          \t}
+          });
+
+          async function loadMvpModule(): Promise<{ readonly root: string; readonly module: SelfhostMvpModule }> {
+          \tconst result = await buildProject(mvpRoot, { write: false });
+          \tconst errors = result.diagnostics.filter(item => item.severity === 'error');
+          \tassert.deepEqual(errors.map(item => `${item.code}:${item.message}`), []);
+          \tawait mkdir(temporaryRoot, { recursive: true });
+          \tconst root = await mkdtemp(join(temporaryRoot, 'selfhost-expected-list-'));
+          \tconst configuredOutDir = resolve(mvpRoot, 'dist');
+          \tconst outputPaths: string[] = [];
+          \tfor (const built of result.modules) {
+          \t\tif (built.output === undefined || built.outputPath === undefined) continue;
+          \t\tconst outputPath = join(root, relative(configuredOutDir, built.outputPath));
+          \t\tawait mkdir(dirname(outputPath), { recursive: true });
+          \t\tawait writeFile(outputPath, built.output.code);
+          \t\toutputPaths.push(outputPath);
+          \t}
+          \tfor (const outputPath of outputPaths.sort()) await execFileAsync(process.execPath, ['--check', outputPath]);
+          \treturn {
+          \t\troot,
+          \t\tmodule: await import(`${pathToFileURL(join(root, 'main.js')).href}?test=${Date.now()}`) as SelfhostMvpModule,
+          \t};
+          }
+          ''')
           PY
-          expected_paths="$(printf '%s\n' selfhost/mvp/src/checker.virune selfhost/mvp/src/parser.virune | sort)"
+          expected_paths="$(printf '%s\n' packages/compiler/test/selfhost-expected-list-literals.test.ts selfhost/mvp/src/checker.virune | sort)"
           actual_paths="$(git diff --name-only | sort)"
           test "$actual_paths" = "$expected_paths"
           git diff --check
           npm ci
           npm run build
+          node --test --test-timeout=900000 packages/compiler/dist/test/selfhost-expected-list-literals.test.js
+          node --test --test-timeout=900000 packages/compiler/dist/test/selfhost-full-language-inventory.test.js
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          inventory = json.loads(Path('.cache/ci-timings/selfhost-full-language-inventory.json').read_text())
+          remaining = [
+              item for item in inventory.get('firstDiagnostics', [])
+              if item.get('code') == 'L2020'
+              and item.get('message') == 'Cannot infer the element type of an empty List'
+          ]
+          if remaining:
+              raise RuntimeError('expected-type List diagnostics remain: ' + json.dumps(remaining, separators=(',', ':')))
+          if inventory.get('parsedModules') != 31 or inventory.get('checkedModules') != 31:
+              raise RuntimeError('full inventory no longer reaches all modules')
+          print('SELFHOST_EXPECTED_LIST_INVENTORY_JSON')
+          print(json.dumps(inventory, separators=(',', ':')))
+          PY
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add selfhost/mvp/src/parser.virune selfhost/mvp/src/checker.virune
-          git commit -m 'feat(selfhost): support generic Json type arguments'
-          git push --force-with-lease=refs/heads/$branch:"$expected_branch_head" origin HEAD:$branch
+          git add selfhost/mvp/src/checker.virune packages/compiler/test/selfhost-expected-list-literals.test.ts
+          git commit -m 'feat(selfhost): propagate expected List literal types'
+          git push --force-with-lease=refs/heads/$branch:"$expected_head" origin HEAD:$branch
