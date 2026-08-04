@@ -27,7 +27,30 @@ jobs:
           cache: npm
       - run: npm ci
       - name: Apply break and continue implementation
-        run: python .github/workflows/tmp-selfhost-break-continue-patch.py
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          patch_path = Path('.github/workflows/tmp-selfhost-break-continue-patch.py')
+          script = patch_path.read_text()
+          start = script.index("emitter_path = Path('selfhost/mvp/src/emitter.virune')")
+          end = script.index("Path('packages/compiler/test/selfhost-break-continue.test.ts')", start)
+          replacement = r'''emitter_path = Path('selfhost/mvp/src/emitter.virune')
+          emitter = emitter_path.read_text()
+          emitter = required_replace(
+              emitter,
+              '\t\tHirReturn(expressionId, _) => prefix + "return " + emitExpression(expressionId, expressions) + ";\\n"',
+              '\t\tHirBreak(_) => prefix + "break;\\n"\n\t\tHirContinue(_) => prefix + "continue;\\n"\n\t\tHirReturn(expressionId, _) => prefix + "return " + emitExpression(expressionId, expressions) + ";\\n"',
+              'emitter loop control statements',
+          )
+          emitter_path.write_text(emitter)
+
+          '''
+          corrected = script[:start] + replacement + script[end:]
+          compile(corrected, str(patch_path), 'exec')
+          exec(corrected, {'__name__': '__main__'})
+          PY
       - run: npm run build
       - run: node --test --test-timeout=120000 packages/compiler/dist/test/selfhost-break-continue.test.js
       - name: Commit implementation
