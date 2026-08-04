@@ -1,0 +1,81 @@
+name: Temporary self-host generic Json retry
+
+on:
+  pull_request:
+    branches:
+      - main
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: tmp/selfhost-try-rebuild-run-20260804
+          fetch-depth: 0
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - name: Apply explicit optional type and validate inventory
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin '+refs/heads/*:refs/remotes/origin/*'
+          test "$(git rev-parse origin/feat/selfhost-member-chain-integration)" = 'b0fd10cb7f1b45a7ed8b205d220a1f3d743c3347'
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          import textwrap
+
+          workflow = Path('.github/workflows/tmp-selfhost-try-rebuild.yml').read_text()
+          match = re.search(r"python - <<'PY'\n(?P<body>.*?)\n          PY", workflow, re.DOTALL)
+          if match is None:
+              raise RuntimeError('transformation Python heredoc not found')
+          script = textwrap.dedent(match.group('body'))
+          old_start = 'fn sourceQualifiedName(expressionId: Int, context: CheckContext) -> Result<String?, MvpDiagnostic> {\n\tlet node = sourceExpressionAt(context, expressionId)?'
+          new_start = 'fn sourceQualifiedName(expressionId: Int, context: CheckContext) -> Result<String?, MvpDiagnostic> {\n\tlet missing: String? = None\n\tlet node = sourceExpressionAt(context, expressionId)?'
+          if script.count(old_start) != 1:
+              raise RuntimeError(f'sourceQualifiedName start count is {script.count(old_start)}')
+          script = script.replace(old_start, new_start, 1)
+          if script.count('None => Ok(None)') != 1:
+              raise RuntimeError(f'Ok(None) match-arm count is {script.count("None => Ok(None)")}')
+          script = script.replace('None => Ok(None)', 'None => Ok(missing)', 1)
+          if script.count('return Ok(None)') != 1:
+              raise RuntimeError(f'return Ok(None) count is {script.count("return Ok(None)")}')
+          script = script.replace('return Ok(None)', 'return Ok(missing)', 1)
+          Path('/tmp/generic-json-transform.py').write_text(script)
+          PY
+          git checkout -B generic-json-validation b0fd10cb7f1b45a7ed8b205d220a1f3d743c3347
+          python /tmp/generic-json-transform.py
+          test "$(git diff --name-only | sort)" = "$(printf '%s\n' selfhost/mvp/src/checker.virune selfhost/mvp/src/parser.virune | sort)"
+          git diff --check
+          npm ci
+          npm run build
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('packages/compiler/dist/test/selfhost-full-language-inventory.test.js')
+          source = path.read_text()
+          for old, new in [('timeout: 720_000', 'timeout: 900_000'), ('timeout: 720000', 'timeout: 900000')]:
+              if old in source:
+                  path.write_text(source.replace(old, new, 1))
+                  break
+          else:
+              raise RuntimeError('720-second inventory timeout not found')
+          PY
+          node --test --test-timeout=900000 packages/compiler/dist/test/selfhost-full-language-inventory.test.js
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          inventory = json.loads(Path('.cache/ci-timings/selfhost-full-language-inventory.json').read_text())
+          l0002 = [item for item in inventory.get('firstDiagnostics', []) if item.get('code') == 'L0002']
+          if l0002:
+              raise RuntimeError('L0002 diagnostics remain: ' + json.dumps(l0002, separators=(',', ':')))
+          print('SELFHOST_GENERIC_JSON_INVENTORY_JSON')
+          print(json.dumps(inventory, separators=(',', ':')))
+          PY
