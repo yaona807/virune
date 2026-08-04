@@ -1,9 +1,14 @@
 name: Temporary dependency audit fix
 
 on:
-  push:
+  pull_request:
     branches:
-      - chore/dependency-audit-fix-20260804
+      - main
+    types:
+      - opened
+      - reopened
+      - synchronize
+      - ready_for_review
 
 permissions:
   contents: write
