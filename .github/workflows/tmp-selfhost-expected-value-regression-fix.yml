@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - feat/selfhost-expected-list-literals
+  pull_request:
+    branches:
+      - main
 
 permissions:
   contents: write
@@ -27,9 +30,9 @@ jobs:
         run: |
           set -euo pipefail
           branch='feat/selfhost-expected-list-literals'
-          expected_base='3f90f85fe4485e814a33ad9bd46b54e26af50e55'
+          expected_parent='6615b6d1480558067b636fdcea74d444991e9cc8'
           start_head="$(git rev-parse HEAD)"
-          test "$(git rev-parse HEAD^)" = "$expected_base"
+          test "$(git rev-parse HEAD^)" = "$expected_parent"
           python - <<'PY'
           from pathlib import Path
 
