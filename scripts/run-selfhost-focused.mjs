@@ -80,7 +80,7 @@ export function focusedChildArguments(selectedCase, root = repositoryRoot) {
 	const relativeTestPath = join('packages', 'compiler', 'dist', 'test', selectedCase.fileName);
 	return {
 		command: process.execPath,
-		argumentsList: ['scripts/run-unit-tests.mjs', `--filter=${relativeTestPath}`],
+		argumentsList: ['scripts/run-unit-tests.mjs', `--file=${relativeTestPath}`],
 		options: { cwd: root, stdio: 'inherit', shell: false },
 	};
 }
