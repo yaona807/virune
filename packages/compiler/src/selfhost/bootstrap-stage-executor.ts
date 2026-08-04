@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import type { KernelInputV1 } from './contract.js';
 import type { SelfhostMvpModule } from './mvp-adapter.js';
 import {
+	PROJECT_COMPILER_RESULT_SCHEMA,
 	compileWithProjectCompilerBoundary,
 	type ProjectCompilerDependencyV1,
 	type ProjectCompilerEmittedModuleV1,
@@ -9,10 +10,20 @@ import {
 	type ProjectCompilerResultV1,
 } from './project-compiler-adapter.js';
 
-export const BOOTSTRAP_STAGE_EXECUTOR_VERSION = 2 as const;
+export const BOOTSTRAP_STAGE_EXECUTOR_VERSION = 3 as const;
+export const BOOTSTRAP_STAGE_DIAGNOSTIC_SCHEMA = `${PROJECT_COMPILER_RESULT_SCHEMA}#diagnostics` as const;
 
 export interface BootstrapStageCompiler {
 	readonly compile: (input: KernelInputV1) => ProjectCompilerResultV1;
+}
+
+export interface BootstrapStageMetadata {
+	readonly contractVersion: ProjectCompilerResultV1['contractVersion'];
+	readonly languageVersion: ProjectCompilerResultV1['languageVersion'];
+	readonly platform: ProjectCompilerResultV1['platform'];
+	readonly accepted: true;
+	readonly resultSchema: typeof PROJECT_COMPILER_RESULT_SCHEMA;
+	readonly diagnosticSchema: typeof BOOTSTRAP_STAGE_DIAGNOSTIC_SCHEMA;
 }
 
 export interface BootstrapStageModule {
@@ -25,6 +36,7 @@ export interface BootstrapStageModule {
 export interface BootstrapStageArtifact {
 	readonly executorVersion: typeof BOOTSTRAP_STAGE_EXECUTOR_VERSION;
 	readonly stage: 'stage1' | 'stage2';
+	readonly metadata: BootstrapStageMetadata;
 	readonly entryPath: string;
 	readonly modules: readonly BootstrapStageModule[];
 	readonly dependencies: readonly ProjectCompilerDependencyV1[];
@@ -81,6 +93,14 @@ export function stageArtifact(
 	result: ProjectCompilerResultV1,
 ): BootstrapStageArtifact {
 	const accepted = requireAccepted(result, stage === 'stage1' ? 'Stage 1' : 'Stage 2');
+	const metadata: BootstrapStageMetadata = {
+		contractVersion: accepted.contractVersion,
+		languageVersion: accepted.languageVersion,
+		platform: accepted.platform,
+		accepted: true,
+		resultSchema: PROJECT_COMPILER_RESULT_SCHEMA,
+		diagnosticSchema: BOOTSTRAP_STAGE_DIAGNOSTIC_SCHEMA,
+	};
 	const modules = accepted.emittedModules
 		.map(normalizeModule)
 		.sort((left, right) => compareText(left.outputPath, right.outputPath)
@@ -93,6 +113,7 @@ export function stageArtifact(
 		.sort((left, right) => compareText(exportedSymbolKey(left), exportedSymbolKey(right)));
 	assertUnique(exportedSymbols, exportedSymbolKey, 'export metadata');
 	const payload = {
+		metadata,
 		entryPath: accepted.entryPath,
 		modules,
 		dependencies,
@@ -102,6 +123,7 @@ export function stageArtifact(
 	return {
 		executorVersion: BOOTSTRAP_STAGE_EXECUTOR_VERSION,
 		stage,
+		metadata,
 		entryPath: accepted.entryPath,
 		modules,
 		dependencies,
@@ -116,6 +138,7 @@ export function compareStageArtifacts(
 	stage2: BootstrapStageArtifact,
 ): readonly BootstrapStageDifference[] {
 	return [
+		...compareStageMetadata(stage1.metadata, stage2.metadata),
 		...compareSingleton('metadata', 'entryPath', stage1.entryPath, stage2.entryPath),
 		...compareStageModules(stage1.modules, stage2.modules),
 		...compareCollections(
@@ -131,6 +154,20 @@ export function compareStageArtifacts(
 			exportedSymbolKey,
 		),
 	].sort(compareDifference);
+}
+
+export function compareStageMetadata(
+	stage1: BootstrapStageMetadata,
+	stage2: BootstrapStageMetadata,
+): readonly BootstrapStageDifference[] {
+	return [
+		...compareSingleton('metadata', 'accepted', stage1.accepted, stage2.accepted),
+		...compareSingleton('metadata', 'contractVersion', stage1.contractVersion, stage2.contractVersion),
+		...compareSingleton('metadata', 'diagnosticSchema', stage1.diagnosticSchema, stage2.diagnosticSchema),
+		...compareSingleton('metadata', 'languageVersion', stage1.languageVersion, stage2.languageVersion),
+		...compareSingleton('metadata', 'platform', stage1.platform, stage2.platform),
+		...compareSingleton('metadata', 'resultSchema', stage1.resultSchema, stage2.resultSchema),
+	];
 }
 
 export function compareStageModules(
