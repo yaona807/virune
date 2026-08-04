@@ -56,6 +56,28 @@ const runtimeSource = [
 	'',
 ].join('\n');
 
+const nestedLoopSource = [
+	'pub fn main() -> Int {',
+	'\tlet mut total = 0',
+	'\tfor outer in [1, 2, 3] {',
+	'\t\tif outer == 3 {',
+	'\t\t\tbreak',
+	'\t\t}',
+	'\t\tfor inner in [1, 2, 3] {',
+	'\t\t\tif inner == 2 {',
+	'\t\t\t\tcontinue',
+	'\t\t\t}',
+	'\t\t\tif inner == 3 {',
+	'\t\t\t\tbreak',
+	'\t\t\t}',
+	'\t\t\ttotal = total + outer + inner',
+	'\t\t}',
+	'\t}',
+	'\treturn total',
+	'}',
+	'',
+].join('\n');
+
 const breakOutsideLoop = [
 	'pub fn main() -> Int {',
 	'\tbreak',
@@ -72,7 +94,7 @@ const continueOutsideLoop = [
 	'',
 ].join('\n');
 
-test('break and continue execute in while and for loops and reject loop-external use', async () => {
+test('break and continue execute in while, for, and nested loops and reject loop-external use', async () => {
 	const loaded = await loadMvpModule();
 	try {
 		const request = input(runtimeSource);
@@ -85,6 +107,14 @@ test('break and continue execute in while and for loops and reject loop-external
 		const runtime = await executeKernelOutputWithNode(request, output);
 		assert.equal(runtime.returnValue, 17);
 		assert.equal(runtime.panic, null);
+
+		const nestedRequest = input(nestedLoopSource);
+		const nestedOutput = await createSelfhostMvpKernel(loaded.module).compile(nestedRequest);
+		assert.equal(nestedOutput.accepted, true, JSON.stringify(nestedOutput.diagnostics, null, 2));
+		assert.deepEqual(nestedOutput.diagnostics, []);
+		const nestedRuntime = await executeKernelOutputWithNode(nestedRequest, nestedOutput);
+		assert.equal(nestedRuntime.returnValue, 5);
+		assert.equal(nestedRuntime.panic, null);
 
 		const invalidBreak = await createSelfhostMvpKernel(loaded.module).compile(input(breakOutsideLoop));
 		assert.equal(invalidBreak.accepted, false);
