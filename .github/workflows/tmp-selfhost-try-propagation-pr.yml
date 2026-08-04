@@ -1,0 +1,289 @@
+name: Temporary self-host try propagation implementation
+
+on:
+  pull_request:
+    branches:
+      - feat/selfhost-break-continue
+    types:
+      - opened
+      - synchronize
+      - reopened
+
+permissions:
+  contents: write
+
+jobs:
+  implement:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: feat/selfhost-try-propagation
+          fetch-depth: 0
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - run: npm ci
+      - name: Apply try propagation implementation
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(value: str, old: str, new: str, label: str) -> str:
+              if old not in value:
+                  raise RuntimeError(f'{label}: target not found')
+              return value.replace(old, new, 1)
+
+          parser_path = Path('selfhost/mvp/src/parser.virune')
+          parser = parser_path.read_text()
+          parser = replace_once(
+              parser,
+              'while tokenAt(current).text == "[" || tokenAt(current).text == "." || tokenAt(current).text == "(" {',
+              'while tokenAt(current).text == "[" || tokenAt(current).text == "." || tokenAt(current).text == "(" || tokenAt(current).text == "?" {',
+              'postfix loop condition',
+          )
+          try_case = '''\t\tif tokenAt(current).text == "?" {
+          \t\t\tlet base = expressionAt(arena, expressionId, tokenAt(current).span)?
+          \t\t\tlet question = tokenAt(current)
+          \t\t\tlet added = addExpression(advance(current), arena, MvpExpression {
+          \t\t\t\tkind: "try",
+          \t\t\t\ttext: "?",
+          \t\t\t\tliteralType: None,
+          \t\t\t\tchildren: [expressionId],
+          \t\t\t\tspan: span(base.span.start, question.span.end),
+          \t\t\t})
+          \t\t\tcurrent = added.cursor
+          \t\t\texpressionId = added.expressionId
+          \t\t\tarena = added.expressions
+          \t\t\tcontinue
+          \t\t}
+          '''
+          parser = replace_once(
+              parser,
+              '\t\tif tokenAt(current).text == "[" {',
+              try_case + '\t\tif tokenAt(current).text == "[" {',
+              'postfix try insertion',
+          )
+          parser_path.write_text(parser)
+
+          checker_path = Path('selfhost/mvp/src/checker.virune')
+          checker = checker_path.read_text()
+          try_checker = '''fn resultPayloadType(value: MvpType, index: Int) -> MvpType? {
+          \tlet name = match value {
+          \t\tNamedType(typeNameValue) => typeNameValue
+          \t\t_ => ""
+          \t}
+          \tif !String.contains(name, "Result<") {
+          \t\treturn None
+          \t}
+          \treturn match genericArgument(name, index) {
+          \t\tSome(argument) => Some(typeFromName(argument))
+          \t\tNone => None
+          \t}
+          }
+
+          fn propagationFailure(operandType: MvpType, returnType: MvpType, valueSpan: MvpSpan) -> MvpDiagnostic {
+          \treturn errorDiagnostic("L2021", "Cannot propagate " + typeName(operandType) + " from function returning " + typeName(returnType), valueSpan)
+          }
+
+          fn checkTry(node: MvpExpression, context: CheckContext, expressions: List<MvpHirExpression>) -> Result<CheckedExpression, MvpDiagnostic> {
+          \tlet sourceId = childAt(node, 0)?
+          \tlet checked = checkExpression(sourceId, context, expressions)?
+          \tlet optionalPayload = optionalElementType(checked.valueType)
+          \tif match optionalPayload { Some(_) => true, None => false } {
+          \t\tif match optionalElementType(context.returnType) { Some(_) => false, None => true } {
+          \t\t\treturn Err(propagationFailure(checked.valueType, context.returnType, node.span))
+          \t\t}
+          \t\tlet payload = match optionalPayload { Some(value) => value, None => MvpType.ErrorType }
+          \t\treturn Ok(addHir(checked.expressions, MvpHirExpression {
+          \t\t\tkind: "try", text: "?", valueType: payload,
+          \t\t\tchildren: [checked.expressionId], span: node.span,
+          \t\t}, payload))
+          \t}
+          \tlet resultPayload = resultPayloadType(checked.valueType, 0)
+          \tif match resultPayload { Some(_) => true, None => false } {
+          \t\tlet operandError = resultPayloadType(checked.valueType, 1)
+          \t\tlet returnPayload = resultPayloadType(context.returnType, 0)
+          \t\tlet returnError = resultPayloadType(context.returnType, 1)
+          \t\tif match returnPayload { Some(_) => false, None => true } || match returnError { Some(_) => false, None => true } {
+          \t\t\treturn Err(propagationFailure(checked.valueType, context.returnType, node.span))
+          \t\t}
+          \t\tlet actualError = match operandError { Some(value) => value, None => MvpType.ErrorType }
+          \t\tlet expectedError = match returnError { Some(value) => value, None => MvpType.ErrorType }
+          \t\tif !typesCompatible(actualError, expectedError) {
+          \t\t\treturn Err(typeMismatch(actualError, expectedError, node.span))
+          \t\t}
+          \t\tlet payload = match resultPayload { Some(value) => value, None => MvpType.ErrorType }
+          \t\treturn Ok(addHir(checked.expressions, MvpHirExpression {
+          \t\t\tkind: "try", text: "?", valueType: payload,
+          \t\t\tchildren: [checked.expressionId], span: node.span,
+          \t\t}, payload))
+          \t}
+          \treturn Err(propagationFailure(checked.valueType, context.returnType, node.span))
+          }
+
+          '''
+          checker = replace_once(
+              checker,
+              'fn checkRecordField(node: MvpExpression, context: CheckContext, expressions: List<MvpHirExpression>) -> Result<CheckedExpression, MvpDiagnostic> {',
+              try_checker + 'fn checkRecordField(node: MvpExpression, context: CheckContext, expressions: List<MvpHirExpression>) -> Result<CheckedExpression, MvpDiagnostic> {',
+              'try checker functions',
+          )
+          checker = replace_once(
+              checker,
+              '\tif node.kind == "recordField" {\n\t\treturn checkRecordField(node, context, expressions)\n\t}',
+              '\tif node.kind == "try" {\n\t\treturn checkTry(node, context, expressions)\n\t}\n\tif node.kind == "recordField" {\n\t\treturn checkRecordField(node, context, expressions)\n\t}',
+              'try checker dispatch',
+          )
+          checker_path.write_text(checker)
+
+          emitter_path = Path('selfhost/mvp/src/emitter.virune')
+          emitter = emitter_path.read_text()
+          emitter = replace_once(
+              emitter,
+              '\tif expression.kind == "index" {\n\t\treturn emitIndex(expression, expressions)\n\t}',
+              '\tif expression.kind == "try" {\n\t\treturn "propagate(" + emitExpression(childAt(expression, 0), expressions) + ")"\n\t}\n\tif expression.kind == "index" {\n\t\treturn emitIndex(expression, expressions)\n\t}',
+              'try emitter dispatch',
+          )
+          emitter_path.write_text(emitter)
+
+          Path('packages/compiler/test/selfhost-try-propagation.test.ts').write_text('''import assert from 'node:assert/strict';
+          import test from 'node:test';
+          import { execFile } from 'node:child_process';
+          import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+          import { dirname, join, relative, resolve } from 'node:path';
+          import { promisify } from 'node:util';
+          import { fileURLToPath, pathToFileURL } from 'node:url';
+          import { Err, None, Ok, Some } from '@virune/runtime/v2/index.js';
+          import { buildProject } from '../src/project/project.js';
+          import { createSelfhostMvpKernel, type SelfhostMvpModule } from '../src/selfhost/mvp-adapter.js';
+          import type { KernelInputV1, KernelOutputV1 } from '../src/selfhost/contract.js';
+
+          const execFileAsync = promisify(execFile);
+          const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../../..');
+          const mvpRoot = join(repositoryRoot, 'selfhost', 'mvp');
+          const temporaryRoot = join(repositoryRoot, '.test-tmp');
+
+          const input = (text: string): KernelInputV1 => ({
+          \tcontractVersion: '1', languageVersion: '1.0', platform: 'node', entryPath: 'src/main.virune',
+          \tsources: [{ path: 'src/main.virune', text }], interopManifest: { version: '1', modules: [] },
+          \temit: { target: 'es2022', sourceMap: false, sourcesContent: true },
+          });
+
+          const source = [
+          \t'pub fn propagateOption(value: Int?, fallback: Int?) -> Int? {',
+          \t'\\tlet ignored = value?',
+          \t'\\treturn fallback',
+          \t'}',
+          \t'',
+          \t'pub fn propagateResult(value: Result<Int, String>, fallback: Result<Int, String>) -> Result<Int, String> {',
+          \t'\\tlet ignored = value?',
+          \t'\\treturn fallback',
+          \t'}',
+          \t'',
+          \t'pub fn main() -> Int {',
+          \t'\\treturn 0',
+          \t'}',
+          \t'',
+          ].join('\\n');
+
+          const incompatibleOption = [
+          \t'pub fn main(value: Int?) -> Int {',
+          \t'\\tlet unwrapped = value?',
+          \t'\\treturn unwrapped',
+          \t'}',
+          \t'',
+          ].join('\\n');
+
+          const incompatibleResultError = [
+          \t'pub fn main(value: Result<Int, String>) -> Result<Int, Bool> {',
+          \t'\\tlet ignored = value?',
+          \t'\\treturn value',
+          \t'}',
+          \t'',
+          ].join('\\n');
+
+          test('postfix ? propagates Option and Result values and preserves Legacy diagnostics', async () => {
+          \tconst loaded = await loadMvpModule();
+          \tlet runtimeRoot = '';
+          \ttry {
+          \t\tconst request = input(source);
+          \t\tconst output = await createSelfhostMvpKernel(loaded.module).compile(request);
+          \t\tassert.equal(output.accepted, true, JSON.stringify(output.diagnostics, null, 2));
+          \t\tassert.deepEqual(output.diagnostics, []);
+          \t\tassert.match(output.emittedModules.map(item => item.code).join('\\n'), /propagate\\(/);
+          \t\tconst materialized = await materializeOutput(request, output);
+          \t\truntimeRoot = materialized.root;
+          \t\tconst module = materialized.module as {
+          \t\t\tpropagateOption: (value: unknown, fallback: unknown) => unknown;
+          \t\t\tpropagateResult: (value: unknown, fallback: unknown) => unknown;
+          \t\t};
+          \t\tassert.deepEqual(module.propagateOption(Some(1), Some(9)), Some(9));
+          \t\tassert.deepEqual(module.propagateOption(None, Some(9)), None);
+          \t\tassert.deepEqual(module.propagateResult(Ok(1), Ok(9)), Ok(9));
+          \t\tassert.deepEqual(module.propagateResult(Err('bad'), Ok(9)), Err('bad'));
+
+          \t\tconst optionFailure = await createSelfhostMvpKernel(loaded.module).compile(input(incompatibleOption));
+          \t\tassert.equal(optionFailure.accepted, false);
+          \t\tassert.equal(optionFailure.diagnostics[0]?.code, 'L2021');
+          \t\tassert.equal(optionFailure.diagnostics[0]?.message, 'Cannot propagate Int? from function returning Int');
+
+          \t\tconst resultFailure = await createSelfhostMvpKernel(loaded.module).compile(input(incompatibleResultError));
+          \t\tassert.equal(resultFailure.accepted, false);
+          \t\tassert.equal(resultFailure.diagnostics[0]?.code, 'L2043');
+          \t\tassert.equal(resultFailure.diagnostics[0]?.message, 'String cannot be used as Bool');
+          \t} finally {
+          \t\tawait rm(loaded.root, { recursive: true, force: true });
+          \t\tif (runtimeRoot !== '') await rm(runtimeRoot, { recursive: true, force: true });
+          \t}
+          });
+
+          async function materializeOutput(inputValue: KernelInputV1, output: KernelOutputV1): Promise<{ readonly root: string; readonly module: unknown }> {
+          \tawait mkdir(temporaryRoot, { recursive: true });
+          \tconst root = await mkdtemp(join(temporaryRoot, 'selfhost-try-output-'));
+          \tfor (const emitted of output.emittedModules) {
+          \t\tconst outputPath = join(root, emitted.outputPath);
+          \t\tawait mkdir(dirname(outputPath), { recursive: true });
+          \t\tawait writeFile(outputPath, emitted.code);
+          \t}
+          \tawait writeFile(join(root, 'package.json'), '{"type":"module"}\\n');
+          \tconst entry = output.emittedModules.find(item => item.sourcePath === inputValue.entryPath);
+          \tassert.ok(entry);
+          \treturn { root, module: await import(`${pathToFileURL(join(root, entry.outputPath)).href}?test=${Date.now()}`) };
+          }
+
+          async function loadMvpModule(): Promise<{ readonly root: string; readonly module: SelfhostMvpModule }> {
+          \tconst result = await buildProject(mvpRoot, { write: false });
+          \tconst errors = result.diagnostics.filter(item => item.severity === 'error');
+          \tassert.deepEqual(errors.map(item => `${item.code}:${item.message}`), []);
+          \tawait mkdir(temporaryRoot, { recursive: true });
+          \tconst root = await mkdtemp(join(temporaryRoot, 'selfhost-try-compiler-'));
+          \tconst configuredOutDir = resolve(mvpRoot, 'dist');
+          \tconst outputPaths: string[] = [];
+          \tfor (const built of result.modules) {
+          \t\tif (built.output === undefined || built.outputPath === undefined) continue;
+          \t\tconst outputPath = join(root, relative(configuredOutDir, built.outputPath));
+          \t\tawait mkdir(dirname(outputPath), { recursive: true });
+          \t\tawait writeFile(outputPath, built.output.code);
+          \t\toutputPaths.push(outputPath);
+          \t}
+          \tfor (const outputPath of outputPaths.sort()) await execFileAsync(process.execPath, ['--check', outputPath]);
+          \treturn { root, module: await import(`${pathToFileURL(join(root, 'main.js')).href}?test=${Date.now()}`) as SelfhostMvpModule };
+          }
+          ''')
+          Path('.github/workflows/tmp-selfhost-try-propagation-pr.yml').unlink()
+          PY
+      - run: npm run build
+      - run: node --test --test-timeout=120000 packages/compiler/dist/test/selfhost-try-propagation.test.js
+      - name: Commit implementation
+        shell: bash
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add selfhost/mvp/src/parser.virune selfhost/mvp/src/checker.virune selfhost/mvp/src/emitter.virune packages/compiler/test/selfhost-try-propagation.test.ts .github/workflows/tmp-selfhost-try-propagation-pr.yml
+          git commit -m "feat(selfhost): support postfix try propagation"
+          git push origin HEAD:feat/selfhost-try-propagation
