@@ -1,4 +1,4 @@
-name: Temporary self-host member-chain validation runner
+name: Temporary self-host member-chain conflict diagnosis
 
 on:
   pull_request:
@@ -13,51 +13,33 @@ permissions:
   contents: read
 
 jobs:
-  validate:
+  diagnose:
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v6
         with:
           ref: tmp/selfhost-try-rebuild-run-20260804
           fetch-depth: 0
-      - uses: actions/setup-node@v6
-        with:
-          node-version-file: .node-version
-          cache: npm
-      - name: Validate member-chain feature commit on normalized PR 264 head
+      - name: Reproduce and print member-chain conflicts
         shell: bash
         run: |
           set -euo pipefail
           git fetch --no-tags origin '+refs/heads/*:refs/remotes/origin/*'
           test "$(git rev-parse origin/feat/selfhost-try-propagation)" = 'f505238e9cc8ecc24d8cb4b8ddbcaf2300d7417b'
-          git checkout -B member-chain-validation f505238e9cc8ecc24d8cb4b8ddbcaf2300d7417b
+          git checkout -B member-chain-diagnosis f505238e9cc8ecc24d8cb4b8ddbcaf2300d7417b
+          set +e
           git cherry-pick --no-commit a1eb1ddc2501cd23b8ae16f452576f0b3afbf3da
-          expected_paths="$(printf '%s\n' \
-            packages/compiler/test/selfhost-member-chain-integration.test.ts \
-            selfhost/mvp/src/checker.virune \
-            selfhost/mvp/src/emitter.virune | sort)"
-          actual_paths="$(git diff --cached --name-only | sort)"
-          test "$actual_paths" = "$expected_paths"
-          git diff --cached --check
-          npm ci
-          npm run build
-          node --test --test-timeout=180000 packages/compiler/dist/test/selfhost-member-chain-integration.test.js
-          python - <<'PY'
-          from pathlib import Path
-          path = Path('packages/compiler/dist/test/selfhost-full-language-inventory.test.js')
-          source = path.read_text()
-          replacements = [
-              ('timeout: 420_000', 'timeout: 720_000'),
-              ('timeout: 420000', 'timeout: 720000'),
-          ]
-          for old, new in replacements:
-              if old in source:
-                  path.write_text(source.replace(old, new, 1))
-                  break
-          else:
-              raise RuntimeError('inventory internal timeout not found in generated test')
-          PY
-          node --test --test-timeout=720000 packages/compiler/dist/test/selfhost-full-language-inventory.test.js
-          echo 'SELFHOST_MEMBER_CHAIN_UPDATED_INVENTORY_JSON'
-          cat .cache/ci-timings/selfhost-full-language-inventory.json
+          status=$?
+          set -e
+          echo "CHERRY_PICK_STATUS=$status"
+          git status --short
+          echo 'UNMERGED_PATHS'
+          git diff --name-only --diff-filter=U
+          for path in $(git diff --name-only --diff-filter=U); do
+            echo "CONFLICT_MARKERS:$path"
+            sed -n '/^<<<<<<< /,/^>>>>>>> /p' "$path"
+            echo "COMBINED_DIFF:$path"
+            git diff --cc -- "$path"
+          done
+          exit 1
