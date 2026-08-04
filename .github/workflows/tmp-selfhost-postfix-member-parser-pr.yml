@@ -26,7 +26,7 @@ jobs:
           node-version-file: .node-version
           cache: npm
       - run: npm ci
-      - name: Apply repaired postfix parser and arena tests
+      - name: Apply repaired postfix parser and single-arena tests
         shell: bash
         run: |
           python - <<'PY'
@@ -34,10 +34,18 @@ jobs:
           import subprocess
 
           workflow_path = '.github/workflows/tmp-selfhost-postfix-member-parser-pr.yml'
-          previous = subprocess.check_output(
-              ['git', 'show', f'HEAD^:{workflow_path}'],
-              text=True,
-          )
+          previous = ''
+          for ancestor in ('HEAD^', 'HEAD^^', 'HEAD^^^'):
+              candidate = subprocess.check_output(
+                  ['git', 'show', f'{ancestor}:{workflow_path}'],
+                  text=True,
+              )
+              if "Path('packages/compiler/test/selfhost-postfix-member-parser.test.ts').write_text" in candidate:
+                  previous = candidate
+                  break
+          if previous == '':
+              raise RuntimeError('original postfix parser workflow was not found')
+
           opener = "          python - <<'PY'\n"
           start = previous.index(opener) + len(opener)
           end = previous.index("\n          PY", start)
@@ -63,6 +71,24 @@ jobs:
               "\\t}\n\\treturn Ok(",
               1,
           )
+
+          source_start = script.index("const source = [")
+          source_end_marker = "].join('\\\\n');"
+          source_end = script.index(source_end_marker, source_start) + len(source_end_marker)
+          source_replacement = "\n".join([
+              "const source = [",
+              r"\t'pub fn inspect(values: List<Int>, index: Int) -> Int {',",
+              r"\t'\treturn combine(',",
+              r"\t'\t\tdeclarationAt(values, index).name,',",
+              r"\t'\t\tcreate().child()(1).name,',",
+              r"\t'\t\tvalues[0].name,',",
+              r"\t'\t\t(create()).name',",
+              r"\t'\t)',",
+              r"\t'}',",
+              r"\t'',",
+              r"].join('\\n');",
+          ])
+          script = script[:source_start] + source_replacement + script[source_end:]
 
           repair_script = Path('/tmp/apply-postfix-member-parser.py')
           repair_script.write_text(script)
