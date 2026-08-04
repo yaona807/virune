@@ -1,0 +1,58 @@
+name: Temporary self-host try propagation rebuild runner
+
+on:
+  pull_request:
+    branches:
+      - main
+    types:
+      - opened
+      - synchronize
+      - reopened
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: tmp/selfhost-try-rebuild-run-20260804
+          fetch-depth: 0
+      - name: Reproduce exact feature commits on current main
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin '+refs/heads/*:refs/remotes/origin/*'
+          git checkout -B rebuild origin/main
+          set +e
+          git cherry-pick --no-commit d6517f4de360609e76f57fe46c4f0fe15ef82f6d
+          implementation_status=$?
+          set -e
+          echo "IMPLEMENTATION_STATUS=$implementation_status"
+          git status --short
+          echo 'UNMERGED_PATHS_AFTER_IMPLEMENTATION'
+          git diff --name-only --diff-filter=U
+          echo 'CONFLICT_MARKERS_AFTER_IMPLEMENTATION'
+          for path in $(git diff --name-only --diff-filter=U); do
+            echo "--- $path"
+            sed -n '/^<<<<<<< /,/^>>>>>>> /p' "$path"
+          done
+          if [ "$implementation_status" -eq 0 ]; then
+            set +e
+            git cherry-pick --no-commit 1b71d15af9495c5af5086ad45c22223d6976ce01
+            test_status=$?
+            set -e
+            echo "TEST_STATUS=$test_status"
+            git status --short
+            echo 'UNMERGED_PATHS_AFTER_TEST'
+            git diff --name-only --diff-filter=U
+            echo 'CONFLICT_MARKERS_AFTER_TEST'
+            for path in $(git diff --name-only --diff-filter=U); do
+              echo "--- $path"
+              sed -n '/^<<<<<<< /,/^>>>>>>> /p' "$path"
+            done
+          fi
+          exit 1
