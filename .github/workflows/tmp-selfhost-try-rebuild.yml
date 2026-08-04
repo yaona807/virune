@@ -1,4 +1,4 @@
-name: Temporary self-host member-chain validation runner
+name: Temporary self-host member-chain rebuild runner
 
 on:
   pull_request:
@@ -10,12 +10,12 @@ on:
       - reopened
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  validate:
+  rebuild:
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v6
         with:
@@ -25,13 +25,16 @@ jobs:
         with:
           node-version-file: .node-version
           cache: npm
-      - name: Validate additive member-chain integration
+      - name: Rebuild member-chain integration on current main
         shell: bash
         run: |
           set -euo pipefail
+          expected_feature_head='a1eb1ddc2501cd23b8ae16f452576f0b3afbf3da'
+          expected_main='86307a70ad3857d5baf0729cc8a38f09736d2c3e'
           git fetch --no-tags origin '+refs/heads/*:refs/remotes/origin/*'
-          test "$(git rev-parse origin/feat/selfhost-try-propagation)" = 'f505238e9cc8ecc24d8cb4b8ddbcaf2300d7417b'
-          git checkout -B member-chain-validation f505238e9cc8ecc24d8cb4b8ddbcaf2300d7417b
+          test "$(git rev-parse origin/main)" = "$expected_main"
+          test "$(git rev-parse origin/feat/selfhost-member-chain-integration)" = "$expected_feature_head"
+          git checkout -B feat/selfhost-member-chain-integration origin/main
           set +e
           git cherry-pick --no-commit a1eb1ddc2501cd23b8ae16f452576f0b3afbf3da
           status=$?
@@ -123,24 +126,12 @@ jobs:
           actual_paths="$(git diff --cached --name-only | sort)"
           test "$actual_paths" = "$expected_paths"
           git diff --cached --check
+          echo 'CHECKER_REMAINING_DIAGNOSTIC_CONTEXT'
+          nl -ba selfhost/mvp/src/checker.virune | sed -n '4188,4200p'
           npm ci
           npm run build
           node --test --test-timeout=180000 packages/compiler/dist/test/selfhost-member-chain-integration.test.js
-          python - <<'PY'
-          from pathlib import Path
-          path = Path('packages/compiler/dist/test/selfhost-full-language-inventory.test.js')
-          source = path.read_text()
-          replacements = [
-              ('timeout: 420_000', 'timeout: 720_000'),
-              ('timeout: 420000', 'timeout: 720000'),
-          ]
-          for old, new in replacements:
-              if old in source:
-                  path.write_text(source.replace(old, new, 1))
-                  break
-          else:
-              raise RuntimeError('inventory internal timeout not found in generated test')
-          PY
-          node --test --test-timeout=720000 packages/compiler/dist/test/selfhost-full-language-inventory.test.js
-          echo 'SELFHOST_MEMBER_CHAIN_UPDATED_INVENTORY_JSON'
-          cat .cache/ci-timings/selfhost-full-language-inventory.json
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git commit -m 'feat(selfhost): check and emit arbitrary member chains'
+          git push --force-with-lease=refs/heads/feat/selfhost-member-chain-integration:"$expected_feature_head" origin HEAD:feat/selfhost-member-chain-integration
