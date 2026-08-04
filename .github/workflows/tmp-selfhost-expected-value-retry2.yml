@@ -1,0 +1,44 @@
+name: Temporary self-host expected value retry 2
+
+on:
+  pull_request:
+    branches:
+      - main
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: write
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: tmp/selfhost-try-rebuild-run-20260804
+          fetch-depth: 0
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - name: Retry with dedicated expected record-field helper
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          import textwrap
+
+          workflow = Path('.github/workflows/tmp-selfhost-expected-list-retry.yml').read_text()
+          replacement = 'ZnJvbSBwYXRobGliIGltcG9ydCBQYXRoCgpwYXRoID0gUGF0aCgnc2VsZmhvc3QvbXZwL3NyYy9jaGVja2VyLnZpcnVuZScpCnNvdXJjZSA9IHBhdGgucmVhZF90ZXh0KCkKYW5jaG9yID0gIiIiZm4gY2hlY2tSZWNvcmRGaWVsZChub2RlOiBNdnBFeHByZXNzaW9uLCBjb250ZXh0OiBDaGVja0NvbnRleHQsIGV4cHJlc3Npb25zOiBMaXN0PE12cEhpckV4cHJlc3Npb24+KSAtPiBSZXN1bHQ8Q2hlY2tlZEV4cHJlc3Npb24sIE12cERpYWdub3N0aWM+IHsKCWxldCBzb3VyY2VJZCA9IGNoaWxkQXQobm9kZSwgMCk/CglsZXQgY2hlY2tlZCA9IGNoZWNrRXhwcmVzc2lvbihzb3VyY2VJZCwgY29udGV4dCwgZXhwcmVzc2lvbnMpPwoJcmV0dXJuIE9rKGFkZEhpcihjaGVja2VkLmV4cHJlc3Npb25zLCBNdnBIaXJFeHByZXNzaW9uIHsKCQlraW5kOiAicmVjb3JkRmllbGQiLAoJCXRleHQ6IG5vZGUudGV4dCwKCQl2YWx1ZVR5cGU6IGNoZWNrZWQudmFsdWVUeXBlLAoJCWNoaWxkcmVuOiBbY2hlY2tlZC5leHByZXNzaW9uSWRdLAoJCXNwYW46IG5vZGUuc3BhbiwKCX0sIGNoZWNrZWQudmFsdWVUeXBlKSkKfQoKIiIiCmFkZGl0aW9uID0gYW5jaG9yICsgIiIiZm4gY2hlY2tFeHBlY3RlZFJlY29yZEZpZWxkKG5vZGU6IE12cEV4cHJlc3Npb24sIHJlY29yZE5hbWU6IFN0cmluZywgY29udGV4dDogQ2hlY2tDb250ZXh0LCBleHByZXNzaW9uczogTGlzdDxNdnBIaXJFeHByZXNzaW9uPikgLT4gUmVzdWx0PENoZWNrZWRFeHByZXNzaW9uLCBNdnBEaWFnbm9zdGljPiB7CglsZXQgc291cmNlSWQgPSBjaGlsZEF0KG5vZGUsIDApPwoJbGV0IGV4cGVjdGVkVHlwZSA9IG5hbWVkRmllbGRUeXBlKHJlY29yZE5hbWUsIG5vZGUudGV4dCkKCWxldCBjaGVja2VkUmVzdWx0ID0gaWYgZXhwZWN0ZWRUeXBlID09IE12cFR5cGUuRXJyb3JUeXBlIHRoZW4gY2hlY2tFeHByZXNzaW9uKHNvdXJjZUlkLCBjb250ZXh0LCBleHByZXNzaW9ucykgZWxzZSBjaGVja0V4cGVjdGVkRXhwcmVzc2lvbihzb3VyY2VJZCwgZXhwZWN0ZWRUeXBlLCBjb250ZXh0LCBleHByZXNzaW9ucykKCWxldCBjaGVja2VkID0gY2hlY2tlZFJlc3VsdD8KCXJldHVybiBPayhhZGRIaXIoY2hlY2tlZC5leHByZXNzaW9ucywgTXZwSGlyRXhwcmVzc2lvbiB7CgkJa2luZDogInJlY29yZEZpZWxkIiwKCQl0ZXh0OiBub2RlLnRleHQsCgkJdmFsdWVUeXBlOiBjaGVja2VkLnZhbHVlVHlwZSwKCQljaGlsZHJlbjogW2NoZWNrZWQuZXhwcmVzc2lvbklkXSwKCQlzcGFuOiBub2RlLnNwYW4sCgl9LCBjaGVja2VkLnZhbHVlVHlwZSkpCn0KCiIiIgppZiBzb3VyY2UuY291bnQoYW5jaG9yKSAhPSAxOgogICAgcmFpc2UgUnVudGltZUVycm9yKGYnZXhwZWN0ZWQgb25lIHJlY29yZC1maWVsZCBoZWxwZXIsIGZvdW5kIHtzb3VyY2UuY291bnQoYW5jaG9yKX0nKQpzb3VyY2UgPSBzb3VyY2UucmVwbGFjZShhbmNob3IsIGFkZGl0aW9uLCAxKQpvbGRfY2FsbCA9ICdsZXQgY2hlY2tlZCA9IGNoZWNrUmVjb3JkRmllbGQoc291cmNlLCBjb250ZXh0LCBhcmVuYSk/JwpuZXdfY2FsbCA9ICdsZXQgY2hlY2tlZCA9IGNoZWNrRXhwZWN0ZWRSZWNvcmRGaWVsZChzb3VyY2UsIG5vZGUudGV4dCwgY29udGV4dCwgYXJlbmEpPycKaWYgc291cmNlLmNvdW50KG9sZF9jYWxsKSAhPSAxOgogICAgcmFpc2UgUnVudGltZUVycm9yKGYnZXhwZWN0ZWQgb25lIHJlY29yZC1maWVsZCBjb25zdHJ1Y3Rpb24gY2FsbCwgZm91bmQge3NvdXJjZS5jb3VudChvbGRfY2FsbCl9JykKcGF0aC53cml0ZV90ZXh0KHNvdXJjZS5yZXBsYWNlKG9sZF9jYWxsLCBuZXdfY2FsbCwgMSkpCg=='
+          updated, count = re.subn(r"record_patch = '[^']+'", f"record_patch = '{replacement}'", workflow, count=1)
+          if count != 1:
+              raise RuntimeError(f'expected one record patch assignment, found {count}')
+          marker = '        run: |\n'
+          if updated.count(marker) != 1:
+              raise RuntimeError(f'expected one run block, found {updated.count(marker)}')
+          Path('/tmp/expected-value-retry2.sh').write_text(textwrap.dedent(updated.split(marker, 1)[1]))
+          PY
+          bash /tmp/expected-value-retry2.sh
