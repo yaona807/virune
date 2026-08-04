@@ -54,13 +54,13 @@ test('resolves exactly one case and reports useful failures', () => {
 	assert.throws(() => resolveFocusedCase(cases, 'full-language-inventory'), /selfhost:inventory/);
 });
 
-test('delegates to the existing unit-test runner without a shell and propagates exit status', async () => {
+test('delegates one exact file to the existing unit-test runner without a shell', async () => {
 	const selectedCase = { id: 'alpha', fileName: 'selfhost-alpha.test.js', path: '/tmp/selfhost-alpha.test.js' };
 	const child = focusedChildArguments(selectedCase, '/repo');
 	assert.equal(child.command, process.execPath);
 	assert.deepEqual(child.argumentsList, [
 		'scripts/run-unit-tests.mjs',
-		`--filter=${join('packages', 'compiler', 'dist', 'test', 'selfhost-alpha.test.js')}`,
+		`--file=${join('packages', 'compiler', 'dist', 'test', 'selfhost-alpha.test.js')}`,
 	]);
 	assert.deepEqual(child.options, { cwd: '/repo', stdio: 'inherit', shell: false });
 
