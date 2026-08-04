@@ -1,0 +1,55 @@
+name: Temporary self-host multiline binary PR implementation
+
+on:
+  pull_request:
+    branches:
+      - main
+    types:
+      - opened
+      - synchronize
+      - reopened
+
+permissions:
+  contents: write
+
+jobs:
+  implement:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: feat/selfhost-multiline-binary
+          fetch-depth: 0
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - run: npm ci
+      - name: Apply parser and regression-test changes
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          workflow = Path('.github/workflows/tmp-selfhost-multiline-binary.yml').read_text()
+          marker = "          node <<'NODE'\n"
+          start = workflow.index(marker) + len(marker)
+          end = workflow.index("\n          NODE", start)
+          lines = workflow[start:end].splitlines()
+          script = "\n".join(line[10:] if line.startswith("          ") else line for line in lines) + "\n"
+          Path('/tmp/apply-selfhost-multiline-binary.mjs').write_text(script)
+          PY
+          node /tmp/apply-selfhost-multiline-binary.mjs
+          rm -f .github/workflows/tmp-selfhost-multiline-binary-pr.yml
+      - run: npm run build
+      - run: node --test --test-timeout=120000 packages/compiler/dist/test/selfhost-multiline-binary-expressions.test.js
+      - name: Commit implementation
+        shell: bash
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add selfhost/mvp/src/parser.virune packages/compiler/test/selfhost-multiline-binary-expressions.test.ts .github/workflows/tmp-selfhost-multiline-binary.yml .github/workflows/tmp-selfhost-multiline-binary-pr.yml
+          git commit -m "feat(selfhost): support multiline binary expressions"
+          git push origin HEAD:feat/selfhost-multiline-binary
