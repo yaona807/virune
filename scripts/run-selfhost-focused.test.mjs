@@ -89,4 +89,8 @@ test('build wrappers forward CLI arguments to their built commands', async () =>
 		manifest.scripts['selfhost:focused'],
 		'npm run build && npm run selfhost:focused:built --',
 	);
+	assert.equal(
+		manifest.scripts['test:selfhost-focused:built'],
+		'npm run selfhost:focused:built -- --case=contract',
+	);
 });
