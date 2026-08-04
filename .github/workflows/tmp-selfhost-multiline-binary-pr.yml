@@ -42,6 +42,27 @@ jobs:
           Path('/tmp/apply-selfhost-multiline-binary.mjs').write_text(script)
           PY
           node /tmp/apply-selfhost-multiline-binary.mjs
+          python - <<'PY'
+          from pathlib import Path
+
+          parser_path = Path('selfhost/mvp/src/parser.virune')
+          parser = parser_path.read_text()
+          replacements = [
+              (
+                  'let parsed = parseExpression(advance(cursor), expressions)?',
+                  'let parsed = parseExpression(skipNewLines(advance(cursor)), expressions)?',
+              ),
+              (
+                  'let parsedIndex = parseExpression(advance(current), arena)?',
+                  'let parsedIndex = parseExpression(skipNewLines(advance(current)), arena)?',
+              ),
+          ]
+          for before, after in replacements:
+              if before not in parser:
+                  raise SystemExit(f'Unable to locate parser fragment: {before}')
+              parser = parser.replace(before, after, 1)
+          parser_path.write_text(parser)
+          PY
           rm -f .github/workflows/tmp-selfhost-multiline-binary-pr.yml
       - run: npm run build
       - run: node --test --test-timeout=120000 packages/compiler/dist/test/selfhost-multiline-binary-expressions.test.js
