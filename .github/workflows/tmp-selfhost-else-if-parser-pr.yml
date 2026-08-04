@@ -1,0 +1,219 @@
+name: Temporary self-host else-if parser implementation
+
+on:
+  pull_request:
+    branches:
+      - feat/selfhost-postfix-member-parser
+    types:
+      - opened
+      - synchronize
+      - reopened
+
+permissions:
+  contents: write
+
+jobs:
+  implement:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: feat/selfhost-else-if-parser
+          fetch-depth: 0
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - run: npm ci
+      - name: Apply else-if parser and generated-compiler tests
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          parser_path = Path('selfhost/mvp/src/parser.virune')
+          parser = parser_path.read_text()
+
+          helper_marker = '\nfn addExpression('
+          helpers = '''
+          fn statementAt(statements: List<MvpStatement>, statementId: Int, valueSpan: MvpSpan) -> Result<MvpStatement, MvpDiagnostic> {
+          \treturn match List.get(statements, statementId) {
+          \t\tSome(value) => Ok(value)
+          \t\tNone => Err(errorDiagnostic("L9001", "Missing MVP statement arena entry", valueSpan))
+          \t}
+          }
+
+          fn statementSpan(value: MvpStatement) -> MvpSpan {
+          \treturn match value {
+          \t\tLetValue(_, _, _, _, valueSpan) => valueSpan
+          \t\tAssignValue(_, _, valueSpan) => valueSpan
+          \t\tForValue(_, _, _, valueSpan) => valueSpan
+          \t\tWhileValue(_, _, valueSpan) => valueSpan
+          \t\tIfValue(_, _, _, valueSpan) => valueSpan
+          \t\tReturnValue(_, valueSpan) => valueSpan
+          \t}
+          }
+          '''
+          if 'fn statementAt(' not in parser:
+              insert = parser.index(helper_marker)
+              parser = parser[:insert] + '\n' + helpers.strip() + '\n' + parser[insert:]
+
+          function_start = parser.index('fn parseStatement(')
+          start = parser.index('\tif start.text == "if" {', function_start)
+          end = parser.index('\n\tif start.text == "while" {', start)
+          replacement = '''\tif start.text == "if" {
+          \t\tlet parsedCondition = parseExpressionBeforeBlock(skipNewLines(advance(cursor)), expressions)?
+          \t\tlet mut current = skipNewLines(expectText(skipNewLines(parsedCondition.cursor), "{")?)
+          \t\tlet mut consequentStatementIds: List<Int> = []
+          \t\tlet mut statementArena = statements
+          \t\tlet mut expressionArena = parsedCondition.expressions
+          \t\twhile tokenAt(current).text != "}" && tokenAt(current).kind != MvpTokenKind.EndOfFile {
+          \t\t\tlet parsedConsequent = parseStatement(current, statementArena, expressionArena)?
+          \t\t\tconsequentStatementIds = List.append(consequentStatementIds, parsedConsequent.statementId)
+          \t\t\tstatementArena = parsedConsequent.statements
+          \t\t\texpressionArena = parsedConsequent.expressions
+          \t\t\tcurrent = skipNewLines(parsedConsequent.cursor)
+          \t\t}
+          \t\tlet consequentClose = tokenAt(current)
+          \t\tcurrent = expectText(current, "}")?
+          \t\tlet mut alternateStatementIds: List<Int> = []
+          \t\tlet mut endPosition = consequentClose.span.end
+          \t\tlet mut lineEndConsumed = false
+          \t\tif tokenAt(current).text == "else" {
+          \t\t\tlet afterElse = skipNewLines(advance(current))
+          \t\t\tif tokenAt(afterElse).text == "if" {
+          \t\t\t\tlet parsedAlternate = parseStatement(afterElse, statementArena, expressionArena)?
+          \t\t\t\talternateStatementIds = [parsedAlternate.statementId]
+          \t\t\t\tstatementArena = parsedAlternate.statements
+          \t\t\t\texpressionArena = parsedAlternate.expressions
+          \t\t\t\tcurrent = parsedAlternate.cursor
+          \t\t\t\tlet nested = statementAt(statementArena, parsedAlternate.statementId, start.span)?
+          \t\t\t\tendPosition = statementSpan(nested).end
+          \t\t\t\tlineEndConsumed = true
+          \t\t\t} else {
+          \t\t\t\tcurrent = skipNewLines(expectText(afterElse, "{")?)
+          \t\t\t\twhile tokenAt(current).text != "}" && tokenAt(current).kind != MvpTokenKind.EndOfFile {
+          \t\t\t\t\tlet parsedAlternate = parseStatement(current, statementArena, expressionArena)?
+          \t\t\t\t\talternateStatementIds = List.append(alternateStatementIds, parsedAlternate.statementId)
+          \t\t\t\t\tstatementArena = parsedAlternate.statements
+          \t\t\t\t\texpressionArena = parsedAlternate.expressions
+          \t\t\t\t\tcurrent = skipNewLines(parsedAlternate.cursor)
+          \t\t\t\t}
+          \t\t\t\tlet alternateClose = tokenAt(current)
+          \t\t\t\tendPosition = alternateClose.span.end
+          \t\t\t\tcurrent = expectText(current, "}")?
+          \t\t\t}
+          \t\t}
+          \t\tlet afterStatement = if lineEndConsumed then current else consumeLineEnd(current)?
+          \t\treturn Ok(addStatement(
+          \t\t\tafterStatement,
+          \t\t\tstatementArena,
+          \t\t\texpressionArena,
+          \t\t\tMvpStatement.IfValue(parsedCondition.expressionId, consequentStatementIds, alternateStatementIds, span(start.span.start, endPosition)),
+          \t\t))
+          \t}'''
+          parser_path.write_text(parser[:start] + replacement + parser[end:])
+
+          Path('packages/compiler/test/selfhost-else-if-parser.test.ts').write_text('''import assert from 'node:assert/strict';
+          import test from 'node:test';
+          import { execFile } from 'node:child_process';
+          import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+          import { dirname, join, relative, resolve } from 'node:path';
+          import { promisify } from 'node:util';
+          import { fileURLToPath, pathToFileURL } from 'node:url';
+          import { buildProject } from '../src/project/project.js';
+          import {
+          \tcreateSelfhostMvpKernel,
+          \ttype SelfhostMvpModule,
+          } from '../src/selfhost/mvp-adapter.js';
+          import { executeKernelOutputWithNode } from '../src/selfhost/node-executor.js';
+          import type { KernelInputV1 } from '../src/selfhost/contract.js';
+
+          const execFileAsync = promisify(execFile);
+          const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../../..');
+          const mvpRoot = join(repositoryRoot, 'selfhost', 'mvp');
+          const temporaryRoot = join(repositoryRoot, '.test-tmp');
+
+          const input = (text: string): KernelInputV1 => ({
+          \tcontractVersion: '1',
+          \tlanguageVersion: '1.0',
+          \tplatform: 'node',
+          \tentryPath: 'src/main.virune',
+          \tsources: [{ path: 'src/main.virune', text }],
+          \tinteropManifest: { version: '1', modules: [] },
+          \temit: { target: 'es2022', sourceMap: false, sourcesContent: true },
+          });
+
+          const source = [
+          \t'fn classify(value: Int) -> Int {',
+          \t'\\tif value == 0 {',
+          \t'\\t\\treturn 10',
+          \t'\\t} else if value == 1 {',
+          \t'\\t\\treturn 20',
+          \t'\\t} else if value == 2 {',
+          \t'\\t\\treturn 30',
+          \t'\\t} else {',
+          \t'\\t\\treturn 40',
+          \t'\\t}',
+          \t'}',
+          \t'',
+          \t'pub fn main() -> Int {',
+          \t'\\treturn classify(2)',
+          \t'}',
+          \t'',
+          ].join('\\n');
+
+          test('else-if chains lower to nested IfValue statements and execute', async () => {
+          \tconst loaded = await loadMvpModule();
+          \ttry {
+          \t\tconst request = input(source);
+          \t\tconst output = await createSelfhostMvpKernel(loaded.module).compile(request);
+          \t\tassert.equal(output.accepted, true, JSON.stringify(output.diagnostics, null, 2));
+          \t\tassert.deepEqual(output.diagnostics, []);
+          \t\tconst emittedCode = output.emittedModules.map(module => module.code).join('\\n');
+          \t\tassert.equal((emittedCode.match(/if \\(/g) ?? []).length, 3);
+          \t\tconst runtime = await executeKernelOutputWithNode(request, output);
+          \t\tassert.equal(runtime.returnValue, 30);
+          \t\tassert.equal(runtime.panic, null);
+          \t} finally {
+          \t\tawait rm(loaded.root, { recursive: true, force: true });
+          \t}
+          });
+
+          async function loadMvpModule(): Promise<{ readonly root: string; readonly module: SelfhostMvpModule }> {
+          \tconst result = await buildProject(mvpRoot, { write: false });
+          \tconst errors = result.diagnostics.filter(item => item.severity === 'error');
+          \tassert.deepEqual(errors.map(item => `${item.code}:${item.message}`), []);
+          \tawait mkdir(temporaryRoot, { recursive: true });
+          \tconst root = await mkdtemp(join(temporaryRoot, 'selfhost-else-if-parser-'));
+          \tconst configuredOutDir = resolve(mvpRoot, 'dist');
+          \tconst outputPaths: string[] = [];
+          \tfor (const built of result.modules) {
+          \t\tif (built.output === undefined || built.outputPath === undefined) continue;
+          \t\tconst outputPath = join(root, relative(configuredOutDir, built.outputPath));
+          \t\tawait mkdir(dirname(outputPath), { recursive: true });
+          \t\tawait writeFile(outputPath, built.output.code);
+          \t\toutputPaths.push(outputPath);
+          \t}
+          \tfor (const outputPath of outputPaths.sort()) {
+          \t\tawait execFileAsync(process.execPath, ['--check', outputPath]);
+          \t}
+          \tconst moduleUrl = `${pathToFileURL(join(root, 'main.js')).href}?test=${Date.now()}`;
+          \treturn { root, module: await import(moduleUrl) as SelfhostMvpModule };
+          }
+          ''')
+
+          Path('.github/workflows/tmp-selfhost-else-if-parser-pr.yml').unlink()
+          PY
+      - run: npm run build
+      - run: node --test --test-timeout=120000 packages/compiler/dist/test/selfhost-else-if-parser.test.js
+      - name: Commit implementation
+        shell: bash
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add selfhost/mvp/src/parser.virune packages/compiler/test/selfhost-else-if-parser.test.ts .github/workflows/tmp-selfhost-else-if-parser-pr.yml
+          git commit -m "feat(selfhost): parse else-if statement chains"
+          git push origin HEAD:feat/selfhost-else-if-parser
