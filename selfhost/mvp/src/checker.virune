@@ -9,7 +9,9 @@ import {
 	MvpHirFunction,
 	MvpHirModule,
 	MvpHirStatement,
+	MvpListElementType,
 	MvpModule,
+	MvpOptionalElementType,
 	MvpParameter,
 	MvpPosition,
 	MvpSpan,
@@ -263,6 +265,24 @@ fn genericArgument(value: String, requestedIndex: Int) -> String? {
 
 fn typeFromName(value: String) -> MvpType {
 	let compact = compactTypeName(value)
+	if String.length(compact) > 1 && String.slice(compact, String.length(compact) - 1, None) == "?" {
+		let wrapped = typeFromName(String.slice(compact, 0, Some(String.length(compact) - 1)))
+		return match wrapped {
+			BoolType => MvpType.OptionalType(MvpOptionalElementType.BoolOptionalElement)
+			IntType => MvpType.OptionalType(MvpOptionalElementType.IntOptionalElement)
+			FloatType => MvpType.OptionalType(MvpOptionalElementType.FloatOptionalElement)
+			StringType => MvpType.OptionalType(MvpOptionalElementType.StringOptionalElement)
+			UnitType => MvpType.OptionalType(MvpOptionalElementType.UnitOptionalElement)
+			ListType(BoolElement) => MvpType.OptionalType(MvpOptionalElementType.BoolListOptionalElement)
+			ListType(IntElement) => MvpType.OptionalType(MvpOptionalElementType.IntListOptionalElement)
+			ListType(FloatElement) => MvpType.OptionalType(MvpOptionalElementType.FloatListOptionalElement)
+			ListType(StringElement) => MvpType.OptionalType(MvpOptionalElementType.StringListOptionalElement)
+			ListType(UnitElement) => MvpType.OptionalType(MvpOptionalElementType.UnitListOptionalElement)
+			NamedType(name) => MvpType.NamedOptionalType(name)
+			NamedListType(name) => MvpType.NamedListOptionalType(name)
+			_ => MvpType.ErrorType
+		}
+	}
 	if compact == "Bool" {
 		return MvpType.BoolType
 	}
@@ -289,6 +309,3049 @@ fn typeFromName(value: String) -> MvpType {
 		}
 	}
 	return MvpType.NamedType(compact)
+}
+
+
+fn namedBaseTypeName(value: String) -> String {
+	let mut result = ""
+	for character in String.codePoints(value) {
+		if character == "<" {
+			return result
+		}
+		result = result + character
+	}
+	return result
+}
+
+fn typeArgumentName(value: String, index: Int) -> String {
+	return match genericArgument(value, index) {
+		Some(name) => name
+		None => "<error>"
+	}
+}
+
+fn qualifiedSegments(value: String) -> List<String> {
+	let mut values: List<String> = []
+	let mut current = ""
+	for character in String.codePoints(value) {
+		if character == "." {
+			values = List.append(values, current)
+			current = ""
+		} else {
+			current = current + character
+		}
+	}
+	values = List.append(values, current)
+	return values
+}
+
+fn signatureType(signature: Signature) -> MvpType {
+	let mut parameterNames: List<String> = []
+	for parameter in signature.parameters {
+		parameterNames = List.append(parameterNames, typeName(parameter))
+	}
+	return MvpType.NamedType("fn(" + String.join(parameterNames, ",") + ")->" + typeName(signature.returnType))
+}
+
+fn functionTypeText(value: MvpType) -> String? {
+	return match value {
+		NamedType(name) => if String.length(name) >= 6 && String.slice(name, 0, Some(3)) == "fn(" && String.contains(name, ")->") then Some(name) else None
+		_ => None
+	}
+}
+
+fn functionParameterNames(value: String) -> List<String> {
+	let mut values: List<String> = []
+	let mut current = ""
+	let mut depth = 0
+	let mut index = 3
+	while index < String.length(value) {
+		let character = String.slice(value, index, Some(index + 1))
+		if character == ")" && depth == 0 {
+			if String.length(current) > 0 {
+				values = List.append(values, compactTypeName(current))
+			}
+			return values
+		}
+		if character == "<" || character == "(" {
+			depth = depth + 1
+			current = current + character
+		} else if character == ">" || character == ")" {
+			depth = depth - 1
+			current = current + character
+		} else if character == "," && depth == 0 {
+			values = List.append(values, compactTypeName(current))
+			current = ""
+		} else {
+			current = current + character
+		}
+		index = index + 1
+	}
+	return values
+}
+
+fn functionReturnName(value: String) -> String {
+	let marker = ")->"
+	let mut index = 0
+	while index + String.length(marker) <= String.length(value) {
+		if String.slice(value, index, Some(index + String.length(marker))) == marker {
+			return compactTypeName(String.slice(value, index + String.length(marker), None))
+		}
+		index = index + 1
+	}
+	return "<error>"
+}
+
+fn namedFieldType(typeNameValue: String, fieldName: String) -> MvpType {
+	let compact = compactTypeName(typeNameValue)
+	let base = namedBaseTypeName(compact)
+	if base == "AccessBuildResult" && fieldName == "accesses" {
+		return typeFromName("List" + "<" + "SemanticModuleAccessResult" + ">")
+	}
+	if base == "AccessBuildResult" && fieldName == "diagnostics" {
+		return typeFromName("List" + "<" + "SemanticVisibilityDiagnostic" + ">")
+	}
+	if base == "Binding" && fieldName == "mutable" {
+		return typeFromName("Bool")
+	}
+	if base == "Binding" && fieldName == "name" {
+		return typeFromName("String")
+	}
+	if base == "Binding" && fieldName == "valueType" {
+		return typeFromName("MvpType")
+	}
+	if base == "CallableHolder" && fieldName == "callback" {
+		return typeFromName("fn" + "(" + "Int" + ")->" + "Int")
+	}
+	if base == "CanonicalProjectCompilerDependencyV1" && fieldName == "modulePath" {
+		return typeFromName("String")
+	}
+	if base == "CanonicalProjectCompilerDependencyV1" && fieldName == "public" {
+		return typeFromName("Bool")
+	}
+	if base == "CanonicalProjectCompilerDependencyV1" && fieldName == "resolvedPath" {
+		return typeFromName("String" + "?")
+	}
+	if base == "CanonicalProjectCompilerDependencyV1" && fieldName == "sourceKind" {
+		return typeFromName("String")
+	}
+	if base == "CanonicalProjectCompilerDependencyV1" && fieldName == "specifier" {
+		return typeFromName("String")
+	}
+	if base == "CanonicalProjectCompilerDependencyV1" && fieldName == "typeOnly" {
+		return typeFromName("Bool")
+	}
+	if base == "CanonicalProjectCompilerDiagnosticV1" && fieldName == "code" {
+		return typeFromName("String")
+	}
+	if base == "CanonicalProjectCompilerDiagnosticV1" && fieldName == "message" {
+		return typeFromName("String")
+	}
+	if base == "CanonicalProjectCompilerDiagnosticV1" && fieldName == "notes" {
+		return typeFromName("List" + "<" + "String" + ">")
+	}
+	if base == "CanonicalProjectCompilerDiagnosticV1" && fieldName == "severity" {
+		return typeFromName("String")
+	}
+	if base == "CanonicalProjectCompilerDiagnosticV1" && fieldName == "sourcePath" {
+		return typeFromName("String" + "?")
+	}
+	if base == "CanonicalProjectCompilerDiagnosticV1" && fieldName == "span" {
+		return typeFromName("ParserSpan")
+	}
+	if base == "CanonicalProjectCompilerEmittedModuleV1" && fieldName == "code" {
+		return typeFromName("String")
+	}
+	if base == "CanonicalProjectCompilerEmittedModuleV1" && fieldName == "outputPath" {
+		return typeFromName("String")
+	}
+	if base == "CanonicalProjectCompilerEmittedModuleV1" && fieldName == "sourceMap" {
+		return typeFromName("String")
+	}
+	if base == "CanonicalProjectCompilerEmittedModuleV1" && fieldName == "sourcePath" {
+		return typeFromName("String")
+	}
+	if base == "CanonicalProjectCompilerExportedSymbolV1" && fieldName == "declarationKind" {
+		return typeFromName("String")
+	}
+	if base == "CanonicalProjectCompilerExportedSymbolV1" && fieldName == "modulePath" {
+		return typeFromName("String")
+	}
+	if base == "CanonicalProjectCompilerExportedSymbolV1" && fieldName == "name" {
+		return typeFromName("String")
+	}
+	if base == "CanonicalProjectCompilerResultV1" && fieldName == "accepted" {
+		return typeFromName("Bool")
+	}
+	if base == "CanonicalProjectCompilerResultV1" && fieldName == "contractVersion" {
+		return typeFromName("String")
+	}
+	if base == "CanonicalProjectCompilerResultV1" && fieldName == "dependencies" {
+		return typeFromName("List" + "<" + "CanonicalProjectCompilerDependencyV1" + ">")
+	}
+	if base == "CanonicalProjectCompilerResultV1" && fieldName == "diagnostics" {
+		return typeFromName("List" + "<" + "CanonicalProjectCompilerDiagnosticV1" + ">")
+	}
+	if base == "CanonicalProjectCompilerResultV1" && fieldName == "emittedModules" {
+		return typeFromName("List" + "<" + "CanonicalProjectCompilerEmittedModuleV1" + ">")
+	}
+	if base == "CanonicalProjectCompilerResultV1" && fieldName == "entryPath" {
+		return typeFromName("String")
+	}
+	if base == "CanonicalProjectCompilerResultV1" && fieldName == "exportedSymbols" {
+		return typeFromName("List" + "<" + "CanonicalProjectCompilerExportedSymbolV1" + ">")
+	}
+	if base == "CanonicalProjectCompilerResultV1" && fieldName == "languageVersion" {
+		return typeFromName("String")
+	}
+	if base == "CanonicalProjectCompilerResultV1" && fieldName == "platform" {
+		return typeFromName("String")
+	}
+	if base == "CanonicalProjectCompilerResultV1" && fieldName == "stats" {
+		return typeFromName("CanonicalProjectCompilerStatsV1")
+	}
+	if base == "CanonicalProjectCompilerStatsV1" && fieldName == "checkedModules" {
+		return typeFromName("Int")
+	}
+	if base == "CanonicalProjectCompilerStatsV1" && fieldName == "emittedModules" {
+		return typeFromName("Int")
+	}
+	if base == "CanonicalProjectCompilerStatsV1" && fieldName == "invalidatedModules" {
+		return typeFromName("Int")
+	}
+	if base == "CanonicalProjectCompilerStatsV1" && fieldName == "parsedModules" {
+		return typeFromName("Int")
+	}
+	if base == "CanonicalProjectCompilerStatsV1" && fieldName == "reusedCheckedModules" {
+		return typeFromName("Int")
+	}
+	if base == "CanonicalProjectCompilerStatsV1" && fieldName == "reusedEmittedModules" {
+		return typeFromName("Int")
+	}
+	if base == "CanonicalProjectCompilerStatsV1" && fieldName == "reusedParsedModules" {
+		return typeFromName("Int")
+	}
+	if base == "CheckContext" && fieldName == "bindings" {
+		return typeFromName("List" + "<" + "Binding" + ">")
+	}
+	if base == "CheckContext" && fieldName == "loopDepth" {
+		return typeFromName("Int")
+	}
+	if base == "CheckContext" && fieldName == "returnType" {
+		return typeFromName("MvpType")
+	}
+	if base == "CheckContext" && fieldName == "signatures" {
+		return typeFromName("List" + "<" + "Signature" + ">")
+	}
+	if base == "CheckContext" && fieldName == "sourceExpressions" {
+		return typeFromName("List" + "<" + "MvpExpression" + ">")
+	}
+	if base == "CheckContext" && fieldName == "sourceStatements" {
+		return typeFromName("List" + "<" + "MvpStatement" + ">")
+	}
+	if base == "CheckedArguments" && fieldName == "expressionIds" {
+		return typeFromName("List" + "<" + "Int" + ">")
+	}
+	if base == "CheckedArguments" && fieldName == "expressions" {
+		return typeFromName("List" + "<" + "MvpHirExpression" + ">")
+	}
+	if base == "CheckedBlock" && fieldName == "expressions" {
+		return typeFromName("List" + "<" + "MvpHirExpression" + ">")
+	}
+	if base == "CheckedBlock" && fieldName == "statementIds" {
+		return typeFromName("List" + "<" + "Int" + ">")
+	}
+	if base == "CheckedBlock" && fieldName == "statements" {
+		return typeFromName("List" + "<" + "MvpHirStatement" + ">")
+	}
+	if base == "CheckedExpression" && fieldName == "expressionId" {
+		return typeFromName("Int")
+	}
+	if base == "CheckedExpression" && fieldName == "expressions" {
+		return typeFromName("List" + "<" + "MvpHirExpression" + ">")
+	}
+	if base == "CheckedExpression" && fieldName == "valueType" {
+		return typeFromName("MvpType")
+	}
+	if base == "CheckedPattern" && fieldName == "bindings" {
+		return typeFromName("List" + "<" + "Binding" + ">")
+	}
+	if base == "CheckedPattern" && fieldName == "expressionId" {
+		return typeFromName("Int")
+	}
+	if base == "CheckedPattern" && fieldName == "expressions" {
+		return typeFromName("List" + "<" + "MvpHirExpression" + ">")
+	}
+	if base == "CheckedStatement" && fieldName == "bindings" {
+		return typeFromName("List" + "<" + "Binding" + ">")
+	}
+	if base == "CheckedStatement" && fieldName == "expressions" {
+		return typeFromName("List" + "<" + "MvpHirExpression" + ">")
+	}
+	if base == "CheckedStatement" && fieldName == "statementId" {
+		return typeFromName("Int")
+	}
+	if base == "CheckedStatement" && fieldName == "statements" {
+		return typeFromName("List" + "<" + "MvpHirStatement" + ">")
+	}
+	if base == "CollectedParameters" && fieldName == "diagnostics" {
+		return typeFromName("List" + "<" + "SemanticDiagnostic" + ">")
+	}
+	if base == "CollectedParameters" && fieldName == "names" {
+		return typeFromName("List" + "<" + "String" + ">")
+	}
+	if base == "CommonTypeValue" && fieldName == "diagnostics" {
+		return typeFromName("List" + "<" + "SemanticDiagnostic" + ">")
+	}
+	if base == "CommonTypeValue" && fieldName == "id" {
+		return typeFromName("Int")
+	}
+	if base == "ContextBuildResult" && fieldName == "contexts" {
+		return typeFromName("List" + "<" + "SemanticAsyncContext" + ">")
+	}
+	if base == "ContextBuildResult" && fieldName == "diagnostics" {
+		return typeFromName("List" + "<" + "SemanticAsyncAwaitDiagnostic" + ">")
+	}
+	if base == "CoreState" && fieldName == "commentIndex" {
+		return typeFromName("Int")
+	}
+	if base == "CoreState" && fieldName == "diagnostics" {
+		return typeFromName("List" + "<" + "ParserDiagnostic" + ">")
+	}
+	if base == "CoreState" && fieldName == "index" {
+		return typeFromName("Int")
+	}
+	if base == "CoreState" && fieldName == "moduleDocumentation" {
+		return typeFromName("List" + "<" + "String" + ">")
+	}
+	if base == "CoreState" && fieldName == "nodes" {
+		return typeFromName("List" + "<" + "FrontendAstNode" + ">")
+	}
+	if base == "CoreState" && fieldName == "pendingDocumentation" {
+		return typeFromName("List" + "<" + "String" + ">")
+	}
+	if base == "CoreState" && fieldName == "significantSeen" {
+		return typeFromName("Bool")
+	}
+	if base == "CoverageBuildResult" && fieldName == "coverage" {
+		return typeFromName("SemanticPatternCoverage")
+	}
+	if base == "CoverageBuildResult" && fieldName == "diagnostics" {
+		return typeFromName("List" + "<" + "SemanticDiagnostic" + ">")
+	}
+	if base == "Cursor" && fieldName == "index" {
+		return typeFromName("Int")
+	}
+	if base == "Cursor" && fieldName == "tokens" {
+		return typeFromName("List" + "<" + "MvpToken" + ">")
+	}
+	if base == "DetailState" && fieldName == "baseId" {
+		return typeFromName("Int")
+	}
+	if base == "DetailState" && fieldName == "diagnostics" {
+		return typeFromName("List" + "<" + "ParserDiagnostic" + ">")
+	}
+	if base == "DetailState" && fieldName == "index" {
+		return typeFromName("Int")
+	}
+	if base == "DetailState" && fieldName == "nodes" {
+		return typeFromName("List" + "<" + "FrontendAstNode" + ">")
+	}
+	if base == "DetailedDeclarationTransport" && fieldName == "diagnostics" {
+		return typeFromName("List" + "<" + "ParserDiagnostic" + ">")
+	}
+	if base == "DetailedDeclarationTransport" && fieldName == "nextIndex" {
+		return typeFromName("Int")
+	}
+	if base == "DetailedDeclarationTransport" && fieldName == "nodes" {
+		return typeFromName("List" + "<" + "FrontendAstNode" + ">")
+	}
+	if base == "DetailedDeclarationTransport" && fieldName == "root" {
+		return typeFromName("Int")
+	}
+	if base == "ExportBuildResult" && fieldName == "diagnostics" {
+		return typeFromName("List" + "<" + "SemanticFfiDiagnostic" + ">")
+	}
+	if base == "ExportBuildResult" && fieldName == "exports" {
+		return typeFromName("List" + "<" + "SemanticFfiExport" + ">")
+	}
+	if base == "ExpressionBuildResult" && fieldName == "diagnostics" {
+		return typeFromName("List" + "<" + "SemanticAsyncAwaitDiagnostic" + ">")
+	}
+	if base == "ExpressionBuildResult" && fieldName == "expressions" {
+		return typeFromName("List" + "<" + "SemanticAwaitExpression" + ">")
+	}
+	if base == "ExternBuildResult" && fieldName == "diagnostics" {
+		return typeFromName("List" + "<" + "SemanticFfiDiagnostic" + ">")
+	}
+	if base == "ExternBuildResult" && fieldName == "functions" {
+		return typeFromName("List" + "<" + "SemanticFfiExternFunction" + ">")
+	}
+	if base == "FlowAnalysis" && fieldName == "terminates" {
+		return typeFromName("Bool")
+	}
+	if base == "FlowAnalysis" && fieldName == "unreachable" {
+		return typeFromName("List" + "<" + "Int" + ">")
+	}
+	if base == "FrontendAstNode" && fieldName == "children" {
+		return typeFromName("List" + "<" + "Int" + ">")
+	}
+	if base == "FrontendAstNode" && fieldName == "documentation" {
+		return typeFromName("List" + "<" + "String" + ">")
+	}
+	if base == "FrontendAstNode" && fieldName == "id" {
+		return typeFromName("Int")
+	}
+	if base == "FrontendAstNode" && fieldName == "kind" {
+		return typeFromName("String")
+	}
+	if base == "FrontendAstNode" && fieldName == "span" {
+		return typeFromName("ParserSpan")
+	}
+	if base == "FrontendAstNode" && fieldName == "text" {
+		return typeFromName("String")
+	}
+	if base == "FrontendAsyncAwaitRequest" && fieldName == "contexts" {
+		return typeFromName("List" + "<" + "FrontendAsyncContext" + ">")
+	}
+	if base == "FrontendAsyncAwaitRequest" && fieldName == "expressions" {
+		return typeFromName("List" + "<" + "FrontendAwaitExpression" + ">")
+	}
+	if base == "FrontendAsyncAwaitResult" && fieldName == "accepted" {
+		return typeFromName("Bool")
+	}
+	if base == "FrontendAsyncAwaitResult" && fieldName == "contexts" {
+		return typeFromName("List" + "<" + "SemanticAsyncContext" + ">")
+	}
+	if base == "FrontendAsyncAwaitResult" && fieldName == "diagnostics" {
+		return typeFromName("List" + "<" + "SemanticAsyncAwaitDiagnostic" + ">")
+	}
+	if base == "FrontendAsyncAwaitResult" && fieldName == "expressions" {
+		return typeFromName("List" + "<" + "SemanticAwaitExpression" + ">")
+	}
+	if base == "FrontendAsyncContext" && fieldName == "declaredEffects" {
+		return typeFromName("List" + "<" + "String" + ">")
+	}
+	if base == "FrontendAsyncContext" && fieldName == "isAsync" {
+		return typeFromName("Bool")
+	}
+	if base == "FrontendAsyncContext" && fieldName == "kind" {
+		return typeFromName("String")
+	}
+	if base == "FrontendAsyncContext" && fieldName == "name" {
+		return typeFromName("String")
+	}
+	if base == "FrontendAwaitExpression" && fieldName == "awaitedType" {
+		return typeFromName("String" + "?")
+	}
+	if base == "FrontendAwaitExpression" && fieldName == "contextId" {
+		return typeFromName("Int")
+	}
+	if base == "FrontendAwaitExpression" && fieldName == "operandKind" {
+		return typeFromName("String")
+	}
+	if base == "FrontendAwaitExpression" && fieldName == "operandType" {
+		return typeFromName("String")
+	}
+	if base == "FrontendComment" && fieldName == "kind" {
+		return typeFromName("FrontendCommentKind")
+	}
+	if base == "FrontendComment" && fieldName == "span" {
+		return typeFromName("FrontendSpan")
+	}
+	if base == "FrontendComment" && fieldName == "text" {
+		return typeFromName("String")
+	}
+	if base == "FrontendCommonTypeRequest" && fieldName == "types" {
+		return typeFromName("List" + "<" + "String" + ">")
+	}
+	if base == "FrontendControlFlowRequest" && fieldName == "functions" {
+		return typeFromName("List" + "<" + "FrontendFlowFunction" + ">")
+	}
+	if base == "FrontendControlFlowRequest" && fieldName == "nodes" {
+		return typeFromName("List" + "<" + "FrontendFlowNode" + ">")
+	}
+	if base == "FrontendControlFlowResult" && fieldName == "accepted" {
+		return typeFromName("Bool")
+	}
+	if base == "FrontendControlFlowResult" && fieldName == "diagnostics" {
+		return typeFromName("List" + "<" + "SemanticFlowDiagnostic" + ">")
+	}
+	if base == "FrontendControlFlowResult" && fieldName == "functions" {
+		return typeFromName("List" + "<" + "SemanticFlowFunction" + ">")
+	}
+	if base == "FrontendControlFlowResult" && fieldName == "nodes" {
+		return typeFromName("List" + "<" + "SemanticFlowNode" + ">")
+	}
+	if base == "FrontendDeferRequest" && fieldName == "scopes" {
+		return typeFromName("List" + "<" + "FrontendDeferScope" + ">")
+	}
+	if base == "FrontendDeferRequest" && fieldName == "statements" {
+		return typeFromName("List" + "<" + "FrontendDeferStatement" + ">")
+	}
+	if base == "FrontendDeferResult" && fieldName == "accepted" {
+		return typeFromName("Bool")
+	}
+	if base == "FrontendDeferResult" && fieldName == "diagnostics" {
+		return typeFromName("List" + "<" + "SemanticDeferDiagnostic" + ">")
+	}
+	if base == "FrontendDeferResult" && fieldName == "scopes" {
+		return typeFromName("List" + "<" + "SemanticDeferScope" + ">")
+	}
+	if base == "FrontendDeferResult" && fieldName == "statements" {
+		return typeFromName("List" + "<" + "SemanticDeferStatement" + ">")
+	}
+	if base == "FrontendDeferScope" && fieldName == "kind" {
+		return typeFromName("String")
+	}
+	if base == "FrontendDeferScope" && fieldName == "name" {
+		return typeFromName("String")
+	}
+	if base == "FrontendDeferStatement" && fieldName == "expressionType" {
+		return typeFromName("String")
+	}
+	if base == "FrontendDeferStatement" && fieldName == "scopeId" {
+		return typeFromName("Int")
+	}
+	if base == "FrontendDiagnostic" && fieldName == "code" {
+		return typeFromName("String")
+	}
+	if base == "FrontendDiagnostic" && fieldName == "message" {
+		return typeFromName("String")
+	}
+	if base == "FrontendDiagnostic" && fieldName == "severity" {
+		return typeFromName("String")
+	}
+	if base == "FrontendDiagnostic" && fieldName == "span" {
+		return typeFromName("FrontendSpan")
+	}
+	if base == "FrontendEffectFunction" && fieldName == "declaredEffects" {
+		return typeFromName("List" + "<" + "String" + ">")
+	}
+	if base == "FrontendEffectFunction" && fieldName == "name" {
+		return typeFromName("String")
+	}
+	if base == "FrontendEffectRequest" && fieldName == "functions" {
+		return typeFromName("List" + "<" + "FrontendEffectFunction" + ">")
+	}
+	if base == "FrontendEffectRequest" && fieldName == "requirements" {
+		return typeFromName("List" + "<" + "FrontendEffectRequirement" + ">")
+	}
+	if base == "FrontendEffectRequirement" && fieldName == "functionId" {
+		return typeFromName("Int")
+	}
+	if base == "FrontendEffectRequirement" && fieldName == "requiredEffects" {
+		return typeFromName("List" + "<" + "String" + ">")
+	}
+	if base == "FrontendEffectResult" && fieldName == "accepted" {
+		return typeFromName("Bool")
+	}
+	if base == "FrontendEffectResult" && fieldName == "diagnostics" {
+		return typeFromName("List" + "<" + "SemanticEffectDiagnostic" + ">")
+	}
+	if base == "FrontendEffectResult" && fieldName == "functions" {
+		return typeFromName("List" + "<" + "SemanticEffectFunction" + ">")
+	}
+	if base == "FrontendEffectResult" && fieldName == "requirements" {
+		return typeFromName("List" + "<" + "SemanticEffectRequirement" + ">")
+	}
+	if base == "FrontendFfiExport" && fieldName == "attributeArgumentCount" {
+		return typeFromName("Int")
+	}
+	if base == "FrontendFfiExport" && fieldName == "declarationKind" {
+		return typeFromName("String")
+	}
+	if base == "FrontendFfiExport" && fieldName == "generic" {
+		return typeFromName("Bool")
+	}
+	if base == "FrontendFfiExport" && fieldName == "isPublic" {
+		return typeFromName("Bool")
+	}
+	if base == "FrontendFfiExport" && fieldName == "name" {
+		return typeFromName("String")
+	}
+	if base == "FrontendFfiExport" && fieldName == "parameterTypeIds" {
+		return typeFromName("List" + "<" + "Int" + ">")
+	}
+	if base == "FrontendFfiExport" && fieldName == "returnTypeId" {
+		return typeFromName("Int")
+	}
+	if base == "FrontendFfiExtern" && fieldName == "containingModuleUnsafe" {
+		return typeFromName("Bool")
+	}
+	if base == "FrontendFfiExtern" && fieldName == "functions" {
+		return typeFromName("List" + "<" + "FrontendFfiFunction" + ">")
+	}
+	if base == "FrontendFfiExtern" && fieldName == "isUnsafe" {
+		return typeFromName("Bool")
+	}
+	if base == "FrontendFfiExtern" && fieldName == "moduleName" {
+		return typeFromName("String")
+	}
+	if base == "FrontendFfiExtern" && fieldName == "platform" {
+		return typeFromName("String")
+	}
+	if base == "FrontendFfiExtern" && fieldName == "sourcePath" {
+		return typeFromName("String")
+	}
+	if base == "FrontendFfiFunction" && fieldName == "name" {
+		return typeFromName("String")
+	}
+	if base == "FrontendFfiFunction" && fieldName == "parameters" {
+		return typeFromName("List" + "<" + "FrontendFfiParameter" + ">")
+	}
+	if base == "FrontendFfiFunction" && fieldName == "returnTypeId" {
+		return typeFromName("Int")
+	}
+	if base == "FrontendFfiParameter" && fieldName == "name" {
+		return typeFromName("String")
+	}
+	if base == "FrontendFfiParameter" && fieldName == "optional" {
+		return typeFromName("Bool")
+	}
+	if base == "FrontendFfiParameter" && fieldName == "typeId" {
+		return typeFromName("Int")
+	}
+	if base == "FrontendFfiRequest" && fieldName == "exports" {
+		return typeFromName("List" + "<" + "FrontendFfiExport" + ">")
+	}
+	if base == "FrontendFfiRequest" && fieldName == "externs" {
+		return typeFromName("List" + "<" + "FrontendFfiExtern" + ">")
+	}
+	if base == "FrontendFfiRequest" && fieldName == "types" {
+		return typeFromName("List" + "<" + "FrontendFfiTypeNode" + ">")
+	}
+	if base == "FrontendFfiResult" && fieldName == "accepted" {
+		return typeFromName("Bool")
+	}
+	if base == "FrontendFfiResult" && fieldName == "diagnostics" {
+		return typeFromName("List" + "<" + "SemanticFfiDiagnostic" + ">")
+	}
+	if base == "FrontendFfiResult" && fieldName == "exports" {
+		return typeFromName("List" + "<" + "SemanticFfiExport" + ">")
+	}
+	if base == "FrontendFfiResult" && fieldName == "externFunctions" {
+		return typeFromName("List" + "<" + "SemanticFfiExternFunction" + ">")
+	}
+	if base == "FrontendFfiResult" && fieldName == "types" {
+		return typeFromName("List" + "<" + "SemanticFfiType" + ">")
+	}
+	if base == "FrontendFfiTypeNode" && fieldName == "children" {
+		return typeFromName("List" + "<" + "Int" + ">")
+	}
+	if base == "FrontendFfiTypeNode" && fieldName == "id" {
+		return typeFromName("Int")
+	}
+	if base == "FrontendFfiTypeNode" && fieldName == "keyId" {
+		return typeFromName("Int" + "?")
+	}
+	if base == "FrontendFfiTypeNode" && fieldName == "kind" {
+		return typeFromName("String")
+	}
+	if base == "FrontendFfiTypeNode" && fieldName == "name" {
+		return typeFromName("String" + "?")
+	}
+	if base == "FrontendFfiTypeNode" && fieldName == "openGeneric" {
+		return typeFromName("Bool")
+	}
+	if base == "FrontendFfiTypeNode" && fieldName == "shapeKnown" {
+		return typeFromName("Bool")
+	}
+	if base == "FrontendFfiTypeNode" && fieldName == "valueId" {
+		return typeFromName("Int" + "?")
+	}
+	if base == "FrontendFlowFunction" && fieldName == "bodyNodeId" {
+		return typeFromName("Int")
+	}
+	if base == "FrontendFlowFunction" && fieldName == "name" {
+		return typeFromName("String")
+	}
+	if base == "FrontendFlowFunction" && fieldName == "returnType" {
+		return typeFromName("String")
+	}
+	if base == "FrontendFlowNode" && fieldName == "children" {
+		return typeFromName("List" + "<" + "Int" + ">")
+	}
+	if base == "FrontendFlowNode" && fieldName == "condition" {
+		return typeFromName("String" + "?")
+	}
+	if base == "FrontendFlowNode" && fieldName == "expressionType" {
+		return typeFromName("String" + "?")
+	}
+	if base == "FrontendFlowNode" && fieldName == "kind" {
+		return typeFromName("String")
+	}
+	if base == "FrontendLexResult" && fieldName == "comments" {
+		return typeFromName("List" + "<" + "FrontendComment" + ">")
+	}
+	if base == "FrontendLexResult" && fieldName == "diagnostics" {
+		return typeFromName("List" + "<" + "FrontendDiagnostic" + ">")
+	}
+	if base == "FrontendLexResult" && fieldName == "tokens" {
+		return typeFromName("List" + "<" + "FrontendToken" + ">")
+	}
+	if base == "FrontendModuleAccessRequest" && fieldName == "definingModuleId" {
+		return typeFromName("Int")
+	}
+	if base == "FrontendModuleAccessRequest" && fieldName == "name" {
+		return typeFromName("String")
+	}
+	if base == "FrontendModuleAccessRequest" && fieldName == "requesterModuleId" {
+		return typeFromName("Int")
+	}
+	if base == "FrontendModuleAccessRequest" && fieldName == "space" {
+		return typeFromName("String")
+	}
+	if base == "FrontendModuleDefinition" && fieldName == "name" {
+		return typeFromName("String")
+	}
+	if base == "FrontendModuleDefinition" && fieldName == "sourceNodeId" {
+		return typeFromName("Int")
+	}
+	if base == "FrontendModuleSymbolDefinition" && fieldName == "isPublic" {
+		return typeFromName("Bool")
+	}
+	if base == "FrontendModuleSymbolDefinition" && fieldName == "kind" {
+		return typeFromName("String")
+	}
+	if base == "FrontendModuleSymbolDefinition" && fieldName == "moduleId" {
+		return typeFromName("Int")
+	}
+	if base == "FrontendModuleSymbolDefinition" && fieldName == "name" {
+		return typeFromName("String")
+	}
+	if base == "FrontendModuleSymbolDefinition" && fieldName == "signatureTypes" {
+		return typeFromName("List" + "<" + "FrontendVisibilityReference" + ">")
+	}
+	if base == "FrontendModuleSymbolDefinition" && fieldName == "sourceNodeId" {
+		return typeFromName("Int")
+	}
+	if base == "FrontendModuleSymbolDefinition" && fieldName == "space" {
+		return typeFromName("String")
+	}
+	if base == "FrontendModuleVisibilityRequest" && fieldName == "accesses" {
+		return typeFromName("List" + "<" + "FrontendModuleAccessRequest" + ">")
+	}
+	if base == "FrontendModuleVisibilityRequest" && fieldName == "modules" {
+		return typeFromName("List" + "<" + "FrontendModuleDefinition" + ">")
+	}
+	if base == "FrontendModuleVisibilityRequest" && fieldName == "symbols" {
+		return typeFromName("List" + "<" + "FrontendModuleSymbolDefinition" + ">")
+	}
+	if base == "FrontendModuleVisibilityResult" && fieldName == "accepted" {
+		return typeFromName("Bool")
+	}
+	if base == "FrontendModuleVisibilityResult" && fieldName == "accesses" {
+		return typeFromName("List" + "<" + "SemanticModuleAccessResult" + ">")
+	}
+	if base == "FrontendModuleVisibilityResult" && fieldName == "diagnostics" {
+		return typeFromName("List" + "<" + "SemanticVisibilityDiagnostic" + ">")
+	}
+	if base == "FrontendModuleVisibilityResult" && fieldName == "modules" {
+		return typeFromName("List" + "<" + "SemanticModule" + ">")
+	}
+	if base == "FrontendModuleVisibilityResult" && fieldName == "symbols" {
+		return typeFromName("List" + "<" + "SemanticModuleSymbol" + ">")
+	}
+	if base == "FrontendMustUseRequest" && fieldName == "source" {
+		return typeFromName("String")
+	}
+	if base == "FrontendMustUseRequest" && fieldName == "values" {
+		return typeFromName("List" + "<" + "FrontendValueUse" + ">")
+	}
+	if base == "FrontendMustUseResult" && fieldName == "accepted" {
+		return typeFromName("Bool")
+	}
+	if base == "FrontendMustUseResult" && fieldName == "declarations" {
+		return typeFromName("List" + "<" + "SemanticMustUseDeclaration" + ">")
+	}
+	if base == "FrontendMustUseResult" && fieldName == "diagnostics" {
+		return typeFromName("List" + "<" + "SemanticDiagnostic" + ">")
+	}
+	if base == "FrontendMustUseResult" && fieldName == "typeCount" {
+		return typeFromName("Int")
+	}
+	if base == "FrontendMustUseResult" && fieldName == "values" {
+		return typeFromName("List" + "<" + "SemanticValueUseResult" + ">")
+	}
+	if base == "FrontendParallelEntry" && fieldName == "errorType" {
+		return typeFromName("String" + "?")
+	}
+	if base == "FrontendParallelEntry" && fieldName == "name" {
+		return typeFromName("String")
+	}
+	if base == "FrontendParallelEntry" && fieldName == "operandKind" {
+		return typeFromName("String")
+	}
+	if base == "FrontendParallelEntry" && fieldName == "valueType" {
+		return typeFromName("String" + "?")
+	}
+	if base == "FrontendParallelRequest" && fieldName == "entries" {
+		return typeFromName("List" + "<" + "FrontendParallelEntry" + ">")
+	}
+	if base == "FrontendParallelRequest" && fieldName == "tryMode" {
+		return typeFromName("Bool")
+	}
+	if base == "FrontendParallelResult" && fieldName == "accepted" {
+		return typeFromName("Bool")
+	}
+	if base == "FrontendParallelResult" && fieldName == "commonErrorType" {
+		return typeFromName("String" + "?")
+	}
+	if base == "FrontendParallelResult" && fieldName == "diagnostics" {
+		return typeFromName("List" + "<" + "SemanticParallelDiagnostic" + ">")
+	}
+	if base == "FrontendParallelResult" && fieldName == "entries" {
+		return typeFromName("List" + "<" + "SemanticParallelEntry" + ">")
+	}
+	if base == "FrontendParallelResult" && fieldName == "fields" {
+		return typeFromName("List" + "<" + "SemanticParallelField" + ">")
+	}
+	if base == "FrontendParallelResult" && fieldName == "resultType" {
+		return typeFromName("String")
+	}
+	if base == "FrontendParallelResult" && fieldName == "tryMode" {
+		return typeFromName("Bool")
+	}
+	if base == "FrontendParseResult" && fieldName == "accepted" {
+		return typeFromName("Bool")
+	}
+	if base == "FrontendParseResult" && fieldName == "diagnostics" {
+		return typeFromName("List" + "<" + "ParserDiagnostic" + ">")
+	}
+	if base == "FrontendParseResult" && fieldName == "nodes" {
+		return typeFromName("List" + "<" + "FrontendAstNode" + ">")
+	}
+	if base == "FrontendParseResult" && fieldName == "root" {
+		return typeFromName("Int")
+	}
+	if base == "FrontendPatternArm" && fieldName == "guarded" {
+		return typeFromName("Bool")
+	}
+	if base == "FrontendPatternArm" && fieldName == "kind" {
+		return typeFromName("String")
+	}
+	if base == "FrontendPatternArm" && fieldName == "name" {
+		return typeFromName("String" + "?")
+	}
+	if base == "FrontendPatternArm" && fieldName == "span" {
+		return typeFromName("SemanticSpan")
+	}
+	if base == "FrontendPatternCheck" && fieldName == "arms" {
+		return typeFromName("List" + "<" + "FrontendPatternArm" + ">")
+	}
+	if base == "FrontendPatternCheck" && fieldName == "span" {
+		return typeFromName("SemanticSpan")
+	}
+	if base == "FrontendPatternCheck" && fieldName == "target" {
+		return typeFromName("String")
+	}
+	if base == "FrontendPatternCoverageRequest" && fieldName == "checks" {
+		return typeFromName("List" + "<" + "FrontendPatternCheck" + ">")
+	}
+	if base == "FrontendPatternCoverageRequest" && fieldName == "source" {
+		return typeFromName("String")
+	}
+	if base == "FrontendPatternCoverageResult" && fieldName == "accepted" {
+		return typeFromName("Bool")
+	}
+	if base == "FrontendPatternCoverageResult" && fieldName == "checks" {
+		return typeFromName("List" + "<" + "SemanticPatternCoverage" + ">")
+	}
+	if base == "FrontendPatternCoverageResult" && fieldName == "diagnostics" {
+		return typeFromName("List" + "<" + "SemanticDiagnostic" + ">")
+	}
+	if base == "FrontendPatternCoverageResult" && fieldName == "typeCount" {
+		return typeFromName("Int")
+	}
+	if base == "FrontendPosition" && fieldName == "column" {
+		return typeFromName("Int")
+	}
+	if base == "FrontendPosition" && fieldName == "line" {
+		return typeFromName("Int")
+	}
+	if base == "FrontendPosition" && fieldName == "offset" {
+		return typeFromName("Int")
+	}
+	if base == "FrontendScopeDefinition" && fieldName == "kind" {
+		return typeFromName("String")
+	}
+	if base == "FrontendScopeDefinition" && fieldName == "ownerNodeId" {
+		return typeFromName("Int")
+	}
+	if base == "FrontendScopeDefinition" && fieldName == "parentScopeId" {
+		return typeFromName("Int" + "?")
+	}
+	if base == "FrontendScopeLookupRequest" && fieldName == "name" {
+		return typeFromName("String")
+	}
+	if base == "FrontendScopeLookupRequest" && fieldName == "scopeId" {
+		return typeFromName("Int")
+	}
+	if base == "FrontendScopeLookupRequest" && fieldName == "space" {
+		return typeFromName("String")
+	}
+	if base == "FrontendSemanticResult" && fieldName == "accepted" {
+		return typeFromName("Bool")
+	}
+	if base == "FrontendSemanticResult" && fieldName == "declarations" {
+		return typeFromName("List" + "<" + "SemanticDeclaration" + ">")
+	}
+	if base == "FrontendSemanticResult" && fieldName == "diagnostics" {
+		return typeFromName("List" + "<" + "SemanticDiagnostic" + ">")
+	}
+	if base == "FrontendSemanticResult" && fieldName == "instantiatedMembers" {
+		return typeFromName("List" + "<" + "SemanticInstantiatedMember" + ">")
+	}
+	if base == "FrontendSemanticResult" && fieldName == "instantiations" {
+		return typeFromName("List" + "<" + "SemanticInstantiation" + ">")
+	}
+	if base == "FrontendSemanticResult" && fieldName == "members" {
+		return typeFromName("List" + "<" + "SemanticMember" + ">")
+	}
+	if base == "FrontendSemanticResult" && fieldName == "types" {
+		return typeFromName("List" + "<" + "SemanticType" + ">")
+	}
+	if base == "FrontendSpan" && fieldName == "end" {
+		return typeFromName("FrontendPosition")
+	}
+	if base == "FrontendSpan" && fieldName == "start" {
+		return typeFromName("FrontendPosition")
+	}
+	if base == "FrontendSymbolDefinition" && fieldName == "name" {
+		return typeFromName("String")
+	}
+	if base == "FrontendSymbolDefinition" && fieldName == "scopeId" {
+		return typeFromName("Int")
+	}
+	if base == "FrontendSymbolDefinition" && fieldName == "sourceNodeId" {
+		return typeFromName("Int")
+	}
+	if base == "FrontendSymbolDefinition" && fieldName == "space" {
+		return typeFromName("String")
+	}
+	if base == "FrontendSymbolScopeRequest" && fieldName == "lookups" {
+		return typeFromName("List" + "<" + "FrontendScopeLookupRequest" + ">")
+	}
+	if base == "FrontendSymbolScopeRequest" && fieldName == "scopes" {
+		return typeFromName("List" + "<" + "FrontendScopeDefinition" + ">")
+	}
+	if base == "FrontendSymbolScopeRequest" && fieldName == "symbols" {
+		return typeFromName("List" + "<" + "FrontendSymbolDefinition" + ">")
+	}
+	if base == "FrontendSymbolScopeResult" && fieldName == "accepted" {
+		return typeFromName("Bool")
+	}
+	if base == "FrontendSymbolScopeResult" && fieldName == "diagnostics" {
+		return typeFromName("List" + "<" + "SemanticScopeDiagnostic" + ">")
+	}
+	if base == "FrontendSymbolScopeResult" && fieldName == "lookups" {
+		return typeFromName("List" + "<" + "SemanticScopeLookupResult" + ">")
+	}
+	if base == "FrontendSymbolScopeResult" && fieldName == "scopes" {
+		return typeFromName("List" + "<" + "SemanticScope" + ">")
+	}
+	if base == "FrontendSymbolScopeResult" && fieldName == "symbols" {
+		return typeFromName("List" + "<" + "SemanticSymbol" + ">")
+	}
+	if base == "FrontendToken" && fieldName == "kind" {
+		return typeFromName("FrontendTokenKind")
+	}
+	if base == "FrontendToken" && fieldName == "span" {
+		return typeFromName("FrontendSpan")
+	}
+	if base == "FrontendToken" && fieldName == "text" {
+		return typeFromName("String")
+	}
+	if base == "FrontendTypeOperationsRequest" && fieldName == "commonTypes" {
+		return typeFromName("List" + "<" + "FrontendCommonTypeRequest" + ">")
+	}
+	if base == "FrontendTypeOperationsRequest" && fieldName == "relations" {
+		return typeFromName("List" + "<" + "FrontendTypeRelationRequest" + ">")
+	}
+	if base == "FrontendTypeOperationsRequest" && fieldName == "source" {
+		return typeFromName("String")
+	}
+	if base == "FrontendTypeOperationsRequest" && fieldName == "traits" {
+		return typeFromName("List" + "<" + "String" + ">")
+	}
+	if base == "FrontendTypeOperationsResult" && fieldName == "accepted" {
+		return typeFromName("Bool")
+	}
+	if base == "FrontendTypeOperationsResult" && fieldName == "commonTypes" {
+		return typeFromName("List" + "<" + "SemanticCommonTypeResult" + ">")
+	}
+	if base == "FrontendTypeOperationsResult" && fieldName == "diagnostics" {
+		return typeFromName("List" + "<" + "SemanticDiagnostic" + ">")
+	}
+	if base == "FrontendTypeOperationsResult" && fieldName == "relations" {
+		return typeFromName("List" + "<" + "SemanticTypeRelationResult" + ">")
+	}
+	if base == "FrontendTypeOperationsResult" && fieldName == "traits" {
+		return typeFromName("List" + "<" + "SemanticTypeTraits" + ">")
+	}
+	if base == "FrontendTypeOperationsResult" && fieldName == "types" {
+		return typeFromName("List" + "<" + "SemanticType" + ">")
+	}
+	if base == "FrontendTypeRelationRequest" && fieldName == "source" {
+		return typeFromName("String")
+	}
+	if base == "FrontendTypeRelationRequest" && fieldName == "target" {
+		return typeFromName("String")
+	}
+	if base == "FrontendValueUse" && fieldName == "disposition" {
+		return typeFromName("String")
+	}
+	if base == "FrontendValueUse" && fieldName == "span" {
+		return typeFromName("SemanticSpan")
+	}
+	if base == "FrontendValueUse" && fieldName == "typeName" {
+		return typeFromName("String")
+	}
+	if base == "FrontendVisibilityReference" && fieldName == "moduleId" {
+		return typeFromName("Int" + "?")
+	}
+	if base == "FrontendVisibilityReference" && fieldName == "name" {
+		return typeFromName("String")
+	}
+	if base == "FrontendVisibilityReference" && fieldName == "space" {
+		return typeFromName("String")
+	}
+	if base == "LambdaHeaderTransport" && fieldName == "children" {
+		return typeFromName("List" + "<" + "Int" + ">")
+	}
+	if base == "LambdaHeaderTransport" && fieldName == "diagnostics" {
+		return typeFromName("List" + "<" + "ParserDiagnostic" + ">")
+	}
+	if base == "LambdaHeaderTransport" && fieldName == "isAsync" {
+		return typeFromName("Bool")
+	}
+	if base == "LambdaHeaderTransport" && fieldName == "nextIndex" {
+		return typeFromName("Int")
+	}
+	if base == "LambdaHeaderTransport" && fieldName == "nodes" {
+		return typeFromName("List" + "<" + "FrontendAstNode" + ">")
+	}
+	if base == "LambdaState" && fieldName == "baseId" {
+		return typeFromName("Int")
+	}
+	if base == "LambdaState" && fieldName == "diagnostics" {
+		return typeFromName("List" + "<" + "ParserDiagnostic" + ">")
+	}
+	if base == "LambdaState" && fieldName == "index" {
+		return typeFromName("Int")
+	}
+	if base == "LambdaState" && fieldName == "nodes" {
+		return typeFromName("List" + "<" + "FrontendAstNode" + ">")
+	}
+	if base == "LoadedLambdaHeader" && fieldName == "children" {
+		return typeFromName("List" + "<" + "Int" + ">")
+	}
+	if base == "LoadedLambdaHeader" && fieldName == "isAsync" {
+		return typeFromName("Bool")
+	}
+	if base == "LoadedLambdaHeader" && fieldName == "state" {
+		return typeFromName("CoreState")
+	}
+	if base == "LookupBuildResult" && fieldName == "diagnostics" {
+		return typeFromName("List" + "<" + "SemanticScopeDiagnostic" + ">")
+	}
+	if base == "LookupBuildResult" && fieldName == "lookups" {
+		return typeFromName("List" + "<" + "SemanticScopeLookupResult" + ">")
+	}
+	if base == "ModuleBuildResult" && fieldName == "diagnostics" {
+		return typeFromName("List" + "<" + "SemanticVisibilityDiagnostic" + ">")
+	}
+	if base == "ModuleBuildResult" && fieldName == "modules" {
+		return typeFromName("List" + "<" + "SemanticModule" + ">")
+	}
+	if base == "MustUseClassification" && fieldName == "mustUse" {
+		return typeFromName("Bool")
+	}
+	if base == "MustUseClassification" && fieldName == "reason" {
+		return typeFromName("String")
+	}
+	if base == "MvpCheckResult" && fieldName == "diagnostics" {
+		return typeFromName("List" + "<" + "MvpDiagnostic" + ">")
+	}
+	if base == "MvpCheckResult" && fieldName == "exports" {
+		return typeFromName("List" + "<" + "MvpExport" + ">")
+	}
+	if base == "MvpCheckResult" && fieldName == "hirModule" {
+		return typeFromName("MvpHirModule" + "?")
+	}
+	if base == "MvpCheckTransport" && fieldName == "diagnostics" {
+		return typeFromName("List" + "<" + "MvpDiagnostic" + ">")
+	}
+	if base == "MvpCheckTransport" && fieldName == "exports" {
+		return typeFromName("List" + "<" + "MvpExport" + ">")
+	}
+	if base == "MvpCheckTransport" && fieldName == "hirModule" {
+		return typeFromName("MvpHirModule" + "?")
+	}
+	if base == "MvpCompilation" && fieldName == "accepted" {
+		return typeFromName("Bool")
+	}
+	if base == "MvpCompilation" && fieldName == "codeBody" {
+		return typeFromName("String")
+	}
+	if base == "MvpCompilation" && fieldName == "diagnostics" {
+		return typeFromName("List" + "<" + "MvpDiagnostic" + ">")
+	}
+	if base == "MvpCompilation" && fieldName == "exports" {
+		return typeFromName("List" + "<" + "MvpExport" + ">")
+	}
+	if base == "MvpDiagnostic" && fieldName == "code" {
+		return typeFromName("String")
+	}
+	if base == "MvpDiagnostic" && fieldName == "message" {
+		return typeFromName("String")
+	}
+	if base == "MvpDiagnostic" && fieldName == "severity" {
+		return typeFromName("String")
+	}
+	if base == "MvpDiagnostic" && fieldName == "span" {
+		return typeFromName("MvpSpan")
+	}
+	if base == "MvpExport" && fieldName == "declarationKind" {
+		return typeFromName("String")
+	}
+	if base == "MvpExport" && fieldName == "name" {
+		return typeFromName("String")
+	}
+	if base == "MvpExpression" && fieldName == "children" {
+		return typeFromName("List" + "<" + "Int" + ">")
+	}
+	if base == "MvpExpression" && fieldName == "kind" {
+		return typeFromName("String")
+	}
+	if base == "MvpExpression" && fieldName == "literalType" {
+		return typeFromName("MvpType" + "?")
+	}
+	if base == "MvpExpression" && fieldName == "span" {
+		return typeFromName("MvpSpan")
+	}
+	if base == "MvpExpression" && fieldName == "text" {
+		return typeFromName("String")
+	}
+	if base == "MvpFunction" && fieldName == "expressions" {
+		return typeFromName("List" + "<" + "MvpExpression" + ">")
+	}
+	if base == "MvpFunction" && fieldName == "isPublic" {
+		return typeFromName("Bool")
+	}
+	if base == "MvpFunction" && fieldName == "name" {
+		return typeFromName("String")
+	}
+	if base == "MvpFunction" && fieldName == "parameters" {
+		return typeFromName("List" + "<" + "MvpParameter" + ">")
+	}
+	if base == "MvpFunction" && fieldName == "returnType" {
+		return typeFromName("MvpType")
+	}
+	if base == "MvpFunction" && fieldName == "span" {
+		return typeFromName("MvpSpan")
+	}
+	if base == "MvpFunction" && fieldName == "statementIds" {
+		return typeFromName("List" + "<" + "Int" + ">")
+	}
+	if base == "MvpFunction" && fieldName == "statements" {
+		return typeFromName("List" + "<" + "MvpStatement" + ">")
+	}
+	if base == "MvpHirExpression" && fieldName == "children" {
+		return typeFromName("List" + "<" + "Int" + ">")
+	}
+	if base == "MvpHirExpression" && fieldName == "kind" {
+		return typeFromName("String")
+	}
+	if base == "MvpHirExpression" && fieldName == "span" {
+		return typeFromName("MvpSpan")
+	}
+	if base == "MvpHirExpression" && fieldName == "text" {
+		return typeFromName("String")
+	}
+	if base == "MvpHirExpression" && fieldName == "valueType" {
+		return typeFromName("MvpType")
+	}
+	if base == "MvpHirFunction" && fieldName == "expressions" {
+		return typeFromName("List" + "<" + "MvpHirExpression" + ">")
+	}
+	if base == "MvpHirFunction" && fieldName == "isPublic" {
+		return typeFromName("Bool")
+	}
+	if base == "MvpHirFunction" && fieldName == "name" {
+		return typeFromName("String")
+	}
+	if base == "MvpHirFunction" && fieldName == "parameters" {
+		return typeFromName("List" + "<" + "MvpParameter" + ">")
+	}
+	if base == "MvpHirFunction" && fieldName == "returnType" {
+		return typeFromName("MvpType")
+	}
+	if base == "MvpHirFunction" && fieldName == "span" {
+		return typeFromName("MvpSpan")
+	}
+	if base == "MvpHirFunction" && fieldName == "statementIds" {
+		return typeFromName("List" + "<" + "Int" + ">")
+	}
+	if base == "MvpHirFunction" && fieldName == "statements" {
+		return typeFromName("List" + "<" + "MvpHirStatement" + ">")
+	}
+	if base == "MvpHirModule" && fieldName == "functions" {
+		return typeFromName("List" + "<" + "MvpHirFunction" + ">")
+	}
+	if base == "MvpImport" && fieldName == "bindings" {
+		return typeFromName("List" + "<" + "MvpImportBinding" + ">")
+	}
+	if base == "MvpImport" && fieldName == "span" {
+		return typeFromName("MvpSpan")
+	}
+	if base == "MvpImport" && fieldName == "specifier" {
+		return typeFromName("String")
+	}
+	if base == "MvpImportBinding" && fieldName == "importedName" {
+		return typeFromName("String")
+	}
+	if base == "MvpImportBinding" && fieldName == "localName" {
+		return typeFromName("String")
+	}
+	if base == "MvpImportBinding" && fieldName == "span" {
+		return typeFromName("MvpSpan")
+	}
+	if base == "MvpLexResult" && fieldName == "diagnostics" {
+		return typeFromName("List" + "<" + "MvpDiagnostic" + ">")
+	}
+	if base == "MvpLexResult" && fieldName == "tokens" {
+		return typeFromName("List" + "<" + "MvpToken" + ">")
+	}
+	if base == "MvpLexTransport" && fieldName == "diagnostics" {
+		return typeFromName("List" + "<" + "MvpDiagnostic" + ">")
+	}
+	if base == "MvpLexTransport" && fieldName == "tokens" {
+		return typeFromName("List" + "<" + "MvpToken" + ">")
+	}
+	if base == "MvpModule" && fieldName == "functions" {
+		return typeFromName("List" + "<" + "MvpFunction" + ">")
+	}
+	if base == "MvpParameter" && fieldName == "name" {
+		return typeFromName("String")
+	}
+	if base == "MvpParameter" && fieldName == "span" {
+		return typeFromName("MvpSpan")
+	}
+	if base == "MvpParameter" && fieldName == "valueType" {
+		return typeFromName("MvpType")
+	}
+	if base == "MvpParseResult" && fieldName == "diagnostics" {
+		return typeFromName("List" + "<" + "MvpDiagnostic" + ">")
+	}
+	if base == "MvpParseResult" && fieldName == "parsedModule" {
+		return typeFromName("MvpModule" + "?")
+	}
+	if base == "MvpParseTransport" && fieldName == "diagnostics" {
+		return typeFromName("List" + "<" + "MvpDiagnostic" + ">")
+	}
+	if base == "MvpParseTransport" && fieldName == "parsedModule" {
+		return typeFromName("MvpModule" + "?")
+	}
+	if base == "MvpPosition" && fieldName == "column" {
+		return typeFromName("Int")
+	}
+	if base == "MvpPosition" && fieldName == "line" {
+		return typeFromName("Int")
+	}
+	if base == "MvpPosition" && fieldName == "offset" {
+		return typeFromName("Int")
+	}
+	if base == "MvpSpan" && fieldName == "end" {
+		return typeFromName("MvpPosition")
+	}
+	if base == "MvpSpan" && fieldName == "start" {
+		return typeFromName("MvpPosition")
+	}
+	if base == "MvpToken" && fieldName == "kind" {
+		return typeFromName("MvpTokenKind")
+	}
+	if base == "MvpToken" && fieldName == "span" {
+		return typeFromName("MvpSpan")
+	}
+	if base == "MvpToken" && fieldName == "text" {
+		return typeFromName("String")
+	}
+	if base == "NodeBuildResult" && fieldName == "diagnostics" {
+		return typeFromName("List" + "<" + "SemanticFlowDiagnostic" + ">")
+	}
+	if base == "NodeBuildResult" && fieldName == "nodes" {
+		return typeFromName("List" + "<" + "SemanticFlowNode" + ">")
+	}
+	if base == "NodeBuildResult" && fieldName == "valid" {
+		return typeFromName("Bool")
+	}
+	if base == "ParallelBuildResult" && fieldName == "commonErrorType" {
+		return typeFromName("String" + "?")
+	}
+	if base == "ParallelBuildResult" && fieldName == "diagnostics" {
+		return typeFromName("List" + "<" + "SemanticParallelDiagnostic" + ">")
+	}
+	if base == "ParallelBuildResult" && fieldName == "entries" {
+		return typeFromName("List" + "<" + "SemanticParallelEntry" + ">")
+	}
+	if base == "ParallelBuildResult" && fieldName == "fields" {
+		return typeFromName("List" + "<" + "SemanticParallelField" + ">")
+	}
+	if base == "ParsedChildren" && fieldName == "children" {
+		return typeFromName("List" + "<" + "Int" + ">")
+	}
+	if base == "ParsedChildren" && fieldName == "state" {
+		return typeFromName("CoreState")
+	}
+	if base == "ParsedDetail" && fieldName == "id" {
+		return typeFromName("Int")
+	}
+	if base == "ParsedDetail" && fieldName == "state" {
+		return typeFromName("DetailState")
+	}
+	if base == "ParsedDocumentation" && fieldName == "documentation" {
+		return typeFromName("List" + "<" + "String" + ">")
+	}
+	if base == "ParsedExpression" && fieldName == "cursor" {
+		return typeFromName("Cursor")
+	}
+	if base == "ParsedExpression" && fieldName == "expressionId" {
+		return typeFromName("Int")
+	}
+	if base == "ParsedExpression" && fieldName == "expressions" {
+		return typeFromName("List" + "<" + "MvpExpression" + ">")
+	}
+	if base == "ParsedFunction" && fieldName == "cursor" {
+		return typeFromName("Cursor")
+	}
+	if base == "ParsedFunction" && fieldName == "value" {
+		return typeFromName("MvpFunction")
+	}
+	if base == "ParsedImport" && fieldName == "cursor" {
+		return typeFromName("Cursor")
+	}
+	if base == "ParsedImport" && fieldName == "value" {
+		return typeFromName("MvpImport")
+	}
+	if base == "ParsedLambdaDetail" && fieldName == "id" {
+		return typeFromName("Int")
+	}
+	if base == "ParsedLambdaDetail" && fieldName == "state" {
+		return typeFromName("LambdaState")
+	}
+	if base == "ParsedName" && fieldName == "cursor" {
+		return typeFromName("Cursor")
+	}
+	if base == "ParsedName" && fieldName == "span" {
+		return typeFromName("MvpSpan")
+	}
+	if base == "ParsedName" && fieldName == "text" {
+		return typeFromName("String")
+	}
+	if base == "ParsedNode" && fieldName == "id" {
+		return typeFromName("Int")
+	}
+	if base == "ParsedNodes" && fieldName == "ids" {
+		return typeFromName("List" + "<" + "Int" + ">")
+	}
+	if base == "ParsedNodes" && fieldName == "state" {
+		return typeFromName("ParserState")
+	}
+	if base == "ParsedParameter" && fieldName == "cursor" {
+		return typeFromName("Cursor")
+	}
+	if base == "ParsedParameter" && fieldName == "value" {
+		return typeFromName("MvpParameter")
+	}
+	if base == "ParsedPattern" && fieldName == "id" {
+		return typeFromName("Int")
+	}
+	if base == "ParsedPattern" && fieldName == "state" {
+		return typeFromName("PatternState")
+	}
+	if base == "ParsedStatement" && fieldName == "cursor" {
+		return typeFromName("Cursor")
+	}
+	if base == "ParsedStatement" && fieldName == "expressions" {
+		return typeFromName("List" + "<" + "MvpExpression" + ">")
+	}
+	if base == "ParsedStatement" && fieldName == "statementId" {
+		return typeFromName("Int")
+	}
+	if base == "ParsedStatement" && fieldName == "statements" {
+		return typeFromName("List" + "<" + "MvpStatement" + ">")
+	}
+	if base == "ParsedType" && fieldName == "cursor" {
+		return typeFromName("Cursor")
+	}
+	if base == "ParsedType" && fieldName == "value" {
+		return typeFromName("MvpType")
+	}
+	if base == "ParserDiagnostic" && fieldName == "code" {
+		return typeFromName("String")
+	}
+	if base == "ParserDiagnostic" && fieldName == "message" {
+		return typeFromName("String")
+	}
+	if base == "ParserDiagnostic" && fieldName == "severity" {
+		return typeFromName("String")
+	}
+	if base == "ParserDiagnostic" && fieldName == "span" {
+		return typeFromName("ParserSpan")
+	}
+	if base == "ParserPosition" && fieldName == "column" {
+		return typeFromName("Int")
+	}
+	if base == "ParserPosition" && fieldName == "line" {
+		return typeFromName("Int")
+	}
+	if base == "ParserPosition" && fieldName == "offset" {
+		return typeFromName("Int")
+	}
+	if base == "ParserSpan" && fieldName == "end" {
+		return typeFromName("ParserPosition")
+	}
+	if base == "ParserSpan" && fieldName == "start" {
+		return typeFromName("ParserPosition")
+	}
+	if base == "ParserState" && fieldName == "commentIndex" {
+		return typeFromName("Int")
+	}
+	if base == "ParserState" && fieldName == "depth" {
+		return typeFromName("Int")
+	}
+	if base == "ParserState" && fieldName == "diagnostics" {
+		return typeFromName("List" + "<" + "ParserDiagnostic" + ">")
+	}
+	if base == "ParserState" && fieldName == "index" {
+		return typeFromName("Int")
+	}
+	if base == "ParserState" && fieldName == "moduleDocumentation" {
+		return typeFromName("List" + "<" + "String" + ">")
+	}
+	if base == "ParserState" && fieldName == "nodes" {
+		return typeFromName("List" + "<" + "FrontendAstNode" + ">")
+	}
+	if base == "ParserState" && fieldName == "pendingDocumentation" {
+		return typeFromName("List" + "<" + "String" + ">")
+	}
+	if base == "ParserState" && fieldName == "significantSeen" {
+		return typeFromName("Bool")
+	}
+	if base == "PatternSpace" && fieldName == "cases" {
+		return typeFromName("List" + "<" + "SemanticPatternCase" + ">")
+	}
+	if base == "PatternSpace" && fieldName == "kind" {
+		return typeFromName("String")
+	}
+	if base == "PatternSpace" && fieldName == "typeId" {
+		return typeFromName("Int")
+	}
+	if base == "PatternSpaceResult" && fieldName == "diagnostics" {
+		return typeFromName("List" + "<" + "SemanticDiagnostic" + ">")
+	}
+	if base == "PatternSpaceResult" && fieldName == "space" {
+		return typeFromName("PatternSpace")
+	}
+	if base == "PatternState" && fieldName == "baseId" {
+		return typeFromName("Int")
+	}
+	if base == "PatternState" && fieldName == "diagnostics" {
+		return typeFromName("List" + "<" + "ParserDiagnostic" + ">")
+	}
+	if base == "PatternState" && fieldName == "index" {
+		return typeFromName("Int")
+	}
+	if base == "PatternState" && fieldName == "nodes" {
+		return typeFromName("List" + "<" + "FrontendAstNode" + ">")
+	}
+	if base == "PatternTransport" && fieldName == "diagnostics" {
+		return typeFromName("List" + "<" + "ParserDiagnostic" + ">")
+	}
+	if base == "PatternTransport" && fieldName == "nextIndex" {
+		return typeFromName("Int")
+	}
+	if base == "PatternTransport" && fieldName == "nodes" {
+		return typeFromName("List" + "<" + "FrontendAstNode" + ">")
+	}
+	if base == "PatternTransport" && fieldName == "root" {
+		return typeFromName("Int")
+	}
+	if base == "ProjectCompilerCapabilityV1" && fieldName == "blockers" {
+		return typeFromName("List" + "<" + "String" + ">")
+	}
+	if base == "ProjectCompilerCapabilityV1" && fieldName == "contractVersion" {
+		return typeFromName("String")
+	}
+	if base == "ProjectCompilerCapabilityV1" && fieldName == "ready" {
+		return typeFromName("Bool")
+	}
+	if base == "ProjectCompilerCapabilityV1" && fieldName == "requestSchema" {
+		return typeFromName("String")
+	}
+	if base == "ProjectCompilerCapabilityV1" && fieldName == "resultSchema" {
+		return typeFromName("String")
+	}
+	if base == "ProjectCompilerDependencyV1" && fieldName == "modulePath" {
+		return typeFromName("String")
+	}
+	if base == "ProjectCompilerDependencyV1" && fieldName == "public" {
+		return typeFromName("Bool")
+	}
+	if base == "ProjectCompilerDependencyV1" && fieldName == "resolvedPath" {
+		return typeFromName("String" + "?")
+	}
+	if base == "ProjectCompilerDependencyV1" && fieldName == "sourceKind" {
+		return typeFromName("String")
+	}
+	if base == "ProjectCompilerDependencyV1" && fieldName == "specifier" {
+		return typeFromName("String")
+	}
+	if base == "ProjectCompilerDependencyV1" && fieldName == "typeOnly" {
+		return typeFromName("Bool")
+	}
+	if base == "ProjectCompilerDiagnosticV1" && fieldName == "code" {
+		return typeFromName("String")
+	}
+	if base == "ProjectCompilerDiagnosticV1" && fieldName == "message" {
+		return typeFromName("String")
+	}
+	if base == "ProjectCompilerDiagnosticV1" && fieldName == "notes" {
+		return typeFromName("List" + "<" + "String" + ">")
+	}
+	if base == "ProjectCompilerDiagnosticV1" && fieldName == "severity" {
+		return typeFromName("String")
+	}
+	if base == "ProjectCompilerDiagnosticV1" && fieldName == "sourcePath" {
+		return typeFromName("String" + "?")
+	}
+	if base == "ProjectCompilerDiagnosticV1" && fieldName == "span" {
+		return typeFromName("ParserSpan")
+	}
+	if base == "ProjectCompilerEmitV1" && fieldName == "sourceMap" {
+		return typeFromName("Bool")
+	}
+	if base == "ProjectCompilerEmitV1" && fieldName == "sourcesContent" {
+		return typeFromName("Bool")
+	}
+	if base == "ProjectCompilerEmitV1" && fieldName == "target" {
+		return typeFromName("String")
+	}
+	if base == "ProjectCompilerEmittedModuleV1" && fieldName == "code" {
+		return typeFromName("String")
+	}
+	if base == "ProjectCompilerEmittedModuleV1" && fieldName == "outputPath" {
+		return typeFromName("String")
+	}
+	if base == "ProjectCompilerEmittedModuleV1" && fieldName == "sourceMap" {
+		return typeFromName("String")
+	}
+	if base == "ProjectCompilerEmittedModuleV1" && fieldName == "sourcePath" {
+		return typeFromName("String")
+	}
+	if base == "ProjectCompilerExportedSymbolV1" && fieldName == "declarationKind" {
+		return typeFromName("String")
+	}
+	if base == "ProjectCompilerExportedSymbolV1" && fieldName == "modulePath" {
+		return typeFromName("String")
+	}
+	if base == "ProjectCompilerExportedSymbolV1" && fieldName == "name" {
+		return typeFromName("String")
+	}
+	if base == "ProjectCompilerRequestV1" && fieldName == "contractVersion" {
+		return typeFromName("String")
+	}
+	if base == "ProjectCompilerRequestV1" && fieldName == "emit" {
+		return typeFromName("ProjectCompilerEmitV1")
+	}
+	if base == "ProjectCompilerRequestV1" && fieldName == "entryPath" {
+		return typeFromName("String")
+	}
+	if base == "ProjectCompilerRequestV1" && fieldName == "languageVersion" {
+		return typeFromName("String")
+	}
+	if base == "ProjectCompilerRequestV1" && fieldName == "platform" {
+		return typeFromName("String")
+	}
+	if base == "ProjectCompilerRequestV1" && fieldName == "sources" {
+		return typeFromName("List" + "<" + "ProjectCompilerSourceV1" + ">")
+	}
+	if base == "ProjectCompilerResultV1" && fieldName == "accepted" {
+		return typeFromName("Bool")
+	}
+	if base == "ProjectCompilerResultV1" && fieldName == "contractVersion" {
+		return typeFromName("String")
+	}
+	if base == "ProjectCompilerResultV1" && fieldName == "dependencies" {
+		return typeFromName("List" + "<" + "ProjectCompilerDependencyV1" + ">")
+	}
+	if base == "ProjectCompilerResultV1" && fieldName == "diagnostics" {
+		return typeFromName("List" + "<" + "ProjectCompilerDiagnosticV1" + ">")
+	}
+	if base == "ProjectCompilerResultV1" && fieldName == "emittedModules" {
+		return typeFromName("List" + "<" + "ProjectCompilerEmittedModuleV1" + ">")
+	}
+	if base == "ProjectCompilerResultV1" && fieldName == "entryPath" {
+		return typeFromName("String")
+	}
+	if base == "ProjectCompilerResultV1" && fieldName == "exportedSymbols" {
+		return typeFromName("List" + "<" + "ProjectCompilerExportedSymbolV1" + ">")
+	}
+	if base == "ProjectCompilerResultV1" && fieldName == "languageVersion" {
+		return typeFromName("String")
+	}
+	if base == "ProjectCompilerResultV1" && fieldName == "platform" {
+		return typeFromName("String")
+	}
+	if base == "ProjectCompilerResultV1" && fieldName == "stats" {
+		return typeFromName("ProjectCompilerStatsV1")
+	}
+	if base == "ProjectCompilerSourceV1" && fieldName == "path" {
+		return typeFromName("String")
+	}
+	if base == "ProjectCompilerSourceV1" && fieldName == "text" {
+		return typeFromName("String")
+	}
+	if base == "ProjectCompilerStatsV1" && fieldName == "checkedModules" {
+		return typeFromName("Int")
+	}
+	if base == "ProjectCompilerStatsV1" && fieldName == "emittedModules" {
+		return typeFromName("Int")
+	}
+	if base == "ProjectCompilerStatsV1" && fieldName == "invalidatedModules" {
+		return typeFromName("Int")
+	}
+	if base == "ProjectCompilerStatsV1" && fieldName == "parsedModules" {
+		return typeFromName("Int")
+	}
+	if base == "ProjectCompilerStatsV1" && fieldName == "reusedCheckedModules" {
+		return typeFromName("Int")
+	}
+	if base == "ProjectCompilerStatsV1" && fieldName == "reusedEmittedModules" {
+		return typeFromName("Int")
+	}
+	if base == "ProjectCompilerStatsV1" && fieldName == "reusedParsedModules" {
+		return typeFromName("Int")
+	}
+	if base == "ProjectEmittedModule" && fieldName == "code" {
+		return typeFromName("String")
+	}
+	if base == "ProjectEmittedModule" && fieldName == "outputPath" {
+		return typeFromName("String")
+	}
+	if base == "ProjectEmittedModule" && fieldName == "sourceMap" {
+		return typeFromName("String")
+	}
+	if base == "ProjectEmittedModule" && fieldName == "sourcePath" {
+		return typeFromName("String")
+	}
+	if base == "ProjectEmitterDependency" && fieldName == "modulePath" {
+		return typeFromName("String")
+	}
+	if base == "ProjectEmitterDependency" && fieldName == "public" {
+		return typeFromName("Bool")
+	}
+	if base == "ProjectEmitterDependency" && fieldName == "resolvedPath" {
+		return typeFromName("String" + "?")
+	}
+	if base == "ProjectEmitterDependency" && fieldName == "sourceKind" {
+		return typeFromName("String")
+	}
+	if base == "ProjectEmitterDependency" && fieldName == "specifier" {
+		return typeFromName("String")
+	}
+	if base == "ProjectEmitterDependency" && fieldName == "typeOnly" {
+		return typeFromName("Bool")
+	}
+	if base == "ProjectEmitterDiagnostic" && fieldName == "code" {
+		return typeFromName("String")
+	}
+	if base == "ProjectEmitterDiagnostic" && fieldName == "message" {
+		return typeFromName("String")
+	}
+	if base == "ProjectEmitterDiagnostic" && fieldName == "outputPath" {
+		return typeFromName("String" + "?")
+	}
+	if base == "ProjectEmitterDiagnostic" && fieldName == "severity" {
+		return typeFromName("String")
+	}
+	if base == "ProjectEmitterDiagnostic" && fieldName == "sourcePath" {
+		return typeFromName("String" + "?")
+	}
+	if base == "ProjectEmitterExport" && fieldName == "declarationKind" {
+		return typeFromName("String")
+	}
+	if base == "ProjectEmitterExport" && fieldName == "modulePath" {
+		return typeFromName("String")
+	}
+	if base == "ProjectEmitterExport" && fieldName == "name" {
+		return typeFromName("String")
+	}
+	if base == "ProjectEmitterModule" && fieldName == "outputPath" {
+		return typeFromName("String")
+	}
+	if base == "ProjectEmitterModule" && fieldName == "preamble" {
+		return typeFromName("List" + "<" + "String" + ">")
+	}
+	if base == "ProjectEmitterModule" && fieldName == "sourceMap" {
+		return typeFromName("String")
+	}
+	if base == "ProjectEmitterModule" && fieldName == "sourcePath" {
+		return typeFromName("String")
+	}
+	if base == "ProjectEmitterModule" && fieldName == "statements" {
+		return typeFromName("List" + "<" + "String" + ">")
+	}
+	if base == "ProjectEmitterRequest" && fieldName == "dependencies" {
+		return typeFromName("List" + "<" + "ProjectEmitterDependency" + ">")
+	}
+	if base == "ProjectEmitterRequest" && fieldName == "entryPath" {
+		return typeFromName("String")
+	}
+	if base == "ProjectEmitterRequest" && fieldName == "exportedSymbols" {
+		return typeFromName("List" + "<" + "ProjectEmitterExport" + ">")
+	}
+	if base == "ProjectEmitterRequest" && fieldName == "modules" {
+		return typeFromName("List" + "<" + "ProjectEmitterModule" + ">")
+	}
+	if base == "ProjectEmitterResult" && fieldName == "accepted" {
+		return typeFromName("Bool")
+	}
+	if base == "ProjectEmitterResult" && fieldName == "dependencies" {
+		return typeFromName("List" + "<" + "ProjectEmitterDependency" + ">")
+	}
+	if base == "ProjectEmitterResult" && fieldName == "diagnostics" {
+		return typeFromName("List" + "<" + "ProjectEmitterDiagnostic" + ">")
+	}
+	if base == "ProjectEmitterResult" && fieldName == "emittedModules" {
+		return typeFromName("List" + "<" + "ProjectEmittedModule" + ">")
+	}
+	if base == "ProjectEmitterResult" && fieldName == "entryPath" {
+		return typeFromName("String")
+	}
+	if base == "ProjectEmitterResult" && fieldName == "exportedSymbols" {
+		return typeFromName("List" + "<" + "ProjectEmitterExport" + ">")
+	}
+	if base == "ProjectEntryPointDiagnostic" && fieldName == "code" {
+		return typeFromName("String")
+	}
+	if base == "ProjectEntryPointDiagnostic" && fieldName == "message" {
+		return typeFromName("String")
+	}
+	if base == "ProjectEntryPointDiagnostic" && fieldName == "severity" {
+		return typeFromName("String")
+	}
+	if base == "ProjectEntryPointDiagnostic" && fieldName == "sourcePath" {
+		return typeFromName("String")
+	}
+	if base == "ProjectEntryPointDiagnostic" && fieldName == "span" {
+		return typeFromName("MvpSpan")
+	}
+	if base == "ProjectEntryPointRequest" && fieldName == "analyzed" {
+		return typeFromName("Bool")
+	}
+	if base == "ProjectEntryPointRequest" && fieldName == "candidateModulePath" {
+		return typeFromName("String")
+	}
+	if base == "ProjectEntryPointRequest" && fieldName == "candidateSpan" {
+		return typeFromName("MvpSpan")
+	}
+	if base == "ProjectEntryPointRequest" && fieldName == "declarationKind" {
+		return typeFromName("String")
+	}
+	if base == "ProjectEntryPointRequest" && fieldName == "entryPath" {
+		return typeFromName("String")
+	}
+	if base == "ProjectEntryPointRequest" && fieldName == "firstParameterType" {
+		return typeFromName("String")
+	}
+	if base == "ProjectEntryPointRequest" && fieldName == "hasMain" {
+		return typeFromName("Bool")
+	}
+	if base == "ProjectEntryPointRequest" && fieldName == "isPublic" {
+		return typeFromName("Bool")
+	}
+	if base == "ProjectEntryPointRequest" && fieldName == "moduleSpan" {
+		return typeFromName("MvpSpan")
+	}
+	if base == "ProjectEntryPointRequest" && fieldName == "parameterCount" {
+		return typeFromName("Int")
+	}
+	if base == "ProjectEntryPointRequest" && fieldName == "parameterSpan" {
+		return typeFromName("MvpSpan")
+	}
+	if base == "ProjectEntryPointRequest" && fieldName == "returnKind" {
+		return typeFromName("String")
+	}
+	if base == "ProjectEntryPointRequest" && fieldName == "returnSpan" {
+		return typeFromName("MvpSpan")
+	}
+	if base == "ProjectEntryPointRequest" && fieldName == "typeParameterCount" {
+		return typeFromName("Int")
+	}
+	if base == "ProjectEntryPointRequest" && fieldName == "version" {
+		return typeFromName("String")
+	}
+	if base == "ProjectEntryPointResult" && fieldName == "accepted" {
+		return typeFromName("Bool")
+	}
+	if base == "ProjectEntryPointResult" && fieldName == "diagnostics" {
+		return typeFromName("List" + "<" + "ProjectEntryPointDiagnostic" + ">")
+	}
+	if base == "ProjectEntryPointResult" && fieldName == "entryPath" {
+		return typeFromName("String")
+	}
+	if base == "ProjectEntryPointResult" && fieldName == "version" {
+		return typeFromName("String")
+	}
+	if base == "ProjectImportBinding" && fieldName == "importedName" {
+		return typeFromName("String")
+	}
+	if base == "ProjectImportBinding" && fieldName == "localName" {
+		return typeFromName("String")
+	}
+	if base == "ProjectImportBinding" && fieldName == "modulePath" {
+		return typeFromName("String")
+	}
+	if base == "ProjectImportBinding" && fieldName == "public" {
+		return typeFromName("Bool")
+	}
+	if base == "ProjectImportBinding" && fieldName == "specifier" {
+		return typeFromName("String")
+	}
+	if base == "ProjectImportBinding" && fieldName == "targetModulePath" {
+		return typeFromName("String")
+	}
+	if base == "ProjectImportBinding" && fieldName == "typeOnly" {
+		return typeFromName("Bool")
+	}
+	if base == "ProjectImportBindingDiagnostic" && fieldName == "code" {
+		return typeFromName("String")
+	}
+	if base == "ProjectImportBindingDiagnostic" && fieldName == "importedName" {
+		return typeFromName("String")
+	}
+	if base == "ProjectImportBindingDiagnostic" && fieldName == "localName" {
+		return typeFromName("String")
+	}
+	if base == "ProjectImportBindingDiagnostic" && fieldName == "message" {
+		return typeFromName("String")
+	}
+	if base == "ProjectImportBindingDiagnostic" && fieldName == "modulePath" {
+		return typeFromName("String")
+	}
+	if base == "ProjectImportBindingDiagnostic" && fieldName == "severity" {
+		return typeFromName("String")
+	}
+	if base == "ProjectImportBindingDiagnostic" && fieldName == "specifier" {
+		return typeFromName("String")
+	}
+	if base == "ProjectImportBindingDiagnostic" && fieldName == "targetModulePath" {
+		return typeFromName("String")
+	}
+	if base == "ProjectImportBindingRequest" && fieldName == "bindings" {
+		return typeFromName("List" + "<" + "ProjectImportBinding" + ">")
+	}
+	if base == "ProjectImportBindingRequest" && fieldName == "exportedSymbols" {
+		return typeFromName("List" + "<" + "ProjectImportExport" + ">")
+	}
+	if base == "ProjectImportBindingResult" && fieldName == "accepted" {
+		return typeFromName("Bool")
+	}
+	if base == "ProjectImportBindingResult" && fieldName == "bindings" {
+		return typeFromName("List" + "<" + "ProjectImportBinding" + ">")
+	}
+	if base == "ProjectImportBindingResult" && fieldName == "diagnostics" {
+		return typeFromName("List" + "<" + "ProjectImportBindingDiagnostic" + ">")
+	}
+	if base == "ProjectImportExport" && fieldName == "declarationKind" {
+		return typeFromName("String")
+	}
+	if base == "ProjectImportExport" && fieldName == "modulePath" {
+		return typeFromName("String")
+	}
+	if base == "ProjectImportExport" && fieldName == "name" {
+		return typeFromName("String")
+	}
+	if base == "ProjectInteropImport" && fieldName == "importedName" {
+		return typeFromName("String" + "?")
+	}
+	if base == "ProjectInteropImport" && fieldName == "kind" {
+		return typeFromName("String")
+	}
+	if base == "ProjectInteropImportValidation" && fieldName == "diagnostics" {
+		return typeFromName("List" + "<" + "ProjectInteropManifestDiagnostic" + ">")
+	}
+	if base == "ProjectInteropImportValidation" && fieldName == "imports" {
+		return typeFromName("List" + "<" + "ProjectInteropImport" + ">")
+	}
+	if base == "ProjectInteropManifestDiagnostic" && fieldName == "code" {
+		return typeFromName("String")
+	}
+	if base == "ProjectInteropManifestDiagnostic" && fieldName == "message" {
+		return typeFromName("String")
+	}
+	if base == "ProjectInteropManifestDiagnostic" && fieldName == "severity" {
+		return typeFromName("String")
+	}
+	if base == "ProjectInteropManifestDiagnostic" && fieldName == "specifier" {
+		return typeFromName("String" + "?")
+	}
+	if base == "ProjectInteropManifestRequest" && fieldName == "modules" {
+		return typeFromName("List" + "<" + "ProjectInteropModule" + ">")
+	}
+	if base == "ProjectInteropManifestRequest" && fieldName == "platform" {
+		return typeFromName("String")
+	}
+	if base == "ProjectInteropManifestRequest" && fieldName == "version" {
+		return typeFromName("String")
+	}
+	if base == "ProjectInteropManifestResult" && fieldName == "accepted" {
+		return typeFromName("Bool")
+	}
+	if base == "ProjectInteropManifestResult" && fieldName == "diagnostics" {
+		return typeFromName("List" + "<" + "ProjectInteropManifestDiagnostic" + ">")
+	}
+	if base == "ProjectInteropManifestResult" && fieldName == "modules" {
+		return typeFromName("List" + "<" + "ProjectInteropModule" + ">")
+	}
+	if base == "ProjectInteropManifestResult" && fieldName == "platform" {
+		return typeFromName("String")
+	}
+	if base == "ProjectInteropManifestResult" && fieldName == "version" {
+		return typeFromName("String")
+	}
+	if base == "ProjectInteropModule" && fieldName == "imports" {
+		return typeFromName("List" + "<" + "ProjectInteropImport" + ">")
+	}
+	if base == "ProjectInteropModule" && fieldName == "resolutionWitness" {
+		return typeFromName("ProjectResolutionWitness" + "?")
+	}
+	if base == "ProjectInteropModule" && fieldName == "specifier" {
+		return typeFromName("String")
+	}
+	if base == "ProjectInteropModuleValidation" && fieldName == "diagnostics" {
+		return typeFromName("List" + "<" + "ProjectInteropManifestDiagnostic" + ">")
+	}
+	if base == "ProjectInteropModuleValidation" && fieldName == "moduleValue" {
+		return typeFromName("ProjectInteropModule")
+	}
+	if base == "ProjectLinkDependency" && fieldName == "modulePath" {
+		return typeFromName("String")
+	}
+	if base == "ProjectLinkDependency" && fieldName == "public" {
+		return typeFromName("Bool")
+	}
+	if base == "ProjectLinkDependency" && fieldName == "resolvedPath" {
+		return typeFromName("String" + "?")
+	}
+	if base == "ProjectLinkDependency" && fieldName == "sourceKind" {
+		return typeFromName("String")
+	}
+	if base == "ProjectLinkDependency" && fieldName == "specifier" {
+		return typeFromName("String")
+	}
+	if base == "ProjectLinkDependency" && fieldName == "typeOnly" {
+		return typeFromName("Bool")
+	}
+	if base == "ProjectLinkDiagnostic" && fieldName == "code" {
+		return typeFromName("String")
+	}
+	if base == "ProjectLinkDiagnostic" && fieldName == "message" {
+		return typeFromName("String")
+	}
+	if base == "ProjectLinkDiagnostic" && fieldName == "modulePath" {
+		return typeFromName("String" + "?")
+	}
+	if base == "ProjectLinkDiagnostic" && fieldName == "severity" {
+		return typeFromName("String")
+	}
+	if base == "ProjectLinkDiagnostic" && fieldName == "specifier" {
+		return typeFromName("String" + "?")
+	}
+	if base == "ProjectLinkExport" && fieldName == "declarationKind" {
+		return typeFromName("String")
+	}
+	if base == "ProjectLinkExport" && fieldName == "modulePath" {
+		return typeFromName("String")
+	}
+	if base == "ProjectLinkExport" && fieldName == "name" {
+		return typeFromName("String")
+	}
+	if base == "ProjectLinkModule" && fieldName == "parse" {
+		return typeFromName("FrontendParseResult")
+	}
+	if base == "ProjectLinkModule" && fieldName == "path" {
+		return typeFromName("String")
+	}
+	if base == "ProjectLinkModule" && fieldName == "source" {
+		return typeFromName("String")
+	}
+	if base == "ProjectLinkModulePayload" && fieldName == "parse" {
+		return typeFromName("FrontendParseResult")
+	}
+	if base == "ProjectLinkModulePayload" && fieldName == "path" {
+		return typeFromName("String")
+	}
+	if base == "ProjectLinkModulePayload" && fieldName == "source" {
+		return typeFromName("String")
+	}
+	if base == "ProjectLinkRequest" && fieldName == "entryPath" {
+		return typeFromName("String")
+	}
+	if base == "ProjectLinkRequest" && fieldName == "modules" {
+		return typeFromName("List" + "<" + "ProjectLinkModule" + ">")
+	}
+	if base == "ProjectLinkRequestPayload" && fieldName == "entryPath" {
+		return typeFromName("String")
+	}
+	if base == "ProjectLinkRequestPayload" && fieldName == "modules" {
+		return typeFromName("List" + "<" + "ProjectLinkModulePayload" + ">")
+	}
+	if base == "ProjectLinkResult" && fieldName == "accepted" {
+		return typeFromName("Bool")
+	}
+	if base == "ProjectLinkResult" && fieldName == "dependencies" {
+		return typeFromName("List" + "<" + "ProjectLinkDependency" + ">")
+	}
+	if base == "ProjectLinkResult" && fieldName == "diagnostics" {
+		return typeFromName("List" + "<" + "ProjectLinkDiagnostic" + ">")
+	}
+	if base == "ProjectLinkResult" && fieldName == "exportedSymbols" {
+		return typeFromName("List" + "<" + "ProjectLinkExport" + ">")
+	}
+	if base == "ProjectLinkResult" && fieldName == "reachableModules" {
+		return typeFromName("List" + "<" + "String" + ">")
+	}
+	if base == "ProjectLinkResult" && fieldName == "unreachableModules" {
+		return typeFromName("List" + "<" + "String" + ">")
+	}
+	if base == "ProjectLoweringSummary" && fieldName == "checkedModules" {
+		return typeFromName("Int")
+	}
+	if base == "ProjectLoweringSummary" && fieldName == "diagnostics" {
+		return typeFromName("List" + "<" + "ProjectCompilerDiagnosticV1" + ">")
+	}
+	if base == "ProjectLoweringSummary" && fieldName == "modules" {
+		return typeFromName("List" + "<" + "ProjectEmitterModule" + ">")
+	}
+	if base == "ProjectParseSummary" && fieldName == "diagnostics" {
+		return typeFromName("List" + "<" + "ProjectCompilerDiagnosticV1" + ">")
+	}
+	if base == "ProjectParseSummary" && fieldName == "modules" {
+		return typeFromName("List" + "<" + "ProjectLinkModulePayload" + ">")
+	}
+	if base == "ProjectParseSummary" && fieldName == "parsedModules" {
+		return typeFromName("Int")
+	}
+	if base == "ProjectPublicApiDeclarationFact" && fieldName == "id" {
+		return typeFromName("Int")
+	}
+	if base == "ProjectPublicApiDeclarationFact" && fieldName == "isPublic" {
+		return typeFromName("Bool")
+	}
+	if base == "ProjectPublicApiDeclarationFact" && fieldName == "kind" {
+		return typeFromName("String")
+	}
+	if base == "ProjectPublicApiDeclarationFact" && fieldName == "name" {
+		return typeFromName("String")
+	}
+	if base == "ProjectPublicApiDeclarationFact" && fieldName == "referencedTypeNames" {
+		return typeFromName("List" + "<" + "String" + ">")
+	}
+	if base == "ProjectPublicApiDeclarationFact" && fieldName == "span" {
+		return typeFromName("MvpSpan")
+	}
+	if base == "ProjectPublicApiDiagnostic" && fieldName == "code" {
+		return typeFromName("String")
+	}
+	if base == "ProjectPublicApiDiagnostic" && fieldName == "message" {
+		return typeFromName("String")
+	}
+	if base == "ProjectPublicApiDiagnostic" && fieldName == "severity" {
+		return typeFromName("String")
+	}
+	if base == "ProjectPublicApiDiagnostic" && fieldName == "sourcePath" {
+		return typeFromName("String")
+	}
+	if base == "ProjectPublicApiDiagnostic" && fieldName == "span" {
+		return typeFromName("MvpSpan")
+	}
+	if base == "ProjectPublicApiRequest" && fieldName == "declarations" {
+		return typeFromName("List" + "<" + "ProjectPublicApiDeclarationFact" + ">")
+	}
+	if base == "ProjectPublicApiRequest" && fieldName == "localTypes" {
+		return typeFromName("List" + "<" + "ProjectPublicApiTypeFact" + ">")
+	}
+	if base == "ProjectPublicApiRequest" && fieldName == "moduleSpan" {
+		return typeFromName("MvpSpan")
+	}
+	if base == "ProjectPublicApiRequest" && fieldName == "sourcePath" {
+		return typeFromName("String")
+	}
+	if base == "ProjectPublicApiRequest" && fieldName == "version" {
+		return typeFromName("String")
+	}
+	if base == "ProjectPublicApiResult" && fieldName == "accepted" {
+		return typeFromName("Bool")
+	}
+	if base == "ProjectPublicApiResult" && fieldName == "diagnostics" {
+		return typeFromName("List" + "<" + "ProjectPublicApiDiagnostic" + ">")
+	}
+	if base == "ProjectPublicApiResult" && fieldName == "sourcePath" {
+		return typeFromName("String")
+	}
+	if base == "ProjectPublicApiResult" && fieldName == "version" {
+		return typeFromName("String")
+	}
+	if base == "ProjectPublicApiTypeFact" && fieldName == "isPublic" {
+		return typeFromName("Bool")
+	}
+	if base == "ProjectPublicApiTypeFact" && fieldName == "name" {
+		return typeFromName("String")
+	}
+	if base == "ProjectPublicApiTypeLookup" && fieldName == "found" {
+		return typeFromName("Bool")
+	}
+	if base == "ProjectPublicApiTypeLookup" && fieldName == "isPublic" {
+		return typeFromName("Bool")
+	}
+	if base == "ProjectResolutionWitness" && fieldName == "conditions" {
+		return typeFromName("List" + "<" + "String" + ">")
+	}
+	if base == "ProjectResolutionWitness" && fieldName == "moduleSpecifier" {
+		return typeFromName("String")
+	}
+	if base == "ProjectResolutionWitness" && fieldName == "platform" {
+		return typeFromName("String")
+	}
+	if base == "ProjectResolutionWitness" && fieldName == "providerVersion" {
+		return typeFromName("String")
+	}
+	if base == "ProjectResolutionWitness" && fieldName == "runtimeFormat" {
+		return typeFromName("String" + "?")
+	}
+	if base == "ProjectResolutionWitnessValidation" && fieldName == "diagnostics" {
+		return typeFromName("List" + "<" + "ProjectInteropManifestDiagnostic" + ">")
+	}
+	if base == "ProjectResolutionWitnessValidation" && fieldName == "witness" {
+		return typeFromName("ProjectResolutionWitness")
+	}
+	if base == "ProjectSemanticDiagnostic" && fieldName == "code" {
+		return typeFromName("String")
+	}
+	if base == "ProjectSemanticDiagnostic" && fieldName == "message" {
+		return typeFromName("String")
+	}
+	if base == "ProjectSemanticDiagnostic" && fieldName == "modulePath" {
+		return typeFromName("String")
+	}
+	if base == "ProjectSemanticDiagnostic" && fieldName == "severity" {
+		return typeFromName("String")
+	}
+	if base == "ProjectSemanticDiagnostic" && fieldName == "symbolName" {
+		return typeFromName("String" + "?")
+	}
+	if base == "ProjectSemanticDiagnostic" && fieldName == "targetModulePath" {
+		return typeFromName("String" + "?")
+	}
+	if base == "ProjectSemanticDiagnostic" && fieldName == "targetName" {
+		return typeFromName("String" + "?")
+	}
+	if base == "ProjectSemanticModule" && fieldName == "allowedEffects" {
+		return typeFromName("List" + "<" + "String" + ">")
+	}
+	if base == "ProjectSemanticModule" && fieldName == "path" {
+		return typeFromName("String")
+	}
+	if base == "ProjectSemanticModule" && fieldName == "references" {
+		return typeFromName("List" + "<" + "ProjectSemanticReference" + ">")
+	}
+	if base == "ProjectSemanticModule" && fieldName == "symbols" {
+		return typeFromName("List" + "<" + "ProjectSemanticSymbol" + ">")
+	}
+	if base == "ProjectSemanticReference" && fieldName == "name" {
+		return typeFromName("String")
+	}
+	if base == "ProjectSemanticReference" && fieldName == "requiredEffect" {
+		return typeFromName("String")
+	}
+	if base == "ProjectSemanticReference" && fieldName == "targetModulePath" {
+		return typeFromName("String")
+	}
+	if base == "ProjectSemanticReference" && fieldName == "targetName" {
+		return typeFromName("String")
+	}
+	if base == "ProjectSemanticRequest" && fieldName == "modules" {
+		return typeFromName("List" + "<" + "ProjectSemanticModule" + ">")
+	}
+	if base == "ProjectSemanticResult" && fieldName == "accepted" {
+		return typeFromName("Bool")
+	}
+	if base == "ProjectSemanticResult" && fieldName == "checkedModules" {
+		return typeFromName("Int")
+	}
+	if base == "ProjectSemanticResult" && fieldName == "diagnostics" {
+		return typeFromName("List" + "<" + "ProjectSemanticDiagnostic" + ">")
+	}
+	if base == "ProjectSemanticSymbol" && fieldName == "declarationKind" {
+		return typeFromName("String")
+	}
+	if base == "ProjectSemanticSymbol" && fieldName == "effect" {
+		return typeFromName("String")
+	}
+	if base == "ProjectSemanticSymbol" && fieldName == "name" {
+		return typeFromName("String")
+	}
+	if base == "ProjectSemanticSymbol" && fieldName == "public" {
+		return typeFromName("Bool")
+	}
+	if base == "RequirementBuildResult" && fieldName == "diagnostics" {
+		return typeFromName("List" + "<" + "SemanticEffectDiagnostic" + ">")
+	}
+	if base == "RequirementBuildResult" && fieldName == "requirements" {
+		return typeFromName("List" + "<" + "SemanticEffectRequirement" + ">")
+	}
+	if base == "ResolvedType" && fieldName == "id" {
+		return typeFromName("Int")
+	}
+	if base == "ResolvedType" && fieldName == "state" {
+		return typeFromName("SemanticState")
+	}
+	if base == "ResolvedTypes" && fieldName == "ids" {
+		return typeFromName("List" + "<" + "Int" + ">")
+	}
+	if base == "ResolvedTypes" && fieldName == "state" {
+		return typeFromName("SemanticState")
+	}
+	if base == "ScannedComment" && fieldName == "comment" {
+		return typeFromName("FrontendComment")
+	}
+	if base == "ScannedComment" && fieldName == "state" {
+		return typeFromName("ScannerState")
+	}
+	if base == "ScannedNumber" && fieldName == "diagnostics" {
+		return typeFromName("List" + "<" + "FrontendDiagnostic" + ">")
+	}
+	if base == "ScannedNumber" && fieldName == "kind" {
+		return typeFromName("FrontendTokenKind")
+	}
+	if base == "ScannedNumber" && fieldName == "state" {
+		return typeFromName("ScannerState")
+	}
+	if base == "ScannedNumber" && fieldName == "text" {
+		return typeFromName("String")
+	}
+	if base == "ScannedString" && fieldName == "diagnostics" {
+		return typeFromName("List" + "<" + "FrontendDiagnostic" + ">")
+	}
+	if base == "ScannedString" && fieldName == "state" {
+		return typeFromName("ScannerState")
+	}
+	if base == "ScannedString" && fieldName == "text" {
+		return typeFromName("String")
+	}
+	if base == "ScannerState" && fieldName == "column" {
+		return typeFromName("Int")
+	}
+	if base == "ScannerState" && fieldName == "index" {
+		return typeFromName("Int")
+	}
+	if base == "ScannerState" && fieldName == "line" {
+		return typeFromName("Int")
+	}
+	if base == "SemanticAsyncAwaitDiagnostic" && fieldName == "code" {
+		return typeFromName("String")
+	}
+	if base == "SemanticAsyncAwaitDiagnostic" && fieldName == "contextId" {
+		return typeFromName("Int" + "?")
+	}
+	if base == "SemanticAsyncAwaitDiagnostic" && fieldName == "effect" {
+		return typeFromName("String" + "?")
+	}
+	if base == "SemanticAsyncAwaitDiagnostic" && fieldName == "expressionId" {
+		return typeFromName("Int" + "?")
+	}
+	if base == "SemanticAsyncAwaitDiagnostic" && fieldName == "help" {
+		return typeFromName("String" + "?")
+	}
+	if base == "SemanticAsyncAwaitDiagnostic" && fieldName == "message" {
+		return typeFromName("String")
+	}
+	if base == "SemanticAsyncAwaitDiagnostic" && fieldName == "severity" {
+		return typeFromName("String")
+	}
+	if base == "SemanticAsyncContext" && fieldName == "declaredEffects" {
+		return typeFromName("List" + "<" + "String" + ">")
+	}
+	if base == "SemanticAsyncContext" && fieldName == "id" {
+		return typeFromName("Int")
+	}
+	if base == "SemanticAsyncContext" && fieldName == "isAsync" {
+		return typeFromName("Bool")
+	}
+	if base == "SemanticAsyncContext" && fieldName == "kind" {
+		return typeFromName("String")
+	}
+	if base == "SemanticAsyncContext" && fieldName == "name" {
+		return typeFromName("String")
+	}
+	if base == "SemanticAsyncContext" && fieldName == "wildcard" {
+		return typeFromName("Bool")
+	}
+	if base == "SemanticAwaitExpression" && fieldName == "awaitedType" {
+		return typeFromName("String" + "?")
+	}
+	if base == "SemanticAwaitExpression" && fieldName == "contextId" {
+		return typeFromName("Int")
+	}
+	if base == "SemanticAwaitExpression" && fieldName == "contextValid" {
+		return typeFromName("Bool")
+	}
+	if base == "SemanticAwaitExpression" && fieldName == "id" {
+		return typeFromName("Int")
+	}
+	if base == "SemanticAwaitExpression" && fieldName == "missingEffects" {
+		return typeFromName("List" + "<" + "String" + ">")
+	}
+	if base == "SemanticAwaitExpression" && fieldName == "operandKind" {
+		return typeFromName("String")
+	}
+	if base == "SemanticAwaitExpression" && fieldName == "operandType" {
+		return typeFromName("String")
+	}
+	if base == "SemanticAwaitExpression" && fieldName == "operandValid" {
+		return typeFromName("Bool")
+	}
+	if base == "SemanticAwaitExpression" && fieldName == "requiredEffects" {
+		return typeFromName("List" + "<" + "String" + ">")
+	}
+	if base == "SemanticAwaitExpression" && fieldName == "resultType" {
+		return typeFromName("String" + "?")
+	}
+	if base == "SemanticAwaitExpression" && fieldName == "valid" {
+		return typeFromName("Bool")
+	}
+	if base == "SemanticCommonTypeResult" && fieldName == "typeId" {
+		return typeFromName("Int" + "?")
+	}
+	if base == "SemanticCommonTypeResult" && fieldName == "typeName" {
+		return typeFromName("String" + "?")
+	}
+	if base == "SemanticCommonTypeResult" && fieldName == "types" {
+		return typeFromName("List" + "<" + "String" + ">")
+	}
+	if base == "SemanticDeclaration" && fieldName == "id" {
+		return typeFromName("Int")
+	}
+	if base == "SemanticDeclaration" && fieldName == "isPublic" {
+		return typeFromName("Bool")
+	}
+	if base == "SemanticDeclaration" && fieldName == "kind" {
+		return typeFromName("String")
+	}
+	if base == "SemanticDeclaration" && fieldName == "memberIds" {
+		return typeFromName("List" + "<" + "Int" + ">")
+	}
+	if base == "SemanticDeclaration" && fieldName == "name" {
+		return typeFromName("String")
+	}
+	if base == "SemanticDeclaration" && fieldName == "sourceNodeId" {
+		return typeFromName("Int")
+	}
+	if base == "SemanticDeclaration" && fieldName == "span" {
+		return typeFromName("SemanticSpan")
+	}
+	if base == "SemanticDeclaration" && fieldName == "targetType" {
+		return typeFromName("Int" + "?")
+	}
+	if base == "SemanticDeclaration" && fieldName == "typeParameters" {
+		return typeFromName("List" + "<" + "String" + ">")
+	}
+	if base == "SemanticDeferDiagnostic" && fieldName == "code" {
+		return typeFromName("String")
+	}
+	if base == "SemanticDeferDiagnostic" && fieldName == "help" {
+		return typeFromName("String" + "?")
+	}
+	if base == "SemanticDeferDiagnostic" && fieldName == "message" {
+		return typeFromName("String")
+	}
+	if base == "SemanticDeferDiagnostic" && fieldName == "scopeId" {
+		return typeFromName("Int" + "?")
+	}
+	if base == "SemanticDeferDiagnostic" && fieldName == "severity" {
+		return typeFromName("String")
+	}
+	if base == "SemanticDeferDiagnostic" && fieldName == "statementId" {
+		return typeFromName("Int" + "?")
+	}
+	if base == "SemanticDeferScope" && fieldName == "id" {
+		return typeFromName("Int")
+	}
+	if base == "SemanticDeferScope" && fieldName == "kind" {
+		return typeFromName("String")
+	}
+	if base == "SemanticDeferScope" && fieldName == "name" {
+		return typeFromName("String")
+	}
+	if base == "SemanticDeferStatement" && fieldName == "contextValid" {
+		return typeFromName("Bool")
+	}
+	if base == "SemanticDeferStatement" && fieldName == "expressionType" {
+		return typeFromName("String")
+	}
+	if base == "SemanticDeferStatement" && fieldName == "id" {
+		return typeFromName("Int")
+	}
+	if base == "SemanticDeferStatement" && fieldName == "scopeId" {
+		return typeFromName("Int")
+	}
+	if base == "SemanticDeferStatement" && fieldName == "typeValid" {
+		return typeFromName("Bool")
+	}
+	if base == "SemanticDeferStatement" && fieldName == "valid" {
+		return typeFromName("Bool")
+	}
+	if base == "SemanticDiagnostic" && fieldName == "code" {
+		return typeFromName("String")
+	}
+	if base == "SemanticDiagnostic" && fieldName == "help" {
+		return typeFromName("String" + "?")
+	}
+	if base == "SemanticDiagnostic" && fieldName == "message" {
+		return typeFromName("String")
+	}
+	if base == "SemanticDiagnostic" && fieldName == "severity" {
+		return typeFromName("String")
+	}
+	if base == "SemanticDiagnostic" && fieldName == "span" {
+		return typeFromName("SemanticSpan")
+	}
+	if base == "SemanticEffectDiagnostic" && fieldName == "code" {
+		return typeFromName("String")
+	}
+	if base == "SemanticEffectDiagnostic" && fieldName == "effect" {
+		return typeFromName("String" + "?")
+	}
+	if base == "SemanticEffectDiagnostic" && fieldName == "functionId" {
+		return typeFromName("Int" + "?")
+	}
+	if base == "SemanticEffectDiagnostic" && fieldName == "help" {
+		return typeFromName("String" + "?")
+	}
+	if base == "SemanticEffectDiagnostic" && fieldName == "message" {
+		return typeFromName("String")
+	}
+	if base == "SemanticEffectDiagnostic" && fieldName == "severity" {
+		return typeFromName("String")
+	}
+	if base == "SemanticEffectFunction" && fieldName == "declaredEffects" {
+		return typeFromName("List" + "<" + "String" + ">")
+	}
+	if base == "SemanticEffectFunction" && fieldName == "id" {
+		return typeFromName("Int")
+	}
+	if base == "SemanticEffectFunction" && fieldName == "name" {
+		return typeFromName("String")
+	}
+	if base == "SemanticEffectFunction" && fieldName == "wildcard" {
+		return typeFromName("Bool")
+	}
+	if base == "SemanticEffectRequirement" && fieldName == "functionId" {
+		return typeFromName("Int")
+	}
+	if base == "SemanticEffectRequirement" && fieldName == "id" {
+		return typeFromName("Int")
+	}
+	if base == "SemanticEffectRequirement" && fieldName == "missingEffects" {
+		return typeFromName("List" + "<" + "String" + ">")
+	}
+	if base == "SemanticEffectRequirement" && fieldName == "requiredEffects" {
+		return typeFromName("List" + "<" + "String" + ">")
+	}
+	if base == "SemanticEffectRequirement" && fieldName == "satisfied" {
+		return typeFromName("Bool")
+	}
+	if base == "SemanticFfiDiagnostic" && fieldName == "code" {
+		return typeFromName("String")
+	}
+	if base == "SemanticFfiDiagnostic" && fieldName == "entryId" {
+		return typeFromName("Int" + "?")
+	}
+	if base == "SemanticFfiDiagnostic" && fieldName == "entryKind" {
+		return typeFromName("String")
+	}
+	if base == "SemanticFfiDiagnostic" && fieldName == "help" {
+		return typeFromName("String" + "?")
+	}
+	if base == "SemanticFfiDiagnostic" && fieldName == "message" {
+		return typeFromName("String")
+	}
+	if base == "SemanticFfiDiagnostic" && fieldName == "severity" {
+		return typeFromName("String")
+	}
+	if base == "SemanticFfiDiagnostic" && fieldName == "typeId" {
+		return typeFromName("Int" + "?")
+	}
+	if base == "SemanticFfiExport" && fieldName == "id" {
+		return typeFromName("Int")
+	}
+	if base == "SemanticFfiExport" && fieldName == "name" {
+		return typeFromName("String")
+	}
+	if base == "SemanticFfiExport" && fieldName == "safe" {
+		return typeFromName("Bool")
+	}
+	if base == "SemanticFfiExport" && fieldName == "valid" {
+		return typeFromName("Bool")
+	}
+	if base == "SemanticFfiExternFunction" && fieldName == "externId" {
+		return typeFromName("Int")
+	}
+	if base == "SemanticFfiExternFunction" && fieldName == "id" {
+		return typeFromName("Int")
+	}
+	if base == "SemanticFfiExternFunction" && fieldName == "name" {
+		return typeFromName("String")
+	}
+	if base == "SemanticFfiExternFunction" && fieldName == "safe" {
+		return typeFromName("Bool")
+	}
+	if base == "SemanticFfiExternFunction" && fieldName == "valid" {
+		return typeFromName("Bool")
+	}
+	if base == "SemanticFfiType" && fieldName == "id" {
+		return typeFromName("Int")
+	}
+	if base == "SemanticFfiType" && fieldName == "kind" {
+		return typeFromName("String")
+	}
+	if base == "SemanticFfiType" && fieldName == "name" {
+		return typeFromName("String" + "?")
+	}
+	if base == "SemanticFfiType" && fieldName == "primitiveKey" {
+		return typeFromName("Bool")
+	}
+	if base == "SemanticFfiType" && fieldName == "safe" {
+		return typeFromName("Bool")
+	}
+	if base == "SemanticFfiType" && fieldName == "valid" {
+		return typeFromName("Bool")
+	}
+	if base == "SemanticFlowDiagnostic" && fieldName == "code" {
+		return typeFromName("String")
+	}
+	if base == "SemanticFlowDiagnostic" && fieldName == "functionId" {
+		return typeFromName("Int" + "?")
+	}
+	if base == "SemanticFlowDiagnostic" && fieldName == "help" {
+		return typeFromName("String" + "?")
+	}
+	if base == "SemanticFlowDiagnostic" && fieldName == "message" {
+		return typeFromName("String")
+	}
+	if base == "SemanticFlowDiagnostic" && fieldName == "nodeId" {
+		return typeFromName("Int" + "?")
+	}
+	if base == "SemanticFlowDiagnostic" && fieldName == "severity" {
+		return typeFromName("String")
+	}
+	if base == "SemanticFlowFunction" && fieldName == "alwaysTerminates" {
+		return typeFromName("Bool")
+	}
+	if base == "SemanticFlowFunction" && fieldName == "bodyNodeId" {
+		return typeFromName("Int")
+	}
+	if base == "SemanticFlowFunction" && fieldName == "id" {
+		return typeFromName("Int")
+	}
+	if base == "SemanticFlowFunction" && fieldName == "name" {
+		return typeFromName("String")
+	}
+	if base == "SemanticFlowFunction" && fieldName == "returnType" {
+		return typeFromName("String")
+	}
+	if base == "SemanticFlowFunction" && fieldName == "unreachableNodeIds" {
+		return typeFromName("List" + "<" + "Int" + ">")
+	}
+	if base == "SemanticFlowNode" && fieldName == "children" {
+		return typeFromName("List" + "<" + "Int" + ">")
+	}
+	if base == "SemanticFlowNode" && fieldName == "condition" {
+		return typeFromName("String" + "?")
+	}
+	if base == "SemanticFlowNode" && fieldName == "expressionType" {
+		return typeFromName("String" + "?")
+	}
+	if base == "SemanticFlowNode" && fieldName == "id" {
+		return typeFromName("Int")
+	}
+	if base == "SemanticFlowNode" && fieldName == "kind" {
+		return typeFromName("String")
+	}
+	if base == "SemanticInstantiatedMember" && fieldName == "id" {
+		return typeFromName("Int")
+	}
+	if base == "SemanticInstantiatedMember" && fieldName == "instantiationId" {
+		return typeFromName("Int")
+	}
+	if base == "SemanticInstantiatedMember" && fieldName == "sourceMemberId" {
+		return typeFromName("Int")
+	}
+	if base == "SemanticInstantiatedMember" && fieldName == "typeIds" {
+		return typeFromName("List" + "<" + "Int" + ">")
+	}
+	if base == "SemanticInstantiation" && fieldName == "argumentTypeIds" {
+		return typeFromName("List" + "<" + "Int" + ">")
+	}
+	if base == "SemanticInstantiation" && fieldName == "declarationId" {
+		return typeFromName("Int")
+	}
+	if base == "SemanticInstantiation" && fieldName == "id" {
+		return typeFromName("Int")
+	}
+	if base == "SemanticInstantiation" && fieldName == "memberIds" {
+		return typeFromName("List" + "<" + "Int" + ">")
+	}
+	if base == "SemanticInstantiation" && fieldName == "span" {
+		return typeFromName("SemanticSpan")
+	}
+	if base == "SemanticInstantiation" && fieldName == "targetType" {
+		return typeFromName("Int" + "?")
+	}
+	if base == "SemanticMember" && fieldName == "declarationId" {
+		return typeFromName("Int")
+	}
+	if base == "SemanticMember" && fieldName == "id" {
+		return typeFromName("Int")
+	}
+	if base == "SemanticMember" && fieldName == "kind" {
+		return typeFromName("String")
+	}
+	if base == "SemanticMember" && fieldName == "name" {
+		return typeFromName("String")
+	}
+	if base == "SemanticMember" && fieldName == "span" {
+		return typeFromName("SemanticSpan")
+	}
+	if base == "SemanticMember" && fieldName == "typeIds" {
+		return typeFromName("List" + "<" + "Int" + ">")
+	}
+	if base == "SemanticModule" && fieldName == "id" {
+		return typeFromName("Int")
+	}
+	if base == "SemanticModule" && fieldName == "name" {
+		return typeFromName("String")
+	}
+	if base == "SemanticModule" && fieldName == "sourceNodeId" {
+		return typeFromName("Int")
+	}
+	if base == "SemanticModuleAccessResult" && fieldName == "accessible" {
+		return typeFromName("Bool")
+	}
+	if base == "SemanticModuleAccessResult" && fieldName == "definingModuleId" {
+		return typeFromName("Int")
+	}
+	if base == "SemanticModuleAccessResult" && fieldName == "name" {
+		return typeFromName("String")
+	}
+	if base == "SemanticModuleAccessResult" && fieldName == "requesterModuleId" {
+		return typeFromName("Int")
+	}
+	if base == "SemanticModuleAccessResult" && fieldName == "space" {
+		return typeFromName("String")
+	}
+	if base == "SemanticModuleAccessResult" && fieldName == "symbolId" {
+		return typeFromName("Int" + "?")
+	}
+	if base == "SemanticModuleSymbol" && fieldName == "id" {
+		return typeFromName("Int")
+	}
+	if base == "SemanticModuleSymbol" && fieldName == "isPublic" {
+		return typeFromName("Bool")
+	}
+	if base == "SemanticModuleSymbol" && fieldName == "kind" {
+		return typeFromName("String")
+	}
+	if base == "SemanticModuleSymbol" && fieldName == "moduleId" {
+		return typeFromName("Int")
+	}
+	if base == "SemanticModuleSymbol" && fieldName == "name" {
+		return typeFromName("String")
+	}
+	if base == "SemanticModuleSymbol" && fieldName == "signatureTypeIds" {
+		return typeFromName("List" + "<" + "Int" + ">")
+	}
+	if base == "SemanticModuleSymbol" && fieldName == "sourceNodeId" {
+		return typeFromName("Int")
+	}
+	if base == "SemanticModuleSymbol" && fieldName == "space" {
+		return typeFromName("String")
+	}
+	if base == "SemanticMustUseDeclaration" && fieldName == "declarationId" {
+		return typeFromName("Int")
+	}
+	if base == "SemanticMustUseDeclaration" && fieldName == "name" {
+		return typeFromName("String")
+	}
+	if base == "SemanticMustUseDeclaration" && fieldName == "span" {
+		return typeFromName("SemanticSpan")
+	}
+	if base == "SemanticParallelDiagnostic" && fieldName == "code" {
+		return typeFromName("String")
+	}
+	if base == "SemanticParallelDiagnostic" && fieldName == "entryId" {
+		return typeFromName("Int" + "?")
+	}
+	if base == "SemanticParallelDiagnostic" && fieldName == "help" {
+		return typeFromName("String" + "?")
+	}
+	if base == "SemanticParallelDiagnostic" && fieldName == "message" {
+		return typeFromName("String")
+	}
+	if base == "SemanticParallelDiagnostic" && fieldName == "severity" {
+		return typeFromName("String")
+	}
+	if base == "SemanticParallelEntry" && fieldName == "errorCompatible" {
+		return typeFromName("Bool")
+	}
+	if base == "SemanticParallelEntry" && fieldName == "errorType" {
+		return typeFromName("String" + "?")
+	}
+	if base == "SemanticParallelEntry" && fieldName == "fieldType" {
+		return typeFromName("String")
+	}
+	if base == "SemanticParallelEntry" && fieldName == "futureValid" {
+		return typeFromName("Bool")
+	}
+	if base == "SemanticParallelEntry" && fieldName == "id" {
+		return typeFromName("Int")
+	}
+	if base == "SemanticParallelEntry" && fieldName == "name" {
+		return typeFromName("String")
+	}
+	if base == "SemanticParallelEntry" && fieldName == "operandKind" {
+		return typeFromName("String")
+	}
+	if base == "SemanticParallelEntry" && fieldName == "resultValid" {
+		return typeFromName("Bool")
+	}
+	if base == "SemanticParallelEntry" && fieldName == "valid" {
+		return typeFromName("Bool")
+	}
+	if base == "SemanticParallelEntry" && fieldName == "valueType" {
+		return typeFromName("String" + "?")
+	}
+	if base == "SemanticParallelField" && fieldName == "name" {
+		return typeFromName("String")
+	}
+	if base == "SemanticParallelField" && fieldName == "typeName" {
+		return typeFromName("String")
+	}
+	if base == "SemanticPatternArmResult" && fieldName == "coveredCaseId" {
+		return typeFromName("Int" + "?")
+	}
+	if base == "SemanticPatternArmResult" && fieldName == "guarded" {
+		return typeFromName("Bool")
+	}
+	if base == "SemanticPatternArmResult" && fieldName == "index" {
+		return typeFromName("Int")
+	}
+	if base == "SemanticPatternArmResult" && fieldName == "key" {
+		return typeFromName("String" + "?")
+	}
+	if base == "SemanticPatternArmResult" && fieldName == "reachable" {
+		return typeFromName("Bool")
+	}
+	if base == "SemanticPatternCase" && fieldName == "id" {
+		return typeFromName("Int")
+	}
+	if base == "SemanticPatternCase" && fieldName == "name" {
+		return typeFromName("String")
+	}
+	if base == "SemanticPatternCoverage" && fieldName == "arms" {
+		return typeFromName("List" + "<" + "SemanticPatternArmResult" + ">")
+	}
+	if base == "SemanticPatternCoverage" && fieldName == "cases" {
+		return typeFromName("List" + "<" + "SemanticPatternCase" + ">")
+	}
+	if base == "SemanticPatternCoverage" && fieldName == "exhaustive" {
+		return typeFromName("Bool")
+	}
+	if base == "SemanticPatternCoverage" && fieldName == "missingCaseIds" {
+		return typeFromName("List" + "<" + "Int" + ">")
+	}
+	if base == "SemanticPatternCoverage" && fieldName == "missingCaseNames" {
+		return typeFromName("List" + "<" + "String" + ">")
+	}
+	if base == "SemanticPatternCoverage" && fieldName == "spaceKind" {
+		return typeFromName("String")
+	}
+	if base == "SemanticPatternCoverage" && fieldName == "target" {
+		return typeFromName("String")
+	}
+	if base == "SemanticPatternCoverage" && fieldName == "targetTypeId" {
+		return typeFromName("Int" + "?")
+	}
+	if base == "SemanticPosition" && fieldName == "column" {
+		return typeFromName("Int")
+	}
+	if base == "SemanticPosition" && fieldName == "line" {
+		return typeFromName("Int")
+	}
+	if base == "SemanticPosition" && fieldName == "offset" {
+		return typeFromName("Int")
+	}
+	if base == "SemanticScope" && fieldName == "id" {
+		return typeFromName("Int")
+	}
+	if base == "SemanticScope" && fieldName == "kind" {
+		return typeFromName("String")
+	}
+	if base == "SemanticScope" && fieldName == "ownerNodeId" {
+		return typeFromName("Int")
+	}
+	if base == "SemanticScope" && fieldName == "parentScopeId" {
+		return typeFromName("Int" + "?")
+	}
+	if base == "SemanticScopeDiagnostic" && fieldName == "code" {
+		return typeFromName("String")
+	}
+	if base == "SemanticScopeDiagnostic" && fieldName == "help" {
+		return typeFromName("String" + "?")
+	}
+	if base == "SemanticScopeDiagnostic" && fieldName == "message" {
+		return typeFromName("String")
+	}
+	if base == "SemanticScopeDiagnostic" && fieldName == "name" {
+		return typeFromName("String" + "?")
+	}
+	if base == "SemanticScopeDiagnostic" && fieldName == "scopeId" {
+		return typeFromName("Int" + "?")
+	}
+	if base == "SemanticScopeDiagnostic" && fieldName == "severity" {
+		return typeFromName("String")
+	}
+	if base == "SemanticScopeLookupResult" && fieldName == "name" {
+		return typeFromName("String")
+	}
+	if base == "SemanticScopeLookupResult" && fieldName == "scopeId" {
+		return typeFromName("Int")
+	}
+	if base == "SemanticScopeLookupResult" && fieldName == "space" {
+		return typeFromName("String")
+	}
+	if base == "SemanticScopeLookupResult" && fieldName == "symbolId" {
+		return typeFromName("Int" + "?")
+	}
+	if base == "SemanticSpan" && fieldName == "end" {
+		return typeFromName("SemanticPosition")
+	}
+	if base == "SemanticSpan" && fieldName == "start" {
+		return typeFromName("SemanticPosition")
+	}
+	if base == "SemanticState" && fieldName == "declarations" {
+		return typeFromName("List" + "<" + "SemanticDeclaration" + ">")
+	}
+	if base == "SemanticState" && fieldName == "diagnostics" {
+		return typeFromName("List" + "<" + "SemanticDiagnostic" + ">")
+	}
+	if base == "SemanticState" && fieldName == "instantiatedMembers" {
+		return typeFromName("List" + "<" + "SemanticInstantiatedMember" + ">")
+	}
+	if base == "SemanticState" && fieldName == "instantiations" {
+		return typeFromName("List" + "<" + "SemanticInstantiation" + ">")
+	}
+	if base == "SemanticState" && fieldName == "members" {
+		return typeFromName("List" + "<" + "SemanticMember" + ">")
+	}
+	if base == "SemanticState" && fieldName == "types" {
+		return typeFromName("List" + "<" + "SemanticType" + ">")
+	}
+	if base == "SemanticSymbol" && fieldName == "id" {
+		return typeFromName("Int")
+	}
+	if base == "SemanticSymbol" && fieldName == "name" {
+		return typeFromName("String")
+	}
+	if base == "SemanticSymbol" && fieldName == "scopeId" {
+		return typeFromName("Int")
+	}
+	if base == "SemanticSymbol" && fieldName == "shadowsSymbolId" {
+		return typeFromName("Int" + "?")
+	}
+	if base == "SemanticSymbol" && fieldName == "sourceNodeId" {
+		return typeFromName("Int")
+	}
+	if base == "SemanticSymbol" && fieldName == "space" {
+		return typeFromName("String")
+	}
+	if base == "SemanticType" && fieldName == "arguments" {
+		return typeFromName("List" + "<" + "Int" + ">")
+	}
+	if base == "SemanticType" && fieldName == "declarationId" {
+		return typeFromName("Int" + "?")
+	}
+	if base == "SemanticType" && fieldName == "id" {
+		return typeFromName("Int")
+	}
+	if base == "SemanticType" && fieldName == "instantiationId" {
+		return typeFromName("Int" + "?")
+	}
+	if base == "SemanticType" && fieldName == "kind" {
+		return typeFromName("String")
+	}
+	if base == "SemanticType" && fieldName == "name" {
+		return typeFromName("String")
+	}
+	if base == "SemanticType" && fieldName == "span" {
+		return typeFromName("SemanticSpan")
+	}
+	if base == "SemanticTypeRelationResult" && fieldName == "assignable" {
+		return typeFromName("Bool")
+	}
+	if base == "SemanticTypeRelationResult" && fieldName == "source" {
+		return typeFromName("String")
+	}
+	if base == "SemanticTypeRelationResult" && fieldName == "sourceTypeId" {
+		return typeFromName("Int" + "?")
+	}
+	if base == "SemanticTypeRelationResult" && fieldName == "target" {
+		return typeFromName("String")
+	}
+	if base == "SemanticTypeRelationResult" && fieldName == "targetTypeId" {
+		return typeFromName("Int" + "?")
+	}
+	if base == "SemanticTypeTraits" && fieldName == "containsOpenType" {
+		return typeFromName("Bool")
+	}
+	if base == "SemanticTypeTraits" && fieldName == "elementType" {
+		return typeFromName("Int" + "?")
+	}
+	if base == "SemanticTypeTraits" && fieldName == "errorType" {
+		return typeFromName("Int" + "?")
+	}
+	if base == "SemanticTypeTraits" && fieldName == "itemTypes" {
+		return typeFromName("List" + "<" + "Int" + ">")
+	}
+	if base == "SemanticTypeTraits" && fieldName == "keyType" {
+		return typeFromName("Int" + "?")
+	}
+	if base == "SemanticTypeTraits" && fieldName == "name" {
+		return typeFromName("String")
+	}
+	if base == "SemanticTypeTraits" && fieldName == "supportsDebug" {
+		return typeFromName("Bool")
+	}
+	if base == "SemanticTypeTraits" && fieldName == "supportsEq" {
+		return typeFromName("Bool")
+	}
+	if base == "SemanticTypeTraits" && fieldName == "supportsHash" {
+		return typeFromName("Bool")
+	}
+	if base == "SemanticTypeTraits" && fieldName == "supportsJson" {
+		return typeFromName("Bool")
+	}
+	if base == "SemanticTypeTraits" && fieldName == "typeId" {
+		return typeFromName("Int" + "?")
+	}
+	if base == "SemanticTypeTraits" && fieldName == "valueType" {
+		return typeFromName("Int" + "?")
+	}
+	if base == "SemanticValueUseResult" && fieldName == "consumed" {
+		return typeFromName("Bool")
+	}
+	if base == "SemanticValueUseResult" && fieldName == "disposition" {
+		return typeFromName("String")
+	}
+	if base == "SemanticValueUseResult" && fieldName == "index" {
+		return typeFromName("Int")
+	}
+	if base == "SemanticValueUseResult" && fieldName == "mustUse" {
+		return typeFromName("Bool")
+	}
+	if base == "SemanticValueUseResult" && fieldName == "reason" {
+		return typeFromName("String")
+	}
+	if base == "SemanticValueUseResult" && fieldName == "typeId" {
+		return typeFromName("Int" + "?")
+	}
+	if base == "SemanticValueUseResult" && fieldName == "typeName" {
+		return typeFromName("String")
+	}
+	if base == "SemanticVisibilityDiagnostic" && fieldName == "code" {
+		return typeFromName("String")
+	}
+	if base == "SemanticVisibilityDiagnostic" && fieldName == "help" {
+		return typeFromName("String" + "?")
+	}
+	if base == "SemanticVisibilityDiagnostic" && fieldName == "message" {
+		return typeFromName("String")
+	}
+	if base == "SemanticVisibilityDiagnostic" && fieldName == "moduleId" {
+		return typeFromName("Int" + "?")
+	}
+	if base == "SemanticVisibilityDiagnostic" && fieldName == "name" {
+		return typeFromName("String" + "?")
+	}
+	if base == "SemanticVisibilityDiagnostic" && fieldName == "severity" {
+		return typeFromName("String")
+	}
+	if base == "Signature" && fieldName == "isPublic" {
+		return typeFromName("Bool")
+	}
+	if base == "Signature" && fieldName == "name" {
+		return typeFromName("String")
+	}
+	if base == "Signature" && fieldName == "parameters" {
+		return typeFromName("List" + "<" + "MvpType" + ">")
+	}
+	if base == "Signature" && fieldName == "returnType" {
+		return typeFromName("MvpType")
+	}
+	if base == "Signature" && fieldName == "span" {
+		return typeFromName("MvpSpan")
+	}
+	if base == "SignatureBuildResult" && fieldName == "diagnostics" {
+		return typeFromName("List" + "<" + "SemanticVisibilityDiagnostic" + ">")
+	}
+	if base == "SignatureBuildResult" && fieldName == "symbols" {
+		return typeFromName("List" + "<" + "SemanticModuleSymbol" + ">")
+	}
+	if base == "StatementBuildResult" && fieldName == "diagnostics" {
+		return typeFromName("List" + "<" + "SemanticDeferDiagnostic" + ">")
+	}
+	if base == "StatementBuildResult" && fieldName == "statements" {
+		return typeFromName("List" + "<" + "SemanticDeferStatement" + ">")
+	}
+	if base == "TypeBuildResult" && fieldName == "diagnostics" {
+		return typeFromName("List" + "<" + "SemanticFfiDiagnostic" + ">")
+	}
+	if base == "TypeBuildResult" && fieldName == "types" {
+		return typeFromName("List" + "<" + "SemanticFfiType" + ">")
+	}
+	if base == "TypeDecision" && fieldName == "primitiveKey" {
+		return typeFromName("Bool")
+	}
+	if base == "TypeDecision" && fieldName == "safe" {
+		return typeFromName("Bool")
+	}
+	if base == "TypeDecision" && fieldName == "valid" {
+		return typeFromName("Bool")
+	}
+	if base == "TypeLookup" && fieldName == "declarationId" {
+		return typeFromName("Int")
+	}
+	if base == "TypeLookup" && fieldName == "diagnostics" {
+		return typeFromName("List" + "<" + "SemanticDiagnostic" + ">")
+	}
+	if base == "TypeLookup" && fieldName == "id" {
+		return typeFromName("Int")
+	}
+	return MvpType.ErrorType
 }
 
 fn namedVariantPayloadType(typeNameValue: String, variantName: String, index: Int) -> MvpType {
@@ -339,21 +3402,99 @@ fn checkLiteral(node: MvpExpression, expressions: List<MvpHirExpression>) -> Res
 	}, valueType))
 }
 
+fn checkedLocal(node: MvpExpression, name: String, valueType: MvpType, expressions: List<MvpHirExpression>) -> CheckedExpression {
+	return addHir(expressions, MvpHirExpression {
+		kind: "local",
+		text: name,
+		valueType: valueType,
+		children: [],
+		span: node.span,
+	}, valueType)
+}
+
+fn checkedFunction(node: MvpExpression, signature: Signature, expressions: List<MvpHirExpression>) -> CheckedExpression {
+	let valueType = signatureType(signature)
+	return addHir(expressions, MvpHirExpression {
+		kind: "function",
+		text: signature.name,
+		valueType: valueType,
+		children: [],
+		span: node.span,
+	}, valueType)
+}
+
+fn resolveSimpleName(node: MvpExpression, name: String, context: CheckContext, expressions: List<MvpHirExpression>) -> CheckedExpression? {
+	return match findBinding(context.bindings, name) {
+		Some(value) => Some(checkedLocal(node, name, value.valueType, expressions))
+		None => match findSignature(context.signatures, name) {
+			Some(signature) => Some(checkedFunction(node, signature, expressions))
+			None => None
+		}
+	}
+}
+
+fn resolvedField(node: MvpExpression, fieldName: String, target: CheckedExpression) -> Result<CheckedExpression, MvpDiagnostic> {
+	let fieldType = if target.valueType == MvpType.ErrorType then MvpType.ErrorType else if fieldName == "length" && match listElementType(target.valueType) { Some(_) => true, None => false } then MvpType.IntType else match target.valueType {
+		NamedType(name) => namedFieldType(name, fieldName)
+		_ => MvpType.ErrorType
+	}
+	if fieldType == MvpType.ErrorType && target.valueType != MvpType.ErrorType {
+		return Err(errorDiagnostic("L2014", "Type " + typeName(target.valueType) + " has no field " + fieldName, node.span))
+	}
+	return Ok(addHir(target.expressions, MvpHirExpression {
+		kind: "field",
+		text: fieldName,
+		valueType: fieldType,
+		children: [target.expressionId],
+		span: node.span,
+	}, fieldType))
+}
+
 fn checkIdentifier(node: MvpExpression, context: CheckContext, expressions: List<MvpHirExpression>) -> Result<CheckedExpression, MvpDiagnostic> {
 	if standardConstructorName(node.text) == "None" {
 		return Err(errorDiagnostic("L2020", "Cannot infer the Optional type of None without an expected type", node.span))
 	}
-	return match findBinding(context.bindings, node.text) {
-		Some(value) => Ok(addHir(expressions, MvpHirExpression {
-			kind: "local",
-			text: node.text,
-			valueType: value.valueType,
-			children: [],
-			span: node.span,
-		}, value.valueType))
-		None => Err(errorDiagnostic("L1010", "Unknown name " + node.text, node.span))
+	let direct = resolveSimpleName(node, node.text, context, expressions)
+	if match direct { Some(_) => true, None => false } {
+		return match direct {
+			Some(value) => Ok(value)
+			None => Err(errorDiagnostic("L1010", "Unknown name " + node.text, node.span))
+		}
 	}
+	let segments = qualifiedSegments(node.text)
+	if List.length(segments) <= 1 {
+		return Err(errorDiagnostic("L1010", "Unknown name " + node.text, node.span))
+	}
+	let baseName = match List.get(segments, 0) {
+		Some(value) => value
+		None => ""
+	}
+	let base = resolveSimpleName(node, baseName, context, expressions)
+	if match base { Some(_) => false, None => true } {
+		return Err(errorDiagnostic("L1010", "Unknown name " + node.text, node.span))
+	}
+	let mut checked = match base {
+		Some(value) => value
+		None => checkedLocal(node, baseName, MvpType.ErrorType, expressions)
+	}
+	let mut index = 1
+	while index < List.length(segments) {
+		let fieldName = match List.get(segments, index) {
+			Some(value) => value
+			None => ""
+		}
+		checked = resolvedField(node, fieldName, checked)?
+		index = index + 1
+	}
+	return Ok(checked)
 }
+
+fn checkField(node: MvpExpression, context: CheckContext, expressions: List<MvpHirExpression>) -> Result<CheckedExpression, MvpDiagnostic> {
+	let sourceId = childAt(node, 0)?
+	let target = checkExpression(sourceId, context, expressions)?
+	return resolvedField(node, node.text, target)
+}
+
 fn checkArguments(node: MvpExpression, expected: List<MvpType>, context: CheckContext, expressions: List<MvpHirExpression>) -> Result<CheckedArguments, MvpDiagnostic> {
 	if List.length(node.children) != List.length(expected) {
 		return Err(errorDiagnostic("L2012", "Expected " + Debug.format(List.length(expected)) + " arguments, received " + Debug.format(List.length(node.children)), node.span))
@@ -577,6 +3718,52 @@ fn checkExpectedExpression(expressionId: Int, expectedType: MvpType, context: Ch
 		return Err(typeMismatch(checked.valueType, expectedType, node.span))
 	}
 	return Ok(checked)
+}
+
+
+fn checkInvoke(node: MvpExpression, context: CheckContext, expressions: List<MvpHirExpression>) -> Result<CheckedExpression, MvpDiagnostic> {
+	let calleeSourceId = childAt(node, 0)?
+	let callee = checkExpression(calleeSourceId, context, expressions)?
+	let encoded = functionTypeText(callee.valueType)
+	if match encoded { Some(_) => false, None => true } {
+		return Err(errorDiagnostic("L2012", "Value of type " + typeName(callee.valueType) + " is not callable", node.span))
+	}
+	let text = match encoded {
+		Some(value) => value
+		None => "fn()-><error>"
+	}
+	let expectedNames = functionParameterNames(text)
+	let argumentCount = List.length(node.children) - 1
+	if argumentCount != List.length(expectedNames) {
+		return Err(errorDiagnostic("L2013", "Expected " + Debug.format(List.length(expectedNames)) + " arguments, received " + Debug.format(argumentCount), node.span))
+	}
+	let mut expressionIds: List<Int> = [callee.expressionId]
+	let mut arena = callee.expressions
+	let mut index = 0
+	while index < argumentCount {
+		let sourceId = childAt(node, index + 1)?
+		let expectedName = match List.get(expectedNames, index) {
+			Some(value) => value
+			None => "<error>"
+		}
+		let expectedType = typeFromName(expectedName)
+		let checked = checkExpression(sourceId, context, arena)?
+		if !typesCompatible(checked.valueType, expectedType) {
+			let source = sourceExpressionAt(context, sourceId)?
+			return Err(typeMismatch(checked.valueType, expectedType, source.span))
+		}
+		expressionIds = List.append(expressionIds, checked.expressionId)
+		arena = checked.expressions
+		index = index + 1
+	}
+	let resultType = typeFromName(functionReturnName(text))
+	return Ok(addHir(arena, MvpHirExpression {
+		kind: "invoke",
+		text: node.text,
+		valueType: resultType,
+		children: expressionIds,
+		span: node.span,
+	}, resultType))
 }
 
 fn checkUnary(node: MvpExpression, context: CheckContext, expressions: List<MvpHirExpression>) -> Result<CheckedExpression, MvpDiagnostic> {
@@ -961,6 +4148,12 @@ fn checkExpression(expressionId: Int, context: CheckContext, expressions: List<M
 	if node.kind == "call" {
 		return checkCall(node, context, expressions)
 	}
+	if node.kind == "field" {
+		return checkField(node, context, expressions)
+	}
+	if node.kind == "invoke" {
+		return checkInvoke(node, context, expressions)
+	}
 	if node.kind == "unary" {
 		return checkUnary(node, context, expressions)
 	}
@@ -995,10 +4188,10 @@ fn checkLet(name: String, mutable: Bool, annotation: MvpType?, sourceExpressionI
 	if match findBinding(context.bindings, name) { Some(_) => true, None => false } {
 		return Err(errorDiagnostic("L1007", "Local name " + name + " shadows an existing name", statementSpan))
 	}
-	let checked = match annotation {
+	let checked = (match annotation {
 		Some(expectedType) => checkExpectedExpression(sourceExpressionId, expectedType, context, expressions)
 		None => checkExpression(sourceExpressionId, context, expressions)
-	}?
+	})?
 	let expected = match annotation { Some(value) => value, None => checked.valueType }
 	return Ok(addHirStatement(
 		statements,

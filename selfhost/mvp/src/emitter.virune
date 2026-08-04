@@ -70,6 +70,24 @@ fn emitVariant(expression: MvpHirExpression, expressions: List<MvpHirExpression>
 	return expression.text + "(" + String.join(emitArguments(expression.children, expressions), ", ") + ")"
 }
 
+fn emitField(expression: MvpHirExpression, expressions: List<MvpHirExpression>) -> String {
+	return "(" + emitExpression(childAt(expression, 0), expressions) + ")." + expression.text
+}
+
+fn emitInvoke(expression: MvpHirExpression, expressions: List<MvpHirExpression>) -> String {
+	let callee = emitExpression(childAt(expression, 0), expressions)
+	let mut argumentValues: List<String> = []
+	let mut index = 1
+	while index < List.length(expression.children) {
+		argumentValues = List.append(argumentValues, emitExpression(childAt(expression, index), expressions))
+		index = index + 1
+	}
+	if List.isEmpty(argumentValues) {
+		return "(" + callee + ")($ctx)"
+	}
+	return "(" + callee + ")(" + String.join(argumentValues, ", ") + ", $ctx)"
+}
+
 fn emitList(expression: MvpHirExpression, expressions: List<MvpHirExpression>) -> String {
 	return "[" + String.join(emitArguments(expression.children, expressions), ", ") + "]"
 }
@@ -198,11 +216,17 @@ fn emitExpression(expressionId: Int, expressions: List<MvpHirExpression>) -> Str
 	if expression.kind == "unit" {
 		return "undefined"
 	}
-	if expression.kind == "local" {
+	if expression.kind == "local" || expression.kind == "function" {
 		return expression.text
 	}
 	if expression.kind == "variant" {
 		return emitVariant(expression, expressions)
+	}
+	if expression.kind == "field" {
+		return emitField(expression, expressions)
+	}
+	if expression.kind == "invoke" {
+		return emitInvoke(expression, expressions)
 	}
 	if expression.kind == "call" {
 		return emitCall(expression, expressions)
