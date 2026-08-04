@@ -535,9 +535,13 @@ fn parseOr(cursor: Cursor, expressions: List<MvpExpression>) -> Result<ParsedExp
 	let mut current = parsed.cursor
 	let mut expressionId = parsed.expressionId
 	let mut arena = parsed.expressions
-	while tokenAt(current).text == "||" {
-		let operator = tokenAt(current)
-		let right = parseAnd(advance(current), arena)?
+	while true {
+		let operatorCursor = skipNewLines(current)
+		if tokenAt(operatorCursor).text != "||" {
+			break
+		}
+		let operator = tokenAt(operatorCursor)
+		let right = parseAnd(skipNewLines(advance(operatorCursor)), arena)?
 		let added = appendBinary(operator, expressionId, right, arena)?
 		current = added.cursor
 		expressionId = added.expressionId
@@ -551,9 +555,13 @@ fn parseAnd(cursor: Cursor, expressions: List<MvpExpression>) -> Result<ParsedEx
 	let mut current = parsed.cursor
 	let mut expressionId = parsed.expressionId
 	let mut arena = parsed.expressions
-	while tokenAt(current).text == "&&" {
-		let operator = tokenAt(current)
-		let right = parseEquality(advance(current), arena)?
+	while true {
+		let operatorCursor = skipNewLines(current)
+		if tokenAt(operatorCursor).text != "&&" {
+			break
+		}
+		let operator = tokenAt(operatorCursor)
+		let right = parseEquality(skipNewLines(advance(operatorCursor)), arena)?
 		let added = appendBinary(operator, expressionId, right, arena)?
 		current = added.cursor
 		expressionId = added.expressionId
@@ -567,9 +575,14 @@ fn parseEquality(cursor: Cursor, expressions: List<MvpExpression>) -> Result<Par
 	let mut current = parsed.cursor
 	let mut expressionId = parsed.expressionId
 	let mut arena = parsed.expressions
-	while tokenAt(current).text == "==" || tokenAt(current).text == "!=" {
-		let operator = tokenAt(current)
-		let right = parseComparison(advance(current), arena)?
+	while true {
+		let operatorCursor = skipNewLines(current)
+		let operatorText = tokenAt(operatorCursor).text
+		if operatorText != "==" && operatorText != "!=" {
+			break
+		}
+		let operator = tokenAt(operatorCursor)
+		let right = parseComparison(skipNewLines(advance(operatorCursor)), arena)?
 		let added = appendBinary(operator, expressionId, right, arena)?
 		current = added.cursor
 		expressionId = added.expressionId
@@ -583,9 +596,14 @@ fn parseComparison(cursor: Cursor, expressions: List<MvpExpression>) -> Result<P
 	let mut current = parsed.cursor
 	let mut expressionId = parsed.expressionId
 	let mut arena = parsed.expressions
-	while tokenAt(current).text == "<" || tokenAt(current).text == "<=" || tokenAt(current).text == ">" || tokenAt(current).text == ">=" {
-		let operator = tokenAt(current)
-		let right = parseAdditive(advance(current), arena)?
+	while true {
+		let operatorCursor = skipNewLines(current)
+		let operatorText = tokenAt(operatorCursor).text
+		if operatorText != "<" && operatorText != "<=" && operatorText != ">" && operatorText != ">=" {
+			break
+		}
+		let operator = tokenAt(operatorCursor)
+		let right = parseAdditive(skipNewLines(advance(operatorCursor)), arena)?
 		let added = appendBinary(operator, expressionId, right, arena)?
 		current = added.cursor
 		expressionId = added.expressionId
@@ -599,9 +617,14 @@ fn parseAdditive(cursor: Cursor, expressions: List<MvpExpression>) -> Result<Par
 	let mut current = parsed.cursor
 	let mut expressionId = parsed.expressionId
 	let mut arena = parsed.expressions
-	while tokenAt(current).text == "+" || tokenAt(current).text == "-" {
-		let operator = tokenAt(current)
-		let right = parseMultiplicative(advance(current), arena)?
+	while true {
+		let operatorCursor = skipNewLines(current)
+		let operatorText = tokenAt(operatorCursor).text
+		if operatorText != "+" && operatorText != "-" {
+			break
+		}
+		let operator = tokenAt(operatorCursor)
+		let right = parseMultiplicative(skipNewLines(advance(operatorCursor)), arena)?
 		let added = appendBinary(operator, expressionId, right, arena)?
 		current = added.cursor
 		expressionId = added.expressionId
@@ -615,9 +638,14 @@ fn parseMultiplicative(cursor: Cursor, expressions: List<MvpExpression>) -> Resu
 	let mut current = parsed.cursor
 	let mut expressionId = parsed.expressionId
 	let mut arena = parsed.expressions
-	while tokenAt(current).text == "*" || tokenAt(current).text == "/" || tokenAt(current).text == "%" {
-		let operator = tokenAt(current)
-		let right = parseUnary(advance(current), arena)?
+	while true {
+		let operatorCursor = skipNewLines(current)
+		let operatorText = tokenAt(operatorCursor).text
+		if operatorText != "*" && operatorText != "/" && operatorText != "%" {
+			break
+		}
+		let operator = tokenAt(operatorCursor)
+		let right = parseUnary(skipNewLines(advance(operatorCursor)), arena)?
 		let added = appendBinary(operator, expressionId, right, arena)?
 		current = added.cursor
 		expressionId = added.expressionId
@@ -649,9 +677,10 @@ fn parsePostfix(cursor: Cursor, expressions: List<MvpExpression>) -> Result<Pars
 	let mut arena = parsed.expressions
 	while tokenAt(current).text == "[" {
 		let base = expressionAt(arena, expressionId, tokenAt(current).span)?
-		let parsedIndex = parseExpression(advance(current), arena)?
-		let close = tokenAt(parsedIndex.cursor)
-		let afterClose = expectText(parsedIndex.cursor, "]")?
+		let parsedIndex = parseExpression(skipNewLines(advance(current)), arena)?
+		let closeCursor = skipNewLines(parsedIndex.cursor)
+		let close = tokenAt(closeCursor)
+		let afterClose = expectText(closeCursor, "]")?
 		let added = addExpression(afterClose, parsedIndex.expressions, MvpExpression {
 			kind: "index",
 			text: "[]",
@@ -943,8 +972,8 @@ fn parsePrimary(cursor: Cursor, expressions: List<MvpExpression>) -> Result<Pars
 		return parseListLiteral(cursor, expressions)
 	}
 	if token.text == "(" {
-		let parsed = parseExpression(advance(cursor), expressions)?
-		return Ok(ParsedExpression { cursor: expectText(parsed.cursor, ")")?, expressionId: parsed.expressionId, expressions: parsed.expressions })
+		let parsed = parseExpression(skipNewLines(advance(cursor)), expressions)?
+		return Ok(ParsedExpression { cursor: expectText(skipNewLines(parsed.cursor), ")")?, expressionId: parsed.expressionId, expressions: parsed.expressions })
 	}
 	if token.kind == MvpTokenKind.Identifier {
 		let name = parseQualifiedName(cursor)?
