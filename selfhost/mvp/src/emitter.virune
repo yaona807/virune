@@ -63,6 +63,13 @@ fn emitCall(expression: MvpHirExpression, expressions: List<MvpHirExpression>) -
 	return expression.text + "(" + String.join(values, ", ") + ", $ctx)"
 }
 
+fn emitVariant(expression: MvpHirExpression, expressions: List<MvpHirExpression>) -> String {
+	if expression.text == "None" {
+		return "None"
+	}
+	return expression.text + "(" + String.join(emitArguments(expression.children, expressions), ", ") + ")"
+}
+
 fn emitList(expression: MvpHirExpression, expressions: List<MvpHirExpression>) -> String {
 	return "[" + String.join(emitArguments(expression.children, expressions), ", ") + "]"
 }
@@ -193,6 +200,9 @@ fn emitExpression(expressionId: Int, expressions: List<MvpHirExpression>) -> Str
 	}
 	if expression.kind == "local" {
 		return expression.text
+	}
+	if expression.kind == "variant" {
+		return emitVariant(expression, expressions)
 	}
 	if expression.kind == "call" {
 		return emitCall(expression, expressions)

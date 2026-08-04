@@ -19,6 +19,7 @@ import {
 	listElementType,
 	listType,
 	optionalElementType,
+	optionalType,
 	span,
 	typeName,
 } from "./model.virune"
@@ -338,6 +339,9 @@ fn checkLiteral(node: MvpExpression, expressions: List<MvpHirExpression>) -> Res
 }
 
 fn checkIdentifier(node: MvpExpression, context: CheckContext, expressions: List<MvpHirExpression>) -> Result<CheckedExpression, MvpDiagnostic> {
+	if standardConstructorName(node.text) == "None" {
+		return Err(errorDiagnostic("L2020", "Cannot infer the Optional type of None without an expected type", node.span))
+	}
 	return match findBinding(context.bindings, node.text) {
 		Some(value) => Ok(addHir(expressions, MvpHirExpression {
 			kind: "local",
@@ -349,7 +353,6 @@ fn checkIdentifier(node: MvpExpression, context: CheckContext, expressions: List
 		None => Err(errorDiagnostic("L1010", "Unknown name " + node.text, node.span))
 	}
 }
-
 fn checkArguments(node: MvpExpression, expected: List<MvpType>, context: CheckContext, expressions: List<MvpHirExpression>) -> Result<CheckedArguments, MvpDiagnostic> {
 	if List.length(node.children) != List.length(expected) {
 		return Err(errorDiagnostic("L2012", "Expected " + Debug.format(List.length(expected)) + " arguments, received " + Debug.format(List.length(node.children)), node.span))
@@ -360,18 +363,13 @@ fn checkArguments(node: MvpExpression, expected: List<MvpType>, context: CheckCo
 	while index < List.length(node.children) {
 		let sourceId = childAt(node, index)?
 		let expectedType = expectedAt(expected, index, node.span)?
-		let checked = checkExpression(sourceId, context, arena)?
-		if !typesCompatible(checked.valueType, expectedType) {
-			let source = sourceExpressionAt(context, sourceId)?
-			return Err(typeMismatch(checked.valueType, expectedType, source.span))
-		}
+		let checked = checkExpectedExpression(sourceId, expectedType, context, arena)?
 		expressionIds = List.append(expressionIds, checked.expressionId)
 		arena = checked.expressions
 		index = index + 1
 	}
 	return Ok(CheckedArguments { expressionIds: expressionIds, expressions: arena })
 }
-
 fn checkKnownCall(node: MvpExpression, signature: Signature, context: CheckContext, expressions: List<MvpHirExpression>) -> Result<CheckedExpression, MvpDiagnostic> {
 	let checkedArguments = checkArguments(node, signature.parameters, context, expressions)?
 	return Ok(addHir(checkedArguments.expressions, MvpHirExpression {
@@ -384,10 +382,196 @@ fn checkKnownCall(node: MvpExpression, signature: Signature, context: CheckConte
 }
 
 fn checkCall(node: MvpExpression, context: CheckContext, expressions: List<MvpHirExpression>) -> Result<CheckedExpression, MvpDiagnostic> {
+	let constructorName = standardConstructorName(node.text)
+	if constructorName == "Some" {
+		if List.length(node.children) != 1 {
+			return Err(errorDiagnostic("L2012", "Some expects 1 argument, received " + Debug.format(List.length(node.children)), node.span))
+		}
+		let sourceId = childAt(node, 0)?
+		let checked = checkExpression(sourceId, context, expressions)?
+		return match optionalType(checked.valueType) {
+			Some(valueType) => Ok(checkedVariant(node, constructorName, valueType, [checked.expressionId], checked.expressions))
+			None => Err(errorDiagnostic("L2020", "Cannot infer an Optional type for Some from " + typeName(checked.valueType), node.span))
+		}
+	}
+	if constructorName == "Ok" || constructorName == "Err" {
+		return Err(errorDiagnostic("L2020", "Cannot infer the complete Result type for " + constructorName + " without an expected type", node.span))
+	}
+	if constructorName == "None" {
+		return Err(errorDiagnostic("L2012", "None is a value and does not accept arguments", node.span))
+	}
 	return match findSignature(context.signatures, node.text) {
 		Some(value) => checkKnownCall(node, value, context, expressions)
 		None => Err(errorDiagnostic("L1010", "Unknown name " + node.text, node.span))
 	}
+}
+fn standardConstructorName(value: String) -> String {
+	if value == "Some" || value == "Option.Some" {
+		return "Some"
+	}
+	if value == "None" || value == "Option.None" {
+		return "None"
+	}
+	if value == "Ok" || value == "Result.Ok" {
+		return "Ok"
+	}
+	if value == "Err" || value == "Result.Err" {
+		return "Err"
+	}
+	return ""
+}
+
+fn checkedVariant(node: MvpExpression, constructorName: String, valueType: MvpType, childIds: List<Int>, expressions: List<MvpHirExpression>) -> CheckedExpression {
+	return addHir(expressions, MvpHirExpression {
+		kind: "variant",
+		text: constructorName,
+		valueType: valueType,
+		children: childIds,
+		span: node.span,
+	}, valueType)
+}
+
+fn resultPayloadType(expectedType: MvpType, constructorName: String) -> MvpType? {
+	let resultName = match expectedType {
+		NamedType(name) => name
+		_ => ""
+	}
+	if !String.contains(resultName, "Result<") {
+		return None
+	}
+	let requestedIndex = if constructorName == "Ok" then 0 else if constructorName == "Err" then 1 else -1
+	if requestedIndex < 0 {
+		return None
+	}
+	return match genericArgument(resultName, requestedIndex) {
+		Some(name) => Some(typeFromName(name))
+		None => None
+	}
+}
+
+fn checkExpectedVariant(node: MvpExpression, expectedType: MvpType, context: CheckContext, expressions: List<MvpHirExpression>) -> Result<CheckedExpression, MvpDiagnostic> {
+	let constructorName = standardConstructorName(node.text)
+	if constructorName == "None" {
+		if node.kind != "identifier" || List.isNotEmpty(node.children) {
+			return Err(errorDiagnostic("L2012", "None is a value and does not accept arguments", node.span))
+		}
+		return match optionalElementType(expectedType) {
+			Some(_) => Ok(checkedVariant(node, constructorName, expectedType, [], expressions))
+			None => Err(errorDiagnostic("L2043", "None requires an Optional expected type, received " + typeName(expectedType), node.span))
+		}
+	}
+	if constructorName == "Some" {
+		if node.kind != "call" || List.length(node.children) != 1 {
+			return Err(errorDiagnostic("L2012", "Some expects 1 argument, received " + Debug.format(List.length(node.children)), node.span))
+		}
+		let payloadType = optionalElementType(expectedType)
+		if match payloadType { Some(_) => false, None => true } {
+			return Err(errorDiagnostic("L2043", "Some requires an Optional expected type, received " + typeName(expectedType), node.span))
+		}
+		let expectedPayload = match payloadType { Some(value) => value, None => MvpType.ErrorType }
+		let sourceId = childAt(node, 0)?
+		let checked = checkExpectedExpression(sourceId, expectedPayload, context, expressions)?
+		return Ok(checkedVariant(node, constructorName, expectedType, [checked.expressionId], checked.expressions))
+	}
+	if constructorName == "Ok" || constructorName == "Err" {
+		if node.kind != "call" || List.length(node.children) != 1 {
+			return Err(errorDiagnostic("L2012", constructorName + " expects 1 argument, received " + Debug.format(List.length(node.children)), node.span))
+		}
+		let payloadType = resultPayloadType(expectedType, constructorName)
+		if match payloadType { Some(_) => false, None => true } {
+			return Err(errorDiagnostic("L2043", constructorName + " requires a Result expected type, received " + typeName(expectedType), node.span))
+		}
+		let expectedPayload = match payloadType { Some(value) => value, None => MvpType.ErrorType }
+		let sourceId = childAt(node, 0)?
+		let checked = checkExpectedExpression(sourceId, expectedPayload, context, expressions)?
+		return Ok(checkedVariant(node, constructorName, expectedType, [checked.expressionId], checked.expressions))
+	}
+	return Err(errorDiagnostic("L9001", "Unknown standard variant constructor " + node.text, node.span))
+}
+
+fn checkExpectedConditional(node: MvpExpression, expectedType: MvpType, context: CheckContext, expressions: List<MvpHirExpression>) -> Result<CheckedExpression, MvpDiagnostic> {
+	let conditionSourceId = childAt(node, 0)?
+	let consequentSourceId = childAt(node, 1)?
+	let alternateSourceId = childAt(node, 2)?
+	let condition = checkExpression(conditionSourceId, context, expressions)?
+	if !typesCompatible(condition.valueType, MvpType.BoolType) {
+		let source = sourceExpressionAt(context, conditionSourceId)?
+		return Err(typeMismatch(condition.valueType, MvpType.BoolType, source.span))
+	}
+	let consequent = checkExpectedExpression(consequentSourceId, expectedType, context, condition.expressions)?
+	let alternate = checkExpectedExpression(alternateSourceId, expectedType, context, consequent.expressions)?
+	return Ok(addHir(alternate.expressions, MvpHirExpression {
+		kind: "if",
+		text: node.text,
+		valueType: expectedType,
+		children: [condition.expressionId, consequent.expressionId, alternate.expressionId],
+		span: node.span,
+	}, expectedType))
+}
+
+fn checkExpectedMatchArm(armSourceId: Int, targetType: MvpType, expectedType: MvpType, context: CheckContext, expressions: List<MvpHirExpression>) -> Result<CheckedExpression, MvpDiagnostic> {
+	let arm = sourceExpressionAt(context, armSourceId)?
+	if arm.kind != "matchArm" {
+		return Err(errorDiagnostic("L9001", "Match expression contains a non-arm child", arm.span))
+	}
+	let patternSourceId = childAt(arm, 0)?
+	let bodySourceId = childAt(arm, 1)?
+	let checkedPattern = checkPattern(patternSourceId, targetType, context, expressions)?
+	let checkedBody = checkExpectedExpression(bodySourceId, expectedType, CheckContext {
+		signatures: context.signatures,
+		bindings: checkedPattern.bindings,
+		returnType: context.returnType,
+		sourceExpressions: context.sourceExpressions,
+		sourceStatements: context.sourceStatements,
+	}, checkedPattern.expressions)?
+	return Ok(addHir(checkedBody.expressions, MvpHirExpression {
+		kind: "matchArm",
+		text: arm.text,
+		valueType: expectedType,
+		children: [checkedPattern.expressionId, checkedBody.expressionId],
+		span: arm.span,
+	}, expectedType))
+}
+
+fn checkExpectedMatch(node: MvpExpression, expectedType: MvpType, context: CheckContext, expressions: List<MvpHirExpression>) -> Result<CheckedExpression, MvpDiagnostic> {
+	let targetSourceId = childAt(node, 0)?
+	let checkedTarget = checkExpression(targetSourceId, context, expressions)?
+	let mut childIds: List<Int> = [checkedTarget.expressionId]
+	let mut arena = checkedTarget.expressions
+	let mut index = 1
+	while index < List.length(node.children) {
+		let armSourceId = childAt(node, index)?
+		let checkedArm = checkExpectedMatchArm(armSourceId, checkedTarget.valueType, expectedType, context, arena)?
+		childIds = List.append(childIds, checkedArm.expressionId)
+		arena = checkedArm.expressions
+		index = index + 1
+	}
+	return Ok(addHir(arena, MvpHirExpression {
+		kind: "match",
+		text: node.text,
+		valueType: expectedType,
+		children: childIds,
+		span: node.span,
+	}, expectedType))
+}
+
+fn checkExpectedExpression(expressionId: Int, expectedType: MvpType, context: CheckContext, expressions: List<MvpHirExpression>) -> Result<CheckedExpression, MvpDiagnostic> {
+	let node = sourceExpressionAt(context, expressionId)?
+	let constructorName = standardConstructorName(node.text)
+	if constructorName != "" && (node.kind == "identifier" || node.kind == "call") {
+		return checkExpectedVariant(node, expectedType, context, expressions)
+	}
+	if node.kind == "if" {
+		return checkExpectedConditional(node, expectedType, context, expressions)
+	}
+	if node.kind == "match" {
+		return checkExpectedMatch(node, expectedType, context, expressions)
+	}
+	let checked = checkExpression(expressionId, context, expressions)?
+	if !typesCompatible(checked.valueType, expectedType) {
+		return Err(typeMismatch(checked.valueType, expectedType, node.span))
+	}
+	return Ok(checked)
 }
 
 fn checkUnary(node: MvpExpression, context: CheckContext, expressions: List<MvpHirExpression>) -> Result<CheckedExpression, MvpDiagnostic> {
@@ -747,12 +931,11 @@ fn checkLet(name: String, mutable: Bool, annotation: MvpType?, sourceExpressionI
 	if match findBinding(context.bindings, name) { Some(_) => true, None => false } {
 		return Err(errorDiagnostic("L1007", "Local name " + name + " shadows an existing name", statementSpan))
 	}
-	let checked = checkExpression(sourceExpressionId, context, expressions)?
+	let checked = match annotation {
+		Some(expectedType) => checkExpectedExpression(sourceExpressionId, expectedType, context, expressions)
+		None => checkExpression(sourceExpressionId, context, expressions)
+	}?
 	let expected = match annotation { Some(value) => value, None => checked.valueType }
-	if !typesCompatible(checked.valueType, expected) {
-		let source = sourceExpressionAt(context, sourceExpressionId)?
-		return Err(typeMismatch(checked.valueType, expected, source.span))
-	}
 	return Ok(addHirStatement(
 		statements,
 		checked.expressions,
@@ -760,7 +943,6 @@ fn checkLet(name: String, mutable: Bool, annotation: MvpType?, sourceExpressionI
 		MvpHirStatement.HirLet(name, mutable, expected, checked.expressionId, statementSpan),
 	))
 }
-
 fn checkAssignment(name: String, sourceExpressionId: Int, statementSpan: MvpSpan, context: CheckContext, statements: List<MvpHirStatement>, expressions: List<MvpHirExpression>) -> Result<CheckedStatement, MvpDiagnostic> {
 	let found = findBinding(context.bindings, name)
 	if match found { Some(_) => false, None => true } {
@@ -773,11 +955,7 @@ fn checkAssignment(name: String, sourceExpressionId: Int, statementSpan: MvpSpan
 	if !binding.mutable {
 		return Err(errorDiagnostic("L2010", "Cannot assign to immutable name " + name, statementSpan))
 	}
-	let checked = checkExpression(sourceExpressionId, context, expressions)?
-	if !typesCompatible(checked.valueType, binding.valueType) {
-		let source = sourceExpressionAt(context, sourceExpressionId)?
-		return Err(typeMismatch(checked.valueType, binding.valueType, source.span))
-	}
+	let checked = checkExpectedExpression(sourceExpressionId, binding.valueType, context, expressions)?
 	return Ok(addHirStatement(
 		statements,
 		checked.expressions,
@@ -785,7 +963,6 @@ fn checkAssignment(name: String, sourceExpressionId: Int, statementSpan: MvpSpan
 		MvpHirStatement.HirAssign(name, binding.valueType, checked.expressionId, statementSpan),
 	))
 }
-
 fn checkBlock(sourceStatementIds: List<Int>, context: CheckContext, statements: List<MvpHirStatement>, expressions: List<MvpHirExpression>) -> Result<CheckedBlock, MvpDiagnostic> {
 	let mut blockBindings = context.bindings
 	let mut checkedStatementIds: List<Int> = []
@@ -869,10 +1046,7 @@ fn checkIf(sourceConditionId: Int, consequentStatementIds: List<Int>, alternateS
 }
 
 fn checkReturn(sourceExpressionId: Int, statementSpan: MvpSpan, context: CheckContext, statements: List<MvpHirStatement>, expressions: List<MvpHirExpression>) -> Result<CheckedStatement, MvpDiagnostic> {
-	let checked = checkExpression(sourceExpressionId, context, expressions)?
-	if !typesCompatible(checked.valueType, context.returnType) {
-		return Err(typeMismatch(checked.valueType, context.returnType, statementSpan))
-	}
+	let checked = checkExpectedExpression(sourceExpressionId, context.returnType, context, expressions)?
 	return Ok(addHirStatement(
 		statements,
 		checked.expressions,
@@ -880,7 +1054,6 @@ fn checkReturn(sourceExpressionId: Int, statementSpan: MvpSpan, context: CheckCo
 		MvpHirStatement.HirReturn(checked.expressionId, statementSpan),
 	))
 }
-
 fn checkStatement(statementId: Int, context: CheckContext, statements: List<MvpHirStatement>, expressions: List<MvpHirExpression>) -> Result<CheckedStatement, MvpDiagnostic> {
 	let statement = sourceStatementAt(context, statementId)?
 	return match statement {
