@@ -3,7 +3,12 @@ import { mkdir, readdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 const filter = process.argv.find(item => item.startsWith('--filter='))?.slice('--filter='.length);
+const exactFile = process.argv.find(item => item.startsWith('--file='))?.slice('--file='.length);
 const failureOutputOnly = process.argv.includes('--failure-output-only');
+if (filter !== undefined && exactFile !== undefined) {
+	console.error('Specify at most one of --filter or --file.');
+	process.exit(1);
+}
 const files = [];
 for (const entry of await readdir('packages', { withFileTypes: true })) {
 	if (!entry.isDirectory()) continue;
@@ -13,8 +18,13 @@ files.sort();
 if (filter !== undefined) {
 	for (let index = files.length - 1; index >= 0; index -= 1) if (!files[index].includes(filter)) files.splice(index, 1);
 }
+if (exactFile !== undefined) {
+	for (let index = files.length - 1; index >= 0; index -= 1) if (files[index] !== exactFile) files.splice(index, 1);
+}
 if (files.length === 0) {
-	console.error('No compiled unit test files were found. Run npm run build first.');
+	console.error(exactFile === undefined
+		? 'No compiled unit test files were found. Run npm run build first.'
+		: `Compiled unit test file was not found: ${exactFile}`);
 	process.exit(1);
 }
 // TypeScript-heavy test files are run in isolated processes. This avoids cumulative
