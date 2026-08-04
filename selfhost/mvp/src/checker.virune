@@ -671,6 +671,60 @@ fn checkIndex(node: MvpExpression, context: CheckContext, expressions: List<MvpH
 	}
 }
 
+fn resultPayloadType(value: MvpType, index: Int) -> MvpType? {
+	let name = match value {
+		NamedType(typeNameValue) => typeNameValue
+		_ => ""
+	}
+	if !String.contains(name, "Result<") {
+		return None
+	}
+	return match genericArgument(name, index) {
+		Some(argument) => Some(typeFromName(argument))
+		None => None
+	}
+}
+
+fn propagationFailure(operandType: MvpType, returnType: MvpType, valueSpan: MvpSpan) -> MvpDiagnostic {
+	return errorDiagnostic("L2021", "Cannot propagate " + typeName(operandType) + " from function returning " + typeName(returnType), valueSpan)
+}
+
+fn checkTry(node: MvpExpression, context: CheckContext, expressions: List<MvpHirExpression>) -> Result<CheckedExpression, MvpDiagnostic> {
+	let sourceId = childAt(node, 0)?
+	let checked = checkExpression(sourceId, context, expressions)?
+	let optionalPayload = optionalElementType(checked.valueType)
+	if match optionalPayload { Some(_) => true, None => false } {
+		if match optionalElementType(context.returnType) { Some(_) => false, None => true } {
+			return Err(propagationFailure(checked.valueType, context.returnType, node.span))
+		}
+		let payload = match optionalPayload { Some(value) => value, None => MvpType.ErrorType }
+		return Ok(addHir(checked.expressions, MvpHirExpression {
+			kind: "try", text: "?", valueType: payload,
+			children: [checked.expressionId], span: node.span,
+		}, payload))
+	}
+	let resultPayload = resultPayloadType(checked.valueType, 0)
+	if match resultPayload { Some(_) => true, None => false } {
+		let operandError = resultPayloadType(checked.valueType, 1)
+		let returnPayload = resultPayloadType(context.returnType, 0)
+		let returnError = resultPayloadType(context.returnType, 1)
+		if match returnPayload { Some(_) => false, None => true } || match returnError { Some(_) => false, None => true } {
+			return Err(propagationFailure(checked.valueType, context.returnType, node.span))
+		}
+		let actualError = match operandError { Some(value) => value, None => MvpType.ErrorType }
+		let expectedError = match returnError { Some(value) => value, None => MvpType.ErrorType }
+		if !typesCompatible(actualError, expectedError) {
+			return Err(typeMismatch(actualError, expectedError, node.span))
+		}
+		let payload = match resultPayload { Some(value) => value, None => MvpType.ErrorType }
+		return Ok(addHir(checked.expressions, MvpHirExpression {
+			kind: "try", text: "?", valueType: payload,
+			children: [checked.expressionId], span: node.span,
+		}, payload))
+	}
+	return Err(propagationFailure(checked.valueType, context.returnType, node.span))
+}
+
 fn checkRecordField(node: MvpExpression, context: CheckContext, expressions: List<MvpHirExpression>) -> Result<CheckedExpression, MvpDiagnostic> {
 	let sourceId = childAt(node, 0)?
 	let checked = checkExpression(sourceId, context, expressions)?
@@ -736,6 +790,9 @@ fn checkExpression(expressionId: Int, context: CheckContext, expressions: List<M
 	}
 	if node.kind == "index" {
 		return checkIndex(node, context, expressions)
+	}
+	if node.kind == "try" {
+		return checkTry(node, context, expressions)
 	}
 	if node.kind == "recordField" {
 		return checkRecordField(node, context, expressions)
