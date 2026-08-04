@@ -32,7 +32,6 @@ jobs:
           git fetch --no-tags origin '+refs/heads/*:refs/remotes/origin/*'
           test "$(git rev-parse origin/main)" = "$expected_main"
           test "$(git rev-parse origin/$branch)" = "$expected_branch_head"
-          test "$(git rev-parse origin/feat/selfhost-member-chain-integration)" = 'b0fd10cb7f1b45a7ed8b205d220a1f3d743c3347'
           test "$(git rev-parse "$expected_main:selfhost/mvp/src/parser.virune")" = 'bfa9a235f80dc544516ccb6ad1c131e19e551ef4'
           test "$(git rev-parse "$expected_main:selfhost/mvp/src/checker.virune")" = '4a5b42c92aef87c864227ba11c6d93da7be8db37'
           python - <<'PY'
