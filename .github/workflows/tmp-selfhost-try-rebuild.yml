@@ -4,10 +4,7 @@ on:
   pull_request:
     branches:
       - main
-    types:
-      - opened
-      - synchronize
-      - reopened
+    types: [opened, synchronize, reopened]
 
 permissions:
   contents: read
@@ -25,7 +22,7 @@ jobs:
         with:
           node-version-file: .node-version
           cache: npm
-      - name: Validate generic Json type arguments and parser source normalization
+      - name: Validate grammar-safe generic Json support
         shell: bash
         run: |
           set -euo pipefail
@@ -35,17 +32,19 @@ jobs:
           python - <<'PY'
           from pathlib import Path
 
+          def replace_once(value: str, old: str, new: str, label: str) -> str:
+              count = value.count(old)
+              if count != 1:
+                  raise RuntimeError(f'{label}: expected one target, found {count}')
+              return value.replace(old, new, 1)
+
           parser_path = Path('selfhost/mvp/src/parser.virune')
           parser = parser_path.read_text()
           old_loop = 'while tokenAt(current).text == "[" || tokenAt(current).text == "." || tokenAt(current).text == "(" || tokenAt(current).text == "?" {'
-          new_loop = 'while tokenAt(current).text == "[" || tokenAt(current).text == "." || tokenAt(current).text == "(" || tokenAt(current).text == "?" || tokenAt(current).text == "<" {'
-          if parser.count(old_loop) != 1:
-              raise RuntimeError(f'expected one postfix loop, found {parser.count(old_loop)}')
-          parser = parser.replace(old_loop, new_loop, 1)
-          anchor = '''\twhile tokenAt(current).text == "[" || tokenAt(current).text == "." || tokenAt(current).text == "(" || tokenAt(current).text == "?" || tokenAt(current).text == "<" {
-          \t\tif tokenAt(current).text == "?" {
-          '''
-          generic_case = '''\twhile tokenAt(current).text == "[" || tokenAt(current).text == "." || tokenAt(current).text == "(" || tokenAt(current).text == "?" || tokenAt(current).text == "<" {
+          new_loop = old_loop[:-2] + ' || tokenAt(current).text == "<" {'
+          parser = replace_once(parser, old_loop, new_loop, 'postfix loop')
+          anchor = new_loop + '\n\t\tif tokenAt(current).text == "?" {\n'
+          generic_case = new_loop + '''
           \t\tif tokenAt(current).text == "<" {
           \t\t\tlet base = expressionAt(arena, expressionId, tokenAt(current).span)?
           \t\t\tlet mut scan = advance(current)
@@ -94,56 +93,52 @@ jobs:
           \t\t}
           \t\tif tokenAt(current).text == "?" {
           '''
-          if parser.count(anchor) != 1:
-              raise RuntimeError(f'expected one generic insertion anchor, found {parser.count(anchor)}')
-          parser = parser.replace(anchor, generic_case, 1)
-          old_statement = '\tvalidateImports(imports)?\n'
-          new_statement = '\tlet importValidation = validateImports(imports)?\n'
-          if parser.count(old_statement) != 1:
-              raise RuntimeError(f'expected one validateImports statement, found {parser.count(old_statement)}')
-          parser = parser.replace(old_statement, new_statement, 1)
+          parser = replace_once(parser, anchor, generic_case, 'generic postfix insertion')
+          parser = replace_once(
+              parser,
+              '\tvalidateImports(imports)?\n',
+              '\tlet importValidation = validateImports(imports)?\n',
+              'validateImports source normalization',
+          )
           parser_path.write_text(parser)
 
           checker_path = Path('selfhost/mvp/src/checker.virune')
           checker = checker_path.read_text()
-          identifier_anchor = '''fn checkIdentifier(node: MvpExpression, context: CheckContext, expressions: List<MvpHirExpression>) -> Result<CheckedExpression, MvpDiagnostic> {
+          checker = replace_once(
+              checker,
+              '''fn checkIdentifier(node: MvpExpression, context: CheckContext, expressions: List<MvpHirExpression>) -> Result<CheckedExpression, MvpDiagnostic> {
           \tif standardConstructorName(node.text) == "None" {
-          '''
-          identifier_replacement = '''fn checkIdentifier(node: MvpExpression, context: CheckContext, expressions: List<MvpHirExpression>) -> Result<CheckedExpression, MvpDiagnostic> {
+          ''',
+              '''fn checkIdentifier(node: MvpExpression, context: CheckContext, expressions: List<MvpHirExpression>) -> Result<CheckedExpression, MvpDiagnostic> {
           \tif node.text == "Json" {
           \t\treturn Ok(checkedLocal(node, node.text, MvpType.NamedType("JsonNamespace"), expressions))
           \t}
           \tif standardConstructorName(node.text) == "None" {
-          '''
-          if checker.count(identifier_anchor) != 1:
-              raise RuntimeError(f'expected one checkIdentifier anchor, found {checker.count(identifier_anchor)}')
-          checker = checker.replace(identifier_anchor, identifier_replacement, 1)
-
-          field_anchor = '''fn checkField(node: MvpExpression, context: CheckContext, expressions: List<MvpHirExpression>) -> Result<CheckedExpression, MvpDiagnostic> {
+          ''',
+              'Json namespace identifier',
+          )
+          checker = replace_once(
+              checker,
+              '''fn checkField(node: MvpExpression, context: CheckContext, expressions: List<MvpHirExpression>) -> Result<CheckedExpression, MvpDiagnostic> {
           \tlet sourceId = childAt(node, 0)?
           \tlet target = checkExpression(sourceId, context, expressions)?
           \treturn resolvedField(node, node.text, target)
           }
-          '''
-          field_replacement = '''fn sourceQualifiedName(expressionId: Int, context: CheckContext) -> String? {
-          \tlet node = match List.get(context.sourceExpressions, expressionId) {
-          \t\tSome(value) => value
-          \t\tNone => return None
-          \t}
+          ''',
+              '''fn sourceQualifiedName(expressionId: Int, context: CheckContext) -> Result<String?, MvpDiagnostic> {
+          \tlet node = sourceExpressionAt(context, expressionId)?
           \tif node.kind == "identifier" {
-          \t\treturn Some(node.text)
+          \t\treturn Ok(Some(node.text))
           \t}
           \tif node.kind == "field" {
-          \t\tlet sourceId = match List.get(node.children, 0) {
-          \t\t\tSome(value) => value
-          \t\t\tNone => return None
-          \t\t}
-          \t\treturn match sourceQualifiedName(sourceId, context) {
-          \t\t\tSome(prefix) => Some(prefix + "." + node.text)
-          \t\t\tNone => None
+          \t\tlet sourceId = childAt(node, 0)?
+          \t\tlet prefixValue = sourceQualifiedName(sourceId, context)?
+          \t\treturn match prefixValue {
+          \t\t\tSome(prefix) => Ok(Some(prefix + "." + node.text))
+          \t\t\tNone => Ok(None)
           \t\t}
           \t}
-          \treturn None
+          \treturn Ok(None)
           }
 
           fn genericJsonFunctionType(qualifiedName: String, typeArgument: String) -> MvpType? {
@@ -159,13 +154,18 @@ jobs:
 
           fn checkTypeApply(node: MvpExpression, context: CheckContext, expressions: List<MvpHirExpression>) -> Result<CheckedExpression, MvpDiagnostic> {
           \tlet sourceId = childAt(node, 0)?
-          \tlet qualifiedName = match sourceQualifiedName(sourceId, context) {
+          \tlet qualifiedNameValue = sourceQualifiedName(sourceId, context)?
+          \tlet qualifiedName = match qualifiedNameValue {
           \t\tSome(value) => value
           \t\tNone => ""
           \t}
-          \tlet valueType = match genericJsonFunctionType(qualifiedName, node.text) {
+          \tlet valueTypeValue = genericJsonFunctionType(qualifiedName, node.text)
+          \tif match valueTypeValue { Some(_) => false, None => true } {
+          \t\treturn Err(errorDiagnostic("L1010", "Unknown generic function " + qualifiedName, node.span))
+          \t}
+          \tlet valueType = match valueTypeValue {
           \t\tSome(value) => value
-          \t\tNone => return Err(errorDiagnostic("L1010", "Unknown generic function " + qualifiedName, node.span))
+          \t\tNone => MvpType.ErrorType
           \t}
           \treturn Ok(addHir(expressions, MvpHirExpression {
           \t\tkind: "function",
@@ -178,7 +178,8 @@ jobs:
 
           fn checkField(node: MvpExpression, context: CheckContext, expressions: List<MvpHirExpression>) -> Result<CheckedExpression, MvpDiagnostic> {
           \tlet sourceId = childAt(node, 0)?
-          \tlet ownerName = match sourceQualifiedName(sourceId, context) {
+          \tlet ownerNameValue = sourceQualifiedName(sourceId, context)?
+          \tlet ownerName = match ownerNameValue {
           \t\tSome(value) => value
           \t\tNone => ""
           \t}
@@ -195,29 +196,27 @@ jobs:
           \tlet target = checkExpression(sourceId, context, expressions)?
           \treturn resolvedField(node, node.text, target)
           }
-          '''
-          if checker.count(field_anchor) != 1:
-              raise RuntimeError(f'expected one checkField anchor, found {checker.count(field_anchor)}')
-          checker = checker.replace(field_anchor, field_replacement, 1)
-          dispatch_anchor = '''\tif node.kind == "field" {
+          ''',
+              'generic Json checker helpers',
+          )
+          checker = replace_once(
+              checker,
+              '''\tif node.kind == "field" {
           \t\treturn checkField(node, context, expressions)
           \t}
-          '''
-          dispatch_replacement = '''\tif node.kind == "typeApply" {
+          ''',
+              '''\tif node.kind == "typeApply" {
           \t\treturn checkTypeApply(node, context, expressions)
           \t}
           \tif node.kind == "field" {
           \t\treturn checkField(node, context, expressions)
           \t}
-          '''
-          if checker.count(dispatch_anchor) != 1:
-              raise RuntimeError(f'expected one checkExpression dispatch anchor, found {checker.count(dispatch_anchor)}')
-          checker = checker.replace(dispatch_anchor, dispatch_replacement, 1)
+          ''',
+              'typeApply checker dispatch',
+          )
           checker_path.write_text(checker)
           PY
-          expected_paths="$(printf '%s\n' selfhost/mvp/src/checker.virune selfhost/mvp/src/parser.virune | sort)"
-          actual_paths="$(git diff --name-only | sort)"
-          test "$actual_paths" = "$expected_paths"
+          test "$(git diff --name-only | sort)" = "$(printf '%s\n' selfhost/mvp/src/checker.virune selfhost/mvp/src/parser.virune | sort)"
           git diff --check
           npm ci
           npm run build
@@ -225,16 +224,12 @@ jobs:
           from pathlib import Path
           path = Path('packages/compiler/dist/test/selfhost-full-language-inventory.test.js')
           source = path.read_text()
-          replacements = [
-              ('timeout: 720_000', 'timeout: 900_000'),
-              ('timeout: 720000', 'timeout: 900000'),
-          ]
-          for old, new in replacements:
+          for old, new in [('timeout: 720_000', 'timeout: 900_000'), ('timeout: 720000', 'timeout: 900000')]:
               if old in source:
                   path.write_text(source.replace(old, new, 1))
                   break
           else:
-              raise RuntimeError('720-second inventory timeout not found in generated test')
+              raise RuntimeError('720-second inventory timeout not found')
           PY
           node --test --test-timeout=900000 packages/compiler/dist/test/selfhost-full-language-inventory.test.js
           python - <<'PY'
@@ -243,7 +238,7 @@ jobs:
           inventory = json.loads(Path('.cache/ci-timings/selfhost-full-language-inventory.json').read_text())
           l0002 = [item for item in inventory.get('firstDiagnostics', []) if item.get('code') == 'L0002']
           if l0002:
-              raise RuntimeError('targeted L0002 diagnostics remain: ' + json.dumps(l0002, separators=(',', ':')))
+              raise RuntimeError('L0002 diagnostics remain: ' + json.dumps(l0002, separators=(',', ':')))
           print('SELFHOST_GENERIC_JSON_INVENTORY_JSON')
           print(json.dumps(inventory, separators=(',', ':')))
           PY
