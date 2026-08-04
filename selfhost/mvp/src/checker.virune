@@ -3788,11 +3788,42 @@ fn checkExpectedMatch(node: MvpExpression, expectedType: MvpType, context: Check
 	}, expectedType))
 }
 
+fn checkExpectedList(node: MvpExpression, expectedType: MvpType, context: CheckContext, expressions: List<MvpHirExpression>) -> Result<CheckedExpression, MvpDiagnostic> {
+	let elementTypeValue = listElementType(expectedType)
+	if match elementTypeValue { Some(_) => false, None => true } {
+		return Err(errorDiagnostic("L2043", "List literal requires a List expected type, received " + typeName(expectedType), node.span))
+	}
+	let elementType = match elementTypeValue {
+		Some(value) => value
+		None => MvpType.ErrorType
+	}
+	let mut expressionIds: List<Int> = []
+	let mut arena = expressions
+	let mut index = 0
+	while index < List.length(node.children) {
+		let sourceId = childAt(node, index)?
+		let checked = checkExpectedExpression(sourceId, elementType, context, arena)?
+		expressionIds = List.append(expressionIds, checked.expressionId)
+		arena = checked.expressions
+		index = index + 1
+	}
+	return Ok(addHir(arena, MvpHirExpression {
+		kind: "list",
+		text: node.text,
+		valueType: expectedType,
+		children: expressionIds,
+		span: node.span,
+	}, expectedType))
+}
+
 fn checkExpectedExpression(expressionId: Int, expectedType: MvpType, context: CheckContext, expressions: List<MvpHirExpression>) -> Result<CheckedExpression, MvpDiagnostic> {
 	let node = sourceExpressionAt(context, expressionId)?
 	let constructorName = standardConstructorName(node.text)
 	if constructorName != "" && (node.kind == "identifier" || node.kind == "call") {
 		return checkExpectedVariant(node, expectedType, context, expressions)
+	}
+	if node.kind == "list" {
+		return checkExpectedList(node, expectedType, context, expressions)
 	}
 	if node.kind == "if" {
 		return checkExpectedConditional(node, expectedType, context, expressions)
@@ -4202,6 +4233,20 @@ fn checkRecordField(node: MvpExpression, context: CheckContext, expressions: Lis
 	}, checked.valueType))
 }
 
+fn checkExpectedRecordField(node: MvpExpression, recordName: String, context: CheckContext, expressions: List<MvpHirExpression>) -> Result<CheckedExpression, MvpDiagnostic> {
+	let sourceId = childAt(node, 0)?
+	let expectedType = namedFieldType(recordName, node.text)
+	let checkedResult = if expectedType == MvpType.ErrorType then checkExpression(sourceId, context, expressions) else checkExpectedExpression(sourceId, expectedType, context, expressions)
+	let checked = checkedResult?
+	return Ok(addHir(checked.expressions, MvpHirExpression {
+		kind: "recordField",
+		text: node.text,
+		valueType: checked.valueType,
+		children: [checked.expressionId],
+		span: node.span,
+	}, checked.valueType))
+}
+
 fn checkRecord(node: MvpExpression, context: CheckContext, expressions: List<MvpHirExpression>) -> Result<CheckedExpression, MvpDiagnostic> {
 	let mut expressionIds: List<Int> = []
 	let mut arena = expressions
@@ -4212,7 +4257,7 @@ fn checkRecord(node: MvpExpression, context: CheckContext, expressions: List<Mvp
 		if source.kind != "recordField" {
 			return Err(errorDiagnostic("L9001", "Record construction contains a non-field child", source.span))
 		}
-		let checked = checkRecordField(source, context, arena)?
+		let checked = checkExpectedRecordField(source, node.text, context, arena)?
 		expressionIds = List.append(expressionIds, checked.expressionId)
 		arena = checked.expressions
 		index = index + 1
