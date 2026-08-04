@@ -675,26 +675,80 @@ fn parsePostfix(cursor: Cursor, expressions: List<MvpExpression>) -> Result<Pars
 	let mut current = parsed.cursor
 	let mut expressionId = parsed.expressionId
 	let mut arena = parsed.expressions
-	while tokenAt(current).text == "[" {
-		let base = expressionAt(arena, expressionId, tokenAt(current).span)?
-		let parsedIndex = parseExpression(skipNewLines(advance(current)), arena)?
-		let closeCursor = skipNewLines(parsedIndex.cursor)
-		let close = tokenAt(closeCursor)
-		let afterClose = expectText(closeCursor, "]")?
-		let added = addExpression(afterClose, parsedIndex.expressions, MvpExpression {
-			kind: "index",
-			text: "[]",
-			literalType: None,
-			children: [expressionId, parsedIndex.expressionId],
-			span: span(base.span.start, close.span.end),
-		})
-		current = added.cursor
-		expressionId = added.expressionId
-		arena = added.expressions
+	while tokenAt(current).text == "[" || tokenAt(current).text == "." || tokenAt(current).text == "(" {
+		if tokenAt(current).text == "[" {
+			let base = expressionAt(arena, expressionId, tokenAt(current).span)?
+			let parsedIndex = parseExpression(skipNewLines(advance(current)), arena)?
+			let closeCursor = skipNewLines(parsedIndex.cursor)
+			let close = tokenAt(closeCursor)
+			let afterClose = expectText(closeCursor, "]")?
+			let added = addExpression(afterClose, parsedIndex.expressions, MvpExpression {
+				kind: "index",
+				text: "[]",
+				literalType: None,
+				children: [expressionId, parsedIndex.expressionId],
+				span: span(base.span.start, close.span.end),
+			})
+			current = added.cursor
+			expressionId = added.expressionId
+			arena = added.expressions
+			continue
+		}
+		if tokenAt(current).text == "." {
+			let base = expressionAt(arena, expressionId, tokenAt(current).span)?
+			let memberCursor = advance(current)
+			let member = tokenAt(memberCursor)
+			if member.kind != MvpTokenKind.Identifier {
+				return Err(parseError("Expected identifier after .", member))
+			}
+			let added = addExpression(advance(memberCursor), arena, MvpExpression {
+				kind: "field",
+				text: member.text,
+				literalType: None,
+				children: [expressionId],
+				span: span(base.span.start, member.span.end),
+			})
+			current = added.cursor
+			expressionId = added.expressionId
+			arena = added.expressions
+			continue
+		}
+		if tokenAt(current).text == "(" {
+			let base = expressionAt(arena, expressionId, tokenAt(current).span)?
+			let mut argumentCursor = skipNewLines(advance(current))
+			let mut childIds: List<Int> = [expressionId]
+			if tokenAt(argumentCursor).text != ")" {
+				while true {
+					let parsedArgument = parseExpression(argumentCursor, arena)?
+					childIds = List.append(childIds, parsedArgument.expressionId)
+					arena = parsedArgument.expressions
+					argumentCursor = skipNewLines(parsedArgument.cursor)
+					if tokenAt(argumentCursor).text == "," {
+						argumentCursor = skipNewLines(advance(argumentCursor))
+						if tokenAt(argumentCursor).text == ")" {
+							break
+						}
+						continue
+					}
+					break
+				}
+			}
+			let close = tokenAt(argumentCursor)
+			let added = addExpression(expectText(argumentCursor, ")")?, arena, MvpExpression {
+				kind: "invoke",
+				text: "()",
+				literalType: None,
+				children: childIds,
+				span: span(base.span.start, close.span.end),
+			})
+			current = added.cursor
+			expressionId = added.expressionId
+			arena = added.expressions
+			continue
+		}
 	}
 	return Ok(ParsedExpression { cursor: current, expressionId: expressionId, expressions: arena })
 }
-
 fn parseQualifiedName(cursor: Cursor) -> Result<ParsedName, MvpDiagnostic> {
 	let first = tokenAt(cursor)
 	if first.kind != MvpTokenKind.Identifier {
