@@ -222,6 +222,9 @@ fn emitExpression(expressionId: Int, expressions: List<MvpHirExpression>) -> Str
 	if expression.kind == "match" {
 		return emitMatch(expressionId, expression, expressions)
 	}
+	if expression.kind == "try" {
+		return "propagate(" + emitExpression(childAt(expression, 0), expressions) + ")"
+	}
 	if expression.kind == "index" {
 		return emitIndex(expression, expressions)
 	}
