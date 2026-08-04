@@ -1,0 +1,56 @@
+name: Temporary PR 270 Json.parse retry
+
+on:
+  pull_request:
+    branches:
+      - main
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: tmp/selfhost-try-rebuild-run-20260804
+          fetch-depth: 0
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - name: Retry with leading List type detection
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import textwrap
+
+          workflow = Path('.github/workflows/tmp-pr270-json-parse-call.yml').read_text()
+          marker = '        run: |\n'
+          if workflow.count(marker) != 1:
+              raise RuntimeError(f'expected one run block, found {workflow.count(marker)}')
+          script = textwrap.dedent(workflow.split(marker, 1)[1])
+          anchor = '''test "$(git diff --name-only)" = 'selfhost/mvp/src/checker.virune'
+          '''
+          patch = '''python - <<'PY'
+          from pathlib import Path
+          path = Path('selfhost/mvp/src/checker.virune')
+          source = path.read_text()
+          old = 'if String.contains(compact, "List<") {'
+          new = 'if String.length(compact) >= 5 && String.slice(compact, 0, Some(5)) == "List<" {'
+          if source.count(old) != 1:
+              raise RuntimeError(f'expected one List type detector, found {source.count(old)}')
+          path.write_text(source.replace(old, new, 1))
+          PY
+          test "$(git diff --name-only)" = 'selfhost/mvp/src/checker.virune'
+          '''
+          if script.count(anchor) != 1:
+              raise RuntimeError(f'expected one path guard, found {script.count(anchor)}')
+          Path('/tmp/pr270-json-retry.sh').write_text(script.replace(anchor, patch, 1))
+          PY
+          bash /tmp/pr270-json-retry.sh
