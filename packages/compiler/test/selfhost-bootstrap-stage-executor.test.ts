@@ -105,8 +105,10 @@ test('stage artifact serializes compiler and diagnostic schema metadata', () => 
 		...stageArtifact('stage2', result('export const value = 1;\n')),
 		metadata: {
 			...artifact.metadata,
-			diagnosticSchema: 'virune.selfhost.project-compiler.result.v3#diagnostics'
-				as typeof BOOTSTRAP_STAGE_DIAGNOSTIC_SCHEMA,
+			diagnosticSchema: (
+				'virune.selfhost.project-compiler.result.v3#diagnostics'
+				as typeof BOOTSTRAP_STAGE_DIAGNOSTIC_SCHEMA
+			),
 		},
 	};
 	assert.deepEqual(
