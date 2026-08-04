@@ -1,4 +1,4 @@
-name: Temporary self-host generic Json retry
+name: Temporary self-host generic Json branch promotion
 
 on:
   pull_request:
@@ -7,12 +7,12 @@ on:
     types: [opened, synchronize, reopened]
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  validate:
+  promote:
     runs-on: ubuntu-24.04
-    timeout-minutes: 25
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v6
         with:
@@ -22,12 +22,19 @@ jobs:
         with:
           node-version-file: .node-version
           cache: npm
-      - name: Patch generated optional type and validate inventory
+      - name: Apply validated generic Json support to formal branch
         shell: bash
         run: |
           set -euo pipefail
+          expected_main='27c445c37b5a306436088f4f64a569bf7fe5e6ad'
+          expected_branch_head='27c445c37b5a306436088f4f64a569bf7fe5e6ad'
+          branch='feat/selfhost-generic-json-type-arguments'
           git fetch --no-tags origin '+refs/heads/*:refs/remotes/origin/*'
+          test "$(git rev-parse origin/main)" = "$expected_main"
+          test "$(git rev-parse origin/$branch)" = "$expected_branch_head"
           test "$(git rev-parse origin/feat/selfhost-member-chain-integration)" = 'b0fd10cb7f1b45a7ed8b205d220a1f3d743c3347'
+          test "$(git rev-parse "$expected_main:selfhost/mvp/src/parser.virune")" = 'bfa9a235f80dc544516ccb6ad1c131e19e551ef4'
+          test "$(git rev-parse "$expected_main:selfhost/mvp/src/checker.virune")" = '4a5b42c92aef87c864227ba11c6d93da7be8db37'
           python - <<'PY'
           from pathlib import Path
           import re
@@ -35,10 +42,10 @@ jobs:
           workflow = Path('.github/workflows/tmp-selfhost-try-rebuild.yml').read_text()
           match = re.search(r"python - <<'PY'\n(?P<body>.*?)\n          PY", workflow, re.DOTALL)
           if match is None:
-              raise RuntimeError('transformation Python heredoc not found')
+              raise RuntimeError('validated transformation heredoc not found')
           Path('/tmp/generic-json-transform.py').write_text(textwrap.dedent(match.group('body')))
           PY
-          git checkout -B generic-json-validation b0fd10cb7f1b45a7ed8b205d220a1f3d743c3347
+          git checkout -B "$branch" "origin/$branch"
           python /tmp/generic-json-transform.py
           python - <<'PY'
           from pathlib import Path
@@ -57,29 +64,14 @@ jobs:
           source = source.replace('return Ok(None)', 'return Ok(missing)', 1)
           path.write_text(source)
           PY
-          test "$(git diff --name-only | sort)" = "$(printf '%s\n' selfhost/mvp/src/checker.virune selfhost/mvp/src/parser.virune | sort)"
+          expected_paths="$(printf '%s\n' selfhost/mvp/src/checker.virune selfhost/mvp/src/parser.virune | sort)"
+          actual_paths="$(git diff --name-only | sort)"
+          test "$actual_paths" = "$expected_paths"
           git diff --check
           npm ci
           npm run build
-          python - <<'PY'
-          from pathlib import Path
-          path = Path('packages/compiler/dist/test/selfhost-full-language-inventory.test.js')
-          source = path.read_text()
-          for old, new in [('timeout: 720_000', 'timeout: 900_000'), ('timeout: 720000', 'timeout: 900000')]:
-              if old in source:
-                  path.write_text(source.replace(old, new, 1))
-                  break
-          else:
-              raise RuntimeError('720-second inventory timeout not found')
-          PY
-          node --test --test-timeout=900000 packages/compiler/dist/test/selfhost-full-language-inventory.test.js
-          python - <<'PY'
-          import json
-          from pathlib import Path
-          inventory = json.loads(Path('.cache/ci-timings/selfhost-full-language-inventory.json').read_text())
-          l0002 = [item for item in inventory.get('firstDiagnostics', []) if item.get('code') == 'L0002']
-          if l0002:
-              raise RuntimeError('L0002 diagnostics remain: ' + json.dumps(l0002, separators=(',', ':')))
-          print('SELFHOST_GENERIC_JSON_INVENTORY_JSON')
-          print(json.dumps(inventory, separators=(',', ':')))
-          PY
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add selfhost/mvp/src/parser.virune selfhost/mvp/src/checker.virune
+          git commit -m 'feat(selfhost): support generic Json type arguments'
+          git push --force-with-lease=refs/heads/$branch:"$expected_branch_head" origin HEAD:$branch
