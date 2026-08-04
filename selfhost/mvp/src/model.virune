@@ -90,6 +90,8 @@ pub enum MvpStatement derives Json {
 	ForValue(String, Int, List<Int>, MvpSpan)
 	WhileValue(Int, List<Int>, MvpSpan)
 	IfValue(Int, List<Int>, List<Int>, MvpSpan)
+	BreakValue(MvpSpan)
+	ContinueValue(MvpSpan)
 	ReturnValue(Int, MvpSpan)
 }
 
@@ -130,6 +132,8 @@ pub enum MvpHirStatement derives Json {
 	HirFor(String, MvpType, Int, List<Int>, MvpSpan)
 	HirWhile(Int, List<Int>, MvpSpan)
 	HirIf(Int, List<Int>, List<Int>, MvpSpan)
+	HirBreak(MvpSpan)
+	HirContinue(MvpSpan)
 	HirReturn(Int, MvpSpan)
 }
 
