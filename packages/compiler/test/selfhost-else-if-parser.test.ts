@@ -42,12 +42,12 @@ const source = [
 	'}',
 	'',
 	'pub fn main() -> Int {',
-	'\treturn classify(2)',
+	'\treturn classify(0) + classify(1) + classify(2) + classify(3)',
 	'}',
 	'',
 ].join('\n');
 
-test('else-if chains lower to nested IfValue statements and execute', async () => {
+test('else-if chains lower to nested IfValue statements and execute every branch', async () => {
 	const loaded = await loadMvpModule();
 	try {
 		const request = input(source);
@@ -57,7 +57,7 @@ test('else-if chains lower to nested IfValue statements and execute', async () =
 		const emittedCode = output.emittedModules.map(module => module.code).join('\n');
 		assert.ok((emittedCode.match(/if \(/g) ?? []).length >= 3);
 		const runtime = await executeKernelOutputWithNode(request, output);
-		assert.equal(runtime.returnValue, 30);
+		assert.equal(runtime.returnValue, 100);
 		assert.equal(runtime.panic, null);
 	} finally {
 		await rm(loaded.root, { recursive: true, force: true });
