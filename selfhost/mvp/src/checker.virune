@@ -100,7 +100,18 @@ fn typeMismatch(actual: MvpType, expected: MvpType, valueSpan: MvpSpan) -> MvpDi
 }
 
 fn typesCompatible(actual: MvpType, expected: MvpType) -> Bool {
-	return actual == expected || actual == MvpType.ErrorType || expected == MvpType.ErrorType
+	if actual == expected || actual == MvpType.ErrorType || expected == MvpType.ErrorType {
+		return true
+	}
+	let actualName = match actual {
+		NamedType(name) => name
+		_ => ""
+	}
+	let expectedName = match expected {
+		NamedType(name) => name
+		_ => ""
+	}
+	return actualName != "" && expectedName != "" && compactTypeName(actualName) == compactTypeName(expectedName)
 }
 
 fn preferredType(left: MvpType, right: MvpType) -> MvpType {
@@ -298,7 +309,7 @@ fn typeFromName(value: String) -> MvpType {
 	if compact == "Unit" {
 		return MvpType.UnitType
 	}
-	if String.contains(compact, "List<") {
+	if String.length(compact) >= 5 && String.slice(compact, 0, Some(5)) == "List<" {
 		let elementName = genericArgument(compact, 0)
 		if match elementName { Some(_) => true, None => false } {
 			let elementType = match elementName { Some(name) => typeFromName(name), None => MvpType.ErrorType }
@@ -3451,6 +3462,9 @@ fn resolvedField(node: MvpExpression, fieldName: String, target: CheckedExpressi
 }
 
 fn checkIdentifier(node: MvpExpression, context: CheckContext, expressions: List<MvpHirExpression>) -> Result<CheckedExpression, MvpDiagnostic> {
+	if node.text == "Json" {
+		return Ok(checkedLocal(node, node.text, MvpType.NamedType("JsonNamespace"), expressions))
+	}
 	if standardConstructorName(node.text) == "None" {
 		return Err(errorDiagnostic("L2020", "Cannot infer the Optional type of None without an expected type", node.span))
 	}
@@ -3489,8 +3503,75 @@ fn checkIdentifier(node: MvpExpression, context: CheckContext, expressions: List
 	return Ok(checked)
 }
 
+fn sourceQualifiedName(expressionId: Int, context: CheckContext) -> Result<String?, MvpDiagnostic> {
+	let missing: String? = None
+	let node = sourceExpressionAt(context, expressionId)?
+	if node.kind == "identifier" {
+		return Ok(Some(node.text))
+	}
+	if node.kind == "field" {
+		let sourceId = childAt(node, 0)?
+		let prefixValue = sourceQualifiedName(sourceId, context)?
+		return match prefixValue {
+			Some(prefix) => Ok(Some(prefix + "." + node.text))
+			None => Ok(missing)
+		}
+	}
+	return Ok(missing)
+}
+
+fn genericJsonFunctionType(qualifiedName: String, typeArgument: String) -> MvpType? {
+	let argumentType = typeFromName(typeArgument)
+	if qualifiedName == "Json.decode" {
+		return Some(MvpType.NamedType("fn(JsonValue)->Result<" + typeName(argumentType) + ",List<JsonError>>"))
+	}
+	if qualifiedName == "Json.encode" {
+		return Some(MvpType.NamedType("fn(" + typeName(argumentType) + ")->Result<String,List<JsonError>>"))
+	}
+	return None
+}
+
+fn checkTypeApply(node: MvpExpression, context: CheckContext, expressions: List<MvpHirExpression>) -> Result<CheckedExpression, MvpDiagnostic> {
+	let sourceId = childAt(node, 0)?
+	let qualifiedNameValue = sourceQualifiedName(sourceId, context)?
+	let qualifiedName = match qualifiedNameValue {
+		Some(value) => value
+		None => ""
+	}
+	let valueTypeValue = genericJsonFunctionType(qualifiedName, node.text)
+	if match valueTypeValue { Some(_) => false, None => true } {
+		return Err(errorDiagnostic("L1010", "Unknown generic function " + qualifiedName, node.span))
+	}
+	let valueType = match valueTypeValue {
+		Some(value) => value
+		None => MvpType.ErrorType
+	}
+	return Ok(addHir(expressions, MvpHirExpression {
+		kind: "function",
+		text: qualifiedName,
+		valueType: valueType,
+		children: [],
+		span: node.span,
+	}, valueType))
+}
+
 fn checkField(node: MvpExpression, context: CheckContext, expressions: List<MvpHirExpression>) -> Result<CheckedExpression, MvpDiagnostic> {
 	let sourceId = childAt(node, 0)?
+	let ownerNameValue = sourceQualifiedName(sourceId, context)?
+	let ownerName = match ownerNameValue {
+		Some(value) => value
+		None => ""
+	}
+	if ownerName == "Json" && node.text == "parse" {
+		let valueType = MvpType.NamedType("fn(String)->Result<JsonValue,List<JsonError>>")
+		return Ok(addHir(expressions, MvpHirExpression {
+			kind: "function",
+			text: "Json.parse",
+			valueType: valueType,
+			children: [],
+			span: node.span,
+		}, valueType))
+	}
 	let target = checkExpression(sourceId, context, expressions)?
 	return resolvedField(node, node.text, target)
 }
@@ -3524,6 +3605,15 @@ fn checkKnownCall(node: MvpExpression, signature: Signature, context: CheckConte
 }
 
 fn checkCall(node: MvpExpression, context: CheckContext, expressions: List<MvpHirExpression>) -> Result<CheckedExpression, MvpDiagnostic> {
+	if node.text == "Json.parse" {
+		return checkKnownCall(node, Signature {
+			name: "Json.parse",
+			parameters: [MvpType.StringType],
+			returnType: MvpType.NamedType("Result<JsonValue,List<JsonError>>"),
+			isPublic: false,
+			span: node.span,
+		}, context, expressions)
+	}
 	let constructorName = standardConstructorName(node.text)
 	if constructorName == "Some" {
 		if List.length(node.children) != 1 {
@@ -4147,6 +4237,9 @@ fn checkExpression(expressionId: Int, context: CheckContext, expressions: List<M
 	}
 	if node.kind == "call" {
 		return checkCall(node, context, expressions)
+	}
+	if node.kind == "typeApply" {
+		return checkTypeApply(node, context, expressions)
 	}
 	if node.kind == "field" {
 		return checkField(node, context, expressions)

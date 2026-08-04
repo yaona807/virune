@@ -725,7 +725,53 @@ fn parsePostfix(cursor: Cursor, expressions: List<MvpExpression>) -> Result<Pars
 	let mut current = parsed.cursor
 	let mut expressionId = parsed.expressionId
 	let mut arena = parsed.expressions
-	while tokenAt(current).text == "[" || tokenAt(current).text == "." || tokenAt(current).text == "(" || tokenAt(current).text == "?" {
+	while tokenAt(current).text == "[" || tokenAt(current).text == "." || tokenAt(current).text == "(" || tokenAt(current).text == "?" || tokenAt(current).text == "<" {
+		if tokenAt(current).text == "<" {
+			let base = expressionAt(arena, expressionId, tokenAt(current).span)?
+			let mut scan = advance(current)
+			let mut depth = 1
+			let mut typeText = ""
+			let mut valid = true
+			while depth > 0 {
+				let token = tokenAt(scan)
+				if token.kind == MvpTokenKind.EndOfFile || token.kind == MvpTokenKind.NewLine || token.text == "{" || token.text == "}" {
+					valid = false
+					break
+				}
+				if token.text == "<" {
+					depth = depth + 1
+					typeText = typeText + token.text
+					scan = advance(scan)
+					continue
+				}
+				if token.text == ">" {
+					depth = depth - 1
+					if depth == 0 {
+						break
+					}
+					typeText = typeText + token.text
+					scan = advance(scan)
+					continue
+				}
+				typeText = typeText + token.text
+				scan = advance(scan)
+			}
+			if !valid || tokenAt(advance(scan)).text != "(" {
+				break
+			}
+			let close = tokenAt(scan)
+			let added = addExpression(advance(scan), arena, MvpExpression {
+				kind: "typeApply",
+				text: typeText,
+				literalType: None,
+				children: [expressionId],
+				span: span(base.span.start, close.span.end),
+			})
+			current = added.cursor
+			expressionId = added.expressionId
+			arena = added.expressions
+			continue
+		}
 		if tokenAt(current).text == "?" {
 			let base = expressionAt(arena, expressionId, tokenAt(current).span)?
 			let question = tokenAt(current)
@@ -1169,7 +1215,7 @@ fn parseModule(tokens: List<MvpToken>) -> Result<MvpModule, MvpDiagnostic> {
 		functions = List.append(functions, parsed.value)
 		cursor = skipNewLines(parsed.cursor)
 	}
-	validateImports(imports)?
+	let importValidation = validateImports(imports)?
 	return Ok(MvpModule { functions: functions })
 }
 
