@@ -1,14 +1,20 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+	BOOTSTRAP_STAGE_DIAGNOSTIC_SCHEMA,
+	BOOTSTRAP_STAGE_EXECUTOR_VERSION,
 	compareStageArtifacts,
 	compareStageModules,
 	executeBootstrapStages,
 	stageArtifact,
 	type BootstrapStageCompiler,
+	type BootstrapStageArtifact,
 } from '../src/selfhost/bootstrap-stage-executor.js';
 import type { KernelInputV1 } from '../src/selfhost/contract.js';
-import type { ProjectCompilerResultV1 } from '../src/selfhost/project-compiler-adapter.js';
+import {
+	PROJECT_COMPILER_RESULT_SCHEMA,
+	type ProjectCompilerResultV1,
+} from '../src/selfhost/project-compiler-adapter.js';
 
 const input: KernelInputV1 = {
 	contractVersion: '1',
@@ -74,6 +80,38 @@ test('stage executor proves normalized Stage 1 and Stage 2 equality', async () =
 	assert.deepEqual(execution.differences, []);
 	assert.equal(execution.stage1.sha256, execution.stage2.sha256);
 	assert.deepEqual(loaded, [execution.stage1.sha256]);
+	assert.equal(execution.stage1.executorVersion, BOOTSTRAP_STAGE_EXECUTOR_VERSION);
+	assert.deepEqual(execution.stage1.metadata, {
+		contractVersion: '1',
+		languageVersion: '1.0',
+		platform: 'node',
+		accepted: true,
+		resultSchema: PROJECT_COMPILER_RESULT_SCHEMA,
+		diagnosticSchema: BOOTSTRAP_STAGE_DIAGNOSTIC_SCHEMA,
+	});
+});
+
+test('stage artifact serializes compiler and diagnostic schema metadata', () => {
+	const artifact = stageArtifact('stage1', result('export const value = 1;\n'));
+	const payload = JSON.parse(artifact.serializedPayload) as { readonly metadata: unknown };
+	assert.deepEqual(payload.metadata, artifact.metadata);
+	assert.equal(artifact.metadata.resultSchema, 'virune.selfhost.project-compiler.result.v2');
+	assert.equal(
+		artifact.metadata.diagnosticSchema,
+		'virune.selfhost.project-compiler.result.v2#diagnostics',
+	);
+
+	const drifted: BootstrapStageArtifact = {
+		...stageArtifact('stage2', result('export const value = 1;\n')),
+		metadata: {
+			...artifact.metadata,
+			diagnosticSchema: 'virune.selfhost.project-compiler.result.v3#diagnostics' as unknown as typeof BOOTSTRAP_STAGE_DIAGNOSTIC_SCHEMA,
+		},
+	};
+	assert.deepEqual(
+		compareStageArtifacts(artifact, drifted).map(item => `${item.section}:${item.path}`),
+		['metadata:diagnosticSchema'],
+	);
 });
 
 test('stage artifacts canonicalize module, dependency, and export order', () => {
