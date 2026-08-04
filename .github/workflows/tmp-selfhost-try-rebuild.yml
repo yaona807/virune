@@ -1,4 +1,4 @@
-name: Temporary self-host member-chain rebuild runner
+name: Temporary self-host final diagnostic validation
 
 on:
   pull_request:
@@ -10,12 +10,12 @@ on:
       - reopened
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  rebuild:
+  validate:
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v6
         with:
@@ -25,113 +25,67 @@ jobs:
         with:
           node-version-file: .node-version
           cache: npm
-      - name: Rebuild member-chain integration on current main
+      - name: Validate parenthesized match propagation in checker
         shell: bash
         run: |
           set -euo pipefail
-          expected_feature_head='a1eb1ddc2501cd23b8ae16f452576f0b3afbf3da'
-          expected_main='86307a70ad3857d5baf0729cc8a38f09736d2c3e'
           git fetch --no-tags origin '+refs/heads/*:refs/remotes/origin/*'
-          test "$(git rev-parse origin/main)" = "$expected_main"
-          test "$(git rev-parse origin/feat/selfhost-member-chain-integration)" = "$expected_feature_head"
-          git checkout -B feat/selfhost-member-chain-integration origin/main
-          set +e
-          git cherry-pick --no-commit a1eb1ddc2501cd23b8ae16f452576f0b3afbf3da
-          status=$?
-          set -e
-          test "$status" -eq 1
-          test "$(git diff --name-only --diff-filter=U | sort)" = "$(printf '%s\n' selfhost/mvp/src/checker.virune selfhost/mvp/src/emitter.virune | sort)"
+          test "$(git rev-parse origin/feat/selfhost-member-chain-integration)" = '3ac188fa0dda88862b726311e16c9f76288376bd'
+          git checkout -B final-diagnostic-validation 3ac188fa0dda88862b726311e16c9f76288376bd
           python - <<'PY'
           from pathlib import Path
-          import re
 
-          marker = re.compile(
-              r'<<<<<<< HEAD\n(?P<head>.*?)=======\n(?P<incoming>.*?)>>>>>>> a1eb1dd \(feat\(selfhost\): check and emit arbitrary member chains\)\n',
-              re.DOTALL,
-          )
-
-          checker_path = Path('selfhost/mvp/src/checker.virune')
-          checker = checker_path.read_text()
-          checker_matches = list(marker.finditer(checker))
-          if len(checker_matches) != 1:
-              raise RuntimeError(f'expected one checker conflict, found {len(checker_matches)}')
-          checker_match = checker_matches[0]
-          incoming = checker_match.group('incoming')
-          identifier_start = (
-              'fn checkIdentifier(node: MvpExpression, context: CheckContext, expressions: List<MvpHirExpression>) '
-              '-> Result<CheckedExpression, MvpDiagnostic> {\n'
-              '\tlet direct = resolveSimpleName(node, node.text, context, expressions)'
-          )
-          identifier_with_guard = (
-              'fn checkIdentifier(node: MvpExpression, context: CheckContext, expressions: List<MvpHirExpression>) '
-              '-> Result<CheckedExpression, MvpDiagnostic> {\n'
-              '\tif standardConstructorName(node.text) == "None" {\n'
-              '\t\treturn Err(errorDiagnostic("L2020", "Cannot infer the Optional type of None without an expected type", node.span))\n'
-              '\t}\n'
-              '\tlet direct = resolveSimpleName(node, node.text, context, expressions)'
-          )
-          if incoming.count(identifier_start) != 1:
-              raise RuntimeError('incoming member-chain checkIdentifier shape changed')
-          incoming = incoming.replace(identifier_start, identifier_with_guard, 1)
-          checker = checker[:checker_match.start()] + incoming + checker[checker_match.end():]
-          if any(token in checker for token in ('<<<<<<< ', '=======', '>>>>>>> ')):
-              raise RuntimeError('checker conflict marker remains')
-          if checker.count('fn checkedLocal(') != 1 or checker.count('fn checkedFunction(') != 1:
-              raise RuntimeError('member-chain name resolution helpers are missing or duplicated')
-          if checker.count('fn resolvedField(') != 1 or checker.count('fn checkField(') != 1:
-              raise RuntimeError('member-chain field helpers are missing or duplicated')
-          if checker.count('Cannot infer the Optional type of None without an expected type') != 1:
-              raise RuntimeError('None expected-type diagnostic was not preserved exactly once')
-          checker_path.write_text(checker)
-
-          emitter_path = Path('selfhost/mvp/src/emitter.virune')
-          emitter = emitter_path.read_text()
-          emitter_matches = list(marker.finditer(emitter))
-          if len(emitter_matches) != 2:
-              raise RuntimeError(f'expected two emitter conflicts, found {len(emitter_matches)}')
-          pieces = []
-          cursor = 0
-          seen_functions = False
-          seen_dispatch = False
-          for match in emitter_matches:
-              pieces.append(emitter[cursor:match.start()])
-              head = match.group('head')
-              incoming = match.group('incoming')
-              if 'fn emitVariant(' in head and 'fn emitField(' in incoming and 'fn emitInvoke(' in incoming:
-                  replacement = head + '}\n' + incoming
-                  seen_functions = True
-              elif 'expression.kind == "variant"' in head and 'expression.kind == "field"' in incoming and 'expression.kind == "invoke"' in incoming:
-                  replacement = head + '\t}\n' + incoming
-                  seen_dispatch = True
-              else:
-                  raise RuntimeError('unexpected emitter conflict shape')
-              pieces.append(replacement)
-              cursor = match.end()
-          pieces.append(emitter[cursor:])
-          emitter = ''.join(pieces)
-          if not seen_functions or not seen_dispatch:
-              raise RuntimeError('emitter additive resolution did not cover functions and dispatch')
-          if any(token in emitter for token in ('<<<<<<< ', '=======', '>>>>>>> ')):
-              raise RuntimeError('emitter conflict marker remains')
-          if emitter.count('fn emitVariant(') != 1 or emitter.count('fn emitField(') != 1 or emitter.count('fn emitInvoke(') != 1:
-              raise RuntimeError('emitter helper count is invalid')
-          emitter_path.write_text(emitter)
+          path = Path('selfhost/mvp/src/checker.virune')
+          source = path.read_text()
+          old = '''\tlet checked = match annotation {
+          \t\tSome(expectedType) => checkExpectedExpression(sourceExpressionId, expectedType, context, expressions)
+          \t\tNone => checkExpression(sourceExpressionId, context, expressions)
+          \t}?
+          '''
+          new = '''\tlet checked = (match annotation {
+          \t\tSome(expectedType) => checkExpectedExpression(sourceExpressionId, expectedType, context, expressions)
+          \t\tNone => checkExpression(sourceExpressionId, context, expressions)
+          \t})?
+          '''
+          count = source.count(old)
+          if count != 1:
+              raise RuntimeError(f'expected one target match-propagation expression, found {count}')
+          path.write_text(source.replace(old, new, 1))
           PY
-          git add selfhost/mvp/src/checker.virune selfhost/mvp/src/emitter.virune
-          git cherry-pick --quit
-          expected_paths="$(printf '%s\n' \
-            packages/compiler/test/selfhost-member-chain-integration.test.ts \
-            selfhost/mvp/src/checker.virune \
-            selfhost/mvp/src/emitter.virune | sort)"
-          actual_paths="$(git diff --cached --name-only | sort)"
-          test "$actual_paths" = "$expected_paths"
-          git diff --cached --check
-          echo 'CHECKER_REMAINING_DIAGNOSTIC_CONTEXT'
-          nl -ba selfhost/mvp/src/checker.virune | sed -n '4188,4200p'
+          git diff --check
+          test "$(git diff --name-only)" = 'selfhost/mvp/src/checker.virune'
           npm ci
           npm run build
-          node --test --test-timeout=180000 packages/compiler/dist/test/selfhost-member-chain-integration.test.js
-          git config user.name github-actions[bot]
-          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git commit -m 'feat(selfhost): check and emit arbitrary member chains'
-          git push --force-with-lease=refs/heads/feat/selfhost-member-chain-integration:"$expected_feature_head" origin HEAD:feat/selfhost-member-chain-integration
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('packages/compiler/dist/test/selfhost-full-language-inventory.test.js')
+          source = path.read_text()
+          replacements = [
+              ('timeout: 420_000', 'timeout: 720_000'),
+              ('timeout: 420000', 'timeout: 720000'),
+          ]
+          for old, new in replacements:
+              if old in source:
+                  path.write_text(source.replace(old, new, 1))
+                  break
+          else:
+              raise RuntimeError('inventory internal timeout not found in generated test')
+          PY
+          node --test --test-timeout=720000 packages/compiler/dist/test/selfhost-full-language-inventory.test.js
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          path = Path('.cache/ci-timings/selfhost-full-language-inventory.json')
+          inventory = json.loads(path.read_text())
+          remaining = [
+              item for item in inventory.get('firstDiagnostics', [])
+              if item.get('code') == 'L0002'
+              and item.get('message') == 'Expected a line end after a let statement'
+              and item.get('sourcePath') == 'src/checker.virune'
+          ]
+          if remaining:
+              raise RuntimeError('parenthesized match did not remove the targeted L0002 diagnostic')
+          print('SELFHOST_AFTER_PARENTHESIZED_MATCH_JSON')
+          print(json.dumps(inventory, separators=(',', ':')))
+          PY
