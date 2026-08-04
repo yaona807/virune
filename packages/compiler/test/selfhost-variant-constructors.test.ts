@@ -29,6 +29,13 @@ const input = (text: string): KernelInputV1 => ({
 });
 
 const runtimeSource = [
+	'fn unwrap(value: Int?) -> Int {',
+	'\treturn match value {',
+	'\t\tSome(item) => item',
+	'\t\tNone => 0',
+	'\t}',
+	'}',
+	'',
 	'fn optionalValue(flag: Bool) -> Int? {',
 	'\tif flag {',
 	'\t\treturn Option.Some(7)',
@@ -48,20 +55,35 @@ const runtimeSource = [
 	'\treturn value',
 	'}',
 	'',
-	'pub fn main() -> Int {',
-	'\tlet optional = match optionalValue(true) {',
-	'\t\tSome(value) => value',
-	'\t\tNone => 0',
+	'fn conditionalValue(flag: Bool) -> Int? {',
+	'\treturn if flag then Some(13) else None',
+	'}',
+	'',
+	'fn matchValue(flag: Bool) -> Int? {',
+	'\treturn match flag {',
+	'\t\ttrue => Some(17)',
+	'\t\t_ => None',
 	'\t}',
+	'}',
+	'',
+	'fn assignedValue() -> Int? {',
+	'\tlet mut value: Int? = None',
+	'\tvalue = Some(19)',
+	'\treturn value',
+	'}',
+	'',
+	'pub fn main() -> Int {',
+	'\tlet optional = unwrap(optionalValue(true))',
 	'\tlet result = match resultValue(true) {',
 	'\t\tOk(value) => value',
 	'\t\tErr(_) => 0',
 	'\t}',
-	'\tlet inferred = match inferredValue() {',
-	'\t\tSome(value) => value',
-	'\t\tNone => 0',
-	'\t}',
-	'\treturn optional + result + inferred',
+	'\tlet inferred = unwrap(inferredValue())',
+	'\tlet argument = unwrap(Some(13))',
+	'\tlet conditional = unwrap(conditionalValue(true))',
+	'\tlet matched = unwrap(matchValue(true))',
+	'\tlet assigned = unwrap(assignedValue())',
+	'\treturn optional + result + inferred + argument + conditional + matched + assigned',
 	'}',
 	'',
 ].join('\n');
@@ -94,9 +116,12 @@ test('Option and Result constructors resolve from expected types and execute', a
 		assert.match(emittedCode, /return None;/);
 		assert.match(emittedCode, /Ok\(9\)/);
 		assert.match(emittedCode, /Err\("bad"\)/);
+		assert.match(emittedCode, /Some\(13\)/);
+		assert.match(emittedCode, /Some\(17\)/);
+		assert.match(emittedCode, /Some\(19\)/);
 		assert.doesNotMatch(emittedCode, /(?:Some|Ok|Err)\([^)]*, \$ctx\)/);
 		const runtime = await executeKernelOutputWithNode(request, output);
-		assert.equal(runtime.returnValue, 27);
+		assert.equal(runtime.returnValue, 89);
 		assert.equal(runtime.panic, null);
 	} finally {
 		await rm(loaded.root, { recursive: true, force: true });
