@@ -1,4 +1,4 @@
-name: Temporary self-host expected List retry
+name: Temporary self-host expected value validation
 
 on:
   pull_request:
@@ -10,7 +10,7 @@ permissions:
   contents: write
 
 jobs:
-  retry:
+  validate:
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:
@@ -22,7 +22,7 @@ jobs:
         with:
           node-version-file: .node-version
           cache: npm
-      - name: Retry with intent-to-add path guard
+      - name: Validate expected List and record-field propagation
         shell: bash
         run: |
           set -euo pipefail
@@ -35,10 +35,80 @@ jobs:
           if workflow.count(marker) != 1:
               raise RuntimeError(f'expected one run block, found {workflow.count(marker)}')
           script = textwrap.dedent(workflow.split(marker, 1)[1])
-          old = 'actual_paths="$(git diff --name-only | sort)"'
-          new = 'git add -N packages/compiler/test/selfhost-expected-list-literals.test.ts\nactual_paths="$(git diff --name-only | sort)"'
-          if script.count(old) != 1:
-              raise RuntimeError(f'expected one path guard, found {script.count(old)}')
-          Path('/tmp/expected-list-retry.sh').write_text(script.replace(old, new, 1))
+
+          old_checkout = 'git checkout -B "$branch" "origin/$branch"'
+          new_checkout = 'git checkout -B "$branch" 8ed1b0e825fbbd67ce339ff6da18dbf2e4be1590'
+          if script.count(old_checkout) != 1:
+              raise RuntimeError(f'expected one checkout target, found {script.count(old_checkout)}')
+          script = script.replace(old_checkout, new_checkout, 1)
+
+          old_guard = 'actual_paths="$(git diff --name-only | sort)"'
+          new_guard = 'git add -N packages/compiler/test/selfhost-expected-list-literals.test.ts\nactual_paths="$(git diff --name-only | sort)"'
+          if script.count(old_guard) != 1:
+              raise RuntimeError(f'expected one path guard, found {script.count(old_guard)}')
+          script = script.replace(old_guard, new_guard, 1)
+
+          insertion_anchor = '''expected_paths="$(printf '%s\\n' packages/compiler/test/selfhost-expected-list-literals.test.ts selfhost/mvp/src/checker.virune | sort)"
+          '''
+          record_patch = '''python - <<'PY'
+          from pathlib import Path
+          path = Path('selfhost/mvp/src/checker.virune')
+          source = path.read_text()
+          old = '''fn checkRecordField(node: MvpExpression, context: CheckContext, expressions: List<MvpHirExpression>) -> Result<CheckedExpression, MvpDiagnostic> {
+          \tlet sourceId = childAt(node, 0)?
+          \tlet checked = checkExpression(sourceId, context, expressions)?
+          \treturn Ok(addHir(checked.expressions, MvpHirExpression {
+          \t\tkind: "recordField",
+          \t\ttext: node.text,
+          \t\tvalueType: checked.valueType,
+          \t\tchildren: [checked.expressionId],
+          \t\tspan: node.span,
+          \t}, checked.valueType))
+          }
+          '''
+          new = '''fn checkRecordField(node: MvpExpression, recordName: String, context: CheckContext, expressions: List<MvpHirExpression>) -> Result<CheckedExpression, MvpDiagnostic> {
+          \tlet sourceId = childAt(node, 0)?
+          \tlet expectedType = namedFieldType(recordName, node.text)
+          \tlet checkedResult = if expectedType == MvpType.ErrorType then checkExpression(sourceId, context, expressions) else checkExpectedExpression(sourceId, expectedType, context, expressions)
+          \tlet checked = checkedResult?
+          \treturn Ok(addHir(checked.expressions, MvpHirExpression {
+          \t\tkind: "recordField",
+          \t\ttext: node.text,
+          \t\tvalueType: checked.valueType,
+          \t\tchildren: [checked.expressionId],
+          \t\tspan: node.span,
+          \t}, checked.valueType))
+          }
+          '''
+          if source.count(old) != 1:
+              raise RuntimeError(f'expected one record-field helper, found {source.count(old)}')
+          source = source.replace(old, new, 1)
+          old_call = 'let checked = checkRecordField(source, context, arena)?'
+          new_call = 'let checked = checkRecordField(source, node.text, context, arena)?'
+          if source.count(old_call) != 1:
+              raise RuntimeError(f'expected one record-field call, found {source.count(old_call)}')
+          path.write_text(source.replace(old_call, new_call, 1))
           PY
-          bash /tmp/expected-list-retry.sh
+          expected_paths="$(printf '%s\\n' packages/compiler/test/selfhost-expected-list-literals.test.ts selfhost/mvp/src/checker.virune | sort)"
+          '''
+          if script.count(insertion_anchor) != 1:
+              raise RuntimeError(f'expected one record patch insertion point, found {script.count(insertion_anchor)}')
+          script = script.replace(insertion_anchor, record_patch, 1)
+
+          final_anchor = 'git config user.name github-actions[bot]'
+          final_guard = '''python - <<'PY'
+          import json
+          from pathlib import Path
+          inventory = json.loads(Path('.cache/ci-timings/selfhost-full-language-inventory.json').read_text())
+          remaining = [item for item in inventory.get('firstDiagnostics', []) if item.get('code') == 'L2020']
+          if remaining:
+              raise RuntimeError('expected-value diagnostics remain: ' + json.dumps(remaining, separators=(',', ':')))
+          print('SELFHOST_EXPECTED_VALUE_INVENTORY_JSON')
+          print(json.dumps(inventory, separators=(',', ':')))
+          PY
+          git config user.name github-actions[bot]'''
+          if script.count(final_anchor) != 1:
+              raise RuntimeError(f'expected one final guard insertion point, found {script.count(final_anchor)}')
+          Path('/tmp/expected-value-validation.sh').write_text(script.replace(final_anchor, final_guard, 1))
+          PY
+          bash /tmp/expected-value-validation.sh
