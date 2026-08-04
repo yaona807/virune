@@ -81,7 +81,7 @@ test('multiline binary expressions preserve precedence and execute through the g
 		assert.match(emittedCode, /&&/);
 		assert.match(emittedCode, /intAdd\(/);
 		assert.match(emittedCode, /intMultiply\(/);
-		assert.match(emittedCode, /"function " \+ "body"/);
+		assert.match(emittedCode, /\(\(prefix \+ "function "\) \+ "body"\)/);
 		const runtime = await executeKernelOutputWithNode(request, output);
 		assert.equal(runtime.returnValue, 18);
 		assert.equal(runtime.panic, null);
