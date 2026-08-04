@@ -39,6 +39,13 @@ record Signature {
 	span: MvpSpan
 }
 
+record MvpExternalSignature derives Json {
+	name: String
+	parameters: List<MvpType>
+	returnType: MvpType
+	span: MvpSpan
+}
+
 record Binding {
 	name: String
 	valueType: MvpType
@@ -4543,8 +4550,23 @@ fn checkFunction(function: MvpFunction, signatures: List<Signature>) -> Result<M
 	})
 }
 
-fn registerSignatures(functions: List<MvpFunction>) -> Result<List<Signature>, MvpDiagnostic> {
+fn registerSignatures(
+	functions: List<MvpFunction>,
+	externalValues: List<MvpExternalSignature>,
+) -> Result<List<Signature>, MvpDiagnostic> {
 	let mut signatures: List<Signature> = []
+	for externalValue in externalValues {
+		if match findSignature(signatures, externalValue.name) { Some(_) => true, None => false } {
+			return Err(errorDiagnostic("L1001", "Duplicate imported signature " + externalValue.name, externalValue.span))
+		}
+		signatures = List.append(signatures, Signature {
+			name: externalValue.name,
+			parameters: externalValue.parameters,
+			returnType: externalValue.returnType,
+			isPublic: false,
+			span: externalValue.span,
+		})
+	}
 	for function in functions {
 		if match findSignature(signatures, function.name) { Some(_) => true, None => false } {
 			return Err(errorDiagnostic("L1001", "Duplicate definition " + function.name, function.span))
@@ -4560,8 +4582,11 @@ fn registerSignatures(functions: List<MvpFunction>) -> Result<List<Signature>, M
 	return Ok(signatures)
 }
 
-fn checkModule(moduleValue: MvpModule) -> Result<MvpHirModule, MvpDiagnostic> {
-	let signatures = registerSignatures(moduleValue.functions)?
+fn checkModule(
+	moduleValue: MvpModule,
+	externalSignatures: List<MvpExternalSignature>,
+) -> Result<MvpHirModule, MvpDiagnostic> {
+	let signatures = registerSignatures(moduleValue.functions, externalSignatures)?
 	let mut functions: List<MvpHirFunction> = []
 	for function in moduleValue.functions {
 		functions = List.append(functions, checkFunction(function, signatures)?)
@@ -4569,15 +4594,21 @@ fn checkModule(moduleValue: MvpModule) -> Result<MvpHirModule, MvpDiagnostic> {
 	return Ok(MvpHirModule { functions: functions })
 }
 
-fn checkMvp(moduleValue: MvpModule) -> MvpCheckResult {
+fn checkMvp(
+	moduleValue: MvpModule,
+	externalSignatures: List<MvpExternalSignature>,
+) -> MvpCheckResult {
 	let exports = sourceExports(moduleValue)
-	return match checkModule(moduleValue) {
+	return match checkModule(moduleValue, externalSignatures) {
 		Ok(value) => MvpCheckResult { hirModule: Some(value), diagnostics: [], exports: exports }
 		Err(diagnostic) => MvpCheckResult { hirModule: None, diagnostics: [diagnostic], exports: exports }
 	}
 }
 
-pub fn checkMvpJson(encoded: String) -> Result<String, List<JsonError>> {
+fn checkMvpEncoded(
+	encoded: String,
+	externalSignatures: List<MvpExternalSignature>,
+) -> Result<String, List<JsonError>> {
 	let raw = Json.parse(encoded)?
 	let parsed = Json.decode<MvpParseTransport>(raw)?
 	if List.isNotEmpty(parsed.diagnostics) || match parsed.parsedModule { Some(_) => false, None => true } {
@@ -4589,7 +4620,21 @@ pub fn checkMvpJson(encoded: String) -> Result<String, List<JsonError>> {
 	}
 	let moduleValue = match parsed.parsedModule {
 		Some(value) => value
-		None => MvpModule { functions: [] }
+		None => MvpModule { imports: [], functions: [] }
 	}
-	return Json.encode<MvpCheckResult>(checkMvp(moduleValue))
+	return Json.encode<MvpCheckResult>(checkMvp(moduleValue, externalSignatures))
+}
+
+pub fn checkMvpJson(encoded: String) -> Result<String, List<JsonError>> {
+	let externalSignatures: List<MvpExternalSignature> = []
+	return checkMvpEncoded(encoded, externalSignatures)
+}
+
+pub fn checkMvpProjectJson(
+	encoded: String,
+	externalEncoded: String,
+) -> Result<String, List<JsonError>> {
+	let raw = Json.parse(externalEncoded)?
+	let externalSignatures = Json.decode<List<MvpExternalSignature>>(raw)?
+	return checkMvpEncoded(encoded, externalSignatures)
 }

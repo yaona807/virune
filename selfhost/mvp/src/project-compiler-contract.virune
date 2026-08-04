@@ -5,7 +5,7 @@
 //! project emitter. The current lowering accepts the established Pure Core MVP
 //! subset. Full-language lowering remains an explicit capability blocker.
 
-import { checkMvpJson } from "./checker.virune"
+import { checkMvpProjectJson } from "./checker.virune"
 import { emitMvpJson } from "./emitter.virune"
 import { parseFrontendCore } from "./frontend-parser-core.virune"
 import {
@@ -20,6 +20,12 @@ import { lexMvpJson } from "./lexer.virune"
 import {
 	MvpCompilation,
 	MvpDiagnostic,
+	MvpFunction,
+	MvpImport,
+	MvpModule,
+	MvpParameter,
+	MvpSpan,
+	MvpType,
 } from "./model.virune"
 import { parseMvpJson } from "./parser.virune"
 import {
@@ -151,6 +157,24 @@ record ProjectLoweringSummary {
 	diagnostics: List<ProjectCompilerDiagnosticV1>
 	modules: List<ProjectEmitterModule>
 	checkedModules: Int
+}
+
+record MvpParseTransport derives Json {
+	parsedModule: MvpModule?
+	diagnostics: List<MvpDiagnostic>
+}
+
+record ParsedMvpProjectSource {
+	path: String
+	parsedEncoded: String
+	moduleValue: MvpModule
+}
+
+record ProjectExternalSignature derives Json {
+	name: String
+	parameters: List<MvpType>
+	returnType: MvpType
+	span: MvpSpan
 }
 
 fn emptyTextList() -> List<String> {
@@ -360,10 +384,136 @@ fn parseProjectSources(sources: List<ProjectCompilerSourceV1>) -> Result<Project
 	})
 }
 
-fn compileMvpSource(source: String) -> Result<MvpCompilation, List<JsonError>> {
-	let lexed = lexMvpJson(source)?
-	let parsed = parseMvpJson(lexed)?
-	let checked = checkMvpJson(parsed)?
+fn parseMvpProjectSources(
+	sources: List<ProjectCompilerSourceV1>,
+) -> Result<List<ParsedMvpProjectSource>, List<JsonError>> {
+	let mut values: List<ParsedMvpProjectSource> = []
+	for source in sources {
+		let lexed = lexMvpJson(source.text)?
+		let parsedEncoded = parseMvpJson(lexed)?
+		let raw = Json.parse(parsedEncoded)?
+		let parsed = Json.decode<MvpParseTransport>(raw)?
+		let moduleValue = match parsed.parsedModule {
+			Some(value) => value
+			None => MvpModule { imports: [], functions: [] }
+		}
+		values = List.append(values, ParsedMvpProjectSource {
+			path: source.path,
+			parsedEncoded: parsedEncoded,
+			moduleValue: moduleValue,
+		})
+	}
+	return Ok(values)
+}
+
+fn findParsedMvpSource(
+	values: List<ParsedMvpProjectSource>,
+	path: String,
+) -> ParsedMvpProjectSource? {
+	for value in values {
+		if value.path == path {
+			return Some(value)
+		}
+	}
+	return None
+}
+
+fn projectParameterTypes(parameters: List<MvpParameter>) -> List<MvpType> {
+	let mut values: List<MvpType> = []
+	for parameter in parameters {
+		values = List.append(values, parameter.valueType)
+	}
+	return values
+}
+
+fn findPublicFunction(
+	functions: List<MvpFunction>,
+	name: String,
+) -> MvpFunction? {
+	for function in functions {
+		if function.isPublic && function.name == name {
+			return Some(function)
+		}
+	}
+	return None
+}
+
+fn dependencyTargetPath(
+	dependencies: List<ProjectLinkDependency>,
+	modulePath: String,
+	specifier: String,
+) -> String {
+	for dependency in dependencies {
+		if dependency.modulePath == modulePath && dependency.sourceKind == "virune" && dependency.specifier == specifier {
+			return match dependency.resolvedPath {
+				Some(value) => value
+				None => ""
+			}
+		}
+	}
+	return ""
+}
+
+fn importedSignatures(
+	projectModule: ParsedMvpProjectSource,
+	modules: List<ParsedMvpProjectSource>,
+	dependencies: List<ProjectLinkDependency>,
+) -> List<ProjectExternalSignature> {
+	let mut signatures: List<ProjectExternalSignature> = []
+	for importValue in projectModule.moduleValue.imports {
+		let targetPath = dependencyTargetPath(
+			dependencies,
+			projectModule.path,
+			importValue.specifier,
+		)
+		let targetValue = findParsedMvpSource(modules, targetPath)
+		if match targetValue { Some(_) => true, None => false } {
+			let target = match targetValue {
+				Some(value) => value
+				None => ParsedMvpProjectSource {
+					path: "",
+					parsedEncoded: "",
+					moduleValue: MvpModule { imports: [], functions: [] },
+				}
+			}
+			for binding in importValue.bindings {
+				let functionValue = findPublicFunction(
+					target.moduleValue.functions,
+					binding.importedName,
+				)
+				if match functionValue { Some(_) => true, None => false } {
+					let function = match functionValue {
+						Some(value) => value
+						None => MvpFunction {
+							isPublic: false,
+							name: "",
+							parameters: [],
+							returnType: MvpType.ErrorType,
+							expressions: [],
+							statementIds: [],
+							statements: [],
+							span: binding.span,
+						}
+					}
+					signatures = List.append(signatures, ProjectExternalSignature {
+						name: binding.localName,
+						parameters: projectParameterTypes(function.parameters),
+						returnType: function.returnType,
+						span: binding.span,
+					})
+				}
+			}
+		}
+	}
+	return signatures
+}
+
+fn compileMvpSource(
+	source: ParsedMvpProjectSource,
+	externalSignatures: List<ProjectExternalSignature>,
+) -> Result<MvpCompilation, List<JsonError>> {
+	let externalEncoded = Json.encode<List<ProjectExternalSignature>>(externalSignatures)?
+	let checked = checkMvpProjectJson(source.parsedEncoded, externalEncoded)?
 	let emitted = emitMvpJson(checked)?
 	let raw = Json.parse(emitted)?
 	return Json.decode<MvpCompilation>(raw)
@@ -398,12 +548,91 @@ fn outputPath(sourcePath: String) -> String {
 	return ".selfhost-output/" + base + ".js"
 }
 
-fn lowerProjectSources(sources: List<ProjectCompilerSourceV1>) -> Result<ProjectLoweringSummary, List<JsonError>> {
+fn runtimeImportSpecifier(specifier: String) -> String {
+	let suffix = ".virune"
+	let length = String.length(specifier)
+	let suffixLength = String.length(suffix)
+	if length >= suffixLength && String.slice(specifier, length - suffixLength, None) == suffix {
+		return String.slice(specifier, 0, Some(length - suffixLength)) + ".js"
+	}
+	return specifier
+}
+
+fn importBindingText(importedName: String, localName: String) -> String {
+	if importedName == localName {
+		return importedName
+	}
+	return importedName + " as " + localName
+}
+
+fn functionImportLine(
+	modulePath: String,
+	importValue: MvpImport,
+	modules: List<ParsedMvpProjectSource>,
+	dependencies: List<ProjectLinkDependency>,
+) -> String {
+	let targetPath = dependencyTargetPath(dependencies, modulePath, importValue.specifier)
+	let targetValue = findParsedMvpSource(modules, targetPath)
+	if match targetValue { Some(_) => false, None => true } {
+		return ""
+	}
+	let target = match targetValue {
+		Some(value) => value
+		None => ParsedMvpProjectSource {
+			path: "",
+			parsedEncoded: "",
+			moduleValue: MvpModule { imports: [], functions: [] },
+		}
+	}
+	let mut bindings = ""
+	let mut first = true
+	for binding in importValue.bindings {
+		let functionValue = findPublicFunction(target.moduleValue.functions, binding.importedName)
+		if match functionValue { Some(_) => true, None => false } {
+			if !first {
+				bindings = bindings + ", "
+			}
+			bindings = bindings + importBindingText(
+				binding.importedName,
+				binding.localName,
+			)
+			first = false
+		}
+	}
+	if first {
+		return ""
+	}
+	return "import { " + bindings + " } from '" + runtimeImportSpecifier(importValue.specifier) + "';"
+}
+
+fn modulePreamble(
+	projectModule: ParsedMvpProjectSource,
+	modules: List<ParsedMvpProjectSource>,
+	dependencies: List<ProjectLinkDependency>,
+) -> List<String> {
+	let mut lines: List<String> = [runtimeImportLine()]
+	for importValue in projectModule.moduleValue.imports {
+		let line = functionImportLine(projectModule.path, importValue, modules, dependencies)
+		if String.length(line) > 0 {
+			lines = List.append(lines, line)
+		}
+	}
+	return lines
+}
+
+fn lowerProjectSources(
+	sources: List<ProjectCompilerSourceV1>,
+	dependencies: List<ProjectLinkDependency>,
+) -> Result<ProjectLoweringSummary, List<JsonError>> {
+	let parsedSources = parseMvpProjectSources(sources)?
 	let mut diagnostics: List<ProjectCompilerDiagnosticV1> = []
 	let mut modules: List<ProjectEmitterModule> = []
 	let mut checkedModules = 0
-	for source in sources {
-		let compilation = compileMvpSource(source.text)?
+	for source in parsedSources {
+		let compilation = compileMvpSource(
+			source,
+			importedSignatures(source, parsedSources, dependencies),
+		)?
 		checkedModules = checkedModules + 1
 		for value in compilation.diagnostics {
 			diagnostics = List.append(diagnostics, mvpDiagnostic(source.path, value))
@@ -412,7 +641,7 @@ fn lowerProjectSources(sources: List<ProjectCompilerSourceV1>) -> Result<Project
 			modules = List.append(modules, ProjectEmitterModule {
 				sourcePath: source.path,
 				outputPath: outputPath(source.path),
-				preamble: [runtimeImportLine()],
+				preamble: modulePreamble(source, parsedSources, dependencies),
 				statements: splitLines(compilation.codeBody),
 				sourceMap: "",
 			})
@@ -641,7 +870,7 @@ pub fn compileProjectMvpJson(encoded: String) -> Result<String, List<JsonError>>
 		)
 	}
 
-	let lowered = lowerProjectSources(request.sources)?
+	let lowered = lowerProjectSources(request.sources, linked.dependencies)?
 	if !List.isEmpty(lowered.diagnostics) {
 		return rejectedResult(
 			request,

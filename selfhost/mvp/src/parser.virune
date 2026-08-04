@@ -1216,7 +1216,7 @@ fn parseModule(tokens: List<MvpToken>) -> Result<MvpModule, MvpDiagnostic> {
 		cursor = skipNewLines(parsed.cursor)
 	}
 	let importValidation = validateImports(imports)?
-	return Ok(MvpModule { functions: functions })
+	return Ok(MvpModule { imports: imports, functions: functions })
 }
 
 fn parseMvp(tokens: List<MvpToken>) -> MvpParseResult {
