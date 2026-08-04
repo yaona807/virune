@@ -100,7 +100,18 @@ fn typeMismatch(actual: MvpType, expected: MvpType, valueSpan: MvpSpan) -> MvpDi
 }
 
 fn typesCompatible(actual: MvpType, expected: MvpType) -> Bool {
-	return actual == expected || actual == MvpType.ErrorType || expected == MvpType.ErrorType
+	if actual == expected || actual == MvpType.ErrorType || expected == MvpType.ErrorType {
+		return true
+	}
+	let actualName = match actual {
+		NamedType(name) => name
+		_ => ""
+	}
+	let expectedName = match expected {
+		NamedType(name) => name
+		_ => ""
+	}
+	return actualName != "" && expectedName != "" && compactTypeName(actualName) == compactTypeName(expectedName)
 }
 
 fn preferredType(left: MvpType, right: MvpType) -> MvpType {
@@ -298,7 +309,7 @@ fn typeFromName(value: String) -> MvpType {
 	if compact == "Unit" {
 		return MvpType.UnitType
 	}
-	if String.contains(compact, "List<") {
+	if String.length(compact) >= 5 && String.slice(compact, 0, Some(5)) == "List<" {
 		let elementName = genericArgument(compact, 0)
 		if match elementName { Some(_) => true, None => false } {
 			let elementType = match elementName { Some(name) => typeFromName(name), None => MvpType.ErrorType }
@@ -3594,6 +3605,15 @@ fn checkKnownCall(node: MvpExpression, signature: Signature, context: CheckConte
 }
 
 fn checkCall(node: MvpExpression, context: CheckContext, expressions: List<MvpHirExpression>) -> Result<CheckedExpression, MvpDiagnostic> {
+	if node.text == "Json.parse" {
+		return checkKnownCall(node, Signature {
+			name: "Json.parse",
+			parameters: [MvpType.StringType],
+			returnType: MvpType.NamedType("Result<JsonValue,List<JsonError>>"),
+			isPublic: false,
+			span: node.span,
+		}, context, expressions)
+	}
 	let constructorName = standardConstructorName(node.text)
 	if constructorName == "Some" {
 		if List.length(node.children) != 1 {
