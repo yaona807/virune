@@ -104,6 +104,16 @@ const unresolvedResultSource = [
 	'',
 ].join('\n');
 
+const incompatibleMatchSource = [
+	'pub fn main() -> Int {',
+	'\treturn match true {',
+	'\t\ttrue => 1',
+	'\t\t_ => "no"',
+	'\t}',
+	'}',
+	'',
+].join('\n');
+
 test('Option and Result constructors resolve from expected types and execute', async () => {
 	const loaded = await loadMvpModule();
 	try {
@@ -147,6 +157,18 @@ test('Ok or Err without an expected Result type reports an inference diagnostic'
 		assert.equal(output.accepted, false);
 		assert.equal(output.diagnostics[0]?.code, 'L2020');
 		assert.match(output.diagnostics[0]?.message ?? '', /Cannot infer the complete Result type for Ok/);
+	} finally {
+		await rm(loaded.root, { recursive: true, force: true });
+	}
+});
+
+test('contextual constructor fallback preserves match-arm compatibility diagnostics', async () => {
+	const loaded = await loadMvpModule();
+	try {
+		const output = await createSelfhostMvpKernel(loaded.module).compile(input(incompatibleMatchSource));
+		assert.equal(output.accepted, false);
+		assert.equal(output.diagnostics[0]?.code, 'L2043');
+		assert.equal(output.diagnostics[0]?.message, 'Match arms must produce the same type');
 	} finally {
 		await rm(loaded.root, { recursive: true, force: true });
 	}
