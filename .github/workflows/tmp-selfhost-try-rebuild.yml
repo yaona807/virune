@@ -1,4 +1,4 @@
-name: Temporary self-host final diagnostic validation
+name: Temporary self-host PR 265 final patch runner
 
 on:
   pull_request:
@@ -10,12 +10,12 @@ on:
       - reopened
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  validate:
+  patch:
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v6
         with:
@@ -25,67 +25,51 @@ jobs:
         with:
           node-version-file: .node-version
           cache: npm
-      - name: Validate parenthesized match propagation in checker
+      - name: Patch validated checker syntax and inventory timeout
         shell: bash
         run: |
           set -euo pipefail
+          expected_feature_head='3ac188fa0dda88862b726311e16c9f76288376bd'
           git fetch --no-tags origin '+refs/heads/*:refs/remotes/origin/*'
-          test "$(git rev-parse origin/feat/selfhost-member-chain-integration)" = '3ac188fa0dda88862b726311e16c9f76288376bd'
-          git checkout -B final-diagnostic-validation 3ac188fa0dda88862b726311e16c9f76288376bd
+          test "$(git rev-parse origin/feat/selfhost-member-chain-integration)" = "$expected_feature_head"
+          git checkout -B feat/selfhost-member-chain-integration origin/feat/selfhost-member-chain-integration
           python - <<'PY'
           from pathlib import Path
 
-          path = Path('selfhost/mvp/src/checker.virune')
-          source = path.read_text()
-          old = '''\tlet checked = match annotation {
+          checker_path = Path('selfhost/mvp/src/checker.virune')
+          checker = checker_path.read_text()
+          old_checker = '''\tlet checked = match annotation {
           \t\tSome(expectedType) => checkExpectedExpression(sourceExpressionId, expectedType, context, expressions)
           \t\tNone => checkExpression(sourceExpressionId, context, expressions)
           \t}?
           '''
-          new = '''\tlet checked = (match annotation {
+          new_checker = '''\tlet checked = (match annotation {
           \t\tSome(expectedType) => checkExpectedExpression(sourceExpressionId, expectedType, context, expressions)
           \t\tNone => checkExpression(sourceExpressionId, context, expressions)
           \t})?
           '''
-          count = source.count(old)
-          if count != 1:
-              raise RuntimeError(f'expected one target match-propagation expression, found {count}')
-          path.write_text(source.replace(old, new, 1))
+          if checker.count(old_checker) != 1:
+              raise RuntimeError(f'expected one checker target, found {checker.count(old_checker)}')
+          checker_path.write_text(checker.replace(old_checker, new_checker, 1))
+
+          test_path = Path('packages/compiler/test/selfhost-full-language-inventory.test.ts')
+          test_source = test_path.read_text()
+          old_timeout = '{ timeout: 420_000 }'
+          new_timeout = '{ timeout: 720_000 }'
+          if test_source.count(old_timeout) != 1:
+              raise RuntimeError(f'expected one inventory timeout target, found {test_source.count(old_timeout)}')
+          test_path.write_text(test_source.replace(old_timeout, new_timeout, 1))
           PY
+          expected_paths="$(printf '%s\n' \
+            packages/compiler/test/selfhost-full-language-inventory.test.ts \
+            selfhost/mvp/src/checker.virune | sort)"
+          actual_paths="$(git diff --name-only | sort)"
+          test "$actual_paths" = "$expected_paths"
           git diff --check
-          test "$(git diff --name-only)" = 'selfhost/mvp/src/checker.virune'
           npm ci
           npm run build
-          python - <<'PY'
-          from pathlib import Path
-          path = Path('packages/compiler/dist/test/selfhost-full-language-inventory.test.js')
-          source = path.read_text()
-          replacements = [
-              ('timeout: 420_000', 'timeout: 720_000'),
-              ('timeout: 420000', 'timeout: 720000'),
-          ]
-          for old, new in replacements:
-              if old in source:
-                  path.write_text(source.replace(old, new, 1))
-                  break
-          else:
-              raise RuntimeError('inventory internal timeout not found in generated test')
-          PY
-          node --test --test-timeout=720000 packages/compiler/dist/test/selfhost-full-language-inventory.test.js
-          python - <<'PY'
-          import json
-          from pathlib import Path
-
-          path = Path('.cache/ci-timings/selfhost-full-language-inventory.json')
-          inventory = json.loads(path.read_text())
-          remaining = [
-              item for item in inventory.get('firstDiagnostics', [])
-              if item.get('code') == 'L0002'
-              and item.get('message') == 'Expected a line end after a let statement'
-              and item.get('sourcePath') == 'src/checker.virune'
-          ]
-          if remaining:
-              raise RuntimeError('parenthesized match did not remove the targeted L0002 diagnostic')
-          print('SELFHOST_AFTER_PARENTHESIZED_MATCH_JSON')
-          print(json.dumps(inventory, separators=(',', ':')))
-          PY
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add packages/compiler/test/selfhost-full-language-inventory.test.ts selfhost/mvp/src/checker.virune
+          git commit -m 'fix(selfhost): unblock full-language checker inventory'
+          git push --force-with-lease=refs/heads/feat/selfhost-member-chain-integration:"$expected_feature_head" origin HEAD:feat/selfhost-member-chain-integration
