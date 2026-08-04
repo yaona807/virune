@@ -1,0 +1,64 @@
+name: Temporary self-host variant constructor compatibility fix
+
+on:
+  pull_request:
+    branches:
+      - main
+    types:
+      - synchronize
+      - reopened
+
+permissions:
+  contents: write
+
+jobs:
+  implement:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: feat/selfhost-variant-constructors
+          fetch-depth: 0
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - run: npm ci
+      - name: Restore match diagnostic compatibility
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          checker_path = Path('selfhost/mvp/src/checker.virune')
+          checker = checker_path.read_text()
+          before = '''\tif node.kind == "match" {
+          \t\treturn checkExpectedMatch(node, expectedType, context, expressions)
+          \t}'''
+          after = '''\tif node.kind == "match" {
+          \t\treturn match checkMatch(node, context, expressions) {
+          \t\t\tOk(checked) => if typesCompatible(checked.valueType, expectedType) then Ok(checked) else Err(typeMismatch(checked.valueType, expectedType, node.span))
+          \t\t\tErr(diagnostic) => if diagnostic.code == "L2020" then checkExpectedMatch(node, expectedType, context, expressions) else Err(diagnostic)
+          \t\t}
+          \t}'''
+          if before not in checker:
+              raise SystemExit('Unable to locate contextual match dispatch')
+          checker_path.write_text(checker.replace(before, after, 1))
+          Path('.github/workflows/tmp-selfhost-variant-constructors-pr.yml').unlink()
+          PY
+      - run: npm run build
+      - name: Run focused constructor and match compatibility tests
+        run: >-
+          node --test --test-timeout=120000
+          packages/compiler/dist/test/selfhost-variant-constructors.test.js
+          packages/compiler/dist/test/selfhost-match-expression-lowering.test.js
+      - name: Commit compatibility fix
+        shell: bash
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add selfhost/mvp/src/checker.virune .github/workflows/tmp-selfhost-variant-constructors-pr.yml
+          git commit -m "fix(selfhost): preserve match diagnostic compatibility"
+          git push origin HEAD:feat/selfhost-variant-constructors
