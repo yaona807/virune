@@ -48,8 +48,8 @@ checker = replace_once(
 checker = replace_once(
     checker,
     'if base != "FrontendCommentKind" && base != "FrontendTokenKind" && base != "MvpTokenKind" && base != "MvpType" && base != "MvpListElementType" && base != "MvpOptionalElementType" {',
-    'if base != "FrontendCommentKind" && base != "FrontendTokenKind" && base != "MvpStatement" && base != "MvpTokenKind" && base != "MvpType" && base != "MvpListElementType" && base != "MvpOptionalElementType" {',
-    "allow MvpStatement qualified constructors",
+    'if base != "FrontendCommentKind" && base != "FrontendTokenKind" && base != "MvpHirStatement" && base != "MvpStatement" && base != "MvpTokenKind" && base != "MvpType" && base != "MvpListElementType" && base != "MvpOptionalElementType" {',
+    "allow MvpStatement and MvpHirStatement qualified constructors",
 )
 
 checker = replace_once(
@@ -103,7 +103,11 @@ focused = replace_once(
 \t\t\t\t\t'\\treturn MvpStatement.LetValue(\"value\", false, Some(MvpType.IntType), 0, spanValue)',
 \t\t\t\t\t'}',
 \t\t\t\t\t'',
+\t\t\t\t\t'pub fn hirStatementValue(spanValue: MvpSpan) -> MvpHirStatement {',
+\t\t\t\t\t'\\treturn MvpHirStatement.HirLet(\"value\", false, MvpType.IntType, 0, spanValue)',
+\t\t\t\t\t'}',
+\t\t\t\t\t'',
 \t\t\t\t\t'pub fn functionCount(moduleValue: MvpModule) -> Int {',""",
-    "cover MvpStatement qualified constructor",
+    "cover MvpStatement and MvpHirStatement qualified constructors",
 )
 focused_path.write_text(focused, encoding="utf-8")
