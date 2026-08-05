@@ -26,30 +26,37 @@ test('progress formatting is stable and machine-readable', () => {
 
 test('failure evidence is emitted after cleanup without running the compiler twice', async () => {
 	const repositoryRoot = await mkdtemp(join(tmpdir(), 'virune-inventory-timing-'));
-	let evidence: FullLanguageInventoryTimingEvidence | null = null;
+	const captured: { value: FullLanguageInventoryTimingEvidence | null } = { value: null };
 	try {
 		await assert.rejects(
 			runFullLanguageInventory({
 				repositoryRoot,
 				heartbeatIntervalMs: 0,
 				onTimingEvidence: value => {
-					evidence = value;
+					captured.value = value;
 				},
 			}),
 		);
-		assert.notEqual(evidence, null);
-		assert.equal(evidence?.schemaVersion, 1);
-		assert.equal(evidence?.claim, 'selfhost-full-language-inventory-timing');
-		assert.equal(evidence?.status, 'failure');
-		assert.equal(evidence?.failure?.phase, 'build-project');
-		assert.ok(evidence?.phases.some(phase => phase.name === 'prepare' && phase.status === 'success'));
-		assert.ok(evidence?.phases.some(phase => phase.name === 'build-project' && phase.status === 'failure'));
-		assert.ok(evidence?.phases.some(phase => phase.name === 'cleanup' && phase.status === 'success'));
+		const evidence = requireEvidence(captured.value);
+		assert.equal(evidence.schemaVersion, 1);
+		assert.equal(evidence.claim, 'selfhost-full-language-inventory-timing');
+		assert.equal(evidence.status, 'failure');
+		assert.equal(evidence.failure?.phase, 'build-project');
+		assert.ok(evidence.phases.some(phase => phase.name === 'prepare' && phase.status === 'success'));
+		assert.ok(evidence.phases.some(phase => phase.name === 'build-project' && phase.status === 'failure'));
+		assert.ok(evidence.phases.some(phase => phase.name === 'cleanup' && phase.status === 'success'));
 		assert.equal(
-			serializeFullLanguageInventoryTimingEvidence(evidence as FullLanguageInventoryTimingEvidence),
+			serializeFullLanguageInventoryTimingEvidence(evidence),
 			`${JSON.stringify(evidence)}\n`,
 		);
 	} finally {
 		await rm(repositoryRoot, { recursive: true, force: true });
 	}
 });
+
+function requireEvidence(
+	value: FullLanguageInventoryTimingEvidence | null,
+): FullLanguageInventoryTimingEvidence {
+	if (value === null) throw new Error('Expected full-language inventory timing evidence');
+	return value;
+}
