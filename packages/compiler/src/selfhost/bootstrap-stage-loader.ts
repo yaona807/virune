@@ -89,18 +89,18 @@ export async function executeBootstrapStagesWithArtifactLoader(
 	input: KernelInputV1,
 	temporaryRoot: string,
 ): Promise<BootstrapStageExecutionResult> {
-	let disposeCandidate: (() => Promise<void>) | null = null;
+	const candidates: MaterializedBootstrapStageCompiler[] = [];
 	try {
 		return await executeBootstrapStages(stage0, input, async artifact => {
-			if (disposeCandidate !== null) {
+			if (candidates.length > 0) {
 				throw new Error('Bootstrap stage loader may materialize only one Stage 1 compiler');
 			}
 			const candidate = await materializeBootstrapStageCompiler(artifact, temporaryRoot);
-			disposeCandidate = candidate.dispose;
+			candidates.push(candidate);
 			return candidate.compiler;
 		});
 	} finally {
-		if (disposeCandidate !== null) await disposeCandidate();
+		for (const candidate of candidates) await candidate.dispose();
 		const remaining = await readdir(temporaryRoot).catch(() => [] as string[]);
 		if (remaining.length === 0) {
 			await rm(temporaryRoot, { recursive: true, force: true });
