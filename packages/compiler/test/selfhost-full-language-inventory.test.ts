@@ -43,6 +43,8 @@ test('full-language diagnostic probe reports the patched canonical inventory', {
 		);
 		await mkdir(dirname(canonicalInventoryTestPath), { recursive: true });
 		await writeFile(canonicalInventoryTestPath, canonicalInventoryTestSource, 'utf8');
+		await executeFile('git', ['init'], { cwd: probeRoot });
+		await executeFile('git', ['add', '.'], { cwd: probeRoot });
 		await executeFile(
 			'python',
 			['.github/scripts/tmp-apply-full-language-readiness.py'],
