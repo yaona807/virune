@@ -1,4 +1,4 @@
-name: Temporary selfhost core timeout promotion
+name: Temporary selfhost core timeout artifact
 
 on:
   pull_request:
@@ -9,14 +9,14 @@ on:
       - reopened
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
-  group: tmp-selfhost-core-timeout-promotion-${{ github.event.pull_request.number }}
-  cancel-in-progress: false
+  group: tmp-selfhost-core-timeout-artifact-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
 
 jobs:
-  patch-and-promote:
+  export-patched-ci:
     if: github.event.pull_request.number == 277 && github.head_ref == 'feat/selfhost-qualified-builtins-variants'
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -42,7 +42,7 @@ jobs:
             exit 1
           fi
 
-      - name: Raise Core job timeout
+      - name: Raise Core job timeout in workspace
         shell: bash
         run: |
           python - <<'PY'
@@ -59,27 +59,18 @@ jobs:
           path.write_text(text[:start] + updated + text[end:], encoding='utf-8')
           PY
 
-      - name: Remove transport workflow and verify final diff
+      - name: Verify patched workflow
         shell: bash
         run: |
           set -euo pipefail
-          rm .github/workflows/tmp-selfhost-qualified-builtins-variants.yml
-          source_head=51891e8ea85246ee2eeaebe44e28523348b4be6b
-          mapfile -t changed < <(git diff --name-only "$source_head" | sort)
-          expected=(.github/workflows/ci.yml)
-          if [ "${changed[*]}" != "${expected[*]}" ]; then
-            printf 'Unexpected final diff:\n%s\n' "${changed[*]}" >&2
-            exit 1
-          fi
           grep -A6 -B1 '^  verify:' .github/workflows/ci.yml
+          test "$(git diff --name-only)" = ".github/workflows/ci.yml"
           git diff --check
 
-      - name: Commit clean timeout change
-        shell: bash
-        run: |
-          set -euo pipefail
-          git config user.name yaona807
-          git config user.email 72598968+yaona807@users.noreply.github.com
-          git add -A
-          git commit -m "ci: allow selfhost inventory to complete"
-          git push origin HEAD:feat/selfhost-qualified-builtins-variants
+      - name: Upload patched CI workflow
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: patched-ci-workflow-${{ github.sha }}
+          path: .github/workflows/ci.yml
+          if-no-files-found: error
+          retention-days: 2
