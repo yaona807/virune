@@ -14,7 +14,7 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   readiness:
@@ -92,11 +92,45 @@ jobs:
         if: steps.transport.outputs.apply == 'true'
         run: npm run docs:check
 
-      - name: Run canonical full-language inventory
+      - name: Switch capability to diagnostic probe mode
         if: steps.transport.outputs.apply == 'true'
-        run: node scripts/run-unit-tests.mjs --file=packages/compiler/dist/test/selfhost-full-language-inventory.test.js
+        shell: bash
+        run: |
+          set -euo pipefail
+          python <<'PY'
+          from pathlib import Path
 
-      - name: Verify final diff
+          path = Path('selfhost/mvp/src/project-compiler-contract.virune')
+          text = path.read_text()
+          old = '''\t\tready: true,
+\t\trequestSchema: "virune.selfhost.project-compiler.request.v1",
+\t\tresultSchema: "virune.selfhost.project-compiler.result.v2",
+\t\tblockers: [],'''
+          new = '''\t\tready: false,
+\t\trequestSchema: "virune.selfhost.project-compiler.request.v1",
+\t\tresultSchema: "virune.selfhost.project-compiler.result.v2",
+\t\tblockers: ["diagnostic-probe-pending-full-language-inventory"],'''
+          if text.count(old) != 1:
+              raise SystemExit('expected exactly one ready capability block after applying the readiness patch')
+          path.write_text(text.replace(old, new))
+          PY
+
+      - name: Run canonical full-language diagnostic probe
+        if: steps.transport.outputs.apply == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import { runFullLanguageInventory } from './packages/compiler/dist/src/selfhost/full-language-inventory-runner.js';
+
+          const inventory = await runFullLanguageInventory({ repositoryRoot: process.cwd() });
+          console.log(`SELFHOST_FULL_LANGUAGE_PROBE ${JSON.stringify(inventory)}`);
+          if (inventory.capability.ready) {
+            throw new Error('Diagnostic probe must keep the capability non-ready');
+          }
+          NODE
+
+      - name: Verify probe diff
         if: steps.transport.outputs.apply == 'true'
         shell: bash
         run: |
@@ -118,26 +152,5 @@ jobs:
           ])
           actual = sorted(subprocess.check_output(['git', 'diff', '--name-only'], text=True).splitlines())
           if actual != expected:
-              raise SystemExit(f'unexpected final diff: expected={expected}, actual={actual}')
+              raise SystemExit(f'unexpected probe diff: expected={expected}, actual={actual}')
           PY
-
-      - name: Commit validated sources
-        if: steps.transport.outputs.apply == 'true'
-        shell: bash
-        run: |
-          set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add \
-            docs/self-hosting-project-compiler-integration.md \
-            docs/self-hosting-project-compiler-integration_ja.md \
-            docs/self-hosting-stage1-stage2-bootstrap.md \
-            docs/self-hosting-stage1-stage2-bootstrap_ja.md \
-            packages/compiler/test/selfhost-bootstrap-stage-runner.test.ts \
-            packages/compiler/test/selfhost-full-language-inventory.test.ts \
-            packages/compiler/test/selfhost-project-compiler-contract.test.ts \
-            packages/compiler/test/selfhost-qualified-builtins-variants.test.ts \
-            selfhost/mvp/src/checker.virune \
-            selfhost/mvp/src/project-compiler-contract.virune
-          git commit -m "feat(selfhost): reach full-language readiness"
-          git push origin HEAD:feat/selfhost-full-language-readiness
