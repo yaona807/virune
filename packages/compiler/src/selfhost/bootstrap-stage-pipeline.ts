@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import {
@@ -62,6 +63,22 @@ function assertReadyEvidence(
 	input: KernelInputV1,
 ): void {
 	const evidence = readiness.evidence;
+	const evidenceSerialized = JSON.stringify(evidence);
+	if (readiness.serialized !== evidenceSerialized || readiness.sha256 !== sha256(evidenceSerialized)) {
+		throw new Error('Bootstrap readiness evidence integrity check failed');
+	}
+	if (
+		readiness.stage0Compiler.serialized !== JSON.stringify(readiness.stage0Compiler.artifact)
+		|| readiness.stage0Compiler.sha256 !== sha256(readiness.stage0Compiler.serialized)
+	) {
+		throw new Error('Bootstrap Stage 0 artifact integrity check failed');
+	}
+	if (
+		readiness.sourceManifest.serialized !== JSON.stringify(readiness.sourceManifest.manifest)
+		|| readiness.sourceManifest.sha256 !== sha256(readiness.sourceManifest.serialized)
+	) {
+		throw new Error('Bootstrap source manifest integrity check failed');
+	}
 	if (
 		!evidence.ready
 		|| !evidence.capabilityReady
@@ -75,6 +92,19 @@ function assertReadyEvidence(
 		throw new Error(
 			`Stage 1/Stage 2 bootstrap is not ready (${blockers.join(', ') || 'unknown blocker'})`,
 		);
+	}
+	if (
+		evidence.requiredExports.length !== 2
+		|| evidence.requiredExports[0] !== 'projectCompilerCapability'
+		|| evidence.requiredExports[1] !== 'compileProjectMvp'
+	) {
+		throw new Error('Bootstrap readiness required export witness is invalid');
+	}
+	if (evidence.capability === null || evidence.capabilitySha256 === null) {
+		throw new Error('Bootstrap readiness capability witness is missing');
+	}
+	if (evidence.capabilitySha256 !== sha256(JSON.stringify(evidence.capability))) {
+		throw new Error('Bootstrap readiness capability witness does not match the capability');
 	}
 	if (evidence.compilerArtifactSha256 !== readiness.stage0Compiler.sha256) {
 		throw new Error('Bootstrap readiness compiler artifact witness does not match Stage 0');
@@ -96,4 +126,8 @@ function assertReadyEvidence(
 			`Bootstrap readiness entry path mismatch: expected ${evidence.entryPath}, received ${input.entryPath}`,
 		);
 	}
+}
+
+function sha256(value: string): string {
+	return createHash('sha256').update(value).digest('hex');
 }
