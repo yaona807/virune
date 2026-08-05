@@ -3482,12 +3482,15 @@ fn checkIdentifier(node: MvpExpression, context: CheckContext, expressions: List
 			None => Err(errorDiagnostic("L1010", "Unknown name " + node.text, node.span))
 		}
 	}
-	let qualifiedVariantValue = qualifiedVariantType(node.text)
-	if match qualifiedVariantValue { Some(_) => true, None => false } {
-		let valueType = match qualifiedVariantValue { Some(value) => value, None => MvpType.ErrorType }
-		return Ok(checkedVariant(node, qualifiedVariantName(node.text), valueType, [], expressions))
+	if !String.contains(node.text, ".") {
+		return Err(errorDiagnostic("L1010", "Unknown name " + node.text, node.span))
 	}
 	let segments = qualifiedSegments(node.text)
+	let qualifiedVariantValue = qualifiedVariantType(segments)
+	if match qualifiedVariantValue { Some(_) => true, None => false } {
+		let valueType = match qualifiedVariantValue { Some(value) => value, None => MvpType.ErrorType }
+		return Ok(checkedVariant(node, qualifiedVariantName(segments), valueType, [], expressions))
+	}
 	if List.length(segments) <= 1 {
 		return Err(errorDiagnostic("L1010", "Unknown name " + node.text, node.span))
 	}
@@ -3675,6 +3678,63 @@ fn checkListLengthCall(node: MvpExpression, context: CheckContext, expressions: 
 	return Ok(checkedBuiltinCall(node, MvpType.IntType, [checked.expressionId], checked.expressions))
 }
 
+fn checkListConcatCall(node: MvpExpression, context: CheckContext, expressions: List<MvpHirExpression>) -> Result<CheckedExpression, MvpDiagnostic> {
+	if List.length(node.children) != 2 {
+		return Err(errorDiagnostic("L2012", "List.concat expects 2 arguments, received " + Debug.format(List.length(node.children)), node.span))
+	}
+	let leftSourceId = childAt(node, 0)?
+	let rightSourceId = childAt(node, 1)?
+	let checkedLeft = checkExpression(leftSourceId, context, expressions)?
+	if match listElementType(checkedLeft.valueType) { Some(_) => false, None => true } {
+		return Err(errorDiagnostic("L2021", "List.concat requires a List, received " + typeName(checkedLeft.valueType), node.span))
+	}
+	let checkedRight = checkExpectedExpression(rightSourceId, checkedLeft.valueType, context, checkedLeft.expressions)?
+	return Ok(checkedBuiltinCall(node, checkedLeft.valueType, [checkedLeft.expressionId, checkedRight.expressionId], checkedRight.expressions))
+}
+
+fn checkListIsNotEmptyCall(node: MvpExpression, context: CheckContext, expressions: List<MvpHirExpression>) -> Result<CheckedExpression, MvpDiagnostic> {
+	if List.length(node.children) != 1 {
+		return Err(errorDiagnostic("L2012", "List.isNotEmpty expects 1 argument, received " + Debug.format(List.length(node.children)), node.span))
+	}
+	let sourceId = childAt(node, 0)?
+	let checked = checkExpression(sourceId, context, expressions)?
+	if match listElementType(checked.valueType) { Some(_) => false, None => true } {
+		return Err(errorDiagnostic("L2021", "List.isNotEmpty requires a List, received " + typeName(checked.valueType), node.span))
+	}
+	return Ok(checkedBuiltinCall(node, MvpType.BoolType, [checked.expressionId], checked.expressions))
+}
+
+fn checkListIsEmptyCall(node: MvpExpression, context: CheckContext, expressions: List<MvpHirExpression>) -> Result<CheckedExpression, MvpDiagnostic> {
+	if List.length(node.children) != 1 {
+		return Err(errorDiagnostic("L2012", "List.isEmpty expects 1 argument, received " + Debug.format(List.length(node.children)), node.span))
+	}
+	let sourceId = childAt(node, 0)?
+	let checked = checkExpression(sourceId, context, expressions)?
+	if match listElementType(checked.valueType) { Some(_) => false, None => true } {
+		return Err(errorDiagnostic("L2021", "List.isEmpty requires a List, received " + typeName(checked.valueType), node.span))
+	}
+	return Ok(checkedBuiltinCall(node, MvpType.BoolType, [checked.expressionId], checked.expressions))
+}
+
+fn checkListLastCall(node: MvpExpression, context: CheckContext, expressions: List<MvpHirExpression>) -> Result<CheckedExpression, MvpDiagnostic> {
+	if List.length(node.children) != 1 {
+		return Err(errorDiagnostic("L2012", "List.last expects 1 argument, received " + Debug.format(List.length(node.children)), node.span))
+	}
+	let sourceId = childAt(node, 0)?
+	let checked = checkExpression(sourceId, context, expressions)?
+	let elementValue = listElementType(checked.valueType)
+	if match elementValue { Some(_) => false, None => true } {
+		return Err(errorDiagnostic("L2021", "List.last requires a List, received " + typeName(checked.valueType), node.span))
+	}
+	let elementType = match elementValue { Some(value) => value, None => MvpType.ErrorType }
+	let resultValue = optionalType(elementType)
+	let resultType = match resultValue { Some(value) => value, None => MvpType.ErrorType }
+	if resultType == MvpType.ErrorType {
+		return Err(errorDiagnostic("L2021", "List.last cannot represent an Optional result for " + typeName(elementType), node.span))
+	}
+	return Ok(checkedBuiltinCall(node, resultType, [checked.expressionId], checked.expressions))
+}
+
 fn checkStringLengthCall(node: MvpExpression, context: CheckContext, expressions: List<MvpHirExpression>) -> Result<CheckedExpression, MvpDiagnostic> {
 	if List.length(node.children) != 1 {
 		return Err(errorDiagnostic("L2012", "String.length expects 1 argument, received " + Debug.format(List.length(node.children)), node.span))
@@ -3708,28 +3768,78 @@ fn checkStringSliceCall(node: MvpExpression, context: CheckContext, expressions:
 	return Ok(checkedBuiltinCall(node, MvpType.StringType, [checkedValue.expressionId, checkedStart.expressionId, checkedEnd.expressionId], checkedEnd.expressions))
 }
 
-fn qualifiedVariantType(value: String) -> MvpType? {
-	let segments = qualifiedSegments(value)
+fn checkStringContainsCall(node: MvpExpression, context: CheckContext, expressions: List<MvpHirExpression>) -> Result<CheckedExpression, MvpDiagnostic> {
+	if List.length(node.children) != 2 {
+		return Err(errorDiagnostic("L2012", "String.contains expects 2 arguments, received " + Debug.format(List.length(node.children)), node.span))
+	}
+	let valueSourceId = childAt(node, 0)?
+	let searchSourceId = childAt(node, 1)?
+	let checkedValue = checkExpectedExpression(valueSourceId, MvpType.StringType, context, expressions)?
+	let checkedSearch = checkExpectedExpression(searchSourceId, MvpType.StringType, context, checkedValue.expressions)?
+	return Ok(checkedBuiltinCall(node, MvpType.BoolType, [checkedValue.expressionId, checkedSearch.expressionId], checkedSearch.expressions))
+}
+
+fn checkStringStartsWithCall(node: MvpExpression, context: CheckContext, expressions: List<MvpHirExpression>) -> Result<CheckedExpression, MvpDiagnostic> {
+	if List.length(node.children) != 2 {
+		return Err(errorDiagnostic("L2012", "String.startsWith expects 2 arguments, received " + Debug.format(List.length(node.children)), node.span))
+	}
+	let valueSourceId = childAt(node, 0)?
+	let prefixSourceId = childAt(node, 1)?
+	let checkedValue = checkExpectedExpression(valueSourceId, MvpType.StringType, context, expressions)?
+	let checkedPrefix = checkExpectedExpression(prefixSourceId, MvpType.StringType, context, checkedValue.expressions)?
+	return Ok(checkedBuiltinCall(node, MvpType.BoolType, [checkedValue.expressionId, checkedPrefix.expressionId], checkedPrefix.expressions))
+}
+
+fn checkStringJoinCall(node: MvpExpression, context: CheckContext, expressions: List<MvpHirExpression>) -> Result<CheckedExpression, MvpDiagnostic> {
+	if List.length(node.children) != 2 {
+		return Err(errorDiagnostic("L2012", "String.join expects 2 arguments, received " + Debug.format(List.length(node.children)), node.span))
+	}
+	let valuesSourceId = childAt(node, 0)?
+	let separatorSourceId = childAt(node, 1)?
+	let valuesType = MvpType.ListType(MvpListElementType.StringElement)
+	let checkedValues = checkExpectedExpression(valuesSourceId, valuesType, context, expressions)?
+	let checkedSeparator = checkExpectedExpression(separatorSourceId, MvpType.StringType, context, checkedValues.expressions)?
+	return Ok(checkedBuiltinCall(node, MvpType.StringType, [checkedValues.expressionId, checkedSeparator.expressionId], checkedSeparator.expressions))
+}
+
+fn checkDebugFormatCall(node: MvpExpression, context: CheckContext, expressions: List<MvpHirExpression>) -> Result<CheckedExpression, MvpDiagnostic> {
+	if List.length(node.children) != 1 {
+		return Err(errorDiagnostic("L2012", "Debug.format expects 1 argument, received " + Debug.format(List.length(node.children)), node.span))
+	}
+	let sourceId = childAt(node, 0)?
+	let checked = checkExpression(sourceId, context, expressions)?
+	return Ok(checkedBuiltinCall(node, MvpType.StringType, [checked.expressionId], checked.expressions))
+}
+
+fn checkPanicCall(node: MvpExpression, context: CheckContext, expressions: List<MvpHirExpression>) -> Result<CheckedExpression, MvpDiagnostic> {
+	if List.length(node.children) != 1 {
+		return Err(errorDiagnostic("L2012", "panic expects 1 argument, received " + Debug.format(List.length(node.children)), node.span))
+	}
+	let sourceId = childAt(node, 0)?
+	let checked = checkExpectedExpression(sourceId, MvpType.StringType, context, expressions)?
+	return Ok(checkedBuiltinCall(node, MvpType.ErrorType, [checked.expressionId], checked.expressions))
+}
+
+fn qualifiedVariantType(segments: List<String>) -> MvpType? {
 	if List.length(segments) != 2 {
 		return None
 	}
 	let base = match List.get(segments, 0) { Some(name) => name, None => "" }
-	if base != "FrontendTokenKind" && base != "MvpTokenKind" && base != "MvpType" && base != "MvpListElementType" && base != "MvpOptionalElementType" {
+	if base != "FrontendCommentKind" && base != "FrontendTokenKind" && base != "MvpHirStatement" && base != "MvpStatement" && base != "MvpTokenKind" && base != "MvpType" && base != "MvpListElementType" && base != "MvpOptionalElementType" {
 		return None
 	}
 	return Some(MvpType.NamedType(base))
 }
 
-fn qualifiedVariantName(value: String) -> String {
-	let segments = qualifiedSegments(value)
+fn qualifiedVariantName(segments: List<String>) -> String {
 	return match List.get(segments, 1) {
 		Some(name) => name
 		None => ""
 	}
 }
 
-fn checkQualifiedVariantCall(node: MvpExpression, valueType: MvpType, context: CheckContext, expressions: List<MvpHirExpression>) -> Result<CheckedExpression, MvpDiagnostic> {
-	let variantName = qualifiedVariantName(node.text)
+fn checkQualifiedVariantCall(node: MvpExpression, segments: List<String>, valueType: MvpType, context: CheckContext, expressions: List<MvpHirExpression>) -> Result<CheckedExpression, MvpDiagnostic> {
+	let variantName = qualifiedVariantName(segments)
 	let mut childIds: List<Int> = []
 	let mut arena = expressions
 	let mut index = 0
@@ -3754,6 +3864,18 @@ fn checkCall(node: MvpExpression, context: CheckContext, expressions: List<MvpHi
 	if node.text == "List.length" {
 		return checkListLengthCall(node, context, expressions)
 	}
+	if node.text == "List.concat" {
+		return checkListConcatCall(node, context, expressions)
+	}
+	if node.text == "List.isEmpty" {
+		return checkListIsEmptyCall(node, context, expressions)
+	}
+	if node.text == "List.isNotEmpty" {
+		return checkListIsNotEmptyCall(node, context, expressions)
+	}
+	if node.text == "List.last" {
+		return checkListLastCall(node, context, expressions)
+	}
 	if node.text == "String.length" {
 		return checkStringLengthCall(node, context, expressions)
 	}
@@ -3762,6 +3884,21 @@ fn checkCall(node: MvpExpression, context: CheckContext, expressions: List<MvpHi
 	}
 	if node.text == "String.slice" {
 		return checkStringSliceCall(node, context, expressions)
+	}
+	if node.text == "String.contains" {
+		return checkStringContainsCall(node, context, expressions)
+	}
+	if node.text == "String.startsWith" {
+		return checkStringStartsWithCall(node, context, expressions)
+	}
+	if node.text == "String.join" {
+		return checkStringJoinCall(node, context, expressions)
+	}
+	if node.text == "Debug.format" {
+		return checkDebugFormatCall(node, context, expressions)
+	}
+	if node.text == "panic" {
+		return checkPanicCall(node, context, expressions)
 	}
 	if node.text == "Json.parse" {
 		return checkKnownCall(node, Signature {
@@ -3790,15 +3927,23 @@ fn checkCall(node: MvpExpression, context: CheckContext, expressions: List<MvpHi
 	if constructorName == "None" {
 		return Err(errorDiagnostic("L2012", "None is a value and does not accept arguments", node.span))
 	}
-	let qualifiedVariantValue = qualifiedVariantType(node.text)
+	let directSignature = findSignature(context.signatures, node.text)
+	if match directSignature { Some(_) => true, None => false } {
+		return match directSignature {
+			Some(value) => checkKnownCall(node, value, context, expressions)
+			None => Err(errorDiagnostic("L1010", "Unknown name " + node.text, node.span))
+		}
+	}
+	if !String.contains(node.text, ".") {
+		return Err(errorDiagnostic("L1010", "Unknown name " + node.text, node.span))
+	}
+	let segments = qualifiedSegments(node.text)
+	let qualifiedVariantValue = qualifiedVariantType(segments)
 	if match qualifiedVariantValue { Some(_) => true, None => false } {
 		let valueType = match qualifiedVariantValue { Some(value) => value, None => MvpType.ErrorType }
-		return checkQualifiedVariantCall(node, valueType, context, expressions)
+		return checkQualifiedVariantCall(node, segments, valueType, context, expressions)
 	}
-	return match findSignature(context.signatures, node.text) {
-		Some(value) => checkKnownCall(node, value, context, expressions)
-		None => Err(errorDiagnostic("L1010", "Unknown name " + node.text, node.span))
-	}
+	return Err(errorDiagnostic("L1010", "Unknown name " + node.text, node.span))
 }
 fn standardConstructorName(value: String) -> String {
 	if value == "Some" || value == "Option.Some" {
