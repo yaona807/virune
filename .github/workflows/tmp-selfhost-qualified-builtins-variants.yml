@@ -1,29 +1,27 @@
-name: Temporary selfhost qualified builtin diagnostics
+name: Temporary selfhost qualified builtin promotion
 
 on:
-  pull_request:
+  push:
     branches:
-      - main
-    types:
-      - opened
-      - synchronize
-      - reopened
+      - feat/selfhost-qualified-builtins-variants
+    paths:
+      - .github/workflows/tmp-selfhost-qualified-builtins-variants.yml
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
-  group: tmp-selfhost-qualified-builtins-variants-diagnostic-${{ github.event.pull_request.number }}
-  cancel-in-progress: true
+  group: tmp-selfhost-qualified-builtins-variants-promotion
+  cancel-in-progress: false
 
 jobs:
-  diagnose:
-    if: github.event.pull_request.number == 277 && github.head_ref == 'feat/selfhost-qualified-builtins-variants'
+  validate-and-promote:
     runs-on: ubuntu-24.04
-    timeout-minutes: 25
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
+          ref: feat/selfhost-qualified-builtins-variants
           fetch-depth: 0
 
       - name: Verify isolated transport commits
@@ -31,8 +29,10 @@ jobs:
         run: |
           set -euo pipefail
           source_head=bf2aa4492dc3da7020db3da13570d5e4096eea77
+          expected_head=80d9a22b05b1971942de1885964611feaa086b52
           git cat-file -e "${source_head}^{commit}"
           git merge-base --is-ancestor "$source_head" HEAD
+          git merge-base --is-ancestor "$expected_head" HEAD
           mapfile -t changed < <(git diff --name-only "$source_head"..HEAD | sort)
           expected=(
             .ci-trigger
@@ -49,7 +49,7 @@ jobs:
           node-version: 24
           cache: npm
 
-      - name: Apply exact source and test patches in workspace
+      - name: Apply exact source and test patches
         run: |
           python .github/tmp/qualified-builtins-variants/apply-script.txt
           python .ci-trigger
@@ -84,12 +84,12 @@ jobs:
           mkdir -p .cache/selfhost
           node scripts/run-selfhost-full-language-inventory.mjs --json --output=.cache/selfhost/qualified-builtins-variants.json > .cache/selfhost/qualified-builtins-variants.stdout.json
 
-      - name: Report and validate inventory
+      - name: Validate qualified-name completion
         run: |
           node --input-type=module <<'NODE'
           import { readFile } from 'node:fs/promises';
           const inventory = JSON.parse(await readFile('.cache/selfhost/qualified-builtins-variants.json', 'utf8'));
-          console.log(JSON.stringify({
+          const summary = {
             sourceCount: inventory.sourceCount,
             parsedModules: inventory.parsedModules,
             checkedModules: inventory.checkedModules,
@@ -98,7 +98,8 @@ jobs:
             sourcesWithDiagnostics: inventory.sourcesWithDiagnostics,
             boundaryBlockers: inventory.boundaryBlockers,
             entries: inventory.entries,
-          }, null, 2));
+          };
+          console.log(JSON.stringify(summary, null, 2));
           if (inventory.sourceCount !== 31 || inventory.parsedModules !== 31 || inventory.checkedModules !== 31) {
             throw new Error('Unexpected full-language coverage');
           }
@@ -107,6 +108,43 @@ jobs:
           }
           const unresolvedNames = inventory.entries.filter(entry => entry.code === 'L1010');
           if (unresolvedNames.length !== 0) {
-            throw new Error(`Qualified builtin or enum names remain unresolved: ${JSON.stringify(unresolvedNames)}`);
+            throw new Error(`Qualified names remain unresolved: ${JSON.stringify(unresolvedNames)}`);
           }
           NODE
+
+      - name: Remove temporary transport files
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm .ci-trigger
+          rm .github/workflows/tmp-selfhost-qualified-builtins-variants.yml
+          rm .github/tmp/qualified-builtins-variants/apply-script.txt
+          rmdir .github/tmp/qualified-builtins-variants
+          rmdir .github/tmp 2>/dev/null || true
+
+      - name: Verify clean final diff
+        shell: bash
+        run: |
+          set -euo pipefail
+          source_head=bf2aa4492dc3da7020db3da13570d5e4096eea77
+          mapfile -t changed < <(git diff --name-only "$source_head" | sort)
+          expected=(
+            packages/compiler/test/selfhost-full-language-inventory.test.ts
+            packages/compiler/test/selfhost-qualified-builtins-variants.test.ts
+            selfhost/mvp/src/checker.virune
+          )
+          if [ "${changed[*]}" != "${expected[*]}" ]; then
+            printf 'Unexpected final diff:\n%s\n' "${changed[*]}" >&2
+            exit 1
+          fi
+          git diff --check
+
+      - name: Commit validated clean branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name yaona807
+          git config user.email 72598968+yaona807@users.noreply.github.com
+          git add -A
+          git commit -m "feat(selfhost): complete qualified builtin resolution"
+          git push origin HEAD:feat/selfhost-qualified-builtins-variants
