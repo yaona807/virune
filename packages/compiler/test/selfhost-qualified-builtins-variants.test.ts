@@ -23,7 +23,7 @@ const snapshotOptions = {
 	seedSha256: '8'.repeat(64),
 };
 
-test('generated compiler resolves allowlisted qualified builtins and enum variants', async () => {
+test('generated compiler resolves required qualified builtins and enum variants', async () => {
 	await mkdir(temporaryRoot, { recursive: true });
 	const build = await buildProject(mvpRoot, { write: false });
 	const errors = build.diagnostics.filter(item => item.severity === 'error');
