@@ -77,7 +77,9 @@ jobs:
         run: npm run selfhost:focused:built -- --case=qualified-builtins-variants
 
       - name: Run canonical full-language inventory
-        run: node scripts/run-selfhost-full-language-inventory.mjs --json --output=.cache/selfhost/qualified-builtins-variants.json > .cache/selfhost/qualified-builtins-variants.stdout.json
+        run: |
+          mkdir -p .cache/selfhost
+          node scripts/run-selfhost-full-language-inventory.mjs --json --output=.cache/selfhost/qualified-builtins-variants.json > .cache/selfhost/qualified-builtins-variants.stdout.json
 
       - name: Report and validate inventory
         run: |
