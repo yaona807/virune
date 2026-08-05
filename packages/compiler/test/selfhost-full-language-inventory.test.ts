@@ -33,6 +33,9 @@ test('full-language inventory is deterministic for the canonical self-host sourc
 	);
 	assert.ok(inventory.firstDiagnostics.every(item => item.span.end.offset >= item.span.start.offset));
 	assert.deepEqual(inventory.boundaryBlockers, []);
+	const diagnosticCountFor = (code: string): number =>
+		inventory.codeCounts.find(entry => entry.code === code)?.count ?? 0;
+	assert.equal(diagnosticCountFor('L2014'), 0);
 	await mkdir(dirname(inventoryEvidencePath), { recursive: true });
 	await writeFile(inventoryEvidencePath, serializeFullLanguageInventory(inventory), 'utf8');
 	console.log(`SELFHOST_FULL_LANGUAGE_INVENTORY ${JSON.stringify(inventory)}`);

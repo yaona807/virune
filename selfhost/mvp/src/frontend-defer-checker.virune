@@ -46,7 +46,7 @@ record FrontendDeferResult derives Eq, Debug, Json {
 	diagnostics: List<SemanticDeferDiagnostic>
 }
 
-record ScopeBuildResult {
+record DeferScopeBuildResult {
 	scopes: List<SemanticDeferScope>
 	diagnostics: List<SemanticDeferDiagnostic>
 }
@@ -101,7 +101,7 @@ fn duplicateScope(values: List<SemanticDeferScope>, name: String) -> Bool {
 	return false
 }
 
-fn buildScopes(values: List<FrontendDeferScope>) -> ScopeBuildResult {
+fn buildScopes(values: List<FrontendDeferScope>) -> DeferScopeBuildResult {
 	let mut scopes: List<SemanticDeferScope> = []
 	let mut diagnostics: List<SemanticDeferDiagnostic> = []
 	let mut id = 0
@@ -140,7 +140,7 @@ fn buildScopes(values: List<FrontendDeferScope>) -> ScopeBuildResult {
 		})
 		id = id + 1
 	}
-	return ScopeBuildResult { scopes: scopes, diagnostics: diagnostics }
+	return DeferScopeBuildResult { scopes: scopes, diagnostics: diagnostics }
 }
 
 fn validDeferredType(name: String) -> Bool {

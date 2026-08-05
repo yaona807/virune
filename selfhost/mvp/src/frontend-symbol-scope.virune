@@ -65,12 +65,12 @@ pub record FrontendSymbolScopeResult derives Eq, Debug, Json {
 	diagnostics: List<SemanticScopeDiagnostic>
 }
 
-record ScopeBuildResult {
+record SymbolScopeBuildResult {
 	scopes: List<SemanticScope>
 	diagnostics: List<SemanticScopeDiagnostic>
 }
 
-record SymbolBuildResult {
+record SymbolScopeSymbolBuildResult {
 	symbols: List<SemanticSymbol>
 	diagnostics: List<SemanticScopeDiagnostic>
 }
@@ -132,7 +132,7 @@ fn validSpace(space: String) -> Bool {
 	return space == "value" || space == "type" || space == "capability"
 }
 
-fn buildScopes(values: List<FrontendScopeDefinition>) -> ScopeBuildResult {
+fn buildScopes(values: List<FrontendScopeDefinition>) -> SymbolScopeBuildResult {
 	let mut scopes: List<SemanticScope> = []
 	let mut diagnostics: List<SemanticScopeDiagnostic> = []
 	let mut id = 0
@@ -194,7 +194,7 @@ fn buildScopes(values: List<FrontendScopeDefinition>) -> ScopeBuildResult {
 		})
 		id = id + 1
 	}
-	return ScopeBuildResult { scopes: scopes, diagnostics: diagnostics }
+	return SymbolScopeBuildResult { scopes: scopes, diagnostics: diagnostics }
 }
 
 fn symbolInScope(
@@ -235,7 +235,7 @@ fn buildSymbols(
 	definitions: List<FrontendSymbolDefinition>,
 	scopes: List<SemanticScope>,
 	diagnosticsValue: List<SemanticScopeDiagnostic>,
-) -> SymbolBuildResult {
+) -> SymbolScopeSymbolBuildResult {
 	let mut symbols: List<SemanticSymbol> = []
 	let mut diagnostics = diagnosticsValue
 	for definition in definitions {
@@ -302,7 +302,7 @@ fn buildSymbols(
 			}
 		}
 	}
-	return SymbolBuildResult { symbols: symbols, diagnostics: diagnostics }
+	return SymbolScopeSymbolBuildResult { symbols: symbols, diagnostics: diagnostics }
 }
 
 fn buildLookups(

@@ -57,7 +57,7 @@ record NodeBuildResult {
 	valid: Bool
 }
 
-record FunctionBuildResult {
+record ControlFlowFunctionBuildResult {
 	functions: List<SemanticFlowFunction>
 	diagnostics: List<SemanticFlowDiagnostic>
 }
@@ -294,7 +294,7 @@ fn buildFunctions(
 	nodes: List<SemanticFlowNode>,
 	arenaValid: Bool,
 	diagnosticsValue: List<SemanticFlowDiagnostic>,
-) -> FunctionBuildResult {
+) -> ControlFlowFunctionBuildResult {
 	let mut functions: List<SemanticFlowFunction> = []
 	let mut diagnostics = diagnosticsValue
 	let mut id = 0
@@ -362,7 +362,7 @@ fn buildFunctions(
 		})
 		id = id + 1
 	}
-	return FunctionBuildResult { functions: functions, diagnostics: diagnostics }
+	return ControlFlowFunctionBuildResult { functions: functions, diagnostics: diagnostics }
 }
 
 fn accepted(values: List<SemanticFlowDiagnostic>) -> Bool {
