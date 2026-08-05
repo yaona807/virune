@@ -10,6 +10,7 @@ import { runFullLanguageInventory } from '../src/selfhost/full-language-inventor
 
 const executeFile = promisify(execFile);
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../../..');
+const canonicalInventoryTestSource = "import assert from 'node:assert/strict';\nimport test from 'node:test';\nimport { mkdir, writeFile } from 'node:fs/promises';\nimport { dirname, join, resolve } from 'node:path';\nimport { fileURLToPath } from 'node:url';\nimport { runFullLanguageInventory } from '../src/selfhost/full-language-inventory-runner.js';\nimport { serializeFullLanguageInventory } from '../src/selfhost/full-language-inventory.js';\n\nconst repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../../..');\nconst inventoryEvidencePath = join(\n\trepositoryRoot,\n\t'.cache',\n\t'ci-timings',\n\t'selfhost-full-language-inventory.json',\n);\n\ntest('full-language inventory is deterministic for the canonical self-host source set', { timeout: 1_500_000 }, async () => {\n\tconst inventory = await runFullLanguageInventory({ repositoryRoot });\n\tassert.equal(inventory.sourceCount, inventory.parsedModules);\n\tassert.equal(inventory.sourceCount, inventory.checkedModules);\n\tassert.equal(\n\t\tinventory.sourcesWithDiagnostics.length + inventory.sourcesWithoutDiagnostics.length,\n\t\tinventory.sourceCount,\n\t);\n\tassert.equal(\n\t\tinventory.codeCounts.reduce((total, entry) => total + entry.count, 0),\n\t\tinventory.diagnosticCount,\n\t);\n\tassert.equal(inventory.firstDiagnostics.length, inventory.diagnosticSourceCount);\n\tassert.deepEqual(\n\t\tinventory.firstDiagnostics.map(item => item.sourcePath),\n\t\tinventory.sourcesWithDiagnostics,\n\t);\n\tassert.ok(inventory.firstDiagnostics.every(item => item.span.end.offset >= item.span.start.offset));\n\tassert.deepEqual(inventory.boundaryBlockers, []);\n\tconst diagnosticCountFor = (code: string): number =>\n\t\tinventory.codeCounts.find(entry => entry.code === code)?.count ?? 0;\n\tassert.equal(diagnosticCountFor('L2014'), 0);\n\tawait mkdir(dirname(inventoryEvidencePath), { recursive: true });\n\tawait writeFile(inventoryEvidencePath, serializeFullLanguageInventory(inventory), 'utf8');\n\tconsole.log(`SELFHOST_FULL_LANGUAGE_INVENTORY ${JSON.stringify(inventory)}`);\n});\n";
 
 const patchInputs = [
 	'.github/scripts/tmp-apply-full-language-readiness.py',
@@ -18,7 +19,6 @@ const patchInputs = [
 	'docs/self-hosting-stage1-stage2-bootstrap.md',
 	'docs/self-hosting-stage1-stage2-bootstrap_ja.md',
 	'packages/compiler/test/selfhost-bootstrap-stage-runner.test.ts',
-	'packages/compiler/test/selfhost-full-language-inventory.test.ts',
 	'packages/compiler/test/selfhost-project-compiler-contract.test.ts',
 	'packages/compiler/test/selfhost-qualified-builtins-variants.test.ts',
 	'selfhost/mvp',
@@ -34,6 +34,15 @@ test('full-language diagnostic probe reports the patched canonical inventory', {
 			await mkdir(dirname(destination), { recursive: true });
 			await cp(source, destination, { recursive: true });
 		}
+		const canonicalInventoryTestPath = join(
+			probeRoot,
+			'packages',
+			'compiler',
+			'test',
+			'selfhost-full-language-inventory.test.ts',
+		);
+		await mkdir(dirname(canonicalInventoryTestPath), { recursive: true });
+		await writeFile(canonicalInventoryTestPath, canonicalInventoryTestSource, 'utf8');
 		await executeFile(
 			'python',
 			['.github/scripts/tmp-apply-full-language-readiness.py'],
