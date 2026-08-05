@@ -34,6 +34,11 @@ test('full-language diagnostic probe reports the patched canonical inventory', {
 			await mkdir(dirname(destination), { recursive: true });
 			await cp(source, destination, { recursive: true });
 		}
+		const runtimePackageRoot = join(probeRoot, 'node_modules', '@virune', 'runtime');
+		await mkdir(dirname(runtimePackageRoot), { recursive: true });
+		await cp(join(repositoryRoot, 'packages', 'runtime'), runtimePackageRoot, {
+			recursive: true,
+		});
 		const canonicalInventoryTestPath = join(
 			probeRoot,
 			'packages',
