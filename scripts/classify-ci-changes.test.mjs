@@ -3,17 +3,27 @@ import test from 'node:test';
 import { classifyChangedPaths, isDocumentationPath } from './classify-ci-changes.mjs';
 
 test('classifies maintained Markdown documentation as documentation-only', () => {
-	const result = classifyChangedPaths(['README.md', 'docs/language-guide.md', 'docs/language-guide_ja.md']);
+	const result = classifyChangedPaths([
+		'README.md',
+		'docs/language-guide.md',
+		'docs/language-guide_ja.md',
+		'.github/PULL_REQUEST_TEMPLATE/self-hosting.md',
+		'.github/self-hosting-operations/README.md',
+		'.github/self-hosting-operations/README_ja.md',
+	]);
 	assert.equal(result.docsOnly, true);
-	assert.equal(result.changedCount, 3);
+	assert.equal(result.changedCount, 6);
 });
 
-test('requires the full gate for workflow, dependency, source, and schema changes', () => {
+test('requires the full gate for workflow, dependency, source, schema, and executable policy changes', () => {
 	for (const path of [
 		'.github/workflows/ci.yml',
+		'.github/PULL_REQUEST_TEMPLATE/config.yml',
+		'.github/self-hosting-operations/schema.json',
 		'package-lock.json',
 		'packages/compiler/src/compiler.ts',
 		'docs/documentation-examples.json',
+		'scripts/classify-ci-changes.mjs',
 		'spec/grammar.ebnf',
 	]) {
 		assert.equal(classifyChangedPaths(['README.md', path]).docsOnly, false, path);
@@ -32,6 +42,9 @@ test('normalizes separators and removes duplicate paths', () => {
 test('limits documentation paths to reviewed Markdown locations', () => {
 	assert.equal(isDocumentationPath('SECURITY.md'), true);
 	assert.equal(isDocumentationPath('docs/release-channels.md'), true);
+	assert.equal(isDocumentationPath('.github/PULL_REQUEST_TEMPLATE/self-hosting.md'), true);
+	assert.equal(isDocumentationPath('.github/self-hosting-operations/README_ja.md'), true);
 	assert.equal(isDocumentationPath('.github/README.md'), false);
+	assert.equal(isDocumentationPath('.github/PULL_REQUEST_TEMPLATE/config.yml'), false);
 	assert.equal(isDocumentationPath('docs/schema.json'), false);
 });
