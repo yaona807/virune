@@ -1,0 +1,312 @@
+from pathlib import Path
+
+
+def replace_once(text: str, old: str, new: str, label: str) -> str:
+    count = text.count(old)
+    if count != 1:
+        raise SystemExit(f"{label}: expected exactly one match, found {count}")
+    return text.replace(old, new, 1)
+
+
+checker_path = Path("selfhost/mvp/src/checker.virune")
+checker = checker_path.read_text(encoding="utf-8")
+
+checker = replace_once(
+    checker,
+    '''\tlet qualifiedVariantValue = qualifiedVariantType(node.text)
+\tif match qualifiedVariantValue { Some(_) => true, None => false } {
+\t\tlet valueType = match qualifiedVariantValue { Some(value) => value, None => MvpType.ErrorType }
+\t\treturn Ok(checkedVariant(node, qualifiedVariantName(node.text), valueType, [], expressions))
+\t}
+\tlet segments = qualifiedSegments(node.text)
+\tif List.length(segments) <= 1 {
+\t\treturn Err(errorDiagnostic("L1010", "Unknown name " + node.text, node.span))
+\t}
+''',
+    '''\tif !String.contains(node.text, ".") {
+\t\treturn Err(errorDiagnostic("L1010", "Unknown name " + node.text, node.span))
+\t}
+\tlet segments = qualifiedSegments(node.text)
+\tlet qualifiedVariantValue = qualifiedVariantType(segments)
+\tif match qualifiedVariantValue { Some(_) => true, None => false } {
+\t\tlet valueType = match qualifiedVariantValue { Some(value) => value, None => MvpType.ErrorType }
+\t\treturn Ok(checkedVariant(node, qualifiedVariantName(segments), valueType, [], expressions))
+\t}
+\tif List.length(segments) <= 1 {
+\t\treturn Err(errorDiagnostic("L1010", "Unknown name " + node.text, node.span))
+\t}
+''',
+    "reuse qualified identifier segments",
+)
+
+list_helpers = '''fn checkListIsEmptyCall(node: MvpExpression, context: CheckContext, expressions: List<MvpHirExpression>) -> Result<CheckedExpression, MvpDiagnostic> {
+\tif List.length(node.children) != 1 {
+\t\treturn Err(errorDiagnostic("L2012", "List.isEmpty expects 1 argument, received " + Debug.format(List.length(node.children)), node.span))
+\t}
+\tlet sourceId = childAt(node, 0)?
+\tlet checked = checkExpression(sourceId, context, expressions)?
+\tif match listElementType(checked.valueType) { Some(_) => false, None => true } {
+\t\treturn Err(errorDiagnostic("L2021", "List.isEmpty requires a List, received " + typeName(checked.valueType), node.span))
+\t}
+\treturn Ok(checkedBuiltinCall(node, MvpType.BoolType, [checked.expressionId], checked.expressions))
+}
+
+fn checkListLastCall(node: MvpExpression, context: CheckContext, expressions: List<MvpHirExpression>) -> Result<CheckedExpression, MvpDiagnostic> {
+\tif List.length(node.children) != 1 {
+\t\treturn Err(errorDiagnostic("L2012", "List.last expects 1 argument, received " + Debug.format(List.length(node.children)), node.span))
+\t}
+\tlet sourceId = childAt(node, 0)?
+\tlet checked = checkExpression(sourceId, context, expressions)?
+\tlet elementValue = listElementType(checked.valueType)
+\tif match elementValue { Some(_) => false, None => true } {
+\t\treturn Err(errorDiagnostic("L2021", "List.last requires a List, received " + typeName(checked.valueType), node.span))
+\t}
+\tlet elementType = match elementValue { Some(value) => value, None => MvpType.ErrorType }
+\tlet resultValue = optionalType(elementType)
+\tlet resultType = match resultValue { Some(value) => value, None => MvpType.ErrorType }
+\tif resultType == MvpType.ErrorType {
+\t\treturn Err(errorDiagnostic("L2021", "List.last cannot represent an Optional result for " + typeName(elementType), node.span))
+\t}
+\treturn Ok(checkedBuiltinCall(node, resultType, [checked.expressionId], checked.expressions))
+}
+
+'''
+checker = replace_once(
+    checker,
+    "fn checkStringLengthCall(node: MvpExpression, context: CheckContext, expressions: List<MvpHirExpression>) -> Result<CheckedExpression, MvpDiagnostic> {",
+    list_helpers + "fn checkStringLengthCall(node: MvpExpression, context: CheckContext, expressions: List<MvpHirExpression>) -> Result<CheckedExpression, MvpDiagnostic> {",
+    "insert remaining List builtin checkers",
+)
+
+string_helpers = '''fn checkStringContainsCall(node: MvpExpression, context: CheckContext, expressions: List<MvpHirExpression>) -> Result<CheckedExpression, MvpDiagnostic> {
+\tif List.length(node.children) != 2 {
+\t\treturn Err(errorDiagnostic("L2012", "String.contains expects 2 arguments, received " + Debug.format(List.length(node.children)), node.span))
+\t}
+\tlet valueSourceId = childAt(node, 0)?
+\tlet searchSourceId = childAt(node, 1)?
+\tlet checkedValue = checkExpectedExpression(valueSourceId, MvpType.StringType, context, expressions)?
+\tlet checkedSearch = checkExpectedExpression(searchSourceId, MvpType.StringType, context, checkedValue.expressions)?
+\treturn Ok(checkedBuiltinCall(node, MvpType.BoolType, [checkedValue.expressionId, checkedSearch.expressionId], checkedSearch.expressions))
+}
+
+fn checkStringStartsWithCall(node: MvpExpression, context: CheckContext, expressions: List<MvpHirExpression>) -> Result<CheckedExpression, MvpDiagnostic> {
+\tif List.length(node.children) != 2 {
+\t\treturn Err(errorDiagnostic("L2012", "String.startsWith expects 2 arguments, received " + Debug.format(List.length(node.children)), node.span))
+\t}
+\tlet valueSourceId = childAt(node, 0)?
+\tlet prefixSourceId = childAt(node, 1)?
+\tlet checkedValue = checkExpectedExpression(valueSourceId, MvpType.StringType, context, expressions)?
+\tlet checkedPrefix = checkExpectedExpression(prefixSourceId, MvpType.StringType, context, checkedValue.expressions)?
+\treturn Ok(checkedBuiltinCall(node, MvpType.BoolType, [checkedValue.expressionId, checkedPrefix.expressionId], checkedPrefix.expressions))
+}
+
+fn checkStringJoinCall(node: MvpExpression, context: CheckContext, expressions: List<MvpHirExpression>) -> Result<CheckedExpression, MvpDiagnostic> {
+\tif List.length(node.children) != 2 {
+\t\treturn Err(errorDiagnostic("L2012", "String.join expects 2 arguments, received " + Debug.format(List.length(node.children)), node.span))
+\t}
+\tlet valuesSourceId = childAt(node, 0)?
+\tlet separatorSourceId = childAt(node, 1)?
+\tlet valuesType = MvpType.ListType(MvpListElementType.StringElement)
+\tlet checkedValues = checkExpectedExpression(valuesSourceId, valuesType, context, expressions)?
+\tlet checkedSeparator = checkExpectedExpression(separatorSourceId, MvpType.StringType, context, checkedValues.expressions)?
+\treturn Ok(checkedBuiltinCall(node, MvpType.StringType, [checkedValues.expressionId, checkedSeparator.expressionId], checkedSeparator.expressions))
+}
+
+fn checkDebugFormatCall(node: MvpExpression, context: CheckContext, expressions: List<MvpHirExpression>) -> Result<CheckedExpression, MvpDiagnostic> {
+\tif List.length(node.children) != 1 {
+\t\treturn Err(errorDiagnostic("L2012", "Debug.format expects 1 argument, received " + Debug.format(List.length(node.children)), node.span))
+\t}
+\tlet sourceId = childAt(node, 0)?
+\tlet checked = checkExpression(sourceId, context, expressions)?
+\treturn Ok(checkedBuiltinCall(node, MvpType.StringType, [checked.expressionId], checked.expressions))
+}
+
+fn checkPanicCall(node: MvpExpression, context: CheckContext, expressions: List<MvpHirExpression>) -> Result<CheckedExpression, MvpDiagnostic> {
+\tif List.length(node.children) != 1 {
+\t\treturn Err(errorDiagnostic("L2012", "panic expects 1 argument, received " + Debug.format(List.length(node.children)), node.span))
+\t}
+\tlet sourceId = childAt(node, 0)?
+\tlet checked = checkExpectedExpression(sourceId, MvpType.StringType, context, expressions)?
+\treturn Ok(checkedBuiltinCall(node, MvpType.ErrorType, [checked.expressionId], checked.expressions))
+}
+
+'''
+checker = replace_once(
+    checker,
+    "fn qualifiedVariantType(value: String) -> MvpType? {",
+    string_helpers + "fn qualifiedVariantType(segments: List<String>) -> MvpType? {",
+    "insert remaining String, Debug, and panic builtin checkers",
+)
+checker = replace_once(
+    checker,
+    '''fn qualifiedVariantType(segments: List<String>) -> MvpType? {
+\tlet segments = qualifiedSegments(value)
+\tif List.length(segments) != 2 {
+\t\treturn None
+\t}
+\tlet base = match List.get(segments, 0) { Some(name) => name, None => "" }
+\tif base != "FrontendTokenKind" && base != "MvpTokenKind" && base != "MvpType" && base != "MvpListElementType" && base != "MvpOptionalElementType" {
+\t\treturn None
+\t}
+\treturn Some(MvpType.NamedType(base))
+}
+
+fn qualifiedVariantName(value: String) -> String {
+\tlet segments = qualifiedSegments(value)
+\treturn match List.get(segments, 1) {
+\t\tSome(name) => name
+\t\tNone => ""
+\t}
+}
+
+fn checkQualifiedVariantCall(node: MvpExpression, valueType: MvpType, context: CheckContext, expressions: List<MvpHirExpression>) -> Result<CheckedExpression, MvpDiagnostic> {
+\tlet variantName = qualifiedVariantName(node.text)
+''',
+    '''fn qualifiedVariantType(segments: List<String>) -> MvpType? {
+\tif List.length(segments) != 2 {
+\t\treturn None
+\t}
+\tlet base = match List.get(segments, 0) { Some(name) => name, None => "" }
+\tif base != "FrontendCommentKind" && base != "FrontendTokenKind" && base != "MvpTokenKind" && base != "MvpType" && base != "MvpListElementType" && base != "MvpOptionalElementType" {
+\t\treturn None
+\t}
+\treturn Some(MvpType.NamedType(base))
+}
+
+fn qualifiedVariantName(segments: List<String>) -> String {
+\treturn match List.get(segments, 1) {
+\t\tSome(name) => name
+\t\tNone => ""
+\t}
+}
+
+fn checkQualifiedVariantCall(node: MvpExpression, segments: List<String>, valueType: MvpType, context: CheckContext, expressions: List<MvpHirExpression>) -> Result<CheckedExpression, MvpDiagnostic> {
+\tlet variantName = qualifiedVariantName(segments)
+''',
+    "reuse qualified call segments and allow FrontendCommentKind",
+)
+
+checker = replace_once(
+    checker,
+    '''\tif node.text == "List.length" {
+\t\treturn checkListLengthCall(node, context, expressions)
+\t}
+\tif node.text == "String.length" {
+''',
+    '''\tif node.text == "List.length" {
+\t\treturn checkListLengthCall(node, context, expressions)
+\t}
+\tif node.text == "List.isEmpty" {
+\t\treturn checkListIsEmptyCall(node, context, expressions)
+\t}
+\tif node.text == "List.last" {
+\t\treturn checkListLastCall(node, context, expressions)
+\t}
+\tif node.text == "String.length" {
+''',
+    "dispatch remaining List builtins",
+)
+checker = replace_once(
+    checker,
+    '''\tif node.text == "String.slice" {
+\t\treturn checkStringSliceCall(node, context, expressions)
+\t}
+\tif node.text == "Json.parse" {
+''',
+    '''\tif node.text == "String.slice" {
+\t\treturn checkStringSliceCall(node, context, expressions)
+\t}
+\tif node.text == "String.contains" {
+\t\treturn checkStringContainsCall(node, context, expressions)
+\t}
+\tif node.text == "String.startsWith" {
+\t\treturn checkStringStartsWithCall(node, context, expressions)
+\t}
+\tif node.text == "String.join" {
+\t\treturn checkStringJoinCall(node, context, expressions)
+\t}
+\tif node.text == "Debug.format" {
+\t\treturn checkDebugFormatCall(node, context, expressions)
+\t}
+\tif node.text == "panic" {
+\t\treturn checkPanicCall(node, context, expressions)
+\t}
+\tif node.text == "Json.parse" {
+''',
+    "dispatch remaining String, Debug, and panic builtins",
+)
+checker = replace_once(
+    checker,
+    '''\tif constructorName == "None" {
+\t\treturn Err(errorDiagnostic("L2012", "None is a value and does not accept arguments", node.span))
+\t}
+\tlet qualifiedVariantValue = qualifiedVariantType(node.text)
+\tif match qualifiedVariantValue { Some(_) => true, None => false } {
+\t\tlet valueType = match qualifiedVariantValue { Some(value) => value, None => MvpType.ErrorType }
+\t\treturn checkQualifiedVariantCall(node, valueType, context, expressions)
+\t}
+\treturn match findSignature(context.signatures, node.text) {
+\t\tSome(value) => checkKnownCall(node, value, context, expressions)
+\t\tNone => Err(errorDiagnostic("L1010", "Unknown name " + node.text, node.span))
+\t}
+''',
+    '''\tif constructorName == "None" {
+\t\treturn Err(errorDiagnostic("L2012", "None is a value and does not accept arguments", node.span))
+\t}
+\tlet directSignature = findSignature(context.signatures, node.text)
+\tif match directSignature { Some(_) => true, None => false } {
+\t\treturn match directSignature {
+\t\t\tSome(value) => checkKnownCall(node, value, context, expressions)
+\t\t\tNone => Err(errorDiagnostic("L1010", "Unknown name " + node.text, node.span))
+\t\t}
+\t}
+\tif !String.contains(node.text, ".") {
+\t\treturn Err(errorDiagnostic("L1010", "Unknown name " + node.text, node.span))
+\t}
+\tlet segments = qualifiedSegments(node.text)
+\tlet qualifiedVariantValue = qualifiedVariantType(segments)
+\tif match qualifiedVariantValue { Some(_) => true, None => false } {
+\t\tlet valueType = match qualifiedVariantValue { Some(value) => value, None => MvpType.ErrorType }
+\t\treturn checkQualifiedVariantCall(node, segments, valueType, context, expressions)
+\t}
+\treturn Err(errorDiagnostic("L1010", "Unknown name " + node.text, node.span))
+''',
+    "resolve signatures before qualified variant parsing",
+)
+
+checker_path.write_text(checker, encoding="utf-8")
+
+focused_path = Path("packages/compiler/test/selfhost-qualified-builtins-variants.test.ts")
+focused = focused_path.read_text(encoding="utf-8")
+focused = replace_once(
+    focused,
+    "\t\t\t\t\t'pub fn functionCount(moduleValue: MvpModule) -> Int {',",
+    """\t\t\t\t\t'pub fn remainingBuiltins(value: String, values: List<String>) -> Bool {',
+\t\t\t\t\t'\\tlet joined = String.join(values, \",\")',
+\t\t\t\t\t'\\tlet tail = List.last(values)',
+\t\t\t\t\t'\\tlet formatted = Debug.format(List.length(values))',
+\t\t\t\t\t'\\treturn List.isEmpty(values) || String.contains(joined, value) || String.startsWith(joined, value) || match tail { Some(item) => String.contains(formatted, item), None => false }',
+\t\t\t\t\t'}',
+\t\t\t\t\t'',
+\t\t\t\t\t'pub fn commentKind() -> FrontendCommentKind {',
+\t\t\t\t\t'\\treturn FrontendCommentKind.Ordinary',
+\t\t\t\t\t'}',
+\t\t\t\t\t'',
+\t\t\t\t\t'pub fn impossible() -> Int {',
+\t\t\t\t\t'\\treturn panic(\"boom\")',
+\t\t\t\t\t'}',
+\t\t\t\t\t'',
+\t\t\t\t\t'pub fn functionCount(moduleValue: MvpModule) -> Int {',""",
+    "extend focused builtin and enum coverage",
+)
+focused_path.write_text(focused, encoding="utf-8")
+
+inventory_path = Path("packages/compiler/test/selfhost-full-language-inventory.test.ts")
+inventory_test = inventory_path.read_text(encoding="utf-8")
+inventory_test = replace_once(
+    inventory_test,
+    "{ timeout: 900_000 }",
+    "{ timeout: 1_200_000 }",
+    "raise measured inventory timeout",
+)
+inventory_path.write_text(inventory_test, encoding="utf-8")
