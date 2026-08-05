@@ -1,0 +1,155 @@
+name: Temporary self-host full-language readiness PR bridge
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - .github/workflows/tmp-selfhost-full-language-readiness.yml
+      - .github/workflows/tmp-selfhost-full-language-readiness-pr.yml
+
+concurrency:
+  group: selfhost-full-language-readiness
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  readiness:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 65
+    steps:
+      - name: Checkout branch head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Evaluate transport
+        id: transport
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main --no-tags
+          mapfile -t changed < <(git diff --name-only origin/main...HEAD)
+          allowed=(
+            .github/workflows/tmp-selfhost-full-language-readiness-pr.yml
+            .github/workflows/tmp-selfhost-full-language-readiness.yml
+          )
+          unexpected=()
+          for path in "${changed[@]}"; do
+            found=false
+            for candidate in "${allowed[@]}"; do
+              if [[ "$path" == "$candidate" ]]; then found=true; break; fi
+            done
+            if [[ "$found" == false ]]; then unexpected+=("$path"); fi
+          done
+          if [[ ${#unexpected[@]} -eq 0 && ${#changed[@]} -ge 1 ]]; then
+            echo 'apply=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'apply=false' >> "$GITHUB_OUTPUT"
+            printf 'Readiness source commit already exists or branch diff is unexpected: %s\n' "${changed[*]}"
+          fi
+
+      - name: Set up Node.js
+        if: steps.transport.outputs.apply == 'true'
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        if: steps.transport.outputs.apply == 'true'
+        run: npm ci
+
+      - name: Extract and apply readiness patch
+        if: steps.transport.outputs.apply == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python <<'PY'
+          import base64
+          import gzip
+          import re
+          from pathlib import Path
+
+          workflow = Path('.github/workflows/tmp-selfhost-full-language-readiness.yml').read_text()
+          matched = re.search(r'PATCH_GZIP_BASE64: "([A-Za-z0-9+/=]+)"', workflow)
+          if matched is None:
+              raise SystemExit('embedded readiness patch payload was not found')
+          payload = gzip.decompress(base64.b64decode(matched.group(1)))
+          Path('/tmp/apply-readiness.py').write_bytes(payload)
+          PY
+          test "$(sha256sum /tmp/apply-readiness.py | cut -d' ' -f1)" = "e8c0df993005022fc1bdf28a61ecd06538cffd064b0a52e88ad083439d2c256b"
+          python /tmp/apply-readiness.py
+
+      - name: Type-check
+        if: steps.transport.outputs.apply == 'true'
+        run: npm run check
+
+      - name: Run focused contextual typing regression
+        if: steps.transport.outputs.apply == 'true'
+        run: npm run selfhost:focused:built -- --case=qualified-builtins-variants
+
+      - name: Run project compiler capability regression
+        if: steps.transport.outputs.apply == 'true'
+        run: npm run selfhost:focused:built -- --case=project-compiler-contract
+
+      - name: Run bootstrap readiness regression
+        if: steps.transport.outputs.apply == 'true'
+        run: npm run selfhost:focused:built -- --case=bootstrap-stage-runner
+
+      - name: Verify documentation
+        if: steps.transport.outputs.apply == 'true'
+        run: npm run docs:check
+
+      - name: Run canonical full-language inventory
+        if: steps.transport.outputs.apply == 'true'
+        run: node scripts/run-unit-tests.mjs --file=packages/compiler/dist/test/selfhost-full-language-inventory.test.js
+
+      - name: Verify final diff
+        if: steps.transport.outputs.apply == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check
+          python <<'PY'
+          import subprocess
+          expected = sorted([
+              'docs/self-hosting-project-compiler-integration.md',
+              'docs/self-hosting-project-compiler-integration_ja.md',
+              'docs/self-hosting-stage1-stage2-bootstrap.md',
+              'docs/self-hosting-stage1-stage2-bootstrap_ja.md',
+              'packages/compiler/test/selfhost-bootstrap-stage-runner.test.ts',
+              'packages/compiler/test/selfhost-full-language-inventory.test.ts',
+              'packages/compiler/test/selfhost-project-compiler-contract.test.ts',
+              'packages/compiler/test/selfhost-qualified-builtins-variants.test.ts',
+              'selfhost/mvp/src/checker.virune',
+              'selfhost/mvp/src/project-compiler-contract.virune',
+          ])
+          actual = sorted(subprocess.check_output(['git', 'diff', '--name-only'], text=True).splitlines())
+          if actual != expected:
+              raise SystemExit(f'unexpected final diff: expected={expected}, actual={actual}')
+          PY
+
+      - name: Commit validated sources
+        if: steps.transport.outputs.apply == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            docs/self-hosting-project-compiler-integration.md \
+            docs/self-hosting-project-compiler-integration_ja.md \
+            docs/self-hosting-stage1-stage2-bootstrap.md \
+            docs/self-hosting-stage1-stage2-bootstrap_ja.md \
+            packages/compiler/test/selfhost-bootstrap-stage-runner.test.ts \
+            packages/compiler/test/selfhost-full-language-inventory.test.ts \
+            packages/compiler/test/selfhost-project-compiler-contract.test.ts \
+            packages/compiler/test/selfhost-qualified-builtins-variants.test.ts \
+            selfhost/mvp/src/checker.virune \
+            selfhost/mvp/src/project-compiler-contract.virune
+          git commit -m "feat(selfhost): reach full-language readiness"
+          git push origin HEAD:feat/selfhost-full-language-readiness
