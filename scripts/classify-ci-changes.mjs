@@ -11,6 +11,11 @@ const documentationFiles = new Set([
 	'README_ja.md',
 	'SECURITY.md',
 ]);
+const documentationDirectories = Object.freeze([
+	'.github/PULL_REQUEST_TEMPLATE/',
+	'.github/self-hosting-operations/',
+	'docs/',
+]);
 
 export function classifyChangedPaths(paths) {
 	const normalized = [...new Set(paths.map(path => path.trim().replaceAll('\\', '/')).filter(Boolean))].sort();
@@ -24,7 +29,7 @@ export function classifyChangedPaths(paths) {
 
 export function isDocumentationPath(path) {
 	return documentationFiles.has(path)
-		|| (path.startsWith('docs/') && path.endsWith('.md'));
+		|| (path.endsWith('.md') && documentationDirectories.some(directory => path.startsWith(directory)));
 }
 
 async function main() {
