@@ -162,15 +162,19 @@ test('executes Stage 1 and Stage 2 from validated readiness evidence', async () 
 test('rejects non-ready evidence before materializing Stage 0', async () => {
 	const temporaryRoot = await mkdtemp(join(tmpdir(), 'virune-stage-pipeline-not-ready-'));
 	const prepared = readiness(result('export const stage = 1;\n'));
+	const blockedEvidence = {
+		...prepared.evidence,
+		ready: false,
+		capabilityReady: false,
+		capabilityBlockers: ['full-language-inventory-incomplete'],
+		blockers: ['project-compiler-not-ready'] as const,
+	};
+	const blockedSerialized = JSON.stringify(blockedEvidence);
 	const blocked: BootstrapStageReadinessResult = {
 		...prepared,
-		evidence: {
-			...prepared.evidence,
-			ready: false,
-			capabilityReady: false,
-			capabilityBlockers: ['full-language-inventory-incomplete'],
-			blockers: ['project-compiler-not-ready'],
-		},
+		evidence: blockedEvidence,
+		serialized: blockedSerialized,
+		sha256: sha256(blockedSerialized),
 	};
 	await assert.rejects(
 		executeReadyBootstrapStages(blocked, input, { temporaryRoot }),
@@ -180,13 +184,65 @@ test('rejects non-ready evidence before materializing Stage 0', async () => {
 	await rm(temporaryRoot, { recursive: true, force: true });
 });
 
-test('rejects source-manifest and Stage 0 witness drift', async () => {
-	const temporaryRoot = await mkdtemp(join(tmpdir(), 'virune-stage-pipeline-witness-'));
+test('rejects tampered readiness, capability, and Stage 0 integrity witnesses', async () => {
+	const temporaryRoot = await mkdtemp(join(tmpdir(), 'virune-stage-pipeline-integrity-'));
 	const prepared = readiness(result('export const stage = 1;\n'));
 	await assert.rejects(
 		executeReadyBootstrapStages({
 			...prepared,
-			evidence: { ...prepared.evidence, compilerArtifactSha256: '0'.repeat(64) },
+			serialized: `${prepared.serialized} `,
+		}, input, { temporaryRoot }),
+		/readiness evidence integrity/u,
+	);
+	await assert.rejects(
+		executeReadyBootstrapStages({
+			...prepared,
+			evidence: { ...prepared.evidence, capabilitySha256: '0'.repeat(64) },
+			serialized: JSON.stringify({ ...prepared.evidence, capabilitySha256: '0'.repeat(64) }),
+			sha256: sha256(JSON.stringify({ ...prepared.evidence, capabilitySha256: '0'.repeat(64) })),
+		}, input, { temporaryRoot }),
+		/capability witness does not match/u,
+	);
+	await assert.rejects(
+		executeReadyBootstrapStages({
+			...prepared,
+			stage0Compiler: {
+				...prepared.stage0Compiler,
+				sha256: '0'.repeat(64),
+			},
+			evidence: {
+				...prepared.evidence,
+				compilerArtifactSha256: '0'.repeat(64),
+			},
+			serialized: JSON.stringify({
+				...prepared.evidence,
+				compilerArtifactSha256: '0'.repeat(64),
+			}),
+			sha256: sha256(JSON.stringify({
+				...prepared.evidence,
+				compilerArtifactSha256: '0'.repeat(64),
+			})),
+		}, input, { temporaryRoot }),
+		/Stage 0 artifact integrity/u,
+	);
+	assert.deepEqual(await readdir(temporaryRoot), []);
+	await rm(temporaryRoot, { recursive: true, force: true });
+});
+
+test('rejects source-manifest and Stage 0 witness drift', async () => {
+	const temporaryRoot = await mkdtemp(join(tmpdir(), 'virune-stage-pipeline-witness-'));
+	const prepared = readiness(result('export const stage = 1;\n'));
+	const driftedEvidence = {
+		...prepared.evidence,
+		compilerArtifactSha256: '0'.repeat(64),
+	};
+	const driftedSerialized = JSON.stringify(driftedEvidence);
+	await assert.rejects(
+		executeReadyBootstrapStages({
+			...prepared,
+			evidence: driftedEvidence,
+			serialized: driftedSerialized,
+			sha256: sha256(driftedSerialized),
 		}, input, { temporaryRoot }),
 		/compiler artifact witness/u,
 	);
