@@ -1,0 +1,99 @@
+name: Temporary self-host full-language readiness
+
+on:
+  push:
+    branches:
+      - feat/selfhost-full-language-readiness
+    paths:
+      - .github/workflows/tmp-selfhost-full-language-readiness.yml
+
+permissions:
+  contents: write
+
+jobs:
+  readiness:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 65
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 2
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Verify transport commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD^)" = "4296e931cc473f1d182b3c57c65cdd2ba839e02f"
+          test "$(git diff --name-only HEAD^ HEAD)" = ".github/workflows/tmp-selfhost-full-language-readiness.yml"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Apply readiness patch
+        shell: bash
+        env:
+          PATCH_GZIP_BASE64: "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"
+        run: |
+          set -euo pipefail
+          printf '%s' "$PATCH_GZIP_BASE64" | base64 --decode | gzip --decompress > /tmp/apply-readiness.py
+          test "$(sha256sum /tmp/apply-readiness.py | cut -d' ' -f1)" = "e8c0df993005022fc1bdf28a61ecd06538cffd064b0a52e88ad083439d2c256b"
+          python /tmp/apply-readiness.py
+
+      - name: Type-check
+        run: npm run check
+
+      - name: Run focused contextual typing regression
+        run: npm run selfhost:focused:built -- --case=qualified-builtins-variants
+
+      - name: Run project compiler capability regression
+        run: npm run selfhost:focused:built -- --case=project-compiler-contract
+
+      - name: Run bootstrap readiness regression
+        run: npm run selfhost:focused:built -- --case=bootstrap-stage-runner
+
+      - name: Verify documentation
+        run: npm run docs:check
+
+      - name: Run canonical full-language inventory
+        run: node scripts/run-unit-tests.mjs --file=packages/compiler/dist/test/selfhost-full-language-inventory.test.js
+
+      - name: Verify final diff
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check
+          python <<'PY'
+          import subprocess
+          expected = sorted([
+              "docs/self-hosting-project-compiler-integration.md",
+              "docs/self-hosting-project-compiler-integration_ja.md",
+              "docs/self-hosting-stage1-stage2-bootstrap.md",
+              "docs/self-hosting-stage1-stage2-bootstrap_ja.md",
+              "packages/compiler/test/selfhost-bootstrap-stage-runner.test.ts",
+              "packages/compiler/test/selfhost-full-language-inventory.test.ts",
+              "packages/compiler/test/selfhost-project-compiler-contract.test.ts",
+              "packages/compiler/test/selfhost-qualified-builtins-variants.test.ts",
+              "selfhost/mvp/src/checker.virune",
+              "selfhost/mvp/src/project-compiler-contract.virune",
+          ])
+          actual = sorted(subprocess.check_output(["git", "diff", "--name-only"], text=True).splitlines())
+          if actual != expected:
+              raise SystemExit(f"unexpected final diff: expected={expected}, actual={actual}")
+          PY
+
+      - name: Commit validated sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add             docs/self-hosting-project-compiler-integration.md             docs/self-hosting-project-compiler-integration_ja.md             docs/self-hosting-stage1-stage2-bootstrap.md             docs/self-hosting-stage1-stage2-bootstrap_ja.md             packages/compiler/test/selfhost-bootstrap-stage-runner.test.ts             packages/compiler/test/selfhost-full-language-inventory.test.ts             packages/compiler/test/selfhost-project-compiler-contract.test.ts             packages/compiler/test/selfhost-qualified-builtins-variants.test.ts             selfhost/mvp/src/checker.virune             selfhost/mvp/src/project-compiler-contract.virune
+          git commit -m "feat(selfhost): reach full-language readiness"
+          git push origin HEAD:feat/selfhost-full-language-readiness
