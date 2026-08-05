@@ -1,0 +1,109 @@
+from pathlib import Path
+
+
+def replace_once(text: str, old: str, new: str, label: str) -> str:
+    count = text.count(old)
+    if count != 1:
+        raise SystemExit(f"{label}: expected exactly one match, found {count}")
+    return text.replace(old, new, 1)
+
+
+checker_path = Path("selfhost/mvp/src/checker.virune")
+checker = checker_path.read_text(encoding="utf-8")
+
+list_finish_helpers = '''fn checkListConcatCall(node: MvpExpression, context: CheckContext, expressions: List<MvpHirExpression>) -> Result<CheckedExpression, MvpDiagnostic> {
+\tif List.length(node.children) != 2 {
+\t\treturn Err(errorDiagnostic("L2012", "List.concat expects 2 arguments, received " + Debug.format(List.length(node.children)), node.span))
+\t}
+\tlet leftSourceId = childAt(node, 0)?
+\tlet rightSourceId = childAt(node, 1)?
+\tlet checkedLeft = checkExpression(leftSourceId, context, expressions)?
+\tif match listElementType(checkedLeft.valueType) { Some(_) => false, None => true } {
+\t\treturn Err(errorDiagnostic("L2021", "List.concat requires a List, received " + typeName(checkedLeft.valueType), node.span))
+\t}
+\tlet checkedRight = checkExpectedExpression(rightSourceId, checkedLeft.valueType, context, checkedLeft.expressions)?
+\treturn Ok(checkedBuiltinCall(node, checkedLeft.valueType, [checkedLeft.expressionId, checkedRight.expressionId], checkedRight.expressions))
+}
+
+fn checkListIsNotEmptyCall(node: MvpExpression, context: CheckContext, expressions: List<MvpHirExpression>) -> Result<CheckedExpression, MvpDiagnostic> {
+\tif List.length(node.children) != 1 {
+\t\treturn Err(errorDiagnostic("L2012", "List.isNotEmpty expects 1 argument, received " + Debug.format(List.length(node.children)), node.span))
+\t}
+\tlet sourceId = childAt(node, 0)?
+\tlet checked = checkExpression(sourceId, context, expressions)?
+\tif match listElementType(checked.valueType) { Some(_) => false, None => true } {
+\t\treturn Err(errorDiagnostic("L2021", "List.isNotEmpty requires a List, received " + typeName(checked.valueType), node.span))
+\t}
+\treturn Ok(checkedBuiltinCall(node, MvpType.BoolType, [checked.expressionId], checked.expressions))
+}
+
+'''
+checker = replace_once(
+    checker,
+    "fn checkListIsEmptyCall(node: MvpExpression, context: CheckContext, expressions: List<MvpHirExpression>) -> Result<CheckedExpression, MvpDiagnostic> {",
+    list_finish_helpers + "fn checkListIsEmptyCall(node: MvpExpression, context: CheckContext, expressions: List<MvpHirExpression>) -> Result<CheckedExpression, MvpDiagnostic> {",
+    "insert List.concat and List.isNotEmpty checkers",
+)
+
+checker = replace_once(
+    checker,
+    'if base != "FrontendCommentKind" && base != "FrontendTokenKind" && base != "MvpTokenKind" && base != "MvpType" && base != "MvpListElementType" && base != "MvpOptionalElementType" {',
+    'if base != "FrontendCommentKind" && base != "FrontendTokenKind" && base != "MvpStatement" && base != "MvpTokenKind" && base != "MvpType" && base != "MvpListElementType" && base != "MvpOptionalElementType" {',
+    "allow MvpStatement qualified constructors",
+)
+
+checker = replace_once(
+    checker,
+    '''\tif node.text == "List.length" {
+\t\treturn checkListLengthCall(node, context, expressions)
+\t}
+\tif node.text == "List.isEmpty" {
+\t\treturn checkListIsEmptyCall(node, context, expressions)
+\t}
+\tif node.text == "List.last" {
+''',
+    '''\tif node.text == "List.length" {
+\t\treturn checkListLengthCall(node, context, expressions)
+\t}
+\tif node.text == "List.concat" {
+\t\treturn checkListConcatCall(node, context, expressions)
+\t}
+\tif node.text == "List.isEmpty" {
+\t\treturn checkListIsEmptyCall(node, context, expressions)
+\t}
+\tif node.text == "List.isNotEmpty" {
+\t\treturn checkListIsNotEmptyCall(node, context, expressions)
+\t}
+\tif node.text == "List.last" {
+''',
+    "dispatch final List builtins",
+)
+
+checker_path.write_text(checker, encoding="utf-8")
+
+focused_path = Path("packages/compiler/test/selfhost-qualified-builtins-variants.test.ts")
+focused = focused_path.read_text(encoding="utf-8")
+focused = replace_once(
+    focused,
+    "\t\t\t\t\t'\\tlet joined = String.join(values, \",\")',",
+    """\t\t\t\t\t'\\tlet combined = List.concat(values, [\"z\"])',
+\t\t\t\t\t'\\tlet joined = String.join(combined, \",\")',""",
+    "cover List.concat",
+)
+focused = replace_once(
+    focused,
+    "\t\t\t\t\t'\\treturn List.isEmpty(values) || String.contains(joined, value) || String.startsWith(joined, value) || match tail { Some(item) => String.contains(formatted, item), None => false }',",
+    "\t\t\t\t\t'\\treturn List.isEmpty(values) || List.isNotEmpty(combined) || String.contains(joined, value) || String.startsWith(joined, value) || match tail { Some(item) => String.contains(formatted, item), None => false }',",
+    "cover List.isNotEmpty",
+)
+focused = replace_once(
+    focused,
+    "\t\t\t\t\t'pub fn functionCount(moduleValue: MvpModule) -> Int {',",
+    """\t\t\t\t\t'pub fn statementValue(spanValue: MvpSpan) -> MvpStatement {',
+\t\t\t\t\t'\\treturn MvpStatement.LetValue(\"value\", false, Some(MvpType.IntType), 0, spanValue)',
+\t\t\t\t\t'}',
+\t\t\t\t\t'',
+\t\t\t\t\t'pub fn functionCount(moduleValue: MvpModule) -> Int {',""",
+    "cover MvpStatement qualified constructor",
+)
+focused_path.write_text(focused, encoding="utf-8")
