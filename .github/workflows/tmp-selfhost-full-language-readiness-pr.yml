@@ -7,6 +7,7 @@ on:
     paths:
       - .github/workflows/tmp-selfhost-full-language-readiness.yml
       - .github/workflows/tmp-selfhost-full-language-readiness-pr.yml
+      - .github/scripts/tmp-apply-full-language-readiness.py
 
 concurrency:
   group: selfhost-full-language-readiness
@@ -34,6 +35,7 @@ jobs:
           git fetch origin main --no-tags
           mapfile -t changed < <(git diff --name-only origin/main...HEAD)
           allowed=(
+            .github/scripts/tmp-apply-full-language-readiness.py
             .github/workflows/tmp-selfhost-full-language-readiness-pr.yml
             .github/workflows/tmp-selfhost-full-language-readiness.yml
           )
@@ -63,26 +65,12 @@ jobs:
         if: steps.transport.outputs.apply == 'true'
         run: npm ci
 
-      - name: Extract and apply readiness patch
+      - name: Verify and apply readiness patch
         if: steps.transport.outputs.apply == 'true'
         shell: bash
         run: |
           set -euo pipefail
-          python <<'PY'
-          import base64
-          import gzip
-          import re
-          from pathlib import Path
-
-          workflow = Path('.github/workflows/tmp-selfhost-full-language-readiness.yml').read_text()
-          matched = re.search(r'PATCH_GZIP_BASE64: "([A-Za-z0-9+/=]+)"', workflow)
-          if matched is None:
-              raise SystemExit('embedded readiness patch payload was not found')
-          payload = gzip.decompress(base64.b64decode(matched.group(1)))
-          Path('/tmp/apply-readiness.py').write_bytes(payload)
-          PY
-          test "$(sha256sum /tmp/apply-readiness.py | cut -d' ' -f1)" = "e8c0df993005022fc1bdf28a61ecd06538cffd064b0a52e88ad083439d2c256b"
-          python /tmp/apply-readiness.py
+          python .github/scripts/tmp-apply-full-language-readiness.py
 
       - name: Type-check
         if: steps.transport.outputs.apply == 'true'
