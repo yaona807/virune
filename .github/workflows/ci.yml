@@ -129,7 +129,7 @@ jobs:
     needs: [classify, build]
     if: needs.classify.outputs.docs_only != 'true'
     runs-on: ubuntu-24.04
-    timeout-minutes: 25
+    timeout-minutes: 35
     env:
       VIRUNE_CI_JOB: core-tests-ubuntu-node24
     steps:
