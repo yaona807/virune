@@ -1,21 +1,23 @@
 name: Temporary selfhost core timeout promotion
 
 on:
-  push:
+  pull_request:
     branches:
-      - feat/selfhost-qualified-builtins-variants
-    paths:
-      - .github/workflows/tmp-selfhost-qualified-builtins-variants.yml
+      - main
+    types:
+      - synchronize
+      - reopened
 
 permissions:
   contents: write
 
 concurrency:
-  group: tmp-selfhost-core-timeout-promotion
+  group: tmp-selfhost-core-timeout-promotion-${{ github.event.pull_request.number }}
   cancel-in-progress: false
 
 jobs:
   patch-and-promote:
+    if: github.event.pull_request.number == 277 && github.head_ref == 'feat/selfhost-qualified-builtins-variants'
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -24,7 +26,7 @@ jobs:
           ref: feat/selfhost-qualified-builtins-variants
           fetch-depth: 0
 
-      - name: Verify isolated transport commit
+      - name: Verify isolated transport commits
         shell: bash
         run: |
           set -euo pipefail
@@ -48,18 +50,13 @@ jobs:
 
           path = Path('.github/workflows/ci.yml')
           text = path.read_text(encoding='utf-8')
-          old = '''  verify:
-              name: Core tests (Ubuntu 24.04 / Node.js 24)
-              needs: [classify, build]
-              if: needs.classify.outputs.docs_only != 'true'
-              runs-on: ubuntu-24.04
-              timeout-minutes: 25
-              env:
-          '''
-          new = old.replace('timeout-minutes: 25', 'timeout-minutes: 35')
-          if text.count(old) != 1:
-              raise SystemExit(f'expected one verify timeout block, found {text.count(old)}')
-          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+          start = text.index('  verify:\n')
+          end = text.index('\n  quality:\n', start)
+          block = text[start:end]
+          if block.count('timeout-minutes: 25') != 1:
+              raise SystemExit(f'expected one verify timeout, found {block.count("timeout-minutes: 25")}')
+          updated = block.replace('timeout-minutes: 25', 'timeout-minutes: 35', 1)
+          path.write_text(text[:start] + updated + text[end:], encoding='utf-8')
           PY
 
       - name: Remove transport workflow and verify final diff
