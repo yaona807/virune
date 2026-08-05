@@ -423,6 +423,54 @@ fn functionReturnName(value: String) -> String {
 fn namedFieldType(typeNameValue: String, fieldName: String) -> MvpType {
 	let compact = compactTypeName(typeNameValue)
 	let base = namedBaseTypeName(compact)
+	if base == "ControlFlowFunctionBuildResult" && fieldName == "functions" {
+		return typeFromName("List<SemanticFlowFunction>")
+	}
+	if base == "ControlFlowFunctionBuildResult" && fieldName == "diagnostics" {
+		return typeFromName("List<SemanticFlowDiagnostic>")
+	}
+	if base == "EffectFunctionBuildResult" && fieldName == "functions" {
+		return typeFromName("List<SemanticEffectFunction>")
+	}
+	if base == "EffectFunctionBuildResult" && fieldName == "diagnostics" {
+		return typeFromName("List<SemanticEffectDiagnostic>")
+	}
+	if base == "DeferScopeBuildResult" && fieldName == "scopes" {
+		return typeFromName("List<SemanticDeferScope>")
+	}
+	if base == "DeferScopeBuildResult" && fieldName == "diagnostics" {
+		return typeFromName("List<SemanticDeferDiagnostic>")
+	}
+	if base == "SymbolScopeBuildResult" && fieldName == "scopes" {
+		return typeFromName("List<SemanticScope>")
+	}
+	if base == "SymbolScopeBuildResult" && fieldName == "diagnostics" {
+		return typeFromName("List<SemanticScopeDiagnostic>")
+	}
+	if base == "SymbolScopeSymbolBuildResult" && fieldName == "symbols" {
+		return typeFromName("List<SemanticSymbol>")
+	}
+	if base == "SymbolScopeSymbolBuildResult" && fieldName == "diagnostics" {
+		return typeFromName("List<SemanticScopeDiagnostic>")
+	}
+	if base == "VisibilitySymbolBuildResult" && fieldName == "symbols" {
+		return typeFromName("List<SemanticModuleSymbol>")
+	}
+	if base == "VisibilitySymbolBuildResult" && fieldName == "diagnostics" {
+		return typeFromName("List<SemanticVisibilityDiagnostic>")
+	}
+	if base == "MvpExternalSignature" && fieldName == "name" {
+		return typeFromName("String")
+	}
+	if base == "MvpExternalSignature" && fieldName == "parameters" {
+		return typeFromName("List<MvpType>")
+	}
+	if base == "MvpExternalSignature" && fieldName == "returnType" {
+		return typeFromName("MvpType")
+	}
+	if base == "MvpExternalSignature" && fieldName == "span" {
+		return typeFromName("MvpSpan")
+	}
 	if base == "AccessBuildResult" && fieldName == "accesses" {
 		return typeFromName("List" + "<" + "SemanticModuleAccessResult" + ">")
 	}

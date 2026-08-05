@@ -82,7 +82,7 @@ record ModuleBuildResult {
 	diagnostics: List<SemanticVisibilityDiagnostic>
 }
 
-record SymbolBuildResult {
+record VisibilitySymbolBuildResult {
 	symbols: List<SemanticModuleSymbol>
 	diagnostics: List<SemanticVisibilityDiagnostic>
 }
@@ -245,7 +245,7 @@ fn buildSymbols(
 	definitions: List<FrontendModuleSymbolDefinition>,
 	modules: List<SemanticModule>,
 	diagnosticsValue: List<SemanticVisibilityDiagnostic>,
-) -> SymbolBuildResult {
+) -> VisibilitySymbolBuildResult {
 	let mut symbols: List<SemanticModuleSymbol> = []
 	let mut diagnostics = diagnosticsValue
 	for definition in definitions {
@@ -321,7 +321,7 @@ fn buildSymbols(
 			}
 		}
 	}
-	return SymbolBuildResult { symbols: symbols, diagnostics: diagnostics }
+	return VisibilitySymbolBuildResult { symbols: symbols, diagnostics: diagnostics }
 }
 
 fn definitionForSymbol(

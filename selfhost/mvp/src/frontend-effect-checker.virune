@@ -46,7 +46,7 @@ record FrontendEffectResult derives Eq, Debug, Json {
 	diagnostics: List<SemanticEffectDiagnostic>
 }
 
-record FunctionBuildResult {
+record EffectFunctionBuildResult {
 	functions: List<SemanticEffectFunction>
 	diagnostics: List<SemanticEffectDiagnostic>
 }
@@ -159,7 +159,7 @@ fn appendUnknownEffectDiagnostics(
 	return diagnostics
 }
 
-fn buildFunctions(values: List<FrontendEffectFunction>) -> FunctionBuildResult {
+fn buildFunctions(values: List<FrontendEffectFunction>) -> EffectFunctionBuildResult {
 	let mut functions: List<SemanticEffectFunction> = []
 	let mut diagnostics: List<SemanticEffectDiagnostic> = []
 	let mut id = 0
@@ -191,7 +191,7 @@ fn buildFunctions(values: List<FrontendEffectFunction>) -> FunctionBuildResult {
 		})
 		id = id + 1
 	}
-	return FunctionBuildResult { functions: functions, diagnostics: diagnostics }
+	return EffectFunctionBuildResult { functions: functions, diagnostics: diagnostics }
 }
 
 fn missingEffects(
