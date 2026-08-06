@@ -21,6 +21,7 @@ jobs:
     timeout-minutes: 5
     outputs:
       docs_only: ${{ steps.changes.outputs.docs_only }}
+      selfhost_inventory_required: ${{ steps.changes.outputs.selfhost_inventory_required }}
       changed_count: ${{ steps.changes.outputs.changed_count }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -177,31 +178,52 @@ jobs:
     env:
       VIRUNE_CI_JOB: selfhost-inventory-ubuntu-node24
     steps:
+      - name: Validate inventory decision
+        shell: bash
+        env:
+          SELFHOST_INVENTORY_REQUIRED: ${{ needs.classify.outputs.selfhost_inventory_required }}
+        run: |
+          case "$SELFHOST_INVENTORY_REQUIRED" in
+            true|false) ;;
+            *)
+              echo "Invalid selfhost_inventory_required output: $SELFHOST_INVENTORY_REQUIRED" >&2
+              exit 1
+              ;;
+          esac
+      - name: Record inventory omission
+        if: needs.classify.outputs.selfhost_inventory_required == 'false'
+        run: echo "Full-language inventory omitted because no inventory-impacting paths changed."
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        if: needs.classify.outputs.selfhost_inventory_required == 'true'
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        if: needs.classify.outputs.selfhost_inventory_required == 'true'
         with:
           node-version: 24
           cache: npm
       - name: Install dependencies
+        if: needs.classify.outputs.selfhost_inventory_required == 'true'
         run: node scripts/run-ci-command.mjs --id install -- npm ci
       - name: Download compiled output
+        if: needs.classify.outputs.selfhost_inventory_required == 'true'
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           name: compiled-node-24-${{ github.sha }}
           path: .cache
       - name: Restore compiled output
+        if: needs.classify.outputs.selfhost_inventory_required == 'true'
         run: node scripts/run-ci-command.mjs --id restore-compiled-output -- tar -xzf .cache/compiled-output.tgz -C .
-      - name: Run deterministic full-language inventory
+      - name: Run full-language inventory
+        if: needs.classify.outputs.selfhost_inventory_required == 'true'
         run: >-
           node scripts/run-ci-command.mjs --id selfhost-full-language-inventory --
           node scripts/run-unit-tests.mjs
           --file=packages/compiler/dist/test/selfhost-full-language-inventory.test.js
           --failure-output-only
       - name: Write timing summary
-        if: always()
+        if: always() && needs.classify.outputs.selfhost_inventory_required == 'true'
         run: node scripts/write-ci-summary.mjs
       - name: Upload self-host inventory evidence
-        if: always()
+        if: always() && needs.classify.outputs.selfhost_inventory_required == 'true'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: ci-evidence-selfhost-inventory-ubuntu-node24-${{ github.sha }}
