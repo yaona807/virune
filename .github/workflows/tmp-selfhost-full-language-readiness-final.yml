@@ -84,7 +84,7 @@ jobs:
           scripts/run-unit-tests.test.mjs
           EOF
           sort "$RUNNER_TEMP/expected-phase2-files.txt" -o "$RUNNER_TEMP/expected-phase2-files.txt"
-          git diff --name-only | sort > "$RUNNER_TEMP/actual-phase2-files.txt"
+          { git diff --name-only; git ls-files --others --exclude-standard; } | sort > "$RUNNER_TEMP/actual-phase2-files.txt"
           diff -u "$RUNNER_TEMP/expected-phase2-files.txt" "$RUNNER_TEMP/actual-phase2-files.txt"
           git diff --check
       - name: Install dependencies
