@@ -1,4 +1,4 @@
-name: Temporary full-language readiness permanent source artifact
+name: Temporary publish full-language readiness source branch
 
 on:
   pull_request:
@@ -7,23 +7,27 @@ on:
       - '.github/workflows/tmp-selfhost-full-language-readiness-final.yml'
 
 permissions:
-  contents: read
+  actions: read
+  contents: write
 
 concurrency:
-  group: tmp-selfhost-full-language-readiness-promotion-${{ github.event.pull_request.number || github.ref }}
+  group: tmp-selfhost-full-language-readiness-publish-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
-  permanent-source-artifact:
-    name: Permanent readiness source artifact (Ubuntu 24.04 / Node.js 24)
+  publish-permanent-branch:
+    name: Publish exact permanent readiness branch
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
-      VIRUNE_CI_JOB: selfhost-full-language-readiness-promotion
       EXPECTED_BASE_SHA: 34a175dc1845eba083fece2694f6a47f65d1fcf5
-      READINESS_EVIDENCE_RUN: '31090903027'
-      READINESS_EVIDENCE_ARTIFACT: '8964401598'
-      READINESS_EVIDENCE_DIGEST: sha256:b7f13c0589ae6a995b3e918c954d75f4bacf6ee64b08278ccd7040e2afba6a51
+      PROMOTION_RUN_ID: '31094316677'
+      PROMOTION_ARTIFACT_NAME: selfhost-full-language-readiness-permanent-adae68cdac0f09e07796ad074b7f4e5548c77e9f
+      PROMOTION_ARTIFACT_ID: '8964798498'
+      PROMOTION_ARTIFACT_DIGEST: sha256:02d6e7dcfc6cf5a990a5b6ba020f81d16a5c2d2e7bd093aede127a7f20cdd9a1
+      TARGET_BRANCH: feat/selfhost-full-language-readiness-main
+      GH_TOKEN: ${{ github.token }}
+      VIRUNE_CI_JOB: selfhost-full-language-readiness-publish
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -32,150 +36,37 @@ jobs:
         with:
           node-version: 24
           cache: npm
-      - name: Materialize the permanent source set from exact main
+      - name: Restore and verify the permanent source artifact
         shell: bash
         run: |
           set -euo pipefail
           base_sha="$(git rev-parse HEAD^1)"
           test "$base_sha" = "$EXPECTED_BASE_SHA"
-          test "$(git hash-object .github/scripts/tmp-apply-full-language-readiness.py)" = "1bb45cd44e459f235dae4dcc7544e7ee125aeb88"
-          test "$(git hash-object .github/scripts/tmp-fix-full-language-readiness.py)" = "cd495151a220fce070f2043d7c03f75efafc7740"
-          cp .github/scripts/tmp-apply-full-language-readiness.py "$RUNNER_TEMP/apply-readiness.py"
-          cp .github/scripts/tmp-fix-full-language-readiness.py "$RUNNER_TEMP/fix-readiness.py"
+          if git ls-remote --exit-code --heads origin "refs/heads/$TARGET_BRANCH" >/dev/null 2>&1; then
+            echo "Target branch already exists: $TARGET_BRANCH" >&2
+            exit 1
+          fi
+          artifact_root="$RUNNER_TEMP/readiness-promotion"
+          mkdir -p "$artifact_root"
+          gh run download "$PROMOTION_RUN_ID" \
+            --repo yaona807/virune \
+            --name "$PROMOTION_ARTIFACT_NAME" \
+            --dir "$artifact_root"
+          test -f "$artifact_root/manifest.json"
+          test -f "$artifact_root/files.txt"
+          test -f "$artifact_root/permanent-readiness-files.tar.gz"
           git reset --hard "$base_sha"
-          python "$RUNNER_TEMP/apply-readiness.py"
-          python "$RUNNER_TEMP/fix-readiness.py"
-          python - <<'PY'
-          from pathlib import Path
-
-          def replace_once(path: Path, old: str, new: str, label: str) -> None:
-              text = path.read_text()
-              count = text.count(old)
-              if count != 1:
-                  raise SystemExit(f"{label}: expected one anchor, found {count}")
-              path.write_text(text.replace(old, new, 1))
-
-          checker = Path('selfhost/mvp/src/checker.virune')
-          functions_anchor = (
-              '\tif base == "MvpModule" && fieldName == "functions" {\n'
-              '\t\treturn typeFromName("List" + "<" + "MvpFunction" + ">")\n'
-              '\t}\n'
-          )
-          imports_mapping = (
-              '\tif base == "MvpModule" && fieldName == "imports" {\n'
-              '\t\treturn typeFromName("List<MvpImport>")\n'
-              '\t}\n'
-          )
-          replace_once(
-              checker,
-              functions_anchor,
-              imports_mapping + functions_anchor,
-              'checker MvpModule imports mapping',
-          )
-
-          inserted_documentation = (
-              '\tif base == "ParsedDocumentation" && fieldName == "state" {\n'
-              '\t\treturn typeFromName("CoreState")\n'
-              '\t}\n'
-              '\tif base == "ParsedDocumentation" && fieldName == "documentation" {\n'
-              '\t\treturn typeFromName("List<String>")\n'
-              '\t}\n'
-          )
-          state_only = (
-              '\tif base == "ParsedDocumentation" && fieldName == "state" {\n'
-              '\t\treturn typeFromName("CoreState")\n'
-              '\t}\n'
-          )
-          replace_once(
-              checker,
-              inserted_documentation,
-              state_only,
-              'checker duplicate ParsedDocumentation mapping cleanup',
-          )
-
-          checker_text = checker.read_text()
-          assertions = {
-              'MvpModule imports mapping': 'if base == "MvpModule" && fieldName == "imports"',
-              'MvpModule functions mapping': 'if base == "MvpModule" && fieldName == "functions"',
-              'ParsedDocumentation state mapping': 'if base == "ParsedDocumentation" && fieldName == "state"',
-              'ParsedDocumentation documentation mapping': 'if base == "ParsedDocumentation" && fieldName == "documentation"',
-          }
-          for label, value in assertions.items():
-              count = checker_text.count(value)
-              if count != 1:
-                  raise SystemExit(f"{label}: expected one mapping, found {count}")
-
-          contract = Path('selfhost/mvp/src/project-compiler-contract.virune')
-          fail_closed = '''pub fn projectCompilerCapabilityJson() -> Result<String, List<JsonError>> {
-          \treturn Json.encode<ProjectCompilerCapabilityV1>(ProjectCompilerCapabilityV1 {
-          \t\tcontractVersion: "1",
-          \t\tready: false,
-          \t\trequestSchema: "virune.selfhost.project-compiler.request.v1",
-          \t\tresultSchema: "virune.selfhost.project-compiler.result.v2",
-          \t\tblockers: ["full-language-lowering-not-implemented"],
-          \t})
-          }
-          '''
-          ready = '''pub fn projectCompilerCapabilityJson() -> Result<String, List<JsonError>> {
-          \treturn Json.encode<ProjectCompilerCapabilityV1>(ProjectCompilerCapabilityV1 {
-          \t\tcontractVersion: "1",
-          \t\tready: true,
-          \t\trequestSchema: "virune.selfhost.project-compiler.request.v1",
-          \t\tresultSchema: "virune.selfhost.project-compiler.result.v2",
-          \t\tblockers: [],
-          \t})
-          }
-          '''
-          replace_once(contract, fail_closed, ready, 'project compiler capability promotion')
-
-          inventory_test = Path('packages/compiler/test/selfhost-full-language-inventory.test.ts')
-          replace_once(
-              inventory_test,
-              '{ timeout: 1_500_000 }',
-              '{ timeout: 7_200_000 }',
-              'full-language inventory timeout',
-          )
-          PY
-          expected_files="$RUNNER_TEMP/expected-readiness-files.txt"
-          cat > "$expected_files" <<'EOF'
-          docs/self-hosting-project-compiler-integration.md
-          docs/self-hosting-project-compiler-integration_ja.md
-          docs/self-hosting-stage1-stage2-bootstrap.md
-          docs/self-hosting-stage1-stage2-bootstrap_ja.md
-          packages/compiler/test/selfhost-bootstrap-stage-runner.test.ts
-          packages/compiler/test/selfhost-full-language-inventory.test.ts
-          packages/compiler/test/selfhost-project-compiler-contract.test.ts
-          packages/compiler/test/selfhost-qualified-builtins-variants.test.ts
-          selfhost/mvp/src/checker.virune
-          selfhost/mvp/src/frontend-parser-core.virune
-          selfhost/mvp/src/project-compiler-contract.virune
-          EOF
-          git diff --name-only | sort > "$RUNNER_TEMP/actual-readiness-files.txt"
-          sort "$expected_files" -o "$expected_files"
-          diff -u "$expected_files" "$RUNNER_TEMP/actual-readiness-files.txt"
-          git diff --check
-      - name: Install dependencies
-        run: node scripts/run-ci-command.mjs --id install -- npm ci
-      - name: Build and type-check project references
-        run: node scripts/run-ci-command.mjs --id build -- npm run check
-      - name: Run focused permanent readiness regressions
-        run: >-
-          node scripts/run-ci-command.mjs --id selfhost-readiness-focused --
-          node --test --test-isolation=none
-          packages/compiler/dist/test/selfhost-bootstrap-stage-runner.test.js
-          packages/compiler/dist/test/selfhost-project-compiler-contract.test.js
-          packages/compiler/dist/test/selfhost-qualified-builtins-variants.test.js
-      - name: Package exactly eleven permanent files
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p readiness-promotion
           python - <<'PY'
           from hashlib import sha256
-          from json import dumps
-          from pathlib import Path
+          from json import loads
+          from os import environ
+          from pathlib import Path, PurePosixPath
+          import tarfile
 
-          files = [
+          artifact_root = Path(environ['RUNNER_TEMP']) / 'readiness-promotion'
+          manifest = loads((artifact_root / 'manifest.json').read_text())
+          files = (artifact_root / 'files.txt').read_text().splitlines()
+          expected = [
               'docs/self-hosting-project-compiler-integration.md',
               'docs/self-hosting-project-compiler-integration_ja.md',
               'docs/self-hosting-stage1-stage2-bootstrap.md',
@@ -188,37 +79,77 @@ jobs:
               'selfhost/mvp/src/frontend-parser-core.virune',
               'selfhost/mvp/src/project-compiler-contract.virune',
           ]
-          manifest = {
-              'schemaVersion': 1,
-              'claim': 'selfhost-full-language-readiness-permanent-source-set',
-              'baseSha': '34a175dc1845eba083fece2694f6a47f65d1fcf5',
-              'sourceEvidence': {
-                  'runId': 31090903027,
-                  'artifactId': 8964401598,
-                  'artifactDigest': 'sha256:b7f13c0589ae6a995b3e918c954d75f4bacf6ee64b08278ccd7040e2afba6a51',
-                  'sourceCount': 31,
-                  'parsedModules': 31,
-                  'checkedModules': 31,
-                  'emittedModules': 31,
-                  'diagnosticCount': 0,
-              },
-              'fileCount': len(files),
-              'files': [
-                  {'path': path, 'sha256': sha256(Path(path).read_bytes()).hexdigest()}
-                  for path in files
-              ],
+          if manifest.get('claim') != 'selfhost-full-language-readiness-permanent-source-set':
+              raise SystemExit('unexpected promotion artifact claim')
+          if manifest.get('baseSha') != environ['EXPECTED_BASE_SHA']:
+              raise SystemExit('promotion artifact base SHA mismatch')
+          if manifest.get('fileCount') != 11 or files != expected:
+              raise SystemExit('promotion artifact file list mismatch')
+          evidence = manifest.get('sourceEvidence', {})
+          expected_evidence = {
+              'runId': 31090903027,
+              'artifactId': 8964401598,
+              'artifactDigest': 'sha256:b7f13c0589ae6a995b3e918c954d75f4bacf6ee64b08278ccd7040e2afba6a51',
+              'sourceCount': 31,
+              'parsedModules': 31,
+              'checkedModules': 31,
+              'emittedModules': 31,
+              'diagnosticCount': 0,
           }
-          Path('readiness-promotion/manifest.json').write_text(
-              dumps(manifest, indent=2, sort_keys=True) + '\n'
+          if evidence != expected_evidence:
+              raise SystemExit('promotion artifact readiness evidence mismatch')
+          hashes = {entry['path']: entry['sha256'] for entry in manifest['files']}
+          if list(hashes) != expected:
+              raise SystemExit('promotion artifact manifest order mismatch')
+          archive = artifact_root / 'permanent-readiness-files.tar.gz'
+          with tarfile.open(archive, 'r:gz') as bundle:
+              members = bundle.getmembers()
+              member_paths = [member.name for member in members if member.isfile()]
+              if member_paths != expected:
+                  raise SystemExit('promotion archive member list mismatch')
+              for member in members:
+                  path = PurePosixPath(member.name)
+                  if path.is_absolute() or '..' in path.parts or not member.isfile():
+                      raise SystemExit(f'unsafe promotion archive member: {member.name}')
+              bundle.extractall('.', members=members)
+          for path in expected:
+              actual = sha256(Path(path).read_bytes()).hexdigest()
+              if actual != hashes[path]:
+                  raise SystemExit(f'promotion file digest mismatch: {path}')
+          (Path(environ['RUNNER_TEMP']) / 'expected-readiness-files.txt').write_text(
+              '\n'.join(sorted(expected)) + '\n'
           )
-          Path('readiness-promotion/files.txt').write_text('\n'.join(files) + '\n')
           PY
-          tar -czf readiness-promotion/permanent-readiness-files.tar.gz \
-            -T readiness-promotion/files.txt
-      - name: Upload permanent readiness source artifact
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        with:
-          name: selfhost-full-language-readiness-permanent-${{ github.sha }}
-          path: readiness-promotion/
-          if-no-files-found: error
-          retention-days: 14
+          git diff --name-only | sort > "$RUNNER_TEMP/actual-readiness-files.txt"
+          diff -u "$RUNNER_TEMP/expected-readiness-files.txt" "$RUNNER_TEMP/actual-readiness-files.txt"
+          git diff --check
+      - name: Install dependencies
+        run: node scripts/run-ci-command.mjs --id install -- npm ci
+      - name: Build and type-check project references
+        run: node scripts/run-ci-command.mjs --id build -- npm run check
+      - name: Run focused permanent readiness regressions
+        run: >-
+          node scripts/run-ci-command.mjs --id selfhost-readiness-focused --
+          node --test --test-isolation=none
+          packages/compiler/dist/test/selfhost-bootstrap-stage-runner.test.js
+          packages/compiler/dist/test/selfhost-project-compiler-contract.test.js
+          packages/compiler/dist/test/selfhost-qualified-builtins-variants.test.js
+      - name: Commit and push exactly eleven permanent files
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git switch -c "$TARGET_BRANCH"
+          git add --pathspec-from-file="$RUNNER_TEMP/expected-readiness-files.txt"
+          git diff --cached --name-only | sort > "$RUNNER_TEMP/staged-readiness-files.txt"
+          diff -u "$RUNNER_TEMP/expected-readiness-files.txt" "$RUNNER_TEMP/staged-readiness-files.txt"
+          git diff --cached --check
+          git commit \
+            -m 'feat(selfhost): reach full-language readiness' \
+            -m 'Promote the exact 31/31/31/31 zero-diagnostic source set, enable the project compiler capability, and synchronize readiness tests and documentation.' \
+            -m 'Refs #283' \
+            -m 'Refs #99' \
+            -m 'Refs #88'
+          git push origin "HEAD:refs/heads/$TARGET_BRANCH"
+          echo "PERMANENT_READINESS_COMMIT=$(git rev-parse HEAD)"
