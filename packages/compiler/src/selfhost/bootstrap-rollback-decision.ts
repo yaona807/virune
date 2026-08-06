@@ -33,7 +33,7 @@ export interface BootstrapRollbackDecisionInput {
 
 export interface BootstrapRollbackReason {
 	readonly gate: RollbackGateName;
-	readonly code: 'FAILED' | 'MISSING' | 'STALE' | 'SUBJECT_MISMATCH';
+	readonly code: 'FAILED' | 'FUTURE' | 'MISSING' | 'STALE' | 'SUBJECT_MISMATCH';
 }
 
 export interface BootstrapRollbackDecision {
@@ -70,7 +70,12 @@ export function evaluateBootstrapRollbackDecision(value: unknown): BootstrapRoll
 			reasons.push({ gate: gateName, code: 'SUBJECT_MISMATCH' });
 			continue;
 		}
-		if (evaluatedAt - Date.parse(gate.checkedAt) > input.maximumEvidenceAgeSeconds * 1000) {
+		const checkedAt = Date.parse(gate.checkedAt);
+		if (checkedAt > evaluatedAt) {
+			reasons.push({ gate: gateName, code: 'FUTURE' });
+			continue;
+		}
+		if (evaluatedAt - checkedAt > input.maximumEvidenceAgeSeconds * 1000) {
 			reasons.push({ gate: gateName, code: 'STALE' });
 			continue;
 		}
