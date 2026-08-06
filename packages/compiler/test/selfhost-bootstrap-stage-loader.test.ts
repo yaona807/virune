@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { mkdtemp, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -73,8 +74,23 @@ function compilerModuleSource(output: ProjectCompilerResultV1): string {
 	].join('\n');
 }
 
+function withArtifactIntegrity(value: BootstrapStageArtifact): BootstrapStageArtifact {
+	const serializedPayload = JSON.stringify({
+		metadata: value.metadata,
+		entryPath: value.entryPath,
+		modules: value.modules,
+		dependencies: value.dependencies,
+		exportedSymbols: value.exportedSymbols,
+	});
+	return {
+		...value,
+		serializedPayload,
+		sha256: createHash('sha256').update(serializedPayload, 'utf8').digest('hex'),
+	};
+}
+
 function artifact(code: string, overrides: Partial<BootstrapStageArtifact> = {}): BootstrapStageArtifact {
-	return { ...stageArtifact('stage1', result(code)), ...overrides };
+	return withArtifactIntegrity({ ...stageArtifact('stage1', result(code)), ...overrides });
 }
 
 test('materializes and imports a real Stage 1 project compiler candidate', async () => {
@@ -133,14 +149,13 @@ test('fails closed when the entry source is absent or duplicated', async () => {
 	const source = compilerModuleSource(result('export const stage = 2;\n'));
 	const valid = artifact(source);
 	await assert.rejects(
-		materializeBootstrapStageCompiler({ ...valid, entryPath: 'src/missing.virune' }, root),
+		materializeBootstrapStageCompiler(artifact(source, { entryPath: 'src/missing.virune' }), root),
 		/must resolve to exactly one emitted module; found 0/u,
 	);
 	await assert.rejects(
-		materializeBootstrapStageCompiler({
-			...valid,
+		materializeBootstrapStageCompiler(artifact(source, {
 			modules: [...valid.modules, { ...valid.modules[0]!, outputPath: 'dist/duplicate.js' }],
-		}, root),
+		}), root),
 		/must resolve to exactly one emitted module; found 2/u,
 	);
 	await rm(root, { recursive: true, force: true });
@@ -148,19 +163,18 @@ test('fails closed when the entry source is absent or duplicated', async () => {
 
 test('rejects path traversal and non-JavaScript stage outputs', async () => {
 	const root = await mkdtemp(join(tmpdir(), 'virune-stage-path-test-'));
-	const valid = artifact(compilerModuleSource(result('export const stage = 2;\n')));
+	const source = compilerModuleSource(result('export const stage = 2;\n'));
+	const valid = artifact(source);
 	await assert.rejects(
-		materializeBootstrapStageCompiler({
-			...valid,
+		materializeBootstrapStageCompiler(artifact(source, {
 			modules: [{ ...valid.modules[0]!, outputPath: '../escape.js' }],
-		}, root),
+		}), root),
 		/path must not escape the project root/u,
 	);
 	await assert.rejects(
-		materializeBootstrapStageCompiler({
-			...valid,
+		materializeBootstrapStageCompiler(artifact(source, {
 			modules: [{ ...valid.modules[0]!, outputPath: 'dist/main.mjs' }],
-		}, root),
+		}), root),
 		/must be JavaScript/u,
 	);
 	await rm(root, { recursive: true, force: true });
