@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -21,10 +22,28 @@ export interface MaterializedBootstrapStageCompiler {
 	readonly dispose: () => Promise<void>;
 }
 
+export function verifyBootstrapStageArtifact(artifact: BootstrapStageArtifact): void {
+	const serializedPayload = JSON.stringify({
+		metadata: artifact.metadata,
+		entryPath: artifact.entryPath,
+		modules: artifact.modules,
+		dependencies: artifact.dependencies,
+		exportedSymbols: artifact.exportedSymbols,
+	});
+	if (artifact.serializedPayload !== serializedPayload) {
+		throw new Error('Bootstrap stage artifact serialized payload does not match its fields');
+	}
+	const calculatedSha256 = createHash('sha256').update(serializedPayload, 'utf8').digest('hex');
+	if (artifact.sha256 !== calculatedSha256) {
+		throw new Error('Bootstrap stage artifact SHA-256 does not match its serialized payload');
+	}
+}
+
 export async function materializeBootstrapStageCompiler(
 	artifact: BootstrapStageArtifact,
 	temporaryRoot: string,
 ): Promise<MaterializedBootstrapStageCompiler> {
+	verifyBootstrapStageArtifact(artifact);
 	await mkdir(temporaryRoot, { recursive: true });
 	const root = await mkdtemp(join(temporaryRoot, 'selfhost-stage-'));
 	try {
