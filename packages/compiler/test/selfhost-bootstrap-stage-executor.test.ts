@@ -114,6 +114,18 @@ test('stage artifact serializes compiler and diagnostic schema metadata', () => 
 	);
 });
 
+test('stage comparison rejects executor version drift', () => {
+	const stage1 = stageArtifact('stage1', result('export const value = 1;\n'));
+	const stage2: BootstrapStageArtifact = {
+		...stageArtifact('stage2', result('export const value = 1;\n')),
+		executorVersion: (BOOTSTRAP_STAGE_EXECUTOR_VERSION + 1) as unknown as typeof BOOTSTRAP_STAGE_EXECUTOR_VERSION,
+	};
+	assert.deepEqual(
+		compareStageArtifacts(stage1, stage2).map(item => `${item.section}:${item.path}`),
+		['metadata:executorVersion'],
+	);
+});
+
 test('stage artifacts canonicalize module, dependency, and export order', () => {
 	const unordered = result('a', {
 		emittedModules: [
