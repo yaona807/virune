@@ -33,6 +33,11 @@ export interface BootstrapShadowHistoryEntryV1 {
 	readonly unexpectedDifferentials: number;
 }
 
+interface ParsedBootstrapShadowHistoryEntryV1 extends BootstrapShadowHistoryEntryV1 {
+	readonly candidateCompilerVersion: string;
+	readonly candidateArtifactSha256: string;
+}
+
 export interface BootstrapShadowHistoryV1 {
 	readonly version: typeof BOOTSTRAP_SHADOW_HISTORY_VERSION;
 	readonly candidateSha: string;
@@ -117,7 +122,7 @@ export function createBootstrapShadowHistory(value: unknown): BootstrapShadowHis
 		firstSuccessfulAt: trailing[0]?.completedAt ?? null,
 		latestCompletedAt: latest.completedAt,
 		latestReportSha256: latest.reportSha256,
-		entries,
+		entries: entries.map(toPublicEntry),
 	};
 	const observation: PromotionEvidenceObservation = {
 		schemaVersion: 1,
@@ -150,7 +155,7 @@ function parseEntry(
 	index: number,
 	expectedCandidateSha: string,
 	seenRunIds: Set<string>,
-): BootstrapShadowHistoryEntryV1 {
+): ParsedBootstrapShadowHistoryEntryV1 {
 	const path = `$.entries[${index}]`;
 	const entry = record(value, path);
 	exactKeys(entry, ['version', 'runId', 'candidateSha', 'completedAt', 'report', 'reportSha256'], path);
@@ -185,6 +190,8 @@ function parseEntry(
 		reportSha256,
 		status: parsedReport.report.status,
 		unexpectedDifferentials: parsedReport.report.unexpectedChanges.length,
+		candidateCompilerVersion: parsedReport.report.candidate.compilerVersion,
+		candidateArtifactSha256: parsedReport.report.candidate.artifactSha256,
 	};
 }
 
@@ -320,14 +327,31 @@ function summarizeSections(changes: readonly ShadowChange[]): readonly Bootstrap
 }
 
 function trailingSuccessfulEntries(
-	entries: readonly BootstrapShadowHistoryEntryV1[],
-): readonly BootstrapShadowHistoryEntryV1[] {
-	let first = entries.length;
-	for (let index = entries.length - 1; index >= 0; index -= 1) {
-		if (entries[index]!.status !== 'equivalent') break;
+	entries: readonly ParsedBootstrapShadowHistoryEntryV1[],
+): readonly ParsedBootstrapShadowHistoryEntryV1[] {
+	const latest = entries.at(-1);
+	if (latest === undefined || latest.status !== 'equivalent') return [];
+	let first = entries.length - 1;
+	for (let index = entries.length - 2; index >= 0; index -= 1) {
+		const current = entries[index]!;
+		if (
+			current.status !== 'equivalent'
+			|| current.candidateCompilerVersion !== latest.candidateCompilerVersion
+			|| current.candidateArtifactSha256 !== latest.candidateArtifactSha256
+		) break;
 		first = index;
 	}
 	return entries.slice(first);
+}
+
+function toPublicEntry(entry: ParsedBootstrapShadowHistoryEntryV1): BootstrapShadowHistoryEntryV1 {
+	return {
+		runId: entry.runId,
+		completedAt: entry.completedAt,
+		reportSha256: entry.reportSha256,
+		status: entry.status,
+		unexpectedDifferentials: entry.unexpectedDifferentials,
+	};
 }
 
 function distinctUtcDays(entries: readonly BootstrapShadowHistoryEntryV1[]): number {

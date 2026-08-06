@@ -42,6 +42,28 @@ test('passing shadow history produces deterministic candidate-bound promotion ev
 	}]);
 });
 
+test('candidate identity changes reset the trailing successful streak', () => {
+	const compilerVersionChange = createBootstrapShadowHistory(history([
+		entry('run-1', '2026-07-31T01:00:00.000Z'),
+		entry('run-2', '2026-08-01T01:00:00.000Z', {
+			candidateCompilerVersion: '1.0.1-stage2',
+		}),
+	]));
+	assert.equal(compilerVersionChange.history.successfulRuns, 1);
+	assert.equal(compilerVersionChange.history.observationDays, 1);
+	assert.equal(compilerVersionChange.history.firstSuccessfulAt, '2026-08-01T01:00:00.000Z');
+
+	const artifactChange = createBootstrapShadowHistory(history([
+		entry('run-1', '2026-07-31T01:00:00.000Z'),
+		entry('run-2', '2026-08-01T01:00:00.000Z', {
+			candidateArtifactSha256: 'f'.repeat(64),
+		}),
+	]));
+	assert.equal(artifactChange.history.successfulRuns, 1);
+	assert.equal(artifactChange.history.observationDays, 1);
+	assert.equal(artifactChange.history.firstSuccessfulAt, '2026-08-01T01:00:00.000Z');
+});
+
 test('only the trailing passing streak contributes runs and distinct observation days', () => {
 	const result = createBootstrapShadowHistory(history([
 		entry('run-1', '2026-07-28T01:00:00.000Z'),
@@ -136,10 +158,15 @@ function history(entries: readonly BootstrapShadowHistoryEntryInputV1[]) {
 function entry(
 	runId: string,
 	completedAt: string,
-	options: { readonly mismatch?: boolean; readonly baselineStage?: BootstrapShadowStage } = {},
+	options: {
+		readonly mismatch?: boolean;
+		readonly baselineStage?: BootstrapShadowStage;
+		readonly candidateCompilerVersion?: string;
+		readonly candidateArtifactSha256?: string;
+	} = {},
 ): BootstrapShadowHistoryEntryInputV1 {
 	const baselineStage = options.baselineStage ?? 'stage1';
-	const report = createBootstrapShadowReport({
+	const generated = createBootstrapShadowReport({
 		baseline: {
 			label: 'stage-1',
 			stage: baselineStage,
@@ -153,13 +180,23 @@ function entry(
 			artifact: artifact('stage2', options.mismatch === true),
 		},
 	});
+	const report = options.candidateCompilerVersion === undefined && options.candidateArtifactSha256 === undefined
+		? generated.report
+		: {
+			...generated.report,
+			candidate: {
+				...generated.report.candidate,
+				compilerVersion: options.candidateCompilerVersion ?? generated.report.candidate.compilerVersion,
+				artifactSha256: options.candidateArtifactSha256 ?? generated.report.candidate.artifactSha256,
+			},
+		};
 	return {
 		version: 1,
 		runId,
 		candidateSha,
 		completedAt,
-		report: report.report,
-		reportSha256: report.sha256,
+		report,
+		reportSha256: sha256(JSON.stringify(report)),
 	};
 }
 
