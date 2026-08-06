@@ -135,6 +135,27 @@ test('writes the inventory decision to GitHub output', async t => {
 	assert.match(output, /^changed_count=1$/mu);
 });
 
+test('keeps the inventory check visible while gating heavy work with the classifier output', async () => {
+	const workflow = await readFile(resolve(repositoryRoot, '.github/workflows/ci.yml'), 'utf8');
+	assert.match(
+		workflow,
+		/selfhost_inventory_required: \$\{\{ steps\.changes\.outputs\.selfhost_inventory_required \}\}/u,
+	);
+	assert.match(
+		workflow,
+		/- name: Validate inventory decision[\s\S]*SELFHOST_INVENTORY_REQUIRED: \$\{\{ needs\.classify\.outputs\.selfhost_inventory_required \}\}[\s\S]*true\|false\) ;;/u,
+	);
+	assert.match(
+		workflow,
+		/- name: Record inventory omission\n        if: needs\.classify\.outputs\.selfhost_inventory_required == 'false'/u,
+	);
+	assert.match(
+		workflow,
+		/- name: Run full-language inventory\n        if: needs\.classify\.outputs\.selfhost_inventory_required == 'true'/u,
+	);
+	assert.match(workflow, /needs\.selfhost-inventory\.result == 'success'/u);
+});
+
 test('runs self-host CI triage and temporary-artifact policy tests', () => {
 	const result = spawnSync(process.execPath, [
 		'--test',
