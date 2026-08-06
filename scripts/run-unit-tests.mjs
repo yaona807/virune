@@ -4,9 +4,20 @@ import { join } from 'node:path';
 
 const filter = process.argv.find(item => item.startsWith('--filter='))?.slice('--filter='.length);
 const exactFile = process.argv.find(item => item.startsWith('--file='))?.slice('--file='.length);
+const excludedFiles = process.argv
+	.filter(item => item.startsWith('--exclude-file='))
+	.map(item => item.slice('--exclude-file='.length));
 const failureOutputOnly = process.argv.includes('--failure-output-only');
 if (filter !== undefined && exactFile !== undefined) {
 	console.error('Specify at most one of --filter or --file.');
+	process.exit(1);
+}
+if (exactFile !== undefined && excludedFiles.length > 0) {
+	console.error('Do not combine --file with --exclude-file.');
+	process.exit(1);
+}
+if (excludedFiles.some(value => value.length === 0)) {
+	console.error('--exclude-file requires a non-empty compiled test path.');
 	process.exit(1);
 }
 const files = [];
@@ -16,14 +27,23 @@ for (const entry of await readdir('packages', { withFileTypes: true })) {
 }
 files.sort();
 if (filter !== undefined) {
-	for (let index = files.length - 1; index >= 0; index -= 1) if (!files[index].includes(filter)) files.splice(index, 1);
+	for (let index = files.length - 1; index >= 0; index -= 1) {
+		if (!canonicalPath(files[index]).includes(canonicalPath(filter))) files.splice(index, 1);
+	}
 }
 if (exactFile !== undefined) {
-	for (let index = files.length - 1; index >= 0; index -= 1) if (files[index] !== exactFile) files.splice(index, 1);
+	for (let index = files.length - 1; index >= 0; index -= 1) {
+		if (canonicalPath(files[index]) !== canonicalPath(exactFile)) files.splice(index, 1);
+	}
+} else if (excludedFiles.length > 0) {
+	const excluded = new Set(excludedFiles.map(canonicalPath));
+	for (let index = files.length - 1; index >= 0; index -= 1) {
+		if (excluded.has(canonicalPath(files[index]))) files.splice(index, 1);
+	}
 }
 if (files.length === 0) {
 	console.error(exactFile === undefined
-		? 'No compiled unit test files were found. Run npm run build first.'
+		? 'No compiled unit test files remained after applying the requested selection. Run npm run build first and verify the filters.'
 		: `Compiled unit test file was not found: ${exactFile}`);
 	process.exit(1);
 }
@@ -43,6 +63,10 @@ for (const file of files) {
 		if (result.stderr.length > 0) process.stderr.write(result.stderr);
 	}
 	process.exit(result.code);
+}
+
+function canonicalPath(value) {
+	return value.replaceAll('\\', '/');
 }
 
 async function collectTests(directory, output) {

@@ -4,6 +4,7 @@ import { dirname } from 'node:path';
 
 const integrationOnly = process.argv.includes('--integration-only');
 const excludeBrowser = process.argv.includes('--exclude-browser');
+const excludeSelfhostInventory = process.argv.includes('--exclude-selfhost-inventory');
 const failureOutputOnly = process.argv.includes('--failure-output-only');
 const platformSmoke = process.argv.includes('--platform-smoke');
 const integrationGroups = [
@@ -19,7 +20,13 @@ const groups = platformSmoke ? platformGroups : [
 	...(!integrationOnly ? [
 		{
 			name: 'unit',
-			command: ['scripts/run-unit-tests.mjs', ...(failureOutputOnly ? ['--failure-output-only'] : [])],
+			command: [
+				'scripts/run-unit-tests.mjs',
+				...(failureOutputOnly ? ['--failure-output-only'] : []),
+				...(excludeSelfhostInventory ? [
+					'--exclude-file=packages/compiler/dist/test/selfhost-full-language-inventory.test.js',
+				] : []),
+			],
 		},
 		{
 			name: 'self-host kernel model',

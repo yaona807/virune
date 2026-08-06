@@ -60,6 +60,8 @@ jobs:
         run: node scripts/run-ci-command.mjs --id install -- npm ci
       - name: Verify metadata, policy and specifications
         run: node scripts/run-ci-command.mjs --id metadata -- npm run verify:metadata
+      - name: Verify unit-test lane selection
+        run: node --test scripts/run-unit-tests.test.mjs
       - name: Build documentation examples
         if: needs.classify.outputs.docs_only == 'true'
         run: node scripts/run-ci-command.mjs --id docs-build -- npm run check
@@ -129,7 +131,7 @@ jobs:
     needs: [classify, build]
     if: needs.classify.outputs.docs_only != 'true'
     runs-on: ubuntu-24.04
-    timeout-minutes: 150
+    timeout-minutes: 35
     env:
       VIRUNE_CI_JOB: core-tests-ubuntu-node24
     steps:
@@ -148,7 +150,7 @@ jobs:
       - name: Restore compiled output
         run: node scripts/run-ci-command.mjs --id restore-compiled-output -- tar -xzf .cache/compiled-output.tgz -C .
       - name: Run platform-independent unit and integration tests
-        run: node scripts/run-ci-command.mjs --id core-tests -- npm run test:core:built -- --failure-output-only
+        run: node scripts/run-ci-command.mjs --id core-tests -- npm run test:core:built -- --failure-output-only --exclude-selfhost-inventory
         env:
           VIRUNE_TEST_ROLE: full
       - name: Write timing summary
@@ -161,6 +163,51 @@ jobs:
           name: ci-evidence-core-tests-ubuntu-node24
           path: |
             .cache/unit-test-failure.log
+            .cache/ci-timings/
+            .cache/ci-failures/
+          if-no-files-found: warn
+          retention-days: 14
+
+  selfhost-inventory:
+    name: Self-host full-language inventory (Ubuntu 24.04 / Node.js 24)
+    needs: [classify, build]
+    if: needs.classify.outputs.docs_only != 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    env:
+      VIRUNE_CI_JOB: selfhost-inventory-ubuntu-node24
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install dependencies
+        run: node scripts/run-ci-command.mjs --id install -- npm ci
+      - name: Download compiled output
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: compiled-node-24-${{ github.sha }}
+          path: .cache
+      - name: Restore compiled output
+        run: node scripts/run-ci-command.mjs --id restore-compiled-output -- tar -xzf .cache/compiled-output.tgz -C .
+      - name: Run deterministic full-language inventory
+        run: >-
+          node scripts/run-ci-command.mjs --id selfhost-full-language-inventory --
+          node scripts/run-unit-tests.mjs
+          --file=packages/compiler/dist/test/selfhost-full-language-inventory.test.js
+          --failure-output-only
+      - name: Write timing summary
+        if: always()
+        run: node scripts/write-ci-summary.mjs
+      - name: Upload self-host inventory evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: ci-evidence-selfhost-inventory-ubuntu-node24-${{ github.sha }}
+          path: |
+            .cache/unit-test-failure.log
+            .cache/ci-timings/selfhost-full-language-inventory.json
             .cache/ci-timings/
             .cache/ci-failures/
           if-no-files-found: warn
@@ -392,13 +439,14 @@ jobs:
 
   release-artifacts:
     name: Release artifacts
-    needs: [classify, metadata, build, verify, quality, semantic-fuzz, compatibility, browser]
+    needs: [classify, metadata, build, verify, selfhost-inventory, quality, semantic-fuzz, compatibility, browser]
     if: >-
       always() &&
       needs.classify.outputs.docs_only != 'true' &&
       needs.metadata.result == 'success' &&
       needs.build.result == 'success' &&
       needs.verify.result == 'success' &&
+      needs.selfhost-inventory.result == 'success' &&
       needs.quality.result == 'success' &&
       (needs.semantic-fuzz.result == 'success' || needs.semantic-fuzz.result == 'skipped') &&
       needs.compatibility.result == 'success' &&
