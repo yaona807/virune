@@ -138,6 +138,7 @@ export function compareStageArtifacts(
 	stage2: BootstrapStageArtifact,
 ): readonly BootstrapStageDifference[] {
 	return [
+		...compareSingleton('metadata', 'executorVersion', stage1.executorVersion, stage2.executorVersion),
 		...compareStageMetadata(stage1.metadata, stage2.metadata),
 		...compareSingleton('metadata', 'entryPath', stage1.entryPath, stage2.entryPath),
 		...compareStageModules(stage1.modules, stage2.modules),
