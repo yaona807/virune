@@ -42,7 +42,10 @@ export async function materializeStageCompilerFacade(
 	temporaryRoot: string,
 	dependencies: StageCompilerFacadeDependencies = {},
 ): Promise<MaterializedStageCompilerFacade> {
-	const candidate = await materializeBootstrapStageCompiler(artifact, temporaryRoot);
+	const candidate: MaterializedBootstrapStageCompiler = await materializeBootstrapStageCompiler(
+		artifact,
+		temporaryRoot,
+	);
 	let disposed = false;
 	const selfHostCompiler: InternalKernelCompiler = input => {
 		assertActive(disposed);
