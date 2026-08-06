@@ -16,12 +16,41 @@ const documentationDirectories = Object.freeze([
 	'.github/self-hosting-operations/',
 	'docs/',
 ]);
+const selfhostInventoryFiles = new Set([
+	'.github/actions-policy.json',
+	'package.json',
+	'package-lock.json',
+	'tsconfig.json',
+	'tsconfig.base.json',
+	'packages/compiler/package.json',
+	'packages/compiler/tsconfig.json',
+	'packages/runtime/package.json',
+	'packages/runtime/tsconfig.json',
+	'scripts/classify-ci-changes.mjs',
+	'scripts/classify-ci-changes.test.mjs',
+]);
+const selfhostInventoryDirectories = Object.freeze([
+	'.github/workflows/',
+	'integration/',
+	'packages/compiler/src/',
+	'packages/compiler/test/selfhost',
+	'packages/runtime/src/',
+	'selfhost/',
+	'spec/',
+]);
+const selfhostInventoryScriptPrefixes = Object.freeze([
+	'scripts/run-selfhost-',
+	'scripts/verify-selfhost-',
+]);
 
 export function classifyChangedPaths(paths) {
 	const normalized = [...new Set(paths.map(path => path.trim().replaceAll('\\', '/')).filter(Boolean))].sort();
 	const documentationOnly = normalized.length > 0 && normalized.every(isDocumentationPath);
+	const selfhostInventoryRequired = normalized.length === 0
+		|| normalized.some(isSelfhostInventoryPath);
 	return {
 		docsOnly: documentationOnly,
+		selfhostInventoryRequired,
 		changedCount: normalized.length,
 		paths: normalized,
 	};
@@ -30,6 +59,12 @@ export function classifyChangedPaths(paths) {
 export function isDocumentationPath(path) {
 	return documentationFiles.has(path)
 		|| (path.endsWith('.md') && documentationDirectories.some(directory => path.startsWith(directory)));
+}
+
+export function isSelfhostInventoryPath(path) {
+	return selfhostInventoryFiles.has(path)
+		|| selfhostInventoryDirectories.some(directory => path.startsWith(directory))
+		|| selfhostInventoryScriptPrefixes.some(prefix => path.startsWith(prefix));
 }
 
 async function main() {
@@ -60,6 +95,7 @@ async function main() {
 	if (outputPath !== undefined && outputPath !== '') {
 		await appendFile(outputPath, [
 			`docs_only=${classification.docsOnly}`,
+			`selfhost_inventory_required=${classification.selfhostInventoryRequired}`,
 			`changed_count=${classification.changedCount}`,
 			`changed_paths=${JSON.stringify(classification.paths)}`,
 			'',
