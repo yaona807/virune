@@ -26,7 +26,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     env:
-      EXPECTED_BASE_SHA: 7f414b6195cd6356482c3f0b42293318bb7b7caa
+      EXPECTED_BASE_SHA: 9aa7a3a0930cb1889f41b52a378b4bda52e84f55
       TARGET_BRANCH: feat/ci-selfhost-inventory-job
       PAYLOAD_SHA256: 8b493381c885b8da6cfa81d600e67760359552b48247ddc256564efb86a0849b
       VIRUNE_CI_JOB: selfhost-inventory-phase2-publish
