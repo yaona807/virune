@@ -104,6 +104,22 @@ test('writes stable per-file timing evidence for a successful selection', async 
 	});
 });
 
+test('writes timing evidence to the default CI artifact path', async () => {
+	await withFixture(async root => {
+		const result = await run(root, [`--exclude-file=${inventoryPath}`]);
+		assert.equal(result.code, 0, result.stderr);
+		const evidence = JSON.parse(await readFile(
+			join(root, '.cache', 'ci-timings', 'unit-test-files.json'),
+			'utf8',
+		));
+		assert.equal(evidence.status, 'passed');
+		assert.equal(evidence.selectedFileCount, 2);
+		assert.equal(evidence.completedFileCount, 2);
+		assert.equal(evidence.remainingFileCount, 0);
+		assert.deepEqual(evidence.files.map(entry => entry.path), [fastPath, secondPath]);
+	});
+});
+
 test('writes partial timing evidence before stopping on the first failure', async () => {
 	await withFixture(async root => {
 		await writeTestSource(
