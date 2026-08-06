@@ -27,6 +27,8 @@ const snapshotOptions = {
 
 const defaultHeartbeatIntervalMs = 60_000;
 
+export type FullLanguageInventoryCompileRuns = 1 | 2;
+
 export type FullLanguageInventoryPhaseName =
 	| 'prepare'
 	| 'build-project'
@@ -57,6 +59,8 @@ export interface FullLanguageInventoryTimingEvidence {
 	readonly completedAt: string;
 	readonly durationMs: number;
 	readonly heartbeatIntervalMs: number;
+	readonly compileRuns: FullLanguageInventoryCompileRuns;
+	readonly determinismChecked: boolean;
 	readonly phases: readonly FullLanguageInventoryPhaseTiming[];
 	readonly failure: {
 		readonly phase: FullLanguageInventoryPhaseName | 'unknown';
@@ -75,6 +79,7 @@ export interface FullLanguageInventoryProgressEvent {
 
 export interface RunFullLanguageInventoryOptions {
 	readonly repositoryRoot: string;
+	readonly compileRuns?: FullLanguageInventoryCompileRuns;
 	readonly heartbeatIntervalMs?: number;
 	readonly now?: () => number;
 	readonly onProgress?: (event: FullLanguageInventoryProgressEvent) => void;
@@ -86,17 +91,22 @@ export interface RunFullLanguageInventoryOptions {
 class InventoryTimingSession {
 	readonly #startedMs: number;
 	readonly #heartbeatIntervalMs: number;
+	readonly #compileRuns: FullLanguageInventoryCompileRuns;
 	readonly #now: () => number;
 	readonly #onProgress: ((event: FullLanguageInventoryProgressEvent) => void) | undefined;
 	readonly #phases: FullLanguageInventoryPhaseTiming[] = [];
 
-	constructor(options: RunFullLanguageInventoryOptions) {
+	constructor(
+		options: RunFullLanguageInventoryOptions,
+		compileRuns: FullLanguageInventoryCompileRuns,
+	) {
 		this.#now = options.now ?? Date.now;
 		this.#startedMs = this.#now();
 		this.#heartbeatIntervalMs = options.heartbeatIntervalMs ?? defaultHeartbeatIntervalMs;
 		if (!Number.isSafeInteger(this.#heartbeatIntervalMs) || this.#heartbeatIntervalMs < 0) {
 			throw new Error('heartbeatIntervalMs must be a non-negative safe integer');
 		}
+		this.#compileRuns = compileRuns;
 		this.#onProgress = options.onProgress;
 	}
 
@@ -143,6 +153,8 @@ class InventoryTimingSession {
 			completedAt: timestamp(completedMs),
 			durationMs: duration(this.#startedMs, completedMs),
 			heartbeatIntervalMs: this.#heartbeatIntervalMs,
+			compileRuns: this.#compileRuns,
+			determinismChecked: this.#compileRuns === 2,
 			phases: [...this.#phases],
 			failure: failure === null ? null : {
 				phase: failedPhase,
@@ -174,10 +186,19 @@ class InventoryTimingSession {
 	}
 }
 
+export function resolveFullLanguageInventoryCompileRuns(
+	value: string | number | undefined,
+): FullLanguageInventoryCompileRuns {
+	if (value === undefined || value === 2 || value === '2') return 2;
+	if (value === 1 || value === '1') return 1;
+	throw new Error('compileRuns must be exactly 1 or 2');
+}
+
 export async function runFullLanguageInventory(
 	options: RunFullLanguageInventoryOptions,
 ): Promise<FullLanguageInventory> {
-	const timings = new InventoryTimingSession(options);
+	const compileRuns = resolveFullLanguageInventoryCompileRuns(options.compileRuns);
+	const timings = new InventoryTimingSession(options, compileRuns);
 	const mvpRoot = join(options.repositoryRoot, 'selfhost', 'mvp');
 	const temporaryParent = join(options.repositoryRoot, '.test-tmp');
 	let runRoot: string | null = null;
@@ -221,12 +242,14 @@ export async function runFullLanguageInventory(
 			'compile-project-first',
 			() => compileWithProjectCompilerBoundary(compilerModule, input),
 		);
-		const second = await timings.phase(
-			'compile-project-second',
-			() => compileWithProjectCompilerBoundary(compilerModule, input),
-		);
+		const second = compileRuns === 2
+			? await timings.phase(
+				'compile-project-second',
+				() => compileWithProjectCompilerBoundary(compilerModule, input),
+			)
+			: null;
 		inventory = await timings.phase('validate-and-convert', () => {
-			if (JSON.stringify(first) !== JSON.stringify(second)) {
+			if (second !== null && JSON.stringify(first) !== JSON.stringify(second)) {
 				throw new Error('Generated project compiler returned non-deterministic results');
 			}
 			const value = inventoryFromFullLanguageResult(

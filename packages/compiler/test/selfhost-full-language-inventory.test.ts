@@ -3,7 +3,10 @@ import test from 'node:test';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { runFullLanguageInventory } from '../src/selfhost/full-language-inventory-runner.js';
+import {
+	resolveFullLanguageInventoryCompileRuns,
+	runFullLanguageInventory,
+} from '../src/selfhost/full-language-inventory-runner.js';
 import { serializeFullLanguageInventory } from '../src/selfhost/full-language-inventory.js';
 
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../../..');
@@ -13,9 +16,12 @@ const inventoryEvidencePath = join(
 	'ci-timings',
 	'selfhost-full-language-inventory.json',
 );
+const compileRuns = resolveFullLanguageInventoryCompileRuns(
+	process.env.VIRUNE_SELFHOST_INVENTORY_COMPILE_RUNS,
+);
 
-test('full-language inventory is deterministic for the canonical self-host source set', { timeout: 7_200_000 }, async () => {
-	const inventory = await runFullLanguageInventory({ repositoryRoot });
+test('full-language inventory is ready for the canonical self-host source set', { timeout: 7_200_000 }, async () => {
+	const inventory = await runFullLanguageInventory({ repositoryRoot, compileRuns });
 	assert.equal(inventory.sourceCount, inventory.parsedModules);
 	assert.equal(inventory.sourceCount, inventory.checkedModules);
 	assert.equal(
@@ -46,5 +52,5 @@ test('full-language inventory is deterministic for the canonical self-host sourc
 	assert.equal(diagnosticCountFor('L2021'), 0);
 	await mkdir(dirname(inventoryEvidencePath), { recursive: true });
 	await writeFile(inventoryEvidencePath, serializeFullLanguageInventory(inventory), 'utf8');
-	console.log(`SELFHOST_FULL_LANGUAGE_INVENTORY ${JSON.stringify(inventory)}`);
+	console.log(`SELFHOST_FULL_LANGUAGE_INVENTORY compileRuns=${compileRuns} ${JSON.stringify(inventory)}`);
 });
