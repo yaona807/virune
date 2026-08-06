@@ -4,8 +4,10 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
+	formatFullLanguageInventoryProgress,
 	resolveFullLanguageInventoryCompileRunsForEvent,
 	runFullLanguageInventory,
+	serializeFullLanguageInventoryTimingEvidence,
 } from '../src/selfhost/full-language-inventory-runner.js';
 import { serializeFullLanguageInventory } from '../src/selfhost/full-language-inventory.js';
 
@@ -16,13 +18,33 @@ const inventoryEvidencePath = join(
 	'ci-timings',
 	'selfhost-full-language-inventory.json',
 );
+const inventoryTimingEvidencePath = join(
+	repositoryRoot,
+	'.cache',
+	'ci-timings',
+	'selfhost-full-language-inventory-timings.json',
+);
 const compileRuns = resolveFullLanguageInventoryCompileRunsForEvent(
 	process.env.GITHUB_EVENT_NAME,
 	process.env.VIRUNE_SELFHOST_INVENTORY_COMPILE_RUNS,
 );
 
 test('full-language inventory is ready for the canonical self-host source set', { timeout: 7_200_000 }, async () => {
-	const inventory = await runFullLanguageInventory({ repositoryRoot, compileRuns });
+	const inventory = await runFullLanguageInventory({
+		repositoryRoot,
+		compileRuns,
+		onProgress: event => {
+			console.error(formatFullLanguageInventoryProgress(event));
+		},
+		onTimingEvidence: async evidence => {
+			await mkdir(dirname(inventoryTimingEvidencePath), { recursive: true });
+			await writeFile(
+				inventoryTimingEvidencePath,
+				serializeFullLanguageInventoryTimingEvidence(evidence),
+				'utf8',
+			);
+		},
+	});
 	assert.equal(inventory.sourceCount, inventory.parsedModules);
 	assert.equal(inventory.sourceCount, inventory.checkedModules);
 	assert.equal(
