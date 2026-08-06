@@ -1,0 +1,67 @@
+name: Self-host inventory compile-runs validation
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: selfhost-inventory-compile-runs-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  validate-one-run:
+    name: Validate one-run inventory contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 24
+          cache: npm
+      - name: Select exact Phase 3 head
+        run: |
+          git fetch origin b687b6e1f048b64941215bf32194a7df1335bc2b
+          git reset --hard b687b6e1f048b64941215bf32194a7df1335bc2b
+          test "$(git rev-parse HEAD)" = "b687b6e1f048b64941215bf32194a7df1335bc2b"
+      - name: Install dependencies
+        run: npm ci
+      - name: Build and type-check
+        run: npm run check
+      - name: Verify CLI compile-run contract
+        run: node --test scripts/run-selfhost-full-language-inventory.test.mjs
+      - name: Verify runner timing contract
+        run: node --test packages/compiler/dist/test/selfhost-full-language-inventory-timing.test.js
+      - name: Run canonical inventory once
+        run: >-
+          node scripts/run-selfhost-full-language-inventory.mjs
+          --compile-runs=1
+          --output=.cache/selfhost/full-language-inventory-one-run.json
+          --timing-output=.cache/selfhost/full-language-inventory-one-run-timings.json
+      - name: Verify one-run evidence
+        run: |
+          node --input-type=module -e "
+            import { readFile } from 'node:fs/promises';
+            const timing = JSON.parse(await readFile('.cache/selfhost/full-language-inventory-one-run-timings.json', 'utf8'));
+            const inventory = JSON.parse(await readFile('.cache/selfhost/full-language-inventory-one-run.json', 'utf8'));
+            if (timing.compileRuns !== 1) throw new Error('Expected compileRuns=1');
+            if (timing.determinismChecked !== false) throw new Error('One-run mode must not claim determinism');
+            if (timing.phases.some(phase => phase.name === 'compile-project-second')) throw new Error('Second compile phase must be absent');
+            if (inventory.status !== 'ready' || inventory.diagnosticCount !== 0) throw new Error('One-run inventory is not ready');
+            if (inventory.sourceCount !== 31 || inventory.emittedModules !== 31) throw new Error('Expected 31/31 canonical inventory');
+          "
+      - name: Upload one-run evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: selfhost-inventory-one-run-${{ github.sha }}
+          path: |
+            .cache/selfhost/full-language-inventory-one-run.json
+            .cache/selfhost/full-language-inventory-one-run-timings.json
+          if-no-files-found: warn
+          retention-days: 14
