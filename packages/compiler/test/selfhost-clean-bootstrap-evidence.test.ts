@@ -7,6 +7,7 @@ import {
 
 const candidateSha256 = 'a'.repeat(64);
 const repositoryCommit = 'b'.repeat(40);
+const seedArtifactSha256 = 'e'.repeat(64);
 
 function validInput(): CleanBootstrapEvidenceInput {
 	return {
@@ -19,10 +20,11 @@ function validInput(): CleanBootstrapEvidenceInput {
 		lockfileSha256: 'c'.repeat(64),
 		seed: {
 			manifestSha256: 'd'.repeat(64),
-			artifactSha256: 'e'.repeat(64),
+			artifactSha256: seedArtifactSha256,
 			verified: true,
 		},
 		bootstrap: {
+			seedSha256: seedArtifactSha256,
 			stage1Sha256: candidateSha256,
 			stage2Sha256: candidateSha256,
 			equivalent: true,
@@ -83,6 +85,7 @@ test('operational failures are canonicalized into a failed clean-bootstrap gate'
 		networkMode: 'online',
 		seed: { ...value.seed, verified: false },
 		bootstrap: {
+			seedSha256: '7'.repeat(64),
 			stage1Sha256: candidateSha256,
 			stage2Sha256: '9'.repeat(64),
 			equivalent: false,
@@ -101,6 +104,7 @@ test('operational failures are canonicalized into a failed clean-bootstrap gate'
 		'DIRTY_WORKTREE',
 		'MISSING_COMMAND',
 		'NETWORK_NOT_OFFLINE',
+		'SEED_MISMATCH',
 		'SEED_NOT_VERIFIED',
 		'STAGE_MISMATCH',
 	]);
@@ -110,6 +114,7 @@ test('operational failures are canonicalized into a failed clean-bootstrap gate'
 		'$.workingTreeClean',
 		'$.commands.seed-verify',
 		'$.networkMode',
+		'$.bootstrap.seedSha256',
 		'$.seed.verified',
 		'$.bootstrap',
 	]);
@@ -127,6 +132,21 @@ test('candidate binding requires the exact Stage 2 artifact digest', () => {
 		code: 'CANDIDATE_MISMATCH',
 		path: '$.candidateSha256',
 		message: 'The clean bootstrap Stage 2 artifact does not match the candidate',
+	}]);
+});
+
+test('bootstrap execution is bound to the verified Stage 0 seed artifact', () => {
+	const value = validInput();
+	const result = evaluateCleanBootstrapEvidence({
+		...value,
+		bootstrap: { ...value.bootstrap, seedSha256: 'f'.repeat(64) },
+	});
+
+	assert.equal(result.report.status, 'fail');
+	assert.deepEqual(result.report.failures, [{
+		code: 'SEED_MISMATCH',
+		path: '$.bootstrap.seedSha256',
+		message: 'The bootstrap run did not use the verified Stage 0 seed artifact',
 	}]);
 });
 
