@@ -14,6 +14,7 @@ export type CleanBootstrapFailureCode =
 	| 'DIRTY_WORKTREE'
 	| 'MISSING_COMMAND'
 	| 'NETWORK_NOT_OFFLINE'
+	| 'SEED_MISMATCH'
 	| 'SEED_NOT_VERIFIED'
 	| 'STAGE_MISMATCH';
 
@@ -38,6 +39,7 @@ export interface CleanBootstrapEvidenceInput {
 		readonly verified: boolean;
 	};
 	readonly bootstrap: {
+		readonly seedSha256: string;
 		readonly stage1Sha256: string;
 		readonly stage2Sha256: string;
 		readonly equivalent: boolean;
@@ -97,6 +99,14 @@ export function evaluateCleanBootstrapEvidence(value: unknown): CleanBootstrapEv
 	}
 	if (!input.seed.verified) {
 		fail(failures, 'SEED_NOT_VERIFIED', '$.seed.verified', 'The fixed Stage 0 seed was not verified');
+	}
+	if (input.seed.artifactSha256 !== input.bootstrap.seedSha256) {
+		fail(
+			failures,
+			'SEED_MISMATCH',
+			'$.bootstrap.seedSha256',
+			'The bootstrap run did not use the verified Stage 0 seed artifact',
+		);
 	}
 	if (
 		!input.bootstrap.equivalent
@@ -183,8 +193,9 @@ function validateInput(value: unknown): CleanBootstrapEvidenceInput {
 		verified: boolean(seedValue.verified, '$.seed.verified'),
 	};
 	const bootstrapValue = record(input.bootstrap, '$.bootstrap');
-	exactKeys(bootstrapValue, ['stage1Sha256', 'stage2Sha256', 'equivalent'], '$.bootstrap');
+	exactKeys(bootstrapValue, ['seedSha256', 'stage1Sha256', 'stage2Sha256', 'equivalent'], '$.bootstrap');
 	const bootstrap = {
+		seedSha256: sha256Value(bootstrapValue.seedSha256, '$.bootstrap.seedSha256'),
 		stage1Sha256: sha256Value(bootstrapValue.stage1Sha256, '$.bootstrap.stage1Sha256'),
 		stage2Sha256: sha256Value(bootstrapValue.stage2Sha256, '$.bootstrap.stage2Sha256'),
 		equivalent: boolean(bootstrapValue.equivalent, '$.bootstrap.equivalent'),
