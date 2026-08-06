@@ -99,11 +99,58 @@ test('generated compiler resolves required qualified builtins and enum variants'
 					'\treturn MvpType.ListType(MvpListElementType.IntElement)',
 					'}',
 					'',
+					'pub fn contextualExpression(spanValue: MvpSpan, flag: Bool) -> MvpExpression {',
+					'\treturn MvpExpression {',
+					'\t\tkind: "contextual",',
+					'\t\ttext: "",',
+					'\t\tliteralType: if flag then Some(MvpType.IntType) else None,',
+					'\t\tchildren: if flag then [] else [0],',
+					'\t\tspan: spanValue,',
+					'\t}',
+					'}',
+					'',
+					'pub fn statementIfPayloadSize(value: MvpStatement) -> Int {',
+					'\treturn match value {',
+					'\t\tIfValue(_, consequentIds, alternateIds, _) => List.length(consequentIds) + List.length(alternateIds)',
+					'\t\t_ => 0',
+					'\t}',
+					'}',
+					'',
+					'pub fn hirIfPayloadSize(value: MvpHirStatement) -> Int {',
+					'\treturn match value {',
+					'\t\tHirIf(_, consequentIds, alternateIds, _) => List.length(consequentIds) + List.length(alternateIds)',
+					'\t\t_ => 0',
+					'\t}',
+					'}',
+					'',
 				].join('\n'),
 			}],
 		});
 		assert.equal(accepted.accepted, true, JSON.stringify(accepted.diagnostics, null, 2));
 		assert.deepEqual(accepted.diagnostics, []);
+
+		const invalidField = compileWithProjectCompilerBoundary(module, {
+			...input,
+			entryPath: 'src/main.virune',
+			sources: [{
+				path: 'src/main.virune',
+				text: [
+					'pub fn invalidField(spanValue: MvpSpan) -> MvpExpression {',
+					'\treturn MvpExpression {',
+					'\t\tkind: "invalid",',
+					'\t\ttext: "",',
+					'\t\tliteralType: None,',
+					'\t\tchildren: ["wrong"],',
+					'\t\tspan: spanValue,',
+					'\t}',
+					'}',
+					'',
+				].join('\n'),
+			}],
+		});
+		assert.equal(invalidField.accepted, false);
+		assert.ok(invalidField.diagnostics.some(item => item.code === 'L2043'));
+
 
 		const rejected = compileWithProjectCompilerBoundary(module, {
 			...input,

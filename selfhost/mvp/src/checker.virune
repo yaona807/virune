@@ -9,6 +9,7 @@ import {
 	MvpHirFunction,
 	MvpHirModule,
 	MvpHirStatement,
+	MvpImport,
 	MvpListElementType,
 	MvpModule,
 	MvpOptionalElementType,
@@ -1596,6 +1597,9 @@ fn namedFieldType(typeNameValue: String, fieldName: String) -> MvpType {
 	if base == "MvpLexTransport" && fieldName == "tokens" {
 		return typeFromName("List" + "<" + "MvpToken" + ">")
 	}
+	if base == "MvpModule" && fieldName == "imports" {
+		return typeFromName("List<MvpImport>")
+	}
 	if base == "MvpModule" && fieldName == "functions" {
 		return typeFromName("List" + "<" + "MvpFunction" + ">")
 	}
@@ -1716,8 +1720,29 @@ fn namedFieldType(typeNameValue: String, fieldName: String) -> MvpType {
 	if base == "ParsedName" && fieldName == "text" {
 		return typeFromName("String")
 	}
+	if base == "CoreParsedNode" && fieldName == "id" {
+		return typeFromName("Int")
+	}
+	if base == "CoreParsedNode" && fieldName == "state" {
+		return typeFromName("CoreState")
+	}
 	if base == "ParsedNode" && fieldName == "id" {
 		return typeFromName("Int")
+	}
+	if base == "ParsedNode" && fieldName == "state" {
+		return typeFromName("ParserState")
+	}
+	if base == "ParsedDocumentation" && fieldName == "state" {
+		return typeFromName("CoreState")
+	}
+	if base == "ParsedMvpProjectSource" && fieldName == "path" {
+		return typeFromName("String")
+	}
+	if base == "ParsedMvpProjectSource" && fieldName == "parsedEncoded" {
+		return typeFromName("String")
+	}
+	if base == "ParsedMvpProjectSource" && fieldName == "moduleValue" {
+		return typeFromName("MvpModule")
 	}
 	if base == "ParsedNodes" && fieldName == "ids" {
 		return typeFromName("List" + "<" + "Int" + ">")
@@ -3421,6 +3446,178 @@ fn namedFieldType(typeNameValue: String, fieldName: String) -> MvpType {
 }
 
 fn namedVariantPayloadType(typeNameValue: String, variantName: String, index: Int) -> MvpType {
+	if typeNameValue == "MvpStatement" {
+		if variantName == "LetValue" {
+			if index == 0 {
+				return typeFromName("String")
+			}
+			if index == 1 {
+				return typeFromName("Bool")
+			}
+			if index == 2 {
+				return typeFromName("MvpType?")
+			}
+			if index == 3 {
+				return typeFromName("Int")
+			}
+			if index == 4 {
+				return typeFromName("MvpSpan")
+			}
+		}
+		if variantName == "AssignValue" {
+			if index == 0 {
+				return typeFromName("String")
+			}
+			if index == 1 {
+				return typeFromName("Int")
+			}
+			if index == 2 {
+				return typeFromName("MvpSpan")
+			}
+		}
+		if variantName == "ForValue" {
+			if index == 0 {
+				return typeFromName("String")
+			}
+			if index == 1 {
+				return typeFromName("Int")
+			}
+			if index == 2 {
+				return typeFromName("List<Int>")
+			}
+			if index == 3 {
+				return typeFromName("MvpSpan")
+			}
+		}
+		if variantName == "WhileValue" {
+			if index == 0 {
+				return typeFromName("Int")
+			}
+			if index == 1 {
+				return typeFromName("List<Int>")
+			}
+			if index == 2 {
+				return typeFromName("MvpSpan")
+			}
+		}
+		if variantName == "IfValue" {
+			if index == 0 {
+				return typeFromName("Int")
+			}
+			if index == 1 {
+				return typeFromName("List<Int>")
+			}
+			if index == 2 {
+				return typeFromName("List<Int>")
+			}
+			if index == 3 {
+				return typeFromName("MvpSpan")
+			}
+		}
+		if variantName == "BreakValue" && index == 0 {
+			return typeFromName("MvpSpan")
+		}
+		if variantName == "ContinueValue" && index == 0 {
+			return typeFromName("MvpSpan")
+		}
+		if variantName == "ReturnValue" {
+			if index == 0 {
+				return typeFromName("Int")
+			}
+			if index == 1 {
+				return typeFromName("MvpSpan")
+			}
+		}
+	}
+	if typeNameValue == "MvpHirStatement" {
+		if variantName == "HirLet" {
+			if index == 0 {
+				return typeFromName("String")
+			}
+			if index == 1 {
+				return typeFromName("Bool")
+			}
+			if index == 2 {
+				return typeFromName("MvpType")
+			}
+			if index == 3 {
+				return typeFromName("Int")
+			}
+			if index == 4 {
+				return typeFromName("MvpSpan")
+			}
+		}
+		if variantName == "HirAssign" {
+			if index == 0 {
+				return typeFromName("String")
+			}
+			if index == 1 {
+				return typeFromName("MvpType")
+			}
+			if index == 2 {
+				return typeFromName("Int")
+			}
+			if index == 3 {
+				return typeFromName("MvpSpan")
+			}
+		}
+		if variantName == "HirFor" {
+			if index == 0 {
+				return typeFromName("String")
+			}
+			if index == 1 {
+				return typeFromName("MvpType")
+			}
+			if index == 2 {
+				return typeFromName("Int")
+			}
+			if index == 3 {
+				return typeFromName("List<Int>")
+			}
+			if index == 4 {
+				return typeFromName("MvpSpan")
+			}
+		}
+		if variantName == "HirWhile" {
+			if index == 0 {
+				return typeFromName("Int")
+			}
+			if index == 1 {
+				return typeFromName("List<Int>")
+			}
+			if index == 2 {
+				return typeFromName("MvpSpan")
+			}
+		}
+		if variantName == "HirIf" {
+			if index == 0 {
+				return typeFromName("Int")
+			}
+			if index == 1 {
+				return typeFromName("List<Int>")
+			}
+			if index == 2 {
+				return typeFromName("List<Int>")
+			}
+			if index == 3 {
+				return typeFromName("MvpSpan")
+			}
+		}
+		if variantName == "HirBreak" && index == 0 {
+			return typeFromName("MvpSpan")
+		}
+		if variantName == "HirContinue" && index == 0 {
+			return typeFromName("MvpSpan")
+		}
+		if variantName == "HirReturn" {
+			if index == 0 {
+				return typeFromName("Int")
+			}
+			if index == 1 {
+				return typeFromName("MvpSpan")
+			}
+		}
+	}
 	if String.contains(typeNameValue, "Result<") {
 		let requested = if variantName == "Ok" then 0 else if variantName == "Err" then 1 else -1
 		if requested >= 0 && index == 0 {
@@ -4591,11 +4788,8 @@ fn checkRecordField(node: MvpExpression, context: CheckContext, expressions: Lis
 
 fn checkExpectedRecordField(node: MvpExpression, recordName: String, context: CheckContext, expressions: List<MvpHirExpression>) -> Result<CheckedExpression, MvpDiagnostic> {
 	let sourceId = childAt(node, 0)?
-	let source = sourceExpressionAt(context, sourceId)?
 	let expectedType = namedFieldType(recordName, node.text)
-	let constructorName = standardConstructorName(source.text)
-	let needsExpectedType = source.kind == "list" || constructorName == "Some" || constructorName == "None"
-	let checkedResult = if expectedType != MvpType.ErrorType && needsExpectedType then checkExpectedExpression(sourceId, expectedType, context, expressions) else checkExpression(sourceId, context, expressions)
+	let checkedResult = if expectedType != MvpType.ErrorType then checkExpectedExpression(sourceId, expectedType, context, expressions) else checkExpression(sourceId, context, expressions)
 	let checked = checkedResult?
 	return Ok(addHir(checked.expressions, MvpHirExpression {
 		kind: "recordField",
@@ -4954,6 +5148,12 @@ fn checkMvp(
 	}
 }
 
+fn emptyMvpModule() -> MvpModule {
+	let imports: List<MvpImport> = []
+	let functions: List<MvpFunction> = []
+	return MvpModule { imports: imports, functions: functions }
+}
+
 fn checkMvpEncoded(
 	encoded: String,
 	externalSignatures: List<MvpExternalSignature>,
@@ -4969,7 +5169,7 @@ fn checkMvpEncoded(
 	}
 	let moduleValue = match parsed.parsedModule {
 		Some(value) => value
-		None => MvpModule { imports: [], functions: [] }
+		None => emptyMvpModule()
 	}
 	return Json.encode<MvpCheckResult>(checkMvp(moduleValue, externalSignatures))
 }

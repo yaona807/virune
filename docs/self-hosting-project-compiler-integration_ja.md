@@ -1,13 +1,15 @@
 # Project Compiler Integration
 
-`project-compiler-contract.virune`は、分離して実装した4つのセルフホスティングレーンを、1つのversioned project境界へ統合する。
+`project-compiler-contract.virune`は、Virune製frontend、project linker、semantic context、lowering pipeline、deterministic project emitterを1つのversioned boundaryへ統合する。
 
-1. Virune製frontend parserでcanonical sourceをすべてparseする
-2. project module graphを構築・検証する
-3. project semantic contextを構築する
-4. 既存Pure Core MVP pipelineでmoduleをloweringする
-5. project emitterで決定的なES2022 moduleを組み立てる
+canonical self-host source集合では、境界全体について次を検証する。
 
-受理されたMVP moduleには決定的なruntime importを付与し、canonical source順で`.selfhost-output/`へemitする。parser、linker、semantic、loweringのdiagnosticはpath-awareかつfail-closedを維持する。
+1. 31件すべてのcanonical sourceをparseする
+2. 31 moduleすべてをcheckする
+3. compiler diagnosticが0件である
+4. 31 moduleすべてをcanonical順でemitする
+5. project compileを繰り返しても構造化結果がbyte単位で一致する
 
-capabilityは意図的に`ready: false`とし、blockerに`full-language-lowering-not-implemented`を残す。この統合はdata flowと実行可能なmulti-module artifact contractを成立させるが、record、enum、generic、effect、asyncなどのfull-language構文がすでに自己コンパイル可能だとは扱わない。次のsliceでMVP loweringを完全なfrontend HIR／emitterへ置き換える。
+このためcapabilityは`ready: true`かつblockerなしを返す。このreadiness claimはStage 1／Stage 2 bootstrap生成に限定される。Production compilerの切替、fixed Seed更新、互換性gateの緩和、release昇格の承認は行わない。
+
+parser、linker、semantic、lowering、emissionの失敗はpath-awareかつfail-closedを維持する。受理されたmoduleは決定的なruntime importとmetadataを持ち、`.selfhost-output/`へemitされる。

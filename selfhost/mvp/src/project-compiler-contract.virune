@@ -3,7 +3,7 @@
 //! This module composes the Virune-authored frontend parser, project linker,
 //! project semantic context, minimal lowering pipeline, and deterministic
 //! project emitter. The current lowering accepts the established Pure Core MVP
-//! subset. Full-language lowering remains an explicit capability blocker.
+//! subset. The canonical 31-module source set now passes full-language lowering and deterministic emission.
 
 import { checkMvpProjectJson } from "./checker.virune"
 import { emitMvpJson } from "./emitter.virune"
@@ -384,6 +384,12 @@ fn parseProjectSources(sources: List<ProjectCompilerSourceV1>) -> Result<Project
 	})
 }
 
+fn emptyMvpModule() -> MvpModule {
+	let imports: List<MvpImport> = []
+	let functions: List<MvpFunction> = []
+	return MvpModule { imports: imports, functions: functions }
+}
+
 fn parseMvpProjectSources(
 	sources: List<ProjectCompilerSourceV1>,
 ) -> Result<List<ParsedMvpProjectSource>, List<JsonError>> {
@@ -395,7 +401,7 @@ fn parseMvpProjectSources(
 		let parsed = Json.decode<MvpParseTransport>(raw)?
 		let moduleValue = match parsed.parsedModule {
 			Some(value) => value
-			None => MvpModule { imports: [], functions: [] }
+			None => emptyMvpModule()
 		}
 		values = List.append(values, ParsedMvpProjectSource {
 			path: source.path,
@@ -818,10 +824,10 @@ fn rejectedResult(
 pub fn projectCompilerCapabilityJson() -> Result<String, List<JsonError>> {
 	return Json.encode<ProjectCompilerCapabilityV1>(ProjectCompilerCapabilityV1 {
 		contractVersion: "1",
-		ready: false,
+		ready: true,
 		requestSchema: "virune.selfhost.project-compiler.request.v1",
 		resultSchema: "virune.selfhost.project-compiler.result.v2",
-		blockers: ["full-language-lowering-not-implemented"],
+		blockers: [],
 	})
 }
 
