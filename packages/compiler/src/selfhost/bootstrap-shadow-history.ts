@@ -105,7 +105,6 @@ export function createBootstrapShadowHistory(value: unknown): BootstrapShadowHis
 	}
 
 	const trailing = trailingSuccessfulEntries(entries);
-	assertStableTrailingCandidateIdentity(trailing, entries.length - trailing.length);
 	const unexplainedDifferentials = entries.reduce(
 		(total, entry) => total + entry.unexpectedDifferentials,
 		0,
@@ -330,36 +329,19 @@ function summarizeSections(changes: readonly ShadowChange[]): readonly Bootstrap
 function trailingSuccessfulEntries(
 	entries: readonly ParsedBootstrapShadowHistoryEntryV1[],
 ): readonly ParsedBootstrapShadowHistoryEntryV1[] {
-	let first = entries.length;
-	for (let index = entries.length - 1; index >= 0; index -= 1) {
-		if (entries[index]!.status !== 'equivalent') break;
+	const latest = entries.at(-1);
+	if (latest === undefined || latest.status !== 'equivalent') return [];
+	let first = entries.length - 1;
+	for (let index = entries.length - 2; index >= 0; index -= 1) {
+		const current = entries[index]!;
+		if (
+			current.status !== 'equivalent'
+			|| current.candidateCompilerVersion !== latest.candidateCompilerVersion
+			|| current.candidateArtifactSha256 !== latest.candidateArtifactSha256
+		) break;
 		first = index;
 	}
 	return entries.slice(first);
-}
-
-function assertStableTrailingCandidateIdentity(
-	entries: readonly ParsedBootstrapShadowHistoryEntryV1[],
-	startIndex: number,
-): void {
-	const first = entries[0];
-	if (first === undefined) return;
-	for (let index = 1; index < entries.length; index += 1) {
-		const current = entries[index]!;
-		const inputIndex = startIndex + index;
-		if (current.candidateCompilerVersion !== first.candidateCompilerVersion) {
-			throw new BootstrapShadowHistoryError(
-				`$.entries[${inputIndex}].report.candidate.compilerVersion`,
-				`successful streak must use compilerVersion ${first.candidateCompilerVersion}`,
-			);
-		}
-		if (current.candidateArtifactSha256 !== first.candidateArtifactSha256) {
-			throw new BootstrapShadowHistoryError(
-				`$.entries[${inputIndex}].report.candidate.artifactSha256`,
-				`successful streak must use candidate artifact ${first.candidateArtifactSha256}`,
-			);
-		}
-	}
 }
 
 function toPublicEntry(entry: ParsedBootstrapShadowHistoryEntryV1): BootstrapShadowHistoryEntryV1 {
