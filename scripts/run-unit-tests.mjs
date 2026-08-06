@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process';
 import { mkdir, readdir, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { performance } from 'node:perf_hooks';
+import { dirname, join } from 'node:path';
 
 const filter = process.argv.find(item => item.startsWith('--filter='))?.slice('--filter='.length);
 const exactFile = process.argv.find(item => item.startsWith('--file='))?.slice('--file='.length);
@@ -8,6 +9,9 @@ const excludedFiles = process.argv
 	.filter(item => item.startsWith('--exclude-file='))
 	.map(item => item.slice('--exclude-file='.length));
 const failureOutputOnly = process.argv.includes('--failure-output-only');
+const timingOutputArgument = process.argv.find(item => item.startsWith('--timing-output='));
+const timingOutput = timingOutputArgument?.slice('--timing-output='.length)
+	?? '.cache/ci-timings/unit-test-files.json';
 if (filter !== undefined && exactFile !== undefined) {
 	console.error('Specify at most one of --filter or --file.');
 	process.exit(1);
@@ -18,6 +22,10 @@ if (exactFile !== undefined && excludedFiles.length > 0) {
 }
 if (excludedFiles.some(value => value.length === 0)) {
 	console.error('--exclude-file requires a non-empty compiled test path.');
+	process.exit(1);
+}
+if (timingOutput.length === 0) {
+	console.error('--timing-output requires a non-empty path.');
 	process.exit(1);
 }
 const files = [];
@@ -47,11 +55,37 @@ if (files.length === 0) {
 		: `Compiled unit test file was not found: ${exactFile}`);
 	process.exit(1);
 }
+
+const suiteStartedAt = new Date().toISOString();
+const suiteStarted = performance.now();
+const fileTimings = [];
+let failedResult;
+
 // TypeScript-heavy test files are run in isolated processes. This avoids cumulative
 // compiler memory and Node test-worker cancellation while preserving exact failures.
 for (const file of files) {
 	if (!failureOutputOnly) console.log(`\n--- ${file} ---`);
-	const result = await runNodeTest(file, failureOutputOnly);
+	const fileStarted = performance.now();
+	let result;
+	try {
+		result = await runNodeTest(file, failureOutputOnly);
+	} catch (error) {
+		fileTimings.push({
+			path: canonicalPath(file),
+			status: 'error',
+			exitCode: null,
+			durationMs: elapsedMilliseconds(fileStarted),
+			error: error instanceof Error ? error.message : String(error),
+		});
+		await writeTimingEvidence('failed');
+		throw error;
+	}
+	fileTimings.push({
+		path: canonicalPath(file),
+		status: result.code === 0 ? 'passed' : 'failed',
+		exitCode: result.code,
+		durationMs: elapsedMilliseconds(fileStarted),
+	});
 	if (result.code === 0) continue;
 	if (failureOutputOnly) {
 		const header = Buffer.from(`--- ${file} ---\n`);
@@ -62,11 +96,35 @@ for (const file of files) {
 		if (result.stdout.length > 0) process.stdout.write(result.stdout);
 		if (result.stderr.length > 0) process.stderr.write(result.stderr);
 	}
-	process.exit(result.code);
+	failedResult = result;
+	break;
 }
+
+await writeTimingEvidence(failedResult === undefined ? 'passed' : 'failed');
+if (failedResult !== undefined) process.exit(failedResult.code);
 
 function canonicalPath(value) {
 	return value.replaceAll('\\', '/');
+}
+
+function elapsedMilliseconds(startedAt) {
+	return Number((performance.now() - startedAt).toFixed(3));
+}
+
+async function writeTimingEvidence(status) {
+	const evidence = {
+		schemaVersion: 1,
+		claim: 'unit-test-file-timings',
+		status,
+		startedAt: suiteStartedAt,
+		selectedFileCount: files.length,
+		completedFileCount: fileTimings.length,
+		remainingFileCount: files.length - fileTimings.length,
+		totalDurationMs: elapsedMilliseconds(suiteStarted),
+		files: fileTimings,
+	};
+	await mkdir(dirname(timingOutput), { recursive: true });
+	await writeFile(timingOutput, `${JSON.stringify(evidence, null, 2)}\n`, 'utf8');
 }
 
 async function collectTests(directory, output) {
