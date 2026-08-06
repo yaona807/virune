@@ -116,6 +116,27 @@ test('production promotion enforces rollback evidence and stable release retenti
 	assert.deepEqual(result.thresholds.stableReleaseCycles, { actual: 0, required: 1 });
 });
 
+test('promotion evidence timestamps require canonical UTC ISO representation', async () => {
+	const policy = await loadPolicy();
+	const stage = stageById(policy, 'pr-informational');
+	for (const completedAt of [
+		'2026-08-01T00:00:00Z',
+		'2026-08-01T09:00:00.000+09:00',
+	]) {
+		const observation = passingObservation(stage);
+		const result = evaluatePromotionEvidence(policy, stage.id, {
+			...observation,
+			evidence: observation.evidence.map((evidence, index) => index === 0
+				? { ...evidence, completedAt }
+				: evidence),
+		});
+		assert.equal(result.eligible, false);
+		assert.ok(result.reasons.some(reason =>
+			reason.code === 'INVALID_EVIDENCE_TIME'
+			&& reason.path === 'observation.evidence[0].completedAt'));
+	}
+});
+
 test('duplicate and malformed observations fail closed deterministically', async () => {
 	const policy = await loadPolicy();
 	const stage = stageById(policy, 'pr-informational');
@@ -193,6 +214,6 @@ function evidenceFor(ids: readonly string[]): PromotionEvidenceItem[] {
 		status: 'passed',
 		candidateSha,
 		source: `github-actions://${id}`,
-		completedAt: '2026-08-01T00:00:00Z',
+		completedAt: '2026-08-01T00:00:00.000Z',
 	}));
 }
