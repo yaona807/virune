@@ -42,25 +42,26 @@ test('passing shadow history produces deterministic candidate-bound promotion ev
 	}]);
 });
 
-test('trailing successful runs must bind one candidate compiler artifact identity', () => {
-	assert.throws(
-		() => createBootstrapShadowHistory(history([
-			entry('run-1', '2026-07-31T01:00:00.000Z'),
-			entry('run-2', '2026-08-01T01:00:00.000Z', {
-				candidateCompilerVersion: '1.0.1-stage2',
-			}),
-		])),
-		/successful streak must use compilerVersion 1\.0\.0-stage2/u,
-	);
-	assert.throws(
-		() => createBootstrapShadowHistory(history([
-			entry('run-1', '2026-07-31T01:00:00.000Z'),
-			entry('run-2', '2026-08-01T01:00:00.000Z', {
-				candidateArtifactSha256: 'f'.repeat(64),
-			}),
-		])),
-		/successful streak must use candidate artifact/u,
-	);
+test('candidate identity changes reset the trailing successful streak', () => {
+	const compilerVersionChange = createBootstrapShadowHistory(history([
+		entry('run-1', '2026-07-31T01:00:00.000Z'),
+		entry('run-2', '2026-08-01T01:00:00.000Z', {
+			candidateCompilerVersion: '1.0.1-stage2',
+		}),
+	]));
+	assert.equal(compilerVersionChange.history.successfulRuns, 1);
+	assert.equal(compilerVersionChange.history.observationDays, 1);
+	assert.equal(compilerVersionChange.history.firstSuccessfulAt, '2026-08-01T01:00:00.000Z');
+
+	const artifactChange = createBootstrapShadowHistory(history([
+		entry('run-1', '2026-07-31T01:00:00.000Z'),
+		entry('run-2', '2026-08-01T01:00:00.000Z', {
+			candidateArtifactSha256: 'f'.repeat(64),
+		}),
+	]));
+	assert.equal(artifactChange.history.successfulRuns, 1);
+	assert.equal(artifactChange.history.observationDays, 1);
+	assert.equal(artifactChange.history.firstSuccessfulAt, '2026-08-01T01:00:00.000Z');
 });
 
 test('only the trailing passing streak contributes runs and distinct observation days', () => {
