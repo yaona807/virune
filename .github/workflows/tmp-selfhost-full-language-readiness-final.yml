@@ -1,35 +1,27 @@
-name: Temporary publish dedicated self-host inventory CI branch
+name: Temporary publish qualified variant emission branch
 
 on:
-  push:
-    branches:
-      - probe/selfhost-full-language-readiness-main
-    paths:
-      - '.github/scripts/tmp-fix-full-language-readiness.py'
-      - '.github/workflows/tmp-selfhost-full-language-readiness-final.yml'
   pull_request:
     branches: [main]
     paths:
-      - '.github/scripts/tmp-fix-full-language-readiness.py'
       - '.github/workflows/tmp-selfhost-full-language-readiness-final.yml'
 
 permissions:
   contents: write
 
 concurrency:
-  group: tmp-selfhost-inventory-phase2-${{ github.event.pull_request.number || github.ref }}
+  group: tmp-selfhost-qualified-variant-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
-  publish-phase2:
-    name: Publish dedicated self-host inventory CI branch
+  publish-qualified-variant-fix:
+    name: Publish qualified variant emission fix
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 30
     env:
       EXPECTED_BASE_SHA: 9aa7a3a0930cb1889f41b52a378b4bda52e84f55
-      TARGET_BRANCH: feat/ci-selfhost-inventory-job
-      PAYLOAD_SHA256: 8b493381c885b8da6cfa81d600e67760359552b48247ddc256564efb86a0849b
-      VIRUNE_CI_JOB: selfhost-inventory-phase2-publish
+      TARGET_BRANCH: fix/selfhost-qualified-variant-emission
+      VIRUNE_CI_JOB: selfhost-qualified-variant-publish
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -38,7 +30,7 @@ jobs:
         with:
           node-version: 24
           cache: npm
-      - name: Materialize the four-file Phase 2 change
+      - name: Materialize the exact emitter fix
         shell: bash
         run: |
           set -euo pipefail
@@ -46,78 +38,71 @@ jobs:
             echo "Target branch already exists: $TARGET_BRANCH" >&2
             exit 1
           fi
-          test "$(sha256sum .github/scripts/tmp-fix-full-language-readiness.py | cut -d' ' -f1)" = "$PAYLOAD_SHA256"
-          cp .github/scripts/tmp-fix-full-language-readiness.py "$RUNNER_TEMP/phase2-payload.tar.gz"
           git fetch --no-tags origin "$EXPECTED_BASE_SHA"
           git reset --hard "$EXPECTED_BASE_SHA"
           python - <<'PY'
-          from os import environ
-          from pathlib import Path, PurePosixPath
-          import shutil
-          import subprocess
-          import tarfile
+          from pathlib import Path
 
-          root = Path(environ['RUNNER_TEMP']) / 'phase2-payload'
-          root.mkdir(parents=True, exist_ok=True)
-          with tarfile.open(Path(environ['RUNNER_TEMP']) / 'phase2-payload.tar.gz', 'r:gz') as bundle:
-              members = bundle.getmembers()
-              for member in members:
-                  path = PurePosixPath(member.name)
-                  if path.is_absolute() or '..' in path.parts or not member.isfile():
-                      raise SystemExit(f'unsafe payload member: {member.name}')
-              bundle.extractall(root, members=members)
-          for relative in [
-              'scripts/run-tests.mjs',
-              'scripts/run-unit-tests.mjs',
-              'scripts/run-unit-tests.test.mjs',
-          ]:
-              source = root / relative
-              destination = Path(relative)
-              destination.parent.mkdir(parents=True, exist_ok=True)
-              shutil.copyfile(source, destination)
-          subprocess.run(['python', str(root / 'patch-ci.py')], check=True)
+          path = Path('selfhost/mvp/src/emitter.virune')
+          text = path.read_text()
+          old = (
+              'fn emitVariant(expression: MvpHirExpression, expressions: List<MvpHirExpression>) -> String {\n'
+              '\tif expression.text == "None" {\n'
+              '\t\treturn "None"\n'
+              '\t}\n'
+              '\treturn expression.text + "(" + String.join(emitArguments(expression.children, expressions), ", ") + ")"\n'
+              '}\n'
+          )
+          new = (
+              'fn emitVariant(expression: MvpHirExpression, expressions: List<MvpHirExpression>) -> String {\n'
+              '\tif expression.text == "None" {\n'
+              '\t\treturn "None"\n'
+              '\t}\n'
+              '\tlet values = emitArguments(expression.children, expressions)\n'
+              '\tif expression.text == "Some" || expression.text == "Ok" || expression.text == "Err" {\n'
+              '\t\treturn expression.text + "(" + String.join(values, ", ") + ")"\n'
+              '\t}\n'
+              '\tlet typeId = match expression.valueType {\n'
+              '\t\tNamedType(name) => ", " + Debug.format(name)\n'
+              '\t\t_ => ""\n'
+              '\t}\n'
+              '\treturn "makeVariant(" + Debug.format(expression.text) + ", [" + String.join(values, ", ") + "]" + typeId + ")"\n'
+              '}\n'
+          )
+          if text.count(old) != 1:
+              raise SystemExit('qualified variant emitter anchor mismatch')
+          path.write_text(text.replace(old, new))
           PY
-          cat > "$RUNNER_TEMP/expected-phase2-files.txt" <<'EOF'
-          .github/workflows/ci.yml
-          scripts/run-tests.mjs
-          scripts/run-unit-tests.mjs
-          scripts/run-unit-tests.test.mjs
-          EOF
-          sort "$RUNNER_TEMP/expected-phase2-files.txt" -o "$RUNNER_TEMP/expected-phase2-files.txt"
-          { git diff --name-only; git ls-files --others --exclude-standard; } | sort > "$RUNNER_TEMP/actual-phase2-files.txt"
-          diff -u "$RUNNER_TEMP/expected-phase2-files.txt" "$RUNNER_TEMP/actual-phase2-files.txt"
+          printf '%s\n' 'selfhost/mvp/src/emitter.virune' > "$RUNNER_TEMP/expected-files.txt"
+          git diff --name-only | sort > "$RUNNER_TEMP/actual-files.txt"
+          diff -u "$RUNNER_TEMP/expected-files.txt" "$RUNNER_TEMP/actual-files.txt"
           git diff --check
       - name: Install dependencies
         run: node scripts/run-ci-command.mjs --id install -- npm ci
       - name: Build and type-check project references
         run: node scripts/run-ci-command.mjs --id build -- npm run check
-      - name: Verify the unit-test selector
-        run: node --test scripts/run-unit-tests.test.mjs
-      - name: Verify workflow and CI policies
-        run: |
-          npm run workflow:check
-          npm run test:workflow-policy
-          npm run test:ci-policy
-      - name: Run the generic Core lane without the canonical inventory
+      - name: Run qualified variant runtime regressions
         run: >-
-          node scripts/run-ci-command.mjs --id core-tests-without-selfhost-inventory --
-          npm run test:core:built -- --failure-output-only --exclude-selfhost-inventory
-      - name: Commit and push the Phase 2 branch
+          node scripts/run-ci-command.mjs --id qualified-variant-runtime --
+          node --test --test-isolation=none
+          packages/compiler/dist/test/selfhost-member-chain-integration.test.js
+          packages/compiler/dist/test/selfhost-qualified-builtins-variants.test.js
+      - name: Commit and push the emitter fix
         shell: bash
         run: |
           set -euo pipefail
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
           git switch -c "$TARGET_BRANCH"
-          git add --pathspec-from-file="$RUNNER_TEMP/expected-phase2-files.txt"
-          git diff --cached --name-only | sort > "$RUNNER_TEMP/staged-phase2-files.txt"
-          diff -u "$RUNNER_TEMP/expected-phase2-files.txt" "$RUNNER_TEMP/staged-phase2-files.txt"
+          git add --pathspec-from-file="$RUNNER_TEMP/expected-files.txt"
+          git diff --cached --name-only | sort > "$RUNNER_TEMP/staged-files.txt"
+          diff -u "$RUNNER_TEMP/expected-files.txt" "$RUNNER_TEMP/staged-files.txt"
           git diff --cached --check
           git commit \
-            -m 'ci(selfhost): isolate full-language inventory' \
-            -m 'Keep the canonical two-compile inventory as a dedicated release gate while removing it from the generic Core lane.' \
+            -m 'fix(selfhost): emit qualified variants through runtime ABI' \
+            -m 'Preserve dedicated Option and Result constructors while emitting general enum and algebraic variants with makeVariant(tag, payloads, typeId).' \
+            -m 'Refs #293' \
             -m 'Refs #283' \
-            -m 'Refs #269' \
             -m 'Refs #88'
           git push origin "HEAD:refs/heads/$TARGET_BRANCH"
-          echo "SELFHOST_INVENTORY_PHASE2_COMMIT=$(git rev-parse HEAD)"
+          echo "QUALIFIED_VARIANT_FIX_COMMIT=$(git rev-parse HEAD)"
