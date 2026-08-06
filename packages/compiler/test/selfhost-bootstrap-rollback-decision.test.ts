@@ -58,6 +58,19 @@ test('missing, stale, failed, and mismatched gates select Legacy rollback', () =
 	]);
 });
 
+test('future-dated gate evidence selects Legacy rollback', () => {
+	const input = validInput();
+	const gates = input.gates.map(gate => gate.name === 'performance'
+		? { ...gate, checkedAt: '2026-08-01T06:00:00.001Z' }
+		: gate);
+	const result = evaluateBootstrapRollbackDecision({ ...input, gates });
+	assert.equal(result.decision.selection, 'legacy');
+	assert.equal(result.decision.rollbackRequired, true);
+	assert.deepEqual(result.decision.reasons, [
+		{ gate: 'performance', code: 'FUTURE' },
+	]);
+});
+
 test('malformed and duplicate boundary data fails closed', () => {
 	const input = validInput();
 	assert.throws(() => evaluateBootstrapRollbackDecision({ ...input, unexpected: true }), /unknown/u);
