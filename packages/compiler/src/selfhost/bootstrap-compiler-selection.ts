@@ -1,7 +1,6 @@
 import type { BootstrapStageArtifact } from './bootstrap-stage-executor.js';
 import {
 	evaluateBootstrapRollbackDecision,
-	type BootstrapRollbackDecisionInput,
 	type BootstrapRollbackDecisionResult,
 } from './bootstrap-rollback-decision.js';
 import {
@@ -18,7 +17,7 @@ export interface BootstrapSelfHostCandidate {
 }
 
 export interface BootstrapCompilerSelectionRequest {
-	readonly rollbackDecision: BootstrapRollbackDecisionInput;
+	readonly rollbackDecision: unknown;
 	readonly input: unknown;
 	readonly selfHostCandidate?: BootstrapSelfHostCandidate;
 }
