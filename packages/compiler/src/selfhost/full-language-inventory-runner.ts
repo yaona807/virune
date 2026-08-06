@@ -194,6 +194,16 @@ export function resolveFullLanguageInventoryCompileRuns(
 	throw new Error('compileRuns must be exactly 1 or 2');
 }
 
+export function resolveFullLanguageInventoryCompileRunsForEvent(
+	eventName: string | undefined,
+	explicitValue: string | number | undefined,
+): FullLanguageInventoryCompileRuns {
+	if (explicitValue !== undefined) {
+		return resolveFullLanguageInventoryCompileRuns(explicitValue);
+	}
+	return eventName === 'pull_request' ? 1 : 2;
+}
+
 export async function runFullLanguageInventory(
 	options: RunFullLanguageInventoryOptions,
 ): Promise<FullLanguageInventory> {

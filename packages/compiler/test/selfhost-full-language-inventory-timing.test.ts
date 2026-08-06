@@ -6,6 +6,7 @@ import test from 'node:test';
 import {
 	formatFullLanguageInventoryProgress,
 	resolveFullLanguageInventoryCompileRuns,
+	resolveFullLanguageInventoryCompileRunsForEvent,
 	runFullLanguageInventory,
 	serializeFullLanguageInventoryTimingEvidence,
 	type FullLanguageInventoryTimingEvidence,
@@ -19,6 +20,20 @@ test('compile-run selection is fail-closed and defaults to deterministic mode', 
 	assert.equal(resolveFullLanguageInventoryCompileRuns('2'), 2);
 	assert.throws(() => resolveFullLanguageInventoryCompileRuns(0), /exactly 1 or 2/);
 	assert.throws(() => resolveFullLanguageInventoryCompileRuns('3'), /exactly 1 or 2/);
+});
+
+test('CI event selection uses one run only for pull requests', () => {
+	assert.equal(resolveFullLanguageInventoryCompileRunsForEvent('pull_request', undefined), 1);
+	assert.equal(resolveFullLanguageInventoryCompileRunsForEvent('push', undefined), 2);
+	assert.equal(resolveFullLanguageInventoryCompileRunsForEvent('schedule', undefined), 2);
+	assert.equal(resolveFullLanguageInventoryCompileRunsForEvent('workflow_dispatch', undefined), 2);
+	assert.equal(resolveFullLanguageInventoryCompileRunsForEvent(undefined, undefined), 2);
+	assert.equal(resolveFullLanguageInventoryCompileRunsForEvent('pull_request', '2'), 2);
+	assert.equal(resolveFullLanguageInventoryCompileRunsForEvent('push', '1'), 1);
+	assert.throws(
+		() => resolveFullLanguageInventoryCompileRunsForEvent('pull_request', '3'),
+		/exactly 1 or 2/,
+	);
 });
 
 test('progress formatting is stable and machine-readable', () => {

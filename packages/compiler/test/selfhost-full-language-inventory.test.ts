@@ -4,7 +4,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-	resolveFullLanguageInventoryCompileRuns,
+	resolveFullLanguageInventoryCompileRunsForEvent,
 	runFullLanguageInventory,
 } from '../src/selfhost/full-language-inventory-runner.js';
 import { serializeFullLanguageInventory } from '../src/selfhost/full-language-inventory.js';
@@ -16,7 +16,8 @@ const inventoryEvidencePath = join(
 	'ci-timings',
 	'selfhost-full-language-inventory.json',
 );
-const compileRuns = resolveFullLanguageInventoryCompileRuns(
+const compileRuns = resolveFullLanguageInventoryCompileRunsForEvent(
+	process.env.GITHUB_EVENT_NAME,
 	process.env.VIRUNE_SELFHOST_INVENTORY_COMPILE_RUNS,
 );
 
