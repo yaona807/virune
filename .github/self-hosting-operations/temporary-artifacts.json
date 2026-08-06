@@ -1,4 +1,26 @@
 {
 	"schemaVersion": 1,
-	"artifacts": []
+	"artifacts": [
+		{
+			"id": "full-language-readiness-apply-script",
+			"path": ".github/scripts/tmp-apply-full-language-readiness.py",
+			"responsiblePullRequest": 289,
+			"removalTrigger": "The exact 31-module inventory is captured and the permanent readiness source changes are moved to an exact-main feature pull request.",
+			"mergeDisposition": "do-not-merge"
+		},
+		{
+			"id": "full-language-readiness-source-fix-script",
+			"path": ".github/scripts/tmp-fix-full-language-readiness.py",
+			"responsiblePullRequest": 289,
+			"removalTrigger": "The exact zero-diagnostic 31-module inventory is captured and the source changes are committed to the permanent exact-main feature pull request.",
+			"mergeDisposition": "do-not-merge"
+		},
+		{
+			"id": "full-language-readiness-final-workflow",
+			"path": ".github/workflows/tmp-selfhost-full-language-readiness-final.yml",
+			"responsiblePullRequest": 289,
+			"removalTrigger": "The exact 31-module inventory is captured and permanent repository commands provide the required evidence.",
+			"mergeDisposition": "do-not-merge"
+		}
+	]
 }

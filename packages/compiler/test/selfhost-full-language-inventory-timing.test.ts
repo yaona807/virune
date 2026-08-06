@@ -24,7 +24,7 @@ test('progress formatting is stable and machine-readable', () => {
 	);
 });
 
-test('failure evidence is emitted after cleanup without running the compiler twice', async () => {
+test('failure evidence preserves the default two-run contract after cleanup', async () => {
 	const repositoryRoot = await mkdtemp(join(tmpdir(), 'virune-inventory-timing-'));
 	const captured: { value: FullLanguageInventoryTimingEvidence | null } = { value: null };
 	try {
@@ -41,6 +41,7 @@ test('failure evidence is emitted after cleanup without running the compiler twi
 		assert.equal(evidence.schemaVersion, 1);
 		assert.equal(evidence.claim, 'selfhost-full-language-inventory-timing');
 		assert.equal(evidence.status, 'failure');
+		assert.equal(evidence.compileRuns, 2);
 		assert.equal(evidence.failure?.phase, 'build-project');
 		assert.ok(evidence.phases.some(phase => phase.name === 'prepare' && phase.status === 'success'));
 		assert.ok(evidence.phases.some(phase => phase.name === 'build-project' && phase.status === 'failure'));
@@ -52,6 +53,39 @@ test('failure evidence is emitted after cleanup without running the compiler twi
 	} finally {
 		await rm(repositoryRoot, { recursive: true, force: true });
 	}
+});
+
+test('single-run diagnostics use the same engine and omit the second compile phase', async () => {
+	const repositoryRoot = await mkdtemp(join(tmpdir(), 'virune-inventory-single-run-'));
+	const captured: { value: FullLanguageInventoryTimingEvidence | null } = { value: null };
+	try {
+		await assert.rejects(
+			runFullLanguageInventory({
+				repositoryRoot,
+				compileRuns: 1,
+				heartbeatIntervalMs: 0,
+				onTimingEvidence: value => {
+					captured.value = value;
+				},
+			}),
+		);
+		const evidence = requireEvidence(captured.value);
+		assert.equal(evidence.compileRuns, 1);
+		assert.equal(evidence.failure?.phase, 'build-project');
+		assert.equal(evidence.phases.some(phase => phase.name === 'compile-project-second'), false);
+	} finally {
+		await rm(repositoryRoot, { recursive: true, force: true });
+	}
+});
+
+test('invalid compile run counts fail closed before repository work begins', async () => {
+	await assert.rejects(
+		runFullLanguageInventory({
+			repositoryRoot: '.',
+			compileRuns: 3 as 1,
+		}),
+		/compileRuns must be 1 or 2/u,
+	);
 });
 
 function requireEvidence(

@@ -27,6 +27,8 @@ const snapshotOptions = {
 
 const defaultHeartbeatIntervalMs = 60_000;
 
+export type FullLanguageInventoryCompileRuns = 1 | 2;
+
 export type FullLanguageInventoryPhaseName =
 	| 'prepare'
 	| 'build-project'
@@ -53,6 +55,7 @@ export interface FullLanguageInventoryTimingEvidence {
 	readonly schemaVersion: 1;
 	readonly claim: 'selfhost-full-language-inventory-timing';
 	readonly status: 'success' | 'failure';
+	readonly compileRuns: FullLanguageInventoryCompileRuns;
 	readonly startedAt: string;
 	readonly completedAt: string;
 	readonly durationMs: number;
@@ -75,6 +78,7 @@ export interface FullLanguageInventoryProgressEvent {
 
 export interface RunFullLanguageInventoryOptions {
 	readonly repositoryRoot: string;
+	readonly compileRuns?: FullLanguageInventoryCompileRuns;
 	readonly heartbeatIntervalMs?: number;
 	readonly now?: () => number;
 	readonly onProgress?: (event: FullLanguageInventoryProgressEvent) => void;
@@ -85,14 +89,19 @@ export interface RunFullLanguageInventoryOptions {
 
 class InventoryTimingSession {
 	readonly #startedMs: number;
+	readonly #compileRuns: FullLanguageInventoryCompileRuns;
 	readonly #heartbeatIntervalMs: number;
 	readonly #now: () => number;
 	readonly #onProgress: ((event: FullLanguageInventoryProgressEvent) => void) | undefined;
 	readonly #phases: FullLanguageInventoryPhaseTiming[] = [];
 
-	constructor(options: RunFullLanguageInventoryOptions) {
+	constructor(
+		options: RunFullLanguageInventoryOptions,
+		compileRuns: FullLanguageInventoryCompileRuns,
+	) {
 		this.#now = options.now ?? Date.now;
 		this.#startedMs = this.#now();
+		this.#compileRuns = compileRuns;
 		this.#heartbeatIntervalMs = options.heartbeatIntervalMs ?? defaultHeartbeatIntervalMs;
 		if (!Number.isSafeInteger(this.#heartbeatIntervalMs) || this.#heartbeatIntervalMs < 0) {
 			throw new Error('heartbeatIntervalMs must be a non-negative safe integer');
@@ -139,6 +148,7 @@ class InventoryTimingSession {
 			schemaVersion: 1,
 			claim: 'selfhost-full-language-inventory-timing',
 			status: failure === null ? 'success' : 'failure',
+			compileRuns: this.#compileRuns,
 			startedAt: timestamp(this.#startedMs),
 			completedAt: timestamp(completedMs),
 			durationMs: duration(this.#startedMs, completedMs),
@@ -177,7 +187,8 @@ class InventoryTimingSession {
 export async function runFullLanguageInventory(
 	options: RunFullLanguageInventoryOptions,
 ): Promise<FullLanguageInventory> {
-	const timings = new InventoryTimingSession(options);
+	const compileRuns = readCompileRuns(options.compileRuns);
+	const timings = new InventoryTimingSession(options, compileRuns);
 	const mvpRoot = join(options.repositoryRoot, 'selfhost', 'mvp');
 	const temporaryParent = join(options.repositoryRoot, '.test-tmp');
 	let runRoot: string | null = null;
@@ -221,12 +232,14 @@ export async function runFullLanguageInventory(
 			'compile-project-first',
 			() => compileWithProjectCompilerBoundary(compilerModule, input),
 		);
-		const second = await timings.phase(
-			'compile-project-second',
-			() => compileWithProjectCompilerBoundary(compilerModule, input),
-		);
+		const second = compileRuns === 2
+			? await timings.phase(
+				'compile-project-second',
+				() => compileWithProjectCompilerBoundary(compilerModule, input),
+			)
+			: null;
 		inventory = await timings.phase('validate-and-convert', () => {
-			if (JSON.stringify(first) !== JSON.stringify(second)) {
+			if (second !== null && JSON.stringify(first) !== JSON.stringify(second)) {
 				throw new Error('Generated project compiler returned non-deterministic results');
 			}
 			const value = inventoryFromFullLanguageResult(
@@ -273,6 +286,14 @@ export function formatFullLanguageInventoryProgress(
 ): string {
 	const detail = event.message === null ? '' : ` (${event.message})`;
 	return `SELFHOST_INVENTORY_PROGRESS ${event.kind} phase=${event.phase} elapsedMs=${event.elapsedMs} phaseElapsedMs=${event.phaseElapsedMs}${detail}`;
+}
+
+function readCompileRuns(value: number | undefined): FullLanguageInventoryCompileRuns {
+	const compileRuns = value ?? 2;
+	if (compileRuns !== 1 && compileRuns !== 2) {
+		throw new Error('compileRuns must be 1 or 2');
+	}
+	return compileRuns;
 }
 
 function phaseTiming(

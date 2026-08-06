@@ -1,0 +1,106 @@
+name: Temporary full-language readiness final probe
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/scripts/tmp-apply-full-language-readiness.py'
+      - '.github/scripts/tmp-fix-full-language-readiness.py'
+      - '.github/workflows/tmp-selfhost-full-language-readiness-final.yml'
+      - '.github/self-hosting-operations/temporary-artifacts.json'
+      - 'packages/compiler/src/selfhost/full-language-inventory-runner.ts'
+      - 'packages/compiler/test/selfhost-full-language-inventory-timing.test.ts'
+      - 'packages/compiler/test/selfhost-full-language-inventory.test.ts'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tmp-selfhost-full-language-readiness-final-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  final-readiness:
+    name: Final full-language readiness (Ubuntu 24.04 / Node.js 24)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      VIRUNE_CI_JOB: selfhost-full-language-readiness-final
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 24
+          cache: npm
+      - name: Materialize the diagnostic evidence harness
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git hash-object .github/scripts/tmp-apply-full-language-readiness.py)" = "1bb45cd44e459f235dae4dcc7544e7ee125aeb88"
+          test "$(git hash-object .github/scripts/tmp-fix-full-language-readiness.py)" = "cd495151a220fce070f2043d7c03f75efafc7740"
+          python .github/scripts/tmp-fix-full-language-readiness.py --diagnostic-harness
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          path = Path('packages/compiler/test/selfhost-full-language-inventory.test.ts')
+          text = path.read_text()
+          pattern = r"async function applyFinalDiagnosticFixes\(probeRoot: string\): Promise<void> \{.*?\n\}\n\ntest\("
+          replacement = '''async function applyFinalDiagnosticFixes(probeRoot: string): Promise<void> {
+          \tawait executeFile(
+          \t\t'python',
+          \t\t['.github/scripts/tmp-fix-full-language-readiness.py'],
+          \t\t{ cwd: probeRoot, maxBuffer: 16 * 1024 * 1024 },
+          \t);
+          \tconst checkerPath = join(probeRoot, 'selfhost/mvp/src/checker.virune');
+          \tconst checker = await readFile(checkerPath, 'utf8');
+          \tconst anchor = '\\tif base == "MvpExternalSignature" && fieldName == "name" {\\n';
+          \tconst insertion =
+          \t\t'\\tif base == "MvpModule" && fieldName == "imports" {\\n' +
+          \t\t'\\t\\treturn typeFromName("List<MvpImport>")\\n' +
+          \t\t'\\t}\\n' +
+          \t\t'\\tif base == "MvpModule" && fieldName == "functions" {\\n' +
+          \t\t'\\t\\treturn typeFromName("List<MvpFunction>")\\n' +
+          \t\t'\\t}\\n';
+          \tassert.equal(checker.split(anchor).length - 1, 1);
+          \tawait writeFile(checkerPath, checker.replace(anchor, insertion + anchor), 'utf8');
+          }
+
+          test('''
+          updated, count = re.subn(pattern, lambda _: replacement, text, count=1, flags=re.DOTALL)
+          if count != 1:
+              raise SystemExit(f'MvpModule diagnostic harness: expected one function anchor, found {count}')
+          path.write_text(updated)
+          PY
+      - name: Install dependencies
+        run: node scripts/run-ci-command.mjs --id install -- npm ci
+      - name: Build and type-check project references
+        run: node scripts/run-ci-command.mjs --id build -- npm run check
+      - name: Validate temporary artifact declarations
+        run: >-
+          node scripts/run-ci-command.mjs --id selfhost-temporary-artifacts --
+          node scripts/verify-selfhost-temporary-artifacts.mjs
+      - name: Run timing contract tests
+        run: >-
+          node scripts/run-ci-command.mjs --id selfhost-inventory-timing-contract --
+          node --test packages/compiler/dist/test/selfhost-full-language-inventory-timing.test.js
+      - name: Run the exact single-compile readiness probe
+        run: >-
+          node scripts/run-ci-command.mjs --id selfhost-full-language-readiness-final --
+          node --test --test-isolation=none --test-timeout=3300000
+          packages/compiler/dist/test/selfhost-full-language-inventory.test.js
+      - name: Write timing summary
+        if: always()
+        run: node scripts/write-ci-summary.mjs
+      - name: Upload final readiness evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: selfhost-full-language-readiness-final-${{ github.sha }}
+          path: |
+            .cache/ci-timings/selfhost-full-language-final-inventory.json
+            .cache/ci-timings/selfhost-full-language-final-timings.json
+            .cache/ci-timings/
+            .cache/ci-failures/
+          if-no-files-found: warn
+          retention-days: 14
