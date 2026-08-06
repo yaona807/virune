@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
+import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import { classifyChangedPaths, isDocumentationPath } from './classify-ci-changes.mjs';
+
+const repositoryRoot = resolve(fileURLToPath(new URL('..', import.meta.url)));
 
 test('classifies maintained Markdown documentation as documentation-only', () => {
 	const result = classifyChangedPaths([
@@ -47,4 +52,30 @@ test('limits documentation paths to reviewed Markdown locations', () => {
 	assert.equal(isDocumentationPath('.github/README.md'), false);
 	assert.equal(isDocumentationPath('.github/PULL_REQUEST_TEMPLATE/config.yml'), false);
 	assert.equal(isDocumentationPath('docs/schema.json'), false);
+});
+
+test('runs self-host CI triage and temporary-artifact policy tests', () => {
+	const result = spawnSync(process.execPath, [
+		'--test',
+		'scripts/classify-selfhost-ci-failure.test.mjs',
+		'scripts/verify-selfhost-temporary-artifacts.test.mjs',
+	], {
+		cwd: repositoryRoot,
+		encoding: 'utf8',
+		maxBuffer: 16 * 1024 * 1024,
+	});
+	assert.equal(result.status, 0, result.stderr || result.stdout);
+});
+
+test('requires the current tracked tree to declare every temporary artifact', () => {
+	const result = spawnSync(process.execPath, [
+		'scripts/verify-selfhost-temporary-artifacts.mjs',
+	], {
+		cwd: repositoryRoot,
+		encoding: 'utf8',
+		maxBuffer: 16 * 1024 * 1024,
+	});
+	assert.equal(result.status, 0, result.stderr || result.stdout);
+	const evidence = JSON.parse(result.stdout);
+	assert.equal(evidence.claim, 'selfhost-temporary-artifact-inventory');
 });
