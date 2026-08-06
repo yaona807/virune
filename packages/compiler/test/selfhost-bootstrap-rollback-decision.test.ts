@@ -71,6 +71,26 @@ test('future-dated gate evidence selects Legacy rollback', () => {
 	]);
 });
 
+test('rollback timestamps must use canonical UTC ISO representation', () => {
+	const input = validInput();
+	assert.throws(
+		() => evaluateBootstrapRollbackDecision({
+			...input,
+			evaluatedAt: '2026-08-01T08:00:00.000+02:00',
+		}),
+		/\$\.evaluatedAt must be a canonical UTC ISO timestamp/u,
+	);
+	assert.throws(
+		() => evaluateBootstrapRollbackDecision({
+			...input,
+			gates: input.gates.map((gate, index) => index === 0
+				? { ...gate, checkedAt: '2026-08-01T05:30:00Z' }
+				: gate),
+		}),
+		/checkedAt must be a canonical UTC ISO timestamp/u,
+	);
+});
+
 test('malformed and duplicate boundary data fails closed', () => {
 	const input = validInput();
 	assert.throws(() => evaluateBootstrapRollbackDecision({ ...input, unexpected: true }), /unknown/u);

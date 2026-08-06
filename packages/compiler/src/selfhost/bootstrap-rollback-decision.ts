@@ -158,7 +158,10 @@ function sha256Value(value: unknown, path: string): string {
 
 function timestamp(value: unknown, path: string): string {
 	const result = nonEmptyString(value, path);
-	if (!Number.isFinite(Date.parse(result))) throw new Error(`${path} must be an ISO timestamp`);
+	const parsed = new Date(result);
+	if (Number.isNaN(parsed.getTime()) || parsed.toISOString() !== result) {
+		throw new Error(`${path} must be a canonical UTC ISO timestamp`);
+	}
 	return result;
 }
 
