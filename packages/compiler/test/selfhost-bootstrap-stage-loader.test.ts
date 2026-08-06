@@ -95,6 +95,26 @@ test('materializes and imports a real Stage 1 project compiler candidate', async
 	await rm(root, { recursive: true, force: true });
 });
 
+test('rejects artifacts whose payload or digest does not match their fields', async () => {
+	const root = await mkdtemp(join(tmpdir(), 'virune-stage-integrity-test-'));
+	const valid = artifact(compilerModuleSource(result('export const stage = 2;\n')));
+	await assert.rejects(
+		materializeBootstrapStageCompiler({
+			...valid,
+			modules: valid.modules.map((module, index) => index === 0
+				? { ...module, code: `${module.code}\n// tampered\n` }
+				: module),
+		}, root),
+		/serialized payload does not match its fields/u,
+	);
+	await assert.rejects(
+		materializeBootstrapStageCompiler({ ...valid, sha256: '0'.repeat(64) }, root),
+		/SHA-256 does not match its serialized payload/u,
+	);
+	assert.deepEqual(await readdir(root), []);
+	await rm(root, { recursive: true, force: true });
+});
+
 test('executes Stage 2 through the materialized compiler and removes the candidate root', async () => {
 	const root = await mkdtemp(join(tmpdir(), 'virune-stage-execution-test-'));
 	const stage2Result = result('export const stage = 2;\n');
