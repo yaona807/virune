@@ -74,6 +74,20 @@ fn emitJsonEncode(valueCode: String) -> String {
 	return "((input) => { const convert = (value) => { if (Array.isArray(value)) return value.map(convert); if (value !== null && typeof value === \"object\") { if (typeof value.$tag === \"string\" && Array.isArray(value.$values)) return ({tag: value.$tag, values: value.$values.map(convert)}); const output = {}; for (const [key, item] of Object.entries(value)) output[key] = convert(item); return output; } return value; }; try { return ({$tag: \"Ok\", $values: [JSON.stringify(convert(input))]}); } catch (error) { return ({$tag: \"Err\", $values: [[{path: \"$\", expected: \"JSON-serializable value\", actual: typeof input, message: error instanceof Error ? error.message : String(error)}]]}); } })(" + valueCode + ")"
 }
 
+fn emitProjectCompilerResultJsonEncode(valueCode: String) -> String {
+	return "((input) => { const convert = (value) => { if (Array.isArray(value)) return value.map(convert); if (value !== null && typeof value === \"object\") { if (value.$tag === \"None\" && Array.isArray(value.$values)) return null; if (value.$tag === \"Some\" && Array.isArray(value.$values) && value.$values.length === 1) return convert(value.$values[0]); if (typeof value.$tag === \"string\" && Array.isArray(value.$values)) return ({tag: value.$tag, values: value.$values.map(convert)}); const output = {}; for (const [key, item] of Object.entries(value)) output[key] = convert(item); return output; } return value; }; try { return ({$tag: \"Ok\", $values: [JSON.stringify(convert(input))]}); } catch (error) { return ({$tag: \"Err\", $values: [[{path: \"$\", expected: \"ProjectCompilerResultV1 JSON value\", actual: typeof input, message: error instanceof Error ? error.message : String(error)}]]}); } })(" + valueCode + ")"
+}
+
+fn isProjectCompilerResultEncoder(expression: MvpHirExpression) -> Bool {
+	if expression.kind != "function" || expression.text != "Json.encode" {
+		return false
+	}
+	return match expression.valueType {
+		NamedType(name) => String.contains(name, "fn(ProjectCompilerResultV1)->")
+		_ => false
+	}
+}
+
 fn emitBuiltinCall(name: String, values: List<String>) -> String? {
 	if name == "List.get" {
 		return Some("((items, index) => index >= 0 && index < items.length ? ({$tag: \"Some\", $values: [items[index]]}) : ({$tag: \"None\", $values: []}))(" + textAt(values, 0) + ", " + textAt(values, 1) + ")")
@@ -161,6 +175,9 @@ fn emitInvoke(expression: MvpHirExpression, expressions: List<MvpHirExpression>)
 	}
 	if calleeExpression.kind == "function" && calleeExpression.text == "Json.decode" && List.length(argumentValues) == 1 {
 		return emitJsonDecode(textAt(argumentValues, 0))
+	}
+	if isProjectCompilerResultEncoder(calleeExpression) && List.length(argumentValues) == 1 {
+		return emitProjectCompilerResultJsonEncode(textAt(argumentValues, 0))
 	}
 	if calleeExpression.kind == "function" && calleeExpression.text == "Json.encode" && List.length(argumentValues) == 1 {
 		return emitJsonEncode(textAt(argumentValues, 0))
