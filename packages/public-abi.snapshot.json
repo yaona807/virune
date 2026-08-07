@@ -688,7 +688,8 @@
 		"@virune/js-interop": {
 			"packageExports": {
 				".": "./dist/src/index.js",
-				"./cached-provider": "./dist/src/cached-provider.js"
+				"./cached-provider": "./dist/src/cached-provider.js",
+				"./classifier": "./dist/src/classifier.js"
 			},
 			"entries": {
 				".": {
@@ -712,6 +713,30 @@
 					"exports": {
 						"CachedTypeScriptInteropProvider": "export class CachedTypeScriptInteropProvider implements JsInteropProvider { readonly id: string; readonly version: string; readonly generation: number; public constructor(options: CachedTypeScriptInteropProviderOptions); public resolveImport(request: JsImportRequest): JsImportResolution; public getProperty(type: ForeignTypeRef, name: string): ForeignTypeSnapshot | undefined; public resolveCall(type: ForeignTypeRef, argumentsList: readonly InteropArgumentType[]): ForeignCallResolution | undefined; public resolveConstruct(type: ForeignTypeRef, argumentsList: readonly InteropArgumentType[]): ForeignCallResolution | undefined; public getAwaitedType(type: ForeignTypeRef): ForeignTypeSnapshot | undefined; public display(type: ForeignTypeRef): string; public dispose(): void; public get cachedImportCount(): number; }",
 						"CachedTypeScriptInteropProviderOptions": "export interface CachedTypeScriptInteropProviderOptions extends TypeScriptInteropProviderOptions { readonly createProvider?: (options: TypeScriptInteropProviderOptions) => TypeScriptInteropProvider; }"
+					}
+				},
+				"./classifier": {
+					"source": "src/classifier.ts",
+					"exports": {
+						"classifyInterop": "export function classifyInterop(facts: InteropFacts): InteropDecision",
+						"InteropCallbackFacts": "export interface InteropCallbackFacts { readonly cardinality: 'one' | 'many' | 'scoped' | 'unknown'; readonly lifetime: 'call' | 'operation' | 'scope' | 'session' | 'unknown'; readonly escapes: 'no' | 'yes' | 'unknown'; readonly setupRollback: 'guaranteed' | 'adapter-managed' | 'unknown'; }",
+						"InteropControl": "export type InteropControl = 'direct-access' | 'direct-call' | 'operation' | 'pull-source' | 'push-session' | 'stream-source' | 'stream-sink' | 'duplex-session' | 'scoped-workflow' | 'host-wiring' | 'unknown'",
+						"InteropDecision": "export interface InteropDecision { readonly gate: InteropSafetyGate; readonly plan: InteropPlan; readonly reasons: readonly InteropReasonCode[]; readonly evidence: readonly InteropEvidence[]; }",
+						"InteropDuplexFacts": "export interface InteropDuplexFacts { readonly directionalTermination: 'known' | 'unknown'; readonly upstreamFlowControl: 'native' | 'adapter-bounded' | 'unavailable' | 'unknown'; }",
+						"InteropEvidence": "export interface InteropEvidence { readonly source: InteropEvidenceSource; readonly fact: string; readonly detail?: string; }",
+						"InteropEvidenceSource": "export type InteropEvidenceSource = 'declaration' | 'typescript-source' | 'jsdoc' | 'javascript-inference' | 'static-behavior' | 'standard-protocol' | 'adapter-contract' | 'runtime-observation' | 'resolution-witness'",
+						"InteropFacetIR": "export interface InteropFacetIR { readonly facets: readonly InteropFacetKind[]; readonly runtimeRepresentation: InteropRuntimeRepresentation; readonly typeCertainty: 'declared' | 'inferred' | 'unknown' | 'any'; readonly callResolution?: 'resolved' | 'ambiguous' | 'contextual' | 'unknown'; readonly receiver?: 'none' | 'preserved' | 'required' | 'unknown'; readonly structuralData?: 'none' | 'snapshot-proven' | 'snapshot-unknown'; readonly runtimeBinding?: 'verified' | 'unverified' | 'not-applicable'; readonly dynamic?: boolean; }",
+						"InteropFacetKind": "export type InteropFacetKind = 'value' | 'call' | 'construct' | 'property' | 'index' | 'iterator' | 'async-iterator' | 'stream-source' | 'stream-sink' | 'duplex' | 'disposable' | 'async-disposable'",
+						"InteropFacts": "export interface InteropFacts { readonly shape: InteropFacetIR; readonly profile: InteropProfile; readonly inputTransfer: InteropTransfer; readonly outputTransfer: InteropTransfer; readonly callback?: InteropCallbackFacts; readonly resource?: InteropResourceFacts; readonly duplex?: InteropDuplexFacts; readonly lifecycleAuthority?: 'caller' | 'host' | 'unknown'; readonly nativeCallableOutbound?: boolean; readonly evidenceConflict?: boolean; readonly evidence?: readonly InteropEvidence[]; }",
+						"InteropHandleStrategy": "export type InteropHandleStrategy = 'none' | 'foreign-identity' | 'managed-handle' | 'managed-resource'",
+						"InteropPlan": "export interface InteropPlan { readonly controls: readonly InteropControl[]; readonly handle: InteropHandleStrategy; readonly inputTransfer: InteropTransfer; readonly outputTransfer: InteropTransfer; readonly lifetime: InteropProfile['lifetime']; readonly ownership: InteropProfile['ownership']; readonly flowControl: InteropProfile['flowControl']; readonly realm: InteropProfile['realm']; readonly environment: InteropTargetProfile; }",
+						"InteropProfile": "export interface InteropProfile { readonly direction: 'outbound' | 'inbound' | 'bidirectional'; readonly cardinality: 'one' | 'finite-many' | 'unbounded' | 'unknown'; readonly lifetime: 'call' | 'operation' | 'scope' | 'session' | 'resource' | 'process' | 'unknown'; readonly ownership: 'value' | 'owned' | 'borrowed' | 'shared' | 'unknown'; readonly delivery: 'sync' | 'promise' | 'callback' | 'event' | 'iterator' | 'stream' | 'unknown'; readonly concurrency: 'exclusive' | 'concurrent' | 'reentrant' | 'unknown'; readonly flowControl: 'none' | 'cancellation' | 'backpressure' | 'cancellation-backpressure' | 'unknown'; readonly realm: 'same' | 'worker' | 'process' | 'remote' | 'unknown'; readonly execution: 'normal' | 'blocking' | 'unknown'; readonly environment: InteropTargetProfile; }",
+						"InteropReasonCode": "export type InteropReasonCode = 'EVIDENCE_CONFLICT' | 'TYPESCRIPT_ANY' | 'UNTYPED_EXPORT' | 'DYNAMIC_EXPORT' | 'RUNTIME_BINDING_UNVERIFIED' | 'CALL_RESOLUTION_UNKNOWN' | 'CONSTRUCTOR_REQUIRES_ADAPTER' | 'NATIVE_CALLABLE_OUTBOUND' | 'SYMBOL_REQUIRES_ADAPTER' | 'OVERLOAD_AMBIGUOUS' | 'GENERIC_REQUIRES_CONTEXT' | 'RECEIVER_REQUIRES_ADAPTER' | 'AMBIGUOUS_RECEIVER' | 'CALLBACK_REQUIRES_ADAPTER' | 'AMBIGUOUS_CALLBACK' | 'AMBIGUOUS_LIFETIME' | 'AMBIGUOUS_DELIVERY' | 'AMBIGUOUS_CARDINALITY' | 'AMBIGUOUS_CONCURRENCY' | 'AMBIGUOUS_SETUP_ROLLBACK' | 'FRAMEWORK_OWNS_LIFECYCLE' | 'SCOPED_CAPABILITY' | 'ASYNC_ITERATOR_REQUIRES_PULL_SOURCE' | 'ITERATOR_REQUIRES_PULL_SOURCE' | 'STREAM_REQUIRES_SESSION' | 'DUPLEX_REQUIRES_SESSION' | 'AMBIGUOUS_DUPLEX_TERMINATION' | 'AMBIGUOUS_FLOW_CONTROL' | 'BLOCKING_EXECUTION_REQUIRES_ADAPTER' | 'REENTRANCY_REQUIRES_ADAPTER' | 'AMBIGUOUS_OWNERSHIP' | 'AMBIGUOUS_CLEANUP_PROTOCOL' | 'AMBIGUOUS_SHUTDOWN_POLICY' | 'AMBIGUOUS_CLEANUP_ERROR_POLICY' | 'RESOURCE_REQUIRES_MANAGED_HANDLE' | 'STRUCTURAL_OBJECT_REQUIRES_SNAPSHOT_EVIDENCE' | 'REALM_BOUNDARY' | 'FOREIGN_IDENTITY_CROSSES_REALM' | 'MANAGED_HANDLE_CROSSES_REALM' | 'UNKNOWN_CONTROL' | 'UNKNOWN_TRANSFER'",
+						"InteropResourceFacts": "export interface InteropResourceFacts { readonly cleanupProtocol: 'known' | 'none' | 'unknown'; readonly ownershipAuthority: 'owned' | 'borrowed' | 'shared' | 'unknown'; readonly shutdownPolicy: 'drain' | 'cancel' | 'immediate' | 'reject-busy' | 'unknown'; readonly cleanupErrorPolicy: 'protocol' | 'primary-wins' | 'aggregate' | 'cleanup-wins' | 'unknown'; }",
+						"InteropRuntimeRepresentation": "export type InteropRuntimeRepresentation = 'boolean' | 'string' | 'number' | 'bigint' | 'symbol' | 'null' | 'undefined' | 'function' | 'object' | 'array' | 'promise' | 'never' | 'unknown'",
+						"InteropSafetyGate": "export type InteropSafetyGate = 'AUTO_SAFE' | 'ADAPTER_REQUIRED' | 'SEMANTICS_REQUIRED' | 'UNRESOLVED'",
+						"InteropTargetProfile": "export type InteropTargetProfile = 'node' | 'browser' | 'worker' | 'edge' | 'neutral'",
+						"InteropTransfer": "export type InteropTransfer = 'primitive' | 'codec' | 'foreign-identity' | 'managed-handle' | 'unknown'"
 					}
 				}
 			}
