@@ -10,10 +10,12 @@ import {
 	main,
 	parseArguments,
 	runFixedSeedBootstrap,
+	summarizeDifferences,
 } from './run-selfhost-fixed-seed-bootstrap.mjs';
 
 const A = 'a'.repeat(64);
 const B = 'b'.repeat(64);
+const C = 'c'.repeat(64);
 const SEED = '69c9d54a925377a2331ba39a229ab5809d946eef54bc43a5f14601eafd87d7b4';
 const input = {
 	contractVersion: '1',
@@ -49,14 +51,14 @@ function stage1Build() {
 	};
 }
 
-function stage2Result() {
+function stageResult(code = 'export function compileMvp() {}\n') {
 	return {
 		accepted: true,
 		diagnostics: [],
 		emittedModules: [{
 			sourcePath: 'src/main.virune',
 			outputPath: 'dist/main.js',
-			code: 'export function compileMvp() {}\n',
+			code,
 			sourceMap: '{}',
 		}],
 	};
@@ -69,7 +71,12 @@ function fakeNormalizer(value) {
 	return { artifact, serialized, sha256: createHash('sha256').update(serialized).digest('hex') };
 }
 
-function dependencies({ equal = true } = {}) {
+function dependencies({
+	transitionEqual = true,
+	fixedPointEqual = true,
+	stage3Error = null,
+} = {}) {
+	let diffCall = 0;
 	return {
 		kernelInputFromProjectBuild: () => input,
 		normalizeBootstrapArtifact: fakeNormalizer,
@@ -79,12 +86,34 @@ function dependencies({ equal = true } = {}) {
 		loadBootstrapCompilerCandidate: async () => ({ compileMvp() {}, projectCompilerCapability() {}, compileProjectMvp() {} }),
 		hasSelfhostProjectCompilerExports: () => true,
 		readProjectCompilerCapability: () => ({ contractVersion: '1', ready: true, requestSchema: 'x', resultSchema: 'y', blockers: [] }),
-		compileWithProjectCompilerBoundary: () => stage2Result(),
-		diffBootstrapArtifacts: (left, right) => ({ equal, beforeSha256: left.sha256, afterSha256: right.sha256, changes: equal ? [] : [{ section: 'modules', path: 'modules[0]', before: 'a', after: 'b' }] }),
+		compileWithProjectCompilerBoundary: () => stageResult(),
+		diffBootstrapArtifacts: (left, right) => {
+			diffCall += 1;
+			const equal = diffCall === 1 ? transitionEqual : fixedPointEqual;
+			return {
+				equal,
+				beforeSha256: left.sha256,
+				afterSha256: right.sha256,
+				changes: equal ? [] : [
+					{ section: 'modules', path: 'modules[0].code', before: 'a', after: 'b' },
+					{ section: 'moduleOrder', path: 'moduleOrder[0]', before: 'a', after: 'b' },
+				],
+			};
+		},
+		stageArtifact: () => ({ sha256: B }),
+		materializeBootstrapStageCompiler: async () => ({
+			compiler: {
+				compile: () => {
+					if (stage3Error !== null) throw new Error(stage3Error);
+					return stageResult();
+				},
+			},
+			dispose: async () => {},
+		}),
 	};
 }
 
-test('runner uses the verified artifact as the actual compiler and produces match evidence', async () => {
+test('runner uses the verified artifact and proves the Stage 2/Stage 3 fixed point', async () => {
 	const root = await mkdtemp(join(tmpdir(), 'virune-fixed-seed-run-'));
 	let disposed = false;
 	try {
@@ -105,23 +134,82 @@ test('runner uses the verified artifact as the actual compiler and produces matc
 		assert.equal(evidence.stage0Source, 'fixed-seed-artifact');
 		assert.equal(evidence.status, 'match');
 		assert.equal(evidence.equivalent, true);
+		assert.equal(evidence.fixedPoint.equivalent, true);
 		assert.equal(evidence.seed.verified, true);
 	} finally {
 		await rm(root, { recursive: true, force: true });
 	}
 });
 
-test('mismatch remains non-promotable and reports differences', () => {
+test('Seed transition mismatch is preserved without invalidating a converged fixed point', () => {
+	const stage1 = { sha256: A, artifact: { modules: [{}] } };
+	const stage2 = { sha256: B, artifact: { modules: [{}] } };
+	const stage3 = { sha256: B, artifact: { modules: [{}] } };
 	const evidence = createEvidence({
-		seed: { artifactSha256: A, manifestSha256: B },
+		seed: { artifactSha256: A, manifestSha256: C },
+		stage1,
+		stage2,
+		stage3,
+		transitionDiff: {
+			equal: false,
+			changes: [
+				{ section: 'modules', path: 'modules[0].code', before: 'a', after: 'b' },
+				{ section: 'moduleOrder', path: 'moduleOrder[0]', before: 'a', after: 'b' },
+			],
+		},
+		fixedPointDiff: { equal: true, changes: [] },
+		capability: { ready: true },
+	});
+	assert.equal(evidence.productionEligible, false);
+	assert.equal(evidence.status, 'match');
+	assert.equal(evidence.transition.equivalent, false);
+	assert.equal(evidence.transition.differenceCount, 2);
+	assert.deepEqual(evidence.transition.differenceSummary.byField, { code: 1, path: 1 });
+	assert.equal(evidence.fixedPoint.equivalent, true);
+});
+
+test('Stage 2 execution failure is blocked while retaining transition evidence', () => {
+	const evidence = createEvidence({
+		seed: { artifactSha256: A, manifestSha256: C },
 		stage1: { sha256: A, artifact: { modules: [{}] } },
 		stage2: { sha256: B, artifact: { modules: [{}] } },
-		diff: { equal: false, changes: [{ section: 'module', path: 'dist/main.js', before: 'a', after: 'b' }] },
+		transitionDiff: { equal: false, changes: [{ section: 'modules', path: 'modules[0].code', before: 'a', after: 'b' }] },
+		capability: { ready: true },
+		stage3Error: 'List is not defined',
+	});
+	assert.equal(evidence.status, 'blocked');
+	assert.equal(evidence.fixedPoint.attempted, true);
+	assert.match(evidence.fixedPoint.error, /List is not defined/u);
+	assert.equal(evidence.transition.differenceCount, 1);
+});
+
+test('difference summaries classify every change instead of only stored samples', () => {
+	const summary = summarizeDifferences([
+		{ section: 'modules', path: 'modules[0].code' },
+		{ section: 'modules', path: 'modules[0].sourceMap.sources[0]' },
+		{ section: 'moduleOrder', path: 'moduleOrder[0]' },
+		{ section: 'metadata', path: 'metadata.target' },
+	]);
+	assert.deepEqual(summary, {
+		total: 4,
+		bySection: { metadata: 1, moduleOrder: 1, modules: 2 },
+		byField: { code: 1, metadata: 1, path: 1, sourceMap: 1 },
+	});
+});
+
+test('fixed-point mismatch remains non-promotable', () => {
+	const evidence = createEvidence({
+		seed: { artifactSha256: A, manifestSha256: C },
+		stage1: { sha256: A, artifact: { modules: [{}] } },
+		stage2: { sha256: B, artifact: { modules: [{}] } },
+		stage3: { sha256: C, artifact: { modules: [{}] } },
+		transitionDiff: { equal: false, changes: [] },
+		fixedPointDiff: { equal: false, changes: [{ section: 'modules', path: 'modules[0].code', before: 'a', after: 'b' }] },
 		capability: { ready: true },
 	});
 	assert.equal(evidence.productionEligible, false);
 	assert.equal(evidence.status, 'mismatch');
-	assert.equal(evidence.differenceCount, 1);
+	assert.equal(evidence.fixedPoint.differenceCount, 1);
 });
 
 test('failed fixed Seed project build cannot be treated as Stage 1', () => {
@@ -143,7 +231,7 @@ test('CLI parsing is bounded and rejects duplicate options', () => {
 	assert.throws(() => parseArguments(['--wat']), /Unknown argument/u);
 });
 
-test('main writes blocked evidence before failing', async () => {
+test('main writes blocked fixed-point evidence before failing', async () => {
 	const root = await mkdtemp(join(tmpdir(), 'virune-fixed-seed-bootstrap-'));
 	try {
 		await writeSeedManifest(root);
@@ -151,9 +239,9 @@ test('main writes blocked evidence before failing', async () => {
 			repositoryRoot: root,
 			dependencies: dependencies(),
 			seedVerifier: async () => { throw new Error('seed unavailable'); },
-		}), /did not match/u);
+		}), /fixed point/u);
 		const report = JSON.parse(await readFile(join(root, '.cache/report.json'), 'utf8'));
-		assert.equal(report.claim, 'fixed-seed-stage1-stage2-bootstrap');
+		assert.equal(report.claim, 'fixed-seed-bootstrap-fixed-point');
 		assert.equal(report.status, 'blocked');
 		assert.match(report.error, /seed unavailable/u);
 	} finally {
