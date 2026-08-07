@@ -14,7 +14,10 @@ import {
 	type BootstrapStageArtifact,
 	type BootstrapStageCompiler,
 } from '../src/selfhost/bootstrap-stage-executor.js';
-import type { ProjectCompilerResultV1 } from '../src/selfhost/project-compiler-adapter.js';
+import type {
+	ProjectCompilerCapabilityV1,
+	ProjectCompilerResultV1,
+} from '../src/selfhost/project-compiler-adapter.js';
 
 const input: KernelInputV1 = {
 	contractVersion: '1',
@@ -49,14 +52,20 @@ function result(code: string): ProjectCompilerResultV1 {
 	};
 }
 
-function compilerModuleSource(output: ProjectCompilerResultV1): string {
-	const capability = {
+function readyCapability(): ProjectCompilerCapabilityV1 {
+	return {
 		contractVersion: '1',
 		ready: true,
 		requestSchema: 'virune.selfhost.project-compiler.request.v1',
 		resultSchema: 'virune.selfhost.project-compiler.result.v2',
 		blockers: [],
 	};
+}
+
+function compilerModuleSource(
+	output: ProjectCompilerResultV1,
+	capability: ProjectCompilerCapabilityV1 = readyCapability(),
+): string {
 	const compilation = {
 		accepted: true,
 		diagnostics: [],
@@ -102,11 +111,31 @@ test('materializes and imports a real Stage 1 project compiler candidate', async
 	);
 	try {
 		assert.equal(candidate.entryModulePath, 'dist/main.js');
+		assert.equal(candidate.capability.ready, true);
+		assert.deepEqual(candidate.capability.blockers, []);
 		assert.deepEqual(candidate.compiler.compile(input), stage2Result);
 	} finally {
 		await candidate.dispose();
 		await candidate.dispose();
 	}
+	assert.deepEqual(await readdir(root), []);
+	await rm(root, { recursive: true, force: true });
+});
+
+test('rejects candidates whose project compiler capability is not ready', async () => {
+	const root = await mkdtemp(join(tmpdir(), 'virune-stage-capability-test-'));
+	const capability: ProjectCompilerCapabilityV1 = {
+		...readyCapability(),
+		ready: false,
+		blockers: ['full-language-readiness-not-established'],
+	};
+	await assert.rejects(
+		materializeBootstrapStageCompiler(
+			artifact(compilerModuleSource(result('export const stage = 2;\n'), capability)),
+			root,
+		),
+		/not ready: full-language-readiness-not-established/u,
+	);
 	assert.deepEqual(await readdir(root), []);
 	await rm(root, { recursive: true, force: true });
 });
