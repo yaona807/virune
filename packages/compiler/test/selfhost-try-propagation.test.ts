@@ -70,7 +70,9 @@ test('postfix ? propagates Option and Result call results and preserves Legacy d
 		const output = await createSelfhostMvpKernel(loaded.module).compile(request);
 		assert.equal(output.accepted, true, JSON.stringify(output.diagnostics, null, 2));
 		assert.deepEqual(output.diagnostics, []);
-		assert.match(output.emittedModules.map(item => item.code).join('\n'), /propagate\(identity(?:Option|Result)\(/);
+		const emittedCode = output.emittedModules.map(item => item.code).join('\n');
+		assert.match(emittedCode, /\$virunePropagation/);
+		assert.doesNotMatch(emittedCode, /propagate\(identity(?:Option|Result)\(/);
 		const materialized = await materializeOutput(request, output);
 		runtimeRoot = materialized.root;
 		const module = materialized.module as {
