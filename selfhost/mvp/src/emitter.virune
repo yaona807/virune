@@ -67,7 +67,15 @@ fn emitVariant(expression: MvpHirExpression, expressions: List<MvpHirExpression>
 	if expression.text == "None" {
 		return "None"
 	}
-	return expression.text + "(" + String.join(emitArguments(expression.children, expressions), ", ") + ")"
+	let values = emitArguments(expression.children, expressions)
+	if expression.text == "Some" || expression.text == "Ok" || expression.text == "Err" {
+		return expression.text + "(" + String.join(values, ", ") + ")"
+	}
+	let typeId = match expression.valueType {
+		NamedType(name) => ", " + Debug.format(name)
+		_ => ""
+	}
+	return "makeVariant(" + Debug.format(expression.text) + ", [" + String.join(values, ", ") + "]" + typeId + ")"
 }
 
 fn emitField(expression: MvpHirExpression, expressions: List<MvpHirExpression>) -> String {

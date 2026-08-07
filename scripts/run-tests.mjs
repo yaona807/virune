@@ -4,8 +4,16 @@ import { dirname } from 'node:path';
 
 const integrationOnly = process.argv.includes('--integration-only');
 const excludeBrowser = process.argv.includes('--exclude-browser');
+const excludeSelfhostInventory = process.argv.includes('--exclude-selfhost-inventory');
 const failureOutputOnly = process.argv.includes('--failure-output-only');
 const platformSmoke = process.argv.includes('--platform-smoke');
+const unitConcurrencyArguments = process.argv.filter(item => item.startsWith('--unit-concurrency='));
+if (unitConcurrencyArguments.length > 1) {
+	console.error('Specify --unit-concurrency at most once.');
+	process.exit(1);
+}
+const unitConcurrency = unitConcurrencyArguments[0]?.slice('--unit-concurrency='.length)
+	?? (process.env.VIRUNE_CI_JOB === 'core-tests-ubuntu-node24' ? '2' : undefined);
 const integrationGroups = [
 	{ name: 'CLI workflow', files: ['integration/dist/cli.test.js'] },
 	{ name: 'CLI API', files: ['integration/dist/cli-api.test.js'] },
@@ -19,7 +27,14 @@ const groups = platformSmoke ? platformGroups : [
 	...(!integrationOnly ? [
 		{
 			name: 'unit',
-			command: ['scripts/run-unit-tests.mjs', ...(failureOutputOnly ? ['--failure-output-only'] : [])],
+			command: [
+				'scripts/run-unit-tests.mjs',
+				...(failureOutputOnly ? ['--failure-output-only'] : []),
+				...(excludeSelfhostInventory ? [
+					'--exclude-file=packages/compiler/dist/test/selfhost-full-language-inventory.test.js',
+				] : []),
+				...(unitConcurrency !== undefined ? [`--concurrency=${unitConcurrency}`] : []),
+			],
 		},
 		{
 			name: 'self-host kernel model',

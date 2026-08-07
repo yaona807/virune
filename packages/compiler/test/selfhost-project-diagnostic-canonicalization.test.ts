@@ -98,6 +98,5 @@ test('generated project result boundary sorts and deduplicates diagnostics deter
 		assert.deepEqual(canonical.stats, unorderedResult.stats);
 	} finally {
 		await rm(root, { recursive: true, force: true });
-		await rm(temporaryRoot, { recursive: true, force: true });
 	}
 });

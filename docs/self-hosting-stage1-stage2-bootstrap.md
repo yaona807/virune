@@ -1,33 +1,25 @@
 # Stage 1 and Stage 2 bootstrap readiness
 
-The readiness evaluator verifies the last honest precondition before real Stage 1／Stage 2 generation.
+The readiness evaluator verifies the final precondition before real Stage 1／Stage 2 generation.
 
-The existing generated Self-host MVP candidate exports `compileMvp(source: string)`. Its Host adapter intentionally accepts exactly one source module. The Self-host compiler project itself is multi-module, so that boundary cannot generate a truthful Stage 1 artifact for the complete compiler.
-
-## What the evaluator does
-
-- builds and normalizes the actual Stage 0 compiler artifact;
-- materializes and loads the generated Stage 0 entry module;
-- constructs the complete canonical Kernel Contract input from every project source;
-- binds the input to the canonical source-manifest SHA-256;
-- checks for the required `compileProjectMvp` export;
-- emits deterministic, non-promotable readiness evidence.
-
-The evidence claim is `stage1-stage2-bootstrap-readiness`, and `productionEligible` is always `false`.
+The generated compiler exports the versioned `projectCompilerCapability` and `compileProjectMvp` boundaries. The canonical 31-module source set parses, checks, and emits without diagnostics, so the capability reports `ready: true` with no blockers.
 
 ## Current result
 
-The current Self-host MVP is expected to report both blockers:
+The readiness evidence now reports:
 
-- `multi-module-project-requires-project-compiler`;
-- `project-compiler-export-missing`.
+- `ready: true`;
+- `capabilityReady: true`;
+- an empty capability blocker list;
+- an empty readiness blocker list;
+- the canonical compiler artifact and source-manifest SHA-256 values.
 
-This result is a successful fail-closed check, not a Stage 1 failure and not a Stage 1 artifact. It prevents the single-source compiler from being mislabeled as self-hosted.
+The evidence remains deterministic and `productionEligible: false`. Passing this gate permits Stage 0→Stage 1→Stage 2 generation; it does not itself produce those artifacts or authorize production promotion.
 
-## Required next implementation
+## Next implementation
 
-The generated compiler candidate must expose a versioned `compileProjectMvp` boundary that consumes the complete canonical source set, module graph, entry path, and emit options. After that export is implemented, the same readiness gate becomes green and the bootstrap runner can perform Stage 0→Stage 1→Stage 2 generation with Stage 1／Stage 2 artifact equivalence.
+Run the real Stage 0→Stage 1→Stage 2 pipeline, normalize both generated artifacts, and require Stage 1／Stage 2 equivalence for code, source maps, exports, diagnostics schema, metadata, and checksums.
 
 ## Boundaries
 
-This evaluator does not generate Stage 1 or Stage 2, switch the Production Parser／Checker, update the fixed Seed, alter workflows or branch protection, or authorize promotion.
+This evaluator does not switch the Production Parser／Checker, update the fixed Seed, alter branch protection, or authorize release promotion.
