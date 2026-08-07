@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { mkdir, rm } from 'node:fs/promises';
+import { mkdir } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
@@ -36,39 +36,31 @@ const options = {
 
 test('Stage 0 compiler artifact executes deterministically as a non-promotable candidate', async () => {
 	await mkdir(temporaryRoot, { recursive: true });
-	try {
-		const first = await runBootstrapExecutionProbe(mvpRoot, input(acceptedSource), options);
-		const second = await runBootstrapExecutionProbe(mvpRoot, input(acceptedSource), options);
+	const first = await runBootstrapExecutionProbe(mvpRoot, input(acceptedSource), options);
+	const second = await runBootstrapExecutionProbe(mvpRoot, input(acceptedSource), options);
 
-		assert.equal(first.serialized, second.serialized);
-		assert.equal(first.sha256, second.sha256);
-		assert.equal(first.artifact.claim, 'stage0-compiler-execution-probe');
-		assert.equal(first.artifact.productionEligible, false);
-		assert.equal(first.artifact.compilerArtifactSha256, first.compilerArtifact.sha256);
-		assert.equal(first.compilerArtifact.artifact.metadata.stage, 'stage0');
-		assert.equal(first.output.accepted, true);
-		assert.equal(first.artifact.accepted, true);
-		assert.deepEqual(first.artifact.diagnosticCodes, []);
-		assert.deepEqual(first.artifact.emittedModulePaths, ['.selfhost-output/src/main.js']);
-	} finally {
-		await rm(temporaryRoot, { recursive: true, force: true });
-	}
+	assert.equal(first.serialized, second.serialized);
+	assert.equal(first.sha256, second.sha256);
+	assert.equal(first.artifact.claim, 'stage0-compiler-execution-probe');
+	assert.equal(first.artifact.productionEligible, false);
+	assert.equal(first.artifact.compilerArtifactSha256, first.compilerArtifact.sha256);
+	assert.equal(first.compilerArtifact.artifact.metadata.stage, 'stage0');
+	assert.equal(first.output.accepted, true);
+	assert.equal(first.artifact.accepted, true);
+	assert.deepEqual(first.artifact.diagnosticCodes, []);
+	assert.deepEqual(first.artifact.emittedModulePaths, ['.selfhost-output/src/main.js']);
 });
 
 test('rejected candidate output remains deterministic evidence', async () => {
 	await mkdir(temporaryRoot, { recursive: true });
-	try {
-		const result = await runBootstrapExecutionProbe(mvpRoot, input(rejectedSource), options);
-		assert.equal(result.output.accepted, false);
-		assert.equal(result.artifact.accepted, false);
-		assert.deepEqual(result.artifact.diagnosticCodes, ['L1010']);
-		assert.deepEqual(result.artifact.emittedModulePaths, []);
-		assert.match(result.artifact.inputSha256, /^[0-9a-f]{64}$/u);
-		assert.match(result.artifact.outputSha256, /^[0-9a-f]{64}$/u);
-		assert.match(result.sha256, /^[0-9a-f]{64}$/u);
-	} finally {
-		await rm(temporaryRoot, { recursive: true, force: true });
-	}
+	const result = await runBootstrapExecutionProbe(mvpRoot, input(rejectedSource), options);
+	assert.equal(result.output.accepted, false);
+	assert.equal(result.artifact.accepted, false);
+	assert.deepEqual(result.artifact.diagnosticCodes, ['L1010']);
+	assert.deepEqual(result.artifact.emittedModulePaths, []);
+	assert.match(result.artifact.inputSha256, /^[0-9a-f]{64}$/u);
+	assert.match(result.artifact.outputSha256, /^[0-9a-f]{64}$/u);
+	assert.match(result.sha256, /^[0-9a-f]{64}$/u);
 });
 
 test('compiler candidate boundary rejects missing compileMvp export', () => {
