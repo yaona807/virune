@@ -376,8 +376,20 @@ function parseEvidence(
 		}
 		const candidateSha = readSha(evidence.candidateSha, `${path}.candidateSha`, reasons);
 		readNonEmptyString(evidence.source, `${path}.source`, reasons, 'INVALID_EVIDENCE_SOURCE');
-		if (typeof evidence.completedAt !== 'string' || Number.isNaN(Date.parse(evidence.completedAt))) {
-			pushReason(reasons, 'INVALID_EVIDENCE_TIME', `${path}.completedAt`, 'Evidence completedAt must be an ISO timestamp');
+		const completedAt = typeof evidence.completedAt === 'string' ? evidence.completedAt : null;
+		const parsedCompletedAt = completedAt === null ? null : new Date(completedAt);
+		if (
+			completedAt === null
+			|| parsedCompletedAt === null
+			|| Number.isNaN(parsedCompletedAt.getTime())
+			|| parsedCompletedAt.toISOString() !== completedAt
+		) {
+			pushReason(
+				reasons,
+				'INVALID_EVIDENCE_TIME',
+				`${path}.completedAt`,
+				'Evidence completedAt must be a canonical UTC ISO timestamp',
+			);
 		}
 		if (id !== null && status !== null && candidateSha !== null) parsed.push({ id, status, candidateSha });
 	}
