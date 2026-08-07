@@ -22,6 +22,7 @@ export interface RuntimeBindingEvidence {
 		| 'ESM_DECLARATION_EXPORT'
 		| 'ESM_EXPORT_LIST'
 		| 'ESM_DEFAULT_EXPORT'
+		| 'ESM_LOCAL_BINDING_UNKNOWN'
 		| 'ESM_REEXPORT_UNKNOWN'
 		| 'ESM_EXPORT_STAR_UNKNOWN'
 		| 'CJS_NAMED_ASSIGNMENT'
@@ -59,6 +60,7 @@ export function verifyStaticRuntimeBinding(request: RuntimeBindingRequest): Runt
 function verifyEsm(request: RuntimeBindingRequest): RuntimeBindingEvidence {
 	const source = parseSource(request, 'module.mjs');
 	if (hasParseErrors(source)) return withName(request, 'unknown', 'SOURCE_PARSE_ERROR');
+	const localBindings = collectTopLevelBindings(source);
 	if (request.kind === 'default') {
 		for (const statement of source.statements) {
 			if (ts.isExportAssignment(statement) && !statement.isExportEquals) return { status: 'verified-static', reason: 'ESM_DEFAULT_EXPORT', exportName: 'default' };
@@ -67,7 +69,7 @@ function verifyEsm(request: RuntimeBindingRequest): RuntimeBindingEvidence {
 				for (const element of statement.exportClause.elements) {
 					if (element.name.text !== 'default') continue;
 					if (statement.moduleSpecifier !== undefined) return { status: 'unknown', reason: 'ESM_REEXPORT_UNKNOWN', exportName: 'default' };
-					return { status: 'verified-static', reason: 'ESM_EXPORT_LIST', exportName: 'default' };
+					return verifyLocalExportBinding(localBindings, element, 'default');
 				}
 			}
 		}
@@ -90,11 +92,64 @@ function verifyEsm(request: RuntimeBindingRequest): RuntimeBindingEvidence {
 		for (const element of statement.exportClause.elements) {
 			if (element.name.text !== name) continue;
 			if (statement.moduleSpecifier !== undefined) return { status: 'unknown', reason: 'ESM_REEXPORT_UNKNOWN', exportName: name };
-			return { status: 'verified-static', reason: 'ESM_EXPORT_LIST', exportName: name };
+			return verifyLocalExportBinding(localBindings, element, name);
 		}
 	}
 	if (starReexport) return { status: 'unknown', reason: 'ESM_EXPORT_STAR_UNKNOWN', exportName: name };
 	return { status: 'absent', reason: 'BINDING_ABSENT', exportName: name };
+}
+
+type LocalBindingOrigin = 'local' | 'imported';
+
+function verifyLocalExportBinding(
+	bindings: ReadonlyMap<string, LocalBindingOrigin>,
+	element: ts.ExportSpecifier,
+	exportName: string,
+): RuntimeBindingEvidence {
+	const localName = element.propertyName?.text ?? element.name.text;
+	const origin = bindings.get(localName);
+	if (origin === 'local') return { status: 'verified-static', reason: 'ESM_EXPORT_LIST', exportName };
+	if (origin === 'imported') return { status: 'unknown', reason: 'ESM_REEXPORT_UNKNOWN', exportName };
+	return { status: 'unknown', reason: 'ESM_LOCAL_BINDING_UNKNOWN', exportName };
+}
+
+function collectTopLevelBindings(source: ts.SourceFile): ReadonlyMap<string, LocalBindingOrigin> {
+	const bindings = new Map<string, LocalBindingOrigin>();
+	for (const statement of source.statements) {
+		if (ts.isImportDeclaration(statement)) {
+			const clause = statement.importClause;
+			if (clause === undefined || clause.isTypeOnly) continue;
+			if (clause.name !== undefined) bindings.set(clause.name.text, 'imported');
+			if (clause.namedBindings !== undefined) {
+				if (ts.isNamespaceImport(clause.namedBindings)) bindings.set(clause.namedBindings.name.text, 'imported');
+				else {
+					for (const element of clause.namedBindings.elements) {
+						if (!element.isTypeOnly) bindings.set(element.name.text, 'imported');
+					}
+				}
+			}
+			continue;
+		}
+		if (ts.isFunctionDeclaration(statement) || ts.isClassDeclaration(statement)) {
+			if (statement.name !== undefined) bindings.set(statement.name.text, 'local');
+			continue;
+		}
+		if (ts.isVariableStatement(statement)) {
+			for (const declaration of statement.declarationList.declarations) collectBindingNames(declaration.name, bindings);
+		}
+	}
+	return bindings;
+}
+
+function collectBindingNames(name: ts.BindingName, bindings: Map<string, LocalBindingOrigin>): void {
+	if (ts.isIdentifier(name)) {
+		bindings.set(name.text, 'local');
+		return;
+	}
+	for (const element of name.elements) {
+		if (ts.isOmittedExpression(element)) continue;
+		collectBindingNames(element.name, bindings);
+	}
 }
 
 function verifyCommonJs(request: RuntimeBindingRequest): RuntimeBindingEvidence {
@@ -125,8 +180,9 @@ function verifyCommonJs(request: RuntimeBindingRequest): RuntimeBindingEvidence 
 					exportsAliasIntact = false;
 					if (ts.isObjectLiteralExpression(expression.right)) {
 						moduleExportsKnownObject = true;
-						state = objectHasProperty(expression.right, name) ? 'verified-static' : 'absent';
-						reason = state === 'verified-static' ? 'CJS_OBJECT_EXPORT' : 'BINDING_ABSENT';
+						const objectBinding = objectBindingStatus(expression.right, name);
+						state = objectBinding === 'present' ? 'verified-static' : objectBinding === 'absent' ? 'absent' : 'unknown';
+						reason = state === 'verified-static' ? 'CJS_OBJECT_EXPORT' : state === 'unknown' ? 'DYNAMIC_CJS_EXPORT' : 'BINDING_ABSENT';
 					} else {
 						moduleExportsKnownObject = false;
 						state = 'unknown';
@@ -178,8 +234,13 @@ function withName(request: RuntimeBindingRequest, status: RuntimeBindingStatus, 
 function statementExportsName(statement: ts.Statement, name: string): boolean {
 	if (!hasExportModifier(statement)) return false;
 	if (ts.isFunctionDeclaration(statement) || ts.isClassDeclaration(statement) || ts.isEnumDeclaration(statement)) return statement.name?.text === name;
-	if (ts.isVariableStatement(statement)) return statement.declarationList.declarations.some(item => ts.isIdentifier(item.name) && item.name.text === name);
+	if (ts.isVariableStatement(statement)) return statement.declarationList.declarations.some(item => bindingNameContains(item.name, name));
 	return false;
+}
+
+function bindingNameContains(binding: ts.BindingName, name: string): boolean {
+	if (ts.isIdentifier(binding)) return binding.text === name;
+	return binding.elements.some(element => !ts.isOmittedExpression(element) && bindingNameContains(element.name, name));
 }
 
 function hasExportModifier(node: ts.Node): boolean {
@@ -227,6 +288,10 @@ function isExportsObject(node: ts.Node): boolean {
 function containsPotentialExportMutation(node: ts.Node): boolean {
 	if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === 'eval') return true;
 	if (ts.isNewExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === 'Function') return true;
+	if (ts.isDeleteExpression(node) && referencesExportsTarget(node.expression)) return true;
+	if ((ts.isPrefixUnaryExpression(node) || ts.isPostfixUnaryExpression(node))
+		&& (node.operator === ts.SyntaxKind.PlusPlusToken || node.operator === ts.SyntaxKind.MinusMinusToken)
+		&& referencesExportsTarget(node.operand)) return true;
 	if (ts.isBinaryExpression(node) && referencesExportsTarget(node.left)) return true;
 	if (ts.isCallExpression(node) && node.arguments.some(argument => referencesExportsTarget(argument))) return true;
 	let found = false;
@@ -247,8 +312,20 @@ function isSimpleTopLevelModuleExportAssignment(statement: ts.Statement): boolea
 		&& isModuleExports(statement.expression.left);
 }
 
-function objectHasProperty(object: ts.ObjectLiteralExpression, name: string): boolean {
-	return object.properties.some(property => objectPropertyName(property) === name);
+type ObjectBindingStatus = 'present' | 'absent' | 'unknown';
+
+function objectBindingStatus(object: ts.ObjectLiteralExpression, name: string): ObjectBindingStatus {
+	let ambiguous = false;
+	for (const property of object.properties) {
+		if (ts.isSpreadAssignment(property)) {
+			ambiguous = true;
+			continue;
+		}
+		const propertyName = objectPropertyName(property);
+		if (propertyName === name) return 'present';
+		if (propertyName === undefined) ambiguous = true;
+	}
+	return ambiguous ? 'unknown' : 'absent';
 }
 
 function objectPropertyName(property: ts.ObjectLiteralElementLike): string | undefined {
@@ -256,5 +333,9 @@ function objectPropertyName(property: ts.ObjectLiteralElementLike): string | und
 	if (!ts.isPropertyAssignment(property) && !ts.isMethodDeclaration(property) && !ts.isGetAccessorDeclaration(property) && !ts.isSetAccessorDeclaration(property)) return undefined;
 	const name = property.name;
 	if (ts.isIdentifier(name) || ts.isStringLiteralLike(name) || ts.isNumericLiteral(name)) return name.text;
+	if (ts.isComputedPropertyName(name)) {
+		const expression = name.expression;
+		if (ts.isStringLiteralLike(expression) || ts.isNumericLiteral(expression) || ts.isNoSubstitutionTemplateLiteral(expression)) return expression.text;
+	}
 	return undefined;
 }
