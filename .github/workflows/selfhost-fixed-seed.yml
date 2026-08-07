@@ -1,0 +1,72 @@
+name: Fixed Seed bootstrap
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/selfhost-fixed-seed.yml'
+      - '.github/self-hosting/**'
+      - 'scripts/run-selfhost-fixed-seed-bootstrap.mjs'
+      - 'scripts/run-selfhost-fixed-seed-bootstrap.test.mjs'
+      - 'scripts/verify-selfhost-seed.mjs'
+      - 'scripts/verify-selfhost-seed.test.mjs'
+      - 'packages/compiler/**'
+      - 'selfhost/mvp/**'
+      - 'package-lock.json'
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/selfhost-fixed-seed.yml'
+      - '.github/self-hosting/**'
+      - 'scripts/run-selfhost-fixed-seed-bootstrap.mjs'
+      - 'scripts/verify-selfhost-seed.mjs'
+      - 'packages/compiler/**'
+      - 'selfhost/mvp/**'
+      - 'package-lock.json'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: selfhost-fixed-seed-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  fixed-seed-bootstrap:
+    name: Fixed Seed -> Stage 1 -> Stage 2
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      VIRUNE_CI_JOB: selfhost-fixed-seed-bootstrap
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install dependencies
+        run: node scripts/run-ci-command.mjs --id install -- npm ci
+      - name: Build current Host support modules
+        run: node scripts/run-ci-command.mjs --id build -- npm run build
+      - name: Execute verified fixed Seed bootstrap
+        run: >-
+          node scripts/run-ci-command.mjs --id selfhost-fixed-seed-bootstrap --
+          node scripts/run-selfhost-fixed-seed-bootstrap.mjs
+          --output=.cache/selfhost/fixed-seed-bootstrap.json
+      - name: Write timing summary
+        if: always()
+        run: node scripts/write-ci-summary.mjs
+      - name: Upload fixed Seed bootstrap evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: selfhost-fixed-seed-bootstrap-${{ github.sha }}
+          path: |
+            .cache/selfhost/fixed-seed-bootstrap.json
+            .cache/ci-timings/
+            .cache/ci-failures/
+          if-no-files-found: warn
+          retention-days: 30
