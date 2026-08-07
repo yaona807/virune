@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -14,6 +14,7 @@ import {
 
 const A = 'a'.repeat(64);
 const B = 'b'.repeat(64);
+const SEED = '69c9d54a925377a2331ba39a229ab5809d946eef54bc43a5f14601eafd87d7b4';
 const input = {
 	contractVersion: '1',
 	languageVersion: '1.0',
@@ -23,6 +24,16 @@ const input = {
 	interopManifest: { version: '1', modules: [] },
 	emit: { target: 'es2022', sourceMap: false, sourcesContent: true },
 };
+
+async function writeSeedManifest(root) {
+	const path = join(root, '.github/self-hosting/stage0-seed.json');
+	await mkdir(join(root, '.github/self-hosting'), { recursive: true });
+	await writeFile(path, JSON.stringify({
+		viruneVersion: '1.0.0',
+		artifact: { sha256: SEED },
+		baselines: { runtimeAbi: '2', interopAbi: '2' },
+	}), 'utf8');
+}
 
 function stage1Build() {
 	return {
@@ -74,24 +85,30 @@ function dependencies({ equal = true } = {}) {
 }
 
 test('runner uses the verified artifact as the actual compiler and produces match evidence', async () => {
+	const root = await mkdtemp(join(tmpdir(), 'virune-fixed-seed-run-'));
 	let disposed = false;
-	const evidence = await runFixedSeedBootstrap({
-		repositoryRoot: '/repo',
-		projectPath: '/repo/selfhost/mvp',
-		artifactPath: '/repo/.cache/seed.tgz',
-		temporaryRoot: '/repo/.cache/fixed-seed',
-		dependencies: dependencies(),
-		seedVerifier: async () => ({ passed: true, sha256: '69c9d54a925377a2331ba39a229ab5809d946eef54bc43a5f14601eafd87d7b4', artifact: '/repo/.cache/seed.tgz' }),
-		seedCompilerLoader: async () => ({
-			module: { buildProject: async () => stage1Build() },
-			dispose: async () => { disposed = true; },
-		}),
-	});
-	assert.equal(disposed, true);
-	assert.equal(evidence.stage0Source, 'fixed-seed-artifact');
-	assert.equal(evidence.status, 'match');
-	assert.equal(evidence.equivalent, true);
-	assert.equal(evidence.seed.verified, true);
+	try {
+		await writeSeedManifest(root);
+		const evidence = await runFixedSeedBootstrap({
+			repositoryRoot: root,
+			projectPath: '/repo/selfhost/mvp',
+			artifactPath: join(root, '.cache/seed.tgz'),
+			temporaryRoot: join(root, '.cache/fixed-seed'),
+			dependencies: dependencies(),
+			seedVerifier: async () => ({ passed: true, sha256: SEED, artifact: join(root, '.cache/seed.tgz') }),
+			seedCompilerLoader: async () => ({
+				module: { buildProject: async () => stage1Build() },
+				dispose: async () => { disposed = true; },
+			}),
+		});
+		assert.equal(disposed, true);
+		assert.equal(evidence.stage0Source, 'fixed-seed-artifact');
+		assert.equal(evidence.status, 'match');
+		assert.equal(evidence.equivalent, true);
+		assert.equal(evidence.seed.verified, true);
+	} finally {
+		await rm(root, { recursive: true, force: true });
+	}
 });
 
 test('mismatch remains non-promotable and reports differences', () => {
@@ -129,6 +146,7 @@ test('CLI parsing is bounded and rejects duplicate options', () => {
 test('main writes blocked evidence before failing', async () => {
 	const root = await mkdtemp(join(tmpdir(), 'virune-fixed-seed-bootstrap-'));
 	try {
+		await writeSeedManifest(root);
 		await assert.rejects(() => main(['--output=.cache/report.json'], {
 			repositoryRoot: root,
 			dependencies: dependencies(),
