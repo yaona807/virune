@@ -143,6 +143,10 @@ test('main writes fail evidence before throwing', async () => {
 		await writeSourceFixture(root);
 		await assert.rejects(() => main(['--output=.cache/report.json'], {
 			repositoryRoot: root,
+			execute: cmd => {
+				if (cmd.join(' ') === 'git rev-parse HEAD') return execution(0, `${COMMIT}\n`);
+				throw new Error(`Unexpected command: ${cmd.join(' ')}`);
+			},
 			seedVerifier: async () => { throw new Error('seed unavailable'); },
 		}), /did not pass/u);
 		const evidence = JSON.parse(await readFile(join(root, '.cache/report.json'), 'utf8'));
