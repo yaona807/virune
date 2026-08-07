@@ -128,6 +128,9 @@ test('generated compiler resolves required qualified builtins and enum variants'
 		});
 		assert.equal(accepted.accepted, true, JSON.stringify(accepted.diagnostics, null, 2));
 		assert.deepEqual(accepted.diagnostics, []);
+		const emittedCode = accepted.emittedModules.map(item => item.code).join('\n');
+		assert.match(emittedCode, /import \{[^}]*\bmakeVariant\b[^}]*\} from '@virune\/runtime\/v2\/index\.js';/u);
+		assert.match(emittedCode, /makeVariant\("EndOfFile", \[\], "MvpTokenKind"\)/u);
 
 		const invalidField = compileWithProjectCompilerBoundary(module, {
 			...input,
@@ -150,7 +153,6 @@ test('generated compiler resolves required qualified builtins and enum variants'
 		});
 		assert.equal(invalidField.accepted, false);
 		assert.ok(invalidField.diagnostics.some(item => item.code === 'L2043'));
-
 
 		const rejected = compileWithProjectCompilerBoundary(module, {
 			...input,
