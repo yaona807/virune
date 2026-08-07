@@ -36,9 +36,9 @@ concurrency:
 
 jobs:
   fixed-seed-bootstrap:
-    name: Fixed Seed -> Stage 1 -> Stage 2
+    name: Fixed Seed -> Stage 1 -> Stage 2 -> Stage 3 fixed point
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 90
     env:
       VIRUNE_CI_JOB: selfhost-fixed-seed-bootstrap
     steps:
