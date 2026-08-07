@@ -6,6 +6,8 @@ import { normalizeKernelPath, type KernelInputV1 } from './contract.js';
 import {
 	compileWithProjectCompilerBoundary,
 	hasSelfhostProjectCompilerExports,
+	readProjectCompilerCapability,
+	type ProjectCompilerCapabilityV1,
 } from './project-compiler-adapter.js';
 import type { SelfhostMvpModule } from './mvp-adapter.js';
 import {
@@ -18,6 +20,7 @@ import {
 export interface MaterializedBootstrapStageCompiler {
 	readonly root: string;
 	readonly entryModulePath: string;
+	readonly capability: ProjectCompilerCapabilityV1;
 	readonly compiler: BootstrapStageCompiler;
 	readonly dispose: () => Promise<void>;
 }
@@ -84,10 +87,20 @@ export async function materializeBootstrapStageCompiler(
 				'Bootstrap stage compiler candidate must export compileMvp, projectCompilerCapability, and compileProjectMvp',
 			);
 		}
+		const capability = readProjectCompilerCapability(candidate);
+		if (capability === null) {
+			throw new Error('Bootstrap stage compiler candidate must expose a project compiler capability');
+		}
+		if (!capability.ready) {
+			throw new Error(
+				`Bootstrap stage compiler candidate is not ready: ${capability.blockers.join(', ')}`,
+			);
+		}
 		let disposed = false;
 		return {
 			root,
 			entryModulePath,
+			capability,
 			compiler: {
 				compile: input => compileWithProjectCompilerBoundary(candidate, input),
 			},
