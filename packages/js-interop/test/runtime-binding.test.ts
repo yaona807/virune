@@ -4,6 +4,7 @@ import { verifyStaticRuntimeBinding } from '../src/runtime-binding.js';
 
 test('verifies direct ESM named declaration exports', () => {
 	assert.equal(verifyStaticRuntimeBinding({ runtimeFormat: 'esm', kind: 'named', importedName: 'greet', sourceText: 'export function greet() {}' }).status, 'verified-static');
+	assert.equal(verifyStaticRuntimeBinding({ runtimeFormat: 'esm', kind: 'named', importedName: 'greet', sourceText: 'export const { greet } = { greet: 1 };' }).status, 'verified-static');
 });
 
 test('verifies local ESM export lists but not reexports or export-star', () => {
@@ -13,9 +14,18 @@ test('verifies local ESM export lists but not reexports or export-star', () => {
 	assert.equal(verifyStaticRuntimeBinding({ runtimeFormat: 'esm', kind: 'named', importedName: 'ns', sourceText: 'export * as ns from "./other.js";' }).status, 'unknown');
 });
 
-test('verifies ESM default declarations and assignments', () => {
+test('ESM local export lists require a proven local binding', () => {
+	assert.deepEqual(verifyStaticRuntimeBinding({ runtimeFormat: 'esm', kind: 'named', importedName: 'greet', sourceText: 'export { missing as greet };' }), {
+		status: 'unknown', reason: 'ESM_LOCAL_BINDING_UNKNOWN', exportName: 'greet',
+	});
+	assert.equal(verifyStaticRuntimeBinding({ runtimeFormat: 'esm', kind: 'named', importedName: 'greet', sourceText: 'import { x } from "./other.js"; export { x as greet };' }).reason, 'ESM_REEXPORT_UNKNOWN');
+});
+
+test('verifies ESM default declarations, assignments, and proven local aliases', () => {
 	assert.equal(verifyStaticRuntimeBinding({ runtimeFormat: 'esm', kind: 'default', sourceText: 'export default function greet() {}' }).status, 'verified-static');
 	assert.equal(verifyStaticRuntimeBinding({ runtimeFormat: 'esm', kind: 'default', sourceText: 'const greet=()=>{}; export default greet;' }).status, 'verified-static');
+	assert.equal(verifyStaticRuntimeBinding({ runtimeFormat: 'esm', kind: 'default', sourceText: 'const greet=()=>{}; export { greet as default };' }).status, 'verified-static');
+	assert.equal(verifyStaticRuntimeBinding({ runtimeFormat: 'esm', kind: 'default', sourceText: 'export { missing as default };' }).status, 'unknown');
 });
 
 test('parse errors never produce static proof', () => {
@@ -40,6 +50,19 @@ test('exports alias stops proving bindings after module.exports replacement', ()
 test('verifies simple CommonJS object exports and known missing keys', () => {
 	assert.equal(verifyStaticRuntimeBinding({ runtimeFormat: 'commonjs', kind: 'named', importedName: 'greet', sourceText: 'module.exports = { greet() {}, version: "1" };' }).status, 'verified-static');
 	assert.equal(verifyStaticRuntimeBinding({ runtimeFormat: 'commonjs', kind: 'named', importedName: 'missing', sourceText: 'module.exports = { greet() {} };' }).status, 'absent');
+	assert.equal(verifyStaticRuntimeBinding({ runtimeFormat: 'commonjs', kind: 'named', importedName: 'greet', sourceText: 'module.exports = { ["greet"]: 1 };' }).status, 'verified-static');
+});
+
+test('dynamic CommonJS object keys and spreads never prove absence', () => {
+	assert.equal(verifyStaticRuntimeBinding({ runtimeFormat: 'commonjs', kind: 'named', importedName: 'greet', sourceText: 'module.exports = { ...api };' }).status, 'unknown');
+	assert.equal(verifyStaticRuntimeBinding({ runtimeFormat: 'commonjs', kind: 'named', importedName: 'greet', sourceText: 'module.exports = { [name]: 1 };' }).status, 'unknown');
+	assert.equal(verifyStaticRuntimeBinding({ runtimeFormat: 'commonjs', kind: 'named', importedName: 'greet', sourceText: 'module.exports = { ...api, greet: 1 };' }).status, 'verified-static');
+});
+
+test('delete and update mutations invalidate earlier CommonJS proof', () => {
+	assert.equal(verifyStaticRuntimeBinding({ runtimeFormat: 'commonjs', kind: 'named', importedName: 'greet', sourceText: 'exports.greet = 1; delete exports.greet;' }).status, 'unknown');
+	assert.equal(verifyStaticRuntimeBinding({ runtimeFormat: 'commonjs', kind: 'named', importedName: 'greet', sourceText: 'module.exports.greet = 1; module.exports.greet++;' }).status, 'unknown');
+	assert.equal(verifyStaticRuntimeBinding({ runtimeFormat: 'commonjs', kind: 'named', importedName: 'greet', sourceText: 'exports.greet = 1; if (flag) delete exports.greet;' }).status, 'unknown');
 });
 
 test('dynamic and conditional CommonJS mutations remain unknown', () => {
