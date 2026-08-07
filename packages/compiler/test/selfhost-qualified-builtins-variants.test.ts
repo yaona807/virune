@@ -164,6 +164,5 @@ test('generated compiler resolves required qualified builtins and enum variants'
 		assert.ok(rejected.diagnostics.some(item => item.code === 'L1010' && item.message.includes('missing')));
 	} finally {
 		await rm(root, { recursive: true, force: true });
-		await rm(temporaryRoot, { recursive: true, force: true });
 	}
 });
