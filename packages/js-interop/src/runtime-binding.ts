@@ -17,6 +17,7 @@ export interface RuntimeBindingEvidence {
 	readonly reason:
 		| 'TYPE_ONLY'
 		| 'BUILTIN_MODULE'
+		| 'BUILTIN_NAMED_UNVERIFIED'
 		| 'MODULE_ENTRY_PRESENT'
 		| 'ESM_DECLARATION_EXPORT'
 		| 'ESM_EXPORT_LIST'
@@ -28,6 +29,7 @@ export interface RuntimeBindingEvidence {
 		| 'CJS_MODULE_EXPORT'
 		| 'DYNAMIC_CJS_EXPORT'
 		| 'BINDING_ABSENT'
+		| 'SOURCE_PARSE_ERROR'
 		| 'SOURCE_UNAVAILABLE'
 		| 'FORMAT_UNSUPPORTED';
 	readonly exportName?: string;
@@ -40,7 +42,10 @@ export interface RuntimeBindingEvidence {
  */
 export function verifyStaticRuntimeBinding(request: RuntimeBindingRequest): RuntimeBindingEvidence {
 	if (request.kind === 'type-only') return { status: 'not-applicable', reason: 'TYPE_ONLY' };
-	if (request.runtimeFormat === 'builtin') return bindingIndependent(request, 'BUILTIN_MODULE');
+	if (request.runtimeFormat === 'builtin') {
+		if (request.kind === 'named') return { status: 'unknown', reason: 'BUILTIN_NAMED_UNVERIFIED', ...(request.importedName === undefined ? {} : { exportName: request.importedName }) };
+		return { status: 'verified-static', reason: 'BUILTIN_MODULE' };
+	}
 	if (request.kind === 'side-effect' || request.kind === 'namespace') {
 		if (request.sourceText !== undefined || request.sourcePath !== undefined) return { status: 'verified-static', reason: 'MODULE_ENTRY_PRESENT' };
 		return { status: 'unknown', reason: 'SOURCE_UNAVAILABLE' };
@@ -51,13 +56,9 @@ export function verifyStaticRuntimeBinding(request: RuntimeBindingRequest): Runt
 	return { status: 'unknown', reason: 'FORMAT_UNSUPPORTED' };
 }
 
-function bindingIndependent(request: RuntimeBindingRequest, reason: RuntimeBindingEvidence['reason']): RuntimeBindingEvidence {
-	if (request.kind === 'named' && !request.importedName) return { status: 'unknown', reason: 'BINDING_ABSENT' };
-	return { status: 'verified-static', reason, ...(request.importedName === undefined ? {} : { exportName: request.importedName }) };
-}
-
 function verifyEsm(request: RuntimeBindingRequest): RuntimeBindingEvidence {
-	const source = ts.createSourceFile(request.sourcePath ?? 'module.mjs', request.sourceText ?? '', ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
+	const source = parseSource(request, 'module.mjs');
+	if (hasParseErrors(source)) return withName(request, 'unknown', 'SOURCE_PARSE_ERROR');
 	if (request.kind === 'default') {
 		for (const statement of source.statements) {
 			if (ts.isExportAssignment(statement) && !statement.isExportEquals) return { status: 'verified-static', reason: 'ESM_DEFAULT_EXPORT', exportName: 'default' };
@@ -82,6 +83,9 @@ function verifyEsm(request: RuntimeBindingRequest): RuntimeBindingEvidence {
 			starReexport = true;
 			continue;
 		}
+		if (ts.isNamespaceExport(statement.exportClause) && statement.exportClause.name.text === name) {
+			return { status: 'unknown', reason: 'ESM_REEXPORT_UNKNOWN', exportName: name };
+		}
 		if (!ts.isNamedExports(statement.exportClause)) continue;
 		for (const element of statement.exportClause.elements) {
 			if (element.name.text !== name) continue;
@@ -91,6 +95,84 @@ function verifyEsm(request: RuntimeBindingRequest): RuntimeBindingEvidence {
 	}
 	if (starReexport) return { status: 'unknown', reason: 'ESM_EXPORT_STAR_UNKNOWN', exportName: name };
 	return { status: 'absent', reason: 'BINDING_ABSENT', exportName: name };
+}
+
+function verifyCommonJs(request: RuntimeBindingRequest): RuntimeBindingEvidence {
+	const source = parseSource(request, 'module.cjs');
+	if (hasParseErrors(source)) return withName(request, 'unknown', 'SOURCE_PARSE_ERROR');
+	if (request.kind === 'default') {
+		if (containsDynamicCode(source)) return { status: 'unknown', reason: 'DYNAMIC_CJS_EXPORT', exportName: 'default' };
+		return { status: 'verified-static', reason: 'CJS_MODULE_EXPORT', exportName: 'default' };
+	}
+	const name = request.importedName;
+	if (request.kind !== 'named' || !name) return { status: 'unknown', reason: 'BINDING_ABSENT' };
+
+	let state: RuntimeBindingStatus = 'absent';
+	let reason: RuntimeBindingEvidence['reason'] = 'BINDING_ABSENT';
+	let exportsAliasIntact = true;
+	let moduleExportsKnownObject = true;
+
+	for (const statement of source.statements) {
+		if (ts.isExpressionStatement(statement) && ts.isBinaryExpression(statement.expression)) {
+			const expression = statement.expression;
+			const left = expression.left;
+			if (expression.operatorToken.kind === ts.SyntaxKind.EqualsToken) {
+				if (ts.isIdentifier(left) && left.text === 'exports') {
+					exportsAliasIntact = false;
+					continue;
+				}
+				if (isModuleExports(left)) {
+					exportsAliasIntact = false;
+					if (ts.isObjectLiteralExpression(expression.right)) {
+						moduleExportsKnownObject = true;
+						state = objectHasProperty(expression.right, name) ? 'verified-static' : 'absent';
+						reason = state === 'verified-static' ? 'CJS_OBJECT_EXPORT' : 'BINDING_ABSENT';
+					} else {
+						moduleExportsKnownObject = false;
+						state = 'unknown';
+						reason = 'DYNAMIC_CJS_EXPORT';
+					}
+					continue;
+				}
+				const target = namedExportTarget(left, name);
+				if (target === 'exports') {
+					if (exportsAliasIntact) {
+						state = 'verified-static';
+						reason = 'CJS_NAMED_ASSIGNMENT';
+					}
+					continue;
+				}
+				if (target === 'module.exports') {
+					state = moduleExportsKnownObject ? 'verified-static' : 'unknown';
+					reason = state === 'verified-static' ? 'CJS_NAMED_ASSIGNMENT' : 'DYNAMIC_CJS_EXPORT';
+					continue;
+				}
+			}
+			if (referencesExportsTarget(left)) {
+				state = 'unknown';
+				reason = 'DYNAMIC_CJS_EXPORT';
+				continue;
+			}
+		}
+		if (containsPotentialExportMutation(statement)) {
+			state = 'unknown';
+			reason = 'DYNAMIC_CJS_EXPORT';
+		}
+	}
+	return { status: state, reason, exportName: name };
+}
+
+function parseSource(request: RuntimeBindingRequest, fallback: string): ts.SourceFile {
+	return ts.createSourceFile(request.sourcePath ?? fallback, request.sourceText ?? '', ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
+}
+
+function hasParseErrors(source: ts.SourceFile): boolean {
+	const parsed = source as ts.SourceFile & { readonly parseDiagnostics?: readonly unknown[] };
+	return (parsed.parseDiagnostics?.length ?? 0) > 0;
+}
+
+function withName(request: RuntimeBindingRequest, status: RuntimeBindingStatus, reason: RuntimeBindingEvidence['reason']): RuntimeBindingEvidence {
+	return { status, reason, ...(request.kind === 'default' ? { exportName: 'default' } : request.importedName === undefined ? {} : { exportName: request.importedName }) };
 }
 
 function statementExportsName(statement: ts.Statement, name: string): boolean {
@@ -109,50 +191,64 @@ function hasDefaultModifier(node: ts.Node): boolean {
 	return ts.getModifiers(node)?.some(item => item.kind === ts.SyntaxKind.DefaultKeyword) ?? false;
 }
 
-function verifyCommonJs(request: RuntimeBindingRequest): RuntimeBindingEvidence {
-	const source = ts.createSourceFile(request.sourcePath ?? 'module.cjs', request.sourceText ?? '', ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
-	if (request.kind === 'default') {
-		for (const statement of source.statements) {
-			if (!ts.isExpressionStatement(statement) || !ts.isBinaryExpression(statement.expression) || statement.expression.operatorToken.kind !== ts.SyntaxKind.EqualsToken) continue;
-			if (isModuleExports(statement.expression.left)) return { status: 'verified-static', reason: 'CJS_MODULE_EXPORT', exportName: 'default' };
-		}
-		return { status: 'unknown', reason: 'DYNAMIC_CJS_EXPORT', exportName: 'default' };
-	}
-	const name = request.importedName;
-	if (request.kind !== 'named' || !name) return { status: 'unknown', reason: 'BINDING_ABSENT' };
-	let dynamicModuleExports = false;
-	for (const statement of source.statements) {
-		if (!ts.isExpressionStatement(statement) || !ts.isBinaryExpression(statement.expression) || statement.expression.operatorToken.kind !== ts.SyntaxKind.EqualsToken) continue;
-		const { left, right } = statement.expression;
-		if (isNamedExportsAssignment(left, name)) return { status: 'verified-static', reason: 'CJS_NAMED_ASSIGNMENT', exportName: name };
-		if (!isModuleExports(left)) continue;
-		if (ts.isObjectLiteralExpression(right)) {
-			for (const property of right.properties) {
-				if (objectPropertyName(property) === name) return { status: 'verified-static', reason: 'CJS_OBJECT_EXPORT', exportName: name };
-			}
-			return { status: 'absent', reason: 'BINDING_ABSENT', exportName: name };
-		}
-		dynamicModuleExports = true;
-	}
-	return dynamicModuleExports
-		? { status: 'unknown', reason: 'DYNAMIC_CJS_EXPORT', exportName: name }
-		: { status: 'absent', reason: 'BINDING_ABSENT', exportName: name };
-}
-
 function isModuleExports(node: ts.Expression): boolean {
 	return ts.isPropertyAccessExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === 'module' && node.name.text === 'exports';
 }
 
-function isNamedExportsAssignment(node: ts.Expression, name: string): boolean {
+type ExportTarget = 'exports' | 'module.exports' | undefined;
+
+function namedExportTarget(node: ts.Expression, name: string): ExportTarget {
 	if (ts.isPropertyAccessExpression(node)) {
-		if (ts.isIdentifier(node.expression) && node.expression.text === 'exports' && node.name.text === name) return true;
-		return isModuleExports(node.expression) && node.name.text === name;
+		if (ts.isIdentifier(node.expression) && node.expression.text === 'exports' && node.name.text === name) return 'exports';
+		if (isModuleExports(node.expression) && node.name.text === name) return 'module.exports';
 	}
 	if (ts.isElementAccessExpression(node) && node.argumentExpression !== undefined && ts.isStringLiteralLike(node.argumentExpression)) {
-		if (ts.isIdentifier(node.expression) && node.expression.text === 'exports') return node.argumentExpression.text === name;
-		return isModuleExports(node.expression) && node.argumentExpression.text === name;
+		if (node.argumentExpression.text !== name) return undefined;
+		if (ts.isIdentifier(node.expression) && node.expression.text === 'exports') return 'exports';
+		if (isModuleExports(node.expression)) return 'module.exports';
 	}
-	return false;
+	return undefined;
+}
+
+function referencesExportsTarget(node: ts.Node): boolean {
+	if (isExportsObject(node)) return true;
+	let found = false;
+	node.forEachChild(child => {
+		if (!found && referencesExportsTarget(child)) found = true;
+	});
+	return found;
+}
+
+function isExportsObject(node: ts.Node): boolean {
+	if (ts.isIdentifier(node) && node.text === 'exports') return true;
+	return ts.isPropertyAccessExpression(node) && isModuleExports(node);
+}
+
+function containsPotentialExportMutation(node: ts.Node): boolean {
+	if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === 'eval') return true;
+	if (ts.isNewExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === 'Function') return true;
+	if (ts.isBinaryExpression(node) && referencesExportsTarget(node.left)) return true;
+	if (ts.isCallExpression(node) && node.arguments.some(argument => referencesExportsTarget(argument))) return true;
+	let found = false;
+	node.forEachChild(child => {
+		if (!found && containsPotentialExportMutation(child)) found = true;
+	});
+	return found;
+}
+
+function containsDynamicCode(source: ts.SourceFile): boolean {
+	return source.statements.some(statement => containsPotentialExportMutation(statement) && !isSimpleTopLevelModuleExportAssignment(statement));
+}
+
+function isSimpleTopLevelModuleExportAssignment(statement: ts.Statement): boolean {
+	return ts.isExpressionStatement(statement)
+		&& ts.isBinaryExpression(statement.expression)
+		&& statement.expression.operatorToken.kind === ts.SyntaxKind.EqualsToken
+		&& isModuleExports(statement.expression.left);
+}
+
+function objectHasProperty(object: ts.ObjectLiteralExpression, name: string): boolean {
+	return object.properties.some(property => objectPropertyName(property) === name);
 }
 
 function objectPropertyName(property: ts.ObjectLiteralElementLike): string | undefined {
