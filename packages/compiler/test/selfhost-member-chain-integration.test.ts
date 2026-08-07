@@ -36,7 +36,7 @@ const runtimeSource = [
 	'',
 	'fn makeToken() -> MvpToken {',
 	'\treturn MvpToken {',
-	'\t\tkind: "Identifier",',
+	'\t\tkind: MvpTokenKind.Identifier,',
 	'\t\ttext: "name",',
 	'\t\tspan: MvpSpan {',
 	'\t\t\tstart: makePosition(1, 2, 3),',

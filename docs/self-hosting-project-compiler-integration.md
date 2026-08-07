@@ -1,13 +1,15 @@
 # Project Compiler Integration
 
-`project-compiler-contract.virune` now composes the four isolated self-hosting lanes into one versioned project boundary:
+`project-compiler-contract.virune` composes the Virune-authored frontend, project linker, semantic context, lowering pipeline, and deterministic project emitter behind one versioned boundary.
 
-1. parse every canonical source with the Virune frontend parser;
-2. build and validate the project module graph;
-3. construct the project semantic context;
-4. lower modules through the established Pure Core MVP pipeline;
-5. assemble deterministic ES2022 modules through the project emitter.
+The canonical self-host source set now proves the complete boundary:
 
-Accepted MVP modules receive a deterministic runtime import and are emitted under `.selfhost-output/` in canonical source order. Parser, linker, semantic, and lowering diagnostics remain fail-closed and path-aware.
+1. all 31 canonical sources are parsed;
+2. all 31 modules are checked;
+3. no compiler diagnostic remains;
+4. all 31 modules are emitted in canonical order;
+5. repeated project compilation returns byte-identical structured results.
 
-The capability deliberately remains `ready: false` with the blocker `full-language-lowering-not-implemented`. The integration proves the data flow and executable multi-module artifact contract without claiming that records, enums, generics, effects, async, or other full-language constructs can already self-compile. The next slice replaces the MVP lowering step with the complete frontend HIR and emitter.
+The capability therefore reports `ready: true` with an empty blocker list. This readiness claim is limited to Stage 1／Stage 2 bootstrap generation. It does not switch the production compiler, update the fixed Seed, relax compatibility gates, or authorize release promotion.
+
+Parser, linker, semantic, lowering, and emission failures remain path-aware and fail closed. Accepted modules are emitted under `.selfhost-output/` with deterministic runtime imports and metadata.

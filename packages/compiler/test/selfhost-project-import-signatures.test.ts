@@ -63,6 +63,5 @@ test('project lowering resolves imported function signatures and emits aliases',
 		assert.match(main.code, /twice\(/u);
 	} finally {
 		await rm(root, { recursive: true, force: true });
-		await rm(temporaryRoot, { recursive: true, force: true });
 	}
 });

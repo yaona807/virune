@@ -1,8 +1,17 @@
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
+import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import { isTemporaryArtifactPath, verifyTemporaryArtifacts } from './verify-selfhost-temporary-artifacts.mjs';
 
+const repositoryRoot = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const emptyRegistry = { schemaVersion: 1, artifacts: [] };
+const retiredReadinessBridgePaths = Object.freeze([
+	'.github/scripts/tmp-apply-full-language-readiness.py',
+	'.github/workflows/tmp-selfhost-full-language-readiness-pr.yml',
+	'.github/workflows/tmp-selfhost-full-language-readiness.yml',
+]);
 
 function registryFor(path) {
 	return {
@@ -71,4 +80,33 @@ test('rejects stale registry entries and unsafe merge disposition', () => {
 		() => verifyTemporaryArtifacts({ paths: [path], registry: invalid }),
 		/must be do-not-merge/u,
 	);
+});
+
+test('keeps the PR #279 readiness bridge retired from the tracked tree', () => {
+	for (const path of retiredReadinessBridgePaths) {
+		assert.equal(isTemporaryArtifactPath(path), true, path);
+	}
+	const tracked = spawnSync('git', ['ls-files', '--', ...retiredReadinessBridgePaths], {
+		cwd: repositoryRoot,
+		encoding: 'utf8',
+		maxBuffer: 16 * 1024 * 1024,
+	});
+	assert.equal(tracked.status, 0, tracked.stderr || tracked.stdout);
+	assert.equal(tracked.stdout.trim(), '');
+
+	const verification = spawnSync(process.execPath, [
+		'scripts/verify-selfhost-temporary-artifacts.mjs',
+		'--require-clean',
+	], {
+		cwd: repositoryRoot,
+		encoding: 'utf8',
+		maxBuffer: 16 * 1024 * 1024,
+	});
+	assert.equal(verification.status, 0, verification.stderr || verification.stdout);
+	const evidence = JSON.parse(verification.stdout);
+	assert.equal(evidence.claim, 'selfhost-temporary-artifact-inventory');
+	assert.equal(evidence.status, 'clean');
+	assert.equal(evidence.requireClean, true);
+	assert.equal(evidence.temporaryArtifactCount, 0);
+	assert.deepEqual(evidence.artifacts, []);
 });

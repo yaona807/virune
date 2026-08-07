@@ -10,8 +10,10 @@ export function parseArguments(argumentsList) {
 	let help = false;
 	let output = defaultOutput;
 	let timingOutput = defaultTimingOutput;
+	let compileRuns = 2;
 	let outputSeen = false;
 	let timingOutputSeen = false;
+	let compileRunsSeen = false;
 	for (const argument of argumentsList) {
 		if (argument === '--json') {
 			if (json) throw new Error('Duplicate option: --json');
@@ -27,14 +29,24 @@ export function parseArguments(argumentsList) {
 			if (timingOutputSeen) throw new Error('Duplicate option: --timing-output');
 			timingOutput = nonEmpty(argument.slice('--timing-output='.length), '--timing-output');
 			timingOutputSeen = true;
+		} else if (argument.startsWith('--compile-runs=')) {
+			if (compileRunsSeen) throw new Error('Duplicate option: --compile-runs');
+			compileRuns = parseCompileRuns(argument.slice('--compile-runs='.length));
+			compileRunsSeen = true;
 		} else {
 			throw new Error(`Unknown argument: ${argument}`);
 		}
 	}
-	if (help && (json || outputSeen || timingOutputSeen)) {
+	if (help && (json || outputSeen || timingOutputSeen || compileRunsSeen)) {
 		throw new Error('--help cannot be combined with other options');
 	}
-	return { json, help, output, timingOutput };
+	return { json, help, output, timingOutput, compileRuns };
+}
+
+export function parseCompileRuns(value) {
+	if (value === '1') return 1;
+	if (value === '2') return 2;
+	throw new Error('--compile-runs must be exactly 1 or 2');
 }
 
 export function resolveRepositoryOutput(repositoryRoot, output, option = '--output') {
@@ -58,9 +70,11 @@ export function resolveRepositoryOutput(repositoryRoot, output, option = '--outp
 
 export function helpText() {
 	return [
-		'Usage: npm run selfhost:inventory -- [--json] [--output=<repository-relative.json>] [--timing-output=<repository-relative.json>]',
+		'Usage: npm run selfhost:inventory -- [--json] [--compile-runs=<1|2>] [--output=<repository-relative.json>] [--timing-output=<repository-relative.json>]',
 		'',
 		'Runs the canonical full-language self-host inventory.',
+		'One compile validates readiness; two compiles additionally validate determinism.',
+		'The default is two compiles to preserve the main and Nightly contract.',
 		'Writes phase timing evidence on success and failure.',
 		'Progress and 60-second heartbeats are written to stderr.',
 		'Incomplete language lowering is reported with exit code 0.',
@@ -90,6 +104,7 @@ export async function main(argumentsList = process.argv.slice(2)) {
 	]);
 	const inventory = await runnerModule.runFullLanguageInventory({
 		repositoryRoot,
+		compileRuns: options.compileRuns,
 		onProgress: event => {
 			console.error(runnerModule.formatFullLanguageInventoryProgress(event));
 		},
@@ -110,6 +125,7 @@ export async function main(argumentsList = process.argv.slice(2)) {
 		return;
 	}
 	for (const line of inventoryModule.formatFullLanguageInventorySummary(inventory)) console.log(line);
+	console.log(`Compile runs: ${options.compileRuns}`);
 	console.log(`JSON: ${output.repositoryRelative}`);
 	console.log(`Timing JSON: ${timingOutput.repositoryRelative}`);
 }

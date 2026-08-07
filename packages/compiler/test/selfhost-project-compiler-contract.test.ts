@@ -42,7 +42,6 @@ async function withGeneratedCompiler<T>(
 		return await run(module, kernelInputFromProjectBuild(build));
 	} finally {
 		await rm(root, { recursive: true, force: true });
-		await rm(temporaryRoot, { recursive: true, force: true });
 	}
 }
 
@@ -67,7 +66,7 @@ function compilerReturning(module: GeneratedCompiler, result: unknown) {
 	};
 }
 
-test('generated compiler exposes deterministic integrated capability with an explicit full-language blocker', async () => {
+test('generated compiler exposes deterministic integrated full-language capability', async () => {
 	await withGeneratedCompiler((module) => {
 		assert.equal(hasSelfhostProjectCompilerExports(module), true);
 		const first = readProjectCompilerCapability(module);
@@ -75,10 +74,10 @@ test('generated compiler exposes deterministic integrated capability with an exp
 		assert.deepEqual(first, second);
 		assert.deepEqual(first, {
 			contractVersion: '1',
-			ready: false,
+			ready: true,
 			requestSchema: 'virune.selfhost.project-compiler.request.v1',
 			resultSchema: 'virune.selfhost.project-compiler.result.v2',
-			blockers: ['full-language-lowering-not-implemented'],
+			blockers: [],
 		});
 	});
 });

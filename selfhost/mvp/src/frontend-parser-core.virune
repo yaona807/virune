@@ -39,7 +39,7 @@ record CoreState {
 	significantSeen: Bool
 }
 
-record ParsedNode {
+record CoreParsedNode {
 	state: CoreState
 	id: Int
 }
@@ -231,7 +231,7 @@ fn addNode(
 	endIndex: Int,
 	children: List<Int>,
 	documentation: List<String>,
-) -> ParsedNode {
+) -> CoreParsedNode {
 	let id = List.length(state.nodes)
 	let value = frontendAstNode(
 		id,
@@ -241,7 +241,7 @@ fn addNode(
 		children,
 		documentation,
 	)
-	return ParsedNode {
+	return CoreParsedNode {
 		state: withNodes(state, List.append(state.nodes, value)),
 		id: id,
 	}
@@ -499,7 +499,7 @@ fn consumeBalanced(
 	open: String,
 	close: String,
 	kind: String,
-) -> ParsedNode {
+) -> CoreParsedNode {
 	let start = stateValue.index
 	let mut state = stateValue
 	let mut depth = 0
@@ -534,7 +534,7 @@ fn loadPattern(
 	return Json.decode<PatternTransport>(raw)
 }
 
-fn mergePatternValue(stateValue: CoreState, value: PatternTransport) -> ParsedNode {
+fn mergePatternValue(stateValue: CoreState, value: PatternTransport) -> CoreParsedNode {
 	let state = CoreState {
 		index: value.nextIndex,
 		nodes: List.concat(stateValue.nodes, value.nodes),
@@ -544,10 +544,10 @@ fn mergePatternValue(stateValue: CoreState, value: PatternTransport) -> ParsedNo
 		moduleDocumentation: stateValue.moduleDocumentation,
 		significantSeen: stateValue.significantSeen,
 	}
-	return ParsedNode { state: state, id: value.root }
+	return CoreParsedNode { state: state, id: value.root }
 }
 
-fn mergePatternFailure(stateValue: CoreState, tokens: List<FrontendToken>) -> ParsedNode {
+fn mergePatternFailure(stateValue: CoreState, tokens: List<FrontendToken>) -> CoreParsedNode {
 	let failed = addDiagnosticAt(
 		stateValue,
 		tokens,
@@ -555,10 +555,10 @@ fn mergePatternFailure(stateValue: CoreState, tokens: List<FrontendToken>) -> Pa
 		"Pattern parser transport failed",
 		stateValue.index,
 	)
-	return ParsedNode { state: failed, id: -1 }
+	return CoreParsedNode { state: failed, id: -1 }
 }
 
-fn parsePatternNode(stateValue: CoreState, tokens: List<FrontendToken>) -> ParsedNode {
+fn parsePatternNode(stateValue: CoreState, tokens: List<FrontendToken>) -> CoreParsedNode {
 	return match loadPattern(stateValue, tokens) {
 		Ok(value) => mergePatternValue(stateValue, value)
 		Err(_) => mergePatternFailure(stateValue, tokens)
@@ -575,7 +575,7 @@ fn synchronizeMatchArm(stateValue: CoreState, tokens: List<FrontendToken>) -> Co
 	return skipNewLines(state, tokens)
 }
 
-fn parseMatchExpression(stateValue: CoreState, tokens: List<FrontendToken>) -> ParsedNode {
+fn parseMatchExpression(stateValue: CoreState, tokens: List<FrontendToken>) -> CoreParsedNode {
 	let start = stateValue.index
 	let mut state = advance(stateValue)
 	let target = parseExpression(state, tokens, 1, true)
@@ -692,7 +692,7 @@ fn parseLambdaHeaderNode(stateValue: CoreState, tokens: List<FrontendToken>) -> 
 	}
 }
 
-fn parseLambdaExpression(stateValue: CoreState, tokens: List<FrontendToken>) -> ParsedNode {
+fn parseLambdaExpression(stateValue: CoreState, tokens: List<FrontendToken>) -> CoreParsedNode {
 	let start = stateValue.index
 	let loaded = parseLambdaHeaderNode(stateValue, tokens)
 	let mut state = loaded.state
@@ -730,7 +730,7 @@ fn synchronizeAggregateItem(
 	return state
 }
 
-fn parseListExpression(stateValue: CoreState, tokens: List<FrontendToken>) -> ParsedNode {
+fn parseListExpression(stateValue: CoreState, tokens: List<FrontendToken>) -> CoreParsedNode {
 	let start = stateValue.index
 	let mut state = skipNewLines(advance(stateValue), tokens)
 	let mut children: List<Int> = []
@@ -768,7 +768,7 @@ fn parseListExpression(stateValue: CoreState, tokens: List<FrontendToken>) -> Pa
 fn parseParenthesizedOrTupleExpression(
 	stateValue: CoreState,
 	tokens: List<FrontendToken>,
-) -> ParsedNode {
+) -> CoreParsedNode {
 	let start = stateValue.index
 	let mut state = skipNewLines(advance(stateValue), tokens)
 	if isText(state, tokens, ")") {
@@ -820,7 +820,7 @@ fn parseParenthesizedOrTupleExpression(
 	return addNode(state, tokens, "ParenthesizedExpression", "()", start, state.index, children, [])
 }
 
-fn parseRecordEntry(stateValue: CoreState, tokens: List<FrontendToken>) -> ParsedNode {
+fn parseRecordEntry(stateValue: CoreState, tokens: List<FrontendToken>) -> CoreParsedNode {
 	let start = stateValue.index
 	let mut state = stateValue
 	let name = currentText(state, tokens)
@@ -843,7 +843,7 @@ fn parseRecordEntry(stateValue: CoreState, tokens: List<FrontendToken>) -> Parse
 	return addNode(state, tokens, "RecordEntry", name, start, state.index, children, [])
 }
 
-fn parseRecordFieldBlock(stateValue: CoreState, tokens: List<FrontendToken>) -> ParsedNode {
+fn parseRecordFieldBlock(stateValue: CoreState, tokens: List<FrontendToken>) -> CoreParsedNode {
 	let start = stateValue.index
 	let mut state = stateValue
 	if isText(state, tokens, "{") {
@@ -889,7 +889,7 @@ fn parseRecordExpression(
 	stateValue: CoreState,
 	tokens: List<FrontendToken>,
 	name: String,
-) -> ParsedNode {
+) -> CoreParsedNode {
 	let start = stateValue.index
 	let fields = parseRecordFieldBlock(advance(stateValue), tokens)
 	return addNode(
@@ -904,7 +904,7 @@ fn parseRecordExpression(
 	)
 }
 
-fn parseCallArguments(stateValue: CoreState, tokens: List<FrontendToken>) -> ParsedNode {
+fn parseCallArguments(stateValue: CoreState, tokens: List<FrontendToken>) -> CoreParsedNode {
 	let start = stateValue.index
 	let mut state = skipNewLines(advance(stateValue), tokens)
 	let mut children: List<Int> = []
@@ -968,7 +968,7 @@ fn parsePostfix(
 	tokens: List<FrontendToken>,
 	start: Int,
 	valueIdValue: Int,
-) -> ParsedNode {
+) -> CoreParsedNode {
 	let mut state = stateValue
 	let mut valueId = valueIdValue
 	let mut done = false
@@ -1056,7 +1056,7 @@ fn parsePostfix(
 			done = true
 		}
 	}
-	return ParsedNode { state: state, id: valueId }
+	return CoreParsedNode { state: state, id: valueId }
 }
 
 fn parseLambdaPostfix(
@@ -1064,14 +1064,14 @@ fn parseLambdaPostfix(
 	tokens: List<FrontendToken>,
 	start: Int,
 	valueIdValue: Int,
-) -> ParsedNode {
+) -> CoreParsedNode {
 	return parsePostfix(stateValue, tokens, start, valueIdValue)
 }
 
 fn parseParenthesizedLambda(
 	stateValue: CoreState,
 	tokens: List<FrontendToken>,
-) -> ParsedNode {
+) -> CoreParsedNode {
 	let start = stateValue.index
 	let mut state = advance(stateValue)
 	let text = currentText(state, tokens)
@@ -1104,11 +1104,11 @@ fn parseControlPostfix(
 	tokens: List<FrontendToken>,
 	start: Int,
 	valueIdValue: Int,
-) -> ParsedNode {
+) -> CoreParsedNode {
 	return parsePostfix(stateValue, tokens, start, valueIdValue)
 }
 
-fn parseConditionalExpression(stateValue: CoreState, tokens: List<FrontendToken>) -> ParsedNode {
+fn parseConditionalExpression(stateValue: CoreState, tokens: List<FrontendToken>) -> CoreParsedNode {
 	let start = stateValue.index
 	let condition = parseExpression(advance(stateValue), tokens, 1, false)
 	let mut state = condition.state
@@ -1150,7 +1150,7 @@ fn synchronizeParallelEntry(stateValue: CoreState, tokens: List<FrontendToken>) 
 	return state
 }
 
-fn parseParallelEntry(stateValue: CoreState, tokens: List<FrontendToken>) -> ParsedNode {
+fn parseParallelEntry(stateValue: CoreState, tokens: List<FrontendToken>) -> CoreParsedNode {
 	let start = stateValue.index
 	let mut state = stateValue
 	let name = currentText(state, tokens)
@@ -1175,7 +1175,7 @@ fn parseParallelEntry(stateValue: CoreState, tokens: List<FrontendToken>) -> Par
 	return addNode(state, tokens, "ParallelEntry", name, start, state.index, children, [])
 }
 
-fn parseParallelExpression(stateValue: CoreState, tokens: List<FrontendToken>) -> ParsedNode {
+fn parseParallelExpression(stateValue: CoreState, tokens: List<FrontendToken>) -> CoreParsedNode {
 	let start = stateValue.index
 	let mut state = advance(stateValue)
 	let mut text = "parallel"
@@ -1220,12 +1220,12 @@ fn parseParallelExpression(stateValue: CoreState, tokens: List<FrontendToken>) -
 	return parseControlPostfix(expression.state, tokens, start, expression.id)
 }
 
-fn parsePrimary(stateValue: CoreState, tokens: List<FrontendToken>, stopAtBrace: Bool) -> ParsedNode {
+fn parsePrimary(stateValue: CoreState, tokens: List<FrontendToken>, stopAtBrace: Bool) -> CoreParsedNode {
 	let mut state = stateValue
 	let start = state.index
 	if expressionStop(state, tokens, stopAtBrace) {
 		state = addDiagnosticAt(state, tokens, "L0002", "Expected an expression", state.index)
-		return ParsedNode { state: state, id: -1 }
+		return CoreParsedNode { state: state, id: -1 }
 	}
 	let text = currentText(state, tokens)
 	if text == "if" {
@@ -1278,7 +1278,7 @@ fn parseExpression(
 	tokens: List<FrontendToken>,
 	minimumPrecedence: Int,
 	stopAtBrace: Bool,
-) -> ParsedNode {
+) -> CoreParsedNode {
 	let left = parsePrimary(stateValue, tokens, stopAtBrace)
 	let mut state = left.state
 	let mut leftId = left.id
@@ -1307,10 +1307,10 @@ fn parseExpression(
 			leftId = binary.id
 		}
 	}
-	return ParsedNode { state: state, id: leftId }
+	return CoreParsedNode { state: state, id: leftId }
 }
 
-fn parseBlock(stateValue: CoreState, tokens: List<FrontendToken>) -> ParsedNode {
+fn parseBlock(stateValue: CoreState, tokens: List<FrontendToken>) -> CoreParsedNode {
 	let start = stateValue.index
 	let mut state = stateValue
 	if isText(state, tokens, "{") {
@@ -1358,7 +1358,7 @@ fn loadTypeReference(
 fn mergeTypeReference(
 	stateValue: CoreState,
 	value: DetailedDeclarationTransport,
-) -> ParsedNode {
+) -> CoreParsedNode {
 	let state = CoreState {
 		index: value.nextIndex,
 		nodes: List.concat(stateValue.nodes, value.nodes),
@@ -1368,13 +1368,13 @@ fn mergeTypeReference(
 		moduleDocumentation: stateValue.moduleDocumentation,
 		significantSeen: stateValue.significantSeen,
 	}
-	return ParsedNode { state: state, id: value.root }
+	return CoreParsedNode { state: state, id: value.root }
 }
 
 fn typeReferenceFailure(
 	stateValue: CoreState,
 	tokens: List<FrontendToken>,
-) -> ParsedNode {
+) -> CoreParsedNode {
 	let failed = addDiagnosticAt(
 		stateValue,
 		tokens,
@@ -1382,20 +1382,20 @@ fn typeReferenceFailure(
 		"Type reference parser transport failed",
 		stateValue.index,
 	)
-	return ParsedNode { state: failed, id: -1 }
+	return CoreParsedNode { state: failed, id: -1 }
 }
 
 fn parseTypeReferenceNode(
 	stateValue: CoreState,
 	tokens: List<FrontendToken>,
-) -> ParsedNode {
+) -> CoreParsedNode {
 	return match loadTypeReference(stateValue, tokens) {
 		Ok(value) => mergeTypeReference(stateValue, value)
 		Err(_) => typeReferenceFailure(stateValue, tokens)
 	}
 }
 
-fn parseStatement(stateValue: CoreState, tokens: List<FrontendToken>) -> ParsedNode {
+fn parseStatement(stateValue: CoreState, tokens: List<FrontendToken>) -> CoreParsedNode {
 	let mut state = stateValue
 	let start = state.index
 	let text = currentText(state, tokens)
@@ -1576,7 +1576,7 @@ fn modifierPresent(
 	return found
 }
 
-fn parseTypeParametersNode(stateValue: CoreState, tokens: List<FrontendToken>) -> ParsedNode {
+fn parseTypeParametersNode(stateValue: CoreState, tokens: List<FrontendToken>) -> CoreParsedNode {
 	let start = stateValue.index
 	let mut state = stateValue
 	let mut children: List<Int> = []
@@ -1617,7 +1617,7 @@ fn parseTypeParametersNode(stateValue: CoreState, tokens: List<FrontendToken>) -
 	return addNode(state, tokens, "TypeParameters", "", start, state.index, children, [])
 }
 
-fn parseParametersNode(stateValue: CoreState, tokens: List<FrontendToken>) -> ParsedNode {
+fn parseParametersNode(stateValue: CoreState, tokens: List<FrontendToken>) -> CoreParsedNode {
 	let start = stateValue.index
 	let mut state = stateValue
 	let mut children: List<Int> = []
@@ -1680,7 +1680,7 @@ fn parseParametersNode(stateValue: CoreState, tokens: List<FrontendToken>) -> Pa
 	return addNode(state, tokens, "Parameters", "", start, state.index, children, [])
 }
 
-fn parseReturnTypeNode(stateValue: CoreState, tokens: List<FrontendToken>) -> ParsedNode {
+fn parseReturnTypeNode(stateValue: CoreState, tokens: List<FrontendToken>) -> CoreParsedNode {
 	let start = stateValue.index
 	let typeValue = parseTypeReferenceNode(stateValue, tokens)
 	let mut children: List<Int> = []
@@ -1690,7 +1690,7 @@ fn parseReturnTypeNode(stateValue: CoreState, tokens: List<FrontendToken>) -> Pa
 	return addNode(typeValue.state, tokens, "ReturnType", "", start, typeValue.state.index, children, [])
 }
 
-fn parseUsesClauseNode(stateValue: CoreState, tokens: List<FrontendToken>) -> ParsedNode {
+fn parseUsesClauseNode(stateValue: CoreState, tokens: List<FrontendToken>) -> CoreParsedNode {
 	let start = stateValue.index
 	let mut state = advance(stateValue)
 	let mut children: List<Int> = []
@@ -1723,7 +1723,7 @@ fn parseFunction(
 	stateValue: CoreState,
 	tokens: List<FrontendToken>,
 	documentation: List<String>,
-) -> ParsedNode {
+) -> CoreParsedNode {
 	let start = stateValue.index
 	let keywordIndex = declarationKeywordIndex(stateValue, tokens)
 	let publicValue = modifierPresent(stateValue, tokens, keywordIndex, "pub")
@@ -1780,7 +1780,7 @@ fn parseFunction(
 fn parseTestDeclaration(
 	stateValue: CoreState,
 	tokens: List<FrontendToken>,
-) -> ParsedNode {
+) -> CoreParsedNode {
 	let start = stateValue.index
 	let keywordIndex = declarationKeywordIndex(stateValue, tokens)
 	let asyncValue = modifierPresent(stateValue, tokens, keywordIndex, "async")
@@ -1813,7 +1813,7 @@ fn parseTopLevelValueDeclaration(
 	stateValue: CoreState,
 	tokens: List<FrontendToken>,
 	documentation: List<String>,
-) -> ParsedNode {
+) -> CoreParsedNode {
 	let start = stateValue.index
 	let keywordIndex = declarationKeywordIndex(stateValue, tokens)
 	let publicValue = modifierPresent(stateValue, tokens, keywordIndex, "pub")
@@ -1851,7 +1851,7 @@ fn parseTopLevelValueDeclaration(
 	return addNode(state, tokens, "TopLevelValueDeclaration", name, start, state.index, children, documentation)
 }
 
-fn parseExternParameters(stateValue: CoreState, tokens: List<FrontendToken>) -> ParsedNode {
+fn parseExternParameters(stateValue: CoreState, tokens: List<FrontendToken>) -> CoreParsedNode {
 	let start = stateValue.index
 	let mut state = stateValue
 	let mut children: List<Int> = []
@@ -1926,7 +1926,7 @@ fn parseExternParameters(stateValue: CoreState, tokens: List<FrontendToken>) -> 
 	return addNode(state, tokens, "ExternParameters", "", start, state.index, children, [])
 }
 
-fn parseExternFunction(stateValue: CoreState, tokens: List<FrontendToken>) -> ParsedNode {
+fn parseExternFunction(stateValue: CoreState, tokens: List<FrontendToken>) -> CoreParsedNode {
 	let start = stateValue.index
 	let mut state = stateValue
 	let asyncValue = isText(state, tokens, "async")
@@ -1995,7 +1995,7 @@ fn parseExternDeclaration(
 	stateValue: CoreState,
 	tokens: List<FrontendToken>,
 	documentation: List<String>,
-) -> ParsedNode {
+) -> CoreParsedNode {
 	let start = stateValue.index
 	let keywordIndex = declarationKeywordIndex(stateValue, tokens)
 	let unsafeValue = modifierPresent(stateValue, tokens, keywordIndex, "unsafe")
@@ -2061,7 +2061,7 @@ fn parseComposite(
 	tokens: List<FrontendToken>,
 	kind: String,
 	documentation: List<String>,
-) -> ParsedNode {
+) -> CoreParsedNode {
 	let start = stateValue.index
 	let keywordIndex = declarationKeywordIndex(stateValue, tokens)
 	let mut state = withIndex(stateValue, keywordIndex + 1)
@@ -2091,7 +2091,7 @@ fn parseLineDeclaration(
 	tokens: List<FrontendToken>,
 	kind: String,
 	documentation: List<String>,
-) -> ParsedNode {
+) -> CoreParsedNode {
 	let start = stateValue.index
 	let keywordIndex = declarationKeywordIndex(stateValue, tokens)
 	let mut state = withIndex(stateValue, keywordIndex + 1)
@@ -2122,7 +2122,7 @@ fn loadDetailedDeclaration(
 fn mergeDetailedDeclaration(
 	stateValue: CoreState,
 	value: DetailedDeclarationTransport,
-) -> ParsedNode {
+) -> CoreParsedNode {
 	let state = CoreState {
 		index: value.nextIndex,
 		nodes: List.concat(stateValue.nodes, value.nodes),
@@ -2132,13 +2132,13 @@ fn mergeDetailedDeclaration(
 		moduleDocumentation: stateValue.moduleDocumentation,
 		significantSeen: stateValue.significantSeen,
 	}
-	return ParsedNode { state: state, id: value.root }
+	return CoreParsedNode { state: state, id: value.root }
 }
 
 fn detailedDeclarationFailure(
 	stateValue: CoreState,
 	tokens: List<FrontendToken>,
-) -> ParsedNode {
+) -> CoreParsedNode {
 	let failed = addDiagnosticAt(
 		stateValue,
 		tokens,
@@ -2146,7 +2146,7 @@ fn detailedDeclarationFailure(
 		"Detailed declaration parser transport failed",
 		stateValue.index,
 	)
-	return ParsedNode { state: synchronizeLine(failed, tokens), id: -1 }
+	return CoreParsedNode { state: synchronizeLine(failed, tokens), id: -1 }
 }
 
 fn parseDetailedDeclaration(
@@ -2154,7 +2154,7 @@ fn parseDetailedDeclaration(
 	tokens: List<FrontendToken>,
 	kind: String,
 	documentation: List<String>,
-) -> ParsedNode {
+) -> CoreParsedNode {
 	return match loadDetailedDeclaration(stateValue, tokens, kind, documentation) {
 		Ok(value) => mergeDetailedDeclaration(stateValue, value)
 		Err(_) => detailedDeclarationFailure(stateValue, tokens)
@@ -2188,7 +2188,7 @@ fn prependNodeChildren(
 	return withNodes(stateValue, nodes)
 }
 
-fn parseAttribute(stateValue: CoreState, tokens: List<FrontendToken>) -> ParsedNode {
+fn parseAttribute(stateValue: CoreState, tokens: List<FrontendToken>) -> CoreParsedNode {
 	let start = stateValue.index
 	let mut state = advance(stateValue)
 	let validName = currentKind(state, tokens) == FrontendTokenKind.Identifier
@@ -2208,7 +2208,7 @@ fn parseAttribute(stateValue: CoreState, tokens: List<FrontendToken>) -> ParsedN
 	return addNode(state, tokens, "Attribute", name, start, state.index, children, [])
 }
 
-fn parseImportItem(stateValue: CoreState, tokens: List<FrontendToken>) -> ParsedNode {
+fn parseImportItem(stateValue: CoreState, tokens: List<FrontendToken>) -> CoreParsedNode {
 	let start = stateValue.index
 	let mut state = stateValue
 	let validName = currentKind(state, tokens) == FrontendTokenKind.Identifier
@@ -2279,7 +2279,7 @@ fn parseNamedImportItems(stateValue: CoreState, tokens: List<FrontendToken>) -> 
 	return ParsedChildren { state: state, children: children }
 }
 
-fn parseImportSource(stateValue: CoreState, tokens: List<FrontendToken>) -> ParsedNode {
+fn parseImportSource(stateValue: CoreState, tokens: List<FrontendToken>) -> CoreParsedNode {
 	let start = stateValue.index
 	let mut state = stateValue
 	let validSource = currentKind(state, tokens) == FrontendTokenKind.StringLiteral
@@ -2292,7 +2292,7 @@ fn parseImportSource(stateValue: CoreState, tokens: List<FrontendToken>) -> Pars
 	return addNode(state, tokens, "ImportSource", text, start, state.index, [], [])
 }
 
-fn parseDetailedImport(stateValue: CoreState, tokens: List<FrontendToken>) -> ParsedNode {
+fn parseDetailedImport(stateValue: CoreState, tokens: List<FrontendToken>) -> CoreParsedNode {
 	let start = stateValue.index
 	let mut state = stateValue
 	let publicImport = isText(state, tokens, "pub")
@@ -2382,7 +2382,7 @@ fn parseDetailedImport(stateValue: CoreState, tokens: List<FrontendToken>) -> Pa
 	return addNode(state, tokens, "ImportDeclaration", form + visibility + typeText, start, state.index, children, [])
 }
 
-fn parseDeclaration(stateValue: CoreState, tokens: List<FrontendToken>) -> ParsedNode {
+fn parseDeclaration(stateValue: CoreState, tokens: List<FrontendToken>) -> CoreParsedNode {
 	let kind = declarationKind(stateValue, tokens)
 	let docs = takeDocumentation(stateValue, tokens, supportsDocumentation(kind))
 	let state = withSignificant(docs.state, true)
@@ -2405,7 +2405,7 @@ fn parseDeclaration(stateValue: CoreState, tokens: List<FrontendToken>) -> Parse
 		return parseTestDeclaration(state, tokens)
 	}
 	let failed = addDiagnosticAt(state, tokens, "L0002", "Expected a declaration", state.index)
-	return ParsedNode { state: synchronizeLine(failed, tokens), id: -1 }
+	return CoreParsedNode { state: synchronizeLine(failed, tokens), id: -1 }
 }
 
 fn parseModule(lexed: FrontendLexResult) -> FrontendParseResult {
