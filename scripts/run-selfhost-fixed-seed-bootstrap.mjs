@@ -5,7 +5,7 @@ import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { verifySelfhostSeed } from './verify-selfhost-seed.mjs';
 
-export const FIXED_SEED_BOOTSTRAP_SCHEMA_VERSION = 1;
+export const FIXED_SEED_BOOTSTRAP_SCHEMA_VERSION = 2;
 export const DEFAULT_FIXED_SEED_OUTPUT = '.cache/selfhost/fixed-seed-bootstrap.json';
 export const DEFAULT_FIXED_SEED_TEMPORARY_ROOT = '.cache/selfhost/fixed-seed-bootstrap';
 const seedManifestPath = '.github/self-hosting/stage0-seed.json';
@@ -80,12 +80,12 @@ export function legacyBuildModules(build) {
 	});
 }
 
-export function selfhostResultModules(result) {
+export function selfhostResultModules(result, label = 'Stage 2') {
 	if (result.accepted !== true) {
 		const codes = result.diagnostics.map(diagnostic => diagnostic.code).join(', ') || 'none';
-		throw new Error(`Stage 1 compiler rejected Stage 2 build (${codes})`);
+		throw new Error(`${label} project compilation was rejected (${codes})`);
 	}
-	if (result.emittedModules.length === 0) throw new Error('Stage 1 compiler emitted no Stage 2 modules');
+	if (result.emittedModules.length === 0) throw new Error(`${label} project compilation emitted no modules`);
 	return result.emittedModules.map(module => ({
 		sourcePath: module.sourcePath,
 		outputPath: module.outputPath,
@@ -94,13 +94,49 @@ export function selfhostResultModules(result) {
 	}));
 }
 
-export function createEvidence({ seed, stage1, stage2, diff, capability }) {
-	const equivalent = diff.equal === true && stage1.sha256 === stage2.sha256;
+export function summarizeDifferences(changes) {
+	const bySection = {};
+	const byField = {};
+	for (const change of changes) {
+		const section = typeof change.section === 'string' && change.section !== '' ? change.section : '<unknown>';
+		bySection[section] = (bySection[section] ?? 0) + 1;
+		const path = typeof change.path === 'string' ? change.path : '';
+		const field = differenceField(path);
+		byField[field] = (byField[field] ?? 0) + 1;
+	}
+	return {
+		total: changes.length,
+		bySection: sortCountRecord(bySection),
+		byField: sortCountRecord(byField),
+	};
+}
+
+export function createEvidence({
+	seed,
+	stage1,
+	stage2,
+	stage3 = null,
+	transitionDiff,
+	fixedPointDiff = null,
+	capability,
+	stage3Error = null,
+}) {
+	const transitionEquivalent = transitionDiff.equal === true && stage1.sha256 === stage2.sha256;
+	const fixedPointEquivalent = stage3 !== null
+		&& fixedPointDiff !== null
+		&& fixedPointDiff.equal === true
+		&& stage2.sha256 === stage3.sha256;
+	const fixedPointAttempted = stage3 !== null || stage3Error !== null;
+	const status = stage3Error !== null
+		? 'blocked'
+		: fixedPointEquivalent
+			? 'match'
+			: 'mismatch';
 	return {
 		schemaVersion: FIXED_SEED_BOOTSTRAP_SCHEMA_VERSION,
-		claim: 'fixed-seed-stage1-stage2-bootstrap',
+		claim: 'fixed-seed-bootstrap-fixed-point',
 		productionEligible: false,
-		status: equivalent ? 'match' : 'mismatch',
+		status,
 		stage0Source: 'fixed-seed-artifact',
 		seed: {
 			verified: true,
@@ -110,10 +146,31 @@ export function createEvidence({ seed, stage1, stage2, diff, capability }) {
 		},
 		stage1: { sha256: stage1.sha256, moduleCount: stage1.artifact.modules.length },
 		stage2: { sha256: stage2.sha256, moduleCount: stage2.artifact.modules.length },
+		stage3: stage3 === null ? null : { sha256: stage3.sha256, moduleCount: stage3.artifact.modules.length },
 		capability,
-		equivalent,
-		differenceCount: diff.changes.length,
-		differences: diff.changes.slice(0, 100),
+		transition: {
+			from: 'stage1',
+			to: 'stage2',
+			equivalent: transitionEquivalent,
+			differenceCount: transitionDiff.changes.length,
+			differenceSummary: summarizeDifferences(transitionDiff.changes),
+			differences: transitionDiff.changes.slice(0, 100),
+		},
+		fixedPoint: {
+			from: 'stage2',
+			to: 'stage3',
+			attempted: fixedPointAttempted,
+			equivalent: fixedPointEquivalent,
+			differenceCount: fixedPointDiff?.changes.length ?? 0,
+			differenceSummary: summarizeDifferences(fixedPointDiff?.changes ?? []),
+			differences: fixedPointDiff?.changes.slice(0, 100) ?? [],
+			error: stage3Error,
+		},
+		// Compatibility fields keep the observed Seed-transition divergence visible.
+		equivalent: fixedPointEquivalent,
+		differenceCount: transitionDiff.changes.length,
+		differenceSummary: summarizeDifferences(transitionDiff.changes),
+		differences: transitionDiff.changes.slice(0, 100),
 	};
 }
 
@@ -140,6 +197,7 @@ export async function runFixedSeedBootstrap({
 		temporaryRoot,
 	});
 	let candidateDirectory = null;
+	let stage2Candidate = null;
 	try {
 		const stage1Build = await seedCompiler.module.buildProject(projectPath, false);
 		const input = dependencies.kernelInputFromProjectBuild(stage1Build);
@@ -168,14 +226,37 @@ export async function runFixedSeedBootstrap({
 			throw new Error(`Stage 1 project compiler is not ready: ${capability?.blockers.join(', ') ?? 'missing capability'}`);
 		}
 		const stage2Result = dependencies.compileWithProjectCompilerBoundary(candidate, input);
-		const stage2Modules = selfhostResultModules(stage2Result);
+		const stage2Modules = selfhostResultModules(stage2Result, 'Stage 2');
 		const stage2 = dependencies.normalizeBootstrapArtifact(createComparisonInput({
 			root: stage1Build.root,
 			modules: stage2Modules,
 			input,
 			extractExports: dependencies.extractGeneratedModuleExports,
 		}));
-		const diff = dependencies.diffBootstrapArtifacts(stage1, stage2);
+		const transitionDiff = dependencies.diffBootstrapArtifacts(stage1, stage2);
+
+		let stage3 = null;
+		let fixedPointDiff = null;
+		let stage3Error = null;
+		try {
+			const stage2Artifact = dependencies.stageArtifact('stage2', stage2Result);
+			stage2Candidate = await dependencies.materializeBootstrapStageCompiler(
+				stage2Artifact,
+				join(temporaryRoot, 'stage2-fixed-point'),
+			);
+			const stage3Result = stage2Candidate.compiler.compile(input);
+			const stage3Modules = selfhostResultModules(stage3Result, 'Stage 3');
+			stage3 = dependencies.normalizeBootstrapArtifact(createComparisonInput({
+				root: stage1Build.root,
+				modules: stage3Modules,
+				input,
+				extractExports: dependencies.extractGeneratedModuleExports,
+			}));
+			fixedPointDiff = dependencies.diffBootstrapArtifacts(stage2, stage3);
+		} catch (error) {
+			stage3Error = error instanceof Error ? error.message : String(error);
+		}
+
 		return createEvidence({
 			seed: {
 				artifactSha256: verified.sha256,
@@ -183,10 +264,14 @@ export async function runFixedSeedBootstrap({
 			},
 			stage1,
 			stage2,
-			diff,
+			stage3,
+			transitionDiff,
+			fixedPointDiff,
 			capability,
+			stage3Error,
 		});
 	} finally {
+		if (stage2Candidate !== null) await stage2Candidate.dispose();
 		if (candidateDirectory !== null) await rm(candidateDirectory, { recursive: true, force: true });
 		await seedCompiler.dispose();
 	}
@@ -228,8 +313,9 @@ export function helpText() {
 	return [
 		'Usage: node scripts/run-selfhost-fixed-seed-bootstrap.mjs [--json] [--artifact=<path>] [--project=<path>] [--output=<.cache/file.json>] [--temporary-root=<.cache/path>]',
 		'',
-		'Verifies the pinned release Seed artifact, loads that artifact as the actual compiler, uses it to build Stage 1,',
-		'loads the emitted Stage 1 compiler, builds Stage 2, and compares normalized compiler artifacts.',
+		'Verifies the pinned release Seed artifact, loads it as Stage 0, generates Stage 1 and Stage 2,',
+		'then loads Stage 2 and requires the current self-host compiler to reach a Stage 2/Stage 3 fixed point.',
+		'Stage 1/Stage 2 differences remain recorded as Seed-transition evidence and are not silently discarded.',
 	].join('\n');
 }
 
@@ -259,7 +345,7 @@ export async function main(argumentsList = process.argv.slice(2), injected = {})
 	} catch (error) {
 		evidence = {
 			schemaVersion: FIXED_SEED_BOOTSTRAP_SCHEMA_VERSION,
-			claim: 'fixed-seed-stage1-stage2-bootstrap',
+			claim: 'fixed-seed-bootstrap-fixed-point',
 			productionEligible: false,
 			status: 'blocked',
 			stage0Source: 'fixed-seed-artifact',
@@ -273,19 +359,35 @@ export async function main(argumentsList = process.argv.slice(2), injected = {})
 	if (options.json) process.stdout.write(encoded);
 	else {
 		console.log(`Fixed Seed bootstrap: ${evidence.status.toUpperCase()}`);
+		if (evidence.transition !== undefined) {
+			console.log(`Stage 1 -> Stage 2 differences: ${evidence.transition.differenceCount}`);
+		}
+		if (evidence.fixedPoint !== undefined) {
+			console.log(`Stage 2 -> Stage 3 fixed point: ${evidence.fixedPoint.equivalent ? 'match' : evidence.fixedPoint.error ?? 'mismatch'}`);
+		}
 		console.log(`Evidence: ${output.repositoryRelative}`);
 	}
-	if (evidence.status !== 'match') throw new Error(`Fixed Seed Stage 1/2 bootstrap did not match. Evidence: ${output.repositoryRelative}`);
+	if (evidence.status !== 'match') throw new Error(`Fixed Seed bootstrap did not reach the Stage 2/Stage 3 fixed point. Evidence: ${output.repositoryRelative}`);
 	return evidence;
 }
 
 async function loadDependencies() {
-	const [snapshotModule, probeModule, runnerModule, adapterModule, normalizerModule] = await Promise.all([
+	const [
+		snapshotModule,
+		probeModule,
+		runnerModule,
+		adapterModule,
+		normalizerModule,
+		executorModule,
+		loaderModule,
+	] = await Promise.all([
 		import('../packages/compiler/dist/src/selfhost/bootstrap-artifact-snapshot.js'),
 		import('../packages/compiler/dist/src/selfhost/bootstrap-execution-probe.js'),
 		import('../packages/compiler/dist/src/selfhost/bootstrap-stage-runner.js'),
 		import('../packages/compiler/dist/src/selfhost/project-compiler-adapter.js'),
 		import('../packages/compiler/dist/src/selfhost/bootstrap-artifact-normalizer.js'),
+		import('../packages/compiler/dist/src/selfhost/bootstrap-stage-executor.js'),
+		import('../packages/compiler/dist/src/selfhost/bootstrap-stage-loader.js'),
 	]);
 	return {
 		snapshotProjectBuild: snapshotModule.snapshotProjectBuild,
@@ -298,7 +400,24 @@ async function loadDependencies() {
 		compileWithProjectCompilerBoundary: adapterModule.compileWithProjectCompilerBoundary,
 		normalizeBootstrapArtifact: normalizerModule.normalizeBootstrapArtifact,
 		diffBootstrapArtifacts: normalizerModule.diffBootstrapArtifacts,
+		stageArtifact: executorModule.stageArtifact,
+		materializeBootstrapStageCompiler: loaderModule.materializeBootstrapStageCompiler,
 	};
+}
+
+function differenceField(path) {
+	if (path.includes('.sourceMap')) return 'sourceMap';
+	if (path.endsWith('.code') || path.includes('.code.')) return 'code';
+	if (path.endsWith('.path') || path.startsWith('moduleOrder')) return 'path';
+	if (path.includes('.exports')) return 'exports';
+	if (path.startsWith('metadata')) return 'metadata';
+	if (path.startsWith('diagnosticsSchema')) return 'diagnosticsSchema';
+	if (path.startsWith('checksumManifest')) return 'checksumManifest';
+	return 'other';
+}
+
+function sortCountRecord(value) {
+	return Object.fromEntries(Object.entries(value).sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0));
 }
 
 function resolveRepositoryPath(repositoryRoot, value, option) {
