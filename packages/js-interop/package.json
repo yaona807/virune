@@ -17,7 +17,8 @@
 	},
 	"exports": {
 		".": "./dist/src/index.js",
-		"./cached-provider": "./dist/src/cached-provider.js"
+		"./cached-provider": "./dist/src/cached-provider.js",
+		"./classifier": "./dist/src/classifier.js"
 	},
 	"files": [
 		"LICENSE",
