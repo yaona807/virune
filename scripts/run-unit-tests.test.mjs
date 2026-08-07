@@ -91,6 +91,9 @@ test('writes stable per-file timing evidence for a successful selection', async 
 		assert.equal(evidence.schemaVersion, 1);
 		assert.equal(evidence.claim, 'unit-test-file-timings');
 		assert.equal(evidence.status, 'passed');
+		assert.equal(evidence.requestedConcurrency, 1);
+		assert.equal(evidence.effectiveConcurrency, 1);
+		assert.equal(evidence.peakConcurrency, 1);
 		assert.equal(evidence.selectedFileCount, 3);
 		assert.equal(evidence.completedFileCount, 3);
 		assert.equal(evidence.remainingFileCount, 0);
@@ -132,6 +135,8 @@ test('writes partial timing evidence before stopping on the first failure', asyn
 		assert.equal(result.code, 1);
 		const evidence = JSON.parse(await readFile(timingPath, 'utf8'));
 		assert.equal(evidence.status, 'failed');
+		assert.equal(evidence.requestedConcurrency, 1);
+		assert.equal(evidence.peakConcurrency, 1);
 		assert.equal(evidence.selectedFileCount, 3);
 		assert.equal(evidence.completedFileCount, 1);
 		assert.equal(evidence.remainingFileCount, 2);
@@ -139,6 +144,71 @@ test('writes partial timing evidence before stopping on the first failure', asyn
 		assert.equal(evidence.files[0].status, 'failed');
 		assert.equal(evidence.files[0].exitCode, 1);
 		assert.match(`${result.stdout}\n${result.stderr}`, /expected failure/u);
+	});
+});
+
+test('bounded concurrency preserves canonical timing order on success', async () => {
+	await withFixture(async root => {
+		for (const path of [fastPath, secondPath, inventoryPath]) {
+			await writeTestSource(
+				root,
+				path,
+				`import test from 'node:test';\ntest('parallel ${path}', async () => { await new Promise(resolve => setTimeout(resolve, 80)); });\n`,
+			);
+		}
+		const timingPath = join(root, '.cache', 'parallel-unit-timings.json');
+		const result = await run(root, ['--concurrency=2', `--timing-output=${timingPath}`]);
+		assert.equal(result.code, 0, result.stderr);
+		const evidence = JSON.parse(await readFile(timingPath, 'utf8'));
+		assert.equal(evidence.status, 'passed');
+		assert.equal(evidence.requestedConcurrency, 2);
+		assert.equal(evidence.effectiveConcurrency, 2);
+		assert.equal(evidence.peakConcurrency, 2);
+		assert.equal(evidence.completedFileCount, 3);
+		assert.equal(evidence.remainingFileCount, 0);
+		assert.deepEqual(evidence.files.map(entry => entry.path), [fastPath, secondPath, inventoryPath]);
+	});
+});
+
+test('bounded concurrency stops new scheduling after a failure and drains in-flight work', async () => {
+	await withFixture(async root => {
+		await writeTestSource(
+			root,
+			fastPath,
+			"import test from 'node:test';\ntest('FAIL_MARKER', () => { throw new Error('expected parallel failure'); });\n",
+		);
+		await writeTestSource(
+			root,
+			secondPath,
+			"import test from 'node:test';\ntest('SECOND_SLOW', async () => { await new Promise(resolve => setTimeout(resolve, 250)); });\n",
+		);
+		const timingPath = join(root, '.cache', 'parallel-failed-unit-timings.json');
+		const result = await run(root, ['--concurrency=2', '--failure-output-only', `--timing-output=${timingPath}`]);
+		assert.equal(result.code, 1);
+		const evidence = JSON.parse(await readFile(timingPath, 'utf8'));
+		assert.equal(evidence.status, 'failed');
+		assert.equal(evidence.requestedConcurrency, 2);
+		assert.equal(evidence.peakConcurrency, 2);
+		assert.equal(evidence.selectedFileCount, 3);
+		assert.equal(evidence.completedFileCount, 2);
+		assert.equal(evidence.remainingFileCount, 1);
+		assert.deepEqual(evidence.files.map(entry => entry.path), [fastPath, secondPath]);
+		assert.equal(evidence.files[0].status, 'failed');
+		assert.equal(evidence.files[1].status, 'passed');
+		assert.match(`${result.stdout}\n${result.stderr}`, /expected parallel failure/u);
+	});
+});
+
+test('rejects invalid or repeated concurrency values', async () => {
+	await withFixture(async root => {
+		for (const value of ['', '0', '1.5', '5', 'abc']) {
+			const result = await run(root, [`--concurrency=${value}`]);
+			assert.equal(result.code, 1, `expected --concurrency=${value} to fail`);
+			assert.match(result.stderr, /--concurrency requires an integer from 1 through 4\./u);
+		}
+		const repeated = await run(root, ['--concurrency=1', '--concurrency=2']);
+		assert.equal(repeated.code, 1);
+		assert.match(repeated.stderr, /Specify --concurrency at most once\./u);
 	});
 });
 
