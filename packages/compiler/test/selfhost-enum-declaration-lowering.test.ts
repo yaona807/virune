@@ -40,7 +40,6 @@ async function withGeneratedCompiler<T>(
 		return await run(module, kernelInputFromProjectBuild(build));
 	} finally {
 		await rm(root, { recursive: true, force: true });
-		await rm(temporaryRoot, { recursive: true, force: true });
 	}
 }
 
