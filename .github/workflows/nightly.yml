@@ -132,7 +132,7 @@ jobs:
           retention-days: 30
 
   selfhost-stage0-evidence:
-    name: Self-host Stage 0 execution evidence
+    name: Self-host Stage 0 / Stage 1 / Stage 2 evidence
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     continue-on-error: true
@@ -150,6 +150,12 @@ jobs:
           node scripts/run-selfhost-nightly-shadow.mjs
           --candidate-sha=${{ github.sha }}
           --run-id=${{ github.run_id }}-${{ github.run_attempt }}
+      - name: Execute Stage 1 / Stage 2 bootstrap shadow
+        if: always()
+        run: >-
+          npm run selfhost:bootstrap:built --
+          --output=.cache/selfhost-nightly-shadow/bootstrap-stages.json
+          --temporary-root=.cache/selfhost-nightly-shadow/bootstrap-candidates
       - name: Build the Self-host MVP
         if: always()
         run: npm run selfhost:mvp:build
