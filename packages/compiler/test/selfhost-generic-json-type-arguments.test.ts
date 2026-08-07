@@ -33,16 +33,35 @@ const source = [
 	'',
 ].join('\n');
 
-test('generic Json type arguments compile through the generated compiler', async () => {
+test('generic Json type arguments lower to executable generated code', async () => {
 	const loaded = await loadMvpModule();
 	try {
 		const output = await createSelfhostMvpKernel(loaded.module).compile(input(source));
 		assert.equal(output.accepted, true, JSON.stringify(output.diagnostics, null, 2));
 		assert.deepEqual(output.diagnostics, []);
-		const emittedCode = output.emittedModules.map(module => module.code).join('\n');
-		assert.match(emittedCode, /Json\.parse/);
-		assert.match(emittedCode, /Json\.decode/);
-		assert.match(emittedCode, /Json\.encode/);
+		assert.equal(output.emittedModules.length, 1);
+		const emittedCode = output.emittedModules[0]?.code ?? '';
+		assert.match(emittedCode, /JSON\.parse/);
+		assert.match(emittedCode, /JSON\.stringify/);
+		assert.doesNotMatch(emittedCode, /\bJson\.(?:parse|decode|encode)\b/u);
+
+		const emittedPath = join(loaded.root, 'generic-json-generated.mjs');
+		await writeFile(emittedPath, emittedCode);
+		await execFileAsync(process.execPath, ['--check', emittedPath]);
+		const generated = await import(`${pathToFileURL(emittedPath).href}?run=${Date.now()}`) as {
+			readonly main: (encoded: string) => {
+				readonly $tag: string;
+				readonly $values: readonly unknown[];
+			};
+		};
+		assert.deepEqual(generated.main('[1,2]'), {
+			$tag: 'Ok',
+			$values: ['[1,2]'],
+		});
+		const invalid = generated.main('{');
+		assert.equal(invalid.$tag, 'Err');
+		assert.equal(invalid.$values.length, 1);
+		assert.ok(Array.isArray(invalid.$values[0]));
 	} finally {
 		await rm(loaded.root, { recursive: true, force: true });
 	}
