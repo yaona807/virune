@@ -8,15 +8,23 @@ import {
 const candidateSha256 = 'a'.repeat(64);
 const repositoryCommit = 'b'.repeat(40);
 const seedArtifactSha256 = 'e'.repeat(64);
+const stage1Sha256 = '6'.repeat(64);
 
 function validInput(): CleanBootstrapEvidenceInput {
 	return {
-		version: 1,
+		version: 2,
 		candidateSha256,
 		repositoryCommit,
 		checkedAt: '2026-08-01T00:00:00.000Z',
 		workingTreeClean: true,
-		networkMode: 'offline',
+		dependencyMode: 'offline',
+		environment: {
+			profile: 'baseline',
+			timezone: 'UTC',
+			locale: 'C.UTF-8',
+			homeVariant: 'baseline-home',
+			tempVariant: 'baseline-temp',
+		},
 		lockfileSha256: 'c'.repeat(64),
 		seed: {
 			manifestSha256: 'd'.repeat(64),
@@ -25,9 +33,11 @@ function validInput(): CleanBootstrapEvidenceInput {
 		},
 		bootstrap: {
 			seedSha256: seedArtifactSha256,
-			stage1Sha256: candidateSha256,
+			stage1Sha256,
 			stage2Sha256: candidateSha256,
-			equivalent: true,
+			stage3Sha256: candidateSha256,
+			fixedPointEquivalent: true,
+			fixedPointDifferenceCount: 0,
 		},
 		commands: [
 			command('seed-verify', 0, '2'),
@@ -50,7 +60,7 @@ function command(
 	};
 }
 
-test('passing clean bootstrap evidence produces a deterministic rollback gate witness', () => {
+test('passing clean bootstrap evidence accepts Stage 1 transition drift but requires the Stage 2/3 fixed point', () => {
 	const first = evaluateCleanBootstrapEvidence(validInput());
 	const second = evaluateCleanBootstrapEvidence({
 		...validInput(),
@@ -58,6 +68,8 @@ test('passing clean bootstrap evidence produces a deterministic rollback gate wi
 	});
 
 	assert.deepEqual(first, second);
+	assert.notEqual(first.report.bootstrap.stage1Sha256, first.report.bootstrap.stage2Sha256);
+	assert.equal(first.report.bootstrap.stage2Sha256, first.report.bootstrap.stage3Sha256);
 	assert.equal(first.report.status, 'pass');
 	assert.deepEqual(first.report.failures, []);
 	assert.deepEqual(first.report.commands.map(value => value.name), [
@@ -76,19 +88,21 @@ test('passing clean bootstrap evidence produces a deterministic rollback gate wi
 	assert.match(first.sha256, /^[0-9a-f]{64}$/u);
 });
 
-test('operational failures are canonicalized into a failed clean-bootstrap gate', () => {
+test('operational and fixed-point failures are canonicalized into a failed clean-bootstrap gate', () => {
 	const value = validInput();
 	const result = evaluateCleanBootstrapEvidence({
 		...value,
 		candidateSha256: 'f'.repeat(64),
 		workingTreeClean: false,
-		networkMode: 'online',
+		dependencyMode: 'online',
 		seed: { ...value.seed, verified: false },
 		bootstrap: {
 			seedSha256: '7'.repeat(64),
-			stage1Sha256: candidateSha256,
-			stage2Sha256: '9'.repeat(64),
-			equivalent: false,
+			stage1Sha256,
+			stage2Sha256: '8'.repeat(64),
+			stage3Sha256: '9'.repeat(64),
+			fixedPointEquivalent: false,
+			fixedPointDifferenceCount: 3,
 		},
 		commands: [
 			command('install', 0, '1'),
@@ -101,26 +115,26 @@ test('operational failures are canonicalized into a failed clean-bootstrap gate'
 	assert.deepEqual(result.report.failures.map(failure => failure.code), [
 		'CANDIDATE_MISMATCH',
 		'COMMAND_FAILED',
+		'DEPENDENCIES_NOT_OFFLINE',
 		'DIRTY_WORKTREE',
+		'FIXED_POINT_MISMATCH',
 		'MISSING_COMMAND',
-		'NETWORK_NOT_OFFLINE',
 		'SEED_MISMATCH',
 		'SEED_NOT_VERIFIED',
-		'STAGE_MISMATCH',
 	]);
 	assert.deepEqual(result.report.failures.map(failure => failure.path), [
 		'$.candidateSha256',
 		'$.commands.bootstrap.exitCode',
+		'$.dependencyMode',
 		'$.workingTreeClean',
+		'$.bootstrap',
 		'$.commands.seed-verify',
-		'$.networkMode',
 		'$.bootstrap.seedSha256',
 		'$.seed.verified',
-		'$.bootstrap',
 	]);
 });
 
-test('candidate binding requires the exact Stage 2 artifact digest', () => {
+test('candidate binding requires the exact Stage 3 artifact digest', () => {
 	const value = validInput();
 	const result = evaluateCleanBootstrapEvidence({
 		...value,
@@ -131,8 +145,21 @@ test('candidate binding requires the exact Stage 2 artifact digest', () => {
 	assert.deepEqual(result.report.failures, [{
 		code: 'CANDIDATE_MISMATCH',
 		path: '$.candidateSha256',
-		message: 'The clean bootstrap Stage 2 artifact does not match the candidate',
+		message: 'The clean bootstrap Stage 3 artifact does not match the candidate',
 	}]);
+});
+
+test('fixed point requires both exact Stage 2/3 digests and zero normalized differences', () => {
+	const value = validInput();
+	for (const bootstrap of [
+		{ ...value.bootstrap, stage3Sha256: 'f'.repeat(64) },
+		{ ...value.bootstrap, fixedPointEquivalent: false },
+		{ ...value.bootstrap, fixedPointDifferenceCount: 1 },
+	]) {
+		const result = evaluateCleanBootstrapEvidence({ ...value, bootstrap });
+		assert.equal(result.report.status, 'fail');
+		assert.ok(result.report.failures.some(failure => failure.code === 'FIXED_POINT_MISMATCH'));
+	}
 });
 
 test('bootstrap execution is bound to the verified Stage 0 seed artifact', () => {
@@ -167,6 +194,13 @@ test('malformed and ambiguous evidence fails closed', () => {
 	assert.throws(
 		() => evaluateCleanBootstrapEvidence({
 			...value,
+			environment: { ...value.environment, profile: 'unknown' },
+		}),
+		/\$\.environment\.profile must be baseline or perturbed/u,
+	);
+	assert.throws(
+		() => evaluateCleanBootstrapEvidence({
+			...value,
 			commands: [command('install', 0, '1'), command('install', 0, '2')],
 		}),
 		/\$\.commands\[1\]\.name is duplicated/u,
@@ -180,7 +214,7 @@ test('malformed and ambiguous evidence fails closed', () => {
 	);
 });
 
-test('command output digests are included in the evidence identity', () => {
+test('command output digests and environment profile are included in evidence identity', () => {
 	const first = evaluateCleanBootstrapEvidence(validInput());
 	const value = validInput();
 	const second = evaluateCleanBootstrapEvidence({
@@ -189,7 +223,19 @@ test('command output digests are included in the evidence identity', () => {
 			? { ...commandValue, stdoutSha256: '8'.repeat(64) }
 			: commandValue),
 	});
+	const perturbed = evaluateCleanBootstrapEvidence({
+		...value,
+		environment: {
+			profile: 'perturbed',
+			timezone: 'Asia/Tokyo',
+			locale: 'C.UTF-8',
+			homeVariant: 'perturbed-home',
+			tempVariant: 'perturbed-temp',
+		},
+	});
 
 	assert.notEqual(first.sha256, second.sha256);
 	assert.notEqual(first.gate.evidenceSha256, second.gate.evidenceSha256);
+	assert.notEqual(first.sha256, perturbed.sha256);
+	assert.equal(first.report.candidateSha256, perturbed.report.candidateSha256);
 });
