@@ -390,14 +390,17 @@ function requireSuccess(result, label) { if (result.status !== 0) throw new Erro
 function requireGitValue(result, label) { requireSuccess(result, `Read ${label}`); return result.stdout.trim(); }
 function parseBootstrapEvidence(value) {
 	const direct = parseJsonObject(value);
-	if (direct !== null) return direct;
+	if (isFixedSeedBootstrapEvidence(direct)) return direct;
 	if (typeof value !== 'string' || value.trim() === '') return null;
 	const matches = [];
 	for (const line of value.split(/\r?\n/u)) {
 		const parsed = parseJsonObject(line);
-		if (parsed?.schemaVersion === 2 && parsed.claim === 'fixed-seed-bootstrap-fixed-point') matches.push(parsed);
+		if (isFixedSeedBootstrapEvidence(parsed)) matches.push(parsed);
 	}
 	return matches.length === 1 ? matches[0] : null;
+}
+function isFixedSeedBootstrapEvidence(value) {
+	return value?.schemaVersion === 2 && value.claim === 'fixed-seed-bootstrap-fixed-point';
 }
 function parseJsonObject(value) {
 	if (typeof value !== 'string' || value.trim() === '') return null;
