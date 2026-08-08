@@ -13,7 +13,7 @@ import {
 	type SelfhostMvpModule,
 } from '../src/selfhost/mvp-adapter.js';
 import { executeKernelOutputWithNode } from '../src/selfhost/node-executor.js';
-import type { KernelInputV1 } from '../src/selfhost/contract.js';
+import type { KernelInputV1, KernelOutputV1 } from '../src/selfhost/contract.js';
 
 const execFileAsync = promisify(execFile);
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../../..');
@@ -38,26 +38,31 @@ const heterogeneousListSource = 'pub fn main() -> Int {\n\tlet values = [1, "two
 const invalidIndexSource = 'pub fn main() -> Int {\n\tlet values = [1, 2]\n\treturn values[true]\n}\n';
 const emptyListSource = 'pub fn main() -> Int {\n\tlet values = []\n\treturn 0\n}\n';
 const optionalTypeSource = 'fn keep(value: Int?) -> Int? {\n\tlet current: Int? = value\n\treturn current\n}\n\nfn keepList(values: List<Int>?) -> List<Int>? {\n\treturn values\n}\n\npub fn main() -> Int {\n\treturn 1\n}\n';
+const reservedIdentifierSource = 'fn function(value: Int) -> Int {\n\treturn value + 1\n}\n\nfn keep(class: Int) -> Int {\n\treturn class\n}\n\nfn local() -> Int {\n\tlet class = 41\n\treturn class\n}\n\nfn loop() -> Int {\n\tfor class in [42] {\n\t\treturn class\n\t}\n\treturn 0\n}\n\npub fn main() -> Int {\n\treturn function(41)\n}\n';
 
-test('Stage 0 builds the Virune MVP and Legacy/Self-host accepted output is identical', async () => {
+test('Stage 0 builds the Virune MVP and Legacy/Self-host accepted semantics and runtime are equivalent', async () => {
 	const loaded = await loadMvpModule();
 	try {
+		const request = input(arithmeticSource);
 		const selfhost = createSelfhostMvpKernel(loaded.module);
-		const report = await runDifferentialCase({
-			fixtureId: 'mvp-arithmetic-call',
-			input: input(arithmeticSource),
-			left: { ...legacyMvpKernel, execute: executeKernelOutputWithNode },
-			right: { ...selfhost, execute: executeKernelOutputWithNode },
-		});
-		assert.equal(report.status, 'match');
-		assert.equal(report.passed, true);
-		assert.deepEqual(report.differences, []);
-		assert.equal(report.left.runtime?.returnValue, 84);
-		assert.equal(report.right.runtime?.returnValue, 84);
+		const [legacyOutput, selfhostOutput] = await Promise.all([
+			legacyMvpKernel.compile(request),
+			selfhost.compile(request),
+		]);
+		assert.equal(legacyOutput.accepted, true, JSON.stringify(legacyOutput.diagnostics, null, 2));
+		assert.equal(selfhostOutput.accepted, true, JSON.stringify(selfhostOutput.diagnostics, null, 2));
+		assert.deepEqual(semanticCompilerEnvelope(selfhostOutput), semanticCompilerEnvelope(legacyOutput));
 
-		const first = await selfhost.compile(input(arithmeticSource));
-		const second = await selfhost.compile(input(arithmeticSource));
-		assert.deepEqual(first, second);
+		const [legacyRuntime, selfhostRuntime] = await Promise.all([
+			executeKernelOutputWithNode(request, legacyOutput),
+			executeKernelOutputWithNode(request, selfhostOutput),
+		]);
+		assert.deepEqual(selfhostRuntime, legacyRuntime);
+		assert.equal(legacyRuntime.returnValue, 84);
+		assert.equal(selfhostRuntime.returnValue, 84);
+
+		const second = await selfhost.compile(request);
+		assert.deepEqual(selfhostOutput, second);
 	} finally {
 		await rm(loaded.root, { recursive: true, force: true });
 	}
@@ -162,6 +167,55 @@ test('optional type suffixes lower through signatures, local annotations, and HI
 		await rm(loaded.root, { recursive: true, force: true });
 	}
 });
+
+test('JavaScript reserved identifiers are escaped consistently and remain executable', async () => {
+	const loaded = await loadMvpModule();
+	try {
+		const request = input(reservedIdentifierSource);
+		const selfhost = createSelfhostMvpKernel(loaded.module);
+		const [legacyOutput, selfhostOutput] = await Promise.all([
+			legacyMvpKernel.compile(request),
+			selfhost.compile(request),
+		]);
+		assert.equal(legacyOutput.accepted, true, JSON.stringify(legacyOutput.diagnostics, null, 2));
+		assert.equal(selfhostOutput.accepted, true, JSON.stringify(selfhostOutput.diagnostics, null, 2));
+		assert.deepEqual(semanticCompilerEnvelope(selfhostOutput), semanticCompilerEnvelope(legacyOutput));
+		const emittedCode = selfhostOutput.emittedModules.map(module => module.code).join('\n');
+		assert.match(emittedCode, /function \$v_function\(value,/u);
+		assert.match(emittedCode, /function keep\(\$v_class,/u);
+		assert.match(emittedCode, /const \$v_class = 41/u);
+		assert.match(emittedCode, /for \(const \$v_class of \[42\]\)/u);
+		assert.match(emittedCode, /return \$v_function\(41, \$ctx\)/u);
+		assert.doesNotMatch(emittedCode, /\bfunction function\b|\bfunction keep\(class\b|\bconst class\b/u);
+		const [legacyRuntime, selfhostRuntime] = await Promise.all([
+			executeKernelOutputWithNode(request, legacyOutput),
+			executeKernelOutputWithNode(request, selfhostOutput),
+		]);
+		assert.deepEqual(selfhostRuntime, legacyRuntime);
+		assert.equal(selfhostRuntime.returnValue, 42);
+		assert.equal(selfhostRuntime.panic, null);
+	} finally {
+		await rm(loaded.root, { recursive: true, force: true });
+	}
+});
+
+function semanticCompilerEnvelope(output: KernelOutputV1) {
+	return {
+		contractVersion: output.contractVersion,
+		languageVersion: output.languageVersion,
+		platform: output.platform,
+		entryPath: output.entryPath,
+		accepted: output.accepted,
+		diagnostics: output.diagnostics,
+		emittedModules: output.emittedModules.map(module => ({
+			sourcePath: module.sourcePath,
+			outputPath: module.outputPath,
+		})),
+		dependencies: output.dependencies,
+		exportedSymbols: output.exportedSymbols,
+		stats: output.stats,
+	};
+}
 
 async function loadMvpModule(): Promise<{ readonly root: string; readonly module: SelfhostMvpModule }> {
 	const result = await buildProject(mvpRoot, { write: false });

@@ -4,6 +4,7 @@ import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import test from 'node:test';
+import './run-selfhost-fixed-seed-bootstrap.test.mjs';
 import { verifySelfhostSeed } from './verify-selfhost-seed.mjs';
 
 const artifactBytes = Buffer.from('reviewed-stage-zero-seed');
