@@ -38,7 +38,7 @@ const heterogeneousListSource = 'pub fn main() -> Int {\n\tlet values = [1, "two
 const invalidIndexSource = 'pub fn main() -> Int {\n\tlet values = [1, 2]\n\treturn values[true]\n}\n';
 const emptyListSource = 'pub fn main() -> Int {\n\tlet values = []\n\treturn 0\n}\n';
 const optionalTypeSource = 'fn keep(value: Int?) -> Int? {\n\tlet current: Int? = value\n\treturn current\n}\n\nfn keepList(values: List<Int>?) -> List<Int>? {\n\treturn values\n}\n\npub fn main() -> Int {\n\treturn 1\n}\n';
-const reservedIdentifierSource = 'fn function(class: Int) -> Int {\n\treturn class + 1\n}\n\npub fn main() -> Int {\n\tlet class = function(41)\n\tfor function in [class] {\n\t\treturn function\n\t}\n\treturn 0\n}\n';
+const reservedIdentifierSource = 'fn function(value: Int) -> Int {\n\treturn value + 1\n}\n\nfn keep(class: Int) -> Int {\n\treturn class\n}\n\nfn local() -> Int {\n\tlet class = 41\n\treturn class\n}\n\nfn loop() -> Int {\n\tfor class in [42] {\n\t\treturn class\n\t}\n\treturn 0\n}\n\npub fn main() -> Int {\n\treturn function(41)\n}\n';
 
 test('Stage 0 builds the Virune MVP and Legacy/Self-host accepted semantics and runtime are equivalent', async () => {
 	const loaded = await loadMvpModule();
@@ -181,10 +181,12 @@ test('JavaScript reserved identifiers are escaped consistently and remain execut
 		assert.equal(selfhostOutput.accepted, true, JSON.stringify(selfhostOutput.diagnostics, null, 2));
 		assert.deepEqual(semanticCompilerEnvelope(selfhostOutput), semanticCompilerEnvelope(legacyOutput));
 		const emittedCode = selfhostOutput.emittedModules.map(module => module.code).join('\n');
-		assert.match(emittedCode, /function \$v_function\(\$v_class,/u);
-		assert.match(emittedCode, /const \$v_class = \$v_function\(41, \$ctx\)/u);
-		assert.match(emittedCode, /for \(const \$v_function of \[\$v_class\]\)/u);
-		assert.doesNotMatch(emittedCode, /\bfunction function\b|\bconst class\b|\bconst function\b/u);
+		assert.match(emittedCode, /function \$v_function\(value,/u);
+		assert.match(emittedCode, /function keep\(\$v_class,/u);
+		assert.match(emittedCode, /const \$v_class = 41/u);
+		assert.match(emittedCode, /for \(const \$v_class of \[42\]\)/u);
+		assert.match(emittedCode, /return \$v_function\(41, \$ctx\)/u);
+		assert.doesNotMatch(emittedCode, /\bfunction function\b|\bfunction keep\(class\b|\bconst class\b/u);
 		const [legacyRuntime, selfhostRuntime] = await Promise.all([
 			executeKernelOutputWithNode(request, legacyOutput),
 			executeKernelOutputWithNode(request, selfhostOutput),
