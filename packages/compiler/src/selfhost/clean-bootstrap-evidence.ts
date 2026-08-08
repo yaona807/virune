@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 
-export const CLEAN_BOOTSTRAP_EVIDENCE_VERSION = 1 as const;
+export const CLEAN_BOOTSTRAP_EVIDENCE_VERSION = 2 as const;
 export const REQUIRED_CLEAN_BOOTSTRAP_COMMANDS = [
 	'install',
 	'seed-verify',
@@ -8,15 +8,16 @@ export const REQUIRED_CLEAN_BOOTSTRAP_COMMANDS = [
 ] as const;
 
 export type CleanBootstrapCommandName = typeof REQUIRED_CLEAN_BOOTSTRAP_COMMANDS[number];
+export type CleanBootstrapEnvironmentProfile = 'baseline' | 'perturbed';
 export type CleanBootstrapFailureCode =
 	| 'CANDIDATE_MISMATCH'
 	| 'COMMAND_FAILED'
+	| 'DEPENDENCIES_NOT_OFFLINE'
 	| 'DIRTY_WORKTREE'
+	| 'FIXED_POINT_MISMATCH'
 	| 'MISSING_COMMAND'
-	| 'NETWORK_NOT_OFFLINE'
 	| 'SEED_MISMATCH'
-	| 'SEED_NOT_VERIFIED'
-	| 'STAGE_MISMATCH';
+	| 'SEED_NOT_VERIFIED';
 
 export interface CleanBootstrapCommandInput {
 	readonly name: CleanBootstrapCommandName;
@@ -25,13 +26,22 @@ export interface CleanBootstrapCommandInput {
 	readonly stderrSha256: string;
 }
 
+export interface CleanBootstrapEnvironmentInput {
+	readonly profile: CleanBootstrapEnvironmentProfile;
+	readonly timezone: string;
+	readonly locale: string;
+	readonly homeVariant: string;
+	readonly tempVariant: string;
+}
+
 export interface CleanBootstrapEvidenceInput {
 	readonly version: typeof CLEAN_BOOTSTRAP_EVIDENCE_VERSION;
 	readonly candidateSha256: string;
 	readonly repositoryCommit: string;
 	readonly checkedAt: string;
 	readonly workingTreeClean: boolean;
-	readonly networkMode: 'offline' | 'online';
+	readonly dependencyMode: 'offline' | 'online';
+	readonly environment: CleanBootstrapEnvironmentInput;
 	readonly lockfileSha256: string;
 	readonly seed: {
 		readonly manifestSha256: string;
@@ -42,7 +52,9 @@ export interface CleanBootstrapEvidenceInput {
 		readonly seedSha256: string;
 		readonly stage1Sha256: string;
 		readonly stage2Sha256: string;
-		readonly equivalent: boolean;
+		readonly stage3Sha256: string;
+		readonly fixedPointEquivalent: boolean;
+		readonly fixedPointDifferenceCount: number;
 	};
 	readonly commands: readonly CleanBootstrapCommandInput[];
 }
@@ -61,7 +73,8 @@ export interface CleanBootstrapEvidenceReport {
 	readonly status: 'pass' | 'fail';
 	readonly failures: readonly CleanBootstrapFailure[];
 	readonly workingTreeClean: boolean;
-	readonly networkMode: 'offline' | 'online';
+	readonly dependencyMode: 'offline' | 'online';
+	readonly environment: CleanBootstrapEnvironmentInput;
 	readonly lockfileSha256: string;
 	readonly seed: CleanBootstrapEvidenceInput['seed'];
 	readonly bootstrap: CleanBootstrapEvidenceInput['bootstrap'];
@@ -85,8 +98,9 @@ export interface CleanBootstrapEvidenceResult {
 
 /**
  * Validate host-collected clean-clone execution facts and produce a candidate-
- * bound rollback gate witness. Filesystem, process, clone, and network isolation
- * remain host responsibilities; this evaluator is deterministic and data-only.
+ * bound bootstrap witness. The host proves fresh-checkout execution and forces
+ * dependency tooling into offline mode. This evaluator deliberately does not
+ * claim OS-level network isolation; that would require a separate host proof.
  */
 export function evaluateCleanBootstrapEvidence(value: unknown): CleanBootstrapEvidenceResult {
 	const input = validateInput(value);
@@ -94,8 +108,8 @@ export function evaluateCleanBootstrapEvidence(value: unknown): CleanBootstrapEv
 	if (!input.workingTreeClean) {
 		fail(failures, 'DIRTY_WORKTREE', '$.workingTreeClean', 'The bootstrap checkout is not clean');
 	}
-	if (input.networkMode !== 'offline') {
-		fail(failures, 'NETWORK_NOT_OFFLINE', '$.networkMode', 'The bootstrap run did not use offline mode');
+	if (input.dependencyMode !== 'offline') {
+		fail(failures, 'DEPENDENCIES_NOT_OFFLINE', '$.dependencyMode', 'Dependency tooling was not forced into offline mode');
 	}
 	if (!input.seed.verified) {
 		fail(failures, 'SEED_NOT_VERIFIED', '$.seed.verified', 'The fixed Stage 0 seed was not verified');
@@ -109,17 +123,23 @@ export function evaluateCleanBootstrapEvidence(value: unknown): CleanBootstrapEv
 		);
 	}
 	if (
-		!input.bootstrap.equivalent
-		|| input.bootstrap.stage1Sha256 !== input.bootstrap.stage2Sha256
+		!input.bootstrap.fixedPointEquivalent
+		|| input.bootstrap.fixedPointDifferenceCount !== 0
+		|| input.bootstrap.stage2Sha256 !== input.bootstrap.stage3Sha256
 	) {
-		fail(failures, 'STAGE_MISMATCH', '$.bootstrap', 'Stage 1 and Stage 2 artifacts are not equivalent');
+		fail(
+			failures,
+			'FIXED_POINT_MISMATCH',
+			'$.bootstrap',
+			'Stage 2 and Stage 3 did not reach an exact bootstrap fixed point',
+		);
 	}
-	if (input.candidateSha256 !== input.bootstrap.stage2Sha256) {
+	if (input.candidateSha256 !== input.bootstrap.stage3Sha256) {
 		fail(
 			failures,
 			'CANDIDATE_MISMATCH',
 			'$.candidateSha256',
-			'The clean bootstrap Stage 2 artifact does not match the candidate',
+			'The clean bootstrap Stage 3 artifact does not match the candidate',
 		);
 	}
 	const commandByName = new Map(input.commands.map(command => [command.name, command] as const));
@@ -140,7 +160,8 @@ export function evaluateCleanBootstrapEvidence(value: unknown): CleanBootstrapEv
 		status: sortedFailures.length === 0 ? 'pass' : 'fail',
 		failures: sortedFailures,
 		workingTreeClean: input.workingTreeClean,
-		networkMode: input.networkMode,
+		dependencyMode: input.dependencyMode,
+		environment: input.environment,
 		lockfileSha256: input.lockfileSha256,
 		seed: input.seed,
 		bootstrap: input.bootstrap,
@@ -170,7 +191,8 @@ function validateInput(value: unknown): CleanBootstrapEvidenceInput {
 		'repositoryCommit',
 		'checkedAt',
 		'workingTreeClean',
-		'networkMode',
+		'dependencyMode',
+		'environment',
 		'lockfileSha256',
 		'seed',
 		'bootstrap',
@@ -181,9 +203,21 @@ function validateInput(value: unknown): CleanBootstrapEvidenceInput {
 	const repositoryCommit = sha1Value(input.repositoryCommit, '$.repositoryCommit');
 	const checkedAt = timestamp(input.checkedAt, '$.checkedAt');
 	const workingTreeClean = boolean(input.workingTreeClean, '$.workingTreeClean');
-	if (input.networkMode !== 'offline' && input.networkMode !== 'online') {
-		throw new Error('$.networkMode must be offline or online');
+	if (input.dependencyMode !== 'offline' && input.dependencyMode !== 'online') {
+		throw new Error('$.dependencyMode must be offline or online');
 	}
+	const environmentValue = record(input.environment, '$.environment');
+	exactKeys(environmentValue, ['profile', 'timezone', 'locale', 'homeVariant', 'tempVariant'], '$.environment');
+	if (environmentValue.profile !== 'baseline' && environmentValue.profile !== 'perturbed') {
+		throw new Error('$.environment.profile must be baseline or perturbed');
+	}
+	const environment: CleanBootstrapEnvironmentInput = {
+		profile: environmentValue.profile,
+		timezone: nonEmptyString(environmentValue.timezone, '$.environment.timezone'),
+		locale: nonEmptyString(environmentValue.locale, '$.environment.locale'),
+		homeVariant: nonEmptyString(environmentValue.homeVariant, '$.environment.homeVariant'),
+		tempVariant: nonEmptyString(environmentValue.tempVariant, '$.environment.tempVariant'),
+	};
 	const lockfileSha256 = sha256Value(input.lockfileSha256, '$.lockfileSha256');
 	const seedValue = record(input.seed, '$.seed');
 	exactKeys(seedValue, ['manifestSha256', 'artifactSha256', 'verified'], '$.seed');
@@ -193,12 +227,21 @@ function validateInput(value: unknown): CleanBootstrapEvidenceInput {
 		verified: boolean(seedValue.verified, '$.seed.verified'),
 	};
 	const bootstrapValue = record(input.bootstrap, '$.bootstrap');
-	exactKeys(bootstrapValue, ['seedSha256', 'stage1Sha256', 'stage2Sha256', 'equivalent'], '$.bootstrap');
+	exactKeys(
+		bootstrapValue,
+		['seedSha256', 'stage1Sha256', 'stage2Sha256', 'stage3Sha256', 'fixedPointEquivalent', 'fixedPointDifferenceCount'],
+		'$.bootstrap',
+	);
 	const bootstrap = {
 		seedSha256: sha256Value(bootstrapValue.seedSha256, '$.bootstrap.seedSha256'),
 		stage1Sha256: sha256Value(bootstrapValue.stage1Sha256, '$.bootstrap.stage1Sha256'),
 		stage2Sha256: sha256Value(bootstrapValue.stage2Sha256, '$.bootstrap.stage2Sha256'),
-		equivalent: boolean(bootstrapValue.equivalent, '$.bootstrap.equivalent'),
+		stage3Sha256: sha256Value(bootstrapValue.stage3Sha256, '$.bootstrap.stage3Sha256'),
+		fixedPointEquivalent: boolean(bootstrapValue.fixedPointEquivalent, '$.bootstrap.fixedPointEquivalent'),
+		fixedPointDifferenceCount: nonNegativeSafeInteger(
+			bootstrapValue.fixedPointDifferenceCount,
+			'$.bootstrap.fixedPointDifferenceCount',
+		),
 	};
 	if (!Array.isArray(input.commands)) throw new Error('$.commands must be an array');
 	const seen = new Set<CleanBootstrapCommandName>();
@@ -225,7 +268,8 @@ function validateInput(value: unknown): CleanBootstrapEvidenceInput {
 		repositoryCommit,
 		checkedAt,
 		workingTreeClean,
-		networkMode: input.networkMode,
+		dependencyMode: input.dependencyMode,
+		environment,
 		lockfileSha256,
 		seed,
 		bootstrap,
@@ -257,6 +301,11 @@ function exactKeys(value: Record<string, unknown>, keys: readonly string[], path
 
 function boolean(value: unknown, path: string): boolean {
 	if (typeof value !== 'boolean') throw new Error(`${path} must be a boolean`);
+	return value;
+}
+
+function nonEmptyString(value: unknown, path: string): string {
+	if (typeof value !== 'string' || value.trim() === '') throw new Error(`${path} must be a non-empty string`);
 	return value;
 }
 
