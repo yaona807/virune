@@ -72,6 +72,12 @@ export async function runSelfhostReleaseGate({
 		results.push(record);
 		if (!record.passed) failed = true;
 	}
+	const requiredStepsPassed = results.length === REQUIRED_SELFHOST_RELEASE_STEPS.length
+		&& results.every(step => step.passed)
+		&& REQUIRED_SELFHOST_RELEASE_STEPS.every((step, index) => results[index]?.id === step.id);
+	const evidenceConsistency = requiredStepsPassed
+		? validateEvidenceConsistency(results)
+		: { checked: false, passed: false, reason: 'Cross-step evidence consistency was not evaluated because required release steps did not all pass in canonical order.' };
 	const report = {
 		schemaVersion: SELFHOST_RELEASE_GATE_SCHEMA_VERSION,
 		claim: 'selfhost-stable-release-gate-core',
@@ -80,13 +86,15 @@ export async function runSelfhostReleaseGate({
 		policy: {
 			version: 1,
 			failClosed: true,
-			requiredSteps: steps.map(step => step.id),
+			requiredSteps: REQUIRED_SELFHOST_RELEASE_STEPS.map(step => step.id),
 			fixedPoint: { from: 'stage2', to: 'stage3', requireEquivalent: true, requireShaEquality: true, differenceCount: 0 },
 			cleanBootstrap: { dependencyMode: 'offline' },
+			evidenceConsistency: { required: true },
 			productionDefaultChange: false,
 		},
 		steps: results,
-		passed: results.length === steps.length && results.every(step => step.passed),
+		evidenceConsistency,
+		passed: requiredStepsPassed && evidenceConsistency.passed,
 	};
 	const serialized = JSON.stringify(report);
 	return { ...report, evidenceSha256: sha256(serialized) };
@@ -115,13 +123,17 @@ export function createStepRecord(id, execution) {
 		return { ...base, status: 'fail', passed: false, reason: parsed.reason };
 	}
 	const semantic = validateStepEvidence(id, parsed.evidence);
-	return {
+	const record = {
 		...base,
 		status: semantic.passed ? 'pass' : 'fail',
 		passed: semantic.passed,
 		evidenceSha256: sha256(JSON.stringify(parsed.evidence)),
 		...(semantic.passed ? {} : { reason: semantic.reason }),
 	};
+	if (semantic.passed) {
+		Object.defineProperty(record, 'evidence', { value: parsed.evidence, enumerable: false });
+	}
+	return record;
 }
 
 export function parseStepEvidence(id, stdout) {
@@ -198,6 +210,7 @@ export function validateStepEvidence(id, value) {
 			&& value.productionEligible === false
 			&& value.status === 'pass'
 			&& value.passed === true
+			&& isGitSha(value.repositoryCommit)
 			&& value.workingTreeClean === true
 			&& value.dependencyMode === 'offline'
 			&& isSha256(value.candidateSha256)
@@ -233,6 +246,39 @@ export function validateStepEvidence(id, value) {
 		return passed ? { passed: true } : { passed: false, reason: 'Legacy rollback evidence is not successful.' };
 	}
 	return { passed: false, reason: `Unknown self-host release step: ${id}` };
+}
+
+export function validateEvidenceConsistency(results) {
+	const byId = new Map(results.map(result => [result.id, result]));
+	const seedVerify = byId.get('seed-verify')?.evidence;
+	const fixedSeed = byId.get('fixed-seed-bootstrap')?.evidence;
+	const cleanBootstrap = byId.get('clean-bootstrap')?.evidence;
+	if (!isObject(seedVerify) || !isObject(fixedSeed) || !isObject(cleanBootstrap)) {
+		return { checked: true, passed: false, reason: 'Required cross-step evidence values are unavailable.' };
+	}
+	const bindings = [
+		['fixed Seed artifact SHA-256', seedVerify.sha256, fixedSeed.seed?.artifactSha256, cleanBootstrap.seed?.artifactSha256],
+		['fixed Seed manifest SHA-256', fixedSeed.seed?.manifestSha256, cleanBootstrap.seed?.manifestSha256],
+		['Stage 1 SHA-256', fixedSeed.stage1?.sha256, cleanBootstrap.bootstrap?.stage1Sha256],
+		['Stage 2 SHA-256', fixedSeed.stage2?.sha256, cleanBootstrap.bootstrap?.stage2Sha256],
+		['Stage 3 SHA-256', fixedSeed.stage3?.sha256, cleanBootstrap.bootstrap?.stage3Sha256, cleanBootstrap.candidateSha256],
+	];
+	for (const [label, ...values] of bindings) {
+		if (!values.every(isSha256) || new Set(values).size !== 1) {
+			return { checked: true, passed: false, reason: `Cross-step evidence mismatch: ${label}.` };
+		}
+	}
+	return {
+		checked: true,
+		passed: true,
+		bindings: {
+			seedArtifactSha256: seedVerify.sha256,
+			seedManifestSha256: fixedSeed.seed.manifestSha256,
+			stage1Sha256: fixedSeed.stage1.sha256,
+			stage2Sha256: fixedSeed.stage2.sha256,
+			stage3Sha256: fixedSeed.stage3.sha256,
+		},
+	};
 }
 
 export function helpText() {
@@ -302,6 +348,7 @@ function canonicalTimestamp(value) {
 function sha256(value) { return createHash('sha256').update(value, 'utf8').digest('hex'); }
 function isObject(value) { return value !== null && typeof value === 'object' && !Array.isArray(value); }
 function isSha256(value) { return typeof value === 'string' && /^[0-9a-f]{64}$/u.test(value); }
+function isGitSha(value) { return typeof value === 'string' && /^[0-9a-f]{40}$/u.test(value); }
 function nonNegativeInteger(value) { return Number.isSafeInteger(value) && value >= 0; }
 function nonEmptyString(value) { return typeof value === 'string' && value.length > 0; }
 function nonEmpty(value, name) {
