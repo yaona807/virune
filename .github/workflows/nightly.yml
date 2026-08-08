@@ -132,9 +132,9 @@ jobs:
           retention-days: 30
 
   selfhost-stage0-evidence:
-    name: Self-host Stage 0 execution evidence
+    name: Self-host Stage 0 / fixed-point shadow evidence
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 180
     continue-on-error: true
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -150,6 +150,12 @@ jobs:
           node scripts/run-selfhost-nightly-shadow.mjs
           --candidate-sha=${{ github.sha }}
           --run-id=${{ github.run_id }}-${{ github.run_attempt }}
+      - name: Execute fixed-Seed Stage 1 -> Stage 2 transition and Stage 2 -> Stage 3 fixed-point shadow
+        if: always()
+        run: >-
+          node scripts/run-selfhost-fixed-seed-bootstrap.mjs
+          --output=.cache/selfhost-nightly-shadow/fixed-seed-bootstrap.json
+          --temporary-root=.cache/selfhost-nightly-shadow/fixed-seed-bootstrap
       - name: Build the Self-host MVP
         if: always()
         run: npm run selfhost:mvp:build
