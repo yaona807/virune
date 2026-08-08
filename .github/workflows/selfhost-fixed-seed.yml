@@ -38,7 +38,7 @@ jobs:
   fixed-seed-bootstrap:
     name: Fixed Seed -> Stage 1 -> Stage 2 -> Stage 3 fixed point
     runs-on: ubuntu-24.04
-    timeout-minutes: 90
+    timeout-minutes: 180
     env:
       VIRUNE_CI_JOB: selfhost-fixed-seed-bootstrap
     steps:
@@ -66,6 +66,7 @@ jobs:
           name: selfhost-fixed-seed-bootstrap-${{ github.sha }}
           path: |
             .cache/selfhost/fixed-seed-bootstrap.json
+            .cache/selfhost/fixed-seed-bootstrap.progress.json
             .cache/ci-timings/
             .cache/ci-failures/
           if-no-files-found: warn
