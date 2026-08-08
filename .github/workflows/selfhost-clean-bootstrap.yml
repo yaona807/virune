@@ -28,7 +28,6 @@ jobs:
       - name: Execute clean bootstrap in baseline environment
         run: >-
           node scripts/run-selfhost-clean-bootstrap.mjs
-          --artifact=.cache/selfhost-seed/virune-compiler-1.0.0.tgz
           --environment-profile=baseline
           --working-root=.cache/selfhost/clean-bootstrap-baseline
           --output=.cache/selfhost/clean-bootstrap-baseline.json
@@ -59,7 +58,6 @@ jobs:
       - name: Execute clean bootstrap in perturbed environment
         run: >-
           node scripts/run-selfhost-clean-bootstrap.mjs
-          --artifact=.cache/selfhost-seed/virune-compiler-1.0.0.tgz
           --environment-profile=perturbed
           --working-root=.cache/selfhost/clean-bootstrap-perturbed
           --output=.cache/selfhost/clean-bootstrap-perturbed.json
