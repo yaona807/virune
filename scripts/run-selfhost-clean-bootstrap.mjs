@@ -70,7 +70,7 @@ export function createCleanBootstrapInput({
 	const seedVerified = seedExecution.status === 0
 		&& seedEvidence?.passed === true
 		&& seedEvidence.sha256 === artifactSha256;
-	const bootstrap = bootstrapEvidence ?? parseJsonObject(bootstrapExecution.stdout);
+	const bootstrap = bootstrapEvidence ?? parseBootstrapEvidence(bootstrapExecution.stdout);
 	const stage1Sha256 = validSha(bootstrap?.stage1?.sha256) ? bootstrap.stage1.sha256 : zeroSha;
 	const stage2Sha256 = validSha(bootstrap?.stage2?.sha256) ? bootstrap.stage2.sha256 : zeroSha;
 	const stage3Sha256 = validSha(bootstrap?.stage3?.sha256) ? bootstrap.stage3.sha256 : zeroSha;
@@ -388,6 +388,17 @@ function requireEnvironmentProfile(value) {
 function skippedExecution(reason) { return { status: 1, stdout: '', stderr: `SKIPPED: ${reason}` }; }
 function requireSuccess(result, label) { if (result.status !== 0) throw new Error(`${label} failed: ${(result.stderr || result.stdout).trim()}`); }
 function requireGitValue(result, label) { requireSuccess(result, `Read ${label}`); return result.stdout.trim(); }
+function parseBootstrapEvidence(value) {
+	const direct = parseJsonObject(value);
+	if (direct !== null) return direct;
+	if (typeof value !== 'string' || value.trim() === '') return null;
+	const matches = [];
+	for (const line of value.split(/\r?\n/u)) {
+		const parsed = parseJsonObject(line);
+		if (parsed?.schemaVersion === 2 && parsed.claim === 'fixed-seed-bootstrap-fixed-point') matches.push(parsed);
+	}
+	return matches.length === 1 ? matches[0] : null;
+}
 function parseJsonObject(value) {
 	if (typeof value !== 'string' || value.trim() === '') return null;
 	try {
