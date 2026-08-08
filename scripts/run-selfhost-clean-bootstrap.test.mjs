@@ -31,6 +31,9 @@ function execution(status, stdout = '', stderr = '') { return { status, stdout, 
 function command(name) { return { name, exitCode: 0, stdoutSha256: 'e'.repeat(64), stderrSha256: 'f'.repeat(64) }; }
 function fixedPointEvidence() {
 	return {
+		schemaVersion: 2,
+		claim: 'fixed-seed-bootstrap-fixed-point',
+		productionEligible: false,
 		status: 'match',
 		seed: { artifactSha256: SEED },
 		stage1: { sha256: STAGE1 },
@@ -70,6 +73,55 @@ test('clean bootstrap input binds verified Seed, exact commit and Stage 2/3 fixe
 	assert.equal(input.bootstrap.fixedPointDifferenceCount, 0);
 	assert.equal(input.candidateSha256, STAGE);
 	assert.equal(input.repositoryCommit, COMMIT);
+});
+
+test('progress-framed fixed Seed stdout preserves the exact Stage 2/3 fixed point', () => {
+	const framed = [
+		'FIXED_SEED_PROGRESS phase=stage2-complete elapsedMs=3132877',
+		'FIXED_SEED_PROGRESS phase=stage3-complete elapsedMs=6026164',
+		JSON.stringify(fixedPointEvidence()),
+		'',
+	].join('\n');
+	const input = createCleanBootstrapInput({
+		repositoryCommit: COMMIT,
+		checkedAt: '2026-08-07T00:00:00.000Z',
+		workingTreeClean: true,
+		lockfileSha256: LOCK,
+		manifestSha256: MANIFEST,
+		artifactSha256: SEED,
+		seedExecution: execution(0, JSON.stringify({ passed: true, sha256: SEED })),
+		bootstrapExecution: execution(0, framed),
+		environment: baselineEnvironment,
+		commands: [command('install'), command('seed-verify'), command('bootstrap')],
+	});
+	assert.equal(input.bootstrap.stage1Sha256, STAGE1);
+	assert.equal(input.bootstrap.stage2Sha256, STAGE);
+	assert.equal(input.bootstrap.stage3Sha256, STAGE);
+	assert.equal(input.bootstrap.fixedPointEquivalent, true);
+	assert.equal(input.bootstrap.fixedPointDifferenceCount, 0);
+	assert.equal(input.candidateSha256, STAGE);
+});
+
+test('ambiguous progress-framed fixed Seed stdout fails closed', () => {
+	const evidence = JSON.stringify(fixedPointEvidence());
+	const input = createCleanBootstrapInput({
+		repositoryCommit: COMMIT,
+		checkedAt: '2026-08-07T00:00:00.000Z',
+		workingTreeClean: true,
+		lockfileSha256: LOCK,
+		manifestSha256: MANIFEST,
+		artifactSha256: SEED,
+		seedExecution: execution(0, JSON.stringify({ passed: true, sha256: SEED })),
+		bootstrapExecution: execution(0, `FIXED_SEED_PROGRESS phase=stage3-complete elapsedMs=1\n${evidence}\n${evidence}\n`),
+		environment: baselineEnvironment,
+		commands: [command('install'), command('seed-verify'), command('bootstrap')],
+	});
+	assert.equal(input.candidateSha256, '0'.repeat(64));
+	assert.equal(input.bootstrap.stage1Sha256, '0'.repeat(64));
+	assert.equal(input.bootstrap.stage2Sha256, '0'.repeat(64));
+	assert.equal(input.bootstrap.stage3Sha256, '0'.repeat(64));
+	assert.equal(input.bootstrap.fixedPointEquivalent, false);
+	assert.equal(input.bootstrap.fixedPointDifferenceCount, Number.MAX_SAFE_INTEGER);
 });
 
 test('blocked or incomplete Stage 3 evidence fails closed in the evaluator input', () => {
@@ -165,7 +217,9 @@ test('runner proves a clean local clone with dependency-offline commands and fix
 			if (joined === 'git rev-parse HEAD') return execution(0, `${COMMIT}\n`);
 			if (cmd[0] === 'git' && cmd[1] === 'status') return execution(0, '');
 			if (cmd[0] === 'node' && cmd[1] === 'scripts/verify-selfhost-seed.mjs') return execution(0, JSON.stringify({ passed: true, sha256: SEED }));
-			if (cmd[0] === 'node' && cmd[1] === 'scripts/run-selfhost-fixed-seed-bootstrap.mjs') return execution(0, JSON.stringify(fixedPointEvidence()));
+			if (cmd[0] === 'node' && cmd[1] === 'scripts/run-selfhost-fixed-seed-bootstrap.mjs') {
+				return execution(0, `FIXED_SEED_PROGRESS phase=stage3-complete elapsedMs=6026164\n${JSON.stringify(fixedPointEvidence())}\n`);
+			}
 			return execution(0, '');
 		};
 		const evidence = await runCleanBootstrap({
@@ -189,6 +243,7 @@ test('runner proves a clean local clone with dependency-offline commands and fix
 		assert.equal(evidence.workingTreeClean, true);
 		assert.equal(evidence.dependencyMode, 'offline');
 		assert.equal(evidence.environment.profile, 'perturbed');
+		assert.notEqual(evidence.bootstrap.stage1Sha256, evidence.bootstrap.stage2Sha256);
 		assert.equal(evidence.bootstrap.stage2Sha256, evidence.bootstrap.stage3Sha256);
 		assert.equal(evidence.candidateSha256, STAGE);
 		assert.ok(calls.some(call => call.cmd[0] === 'git' && call.cmd[1] === 'clone'));
