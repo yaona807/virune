@@ -192,6 +192,21 @@ test('runner proves a clean local clone with dependency-offline commands and fix
 		assert.equal(evidence.bootstrap.stage2Sha256, evidence.bootstrap.stage3Sha256);
 		assert.equal(evidence.candidateSha256, STAGE);
 		assert.ok(calls.some(call => call.cmd[0] === 'git' && call.cmd[1] === 'clone'));
+		const seedCall = calls.find(call => call.cmd[0] === 'node' && call.cmd[1] === 'scripts/verify-selfhost-seed.mjs');
+		assert.deepEqual(seedCall?.cmd, [
+			'node',
+			'scripts/verify-selfhost-seed.mjs',
+			'--artifact',
+			'.cache/selfhost-seed/seed.tgz',
+			'--json',
+		]);
+		const bootstrapCall = calls.find(call => call.cmd[0] === 'node' && call.cmd[1] === 'scripts/run-selfhost-fixed-seed-bootstrap.mjs');
+		assert.deepEqual(bootstrapCall?.cmd, [
+			'node',
+			'scripts/run-selfhost-fixed-seed-bootstrap.mjs',
+			'--artifact=.cache/selfhost-seed/seed.tgz',
+			'--json',
+		]);
 		assert.ok(calls.filter(call => call.cmd[0] === 'npm').every(call => call.env.npm_config_offline === 'true'));
 		assert.ok(calls.filter(call => call.cmd[0] === 'node').every(call => call.env.TZ === 'Asia/Tokyo'));
 	} finally {
