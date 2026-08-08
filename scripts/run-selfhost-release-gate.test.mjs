@@ -16,6 +16,7 @@ import {
 const A = 'a'.repeat(64);
 const B = 'b'.repeat(64);
 const C = 'c'.repeat(64);
+const D = 'd'.repeat(40);
 
 function evidence(id) {
 	if (id === 'seed-verify') return { schemaVersion: 1, passed: true, sha256: A };
@@ -40,6 +41,7 @@ function evidence(id) {
 		status: 'pass',
 		passed: true,
 		candidateSha256: B,
+		repositoryCommit: D,
 		workingTreeClean: true,
 		dependencyMode: 'offline',
 		environment: {
@@ -94,8 +96,31 @@ test('gate passes current evidence while keeping production ineligible', async (
 	assert.equal(report.passed, true);
 	assert.equal(report.productionEligible, false);
 	assert.equal(report.policy.productionDefaultChange, false);
+	assert.equal(report.evidenceConsistency.checked, true);
+	assert.equal(report.evidenceConsistency.passed, true);
 	assert.deepEqual(report.steps.map(step => step.status), ['pass', 'pass', 'pass', 'pass']);
 	assert.match(report.evidenceSha256, /^[0-9a-f]{64}$/u);
+});
+
+test('gate rejects individually valid evidence from different Seed or compiler generations', async () => {
+	const byCommand = new Map(REQUIRED_SELFHOST_RELEASE_STEPS.map(step => [step.command.join('\0'), step.id]));
+	const report = await runSelfhostReleaseGate({
+		repositoryRoot: '/repo',
+		execute: async command => {
+			const id = byCommand.get(command.join('\0'));
+			const value = structuredClone(evidence(id));
+			if (id === 'clean-bootstrap') {
+				value.seed.artifactSha256 = C;
+				value.bootstrap.seedSha256 = C;
+			}
+			return { status: 0, stdout: JSON.stringify(value), stderr: '' };
+		},
+	});
+	assert.deepEqual(report.steps.map(step => step.status), ['pass', 'pass', 'pass', 'pass']);
+	assert.equal(report.evidenceConsistency.checked, true);
+	assert.equal(report.evidenceConsistency.passed, false);
+	assert.match(report.evidenceConsistency.reason, /fixed Seed artifact SHA-256/u);
+	assert.equal(report.passed, false);
 });
 
 test('Stage 1 to Stage 2 differences are transition evidence, not fixed-point failure', () => {
@@ -129,6 +154,9 @@ test('clean bootstrap requires schema v2 dependency-offline Stage 2/3 evidence',
 	const online = structuredClone(evidence('clean-bootstrap'));
 	online.dependencyMode = 'online';
 	assert.equal(validateStepEvidence('clean-bootstrap', online).passed, false);
+	const unbound = structuredClone(evidence('clean-bootstrap'));
+	delete unbound.repositoryCommit;
+	assert.equal(validateStepEvidence('clean-bootstrap', unbound).passed, false);
 	const oldModel = { schemaVersion: 1, claim: 'selfhost-clean-bootstrap', status: 'pass', workingTreeClean: true, networkMode: 'offline', seed: { verified: true }, bootstrap: { equivalent: true } };
 	assert.equal(validateStepEvidence('clean-bootstrap', oldModel).passed, false);
 });
