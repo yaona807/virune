@@ -116,6 +116,7 @@ function dependencies({
 test('runner uses the verified artifact and proves the Stage 2/Stage 3 fixed point', async () => {
 	const root = await mkdtemp(join(tmpdir(), 'virune-fixed-seed-run-'));
 	let disposed = false;
+	const progress = [];
 	try {
 		await writeSeedManifest(root);
 		const evidence = await runFixedSeedBootstrap({
@@ -129,6 +130,7 @@ test('runner uses the verified artifact and proves the Stage 2/Stage 3 fixed poi
 				module: { buildProject: async () => stage1Build() },
 				dispose: async () => { disposed = true; },
 			}),
+			onProgress: async event => { progress.push(event.phase); },
 		});
 		assert.equal(disposed, true);
 		assert.equal(evidence.stage0Source, 'fixed-seed-artifact');
@@ -136,6 +138,18 @@ test('runner uses the verified artifact and proves the Stage 2/Stage 3 fixed poi
 		assert.equal(evidence.equivalent, true);
 		assert.equal(evidence.fixedPoint.equivalent, true);
 		assert.equal(evidence.seed.verified, true);
+		assert.deepEqual(progress, [
+			'seed-verification-start',
+			'seed-verification-complete',
+			'seed-load-start',
+			'seed-load-complete',
+			'stage1-start',
+			'stage1-complete',
+			'stage2-start',
+			'stage2-complete',
+			'stage3-start',
+			'stage3-complete',
+		]);
 	} finally {
 		await rm(root, { recursive: true, force: true });
 	}
@@ -231,7 +245,7 @@ test('CLI parsing is bounded and rejects duplicate options', () => {
 	assert.throws(() => parseArguments(['--wat']), /Unknown argument/u);
 });
 
-test('main writes blocked fixed-point evidence before failing', async () => {
+test('main writes blocked fixed-point evidence and progress before failing', async () => {
 	const root = await mkdtemp(join(tmpdir(), 'virune-fixed-seed-bootstrap-'));
 	try {
 		await writeSeedManifest(root);
@@ -244,6 +258,16 @@ test('main writes blocked fixed-point evidence before failing', async () => {
 		assert.equal(report.claim, 'fixed-seed-bootstrap-fixed-point');
 		assert.equal(report.status, 'blocked');
 		assert.match(report.error, /seed unavailable/u);
+		const progress = JSON.parse(await readFile(join(root, '.cache/report.progress.json'), 'utf8'));
+		assert.equal(progress.claim, 'fixed-seed-bootstrap-progress');
+		assert.equal(progress.productionEligible, false);
+		assert.equal(progress.status, 'blocked');
+		assert.equal(progress.phase, 'bootstrap-complete');
+		assert.deepEqual(progress.checkpoints.map(checkpoint => checkpoint.phase), [
+			'bootstrap-start',
+			'seed-verification-start',
+			'bootstrap-complete',
+		]);
 	} finally {
 		await rm(root, { recursive: true, force: true });
 	}
