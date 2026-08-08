@@ -1,0 +1,113 @@
+name: Strict clean bootstrap reproducibility
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: selfhost-clean-bootstrap-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  baseline:
+    name: Clean bootstrap / baseline environment
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 24
+          cache: npm
+      - name: Pre-provision dependency cache
+        run: npm ci --ignore-scripts
+      - name: Pre-provision and verify fixed Seed
+        run: node scripts/verify-selfhost-seed.mjs --json
+      - name: Execute clean bootstrap in baseline environment
+        run: >-
+          node scripts/run-selfhost-clean-bootstrap.mjs
+          --artifact=.cache/selfhost-seed/virune-compiler-1.0.0.tgz
+          --environment-profile=baseline
+          --working-root=.cache/selfhost/clean-bootstrap-baseline
+          --output=.cache/selfhost/clean-bootstrap-baseline.json
+          --json
+      - name: Upload baseline evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: clean-bootstrap-baseline-${{ github.sha }}
+          path: .cache/selfhost/clean-bootstrap-baseline.json
+          if-no-files-found: error
+          retention-days: 30
+
+  perturbed:
+    name: Clean bootstrap / perturbed environment
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 24
+          cache: npm
+      - name: Pre-provision dependency cache
+        run: npm ci --ignore-scripts
+      - name: Pre-provision and verify fixed Seed
+        run: node scripts/verify-selfhost-seed.mjs --json
+      - name: Execute clean bootstrap in perturbed environment
+        run: >-
+          node scripts/run-selfhost-clean-bootstrap.mjs
+          --artifact=.cache/selfhost-seed/virune-compiler-1.0.0.tgz
+          --environment-profile=perturbed
+          --working-root=.cache/selfhost/clean-bootstrap-perturbed
+          --output=.cache/selfhost/clean-bootstrap-perturbed.json
+          --json
+      - name: Upload perturbed evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: clean-bootstrap-perturbed-${{ github.sha }}
+          path: .cache/selfhost/clean-bootstrap-perturbed.json
+          if-no-files-found: error
+          retention-days: 30
+
+  compare:
+    name: Compare independent runner artifacts
+    needs:
+      - baseline
+      - perturbed
+    if: always() && needs.baseline.result == 'success' && needs.perturbed.result == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 24
+      - name: Download baseline evidence
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: clean-bootstrap-baseline-${{ github.sha }}
+          path: .cache/selfhost/independent-runs/baseline
+      - name: Download perturbed evidence
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: clean-bootstrap-perturbed-${{ github.sha }}
+          path: .cache/selfhost/independent-runs/perturbed
+      - name: Compare exact bootstrap artifacts across independent runners
+        run: >-
+          node scripts/compare-selfhost-clean-bootstrap-evidence.mjs
+          --baseline=.cache/selfhost/independent-runs/baseline/clean-bootstrap-baseline.json
+          --perturbed=.cache/selfhost/independent-runs/perturbed/clean-bootstrap-perturbed.json
+          --output=.cache/selfhost/clean-bootstrap-reproducibility.json
+          --json
+      - name: Upload cross-runner reproducibility evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: clean-bootstrap-reproducibility-${{ github.sha }}
+          path: .cache/selfhost/clean-bootstrap-reproducibility.json
+          if-no-files-found: error
+          retention-days: 30
