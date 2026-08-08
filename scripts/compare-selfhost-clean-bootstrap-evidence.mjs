@@ -21,6 +21,10 @@ export function compareCleanBootstrapEvidence(values) {
 		['lockfileSha256', baseline.lockfileSha256, perturbed.lockfileSha256],
 		['seed.manifestSha256', baseline.seed.manifestSha256, perturbed.seed.manifestSha256],
 		['seed.artifactSha256', baseline.seed.artifactSha256, perturbed.seed.artifactSha256],
+		['bootstrap.seedSha256', baseline.bootstrap.seedSha256, perturbed.bootstrap.seedSha256],
+		['bootstrap.stage1Sha256', baseline.bootstrap.stage1Sha256, perturbed.bootstrap.stage1Sha256],
+		['bootstrap.stage2Sha256', baseline.bootstrap.stage2Sha256, perturbed.bootstrap.stage2Sha256],
+		['bootstrap.stage3Sha256', baseline.bootstrap.stage3Sha256, perturbed.bootstrap.stage3Sha256],
 	]) {
 		if (left !== right) throw new Error(`Cross-runner ${field} mismatch`);
 	}
@@ -38,6 +42,7 @@ export function compareCleanBootstrapEvidence(values) {
 		candidateSha256: baseline.candidateSha256,
 		lockfileSha256: baseline.lockfileSha256,
 		seed: baseline.seed,
+		bootstrap: baseline.bootstrap,
 		profiles: normalized.map(value => ({
 			profile: value.environment.profile,
 			timezone: value.environment.timezone,
@@ -90,7 +95,7 @@ export function helpText() {
 		'Usage: node scripts/compare-selfhost-clean-bootstrap-evidence.mjs --baseline=<json> --perturbed=<json> [--output=<.cache/file.json>] [--json]',
 		'',
 		'Fail-closed comparison of two independently executed clean-bootstrap proofs.',
-		'Requires the same repository commit, fixed Seed, lockfile and exact Stage 3 candidate SHA across baseline and perturbed environments.',
+		'Requires the same repository commit, fixed Seed, Stage 1/2/3 artifact digests, lockfile and exact Stage 3 candidate SHA across baseline and perturbed environments.',
 	].join('\n');
 }
 
@@ -150,13 +155,18 @@ function validateEvidence(value, path) {
 		artifactSha256: sha256Value(seedValue.artifactSha256, `${path}.seed.artifactSha256`),
 	};
 	if (seedValue.verified !== true) throw new Error(`${path}.seed.verified must be true`);
-	const bootstrap = record(input.bootstrap, `${path}.bootstrap`);
-	const stage2Sha256 = sha256Value(bootstrap.stage2Sha256, `${path}.bootstrap.stage2Sha256`);
-	const stage3Sha256 = sha256Value(bootstrap.stage3Sha256, `${path}.bootstrap.stage3Sha256`);
-	if (bootstrap.fixedPointEquivalent !== true || bootstrap.fixedPointDifferenceCount !== 0 || stage2Sha256 !== stage3Sha256) {
+	const bootstrapValue = record(input.bootstrap, `${path}.bootstrap`);
+	const bootstrap = {
+		seedSha256: sha256Value(bootstrapValue.seedSha256, `${path}.bootstrap.seedSha256`),
+		stage1Sha256: sha256Value(bootstrapValue.stage1Sha256, `${path}.bootstrap.stage1Sha256`),
+		stage2Sha256: sha256Value(bootstrapValue.stage2Sha256, `${path}.bootstrap.stage2Sha256`),
+		stage3Sha256: sha256Value(bootstrapValue.stage3Sha256, `${path}.bootstrap.stage3Sha256`),
+	};
+	if (bootstrapValue.fixedPointEquivalent !== true || bootstrapValue.fixedPointDifferenceCount !== 0 || bootstrap.stage2Sha256 !== bootstrap.stage3Sha256) {
 		throw new Error(`${path} does not contain an exact Stage 2/3 fixed point`);
 	}
-	if (candidateSha256 !== stage3Sha256) throw new Error(`${path}.candidateSha256 is not the Stage 3 digest`);
+	if (bootstrap.seedSha256 !== seed.artifactSha256) throw new Error(`${path}.bootstrap.seedSha256 does not match the verified Seed`);
+	if (candidateSha256 !== bootstrap.stage3Sha256) throw new Error(`${path}.candidateSha256 is not the Stage 3 digest`);
 	const environmentValue = record(input.environment, `${path}.environment`);
 	if (!requiredProfiles.includes(environmentValue.profile)) throw new Error(`${path}.environment.profile is invalid`);
 	const environment = {
@@ -166,12 +176,10 @@ function validateEvidence(value, path) {
 		homeVariant: nonEmpty(environmentValue.homeVariant, `${path}.environment.homeVariant`),
 		tempVariant: nonEmpty(environmentValue.tempVariant, `${path}.environment.tempVariant`),
 	};
-	return { repositoryCommit, candidateSha256, lockfileSha256, evidenceSha256, seed, environment };
+	return { repositoryCommit, candidateSha256, lockfileSha256, evidenceSha256, seed, bootstrap, environment };
 }
 
-async function readJson(path) {
-	return JSON.parse(await readFile(path, 'utf8'));
-}
+async function readJson(path) { return JSON.parse(await readFile(path, 'utf8')); }
 function assertEqual(actual, expected, label) {
 	if (actual.length !== expected.length || actual.some((value, index) => value !== expected[index])) {
 		throw new Error(`Cross-runner ${label} must be ${expected.join(', ')}`);
