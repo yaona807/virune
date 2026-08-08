@@ -168,7 +168,7 @@ export async function runCleanBootstrap({
 		const install = executeOfflineInstall(cloneRoot, execute, executionProfile.variables);
 		const seedExecution = install.status === 0
 			? execute(
-				['node', 'scripts/verify-selfhost-seed.mjs', `--artifact=${artifactRelative}`, '--json'],
+				['node', 'scripts/verify-selfhost-seed.mjs', '--artifact', artifactRelative, '--json'],
 				cloneRoot,
 				executionProfile.variables,
 			)
