@@ -33,6 +33,8 @@ jobs:
     timeout-minutes: 180
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: 24
@@ -52,7 +54,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: clean-bootstrap-baseline-${{ github.sha }}
+          name: clean-bootstrap-baseline-${{ github.event.pull_request.head.sha || github.sha }}
           path: .cache/selfhost/clean-bootstrap-baseline.json
           if-no-files-found: error
           retention-days: 30
@@ -63,6 +65,8 @@ jobs:
     timeout-minutes: 180
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: 24
@@ -82,7 +86,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: clean-bootstrap-perturbed-${{ github.sha }}
+          name: clean-bootstrap-perturbed-${{ github.event.pull_request.head.sha || github.sha }}
           path: .cache/selfhost/clean-bootstrap-perturbed.json
           if-no-files-found: error
           retention-days: 30
@@ -97,18 +101,20 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: 24
       - name: Download baseline evidence
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
-          name: clean-bootstrap-baseline-${{ github.sha }}
+          name: clean-bootstrap-baseline-${{ github.event.pull_request.head.sha || github.sha }}
           path: .cache/selfhost/independent-runs/baseline
       - name: Download perturbed evidence
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
-          name: clean-bootstrap-perturbed-${{ github.sha }}
+          name: clean-bootstrap-perturbed-${{ github.event.pull_request.head.sha || github.sha }}
           path: .cache/selfhost/independent-runs/perturbed
       - name: Compare exact bootstrap artifacts across independent runners
         run: >-
@@ -121,7 +127,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: clean-bootstrap-reproducibility-${{ github.sha }}
+          name: clean-bootstrap-reproducibility-${{ github.event.pull_request.head.sha || github.sha }}
           path: .cache/selfhost/clean-bootstrap-reproducibility.json
           if-no-files-found: error
           retention-days: 30
