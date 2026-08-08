@@ -18,10 +18,26 @@ record MvpCheckTransport derives Json {
 	exports: List<MvpExport>
 }
 
+fn safeName(name: String) -> String {
+	let reservedNames = [
+		"await", "break", "case", "catch", "class", "const", "continue", "debugger",
+		"default", "delete", "do", "else", "export", "extends", "false", "finally",
+		"for", "function", "if", "import", "in", "instanceof", "let", "new", "null",
+		"return", "static", "super", "switch", "this", "throw", "true", "try", "typeof",
+		"var", "void", "while", "with", "yield",
+	]
+	for reservedName in reservedNames {
+		if name == reservedName {
+			return "$v_" + name
+		}
+	}
+	return name
+}
+
 fn parameterNames(parameters: List<MvpParameter>) -> List<String> {
 	let mut values: List<String> = []
 	for parameter in parameters {
-		values = List.append(values, parameter.name)
+		values = List.append(values, safeName(parameter.name))
 	}
 	return values
 }
@@ -149,10 +165,11 @@ fn emitCall(expression: MvpHirExpression, expressions: List<MvpHirExpression>) -
 			None => ""
 		}
 	}
+	let callee = safeName(expression.text)
 	if List.isEmpty(values) {
-		return expression.text + "($ctx)"
+		return callee + "($ctx)"
 	}
-	return expression.text + "(" + String.join(values, ", ") + ", $ctx)"
+	return callee + "(" + String.join(values, ", ") + ", $ctx)"
 }
 
 fn emitVariant(expression: MvpHirExpression, expressions: List<MvpHirExpression>) -> String {
@@ -281,7 +298,7 @@ fn emitPatternCondition(patternId: Int, valueCode: String, expressions: List<Mvp
 fn emitPatternBindings(patternId: Int, valueCode: String, expressions: List<MvpHirExpression>, depth: Int) -> String {
 	let pattern = expressionAt(expressions, patternId)
 	if pattern.kind == "patternBinding" {
-		return indentation(depth) + "const " + pattern.text + " = " + valueCode + ";\n"
+		return indentation(depth) + "const " + safeName(pattern.text) + " = " + valueCode + ";\n"
 	}
 	if pattern.kind != "patternVariant" {
 		return ""
@@ -326,7 +343,7 @@ fn emitExpression(expressionId: Int, expressions: List<MvpHirExpression>) -> Str
 		return "undefined"
 	}
 	if expression.kind == "local" || expression.kind == "function" {
-		return expression.text
+		return safeName(expression.text)
 	}
 	if expression.kind == "variant" {
 		return emitVariant(expression, expressions)
@@ -384,9 +401,9 @@ fn emitStatement(statementId: Int, statements: List<MvpHirStatement>, expression
 	let statement = statementAt(statements, statementId)
 	let prefix = indentation(depth)
 	return match statement {
-		HirLet(name, mutable, _, expressionId, _) => prefix + (if mutable then "let " else "const ") + name + " = " + emitExpression(expressionId, expressions) + ";\n"
-		HirAssign(name, _, expressionId, _) => prefix + name + " = " + emitExpression(expressionId, expressions) + ";\n"
-		HirFor(name, _, iterableExpressionId, bodyStatementIds, _) => prefix + "for (const " + name + " of " + emitExpression(iterableExpressionId, expressions) + ") {\n" + emitStatements(bodyStatementIds, statements, expressions, depth + 1) + prefix + "}\n"
+		HirLet(name, mutable, _, expressionId, _) => prefix + (if mutable then "let " else "const ") + safeName(name) + " = " + emitExpression(expressionId, expressions) + ";\n"
+		HirAssign(name, _, expressionId, _) => prefix + safeName(name) + " = " + emitExpression(expressionId, expressions) + ";\n"
+		HirFor(name, _, iterableExpressionId, bodyStatementIds, _) => prefix + "for (const " + safeName(name) + " of " + emitExpression(iterableExpressionId, expressions) + ") {\n" + emitStatements(bodyStatementIds, statements, expressions, depth + 1) + prefix + "}\n"
 		HirWhile(conditionExpressionId, bodyStatementIds, _) => prefix + "while (" + emitExpression(conditionExpressionId, expressions) + ") {\n" + emitStatements(bodyStatementIds, statements, expressions, depth + 1) + prefix + "}\n"
 		HirIf(conditionExpressionId, consequentStatementIds, alternateStatementIds, _) => prefix + "if (" + emitExpression(conditionExpressionId, expressions) + ") {\n" + emitStatements(consequentStatementIds, statements, expressions, depth + 1) + prefix + "}" + (if List.isEmpty(alternateStatementIds) then "\n" else " else {\n" + emitStatements(alternateStatementIds, statements, expressions, depth + 1) + prefix + "}\n")
 		HirBreak(_) => prefix + "break;\n"
@@ -407,7 +424,7 @@ fn emitFunction(function: MvpHirFunction) -> String {
 	let names = parameterNames(function.parameters)
 	let parameters = if List.isEmpty(names) then "$ctx = rootTaskContext()" else String.join(names, ", ") + ", $ctx = rootTaskContext()"
 	let prefix = if function.isPublic then "export " else ""
-	return prefix + "function " + function.name + "(" + parameters + ") {\n" +
+	return prefix + "function " + safeName(function.name) + "(" + parameters + ") {\n" +
 		"\ttry {\n" +
 		emitStatements(function.statementIds, function.statements, function.expressions, 2) +
 		"\t} catch ($error) {\n" +
