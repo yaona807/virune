@@ -1,11 +1,12 @@
 import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
-import { access, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { access, mkdir, mkdtemp, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { verifySelfhostSeed } from './verify-selfhost-seed.mjs';
 
 export const FIXED_SEED_BOOTSTRAP_SCHEMA_VERSION = 2;
+export const FIXED_SEED_PROGRESS_SCHEMA_VERSION = 1;
 export const DEFAULT_FIXED_SEED_OUTPUT = '.cache/selfhost/fixed-seed-bootstrap.json';
 export const DEFAULT_FIXED_SEED_TEMPORARY_ROOT = '.cache/selfhost/fixed-seed-bootstrap';
 const seedManifestPath = '.github/self-hosting/stage0-seed.json';
@@ -182,23 +183,29 @@ export async function runFixedSeedBootstrap({
 	dependencies,
 	seedVerifier = verifySelfhostSeed,
 	seedCompilerLoader = extractVerifiedSeedCompiler,
+	onProgress = async () => {},
 }) {
 	const manifestAbsolute = resolve(repositoryRoot, seedManifestPath);
 	const manifestBytes = await readFile(manifestAbsolute);
 	const manifest = JSON.parse(manifestBytes.toString('utf8'));
+	await onProgress({ phase: 'seed-verification-start' });
 	const verified = await seedVerifier({
 		root: repositoryRoot,
 		...(artifactPath === null ? {} : { artifactPath }),
 	});
 	if (verified.passed !== true) throw new Error('Fixed Seed verifier did not report success');
 	if (verified.sha256 !== manifest.artifact.sha256) throw new Error('Fixed Seed verifier SHA does not match the manifest');
+	await onProgress({ phase: 'seed-verification-complete', artifactSha256: verified.sha256 });
+	await onProgress({ phase: 'seed-load-start' });
 	const seedCompiler = await seedCompilerLoader({
 		artifactPath: verified.artifact,
 		temporaryRoot,
 	});
+	await onProgress({ phase: 'seed-load-complete' });
 	let candidateDirectory = null;
 	let stage2Candidate = null;
 	try {
+		await onProgress({ phase: 'stage1-start' });
 		const stage1Build = await seedCompiler.module.buildProject(projectPath, false);
 		const input = dependencies.kernelInputFromProjectBuild(stage1Build);
 		const stage1Modules = legacyBuildModules(stage1Build);
@@ -208,6 +215,11 @@ export async function runFixedSeedBootstrap({
 			input,
 			extractExports: dependencies.extractGeneratedModuleExports,
 		}));
+		await onProgress({
+			phase: 'stage1-complete',
+			sha256: stage1.sha256,
+			moduleCount: stage1.artifact.modules.length,
+		});
 
 		const stage1Snapshot = dependencies.snapshotProjectBuild(stage1Build, {
 			stage: 'stage1',
@@ -225,6 +237,7 @@ export async function runFixedSeedBootstrap({
 		if (capability === null || capability.ready !== true) {
 			throw new Error(`Stage 1 project compiler is not ready: ${capability?.blockers.join(', ') ?? 'missing capability'}`);
 		}
+		await onProgress({ phase: 'stage2-start' });
 		const stage2Result = dependencies.compileWithProjectCompilerBoundary(candidate, input);
 		const stage2Modules = selfhostResultModules(stage2Result, 'Stage 2');
 		const stage2 = dependencies.normalizeBootstrapArtifact(createComparisonInput({
@@ -234,11 +247,18 @@ export async function runFixedSeedBootstrap({
 			extractExports: dependencies.extractGeneratedModuleExports,
 		}));
 		const transitionDiff = dependencies.diffBootstrapArtifacts(stage1, stage2);
+		await onProgress({
+			phase: 'stage2-complete',
+			sha256: stage2.sha256,
+			moduleCount: stage2.artifact.modules.length,
+			transitionDifferenceCount: transitionDiff.changes.length,
+		});
 
 		let stage3 = null;
 		let fixedPointDiff = null;
 		let stage3Error = null;
 		try {
+			await onProgress({ phase: 'stage3-start', stage2Sha256: stage2.sha256 });
 			const stage2Artifact = dependencies.stageArtifact('stage2', stage2Result);
 			stage2Candidate = await dependencies.materializeBootstrapStageCompiler(
 				stage2Artifact,
@@ -253,8 +273,16 @@ export async function runFixedSeedBootstrap({
 				extractExports: dependencies.extractGeneratedModuleExports,
 			}));
 			fixedPointDiff = dependencies.diffBootstrapArtifacts(stage2, stage3);
+			await onProgress({
+				phase: 'stage3-complete',
+				sha256: stage3.sha256,
+				moduleCount: stage3.artifact.modules.length,
+				fixedPointDifferenceCount: fixedPointDiff.changes.length,
+				fixedPointEquivalent: fixedPointDiff.equal === true && stage2.sha256 === stage3.sha256,
+			});
 		} catch (error) {
 			stage3Error = error instanceof Error ? error.message : String(error);
+			await onProgress({ phase: 'stage3-blocked', error: stage3Error });
 		}
 
 		return createEvidence({
@@ -328,9 +356,15 @@ export async function main(argumentsList = process.argv.slice(2), injected = {})
 	const repositoryRoot = resolve(injected.repositoryRoot ?? fileURLToPath(new URL('..', import.meta.url)));
 	const projectPath = resolveRepositoryPath(repositoryRoot, options.project, '--project');
 	const output = resolveCachePath(repositoryRoot, options.output, '--output', '.json');
+	const progressOutput = {
+		absolutePath: output.absolutePath.replace(/\.json$/u, '.progress.json'),
+		repositoryRelative: output.repositoryRelative.replace(/\.json$/u, '.progress.json'),
+	};
 	const temporaryRoot = resolveCachePath(repositoryRoot, options.temporaryRoot, '--temporary-root').absolutePath;
 	const artifactPath = options.artifact === null ? null : resolveRepositoryOrAbsolutePath(repositoryRoot, options.artifact);
 	const dependencies = injected.dependencies ?? await loadDependencies();
+	const reportProgress = createProgressReporter(progressOutput.absolutePath);
+	await reportProgress({ phase: 'bootstrap-start' });
 	let evidence;
 	try {
 		evidence = await runFixedSeedBootstrap({
@@ -339,6 +373,7 @@ export async function main(argumentsList = process.argv.slice(2), injected = {})
 			artifactPath,
 			temporaryRoot,
 			dependencies,
+			onProgress: reportProgress,
 			...(injected.seedVerifier === undefined ? {} : { seedVerifier: injected.seedVerifier }),
 			...(injected.seedCompilerLoader === undefined ? {} : { seedCompilerLoader: injected.seedCompilerLoader }),
 		});
@@ -353,9 +388,15 @@ export async function main(argumentsList = process.argv.slice(2), injected = {})
 			error: error instanceof Error ? error.message : String(error),
 		};
 	}
-	await mkdir(dirname(output.absolutePath), { recursive: true });
+	await writeJsonAtomic(output.absolutePath, evidence);
+	await reportProgress({
+		phase: 'bootstrap-complete',
+		status: evidence.status,
+		evidencePath: output.repositoryRelative,
+		stage2Sha256: evidence.stage2?.sha256 ?? null,
+		stage3Sha256: evidence.stage3?.sha256 ?? null,
+	});
 	const encoded = `${JSON.stringify(evidence)}\n`;
-	await writeFile(output.absolutePath, encoded, 'utf8');
 	if (options.json) process.stdout.write(encoded);
 	else {
 		console.log(`Fixed Seed bootstrap: ${evidence.status.toUpperCase()}`);
@@ -366,9 +407,48 @@ export async function main(argumentsList = process.argv.slice(2), injected = {})
 			console.log(`Stage 2 -> Stage 3 fixed point: ${evidence.fixedPoint.equivalent ? 'match' : evidence.fixedPoint.error ?? 'mismatch'}`);
 		}
 		console.log(`Evidence: ${output.repositoryRelative}`);
+		console.log(`Progress evidence: ${progressOutput.repositoryRelative}`);
 	}
 	if (evidence.status !== 'match') throw new Error(`Fixed Seed bootstrap did not reach the Stage 2/Stage 3 fixed point. Evidence: ${output.repositoryRelative}`);
 	return evidence;
+}
+
+export function createProgressReporter(absolutePath, now = () => Date.now()) {
+	const startedAtMs = now();
+	const startedAt = new Date(startedAtMs).toISOString();
+	const checkpoints = [];
+	return async event => {
+		const elapsedMs = Math.max(0, now() - startedAtMs);
+		const checkpoint = { ...event, elapsedMs };
+		checkpoints.push(checkpoint);
+		const status = event.phase === 'bootstrap-complete' ? event.status : 'running';
+		const report = {
+			schemaVersion: FIXED_SEED_PROGRESS_SCHEMA_VERSION,
+			claim: 'fixed-seed-bootstrap-progress',
+			productionEligible: false,
+			status,
+			phase: event.phase,
+			startedAt,
+			updatedAt: new Date(startedAtMs + elapsedMs).toISOString(),
+			elapsedMs,
+			checkpoints,
+		};
+		await writeJsonAtomic(absolutePath, report);
+		console.log(`FIXED_SEED_PROGRESS phase=${event.phase} elapsedMs=${elapsedMs}`);
+	};
+}
+
+async function writeJsonAtomic(absolutePath, value) {
+	await mkdir(dirname(absolutePath), { recursive: true });
+	const temporaryPath = `${absolutePath}.tmp-${process.pid}`;
+	await writeFile(temporaryPath, `${JSON.stringify(value)}\n`, 'utf8');
+	try {
+		await rename(temporaryPath, absolutePath);
+	} catch (error) {
+		if (error?.code !== 'EEXIST' && error?.code !== 'EPERM') throw error;
+		await rm(absolutePath, { force: true });
+		await rename(temporaryPath, absolutePath);
+	}
 }
 
 async function loadDependencies() {
