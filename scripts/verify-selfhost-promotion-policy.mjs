@@ -10,11 +10,24 @@ const STAGES = [
 	['required-compiler', true, 'compiler-changes', 28, 28],
 	['production-default', true, 'production', 30, 30],
 ];
+const CURRENT_FIXED_POINT_EVIDENCE = Object.freeze([
+	'clean-bootstrap',
+	'environment-perturbation',
+	'fixed-seed-verification',
+	'independent-runner-reproducibility',
+	'stage1-stage2-transition',
+	'stage2-stage3-fixed-point',
+]);
+const REQUIRED_SELFHOST_EVIDENCE = Object.freeze([
+	'cross-evidence-generation-binding',
+	'exact-head-evidence-binding',
+	'legacy-rollback',
+]);
 const PRODUCTION_EVIDENCE = [
 	'compiler-api-compatibility',
 	['interop', 'abi', 'compatibility'].join('-'),
 	'release-reproducibility',
-	'rollback-smoke',
+	'legacy-rollback',
 	'runtime-abi-compatibility',
 	'stable-release-cycle',
 ];
@@ -43,9 +56,14 @@ export async function verifySelfhostPromotionPolicy(root = process.cwd()) {
 		if (stage.productionDefault !== (id === 'production-default')) errors.push(`${id}.productionDefault is invalid`);
 
 		const evidence = evidenceSet(stage.requiredEvidence, id, errors);
+		if (evidence.has('stage1-stage2')) {
+			errors.push(`${id}.requiredEvidence contains obsolete stage1-stage2 equality evidence`);
+		}
 		for (const item of previousEvidence) {
 			if (!evidence.has(item)) errors.push(`${id}.requiredEvidence removed ${item}`);
 		}
+		if (index >= 1) requireEvidence(evidence, CURRENT_FIXED_POINT_EVIDENCE, id, errors);
+		if (index >= 2) requireEvidence(evidence, REQUIRED_SELFHOST_EVIDENCE, id, errors);
 		previousEvidence = evidence;
 
 		const requirements = stage.promotionRequirements;
@@ -105,6 +123,12 @@ function evidenceSet(value, id, errors) {
 		}
 	}
 	return evidence;
+}
+
+function requireEvidence(evidence, required, id, errors) {
+	for (const item of required) {
+		if (!evidence.has(item)) errors.push(`${id}.requiredEvidence must include ${item}`);
+	}
 }
 
 function verifyProduction(requirements, evidence, errors) {

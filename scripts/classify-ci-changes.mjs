@@ -42,15 +42,37 @@ const selfhostInventoryScriptPrefixes = Object.freeze([
 	'scripts/run-selfhost-',
 	'scripts/verify-selfhost-',
 ]);
+const selfhostRequiredGateFiles = new Set([
+	'package.json',
+	'package-lock.json',
+	'tsconfig.json',
+	'tsconfig.base.json',
+	'packages/compiler/package.json',
+	'packages/compiler/tsconfig.json',
+	'packages/runtime/package.json',
+	'packages/runtime/tsconfig.json',
+	'scripts/classify-ci-changes.mjs',
+	'scripts/classify-ci-changes.test.mjs',
+]);
+const selfhostRequiredGateDirectories = Object.freeze([
+	'.github/self-hosting/',
+	'packages/compiler/src/selfhost/',
+	'packages/compiler/test/selfhost',
+	'packages/runtime/src/',
+	'selfhost/',
+]);
 
 export function classifyChangedPaths(paths) {
 	const normalized = [...new Set(paths.map(path => path.trim().replaceAll('\\', '/')).filter(Boolean))].sort();
 	const documentationOnly = normalized.length > 0 && normalized.every(isDocumentationPath);
 	const selfhostInventoryRequired = normalized.length === 0
 		|| normalized.some(isSelfhostInventoryPath);
+	const selfhostRequiredGateRequired = normalized.length === 0
+		|| normalized.some(isSelfhostRequiredGatePath);
 	return {
 		docsOnly: documentationOnly,
 		selfhostInventoryRequired,
+		selfhostRequiredGateRequired,
 		changedCount: normalized.length,
 		paths: normalized,
 	};
@@ -65,6 +87,14 @@ export function isSelfhostInventoryPath(path) {
 	return selfhostInventoryFiles.has(path)
 		|| selfhostInventoryDirectories.some(directory => path.startsWith(directory))
 		|| selfhostInventoryScriptPrefixes.some(prefix => path.startsWith(prefix));
+}
+
+export function isSelfhostRequiredGatePath(path) {
+	return selfhostRequiredGateFiles.has(path)
+		|| selfhostRequiredGateDirectories.some(directory => path.startsWith(directory))
+		|| path === '.github/workflows/nightly.yml'
+		|| path.startsWith('.github/workflows/selfhost-')
+		|| (path.startsWith('scripts/') && path.includes('selfhost'));
 }
 
 async function main() {
@@ -96,6 +126,7 @@ async function main() {
 		await appendFile(outputPath, [
 			`docs_only=${classification.docsOnly}`,
 			`selfhost_inventory_required=${classification.selfhostInventoryRequired}`,
+			`selfhost_required_gate_required=${classification.selfhostRequiredGateRequired}`,
 			`changed_count=${classification.changedCount}`,
 			`changed_paths=${JSON.stringify(classification.paths)}`,
 			'',
