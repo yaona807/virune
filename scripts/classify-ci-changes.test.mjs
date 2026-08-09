@@ -9,6 +9,7 @@ import {
 	classifyChangedPaths,
 	isDocumentationPath,
 	isSelfhostInventoryPath,
+	isSelfhostRequiredGatePath,
 } from './classify-ci-changes.mjs';
 
 const repositoryRoot = resolve(fileURLToPath(new URL('..', import.meta.url)));
@@ -24,6 +25,7 @@ test('classifies maintained Markdown documentation as documentation-only', () =>
 	]);
 	assert.equal(result.docsOnly, true);
 	assert.equal(result.selfhostInventoryRequired, false);
+	assert.equal(result.selfhostRequiredGateRequired, false);
 	assert.equal(result.changedCount, 6);
 });
 
@@ -62,6 +64,35 @@ test('requires self-host inventory for compiler-boundary and cross-cutting chang
 	}
 });
 
+test('keeps Required Shadow narrower than compiler-wide inventory while fail-closing self-host controls', () => {
+	for (const path of [
+		'.github/selfhost-required-gate.json',
+		'.github/self-hosting/stage0-seed.json',
+		'.github/workflows/selfhost-clean-bootstrap.yml',
+		'.github/workflows/selfhost-fixed-seed.yml',
+		'.github/workflows/nightly.yml',
+		'package-lock.json',
+		'packages/compiler/src/selfhost/project-compiler-adapter.ts',
+		'packages/compiler/test/selfhost-ready.test.ts',
+		'packages/runtime/src/variant.ts',
+		'scripts/classify-ci-changes.mjs',
+		'scripts/compare-selfhost-clean-bootstrap-evidence.mjs',
+		'scripts/run-selfhost-release-gate.mjs',
+		'selfhost/mvp/src/main.virune',
+	]) {
+		assert.equal(classifyChangedPaths([path]).selfhostRequiredGateRequired, true, path);
+	}
+	for (const path of [
+		'.github/workflows/ci.yml',
+		'packages/compiler/src/project/compiler.ts',
+		'packages/compiler/src/parser.ts',
+		'packages/cli/src/main.ts',
+		'spec/grammar.ebnf',
+	]) {
+		assert.equal(classifyChangedPaths([path]).selfhostRequiredGateRequired, false, path);
+	}
+});
+
 test('skips self-host inventory for unrelated product and documentation changes', () => {
 	for (const path of [
 		'README.md',
@@ -78,6 +109,7 @@ test('does not treat an empty change set as documentation-only and fails safe fo
 	assert.deepEqual(classifyChangedPaths([]), {
 		docsOnly: false,
 		selfhostInventoryRequired: true,
+		selfhostRequiredGateRequired: true,
 		changedCount: 0,
 		paths: [],
 	});
@@ -88,6 +120,7 @@ test('normalizes separators and removes duplicate paths', () => {
 	assert.deepEqual(result, {
 		docsOnly: true,
 		selfhostInventoryRequired: false,
+		selfhostRequiredGateRequired: false,
 		changedCount: 1,
 		paths: ['docs/guide.md'],
 	});
@@ -113,6 +146,15 @@ test('self-host inventory path rules are repository-owned and conservative', () 
 	assert.equal(isSelfhostInventoryPath('packages/vscode/src/extension.ts'), false);
 });
 
+test('Required Shadow path rules preserve Stage 3 and defer compiler-wide Stage 4', () => {
+	assert.equal(isSelfhostRequiredGatePath('.github/selfhost-required-gate.json'), true);
+	assert.equal(isSelfhostRequiredGatePath('.github/workflows/selfhost-clean-bootstrap.yml'), true);
+	assert.equal(isSelfhostRequiredGatePath('packages/compiler/src/selfhost/bootstrap-stage-loader.ts'), true);
+	assert.equal(isSelfhostRequiredGatePath('scripts/run-selfhost-release-gate.mjs'), true);
+	assert.equal(isSelfhostRequiredGatePath('packages/compiler/src/project/compiler.ts'), false);
+	assert.equal(isSelfhostRequiredGatePath('packages/vscode/src/extension.ts'), false);
+});
+
 test('writes the inventory decision to GitHub output', async t => {
 	const root = await mkdtemp(join(tmpdir(), 'virune-classifier-output-'));
 	t.after(() => rm(root, { recursive: true, force: true }));
@@ -134,6 +176,7 @@ test('writes the inventory decision to GitHub output', async t => {
 	const output = await readFile(outputFile, 'utf8');
 	assert.match(output, /^docs_only=false$/mu);
 	assert.match(output, /^selfhost_inventory_required=true$/mu);
+	assert.match(output, /^selfhost_required_gate_required=true$/mu);
 	assert.match(output, /^changed_count=1$/mu);
 });
 
