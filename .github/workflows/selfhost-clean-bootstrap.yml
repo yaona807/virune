@@ -57,6 +57,8 @@ jobs:
           cache: npm
       - name: Pre-provision dependency cache
         run: npm ci --ignore-scripts
+      - name: Build current checkout for fixed-Seed bootstrap
+        run: npm run build
       - name: Pre-provision and verify fixed Seed
         run: node scripts/verify-selfhost-seed.mjs --json
       - name: Execute fail-closed self-host release core
