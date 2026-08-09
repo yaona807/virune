@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import { evaluateRequiredShadow, parseArguments, validatePolicy } from './run-selfhost-required-gate.mjs';
 
@@ -6,25 +7,7 @@ const SHA = 'a'.repeat(40);
 const A = 'a'.repeat(64);
 const B = 'b'.repeat(64);
 const C = 'c'.repeat(64);
-
-const policy = {
-  schemaVersion: 1,
-  phase: 'required-shadow',
-  requiredCheck: 'Required self-host gate',
-  productionEligible: false,
-  productionDefaultChange: false,
-  evidence: {
-    releaseCore: { schemaVersion: 2, claim: 'selfhost-stable-release-gate-core' },
-    crossRunner: { schemaVersion: 1, claim: 'selfhost-clean-bootstrap-cross-runner-reproducibility', independentRunCount: 2 },
-  },
-  promotion: {
-    requiredShadowEnabled: true,
-    compilerWideRequired: false,
-    nightlyShadowAccepted: false,
-    internalOptInOnly: true,
-    productionDefaultAllowed: false,
-  },
-};
+const policy = JSON.parse(await readFile(new URL('../.github/self-hosting/promotion-policy-v1.json', import.meta.url), 'utf8'));
 
 function releaseCore() {
   return {
@@ -54,20 +37,37 @@ function crossRunner() {
   };
 }
 
-test('policy is fail-closed for Required Shadow and production promotion', () => {
-  assert.equal(validatePolicy(structuredClone(policy)).phase, 'required-shadow');
-  const unsafe = structuredClone(policy);
-  unsafe.promotion.productionDefaultAllowed = true;
-  assert.throws(() => validatePolicy(unsafe), /fail-closed/u);
+test('canonical policy keeps required-selfhost behind observation history and manual approval', () => {
+  const summary = validatePolicy(structuredClone(policy));
+  assert.equal(summary.targetStage, 'required-selfhost');
+  assert.equal(summary.scope, 'selfhost-related');
+  assert.equal(summary.minimumConsecutiveSuccessfulRuns, 14);
+  assert.equal(summary.minimumObservationDays, 14);
+  assert.equal(summary.manualApprovalRequired, true);
+  assert.equal(summary.automaticPromotionAllowed, false);
 });
 
-test('unrelated changes explicitly omit heavy evidence but keep production disabled', () => {
+test('rejects policy that weakens Required Shadow history', () => {
+  const unsafe = structuredClone(policy);
+  unsafe.stages.find(stage => stage.id === 'required-selfhost').promotionRequirements.minimumObservationDays = 0;
+  assert.throws(() => validatePolicy(unsafe), /not fail-closed/u);
+});
+
+test('rejects policy that removes current fixed-point evidence', () => {
+  const unsafe = structuredClone(policy);
+  const stage = unsafe.stages.find(item => item.id === 'required-selfhost');
+  stage.requiredEvidence = stage.requiredEvidence.filter(item => item !== 'stage2-stage3-fixed-point');
+  assert.throws(() => validatePolicy(unsafe), /must include stage2-stage3-fixed-point/u);
+});
+
+test('unrelated changes explicitly omit heavy evidence without claiming promotion', () => {
   const report = evaluateRequiredShadow({ policy, required: false, expectedCommit: SHA });
   assert.equal(report.passed, true);
   assert.equal(report.status, 'omitted');
   assert.equal(report.required, false);
   assert.equal(report.productionEligible, false);
-  assert.equal(report.promotion.productionDefaultAllowed, false);
+  assert.equal(report.promotionEligible, false);
+  assert.equal(report.policy.minimumObservationDays, 14);
 });
 
 test('self-host changes require release-core and independent cross-runner evidence', () => {
@@ -76,6 +76,7 @@ test('self-host changes require release-core and independent cross-runner eviden
   assert.equal(report.status, 'pass');
   assert.equal(report.bindings.repositoryCommit, SHA);
   assert.equal(report.bindings.stage2Sha256, report.bindings.stage3Sha256);
+  assert.equal(report.promotionEligible, false);
   assert.match(report.evidenceSha256, /^[0-9a-f]{64}$/u);
 });
 
