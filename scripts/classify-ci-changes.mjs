@@ -18,7 +18,6 @@ const documentationDirectories = Object.freeze([
 ]);
 const selfhostInventoryFiles = new Set([
 	'.github/actions-policy.json',
-	'.github/selfhost-required-gate.json',
 	'package.json',
 	'package-lock.json',
 	'tsconfig.json',
@@ -44,7 +43,6 @@ const selfhostInventoryScriptPrefixes = Object.freeze([
 	'scripts/verify-selfhost-',
 ]);
 const selfhostRequiredGateFiles = new Set([
-	'.github/selfhost-required-gate.json',
 	'package.json',
 	'package-lock.json',
 	'tsconfig.json',
