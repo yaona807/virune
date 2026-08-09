@@ -331,7 +331,7 @@ fn emitMatch(expressionId: Int, expression: MvpHirExpression, expressions: List<
 
 fn emitTry(expression: MvpHirExpression, expressions: List<MvpHirExpression>) -> String {
 	let value = emitExpression(childAt(expression, 0), expressions)
-	return "((result) => { if (result?.$tag === \"Some\" || result?.$tag === \"Ok\") return result.$values[0]; throw ({$virunePropagation: true, value: result}); })(" + value + ")"
+	return "propagate(" + value + ")"
 }
 
 fn emitExpression(expressionId: Int, expressions: List<MvpHirExpression>) -> String {
@@ -428,7 +428,6 @@ fn emitFunction(function: MvpHirFunction) -> String {
 		"\ttry {\n" +
 		emitStatements(function.statementIds, function.statements, function.expressions, 2) +
 		"\t} catch ($error) {\n" +
-		"\t\tif ($error?.$virunePropagation === true) return $error.value;\n" +
 		"\t\tif (isPropagation($error)) return $error.value;\n" +
 		"\t\tthrow $error;\n" +
 		"\t}\n" +
