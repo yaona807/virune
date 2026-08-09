@@ -4,57 +4,95 @@ import { dirname, isAbsolute, relative, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 export const SELFHOST_REQUIRED_GATE_SCHEMA_VERSION = 1;
-export const DEFAULT_SELFHOST_REQUIRED_GATE_POLICY = '.github/selfhost-required-gate.json';
+export const DEFAULT_SELFHOST_PROMOTION_POLICY = '.github/self-hosting/promotion-policy-v1.json';
 export const DEFAULT_SELFHOST_REQUIRED_GATE_OUTPUT = '.cache/selfhost-required-shadow/required-gate.json';
+const TARGET_STAGE = 'required-selfhost';
+const REQUIRED_POLICY_EVIDENCE = Object.freeze([
+  'clean-bootstrap',
+  'cross-evidence-generation-binding',
+  'environment-perturbation',
+  'exact-head-evidence-binding',
+  'fixed-seed-verification',
+  'independent-runner-reproducibility',
+  'legacy-rollback',
+  'stage1-stage2-transition',
+  'stage2-stage3-fixed-point',
+]);
 
 export function validatePolicy(value) {
-  if (!isObject(value)) throw new Error('Required self-host gate policy must be an object.');
-  if (value.schemaVersion !== 1) throw new Error('Required self-host gate policy schemaVersion must be 1.');
-  if (value.phase !== 'required-shadow') throw new Error('Required self-host gate phase must be required-shadow.');
-  if (value.requiredCheck !== 'Required self-host gate') throw new Error('Required self-host gate check name is not canonical.');
-  if (value.productionEligible !== false || value.productionDefaultChange !== false) {
-    throw new Error('Required Shadow policy must remain production-ineligible and must not change the production default.');
+  if (!isObject(value)) throw new Error('Self-host promotion policy must be an object.');
+  if (value.schemaVersion !== 1) throw new Error('Self-host promotion policy schemaVersion must be 1.');
+  if (value.automaticPromotionAllowed !== false) throw new Error('Self-host promotion must never be automatic.');
+  if (!Array.isArray(value.stages)) throw new Error('Self-host promotion policy stages must be an array.');
+  const stage = value.stages.find(item => item?.id === TARGET_STAGE);
+  if (!isObject(stage)
+    || stage.blocking !== true
+    || stage.scope !== 'selfhost-related'
+    || stage.productionDefault !== false) {
+    throw new Error('Canonical required-selfhost stage is invalid.');
   }
-  const releaseCore = objectAt(value, 'evidence.releaseCore');
-  if (releaseCore.schemaVersion !== 2 || releaseCore.claim !== 'selfhost-stable-release-gate-core') {
-    throw new Error('Required Shadow release-core contract is invalid.');
+  if (!Array.isArray(stage.requiredEvidence)) throw new Error('required-selfhost.requiredEvidence must be an array.');
+  const evidence = new Set(stage.requiredEvidence);
+  for (const item of REQUIRED_POLICY_EVIDENCE) {
+    if (!evidence.has(item)) throw new Error(`required-selfhost.requiredEvidence must include ${item}.`);
   }
-  const crossRunner = objectAt(value, 'evidence.crossRunner');
-  if (crossRunner.schemaVersion !== 1
-    || crossRunner.claim !== 'selfhost-clean-bootstrap-cross-runner-reproducibility'
-    || crossRunner.independentRunCount !== 2) {
-    throw new Error('Required Shadow cross-runner contract is invalid.');
+  if (evidence.has('stage1-stage2')) throw new Error('required-selfhost must not use obsolete Stage 1/Stage 2 equality evidence.');
+  const requirements = stage.promotionRequirements;
+  if (!isObject(requirements)
+    || !Number.isSafeInteger(requirements.minimumConsecutiveSuccessfulRuns)
+    || requirements.minimumConsecutiveSuccessfulRuns < 14
+    || !Number.isSafeInteger(requirements.minimumObservationDays)
+    || requirements.minimumObservationDays < 14
+    || requirements.maximumUnexplainedDifferentials !== 0
+    || requirements.manualApprovalRequired !== true) {
+    throw new Error('required-selfhost promotion requirements are not fail-closed.');
   }
-  const promotion = objectAt(value, 'promotion');
-  if (promotion.requiredShadowEnabled !== true
-    || promotion.compilerWideRequired !== false
-    || promotion.nightlyShadowAccepted !== false
-    || promotion.internalOptInOnly !== true
-    || promotion.productionDefaultAllowed !== false) {
-    throw new Error('Required Shadow promotion state is not fail-closed.');
+  const compilerStage = value.stages.find(item => item?.id === 'required-compiler');
+  if (!isObject(compilerStage)
+    || compilerStage.blocking !== true
+    || compilerStage.scope !== 'compiler-changes'
+    || compilerStage.productionDefault !== false) {
+    throw new Error('Compiler-wide required stage must remain separate from Required Shadow.');
   }
-  return value;
+  const productionStage = value.stages.find(item => item?.id === 'production-default');
+  if (!isObject(productionStage) || productionStage.productionDefault !== true) {
+    throw new Error('Production-default stage is invalid.');
+  }
+  return {
+    schemaVersion: value.schemaVersion,
+    automaticPromotionAllowed: value.automaticPromotionAllowed,
+    targetStage: TARGET_STAGE,
+    blocking: stage.blocking,
+    scope: stage.scope,
+    minimumConsecutiveSuccessfulRuns: requirements.minimumConsecutiveSuccessfulRuns,
+    minimumObservationDays: requirements.minimumObservationDays,
+    maximumUnexplainedDifferentials: requirements.maximumUnexplainedDifferentials,
+    manualApprovalRequired: requirements.manualApprovalRequired,
+  };
 }
 
 export function evaluateRequiredShadow({ policy, required, expectedCommit, releaseCore, crossRunner }) {
-  validatePolicy(policy);
+  const policySummary = validatePolicy(policy);
   if (typeof required !== 'boolean') throw new Error('required must be boolean.');
   if (!isGitSha(expectedCommit)) throw new Error('expectedCommit must be a full lowercase Git SHA.');
   const base = {
     schemaVersion: SELFHOST_REQUIRED_GATE_SCHEMA_VERSION,
     claim: 'selfhost-required-shadow-gate',
     phase: 'required-shadow',
+    targetStage: TARGET_STAGE,
     required,
     expectedCommit,
     productionEligible: false,
     productionDefaultChange: false,
-    promotion: structuredClone(policy.promotion),
+    promotionEligible: false,
+    promotionEligibilityReason: 'This check validates one pull-request head only; observation history and manual approval are evaluated separately.',
+    policy: policySummary,
   };
   if (!required) {
     return finalize({
       ...base,
       status: 'omitted',
-      checks: [{ id: 'classification', passed: true, detail: 'No self-host-impacting path changed.' }],
+      checks: [{ id: 'classification', passed: true, detail: 'No Stage 3 self-host-impacting path changed.' }],
       passed: true,
     });
   }
@@ -77,6 +115,7 @@ export function evaluateRequiredShadow({ policy, required, expectedCommit, relea
     }
   }
   checks.push({ id: 'cross-evidence-generation-binding', passed: true });
+  checks.push({ id: 'exact-head-evidence-binding', passed: cross.repositoryCommit === expectedCommit });
   return finalize({
     ...base,
     status: 'pass',
@@ -196,13 +235,18 @@ export async function main(argumentsList = process.argv.slice(2), injected = {})
     return null;
   }
   const root = resolve(injected.repositoryRoot ?? fileURLToPath(new URL('..', import.meta.url)));
-  const policy = injected.policy ?? JSON.parse(await readFile(resolve(root, DEFAULT_SELFHOST_REQUIRED_GATE_POLICY), 'utf8'));
-  const evidenceRequired = !options.notRequired && options.upstreamFailure === null;
-  const releaseCore = evidenceRequired ? injected.releaseCore ?? JSON.parse(await readFile(resolveCacheInput(root, options.releaseCore), 'utf8')) : undefined;
-  const crossRunner = evidenceRequired ? injected.crossRunner ?? JSON.parse(await readFile(resolveCacheInput(root, options.crossRunner), 'utf8')) : undefined;
+  const output = resolveCacheOutput(root, options.output);
   let report;
   try {
+    const policy = injected.policy ?? JSON.parse(await readFile(resolve(root, DEFAULT_SELFHOST_PROMOTION_POLICY), 'utf8'));
     if (options.upstreamFailure !== null) throw new Error(`Required Shadow upstream evidence job failed: ${options.upstreamFailure}`);
+    const evidenceRequired = !options.notRequired;
+    const releaseCore = evidenceRequired
+      ? injected.releaseCore ?? JSON.parse(await readFile(resolveCacheInput(root, options.releaseCore), 'utf8'))
+      : undefined;
+    const crossRunner = evidenceRequired
+      ? injected.crossRunner ?? JSON.parse(await readFile(resolveCacheInput(root, options.crossRunner), 'utf8'))
+      : undefined;
     report = evaluateRequiredShadow({
       policy,
       required: !options.notRequired,
@@ -215,22 +259,23 @@ export async function main(argumentsList = process.argv.slice(2), injected = {})
       schemaVersion: SELFHOST_REQUIRED_GATE_SCHEMA_VERSION,
       claim: 'selfhost-required-shadow-gate',
       phase: 'required-shadow',
+      targetStage: TARGET_STAGE,
       required: !options.notRequired,
       expectedCommit: options.expectedCommit,
       productionEligible: false,
       productionDefaultChange: false,
+      promotionEligible: false,
       status: 'fail',
       passed: false,
       error: error instanceof Error ? error.message : String(error),
     });
   }
-  const output = resolveCacheOutput(root, options.output);
   await mkdir(dirname(output.absolutePath), { recursive: true });
   const encoded = `${JSON.stringify(report)}\n`;
   await writeFile(output.absolutePath, encoded, 'utf8');
   if (options.json) process.stdout.write(encoded);
-  else console.log(`Required self-host gate: ${report.status.toUpperCase()} (${output.repositoryRelative})`);
-  if (!report.passed) throw new Error(`Required self-host gate failed. Evidence: ${output.repositoryRelative}`);
+  else console.log(`Required self-host shadow: ${report.status.toUpperCase()} (${output.repositoryRelative})`);
+  if (!report.passed) throw new Error(`Required self-host shadow failed. Evidence: ${output.repositoryRelative}`);
   return report;
 }
 
@@ -238,8 +283,8 @@ export function helpText() {
   return [
     'Usage: node scripts/run-selfhost-required-gate.mjs --expected-commit=<sha> [--not-required | --upstream-failure=<reason> | --release-core=<.cache/json> --cross-runner=<.cache/json>] [--output=<.cache/json>] [--json]',
     '',
-    'Produces the always-present Required Self-host Gate summary.',
-    'Heavy evidence is required only for self-host-impacting changes; omission is explicit and production promotion remains disabled.',
+    'Produces the per-PR Required Shadow evidence summary for the canonical required-selfhost target stage.',
+    'Passing this check does not satisfy the 14-run/14-day history or manual approval required for stage promotion.',
   ].join('\n');
 }
 
