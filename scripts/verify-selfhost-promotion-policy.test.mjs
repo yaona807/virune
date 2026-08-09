@@ -46,14 +46,43 @@ test('rejects unexplained differentials', async t => {
 	await assert.rejects(verifySelfhostPromotionPolicy(root), /maximumUnexplainedDifferentials must be 0/u);
 });
 
-test('rejects evidence removed by a later stage', async t => {
+test('rejects obsolete Stage 1/Stage 2 equality evidence', async t => {
 	const root = await fixture(policy => {
-		policy.stages[3].requiredEvidence = policy.stages[3].requiredEvidence
-			.filter(item => item !== 'stage1-stage2');
+		policy.stages[1].requiredEvidence.push('stage1-stage2');
 		return policy;
 	});
 	t.after(() => rm(root, { recursive: true, force: true }));
-	await assert.rejects(verifySelfhostPromotionPolicy(root), /requiredEvidence removed stage1-stage2/u);
+	await assert.rejects(verifySelfhostPromotionPolicy(root), /obsolete stage1-stage2 equality evidence/u);
+});
+
+test('requires the current Stage 1 transition and Stage 2/3 fixed-point evidence', async t => {
+	const root = await fixture(policy => {
+		policy.stages[1].requiredEvidence = policy.stages[1].requiredEvidence
+			.filter(item => item !== 'stage2-stage3-fixed-point');
+		return policy;
+	});
+	t.after(() => rm(root, { recursive: true, force: true }));
+	await assert.rejects(verifySelfhostPromotionPolicy(root), /nightly-shadow\.requiredEvidence must include stage2-stage3-fixed-point/u);
+});
+
+test('requires exact-head and cross-generation bindings before required-selfhost', async t => {
+	const root = await fixture(policy => {
+		policy.stages[2].requiredEvidence = policy.stages[2].requiredEvidence
+			.filter(item => item !== 'exact-head-evidence-binding');
+		return policy;
+	});
+	t.after(() => rm(root, { recursive: true, force: true }));
+	await assert.rejects(verifySelfhostPromotionPolicy(root), /required-selfhost\.requiredEvidence must include exact-head-evidence-binding/u);
+});
+
+test('rejects evidence removed by a later stage', async t => {
+	const root = await fixture(policy => {
+		policy.stages[3].requiredEvidence = policy.stages[3].requiredEvidence
+			.filter(item => item !== 'stage2-stage3-fixed-point');
+		return policy;
+	});
+	t.after(() => rm(root, { recursive: true, force: true }));
+	await assert.rejects(verifySelfhostPromotionPolicy(root), /requiredEvidence removed stage2-stage3-fixed-point/u);
 });
 
 test('rejects a production switch without rollback evidence', async t => {
