@@ -45,6 +45,7 @@ test('requires the full gate for workflow, dependency, source, schema, and execu
 test('requires self-host inventory for compiler-boundary and cross-cutting changes', () => {
 	for (const path of [
 		'.github/workflows/ci.yml',
+		'.github/selfhost-required-gate.json',
 		'package.json',
 		'package-lock.json',
 		'tsconfig.base.json',
@@ -103,6 +104,7 @@ test('limits documentation paths to reviewed Markdown locations', () => {
 });
 
 test('self-host inventory path rules are repository-owned and conservative', () => {
+	assert.equal(isSelfhostInventoryPath('.github/selfhost-required-gate.json'), true);
 	assert.equal(isSelfhostInventoryPath('selfhost/mvp/src/main.virune'), true);
 	assert.equal(isSelfhostInventoryPath('packages/compiler/src/compiler.ts'), true);
 	assert.equal(isSelfhostInventoryPath('packages/compiler/test/selfhost-ready.test.ts'), true);
