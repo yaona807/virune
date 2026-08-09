@@ -71,8 +71,9 @@ test('postfix ? propagates Option and Result call results and preserves Legacy d
 		assert.equal(output.accepted, true, JSON.stringify(output.diagnostics, null, 2));
 		assert.deepEqual(output.diagnostics, []);
 		const emittedCode = output.emittedModules.map(item => item.code).join('\n');
-		assert.match(emittedCode, /\$virunePropagation/);
-		assert.doesNotMatch(emittedCode, /propagate\(identity(?:Option|Result)\(/);
+		assert.doesNotMatch(emittedCode, /\$virunePropagation/);
+		assert.match(emittedCode, /propagate\(identityOption\(/);
+		assert.match(emittedCode, /propagate\(identityResult\(/);
 		const materialized = await materializeOutput(request, output);
 		runtimeRoot = materialized.root;
 		const module = materialized.module as {
