@@ -47,7 +47,6 @@ test('requires the full gate for workflow, dependency, source, schema, and execu
 test('requires self-host inventory for compiler-boundary and cross-cutting changes', () => {
 	for (const path of [
 		'.github/workflows/ci.yml',
-		'.github/selfhost-required-gate.json',
 		'package.json',
 		'package-lock.json',
 		'tsconfig.base.json',
@@ -66,7 +65,7 @@ test('requires self-host inventory for compiler-boundary and cross-cutting chang
 
 test('keeps Required Shadow narrower than compiler-wide inventory while fail-closing self-host controls', () => {
 	for (const path of [
-		'.github/selfhost-required-gate.json',
+		'.github/self-hosting/promotion-policy-v1.json',
 		'.github/self-hosting/stage0-seed.json',
 		'.github/workflows/selfhost-clean-bootstrap.yml',
 		'.github/workflows/selfhost-fixed-seed.yml',
@@ -137,7 +136,6 @@ test('limits documentation paths to reviewed Markdown locations', () => {
 });
 
 test('self-host inventory path rules are repository-owned and conservative', () => {
-	assert.equal(isSelfhostInventoryPath('.github/selfhost-required-gate.json'), true);
 	assert.equal(isSelfhostInventoryPath('selfhost/mvp/src/main.virune'), true);
 	assert.equal(isSelfhostInventoryPath('packages/compiler/src/compiler.ts'), true);
 	assert.equal(isSelfhostInventoryPath('packages/compiler/test/selfhost-ready.test.ts'), true);
@@ -147,7 +145,7 @@ test('self-host inventory path rules are repository-owned and conservative', () 
 });
 
 test('Required Shadow path rules preserve Stage 3 and defer compiler-wide Stage 4', () => {
-	assert.equal(isSelfhostRequiredGatePath('.github/selfhost-required-gate.json'), true);
+	assert.equal(isSelfhostRequiredGatePath('.github/self-hosting/promotion-policy-v1.json'), true);
 	assert.equal(isSelfhostRequiredGatePath('.github/workflows/selfhost-clean-bootstrap.yml'), true);
 	assert.equal(isSelfhostRequiredGatePath('packages/compiler/src/selfhost/bootstrap-stage-loader.ts'), true);
 	assert.equal(isSelfhostRequiredGatePath('scripts/run-selfhost-release-gate.mjs'), true);
