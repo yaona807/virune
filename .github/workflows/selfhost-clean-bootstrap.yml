@@ -41,8 +41,47 @@ jobs:
             node scripts/classify-ci-changes.mjs --force-full
           fi
 
+  fixed-seed:
+    name: Fixed Seed evidence / independent runner
+    needs: classify
+    if: needs.classify.outputs.selfhost_required == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+      - name: Build current checkout for fixed-Seed bootstrap and rollback
+        run: npm run build
+      - name: Capture pinned Seed verification evidence
+        run: |
+          mkdir -p .cache/selfhost-required-shadow/fixed
+          node scripts/verify-selfhost-seed.mjs --json > .cache/selfhost-required-shadow/fixed/seed-verify.json
+      - name: Execute verified fixed Seed bootstrap
+        run: >-
+          node scripts/run-selfhost-fixed-seed-bootstrap.mjs
+          --output=.cache/selfhost-required-shadow/fixed/fixed-seed-bootstrap.json
+      - name: Execute clean Legacy rollback smoke
+        run: >-
+          node scripts/run-selfhost-rollback-smoke.mjs
+          --output=.cache/selfhost-required-shadow/fixed/legacy-rollback.json
+      - name: Upload fixed Seed and rollback evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: selfhost-required-fixed-${{ github.event.pull_request.head.sha || github.sha }}
+          path: .cache/selfhost-required-shadow/fixed/*.json
+          if-no-files-found: error
+          retention-days: 30
+
   baseline:
-    name: Self-host release core / baseline environment
+    name: Clean bootstrap / baseline environment
     needs: classify
     if: needs.classify.outputs.selfhost_required == 'true'
     runs-on: ubuntu-24.04
@@ -57,27 +96,21 @@ jobs:
           cache: npm
       - name: Pre-provision dependency cache
         run: npm ci --ignore-scripts
-      - name: Build current checkout for fixed-Seed bootstrap
-        run: npm run build
       - name: Pre-provision and verify fixed Seed
         run: node scripts/verify-selfhost-seed.mjs --json
-      - name: Execute fail-closed self-host release core
+      - name: Execute clean bootstrap in baseline environment
         run: >-
-          node scripts/run-selfhost-release-gate.mjs
-          --output=.cache/selfhost-required-shadow/release-core.json
+          node scripts/run-selfhost-clean-bootstrap.mjs
+          --environment-profile=baseline
+          --working-root=.cache/selfhost/clean-bootstrap-baseline
+          --output=.cache/selfhost-required-shadow/baseline/clean-bootstrap-baseline.json
           --json
-      - name: Stage baseline clean-bootstrap evidence
-        run: |
-          mkdir -p .cache/selfhost-required-shadow/baseline
-          cp .cache/selfhost/clean-bootstrap.json .cache/selfhost-required-shadow/baseline/clean-bootstrap-baseline.json
-      - name: Upload baseline release-core evidence
+      - name: Upload baseline clean-bootstrap evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: selfhost-required-baseline-${{ github.event.pull_request.head.sha || github.sha }}
-          path: |
-            .cache/selfhost-required-shadow/release-core.json
-            .cache/selfhost-required-shadow/baseline/clean-bootstrap-baseline.json
+          path: .cache/selfhost-required-shadow/baseline/clean-bootstrap-baseline.json
           if-no-files-found: error
           retention-days: 30
 
@@ -104,15 +137,59 @@ jobs:
           node scripts/run-selfhost-clean-bootstrap.mjs
           --environment-profile=perturbed
           --working-root=.cache/selfhost/clean-bootstrap-perturbed
-          --output=.cache/selfhost-required-shadow/clean-bootstrap-perturbed.json
+          --output=.cache/selfhost-required-shadow/perturbed/clean-bootstrap-perturbed.json
           --json
-      - name: Upload perturbed evidence
+      - name: Upload perturbed clean-bootstrap evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: selfhost-required-perturbed-${{ github.event.pull_request.head.sha || github.sha }}
-          path: .cache/selfhost-required-shadow/clean-bootstrap-perturbed.json
+          path: .cache/selfhost-required-shadow/perturbed/clean-bootstrap-perturbed.json
           if-no-files-found: error
+          retention-days: 30
+
+  release-core:
+    name: Assemble fail-closed self-host release core
+    needs:
+      - classify
+      - fixed-seed
+      - baseline
+    if: always() && needs.classify.outputs.selfhost_required == 'true' && needs.fixed-seed.result == 'success' && needs.baseline.result == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 24
+      - name: Download fixed Seed and rollback evidence
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: selfhost-required-fixed-${{ github.event.pull_request.head.sha || github.sha }}
+          path: .cache/selfhost-required-shadow/inputs/fixed
+      - name: Download baseline clean-bootstrap evidence
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: selfhost-required-baseline-${{ github.event.pull_request.head.sha || github.sha }}
+          path: .cache/selfhost-required-shadow/inputs/baseline
+      - name: Assemble precomputed evidence through release-core evaluator
+        run: >-
+          node scripts/assemble-selfhost-release-gate.mjs
+          --seed-verify=.cache/selfhost-required-shadow/inputs/fixed/seed-verify.json
+          --fixed-seed-bootstrap=.cache/selfhost-required-shadow/inputs/fixed/fixed-seed-bootstrap.json
+          --clean-bootstrap=.cache/selfhost-required-shadow/inputs/baseline/clean-bootstrap-baseline.json
+          --legacy-rollback=.cache/selfhost-required-shadow/inputs/fixed/legacy-rollback.json
+          --output=.cache/selfhost-required-shadow/release-core.json
+          --json
+      - name: Upload assembled release-core evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: selfhost-required-release-core-${{ github.event.pull_request.head.sha || github.sha }}
+          path: .cache/selfhost-required-shadow/release-core.json
+          if-no-files-found: warn
           retention-days: 30
 
   compare:
@@ -144,7 +221,7 @@ jobs:
       - name: Compare exact bootstrap artifacts across independent runners
         run: >-
           node scripts/compare-selfhost-clean-bootstrap-evidence.mjs
-          --baseline=.cache/selfhost-required-shadow/inputs/baseline/baseline/clean-bootstrap-baseline.json
+          --baseline=.cache/selfhost-required-shadow/inputs/baseline/clean-bootstrap-baseline.json
           --perturbed=.cache/selfhost-required-shadow/inputs/perturbed/clean-bootstrap-perturbed.json
           --output=.cache/selfhost-required-shadow/cross-runner.json
           --json
@@ -154,15 +231,14 @@ jobs:
         with:
           name: selfhost-required-cross-runner-${{ github.event.pull_request.head.sha || github.sha }}
           path: .cache/selfhost-required-shadow/cross-runner.json
-          if-no-files-found: error
+          if-no-files-found: warn
           retention-days: 30
 
   required-selfhost-gate:
     name: Required self-host gate
     needs:
       - classify
-      - baseline
-      - perturbed
+      - release-core
       - compare
     if: always()
     runs-on: ubuntu-24.04
@@ -174,8 +250,11 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: 24
-      - name: Run Required Shadow unit tests
-        run: node --test scripts/run-selfhost-required-gate.test.mjs
+      - name: Run Required Shadow and assembly unit tests
+        run: >-
+          node --test
+          scripts/assemble-selfhost-release-gate.test.mjs
+          scripts/run-selfhost-required-gate.test.mjs
       - name: Validate classifier output
         shell: bash
         env:
@@ -189,37 +268,36 @@ jobs:
               ;;
           esac
       - name: Record upstream evidence failure
-        if: needs.classify.outputs.selfhost_required == 'true' && (needs.baseline.result != 'success' || needs.perturbed.result != 'success' || needs.compare.result != 'success')
+        if: needs.classify.outputs.selfhost_required == 'true' && (needs.release-core.result != 'success' || needs.compare.result != 'success')
         env:
           EXPECTED_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
-          BASELINE_RESULT: ${{ needs.baseline.result }}
-          PERTURBED_RESULT: ${{ needs.perturbed.result }}
+          RELEASE_CORE_RESULT: ${{ needs.release-core.result }}
           COMPARE_RESULT: ${{ needs.compare.result }}
         run: >-
           node scripts/run-selfhost-required-gate.mjs
           --expected-commit="$EXPECTED_COMMIT"
-          --upstream-failure="baseline=$BASELINE_RESULT,perturbed=$PERTURBED_RESULT,compare=$COMPARE_RESULT"
+          --upstream-failure="release-core=$RELEASE_CORE_RESULT,compare=$COMPARE_RESULT"
           --json
-      - name: Download baseline release-core evidence
-        if: needs.classify.outputs.selfhost_required == 'true' && needs.baseline.result == 'success' && needs.perturbed.result == 'success' && needs.compare.result == 'success'
+      - name: Download assembled release-core evidence
+        if: needs.classify.outputs.selfhost_required == 'true' && needs.release-core.result == 'success' && needs.compare.result == 'success'
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
-          name: selfhost-required-baseline-${{ github.event.pull_request.head.sha || github.sha }}
-          path: .cache/selfhost-required-shadow/summary/baseline
+          name: selfhost-required-release-core-${{ github.event.pull_request.head.sha || github.sha }}
+          path: .cache/selfhost-required-shadow/summary/release-core
       - name: Download cross-runner evidence
-        if: needs.classify.outputs.selfhost_required == 'true' && needs.baseline.result == 'success' && needs.perturbed.result == 'success' && needs.compare.result == 'success'
+        if: needs.classify.outputs.selfhost_required == 'true' && needs.release-core.result == 'success' && needs.compare.result == 'success'
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           name: selfhost-required-cross-runner-${{ github.event.pull_request.head.sha || github.sha }}
           path: .cache/selfhost-required-shadow/summary/cross-runner
       - name: Validate Required Shadow evidence
-        if: needs.classify.outputs.selfhost_required == 'true' && needs.baseline.result == 'success' && needs.perturbed.result == 'success' && needs.compare.result == 'success'
+        if: needs.classify.outputs.selfhost_required == 'true' && needs.release-core.result == 'success' && needs.compare.result == 'success'
         env:
           EXPECTED_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
         run: >-
           node scripts/run-selfhost-required-gate.mjs
           --expected-commit="$EXPECTED_COMMIT"
-          --release-core=.cache/selfhost-required-shadow/summary/baseline/release-core.json
+          --release-core=.cache/selfhost-required-shadow/summary/release-core/release-core.json
           --cross-runner=.cache/selfhost-required-shadow/summary/cross-runner/cross-runner.json
           --json
       - name: Record explicit omission for unrelated changes
