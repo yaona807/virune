@@ -526,7 +526,7 @@ fn compileMvpSource(
 }
 
 fn runtimeImportLine() -> String {
-	return "import { intAdd, intDivide, intMultiply, intNegate, intRemainder, intSubtract, isPropagation, rootTaskContext, viruneEquals } from '@virune/runtime/v2/index.js';"
+	return "import { intAdd, intDivide, intMultiply, intNegate, intRemainder, intSubtract, isPropagation, propagate, rootTaskContext, viruneEquals } from '@virune/runtime/v2/index.js';"
 }
 
 fn splitLines(value: String) -> List<String> {
