@@ -89,7 +89,7 @@ test('rejects a production switch without rollback evidence', async t => {
 	const root = await fixture(policy => {
 		const production = policy.stages.at(-1);
 		production.promotionRequirements.rollbackEvidenceRequired = false;
-		production.requiredEvidence = production.requiredEvidence.filter(item => item !== 'rollback-smoke');
+		production.requiredEvidence = production.requiredEvidence.filter(item => item !== 'legacy-rollback');
 		return policy;
 	});
 	t.after(() => rm(root, { recursive: true, force: true }));
