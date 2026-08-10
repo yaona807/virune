@@ -116,7 +116,7 @@ platform固有dependencyは対応するproject boundaryの内側に保ちます�
 
 ## 6. 1つの検証loopを使う
 
-正確な実行commandはcanonical showcaseの[このrepositoryから検証する手順](../examples/feature-showcase/README_ja.md#このrepositoryから検証する)だけに保持します。このガイドでは、driftし得る別のcommand blockを複製せず、それぞれの役割を説明します。
+正確な実行commandはcanonical showcaseの[Repositoryから検証する手順](../examples/feature-showcase/README_ja.md#repositoryから検証する)だけに保持します。このガイドでは、driftし得る別のcommand blockを複製せず、それぞれの役割を説明します。
 
 次の順序でworkflowを実行します。
 
