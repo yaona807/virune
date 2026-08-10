@@ -18,6 +18,7 @@
 
 <p align="center">
   <a href="#クイックスタート">クイックスタート</a> ·
+  <a href="docs/application-guide_ja.md">アプリケーションガイド</a> ·
   <a href="docs/language-guide_ja.md">言語ガイド</a> ·
   <a href="docs/cli-reference_ja.md">CLIリファレンス</a> ·
   <a href="docs/vscode_ja.md">VS Code</a> ·
@@ -184,6 +185,7 @@ code --install-extension release/virune-vscode-1.0.0.vsix
 | ドキュメント | 内容 |
 |---|---|
 | [導入手順](docs/getting-started-from-clone_ja.md) | Clone、install、build、run、トラブルシューティング |
+| [アプリケーションガイド](docs/application-guide_ja.md) | Domain modeling、effect、structured concurrency、interop、Node/browser構成を実際のapplication順に説明 |
 | [言語ガイド](docs/language-guide_ja.md) | Viruneの構文と意味論の実用的な解説 |
 | [CLIリファレンス](docs/cli-reference_ja.md) | Command、option、終了動作 |
 | [標準ライブラリ](docs/standard-library_ja.md) | Node.js／browser adapter |
