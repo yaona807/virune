@@ -1,0 +1,17 @@
+name: Security contact request
+description: Request a private contact channel when private vulnerability reporting is unavailable
+title: "security: request private contact"
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this public form only when the private vulnerability reporting path in `SECURITY.md` is unavailable.
+
+        Do not include vulnerability details, reproduction steps, exploit information, affected versions, secrets, or other sensitive information. Maintainers will arrange a private contact channel.
+  - type: checkboxes
+    id: confirmation
+    attributes:
+      label: Public-content confirmation
+      options:
+        - label: I have not included vulnerability details in this public issue and only need a private contact channel.
+          required: true
