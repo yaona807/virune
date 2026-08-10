@@ -16,7 +16,7 @@ const corpus = validateCorpus(JSON.parse(await readFile(corpusPath, 'utf8')));
 const fixtures = corpus.fixtures.filter(fixture => fixture.tags.includes('project') && (options.fixture === null || fixture.id === options.fixture));
 if (fixtures.length === 0) throw new Error(`No Project Compiler differential fixtures matched ${options.fixture ?? 'tag project'}`);
 
-const module = await import(`${pathToFileURL(modulePath).href}?run=${Date.now()}`);
+const module = await import(pathToFileURL(modulePath).href);
 const selfhost = createSelfhostProjectKernel(module);
 const report = await runDifferentialCorpus({
 	fixtures,
