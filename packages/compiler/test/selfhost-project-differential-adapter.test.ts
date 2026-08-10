@@ -141,7 +141,7 @@ test('project differential rejects unsupported evidence profiles before invoking
 			...browserInput,
 			platform: 'browser',
 		}),
-		/requires the node platform/u,
+		/^Project differential currently requires the node platform$/u,
 	);
 	const interopInput = input();
 	await assert.rejects(
@@ -152,7 +152,7 @@ test('project differential rejects unsupported evidence profiles before invoking
 				modules: [{ specifier: 'node:fs', metadata: {} }],
 			},
 		}),
-		/does not compare JavaScript interop yet/u,
+		/^Project differential v1 does not compare JavaScript interop yet$/u,
 	);
 	const sourceMapped = input();
 	await assert.rejects(
@@ -160,7 +160,7 @@ test('project differential rejects unsupported evidence profiles before invoking
 			...sourceMapped,
 			emit: { ...sourceMapped.emit, sourceMap: true },
 		}),
-		/source maps to be disabled/u,
+		/^Project differential v1 requires source maps to be disabled$/u,
 	);
 	const withoutSourcesContent = input();
 	await assert.rejects(
@@ -168,7 +168,7 @@ test('project differential rejects unsupported evidence profiles before invoking
 			...withoutSourcesContent,
 			emit: { ...withoutSourcesContent.emit, sourcesContent: false },
 		}),
-		/requires sourcesContent/u,
+		/^Project differential v1 requires sourcesContent$/u,
 	);
 	assert.equal(compileCalls, 0);
 });
