@@ -1,0 +1,17 @@
+import { User } from "./domain.virune"
+
+pub record DirectorySummary {
+	indexedUsers: Int
+	hasShowcaseTag: Bool
+}
+
+pub fn summarizeDirectory(users: List<User>) -> DirectorySummary {
+	let byName = Map.empty<String, Int>()
+	let indexed = Map.set(byName, "users", List.length(users))
+	let tags = Set.from(["directory", "example"])
+	let tagged = Set.add(tags, "showcase")
+	return DirectorySummary {
+		indexedUsers: Map.size(indexed),
+		hasShowcaseTag: Set.has(tagged, "showcase"),
+	}
+}
