@@ -63,8 +63,69 @@
 			"expectedDivergences": []
 		},
 		{
+			"id": "project-smoke-return-value",
+			"tags": ["project", "compiler-unit", "runtime"],
+			"input": {
+				"contractVersion": "1",
+				"languageVersion": "1.0",
+				"platform": "node",
+				"entryPath": "src/main.virune",
+				"sources": [
+					{
+						"path": "src/main.virune",
+						"text": "pub fn main() -> Int {\n\treturn 7\n}\n"
+					}
+				],
+				"interopManifest": { "version": "1", "modules": [] },
+				"emit": { "target": "es2022", "sourceMap": false, "sourcesContent": true }
+			},
+			"expectedDivergences": []
+		},
+		{
+			"id": "project-smoke-multi-module",
+			"tags": ["project", "conformance", "runtime"],
+			"input": {
+				"contractVersion": "1",
+				"languageVersion": "1.0",
+				"platform": "node",
+				"entryPath": "src/main.virune",
+				"sources": [
+					{
+						"path": "src/main.virune",
+						"text": "import { value } from \"./value.virune\"\n\npub fn main() -> Int {\n\treturn value()\n}\n"
+					},
+					{
+						"path": "src/value.virune",
+						"text": "pub fn value() -> Int {\n\treturn 42\n}\n"
+					}
+				],
+				"interopManifest": { "version": "1", "modules": [] },
+				"emit": { "target": "es2022", "sourceMap": false, "sourcesContent": true }
+			},
+			"expectedDivergences": []
+		},
+		{
+			"id": "project-smoke-diagnostic",
+			"tags": ["project", "diagnostic"],
+			"input": {
+				"contractVersion": "1",
+				"languageVersion": "1.0",
+				"platform": "node",
+				"entryPath": "src/main.virune",
+				"sources": [
+					{
+						"path": "src/main.virune",
+						"text": "pub fn main( -> Int {\n"
+					}
+				],
+				"interopManifest": { "version": "1", "modules": [] },
+				"emit": { "target": "es2022", "sourceMap": false, "sourcesContent": true }
+			},
+			"expectedDivergences": []
+		},
+		{
 			"id": "mvp-arithmetic-call",
-			"tags": ["mvp", "compiler-unit", "runtime"],
+			"tags": ["mvp", "project", "compiler-unit", "runtime"],
 			"input": {
 				"contractVersion": "1",
 				"languageVersion": "1.0",
@@ -83,7 +144,7 @@
 		},
 		{
 			"id": "mvp-primitives-logic",
-			"tags": ["mvp", "compiler-unit", "runtime"],
+			"tags": ["mvp", "project", "compiler-unit", "runtime"],
 			"input": {
 				"contractVersion": "1",
 				"languageVersion": "1.0",
@@ -102,7 +163,7 @@
 		},
 		{
 			"id": "mvp-unknown-name",
-			"tags": ["mvp", "compiler-unit", "diagnostic"],
+			"tags": ["mvp", "project", "compiler-unit", "diagnostic"],
 			"input": {
 				"contractVersion": "1",
 				"languageVersion": "1.0",
