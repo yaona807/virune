@@ -4,7 +4,7 @@
 
 This guide is the task-oriented route from an empty project to a small Virune application. It explains how the public Virune 1.0 features fit together in practice by pointing directly at the repository-owned [feature showcase](../examples/feature-showcase/README.md).
 
-The showcase is the canonical executable source for this guide. This document intentionally does not copy its Virune source into separate snippets: when the example changes, there should be one source to review and verify.
+The showcase is the canonical executable source for this guide. This document intentionally does not copy its Virune source or runnable command blocks into separate snippets: when the example changes, there should be one source to review and verify.
 
 > [!IMPORTANT]
 > This guide is explanatory, not normative. The files under [`spec/`](../spec/README.md) define exact Virune 1.0 behavior. If this guide and the normative specification disagree, the specification wins.
@@ -116,36 +116,17 @@ Exact platform/module rules are defined by [modules](../spec/modules.md), and ex
 
 ## 6. Use one verification loop
 
-From a Virune repository clone, build the toolchain first and run the same public commands against the showcase:
+The exact runnable commands remain in the canonical showcase under [Verify from this repository](../examples/feature-showcase/README.md#verify-from-this-repository). This guide describes their role instead of duplicating another command block that could drift.
 
-```bash
-npm run virune -- fmt --check examples/feature-showcase/node
-npm run virune -- check examples/feature-showcase/node
-npm run virune -- test examples/feature-showcase/node
-npm run virune -- api examples/feature-showcase/node \
-  --out examples/feature-showcase/node/virune.api.json --check
-npm run virune -- build examples/feature-showcase/node
-npm run virune -- run examples/feature-showcase/node -- Alice Bob
+Run the workflow in this order:
 
-npm run virune -- fmt --check examples/feature-showcase/browser
-npm run virune -- check examples/feature-showcase/browser
-npm run virune -- build examples/feature-showcase/browser
-```
-
-Regenerate the safe binding from its checked-in declaration fixture with:
-
-```bash
-npm run virune -- bind \
-  examples/feature-showcase/node/types/node-os-showcase.d.ts \
-  --module node:os \
-  --out examples/feature-showcase/node/src/ffi/node-os.virune
-```
-
-Validate TypeScript adapters with:
-
-```bash
-npm run virune -- interop check examples/feature-showcase/node
-```
+1. run `fmt --check` for both the Node.js and browser projects;
+2. run Node `check` and `test`;
+3. run Node `api --check` against the checked-in public API snapshot;
+4. run Node `build` and `run`;
+5. run browser `check` and `build`;
+6. regenerate the safe binding with `bind` from the checked-in TypeScript declaration fixture and verify that generated output has not drifted;
+7. validate the TypeScript adapter through `interop check`.
 
 When using an installed Virune CLI in your own project, use the corresponding `virune` commands directly. A project created by `virune init` also provides the common npm scripts shown in its generated README.
 
