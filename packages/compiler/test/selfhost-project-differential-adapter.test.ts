@@ -75,6 +75,10 @@ function acceptedProjectModule(onCompile?: (request: string) => void): SelfhostP
 	};
 }
 
+function hasErrorMessage(message: string): (error: unknown) => boolean {
+	return error => error instanceof Error && error.message === message;
+}
+
 test('project result conversion preserves the shared Kernel contract and omits null optionals', () => {
 	const output = projectCompilerResultToKernelOutput(acceptedProjectResult());
 	assert.equal(output.accepted, true);
@@ -141,7 +145,7 @@ test('project differential rejects unsupported evidence profiles before invoking
 			...browserInput,
 			platform: 'browser',
 		}),
-		/^Project differential currently requires the node platform$/u,
+		hasErrorMessage('Project differential currently requires the node platform'),
 	);
 	const interopInput = input();
 	await assert.rejects(
@@ -152,7 +156,7 @@ test('project differential rejects unsupported evidence profiles before invoking
 				modules: [{ specifier: 'node:fs', metadata: {} }],
 			},
 		}),
-		/^Project differential v1 does not compare JavaScript interop yet$/u,
+		hasErrorMessage('Project differential v1 does not compare JavaScript interop yet'),
 	);
 	const sourceMapped = input();
 	await assert.rejects(
@@ -160,7 +164,7 @@ test('project differential rejects unsupported evidence profiles before invoking
 			...sourceMapped,
 			emit: { ...sourceMapped.emit, sourceMap: true },
 		}),
-		/^Project differential v1 requires source maps to be disabled$/u,
+		hasErrorMessage('Project differential v1 requires source maps to be disabled'),
 	);
 	const withoutSourcesContent = input();
 	await assert.rejects(
@@ -168,7 +172,7 @@ test('project differential rejects unsupported evidence profiles before invoking
 			...withoutSourcesContent,
 			emit: { ...withoutSourcesContent.emit, sourcesContent: false },
 		}),
-		/^Project differential v1 requires sourcesContent$/u,
+		hasErrorMessage('Project differential v1 requires sourcesContent'),
 	);
 	assert.equal(compileCalls, 0);
 });
