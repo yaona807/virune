@@ -72,17 +72,6 @@
       ]
     },
     {
-      "path": "ffi/unsafe-hostname.virune",
-      "declarations": [
-        {
-          "kind": "function",
-          "name": "auditedHostname",
-          "signature": "fn auditedHostname() -> String uses JavaScript",
-          "attributes": []
-        }
-      ]
-    },
-    {
       "path": "main.virune",
       "declarations": [
         {
