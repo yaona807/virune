@@ -10,6 +10,10 @@ Do not weaken language semantics, safety boundaries, tests, quality/security/com
 
 Repository-owned configuration, scripts, and CI are canonical for formatting and validation. Check existing commands before adding a new validation path.
 
+## Security reports
+
+Do not disclose suspected security vulnerabilities in public issues, discussions, pull requests, or other public channels. Follow [`SECURITY.md`](SECURITY.md) for private vulnerability reporting and the fallback procedure when private reporting is unavailable.
+
 ## Issues
 
 Implementation changes should normally be linked to an issue. Distinguish tracking issues from implementation issues.
