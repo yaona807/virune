@@ -1,13 +1,9 @@
-import { displayUser } from "./domain.virune"
+import { DirectoryError, displayUser } from "./domain.virune"
 import { summarizeDirectory } from "./collections.virune"
 import { loadDirectory } from "./workflow.virune"
 
-pub async fn main(args: List<String>) -> Result<Unit, String> uses Console {
-	let users = await loadDirectory()
-	let directory = match users {
-		Ok(value) => value
-		Err(error) => return Err("directory load failed: {error}")
-	}
+pub async fn main(args: List<String>) -> Result<Unit, DirectoryError> uses Console {
+	let directory = await loadDirectory()?
 	for user in directory {
 		Console.print(displayUser(user))
 	}
