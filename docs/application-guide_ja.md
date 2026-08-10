@@ -4,7 +4,7 @@
 
 このガイドは、空のプロジェクトから小さなViruneアプリケーションを構築するまでのタスク指向ルートです。公開Virune 1.0機能を実際にどう組み合わせるかを、repository-ownedの[feature showcase](../examples/feature-showcase/README_ja.md)へ直接対応付けて説明します。
 
-このガイドのcanonical executable sourceはfeature showcaseです。Virune sourceを別のsnippetとして複製しません。exampleが変わったときに、review・検証すべきsourceを1か所に保つためです。
+このガイドのcanonical executable sourceはfeature showcaseです。Virune sourceや実行command blockを別のsnippetとして複製しません。exampleが変わったときに、review・検証すべきsourceを1か所に保つためです。
 
 > [!IMPORTANT]
 > このガイドは説明用であり、規範仕様ではありません。Virune 1.0の厳密な動作は[`spec/`](../spec/README_ja.md)配下が定義します。このガイドと規範仕様が食い違う場合は、規範仕様を優先します。
@@ -116,36 +116,17 @@ platform固有dependencyは対応するproject boundaryの内側に保ちます�
 
 ## 6. 1つの検証loopを使う
 
-Virune repository cloneから利用する場合は、toolchainをbuildした後、showcaseに対して同じ公開commandを実行します。
+正確な実行commandはcanonical showcaseの[このrepositoryから検証する手順](../examples/feature-showcase/README_ja.md#このrepositoryから検証する)だけに保持します。このガイドでは、driftし得る別のcommand blockを複製せず、それぞれの役割を説明します。
 
-```bash
-npm run virune -- fmt --check examples/feature-showcase/node
-npm run virune -- check examples/feature-showcase/node
-npm run virune -- test examples/feature-showcase/node
-npm run virune -- api examples/feature-showcase/node \
-  --out examples/feature-showcase/node/virune.api.json --check
-npm run virune -- build examples/feature-showcase/node
-npm run virune -- run examples/feature-showcase/node -- Alice Bob
+次の順序でworkflowを実行します。
 
-npm run virune -- fmt --check examples/feature-showcase/browser
-npm run virune -- check examples/feature-showcase/browser
-npm run virune -- build examples/feature-showcase/browser
-```
-
-checked-in declaration fixtureからsafe bindingを再生成します。
-
-```bash
-npm run virune -- bind \
-  examples/feature-showcase/node/types/node-os-showcase.d.ts \
-  --module node:os \
-  --out examples/feature-showcase/node/src/ffi/node-os.virune
-```
-
-TypeScript adapterは次で検証します。
-
-```bash
-npm run virune -- interop check examples/feature-showcase/node
-```
+1. Node.jsとbrowser両projectに`fmt --check`を実行する。
+2. Nodeで`check`と`test`を実行する。
+3. checked-in public API snapshotに対してNodeの`api --check`を実行する。
+4. Nodeで`build`と`run`を実行する。
+5. browserで`check`と`build`を実行する。
+6. checked-in TypeScript declaration fixtureから`bind`でsafe bindingを再生成し、generated outputがdriftしていないことを確認する。
+7. `interop check`でTypeScript adapterを検証する。
 
 自分のprojectでインストール済みVirune CLIを使う場合は、対応する`virune` commandを直接実行します。`virune init`で作成したprojectには、生成READMEに共通npm scriptも記載されます。
 
