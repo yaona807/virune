@@ -1,0 +1,5 @@
+@jsExport
+pub fn verify() -> Result<String, JsError> uses Dom {
+	let updated = Dom.setText("#status", "Virune feature showcase")?
+	return Ok(Bytes.toHex(Bytes.fromUtf8("ok")))
+}
