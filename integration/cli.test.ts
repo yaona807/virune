@@ -29,6 +29,7 @@ test('CLI init, check, build and run form a complete workflow', async () => {
 	assert.match(projectReadme, /npm run check/u);
 	assert.match(projectReadme, /npm test/u);
 	assert.match(projectReadme, /npm run start/u);
+	assert.match(projectReadme, /blob\/main\/docs\/application-guide\.md/u);
 	assert.match(projectReadme, new RegExp(`blob/v${version.replaceAll('.', '\\.')}/docs/language-guide\\.md`, 'u'));
 	assert.match(projectReadme, new RegExp(`blob/v${version.replaceAll('.', '\\.')}/docs/standard-library\\.md`, 'u'));
 	assert.match(projectReadme, new RegExp(`blob/v${version.replaceAll('.', '\\.')}/docs/js-interop\\.md`, 'u'));
