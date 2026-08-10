@@ -11,7 +11,7 @@ pub enum DirectoryError {
 	InvalidName(String)
 }
 
-pub fn createUser(id: UserId, name: String, email: String?) -> Result<User, DirectoryError> {
+fn createUser(id: UserId, name: String, email: String?) -> Result<User, DirectoryError> {
 	if String.trim(name) == "" {
 		return Err(DirectoryError.InvalidName(name))
 	}
@@ -20,6 +20,10 @@ pub fn createUser(id: UserId, name: String, email: String?) -> Result<User, Dire
 		name: String.trim(name),
 		email: email,
 	})
+}
+
+pub fn createUserFromInt(id: Int, name: String, email: String?) -> Result<User, DirectoryError> {
+	return createUser(UserId.create(id), name, email)
 }
 
 pub fn displayUser(user: User) -> String {
