@@ -1,0 +1,97 @@
+{
+  "schemaVersion": 1,
+  "languageVersion": "1.0",
+  "modules": [
+    {
+      "path": "collections.virune",
+      "declarations": [
+        {
+          "kind": "record",
+          "name": "DirectorySummary",
+          "signature": "record DirectorySummary { indexedUsers: Int, hasShowcaseTag: Bool }",
+          "attributes": []
+        },
+        {
+          "kind": "function",
+          "name": "summarizeDirectory",
+          "signature": "fn summarizeDirectory(userCount: Int) -> DirectorySummary",
+          "attributes": []
+        }
+      ]
+    },
+    {
+      "path": "domain.virune",
+      "declarations": [
+        {
+          "kind": "function",
+          "name": "createUserFromInt",
+          "signature": "fn createUserFromInt(id: Int, name: String, email: String?) -> Result<User, DirectoryError>",
+          "attributes": []
+        },
+        {
+          "kind": "enum",
+          "name": "DirectoryError",
+          "signature": "enum DirectoryError { NotFound(UserId), InvalidName(String) }",
+          "attributes": []
+        },
+        {
+          "kind": "function",
+          "name": "displayUser",
+          "signature": "fn displayUser(user: User) -> String",
+          "attributes": []
+        },
+        {
+          "kind": "function",
+          "name": "findUser",
+          "signature": "fn findUser(users: List<User>, targetId: UserId) -> Result<User, DirectoryError>",
+          "attributes": []
+        },
+        {
+          "kind": "record",
+          "name": "User",
+          "signature": "record User derives Eq, Hash, Debug { id: UserId, name: String, email: String? }",
+          "attributes": []
+        },
+        {
+          "kind": "newtype",
+          "name": "UserId",
+          "signature": "newtype UserId = Int",
+          "attributes": []
+        }
+      ]
+    },
+    {
+      "path": "ffi/node-os.virune",
+      "declarations": [
+        {
+          "kind": "function",
+          "name": "hostname",
+          "signature": "fn hostname() -> Result<String, JsError> uses JavaScript",
+          "attributes": []
+        }
+      ]
+    },
+    {
+      "path": "main.virune",
+      "declarations": [
+        {
+          "kind": "function",
+          "name": "main",
+          "signature": "async fn main(args: List<String>) -> Result<Unit, String> uses Console",
+          "attributes": []
+        }
+      ]
+    },
+    {
+      "path": "workflow.virune",
+      "declarations": [
+        {
+          "kind": "function",
+          "name": "loadDirectory",
+          "signature": "async fn loadDirectory() -> Result<List<String>, String>",
+          "attributes": []
+        }
+      ]
+    }
+  ]
+}
