@@ -37,10 +37,8 @@ body:
   - type: textarea
     id: acceptance
     attributes:
-      label: Acceptance criteria
-      description: What observable conditions would prove the defect is fixed?
-    validations:
-      required: true
+      label: Acceptance criteria (optional)
+      description: If useful, describe additional observable conditions that would prove the defect is fixed. Maintainers may refine completion criteria during triage.
   - type: textarea
     id: boundaries
     attributes:
