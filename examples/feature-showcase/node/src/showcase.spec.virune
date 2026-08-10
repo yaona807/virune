@@ -1,7 +1,7 @@
-import { UserId, createUser } from "./domain.virune"
+import { createUserFromInt } from "./domain.virune"
 
- test "domain model trims validated names" {
-	let result = createUser(UserId.create(7), " Alice ", None)
+test "domain model trims validated names" {
+	let result = createUserFromInt(7, " Alice ", None)
 	let valid = match result {
 		Ok(user) => user.name == "Alice"
 		Err(_) => false
