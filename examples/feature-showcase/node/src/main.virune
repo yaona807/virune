@@ -1,13 +1,12 @@
-import { DirectoryError, displayUser } from "./domain.virune"
 import { summarizeDirectory } from "./collections.virune"
 import { loadDirectory } from "./workflow.virune"
 
-pub async fn main(args: List<String>) -> Result<Unit, DirectoryError> uses Console {
+pub async fn main(args: List<String>) -> Result<Unit, String> uses Console {
 	let directory = await loadDirectory()?
 	for user in directory {
-		Console.print(displayUser(user))
+		Console.print(user)
 	}
-	let summary = summarizeDirectory(directory)
+	let summary = summarizeDirectory(List.length(directory))
 	Console.print("Index entries: {summary.indexedUsers}")
 	Console.print("Showcase tag present: {summary.hasShowcaseTag}")
 	Console.print("Program arguments: {List.length(args)}")
