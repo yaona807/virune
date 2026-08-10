@@ -132,9 +132,28 @@ test('Self-host project kernel delegates through the validated Project Compiler 
 	assert.equal(output.stats.checkedModules, 1);
 });
 
-test('project differential rejects incompatible emit profiles before invoking the project compiler', async () => {
+test('project differential rejects unsupported evidence profiles before invoking the project compiler', async () => {
 	let compileCalls = 0;
 	const module = acceptedProjectModule(() => { compileCalls += 1; });
+	const browserInput = input();
+	await assert.rejects(
+		compileWithSelfhostProject(module, {
+			...browserInput,
+			platform: 'browser',
+		}),
+		/requires the node platform/u,
+	);
+	const interopInput = input();
+	await assert.rejects(
+		compileWithSelfhostProject(module, {
+			...interopInput,
+			interopManifest: {
+				version: '1',
+				modules: [{ specifier: 'node:fs', metadata: {} }],
+			},
+		}),
+		/does not compare JavaScript interop yet/u,
+	);
 	const sourceMapped = input();
 	await assert.rejects(
 		compileWithSelfhostProject(module, {
