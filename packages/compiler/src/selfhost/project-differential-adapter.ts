@@ -64,6 +64,12 @@ function validateProjectDifferentialInput(value: unknown): KernelInputV1 {
 	if (input.interopManifest.modules.length !== 0) {
 		throw new Error('Project differential v1 does not compare JavaScript interop yet');
 	}
+	if (input.emit.sourceMap) {
+		throw new Error('Project differential v1 requires source maps to be disabled');
+	}
+	if (!input.emit.sourcesContent) {
+		throw new Error('Project differential v1 requires sourcesContent');
+	}
 	return input;
 }
 
