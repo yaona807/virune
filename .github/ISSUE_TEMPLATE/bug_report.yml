@@ -1,0 +1,55 @@
+name: Bug report
+description: Report a reproducible Virune defect
+title: "bug: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before filing, search existing issues and reduce the problem to the smallest useful reproduction you can provide.
+
+        Security vulnerabilities must not be disclosed in this public form. Follow the [security policy](https://github.com/yaona807/virune/blob/main/SECURITY.md) and use the private reporting path described there. If private reporting is unavailable, use the Security contact request form without including vulnerability details.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What happened?
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What should have happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction
+      description: Provide the smallest reproducible input, commands, and observed output.
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Virune version/commit, Node version, OS, target, and other relevant details.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria (optional)
+      description: If useful, describe additional observable conditions that would prove the defect is fixed. Maintainers may refine completion criteria during triage.
+  - type: textarea
+    id: boundaries
+    attributes:
+      label: Compatibility / safety boundaries
+      description: Note any Language Specification, Compiler API, Runtime ABI, Interop ABI, safety, determinism, or compatibility constraints that must not regress.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Pre-submission checks
+      options:
+        - label: I searched existing issues for duplicates.
+          required: true
