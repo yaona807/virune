@@ -16,7 +16,7 @@ Node projectでは、小さなdirectory applicationを通して次を組み合�
 - `List`、`Map`、`Set` collection
 - `test.include`から検出されるVirune-native test
 - checked-inされた決定的public API snapshot
-- generated safe binding、compiled TypeScript adapter、隔離されたaudited unsafe FFIという3段階のJavaScript interop
+- generated safe binding、compiled TypeScript adapter、隔離されたaudited unsafe FFI source fixtureという3段階のJavaScript interop
 
 Browser projectでは公開browser targetを使用し、repository-wide source checkとの互換性を維持した`@jsExport` JavaScript境界を提供します。生成物をChromiumで継続実行する検証は、専用quality gateであるIssue #81の責務です。
 
@@ -37,7 +37,7 @@ feature-showcase/
 │       ├── showcase.spec.virune
 │       ├── ffi/
 │       │   ├── node-os.virune
-│       │   └── unsafe-hostname.virune
+│       │   └── unsafe-hostname.virune.example
 │       └── interop/
 │           └── read-file.interop.ts
 └── browser/
@@ -84,11 +84,11 @@ npm run virune -- interop check examples/feature-showcase/node
 
 `src/interop/read-file.interop.ts`は**TypeScript adapter**の例です。Nodeのcallback形式`readFile`はTypeScript内部に閉じ、adapterがInterop ABIで検証可能なmonomorphicかつcallback-freeの`Promise<string>` surfaceだけを公開します。
 
-`src/ffi/unsafe-hostname.virune`は**unsafe FFI**の例です。rawな`unsafe extern`は`src/ffi/`配下の`unsafe module`内に隔離し、通常のVirune codeからはraw JavaScript symbolではなく、監査済みのnative-shaped facadeだけが見える構成です。安全制約を緩めるのではなく、trust boundaryそのものを明示する例です。
+`src/ffi/unsafe-hostname.virune.example`は**unsafe FFI source fixture**です。Viruneのunsafe境界として正しい構文を保持し、rawな`unsafe extern`を`unsafe module`内に閉じ、呼び出し側には監査済みnative-shaped facadeだけを見せます。`.example` suffixは意図的です。repository-wide root checkは検出したすべての`.virune`をrepository source root基準で判定するため、nested projectの`src/ffi/`はroot-level unsafe path規則を同時には満たせません。このfixtureを非discoverableにすることで安全規則を緩和せず維持します。Issue #81では、このfixtureをshowcase project自身の`src/ffi/` contextへstageして検証する責務を持ちます。
 
 ## Public API snapshot
 
-`node/virune.api.json`は`virune api`で生成し、repositoryへcommitしています。公開Virune declarationだけを決定的なmodule/declaration順で記録し、source APIとsnapshotがずれると`--check`が失敗します。
+`node/virune.api.json`は`virune api`で生成し、repositoryへcommitしています。compile対象の公開Virune declarationだけを決定的なmodule/declaration順で記録し、source APIとsnapshotがずれると`--check`が失敗します。
 
 ## Scope boundary
 
@@ -96,4 +96,4 @@ Showcase全体は公開済みVirune 1.0 surfaceだけを使用します。Compil
 
 Virune 1.0ではnominal constructionは宣言module内に閉じ、exported signatureからimport済みnominal typeを再公開しません。Showcase都合でこの境界を緩めず、公開契約として見える形を維持します。
 
-Node/browser/binding/API driftの継続的な強制はIssue #81で扱います。このdirectoryが、そのquality gateで実行するcanonical sourceです。
+Node/browser/binding/API driftの継続的な強制と、unsafe FFI fixtureのproject-scoped実行はIssue #81で扱います。このdirectoryが、そのquality gateで実行するcanonical sourceです。
