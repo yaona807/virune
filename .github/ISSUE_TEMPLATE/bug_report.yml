@@ -7,7 +7,7 @@ body:
       value: |
         Before filing, search existing issues and reduce the problem to the smallest useful reproduction you can provide.
 
-        Security vulnerabilities must not be disclosed in this public form. Follow `SECURITY.md` and use the private reporting path described there. If private reporting is unavailable, request a private contact channel without including vulnerability details.
+        Security vulnerabilities must not be disclosed in this public form. Follow the [security policy](https://github.com/yaona807/virune/blob/main/SECURITY.md) and use the private reporting path described there. If private reporting is unavailable, use the Security contact request form without including vulnerability details.
   - type: textarea
     id: problem
     attributes:
