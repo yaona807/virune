@@ -1,0 +1,44 @@
+pub newtype UserId = Int
+
+pub record User derives Eq, Hash, Debug {
+	id: UserId
+	name: String
+	email: String?
+}
+
+pub enum DirectoryError {
+	NotFound(UserId)
+	InvalidName(String)
+}
+
+fn createUser(id: UserId, name: String, email: String?) -> Result<User, DirectoryError> {
+	if String.trim(name) == "" {
+		return Err(DirectoryError.InvalidName(name))
+	}
+	return Ok(User {
+		id: id,
+		name: String.trim(name),
+		email: email,
+	})
+}
+
+pub fn createUserFromInt(id: Int, name: String, email: String?) -> Result<User, DirectoryError> {
+	return createUser(UserId.create(id), name, email)
+}
+
+pub fn displayUser(user: User) -> String {
+	let email = match user.email {
+		Some(value) => value
+		None => "not registered"
+	}
+	return "{user.name} <{email}>"
+}
+
+pub fn findUser(users: List<User>, targetId: UserId) -> Result<User, DirectoryError> {
+	for user in users {
+		if user.id == targetId {
+			return Ok(user)
+		}
+	}
+	return Err(DirectoryError.NotFound(targetId))
+}

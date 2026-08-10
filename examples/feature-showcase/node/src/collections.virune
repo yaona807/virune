@@ -1,0 +1,15 @@
+pub record DirectorySummary {
+	indexedUsers: Int
+	hasShowcaseTag: Bool
+}
+
+pub fn summarizeDirectory(userCount: Int) -> DirectorySummary {
+	let byName = Map.empty<String, Int>()
+	let indexed = Map.set(byName, "users", userCount)
+	let tags = Set.from(["directory", "example"])
+	let tagged = Set.add(tags, "showcase")
+	return DirectorySummary {
+		indexedUsers: Map.size(indexed),
+		hasShowcaseTag: Set.has(tagged, "showcase"),
+	}
+}
