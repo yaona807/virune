@@ -209,3 +209,29 @@ test('project-tagged differential fixtures preserve required coverage and satisf
 		assert.equal(fixtureInput.emit.sourcesContent, true, `${fixture.id}: sourcesContent`);
 	}
 });
+
+test('Nightly records non-blocking Project differential execution status before evidence upload', () => {
+	const workflow = readFileSync(
+		new URL('../../../../.github/workflows/nightly.yml', import.meta.url),
+		'utf8',
+	);
+	const runMarker = '      - name: Run the Project Compiler differential suite\n';
+	const statusMarker = '      - name: Record Project Compiler differential execution status\n';
+	const uploadMarker = '      - name: Upload non-promotable self-host evidence\n';
+	const runStart = workflow.indexOf(runMarker);
+	const statusStart = workflow.indexOf(statusMarker);
+	const uploadStart = workflow.indexOf(uploadMarker);
+	assert.notEqual(runStart, -1, 'Project differential Nightly step must exist');
+	assert.ok(statusStart > runStart, 'Project differential execution status must follow the runner');
+	assert.ok(uploadStart > statusStart, 'Project differential execution status must be recorded before artifact upload');
+	const runBlock = workflow.slice(runStart, statusStart);
+	assert.ok(runBlock.includes('        id: project-compiler-differential\n'), 'Project differential step must expose its outcome');
+	assert.ok(runBlock.includes('        continue-on-error: true\n'), 'Project differential Nightly evidence must remain non-blocking');
+	const statusBlock = workflow.slice(statusStart, uploadStart);
+	assert.ok(
+		statusBlock.includes('          PROJECT_DIFFERENTIAL_OUTCOME: ${{ steps.project-compiler-differential.outcome }}\n'),
+		'Project differential status evidence must use the raw step outcome',
+	);
+	assert.ok(statusBlock.includes("            reportPresent: existsSync(join(output, 'report.json')),\n"));
+	assert.ok(statusBlock.includes("          writeFileSync(join(output, 'execution.json')"));
+});
