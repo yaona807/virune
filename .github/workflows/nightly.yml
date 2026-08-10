@@ -164,6 +164,12 @@ jobs:
         run: >-
           node scripts/run-selfhost-mvp-differential.mjs
           --output=.cache/selfhost-nightly-shadow/differential
+      - name: Run the Project Compiler differential suite
+        if: always()
+        continue-on-error: true
+        run: >-
+          node scripts/run-selfhost-project-differential.mjs
+          --output=.cache/selfhost-nightly-shadow/project-differential
       - name: Upload non-promotable self-host evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
