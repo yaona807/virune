@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
-import type { KernelInputV1 } from '../src/selfhost/contract.js';
+import { validateKernelInput, type KernelInputV1 } from '../src/selfhost/contract.js';
 import {
 	createSelfhostProjectKernel,
 	projectCompilerResultToKernelOutput,
@@ -122,4 +123,30 @@ test('Self-host project kernel delegates through the validated Project Compiler 
 	const output = await kernel.compile(input());
 	assert.equal(output.accepted, true);
 	assert.equal(output.stats.checkedModules, 1);
+});
+
+test('project-tagged differential fixtures satisfy Project Compiler v1 transport preconditions', () => {
+	const corpus = JSON.parse(readFileSync(
+		new URL('../../../.github/self-hosting/differential-corpus-v1.json', import.meta.url),
+		'utf8',
+	)) as {
+		readonly fixtures: readonly {
+			readonly id: string;
+			readonly tags: readonly string[];
+			readonly input: unknown;
+		}[];
+	};
+	const projectFixtures = corpus.fixtures.filter(fixture => fixture.tags.includes('project'));
+	assert.equal(projectFixtures.length, 6, 'the Project Compiler evidence lane must cover six representative cases');
+	for (const fixture of projectFixtures) {
+		const fixtureInput = validateKernelInput(fixture.input);
+		assert.equal(fixtureInput.platform, 'node', `${fixture.id}: platform`);
+		assert.deepEqual(fixtureInput.interopManifest.modules, [], `${fixture.id}: interop must remain out of v1 scope`);
+		assert.equal(fixtureInput.emit.target, 'es2022', `${fixture.id}: emit target`);
+		assert.equal(fixtureInput.emit.sourceMap, false, `${fixture.id}: source maps are outside Project Compiler v1`);
+		assert.equal(fixtureInput.emit.sourcesContent, true, `${fixture.id}: sourcesContent`);
+		const paths = fixtureInput.sources.map(source => source.path);
+		const sortedPaths = [...paths].sort((left, right) => left < right ? -1 : left > right ? 1 : 0);
+		assert.deepEqual(paths, sortedPaths, `${fixture.id}: sources must be in canonical path order`);
+	}
 });
