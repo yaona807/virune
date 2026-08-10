@@ -1,0 +1,57 @@
+name: Bug report
+description: Report a reproducible Virune defect
+title: "bug: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before filing, search existing issues and reduce the problem to the smallest useful reproduction you can provide.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What happened?
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What should have happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction
+      description: Provide the smallest reproducible input, commands, and observed output.
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Virune version/commit, Node version, OS, target, and other relevant details.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: What observable conditions would prove the defect is fixed?
+    validations:
+      required: true
+  - type: textarea
+    id: boundaries
+    attributes:
+      label: Compatibility / safety boundaries
+      description: Note any Language Specification, Compiler API, Runtime ABI, Interop ABI, safety, determinism, or compatibility constraints that must not regress.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Pre-submission checks
+      options:
+        - label: I searched existing issues for duplicates.
+          required: true
+        - label: I am not proposing to weaken tests or quality/security/compatibility/reproducibility gates to make this pass.
+          required: true
