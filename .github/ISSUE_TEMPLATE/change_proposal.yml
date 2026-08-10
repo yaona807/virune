@@ -1,0 +1,61 @@
+name: Change proposal
+description: Propose a feature, refactor, CI, documentation, or governance change
+title: "change: "
+body:
+  - type: textarea
+    id: background
+    attributes:
+      label: Background / problem
+      description: What concrete problem or limitation motivates this change?
+    validations:
+      required: true
+  - type: textarea
+    id: goal
+    attributes:
+      label: Goal
+      description: What outcome should this change achieve?
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope
+      description: What is in scope?
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: List observable conditions required for completion.
+    validations:
+      required: true
+  - type: textarea
+    id: non_goals
+    attributes:
+      label: Non-goals
+      description: What is intentionally excluded?
+  - type: textarea
+    id: invariants
+    attributes:
+      label: Architecture / invariants
+      description: Describe architectural constraints and invariants that must remain true.
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: Dependencies
+      description: Link parent/tracking issues, RFCs, dependent PRs, or external evidence if relevant.
+  - type: textarea
+    id: boundaries
+    attributes:
+      label: Compatibility / safety boundaries
+      description: Note Language Specification, Compiler API, Runtime ABI, Interop ABI, safety, determinism, reproducibility, and target constraints.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Proposal checks
+      options:
+        - label: I searched existing issues for overlapping work.
+          required: true
+        - label: This proposal does not rely on weakening quality/security/compatibility/reproducibility gates.
+          required: true
