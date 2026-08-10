@@ -1,0 +1,22 @@
+import { DirectoryError, User, UserId, createUser } from "./domain.virune"
+
+fn cleanupLoad() -> Unit {
+	return Unit
+}
+
+async fn loadPrimary() -> Result<User, DirectoryError> {
+	return createUser(UserId.create(1), " Alice ", Some("alice@example.com"))
+}
+
+async fn loadSecondary() -> Result<User, DirectoryError> {
+	return createUser(UserId.create(2), "Bob", None)
+}
+
+pub async fn loadDirectory() -> Result<List<User>, DirectoryError> {
+	defer cleanupLoad()
+	let loaded = await (parallel try {
+		primary: loadPrimary(),
+		secondary: loadSecondary(),
+	})?
+	return Ok([loaded.primary, loaded.secondary])
+}
