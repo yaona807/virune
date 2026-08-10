@@ -51,5 +51,3 @@ body:
       options:
         - label: I searched existing issues for duplicates.
           required: true
-        - label: I am not proposing to weaken tests or quality/security/compatibility/reproducibility gates to make this pass.
-          required: true
