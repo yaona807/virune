@@ -18,6 +18,7 @@
 
 <p align="center">
   <a href="#quick-start">Quick start</a> ·
+  <a href="docs/application-guide.md">Application guide</a> ·
   <a href="docs/language-guide.md">Language guide</a> ·
   <a href="docs/cli-reference.md">CLI reference</a> ·
   <a href="docs/vscode.md">VS Code</a> ·
@@ -184,6 +185,7 @@ The extension includes syntax and semantic highlighting, diagnostics, formatting
 | Document | Purpose |
 |---|---|
 | [Getting started](docs/getting-started-from-clone.md) | Clone, install, build, run, and troubleshoot |
+| [Application guide](docs/application-guide.md) | Task-oriented route through domain modelling, effects, structured concurrency, interop, and Node/browser project structure |
 | [Language guide](docs/language-guide.md) | Practical introduction to Virune syntax and semantics |
 | [CLI reference](docs/cli-reference.md) | Commands, options, and exit behaviour |
 | [Standard library](docs/standard-library.md) | Node.js and browser adapters |
