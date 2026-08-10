@@ -127,7 +127,7 @@ test('Self-host project kernel delegates through the validated Project Compiler 
 
 test('project-tagged differential fixtures satisfy Project Compiler v1 transport preconditions', () => {
 	const corpus = JSON.parse(readFileSync(
-		new URL('../../../.github/self-hosting/differential-corpus-v1.json', import.meta.url),
+		new URL('../../../../.github/self-hosting/differential-corpus-v1.json', import.meta.url),
 		'utf8',
 	)) as {
 		readonly fixtures: readonly {
