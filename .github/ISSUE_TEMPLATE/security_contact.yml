@@ -5,7 +5,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Use this public form only when the private vulnerability reporting path in `SECURITY.md` is unavailable.
+        Use this public form only when the private vulnerability reporting path in the [security policy](https://github.com/yaona807/virune/blob/main/SECURITY.md) is unavailable.
 
         Do not include vulnerability details, reproduction steps, exploit information, affected versions, secrets, or other sensitive information. Maintainers will arrange a private contact channel.
   - type: checkboxes
