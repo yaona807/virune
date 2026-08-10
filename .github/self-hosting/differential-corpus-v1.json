@@ -3,7 +3,7 @@
 	"fixtures": [
 		{
 			"id": "smoke-return-value",
-			"tags": ["smoke", "compiler-unit", "runtime"],
+			"tags": ["smoke", "project", "compiler-unit", "runtime"],
 			"input": {
 				"contractVersion": "1",
 				"languageVersion": "1.0",
@@ -22,7 +22,7 @@
 		},
 		{
 			"id": "smoke-multi-module",
-			"tags": ["smoke", "conformance", "runtime"],
+			"tags": ["smoke", "project", "conformance", "runtime"],
 			"input": {
 				"contractVersion": "1",
 				"languageVersion": "1.0",
@@ -45,7 +45,7 @@
 		},
 		{
 			"id": "smoke-diagnostic",
-			"tags": ["smoke", "diagnostic"],
+			"tags": ["smoke", "project", "diagnostic"],
 			"input": {
 				"contractVersion": "1",
 				"languageVersion": "1.0",
@@ -64,7 +64,7 @@
 		},
 		{
 			"id": "mvp-arithmetic-call",
-			"tags": ["mvp", "compiler-unit", "runtime"],
+			"tags": ["mvp", "project", "compiler-unit", "runtime"],
 			"input": {
 				"contractVersion": "1",
 				"languageVersion": "1.0",
@@ -83,7 +83,7 @@
 		},
 		{
 			"id": "mvp-primitives-logic",
-			"tags": ["mvp", "compiler-unit", "runtime"],
+			"tags": ["mvp", "project", "compiler-unit", "runtime"],
 			"input": {
 				"contractVersion": "1",
 				"languageVersion": "1.0",
@@ -102,7 +102,7 @@
 		},
 		{
 			"id": "mvp-unknown-name",
-			"tags": ["mvp", "compiler-unit", "diagnostic"],
+			"tags": ["mvp", "project", "compiler-unit", "diagnostic"],
 			"input": {
 				"contractVersion": "1",
 				"languageVersion": "1.0",
