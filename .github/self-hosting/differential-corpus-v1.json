@@ -3,7 +3,7 @@
 	"fixtures": [
 		{
 			"id": "smoke-return-value",
-			"tags": ["smoke", "project", "compiler-unit", "runtime"],
+			"tags": ["smoke", "compiler-unit", "runtime"],
 			"input": {
 				"contractVersion": "1",
 				"languageVersion": "1.0",
@@ -22,7 +22,7 @@
 		},
 		{
 			"id": "smoke-multi-module",
-			"tags": ["smoke", "project", "conformance", "runtime"],
+			"tags": ["smoke", "conformance", "runtime"],
 			"input": {
 				"contractVersion": "1",
 				"languageVersion": "1.0",
@@ -45,7 +45,7 @@
 		},
 		{
 			"id": "smoke-diagnostic",
-			"tags": ["smoke", "project", "diagnostic"],
+			"tags": ["smoke", "diagnostic"],
 			"input": {
 				"contractVersion": "1",
 				"languageVersion": "1.0",
@@ -59,6 +59,67 @@
 				],
 				"interopManifest": { "version": "1", "modules": [] },
 				"emit": { "target": "es2022", "sourceMap": true, "sourcesContent": true }
+			},
+			"expectedDivergences": []
+		},
+		{
+			"id": "project-smoke-return-value",
+			"tags": ["project", "compiler-unit", "runtime"],
+			"input": {
+				"contractVersion": "1",
+				"languageVersion": "1.0",
+				"platform": "node",
+				"entryPath": "src/main.virune",
+				"sources": [
+					{
+						"path": "src/main.virune",
+						"text": "pub fn main() -> Int {\n\treturn 7\n}\n"
+					}
+				],
+				"interopManifest": { "version": "1", "modules": [] },
+				"emit": { "target": "es2022", "sourceMap": false, "sourcesContent": true }
+			},
+			"expectedDivergences": []
+		},
+		{
+			"id": "project-smoke-multi-module",
+			"tags": ["project", "conformance", "runtime"],
+			"input": {
+				"contractVersion": "1",
+				"languageVersion": "1.0",
+				"platform": "node",
+				"entryPath": "src/main.virune",
+				"sources": [
+					{
+						"path": "src/main.virune",
+						"text": "import { value } from \"./value.virune\"\n\npub fn main() -> Int {\n\treturn value()\n}\n"
+					},
+					{
+						"path": "src/value.virune",
+						"text": "pub fn value() -> Int {\n\treturn 42\n}\n"
+					}
+				],
+				"interopManifest": { "version": "1", "modules": [] },
+				"emit": { "target": "es2022", "sourceMap": false, "sourcesContent": true }
+			},
+			"expectedDivergences": []
+		},
+		{
+			"id": "project-smoke-diagnostic",
+			"tags": ["project", "diagnostic"],
+			"input": {
+				"contractVersion": "1",
+				"languageVersion": "1.0",
+				"platform": "node",
+				"entryPath": "src/main.virune",
+				"sources": [
+					{
+						"path": "src/main.virune",
+						"text": "pub fn main( -> Int {\n"
+					}
+				],
+				"interopManifest": { "version": "1", "modules": [] },
+				"emit": { "target": "es2022", "sourceMap": false, "sourcesContent": true }
 			},
 			"expectedDivergences": []
 		},
