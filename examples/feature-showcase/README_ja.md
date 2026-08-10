@@ -2,7 +2,7 @@
 
 [English](README.md) | [日本語](README_ja.md)
 
-このディレクトリは、Virune 1.0の公開surfaceを実際のapplicationとして組み合わせる、実行可能なtask-oriented showcaseです。Nodeとbrowserを別projectに分け、platform境界を単一設定の中へ隠さない構成にしています。
+このディレクトリは、Virune 1.0の公開surfaceを実際のapplicationとして組み合わせる、実行可能なtask-oriented showcaseです。Nodeとbrowserを別projectに分け、platform設定を明示した構成にしています。
 
 ## 今回の最初のlandingで示すもの
 
@@ -16,7 +16,7 @@ Node projectでは、小さなdirectory applicationを通して次を組み合�
 - `List`、`Map`、`Set` collection
 - `test.include`から検出されるVirune-native test
 
-Browser projectでは公開browser targetを使用し、`@jsExport`したentryからstandard libraryの`Dom`境界を通してDOMを更新します。
+Browser projectでは公開browser targetを使用し、repository-wide source checkとの互換性を維持した`@jsExport` entryを提供します。Browser専用APIの実行検証は、専用quality gateであるIssue #81へ意図的に分離します。
 
 ## 構成
 
@@ -61,4 +61,6 @@ npm run virune -- api examples/feature-showcase/node --out /tmp/feature-showcase
 
 今回の最初のlandingは意図的に`examples/feature-showcase/**`だけを変更します。Compiler、Runtime、JavaScript interop実装、root package script、CI workflowは変更しません。
 
-Issue #78に残るsliceは分離して扱います。checked-in public API snapshotと、safe binding / TypeScript adapter / isolated unsafe FFIの代表例です。実browserでのbrowser executionはfollow-upの品質gateであるIssue #81の責務です。
+Virune 1.0ではnominal constructionは宣言module内に閉じ、exported signatureからimport済みnominal typeを再公開しません。Showcase都合でこの境界を緩めず、公開契約として見える形を維持します。
+
+Issue #78に残るsliceは分離して扱います。checked-in public API snapshotと、safe binding / TypeScript adapter / isolated unsafe FFIの代表例です。実browserでのbrowser-only API executionはfollow-upの品質gateであるIssue #81の責務です。
