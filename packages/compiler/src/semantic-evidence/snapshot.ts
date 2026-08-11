@@ -126,7 +126,23 @@ function canonicalClosure(value: SemanticInputClosureV1): SemanticInputClosureV1
 function canonicalRoot(value: SemanticRootInputV1, path: string): SemanticRootSnapshotV1 {
 	const coverage = oneOf(value.coverage, ['modeled', 'partial', 'opaque', 'unknown'] as const, `${path}.coverage`);
 	const limitations = canonicalTextSet(value.limitations, `${path}.limitations`);
-	if (coverage !== 'modeled' && limitations.length === 0) {
+	const sourceEvidence = canonicalSourceEvidence(value.sourceEvidence, `${path}.sourceEvidence`);
+	const interop = canonicalInterop(value.interop, `${path}.interop`);
+	const panic = oneOf(value.panic, ['yes', 'no', 'unknown'] as const, `${path}.panic`);
+	const discard = oneOf(value.discard, ['yes', 'no', 'unknown'] as const, `${path}.discard`);
+	if (sourceEvidence.length === 0) {
+		throw new SemanticSnapshotError(`${path}.sourceEvidence`, 'at least one source evidence range is required');
+	}
+	if (coverage === 'modeled') {
+		if (limitations.length > 0) {
+			throw new SemanticSnapshotError(`${path}.limitations`, 'modeled coverage must not carry unresolved limitations');
+		}
+		if (panic === 'unknown') throw new SemanticSnapshotError(`${path}.panic`, 'modeled coverage cannot contain unknown panic reachability');
+		if (discard === 'unknown') throw new SemanticSnapshotError(`${path}.discard`, 'modeled coverage cannot contain unknown discard reachability');
+		if (interop.some(item => item.tier === 'unknown')) {
+			throw new SemanticSnapshotError(`${path}.interop`, 'modeled coverage cannot contain an unknown interoperability tier');
+		}
+	} else if (limitations.length === 0) {
 		throw new SemanticSnapshotError(`${path}.limitations`, `${coverage} coverage requires at least one explicit limitation`);
 	}
 	return {
@@ -134,14 +150,14 @@ function canonicalRoot(value: SemanticRootInputV1, path: string): SemanticRootSn
 		coverage,
 		limitations,
 		implementationSha256: sha256(value.implementationSha256, `${path}.implementationSha256`),
-		sourceEvidence: canonicalSourceEvidence(value.sourceEvidence, `${path}.sourceEvidence`),
+		sourceEvidence,
 		publicAbi: canonicalPublicAbi(value.publicAbi, `${path}.publicAbi`),
 		directEffects: canonicalTextSet(value.directEffects, `${path}.directEffects`),
 		transitiveEffects: canonicalTextSet(value.transitiveEffects, `${path}.transitiveEffects`),
-		interop: canonicalInterop(value.interop, `${path}.interop`),
+		interop,
 		reachableFailures: canonicalTextSet(value.reachableFailures, `${path}.reachableFailures`),
-		panic: oneOf(value.panic, ['yes', 'no', 'unknown'] as const, `${path}.panic`),
-		discard: oneOf(value.discard, ['yes', 'no', 'unknown'] as const, `${path}.discard`),
+		panic,
+		discard,
 	};
 }
 
