@@ -144,6 +144,19 @@ test('allEnumeratedRootsModeled does not claim the analyzer enumerated every pro
 	assert.doesNotMatch(serializeExperimentalSemanticSnapshot(modeledOnly), /"complete":true/u);
 });
 
+test('empty root enumeration never produces a safe-looking modeled coverage claim', () => {
+	const value = input();
+	const empty = createExperimentalSemanticSnapshot({ ...value, roots: [] });
+	assert.deepEqual(empty.coverage, {
+		enumeratedRoots: 0,
+		modeled: 0,
+		partial: 0,
+		opaque: 0,
+		unknown: 0,
+		allEnumeratedRootsModeled: false,
+	});
+});
+
 test('modeled coverage rejects unresolved semantic dimensions and missing source evidence', () => {
 	const value = input();
 	const root = value.roots[0]!;
