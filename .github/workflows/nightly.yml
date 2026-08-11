@@ -192,19 +192,22 @@ jobs:
         id: selfhost-semantic-differential-fuzz
         if: always()
         continue-on-error: true
+        env:
+          VIRUNE_SELFHOST_SEMANTIC_DIFFERENTIAL_OUTPUT: .cache/selfhost-nightly-shadow/semantic-differential-fuzz-${{ github.run_id }}-${{ github.run_attempt }}
         run: >-
           node scripts/run-selfhost-semantic-differential-fuzz.mjs
           --seed=${{ github.run_number }}
-          --output=.cache/selfhost-nightly-shadow/semantic-differential-fuzz
       - name: Record Self-host semantic differential fuzz execution status
         if: always()
         env:
           SEMANTIC_DIFFERENTIAL_FUZZ_OUTCOME: ${{ steps.selfhost-semantic-differential-fuzz.outcome }}
+          VIRUNE_SELFHOST_SEMANTIC_DIFFERENTIAL_OUTPUT: .cache/selfhost-nightly-shadow/semantic-differential-fuzz-${{ github.run_id }}-${{ github.run_attempt }}
         run: >-
           node --input-type=module -e
           "import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
           import { join } from 'node:path';
-          const output = '.cache/selfhost-nightly-shadow/semantic-differential-fuzz';
+          const output = process.env.VIRUNE_SELFHOST_SEMANTIC_DIFFERENTIAL_OUTPUT;
+          if (output === undefined || output.length === 0) throw new Error('missing semantic differential fuzz output path');
           mkdirSync(output, { recursive: true });
           const evidence = {
             schemaVersion: 1,
