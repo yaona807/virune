@@ -57,7 +57,7 @@ export async function compileWithLegacyKernel(value: unknown): Promise<KernelOut
 				sourcePath: toKernelPath(module.source.path),
 				outputPath: toKernelPath(module.outputPath),
 				code: module.output.code,
-				sourceMap: module.output.map,
+				sourceMap: input.emit.sourceMap ? module.output.map : '',
 			}))
 			.sort((left, right) => left.sourcePath.localeCompare(right.sourcePath)),
 		dependencies: collectDependencies(result.modules),
