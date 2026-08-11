@@ -40,15 +40,18 @@ test('semantic failure parameters can be reduced toward zero', () => {
 	assert.ok(candidates.every(candidate => candidate.stable === 0));
 });
 
-test('self-host semantic differential fuzz fixtures are deterministic and fail closed on unsupported inputs', () => {
+test('self-host semantic differential fuzz fixtures are deterministic and seed-qualified', () => {
 	const first = generateSemanticDifferentialFixtures({ seed: 0x53_44_46_31, iterations: 32 });
 	const second = generateSemanticDifferentialFixtures({ seed: 0x53_44_46_31, iterations: 32 });
+	const differentSeed = generateSemanticDifferentialFixtures({ seed: 0x53_44_46_32, iterations: 32 });
 	assert.deepEqual(first, second);
-	assert.notDeepEqual(first, generateSemanticDifferentialFixtures({ seed: 0x53_44_46_32, iterations: 32 }));
+	assert.notDeepEqual(first, differentSeed);
 	assert.equal(first.length, 32);
 	assert.equal(new Set(first.map(fixture => fixture.id)).size, first.length);
+	assert.ok(first.every(fixture => fixture.id.startsWith('semantic-fuzz-53444631-')));
+	assert.ok(differentSeed.every(fixture => fixture.id.startsWith('semantic-fuzz-53444632-')));
 	assert.deepEqual(
-		new Set(first.map(fixture => fixture.id.replace(/^semantic-fuzz-\d{4}-/u, ''))),
+		new Set(first.map(fixture => fixture.id.replace(/^semantic-fuzz-[0-9a-f]{8}-\d{4}-/u, ''))),
 		new Set(['arithmetic-branch', 'list-fold', 'literal-match', 'tuple-roundtrip', 'record-field', 'result-branch', 'async-await']),
 	);
 	for (const fixture of first) {
@@ -86,10 +89,12 @@ test('probe runtime adapter changes only the entry module and does not mutate co
 	assert.equal(adaptKernelOutputForProbe(input, missingEntry), missingEntry);
 });
 
-test('semantic differential evidence directory rejects stale evidence without destructive cleanup', async () => {
+test('semantic differential evidence directory is bounded and rejects stale evidence without cleanup', async () => {
 	const relativeOutput = `.cache/selfhost-semantic-differential-test-${process.pid}`;
 	const outputDirectory = await prepareSemanticDifferentialEvidenceDirectory(relativeOutput);
 	const staleReport = resolve(outputDirectory, 'report.json');
+	const fileOutputRelative = `.cache/selfhost-semantic-differential-file-${process.pid}`;
+	const fileOutput = resolve(repositoryRoot, fileOutputRelative);
 	try {
 		await writeFile(staleReport, '{"stale":true}\n', 'utf8');
 		await assert.rejects(
@@ -99,18 +104,28 @@ test('semantic differential evidence directory rejects stale evidence without de
 		assert.equal(await access(staleReport).then(() => true), true);
 		await assert.rejects(
 			prepareSemanticDifferentialEvidenceDirectory('.cache'),
-			/output must be a child directory of repository \.cache/u,
+			/output must be one direct child directory of repository \.cache/u,
+		);
+		await assert.rejects(
+			prepareSemanticDifferentialEvidenceDirectory('.cache/nested/output'),
+			/output must be one direct child directory of repository \.cache/u,
 		);
 		await assert.rejects(
 			prepareSemanticDifferentialEvidenceDirectory('../outside'),
-			/output must be a child directory of repository \.cache/u,
+			/output must be one direct child directory of repository \.cache/u,
 		);
 		await assert.rejects(
 			prepareSemanticDifferentialEvidenceDirectory(repositoryRoot),
-			/output must be a child directory of repository \.cache/u,
+			/output must be one direct child directory of repository \.cache/u,
+		);
+		await writeFile(fileOutput, 'not a directory\n', 'utf8');
+		await assert.rejects(
+			prepareSemanticDifferentialEvidenceDirectory(fileOutputRelative),
+			/output must be a non-symlink directory/u,
 		);
 	} finally {
 		await rm(outputDirectory, { recursive: true, force: true });
+		await rm(fileOutput, { force: true });
 	}
 });
 
@@ -132,15 +147,18 @@ test('Nightly preserves semantic differential fuzz failures as isolated non-prom
 	assert.ok(runner >= 0 && recorder > runner && upload > recorder);
 	const runnerBlock = workflow.slice(runner, recorder);
 	const recorderBlock = workflow.slice(recorder, upload);
+	const uploadBlock = workflow.slice(upload);
 	assert.match(runnerBlock, /id: selfhost-semantic-differential-fuzz/u);
 	assert.match(runnerBlock, /continue-on-error: true/u);
 	assert.match(runnerBlock, /run-selfhost-semantic-differential-fuzz\.mjs/u);
 	assert.match(runnerBlock, /--seed=\$\{\{ github\.run_number \}\}/u);
-	assert.match(runnerBlock, /semantic-differential-fuzz-\$\{\{ github\.run_id \}\}-\$\{\{ github\.run_attempt \}\}/u);
+	assert.match(runnerBlock, /\.cache\/selfhost-semantic-differential-fuzz-\$\{\{ github\.run_id \}\}-\$\{\{ github\.run_attempt \}\}/u);
 	assert.match(recorderBlock, /steps\.selfhost-semantic-differential-fuzz\.outcome/u);
-	assert.match(recorderBlock, /semantic-differential-fuzz-\$\{\{ github\.run_id \}\}-\$\{\{ github\.run_attempt \}\}/u);
+	assert.match(recorderBlock, /\.cache\/selfhost-semantic-differential-fuzz-\$\{\{ github\.run_id \}\}-\$\{\{ github\.run_attempt \}\}/u);
 	assert.match(recorderBlock, /process\.env\.VIRUNE_SELFHOST_SEMANTIC_DIFFERENTIAL_OUTPUT/u);
 	assert.match(recorderBlock, /claim: 'selfhost-semantic-differential-fuzz-execution'/u);
 	assert.match(recorderBlock, /generationPresent: existsSync\(join\(output, 'generation\.json'\)\)/u);
 	assert.match(recorderBlock, /reportPresent: existsSync\(join\(output, 'report\.json'\)\)/u);
+	assert.match(uploadBlock, /\.cache\/selfhost-nightly-shadow\//u);
+	assert.match(uploadBlock, /\.cache\/selfhost-semantic-differential-fuzz-\$\{\{ github\.run_id \}\}-\$\{\{ github\.run_attempt \}\}\//u);
 });
