@@ -6,6 +6,12 @@ const PLAN_PATH = '.github/release/npm-publication-v1.json';
 const REPOSITORY_URL = 'git+https://github.com/yaona807/virune.git';
 const HOMEPAGE = 'https://github.com/yaona807/virune#readme';
 const BUGS_URL = 'https://github.com/yaona807/virune/issues';
+const REQUIRED_PREPUBLICATION_BLOCKERS = [
+	'public-registry-verification',
+	'registry-ownership',
+	'release-identity-integration',
+	'trusted-publishing',
+];
 
 export function verifyNpmPublicationPlan(root = process.cwd()) {
 	const plan = readJson(resolve(root, PLAN_PATH));
@@ -13,6 +19,8 @@ export function verifyNpmPublicationPlan(root = process.cwd()) {
 	assertExactKeys(plan, [
 		'schemaVersion',
 		'stage',
+		'publicationReady',
+		'unresolvedRequirements',
 		'forbidRegistryPublishThroughVersion',
 		'firstStableRegistryRelease',
 		'trustedPublishingRequired',
@@ -23,6 +31,16 @@ export function verifyNpmPublicationPlan(root = process.cwd()) {
 	], '$');
 	assert(plan.schemaVersion === 1, '$.schemaVersion', 'expected schemaVersion 1');
 	assert(plan.stage === 'prepublication-audit', '$.stage', 'expected prepublication-audit stage');
+	assert(plan.publicationReady === false, '$.publicationReady', 'prepublication audit must not claim publication readiness');
+	const unresolvedRequirements = array(plan.unresolvedRequirements, '$.unresolvedRequirements')
+		.map((value, index) => nonEmptyString(value, `$.unresolvedRequirements[${index}]`))
+		.sort(compareText);
+	assertUnique(unresolvedRequirements, '$.unresolvedRequirements', 'requirement');
+	assert(
+		JSON.stringify(unresolvedRequirements) === JSON.stringify(REQUIRED_PREPUBLICATION_BLOCKERS),
+		'$.unresolvedRequirements',
+		`expected unresolved prepublication requirements ${REQUIRED_PREPUBLICATION_BLOCKERS.join(', ')}`,
+	);
 	assert(plan.trustedPublishingRequired === true, '$.trustedPublishingRequired', 'must remain true');
 	assert(plan.publicVerificationRequired === true, '$.publicVerificationRequired', 'must remain true');
 	assert(plan.sameReviewedReleaseIdentityRequired === true, '$.sameReviewedReleaseIdentityRequired', 'must remain true');
@@ -83,13 +101,15 @@ export function verifyNpmPublicationPlan(root = process.cwd()) {
 	const cliManifest = manifests.get(cli.name);
 	assert(cli.name === 'virune', '$.packages', 'canonical CLI registry name must be virune');
 	assert(cliManifest.bin?.virune === './dist/src/entry.js', `$.${cli.directory}.bin.virune`, 'canonical virune executable mapping is required');
-	for (const item of publishPackages.filter(item => item.role === 'public-runtime-dependency')) {
-		assert(cliManifest.dependencies?.[item.name] === rootManifest.version, `$.${cli.directory}.dependencies.${item.name}`, 'CLI must depend on every planned public runtime package at the exact release version');
+	for (const item of publishPackages.filter(item => item.role === 'cli-dependency')) {
+		assert(cliManifest.dependencies?.[item.name] === rootManifest.version, `$.${cli.directory}.dependencies.${item.name}`, 'CLI must depend on every planned npm package dependency at the exact release version');
 	}
 
 	return {
 		schemaVersion: 1,
 		stage: plan.stage,
+		publicationReady: false,
+		unresolvedRequirements,
 		currentVersion: rootManifest.version,
 		firstStableRegistryRelease: plan.firstStableRegistryRelease,
 		publishPackages: publishPackages.map(item => item.name),
@@ -103,7 +123,7 @@ function publicationPackage(value, path) {
 	return {
 		directory: identifier(item.directory, `${path}.directory`),
 		name: packageName(item.name, `${path}.name`),
-		role: oneOf(item.role, ['cli', 'public-runtime-dependency'], `${path}.role`),
+		role: oneOf(item.role, ['cli', 'cli-dependency'], `${path}.role`),
 	};
 }
 
