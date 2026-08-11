@@ -1,10 +1,13 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { access, rm, writeFile } from 'node:fs/promises';
+import { resolve } from 'node:path';
 import { test } from 'node:test';
 import {
 	adaptKernelOutputForProbe,
 	generateSemanticDifferentialFixtures,
 	parseSemanticDifferentialArguments,
+	prepareSemanticDifferentialEvidenceDirectory,
 } from './run-selfhost-semantic-differential-fuzz.mjs';
 import { generateSemanticCase, renderSemanticCase, shrinkParameters } from './semantic-fuzz.mjs';
 
@@ -79,6 +82,35 @@ test('probe runtime adapter changes only the entry module and does not mutate co
 	assert.equal(adaptKernelOutputForProbe(input, rejected), rejected);
 	const missingEntry = { ...output, emittedModules: output.emittedModules.slice(0, 1) };
 	assert.equal(adaptKernelOutputForProbe(input, missingEntry), missingEntry);
+});
+
+test('semantic differential evidence cleanup removes stale artifacts and cannot escape repository cache', async () => {
+	const relativeOutput = `.cache/selfhost-semantic-differential-test-${process.pid}`;
+	const outputDirectory = await prepareSemanticDifferentialEvidenceDirectory(relativeOutput);
+	const staleReport = resolve(outputDirectory, 'report.json');
+	try {
+		await writeFile(staleReport, '{"stale":true}\n', 'utf8');
+		assert.equal(await access(staleReport).then(() => true), true);
+		assert.equal(await prepareSemanticDifferentialEvidenceDirectory(relativeOutput), outputDirectory);
+		await assert.rejects(
+			access(staleReport),
+			error => error instanceof Error && 'code' in error && error.code === 'ENOENT',
+		);
+		await assert.rejects(
+			prepareSemanticDifferentialEvidenceDirectory('.cache'),
+			/output must be a child directory of repository \.cache/u,
+		);
+		await assert.rejects(
+			prepareSemanticDifferentialEvidenceDirectory('../outside'),
+			/output must be a child directory of repository \.cache/u,
+		);
+		await assert.rejects(
+			prepareSemanticDifferentialEvidenceDirectory(process.cwd()),
+			/output must be a child directory of repository \.cache/u,
+		);
+	} finally {
+		await rm(outputDirectory, { recursive: true, force: true });
+	}
 });
 
 test('semantic differential runner argument parsing rejects ambiguous and unsupported arguments', () => {
