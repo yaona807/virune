@@ -179,6 +179,177 @@
 				"emit": { "target": "es2022", "sourceMap": false, "sourcesContent": true }
 			},
 			"expectedDivergences": []
+		},
+		{
+			"id": "project-semantic-arithmetic-branch",
+			"tags": ["project", "semantic", "runtime"],
+			"input": {
+				"contractVersion": "1",
+				"languageVersion": "1.0",
+				"platform": "node",
+				"entryPath": "src/main.virune",
+				"sources": [
+					{
+						"path": "src/main.virune",
+						"text": "fn helper(value: Int) -> Int => value * 3 + 4\n\npub fn main() -> Int {\n\tlet mut value = 5\n\tvalue = helper(value)\n\tif value > 10 {\n\t\tvalue = value - 2\n\t} else {\n\t\tvalue = value + 7\n\t}\n\treturn value\n}\n"
+					}
+				],
+				"interopManifest": { "version": "1", "modules": [] },
+				"emit": { "target": "es2022", "sourceMap": false, "sourcesContent": true }
+			},
+			"expectedDivergences": []
+		},
+		{
+			"id": "project-semantic-list-fold",
+			"tags": ["project", "semantic", "runtime"],
+			"input": {
+				"contractVersion": "1",
+				"languageVersion": "1.0",
+				"platform": "node",
+				"entryPath": "src/main.virune",
+				"sources": [
+					{
+						"path": "src/main.virune",
+						"text": "pub fn main() -> Int {\n\tlet mut total = 4\n\tfor item in [1, 2, 3] {\n\t\ttotal = total + item\n\t}\n\treturn total\n}\n"
+					}
+				],
+				"interopManifest": { "version": "1", "modules": [] },
+				"emit": { "target": "es2022", "sourceMap": false, "sourcesContent": true }
+			},
+			"expectedDivergences": []
+		},
+		{
+			"id": "project-semantic-literal-match",
+			"tags": ["project", "semantic", "runtime"],
+			"input": {
+				"contractVersion": "1",
+				"languageVersion": "1.0",
+				"platform": "node",
+				"entryPath": "src/main.virune",
+				"sources": [
+					{
+						"path": "src/main.virune",
+						"text": "pub fn main() -> Int {\n\tlet value = 2\n\treturn match value {\n\t\t0 => 10\n\t\t1 => 20\n\t\t_ => 30\n\t}\n}\n"
+					}
+				],
+				"interopManifest": { "version": "1", "modules": [] },
+				"emit": { "target": "es2022", "sourceMap": false, "sourcesContent": true }
+			},
+			"expectedDivergences": []
+		},
+		{
+			"id": "project-semantic-tuple-roundtrip",
+			"tags": ["project", "semantic", "runtime"],
+			"input": {
+				"contractVersion": "1",
+				"languageVersion": "1.0",
+				"platform": "node",
+				"entryPath": "src/main.virune",
+				"sources": [
+					{
+						"path": "src/main.virune",
+						"text": "fn helper(value: (Int, Int)) -> (Int, Int) {\n\treturn match value {\n\t\t(a, b) => (b + 1, a - 1)\n\t}\n}\n\npub fn main() -> (Int, Int) {\n\treturn helper((8, 3))\n}\n"
+					}
+				],
+				"interopManifest": { "version": "1", "modules": [] },
+				"emit": { "target": "es2022", "sourceMap": false, "sourcesContent": true }
+			},
+			"expectedDivergences": []
+		},
+		{
+			"id": "project-semantic-record-field",
+			"tags": ["project", "semantic", "runtime"],
+			"input": {
+				"contractVersion": "1",
+				"languageVersion": "1.0",
+				"platform": "node",
+				"entryPath": "src/main.virune",
+				"sources": [
+					{
+						"path": "src/main.virune",
+						"text": "record Box {\n\tvalue: Int\n}\n\npub fn main() -> Int {\n\tlet box = Box { value: 40, }\n\treturn box.value + 2\n}\n"
+					}
+				],
+				"interopManifest": { "version": "1", "modules": [] },
+				"emit": { "target": "es2022", "sourceMap": false, "sourcesContent": true }
+			},
+			"expectedDivergences": []
+		},
+		{
+			"id": "project-semantic-result-branch",
+			"tags": ["project", "semantic", "runtime"],
+			"input": {
+				"contractVersion": "1",
+				"languageVersion": "1.0",
+				"platform": "node",
+				"entryPath": "src/main.virune",
+				"sources": [
+					{
+						"path": "src/main.virune",
+						"text": "pub fn main() -> Result<Int, String> {\n\tif true {\n\t\treturn Ok(42)\n\t}\n\treturn Err(\"semantic failure\")\n}\n"
+					}
+				],
+				"interopManifest": { "version": "1", "modules": [] },
+				"emit": { "target": "es2022", "sourceMap": false, "sourcesContent": true }
+			},
+			"expectedDivergences": []
+		},
+		{
+			"id": "project-semantic-async-await",
+			"tags": ["project", "semantic", "runtime"],
+			"input": {
+				"contractVersion": "1",
+				"languageVersion": "1.0",
+				"platform": "node",
+				"entryPath": "src/main.virune",
+				"sources": [
+					{
+						"path": "src/main.virune",
+						"text": "async fn helper(value: Int) -> Int {\n\treturn value + 2\n}\n\npub async fn main() -> Int {\n\treturn await helper(40)\n}\n"
+					}
+				],
+				"interopManifest": { "version": "1", "modules": [] },
+				"emit": { "target": "es2022", "sourceMap": false, "sourcesContent": true }
+			},
+			"expectedDivergences": []
+		},
+		{
+			"id": "project-semantic-invalid-data-types",
+			"tags": ["project", "semantic", "diagnostic"],
+			"input": {
+				"contractVersion": "1",
+				"languageVersion": "1.0",
+				"platform": "node",
+				"entryPath": "src/main.virune",
+				"sources": [
+					{
+						"path": "src/main.virune",
+						"text": "record Duplicate {}\nrecord Duplicate {}\nrecord Params<T, T> {}\nrecord Unknown {\n    value: Missing\n}\ntype Bad = Result<Int>\n"
+					}
+				],
+				"interopManifest": { "version": "1", "modules": [] },
+				"emit": { "target": "es2022", "sourceMap": false, "sourcesContent": true }
+			},
+			"expectedDivergences": []
+		},
+		{
+			"id": "project-semantic-recursive-alias",
+			"tags": ["project", "semantic", "diagnostic"],
+			"input": {
+				"contractVersion": "1",
+				"languageVersion": "1.0",
+				"platform": "node",
+				"entryPath": "src/main.virune",
+				"sources": [
+					{
+						"path": "src/main.virune",
+						"text": "type Loop<T> = Loop<T>\ntype IntLoop = Loop<Int>\n"
+					}
+				],
+				"interopManifest": { "version": "1", "modules": [] },
+				"emit": { "target": "es2022", "sourceMap": false, "sourcesContent": true }
+			},
+			"expectedDivergences": []
 		}
 	]
 }
