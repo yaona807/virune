@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { access, lstat, mkdir, writeFile } from 'node:fs/promises';
+import { lstat, mkdir, writeFile } from 'node:fs/promises';
 import { relative, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { generateSemanticCase, renderSemanticCase } from './semantic-fuzz.mjs';
@@ -93,7 +93,7 @@ export async function prepareSemanticDifferentialEvidenceDirectory(output) {
 		}
 	}
 	for (const filename of EVIDENCE_FILENAMES) {
-		if (await pathExists(resolve(absolute, filename))) {
+		if (await pathEntryExists(resolve(absolute, filename))) {
 			throw new Error(`output already contains semantic differential evidence: ${filename}`);
 		}
 	}
@@ -161,9 +161,9 @@ async function writeGenerationEvidence(outputDirectory, { fixtures, iterations, 
 	await writeFile(resolve(outputDirectory, 'generation.json'), `${JSON.stringify(evidence, null, '\t')}\n`, 'utf8');
 }
 
-async function pathExists(path) {
+async function pathEntryExists(path) {
 	try {
-		await access(path);
+		await lstat(path);
 		return true;
 	} catch (error) {
 		if (error instanceof Error && 'code' in error && error.code === 'ENOENT') return false;
