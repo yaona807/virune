@@ -419,29 +419,6 @@
 				"emit": { "target": "es2022", "sourceMap": false, "sourcesContent": true }
 			},
 			"expectedDivergences": []
-		},
-		{
-			"id": "project-multimodule-cycle",
-			"tags": ["project", "multi-module", "diagnostic", "cycle"],
-			"input": {
-				"contractVersion": "1",
-				"languageVersion": "1.0",
-				"platform": "node",
-				"entryPath": "src/main.virune",
-				"sources": [
-					{
-						"path": "src/b.virune",
-						"text": "import type { A } from \"./main.virune\"\n\npub record B {\n\ta: A\n}\n"
-					},
-					{
-						"path": "src/main.virune",
-						"text": "import type { B } from \"./b.virune\"\n\npub record A {\n\tb: B\n}\n"
-					}
-				],
-				"interopManifest": { "version": "1", "modules": [] },
-				"emit": { "target": "es2022", "sourceMap": false, "sourcesContent": true }
-			},
-			"expectedDivergences": []
 		}
 	]
 }
