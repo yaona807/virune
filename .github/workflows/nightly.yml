@@ -164,6 +164,30 @@ jobs:
         run: >-
           node scripts/run-selfhost-mvp-differential.mjs
           --output=.cache/selfhost-nightly-shadow/differential
+      - name: Run the Project Compiler differential suite
+        id: project-compiler-differential
+        if: always()
+        continue-on-error: true
+        run: >-
+          node scripts/run-selfhost-project-differential.mjs
+          --output=.cache/selfhost-nightly-shadow/project-differential
+      - name: Record Project Compiler differential execution status
+        if: always()
+        env:
+          PROJECT_DIFFERENTIAL_OUTCOME: ${{ steps.project-compiler-differential.outcome }}
+        run: >-
+          node --input-type=module -e
+          "import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+          import { join } from 'node:path';
+          const output = '.cache/selfhost-nightly-shadow/project-differential';
+          mkdirSync(output, { recursive: true });
+          const evidence = {
+            schemaVersion: 1,
+            claim: 'selfhost-project-differential-execution',
+            outcome: process.env.PROJECT_DIFFERENTIAL_OUTCOME ?? 'unknown',
+            reportPresent: existsSync(join(output, 'report.json')),
+          };
+          writeFileSync(join(output, 'execution.json'), JSON.stringify(evidence, null, '\t') + '\n', 'utf8');"
       - name: Upload non-promotable self-host evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
