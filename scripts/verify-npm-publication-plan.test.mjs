@@ -18,11 +18,18 @@ const workspaceDirectories = [
 	'vscode',
 ];
 
-test('current repository has a complete prepublication npm plan', () => {
+test('current repository has a complete but explicitly non-ready npm prepublication plan', () => {
 	const result = verifyNpmPublicationPlan(repositoryRoot);
 	assert.deepEqual(result, {
 		schemaVersion: 1,
 		stage: 'prepublication-audit',
+		publicationReady: false,
+		unresolvedRequirements: [
+			'public-registry-verification',
+			'registry-ownership',
+			'release-identity-integration',
+			'trusted-publishing',
+		],
 		currentVersion: '1.0.0',
 		firstStableRegistryRelease: '1.1.0',
 		publishPackages: [
@@ -45,7 +52,7 @@ test('prepublication audit fails if a planned package becomes publishable early'
 		writeJson(path, manifest);
 		assert.throws(
 			() => verifyNpmPublicationPlan(root),
-			/error:|\.runtime\.private: prepublication audit requires private:true/u,
+			/\.runtime\.private: prepublication audit requires private:true/u,
 		);
 	});
 });
@@ -72,6 +79,32 @@ test('every workspace package must be explicitly public or excluded', () => {
 		assert.throws(
 			() => verifyNpmPublicationPlan(root),
 			/workspace package missing from publication plan: language-server/u,
+		);
+	});
+});
+
+test('prepublication plan cannot claim readiness while required external work is unresolved', () => {
+	withFixture(root => {
+		const path = resolve(root, '.github/release/npm-publication-v1.json');
+		const plan = readJson(path);
+		plan.publicationReady = true;
+		writeJson(path, plan);
+		assert.throws(
+			() => verifyNpmPublicationPlan(root),
+			/publicationReady: prepublication audit must not claim publication readiness/u,
+		);
+	});
+});
+
+test('prepublication blockers cannot be silently dropped', () => {
+	withFixture(root => {
+		const path = resolve(root, '.github/release/npm-publication-v1.json');
+		const plan = readJson(path);
+		plan.unresolvedRequirements = plan.unresolvedRequirements.filter(item => item !== 'registry-ownership');
+		writeJson(path, plan);
+		assert.throws(
+			() => verifyNpmPublicationPlan(root),
+			/unresolvedRequirements: expected unresolved prepublication requirements/u,
 		);
 	});
 });
