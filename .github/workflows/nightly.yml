@@ -188,6 +188,31 @@ jobs:
             reportPresent: existsSync(join(output, 'report.json')),
           };
           writeFileSync(join(output, 'execution.json'), JSON.stringify(evidence, null, '\t') + '\n', 'utf8');"
+      - name: Run the Self-host semantic differential fuzz suite
+        id: selfhost-semantic-differential-fuzz
+        if: always()
+        continue-on-error: true
+        run: >-
+          node scripts/run-selfhost-semantic-differential-fuzz.mjs
+          --output=.cache/selfhost-nightly-shadow/semantic-differential-fuzz
+      - name: Record Self-host semantic differential fuzz execution status
+        if: always()
+        env:
+          SEMANTIC_DIFFERENTIAL_FUZZ_OUTCOME: ${{ steps.selfhost-semantic-differential-fuzz.outcome }}
+        run: >-
+          node --input-type=module -e
+          "import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+          import { join } from 'node:path';
+          const output = '.cache/selfhost-nightly-shadow/semantic-differential-fuzz';
+          mkdirSync(output, { recursive: true });
+          const evidence = {
+            schemaVersion: 1,
+            claim: 'selfhost-semantic-differential-fuzz-execution',
+            outcome: process.env.SEMANTIC_DIFFERENTIAL_FUZZ_OUTCOME ?? 'unknown',
+            generationPresent: existsSync(join(output, 'generation.json')),
+            reportPresent: existsSync(join(output, 'report.json')),
+          };
+          writeFileSync(join(output, 'execution.json'), JSON.stringify(evidence, null, '\t') + '\n', 'utf8');"
       - name: Upload non-promotable self-host evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
