@@ -92,6 +92,24 @@ test('experimental Semantic Snapshot is byte-deterministic across input ordering
 	]);
 });
 
+test('serialization recomputes canonical derived fields instead of trusting a snapshot-shaped object', () => {
+	const canonical = createExperimentalSemanticSnapshot(input());
+	const tampered = {
+		...canonical,
+		coverage: {
+			...canonical.coverage,
+			unknown: 0,
+			allEnumeratedRootsModeled: true,
+		},
+		roots: [...canonical.roots].reverse(),
+	};
+	const serialized = serializeExperimentalSemanticSnapshot(tampered);
+	assert.equal(serialized, serializeExperimentalSemanticSnapshot(input()));
+	const parsed = JSON.parse(serialized) as { readonly coverage: { readonly unknown: number; readonly allEnumeratedRootsModeled: boolean } };
+	assert.equal(parsed.coverage.unknown, 1);
+	assert.equal(parsed.coverage.allEnumeratedRootsModeled, false);
+});
+
 test('coverage preserves unknown roots instead of treating empty fact sets as safe', () => {
 	const snapshot = createExperimentalSemanticSnapshot(input());
 	assert.deepEqual(snapshot.coverage, {
