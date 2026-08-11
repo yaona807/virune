@@ -51,11 +51,15 @@ export function parseSemanticDifferentialArguments(argumentsList) {
 	let seed;
 	let iterations;
 	let output;
+	const seen = new Set();
 	for (const argument of argumentsList) {
+		const option = argument.includes('=') ? argument.slice(0, argument.indexOf('=')) : argument;
+		if (seen.has(option)) throw new Error(`Duplicate argument: ${option}`);
 		if (argument.startsWith('--seed=')) seed = nonEmpty(argument.slice('--seed='.length), '--seed');
 		else if (argument.startsWith('--iterations=')) iterations = nonEmpty(argument.slice('--iterations='.length), '--iterations');
 		else if (argument.startsWith('--output=')) output = nonEmpty(argument.slice('--output='.length), '--output');
 		else throw new Error(`Unknown argument: ${argument}`);
+		seen.add(option);
 	}
 	return { seed, iterations, output };
 }
