@@ -1,6 +1,13 @@
 {
   "schemaVersion": 1,
   "stage": "prepublication-audit",
+  "publicationReady": false,
+  "unresolvedRequirements": [
+    "registry-ownership",
+    "trusted-publishing",
+    "release-identity-integration",
+    "public-registry-verification"
+  ],
   "forbidRegistryPublishThroughVersion": "1.0.0",
   "firstStableRegistryRelease": "1.1.0",
   "trustedPublishingRequired": true,
@@ -15,27 +22,27 @@
     {
       "directory": "compiler",
       "name": "@virune/compiler",
-      "role": "public-runtime-dependency"
+      "role": "cli-dependency"
     },
     {
       "directory": "formatter",
       "name": "@virune/formatter",
-      "role": "public-runtime-dependency"
+      "role": "cli-dependency"
     },
     {
       "directory": "js-interop",
       "name": "@virune/js-interop",
-      "role": "public-runtime-dependency"
+      "role": "cli-dependency"
     },
     {
       "directory": "runtime",
       "name": "@virune/runtime",
-      "role": "public-runtime-dependency"
+      "role": "cli-dependency"
     },
     {
       "directory": "stdlib",
       "name": "@virune/stdlib",
-      "role": "public-runtime-dependency"
+      "role": "cli-dependency"
     }
   ],
   "excludedWorkspacePackages": [
