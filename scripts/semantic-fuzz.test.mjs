@@ -11,6 +11,8 @@ import {
 } from './run-selfhost-semantic-differential-fuzz.mjs';
 import { generateSemanticCase, renderSemanticCase, shrinkParameters } from './semantic-fuzz.mjs';
 
+const repositoryRoot = resolve(import.meta.dirname, '..');
+
 test('semantic fuzz case generation is deterministic', () => {
 	const values = [0.02, 0.7, 0.1, 0.9, 0.3, 0.4, 0.5];
 	let index = 0;
@@ -84,18 +86,17 @@ test('probe runtime adapter changes only the entry module and does not mutate co
 	assert.equal(adaptKernelOutputForProbe(input, missingEntry), missingEntry);
 });
 
-test('semantic differential evidence cleanup removes stale artifacts and cannot escape repository cache', async () => {
+test('semantic differential evidence directory rejects stale evidence without destructive cleanup', async () => {
 	const relativeOutput = `.cache/selfhost-semantic-differential-test-${process.pid}`;
 	const outputDirectory = await prepareSemanticDifferentialEvidenceDirectory(relativeOutput);
 	const staleReport = resolve(outputDirectory, 'report.json');
 	try {
 		await writeFile(staleReport, '{"stale":true}\n', 'utf8');
-		assert.equal(await access(staleReport).then(() => true), true);
-		assert.equal(await prepareSemanticDifferentialEvidenceDirectory(relativeOutput), outputDirectory);
 		await assert.rejects(
-			access(staleReport),
-			error => error instanceof Error && 'code' in error && error.code === 'ENOENT',
+			prepareSemanticDifferentialEvidenceDirectory(relativeOutput),
+			/output already contains semantic differential evidence: report\.json/u,
 		);
+		assert.equal(await access(staleReport).then(() => true), true);
 		await assert.rejects(
 			prepareSemanticDifferentialEvidenceDirectory('.cache'),
 			/output must be a child directory of repository \.cache/u,
@@ -105,7 +106,7 @@ test('semantic differential evidence cleanup removes stale artifacts and cannot 
 			/output must be a child directory of repository \.cache/u,
 		);
 		await assert.rejects(
-			prepareSemanticDifferentialEvidenceDirectory(process.cwd()),
+			prepareSemanticDifferentialEvidenceDirectory(repositoryRoot),
 			/output must be a child directory of repository \.cache/u,
 		);
 	} finally {
@@ -115,15 +116,15 @@ test('semantic differential evidence cleanup removes stale artifacts and cannot 
 
 test('semantic differential runner argument parsing rejects ambiguous and unsupported arguments', () => {
 	assert.deepEqual(
-		parseSemanticDifferentialArguments(['--seed=7', '--iterations=8', '--output=.cache/custom']),
-		{ seed: '7', iterations: '8', output: '.cache/custom' },
+		parseSemanticDifferentialArguments(['--seed=7', '--iterations=8', '--output=.cache/selfhost-custom']),
+		{ seed: '7', iterations: '8', output: '.cache/selfhost-custom' },
 	);
 	assert.throws(() => parseSemanticDifferentialArguments(['--output=']), /--output must be a non-empty string/u);
 	assert.throws(() => parseSemanticDifferentialArguments(['--unknown=value']), /Unknown argument/u);
 	assert.throws(() => parseSemanticDifferentialArguments(['--seed=1', '--seed=2']), /Duplicate argument: --seed/u);
 });
 
-test('Nightly preserves semantic differential fuzz failures as explicit non-promotable replayable evidence', () => {
+test('Nightly preserves semantic differential fuzz failures as isolated non-promotable replayable evidence', () => {
 	const workflow = readFileSync(new URL('../.github/workflows/nightly.yml', import.meta.url), 'utf8');
 	const runner = workflow.indexOf('- name: Run the Self-host semantic differential fuzz suite');
 	const recorder = workflow.indexOf('- name: Record Self-host semantic differential fuzz execution status');
@@ -135,7 +136,10 @@ test('Nightly preserves semantic differential fuzz failures as explicit non-prom
 	assert.match(runnerBlock, /continue-on-error: true/u);
 	assert.match(runnerBlock, /run-selfhost-semantic-differential-fuzz\.mjs/u);
 	assert.match(runnerBlock, /--seed=\$\{\{ github\.run_number \}\}/u);
+	assert.match(runnerBlock, /semantic-differential-fuzz-\$\{\{ github\.run_id \}\}-\$\{\{ github\.run_attempt \}\}/u);
 	assert.match(recorderBlock, /steps\.selfhost-semantic-differential-fuzz\.outcome/u);
+	assert.match(recorderBlock, /semantic-differential-fuzz-\$\{\{ github\.run_id \}\}-\$\{\{ github\.run_attempt \}\}/u);
+	assert.match(recorderBlock, /process\.env\.VIRUNE_SELFHOST_SEMANTIC_DIFFERENTIAL_OUTPUT/u);
 	assert.match(recorderBlock, /claim: 'selfhost-semantic-differential-fuzz-execution'/u);
 	assert.match(recorderBlock, /generationPresent: existsSync\(join\(output, 'generation\.json'\)\)/u);
 	assert.match(recorderBlock, /reportPresent: existsSync\(join\(output, 'report\.json'\)\)/u);
