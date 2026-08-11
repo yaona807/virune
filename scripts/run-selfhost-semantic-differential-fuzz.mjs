@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { access, mkdir, writeFile } from 'node:fs/promises';
+import { access, lstat, mkdir, writeFile } from 'node:fs/promises';
 import { relative, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { generateSemanticCase, renderSemanticCase } from './semantic-fuzz.mjs';
@@ -15,12 +15,13 @@ const EVIDENCE_FILENAMES = ['generation.json', 'report.json', 'summary.md', 'exe
 export function generateSemanticDifferentialFixtures({ seed = DEFAULT_SEED, iterations = DEFAULT_ITERATIONS } = {}) {
 	const normalizedSeed = uint32(seed, DEFAULT_SEED, 'seed');
 	const normalizedIterations = positiveInteger(iterations, DEFAULT_ITERATIONS, 'iterations');
+	const seedIdentity = normalizedSeed.toString(16).padStart(8, '0');
 	const next = xorshift32(normalizedSeed || 1);
 	return Array.from({ length: normalizedIterations }, (_, iteration) => {
 		const fuzzCase = generateSemanticCase(next, iteration);
 		const source = renderSemanticCase(fuzzCase, 'original');
 		return {
-			id: `semantic-fuzz-${String(iteration).padStart(4, '0')}-${fuzzCase.template}`,
+			id: `semantic-fuzz-${seedIdentity}-${String(iteration).padStart(4, '0')}-${fuzzCase.template}`,
 			tags: ['semantic-fuzz', 'project', 'runtime'],
 			input: {
 				contractVersion: '1',
@@ -69,10 +70,28 @@ export function parseSemanticDifferentialArguments(argumentsList) {
 export async function prepareSemanticDifferentialEvidenceDirectory(output) {
 	const absolute = resolve(repositoryRoot, nonEmpty(output, 'output'));
 	const relation = relative(evidenceRoot, absolute);
-	if (relation === '' || relation === '..' || relation.startsWith(`..${sep}`)) {
-		throw new Error('output must be a child directory of repository .cache');
+	if (
+		relation === ''
+		|| relation === '..'
+		|| relation.startsWith(`..${sep}`)
+		|| relation.includes(sep)
+	) {
+		throw new Error('output must be one direct child directory of repository .cache');
 	}
-	await mkdir(absolute, { recursive: true });
+	await mkdir(evidenceRoot, { recursive: true });
+	const rootStats = await lstat(evidenceRoot);
+	if (!rootStats.isDirectory() || rootStats.isSymbolicLink()) {
+		throw new Error('repository .cache must be a non-symlink directory');
+	}
+	try {
+		await mkdir(absolute);
+	} catch (error) {
+		if (!(error instanceof Error && 'code' in error && error.code === 'EEXIST')) throw error;
+		const outputStats = await lstat(absolute);
+		if (!outputStats.isDirectory() || outputStats.isSymbolicLink()) {
+			throw new Error('output must be a non-symlink directory');
+		}
+	}
 	for (const filename of EVIDENCE_FILENAMES) {
 		if (await pathExists(resolve(absolute, filename))) {
 			throw new Error(`output already contains semantic differential evidence: ${filename}`);
