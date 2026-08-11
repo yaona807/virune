@@ -33,12 +33,12 @@ test('current repository has a complete but explicitly non-ready npm prepublicat
 		currentVersion: '1.0.0',
 		firstStableRegistryRelease: '1.1.0',
 		publishPackages: [
-			'virune',
-			'@virune/compiler',
-			'@virune/formatter',
-			'@virune/js-interop',
-			'@virune/runtime',
-			'@virune/stdlib',
+			{ workspaceName: '@virune/cli', registryName: 'virune' },
+			{ workspaceName: '@virune/compiler', registryName: '@virune/compiler' },
+			{ workspaceName: '@virune/formatter', registryName: '@virune/formatter' },
+			{ workspaceName: '@virune/js-interop', registryName: '@virune/js-interop' },
+			{ workspaceName: '@virune/runtime', registryName: '@virune/runtime' },
+			{ workspaceName: '@virune/stdlib', registryName: '@virune/stdlib' },
 		],
 		excludedWorkspacePackages: ['@virune/language-server', 'virune-vscode'],
 	});
@@ -66,6 +66,29 @@ test('internal registry dependencies must stay on the exact reviewed release ver
 		assert.throws(
 			() => verifyNpmPublicationPlan(root),
 			/\.cli\.dependencies\.@virune\/runtime: internal published dependencies must use the exact reviewed release version/u,
+		);
+	});
+});
+
+test('workspace and registry package names are distinct only for the staged CLI rename', () => {
+	withFixture(root => {
+		const path = resolve(root, '.github/release/npm-publication-v1.json');
+		const plan = readJson(path);
+		plan.packages.find(item => item.directory === 'runtime').registryName = '@example/runtime';
+		writeJson(path, plan);
+		assert.throws(
+			() => verifyNpmPublicationPlan(root),
+			/non-CLI package renaming is not modeled by the current release packaging path/u,
+		);
+	});
+	withFixture(root => {
+		const path = resolve(root, '.github/release/npm-publication-v1.json');
+		const plan = readJson(path);
+		plan.packages.find(item => item.directory === 'cli').registryName = '@virune/cli';
+		writeJson(path, plan);
+		assert.throws(
+			() => verifyNpmPublicationPlan(root),
+			/canonical CLI registry name must be virune/u,
 		);
 	});
 });
