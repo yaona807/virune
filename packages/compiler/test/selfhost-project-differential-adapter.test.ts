@@ -75,6 +75,61 @@ const semanticRuntimeFixtures = [
 	{ id: 'project-semantic-async-await', sourceSha256: '8575208a0a4bb2d0e1d58d16df820edc3c540369d4af068cf70bcaec5adef854', expectedReturnValue: 42 },
 ] as const;
 
+const semanticDiagnosticFixtures = [
+	{
+		id: 'project-semantic-invalid-data-types',
+		sourceSha256: '74d2739d6cde3e7b8e5f531062929da3b5aad4da4753f85d102129d5073aca56',
+		expectedDiagnostics: [
+			{
+				code: 'L1001',
+				severity: 'error',
+				sourcePath: 'src/main.virune',
+				span: {
+					start: { offset: 0, line: 1, column: 1 },
+					end: { offset: 0, line: 1, column: 1 },
+				},
+				help: null,
+			},
+			{
+				code: 'L1001',
+				severity: 'error',
+				sourcePath: 'src/main.virune',
+				span: {
+					start: { offset: 84, line: 5, column: 5 },
+					end: { offset: 97, line: 5, column: 19 },
+				},
+				help: null,
+			},
+			{
+				code: 'L2041',
+				severity: 'error',
+				sourcePath: 'src/main.virune',
+				span: {
+					start: { offset: 112, line: 7, column: 12 },
+					end: { offset: 122, line: 7, column: 23 },
+				},
+				help: null,
+			},
+		],
+	},
+	{
+		id: 'project-semantic-recursive-alias',
+		sourceSha256: 'b7a44ffd0cd0367f01d524c613174034ce5c17c9fc82c964071776c6e55cdefc',
+		expectedDiagnostics: [
+			{
+				code: 'L2040',
+				severity: 'error',
+				sourcePath: 'src/main.virune',
+				span: {
+					start: { offset: 20, line: 1, column: 21 },
+					end: { offset: 20, line: 1, column: 22 },
+				},
+				help: null,
+			},
+		],
+	},
+] as const;
+
 function acceptedProjectModule(onCompile?: (request: string) => void): SelfhostProjectCompilerModule {
 	return {
 		compileMvp: () => ({ $tag: 'Err', $values: ['unused'] }),
@@ -214,6 +269,7 @@ test('project-tagged differential fixtures preserve required coverage and satisf
 		'mvp-primitives-logic',
 		'mvp-unknown-name',
 		...semanticRuntimeFixtures.map(fixture => fixture.id),
+		...semanticDiagnosticFixtures.map(fixture => fixture.id),
 	] as const;
 	const projectFixtures = corpus.fixtures.filter(fixture => fixture.tags.includes('project'));
 	const projectFixtureIds = new Set(projectFixtures.map(fixture => fixture.id));
@@ -254,6 +310,42 @@ test('semantic Project differential fixtures retain canonical inputs and indepen
 			assert.equal(execution.signal, null, `${fixtureId}: runtime signal`);
 			assert.equal(execution.panic, null, `${fixtureId}: runtime panic`);
 			assert.deepEqual(execution.returnValue, expectedReturnValue, `${fixtureId}: runtime return value`);
+		});
+	}
+});
+
+test('semantic diagnostic Project differential fixtures retain canonical inputs and the current Legacy diagnostic baseline', async t => {
+	const corpus = loadDifferentialCorpus();
+	for (const { id: fixtureId, sourceSha256, expectedDiagnostics } of semanticDiagnosticFixtures) {
+		await t.test(fixtureId, async () => {
+			const fixture = corpus.fixtures.find(item => item.id === fixtureId);
+			assert.ok(fixture, `missing semantic diagnostic differential fixture ${fixtureId}`);
+			assert.ok(fixture.tags.includes('semantic'), `${fixtureId}: semantic tag`);
+			assert.ok(fixture.tags.includes('diagnostic'), `${fixtureId}: diagnostic tag`);
+			assert.deepEqual(fixture.expectedDivergences, [], `${fixtureId}: semantic diagnostic baseline must not whitelist divergences`);
+			const fixtureInput = validateKernelInput(fixture.input);
+			assert.equal(fixtureInput.entryPath, 'src/main.virune', `${fixtureId}: entry path`);
+			assert.equal(fixtureInput.sources.length, 1, `${fixtureId}: representative semantic diagnostic fixture must stay single-module`);
+			const source = fixtureInput.sources[0]!;
+			assert.equal(source.path, fixtureInput.entryPath, `${fixtureId}: source path`);
+			assert.equal(
+				createHash('sha256').update(source.text, 'utf8').digest('hex'),
+				sourceSha256,
+				`${fixtureId}: canonical semantic diagnostic source`,
+			);
+			const output = await compileWithLegacyKernel(fixtureInput);
+			assert.equal(output.accepted, false, `${fixtureId}: Legacy compiler unexpectedly accepted representative negative semantic input`);
+			assert.deepEqual(
+				output.diagnostics.map(diagnostic => ({
+					code: diagnostic.code,
+					severity: diagnostic.severity,
+					sourcePath: diagnostic.sourcePath ?? null,
+					span: diagnostic.span,
+					help: diagnostic.help ?? null,
+				})),
+				expectedDiagnostics,
+				`${fixtureId}: Legacy diagnostic baseline`,
+			);
 		});
 	}
 });
