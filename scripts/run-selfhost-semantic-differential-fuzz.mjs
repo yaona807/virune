@@ -1,10 +1,11 @@
 import { createHash } from 'node:crypto';
 import { mkdir, rm, writeFile } from 'node:fs/promises';
-import { resolve } from 'node:path';
+import { relative, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { generateSemanticCase, renderSemanticCase } from './semantic-fuzz.mjs';
 
 const repositoryRoot = resolve(import.meta.dirname, '..');
+const evidenceRoot = resolve(repositoryRoot, '.cache');
 const selfhostModulePath = resolve(repositoryRoot, 'selfhost/mvp/dist/main.js');
 const DEFAULT_SEED = 0x53_44_46_31;
 const DEFAULT_ITERATIONS = 32;
@@ -64,17 +65,22 @@ export function parseSemanticDifferentialArguments(argumentsList) {
 	return { seed, iterations, output };
 }
 
-export async function resetSemanticDifferentialEvidenceDirectory(outputDirectory) {
-	await rm(outputDirectory, { recursive: true, force: true });
-	await mkdir(outputDirectory, { recursive: true });
+export async function prepareSemanticDifferentialEvidenceDirectory(output) {
+	const absolute = resolve(repositoryRoot, nonEmpty(output, 'output'));
+	const relation = relative(evidenceRoot, absolute);
+	if (relation === '' || relation === '..' || relation.startsWith(`..${sep}`)) {
+		throw new Error('output must be a child directory of repository .cache');
+	}
+	await rm(absolute, { recursive: true, force: true });
+	await mkdir(absolute, { recursive: true });
+	return absolute;
 }
 
 export async function runSelfhostSemanticDifferentialFuzz(options = {}) {
 	const seed = uint32(options.seed ?? process.env.VIRUNE_SELFHOST_SEMANTIC_DIFFERENTIAL_SEED, DEFAULT_SEED, 'seed');
 	const iterations = positiveInteger(options.iterations ?? process.env.VIRUNE_SELFHOST_SEMANTIC_DIFFERENTIAL_ITERATIONS, DEFAULT_ITERATIONS, 'iterations');
 	const output = nonEmpty(options.output ?? process.env.VIRUNE_SELFHOST_SEMANTIC_DIFFERENTIAL_OUTPUT ?? DEFAULT_OUTPUT, 'output');
-	const outputDirectory = resolve(repositoryRoot, output);
-	await resetSemanticDifferentialEvidenceDirectory(outputDirectory);
+	const outputDirectory = await prepareSemanticDifferentialEvidenceDirectory(output);
 	const fixtures = generateSemanticDifferentialFixtures({ seed, iterations });
 	await writeGenerationEvidence(outputDirectory, { fixtures, iterations, seed });
 
