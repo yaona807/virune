@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import {
 	adaptKernelOutputForProbe,
@@ -73,7 +74,10 @@ test('probe runtime adapter changes only the entry module and does not mutate co
 	assert.equal(output.emittedModules[1].code, 'export function probe() { return 42; }\n');
 	assert.match(adapted.emittedModules[1].code, /export async function main\(\)/u);
 	assert.match(adapted.emittedModules[1].code, /return await probe\(\)/u);
-	assert.equal(adaptKernelOutputForProbe(input, { ...output, accepted: false }), output.accepted === false ? output : adaptKernelOutputForProbe(input, { ...output, accepted: false }));
+	const rejected = { ...output, accepted: false };
+	assert.equal(adaptKernelOutputForProbe(input, rejected), rejected);
+	const missingEntry = { ...output, emittedModules: output.emittedModules.slice(0, 1) };
+	assert.equal(adaptKernelOutputForProbe(input, missingEntry), missingEntry);
 });
 
 test('semantic differential runner argument parsing rejects unknown and empty arguments', () => {
@@ -83,4 +87,21 @@ test('semantic differential runner argument parsing rejects unknown and empty ar
 	);
 	assert.throws(() => parseSemanticDifferentialArguments(['--output=']), /--output must be a non-empty string/u);
 	assert.throws(() => parseSemanticDifferentialArguments(['--unknown=value']), /Unknown argument/u);
+});
+
+test('Nightly preserves semantic differential fuzz failures as explicit non-promotable evidence', () => {
+	const workflow = readFileSync(new URL('../.github/workflows/nightly.yml', import.meta.url), 'utf8');
+	const runner = workflow.indexOf('- name: Run the Self-host semantic differential fuzz suite');
+	const recorder = workflow.indexOf('- name: Record Self-host semantic differential fuzz execution status');
+	const upload = workflow.indexOf('- name: Upload non-promotable self-host evidence');
+	assert.ok(runner >= 0 && recorder > runner && upload > recorder);
+	const runnerBlock = workflow.slice(runner, recorder);
+	const recorderBlock = workflow.slice(recorder, upload);
+	assert.match(runnerBlock, /id: selfhost-semantic-differential-fuzz/u);
+	assert.match(runnerBlock, /continue-on-error: true/u);
+	assert.match(runnerBlock, /run-selfhost-semantic-differential-fuzz\.mjs/u);
+	assert.match(recorderBlock, /steps\.selfhost-semantic-differential-fuzz\.outcome/u);
+	assert.match(recorderBlock, /claim: 'selfhost-semantic-differential-fuzz-execution'/u);
+	assert.match(recorderBlock, /generationPresent: existsSync\(join\(output, 'generation\.json'\)\)/u);
+	assert.match(recorderBlock, /reportPresent: existsSync\(join\(output, 'report\.json'\)\)/u);
 });
