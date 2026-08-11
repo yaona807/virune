@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { access, rm, writeFile } from 'node:fs/promises';
+import { access, rm, symlink, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { test } from 'node:test';
 import {
@@ -126,6 +126,20 @@ test('semantic differential evidence directory is bounded and rejects stale evid
 	} finally {
 		await rm(outputDirectory, { recursive: true, force: true });
 		await rm(fileOutput, { force: true });
+	}
+});
+
+test('semantic differential evidence rejects dangling artifact symlinks', { skip: process.platform === 'win32' }, async () => {
+	const relativeOutput = `.cache/selfhost-semantic-differential-symlink-${process.pid}`;
+	const outputDirectory = await prepareSemanticDifferentialEvidenceDirectory(relativeOutput);
+	try {
+		await symlink('missing-report-target.json', resolve(outputDirectory, 'report.json'));
+		await assert.rejects(
+			prepareSemanticDifferentialEvidenceDirectory(relativeOutput),
+			/output already contains semantic differential evidence: report\.json/u,
+		);
+	} finally {
+		await rm(outputDirectory, { recursive: true, force: true });
 	}
 });
 
