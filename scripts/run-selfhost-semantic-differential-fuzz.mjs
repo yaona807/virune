@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { mkdir, rm, writeFile } from 'node:fs/promises';
+import { access, mkdir, writeFile } from 'node:fs/promises';
 import { relative, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { generateSemanticCase, renderSemanticCase } from './semantic-fuzz.mjs';
@@ -10,6 +10,7 @@ const selfhostModulePath = resolve(repositoryRoot, 'selfhost/mvp/dist/main.js');
 const DEFAULT_SEED = 0x53_44_46_31;
 const DEFAULT_ITERATIONS = 32;
 const DEFAULT_OUTPUT = '.cache/selfhost-semantic-differential-fuzz';
+const EVIDENCE_FILENAMES = ['generation.json', 'report.json', 'summary.md', 'execution.json'];
 
 export function generateSemanticDifferentialFixtures({ seed = DEFAULT_SEED, iterations = DEFAULT_ITERATIONS } = {}) {
 	const normalizedSeed = uint32(seed, DEFAULT_SEED, 'seed');
@@ -71,8 +72,12 @@ export async function prepareSemanticDifferentialEvidenceDirectory(output) {
 	if (relation === '' || relation === '..' || relation.startsWith(`..${sep}`)) {
 		throw new Error('output must be a child directory of repository .cache');
 	}
-	await rm(absolute, { recursive: true, force: true });
 	await mkdir(absolute, { recursive: true });
+	for (const filename of EVIDENCE_FILENAMES) {
+		if (await pathExists(resolve(absolute, filename))) {
+			throw new Error(`output already contains semantic differential evidence: ${filename}`);
+		}
+	}
 	return absolute;
 }
 
@@ -135,6 +140,16 @@ async function writeGenerationEvidence(outputDirectory, { fixtures, iterations, 
 		replayCommand: `npm run selfhost:mvp:build && node scripts/run-selfhost-semantic-differential-fuzz.mjs --seed=${seed} --iterations=${iterations} --output=${DEFAULT_OUTPUT}`,
 	};
 	await writeFile(resolve(outputDirectory, 'generation.json'), `${JSON.stringify(evidence, null, '\t')}\n`, 'utf8');
+}
+
+async function pathExists(path) {
+	try {
+		await access(path);
+		return true;
+	} catch (error) {
+		if (error instanceof Error && 'code' in error && error.code === 'ENOENT') return false;
+		throw error;
+	}
 }
 
 function uint32(value, fallback, name) {
