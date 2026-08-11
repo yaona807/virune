@@ -193,7 +193,7 @@ jobs:
         if: always()
         continue-on-error: true
         env:
-          VIRUNE_SELFHOST_SEMANTIC_DIFFERENTIAL_OUTPUT: .cache/selfhost-nightly-shadow/semantic-differential-fuzz-${{ github.run_id }}-${{ github.run_attempt }}
+          VIRUNE_SELFHOST_SEMANTIC_DIFFERENTIAL_OUTPUT: .cache/selfhost-semantic-differential-fuzz-${{ github.run_id }}-${{ github.run_attempt }}
         run: >-
           node scripts/run-selfhost-semantic-differential-fuzz.mjs
           --seed=${{ github.run_number }}
@@ -201,7 +201,7 @@ jobs:
         if: always()
         env:
           SEMANTIC_DIFFERENTIAL_FUZZ_OUTCOME: ${{ steps.selfhost-semantic-differential-fuzz.outcome }}
-          VIRUNE_SELFHOST_SEMANTIC_DIFFERENTIAL_OUTPUT: .cache/selfhost-nightly-shadow/semantic-differential-fuzz-${{ github.run_id }}-${{ github.run_attempt }}
+          VIRUNE_SELFHOST_SEMANTIC_DIFFERENTIAL_OUTPUT: .cache/selfhost-semantic-differential-fuzz-${{ github.run_id }}-${{ github.run_attempt }}
         run: >-
           node --input-type=module -e
           "import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
@@ -222,6 +222,8 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: selfhost-stage0-evidence-${{ github.run_id }}-${{ github.run_attempt }}
-          path: .cache/selfhost-nightly-shadow/
+          path: |
+            .cache/selfhost-nightly-shadow/
+            .cache/selfhost-semantic-differential-fuzz-${{ github.run_id }}-${{ github.run_attempt }}/
           if-no-files-found: warn
           retention-days: 30
