@@ -92,7 +92,7 @@ test('probe runtime adapter changes only the entry module and fails closed when 
 	);
 });
 
-test('semantic differential evidence directory is bounded and rejects stale evidence without cleanup', async () => {
+test('semantic differential evidence directory is bounded and requires canonical empty output', async () => {
 	const relativeOutput = `.cache/selfhost-semantic-differential-test-${process.pid}`;
 	const outputDirectory = await prepareSemanticDifferentialEvidenceDirectory(relativeOutput);
 	const staleReport = resolve(outputDirectory, 'report.json');
@@ -102,7 +102,7 @@ test('semantic differential evidence directory is bounded and rejects stale evid
 		await writeFile(staleReport, '{"stale":true}\n', 'utf8');
 		await assert.rejects(
 			prepareSemanticDifferentialEvidenceDirectory(relativeOutput),
-			/output already contains semantic differential evidence: report\.json/u,
+			/output directory must be empty before semantic differential fuzz execution/u,
 		);
 		assert.equal(await access(staleReport).then(() => true), true);
 		await assert.rejects(
@@ -132,14 +132,14 @@ test('semantic differential evidence directory is bounded and rejects stale evid
 	}
 });
 
-test('semantic differential evidence rejects dangling artifact symlinks', { skip: process.platform === 'win32' }, async () => {
+test('semantic differential evidence treats dangling artifact symlinks as non-empty output', { skip: process.platform === 'win32' }, async () => {
 	const relativeOutput = `.cache/selfhost-semantic-differential-symlink-${process.pid}`;
 	const outputDirectory = await prepareSemanticDifferentialEvidenceDirectory(relativeOutput);
 	try {
 		await symlink('missing-report-target.json', resolve(outputDirectory, 'report.json'));
 		await assert.rejects(
 			prepareSemanticDifferentialEvidenceDirectory(relativeOutput),
-			/output already contains semantic differential evidence: report\.json/u,
+			/output directory must be empty before semantic differential fuzz execution/u,
 		);
 	} finally {
 		await rm(outputDirectory, { recursive: true, force: true });
