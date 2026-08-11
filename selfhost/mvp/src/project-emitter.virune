@@ -293,7 +293,9 @@ fn productionRuntimeImportLine() -> String {
 }
 
 fn canonicalImportLine(line: String) -> String {
-	if String.startsWith(line, "import ") && String.endsWith(line, "';") {
+	let relativeFrom = String.contains(line, " from './") || String.contains(line, " from '../")
+	let relativeSideEffect = String.startsWith(line, "import './") || String.startsWith(line, "import '../")
+	if (relativeFrom || relativeSideEffect) && String.endsWith(line, "';") {
 		return String.replace(line, "'", "\"")
 	}
 	return line
