@@ -54,15 +54,15 @@ export interface SemanticSnapshotInputV1 {
 }
 
 export interface SemanticCoverageSummaryV1 {
-	readonly roots: number;
+	readonly enumeratedRoots: number;
 	readonly modeled: number;
 	readonly partial: number;
 	readonly opaque: number;
 	readonly unknown: number;
-	readonly complete: boolean;
+	readonly allEnumeratedRootsModeled: boolean;
 }
 
-export interface SemanticRootSnapshotV1 extends SemanticRootInputV1 {}
+export type SemanticRootSnapshotV1 = SemanticRootInputV1;
 
 export interface ExperimentalSemanticSnapshotV1 {
 	readonly version: typeof EXPERIMENTAL_SEMANTIC_SNAPSHOT_VERSION;
@@ -83,8 +83,10 @@ const SHA256_PATTERN = /^[0-9a-f]{64}$/u;
 
 /**
  * Build the experimental Semantic Change Evidence snapshot without assigning
- * safety meaning to missing facts. Every root carries an explicit coverage
- * state, and partial/opaque/unknown roots must explain their limitation.
+ * safety meaning to missing facts. Every enumerated root carries an explicit
+ * coverage state, and partial/opaque/unknown roots must explain their
+ * limitation. The coverage summary is deliberately scoped to enumerated roots;
+ * it does not claim that the analyzer enumerated every relevant program root.
  *
  * This module is intentionally internal and experimental. It is not a stable
  * Compiler API or artifact-schema compatibility promise.
@@ -219,12 +221,12 @@ function summarizeCoverage(roots: readonly SemanticRootSnapshotV1[]): SemanticCo
 		}
 	}
 	return {
-		roots: roots.length,
+		enumeratedRoots: roots.length,
 		modeled,
 		partial,
 		opaque,
 		unknown,
-		complete: partial === 0 && opaque === 0 && unknown === 0,
+		allEnumeratedRootsModeled: partial === 0 && opaque === 0 && unknown === 0,
 	};
 }
 
