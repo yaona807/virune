@@ -12,7 +12,6 @@ const execFileAsync = promisify(execFile);
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../../..');
 const mvpRoot = join(repositoryRoot, 'selfhost', 'mvp');
 const temporaryRoot = join(repositoryRoot, '.test-tmp');
-const SELFHOST_RUNTIME_IMPORT_LINE = "import { intAdd, intDivide, intMultiply, intNegate, intRemainder, intSubtract, isPropagation, propagate, rootTaskContext, viruneEquals } from '@virune/runtime/v2/index.js';";
 
 type ViruneResult<T> = { readonly $tag: 'Ok' | 'Err'; readonly $values: readonly [T] };
 type EmitterApi = {
@@ -129,10 +128,10 @@ test('project emitter uses production runtime and module import framing', async 
 					sourcePath: 'src/main.virune',
 					outputPath: 'dist/main.js',
 					preamble: [
-						SELFHOST_RUNTIME_IMPORT_LINE,
+						BASE_RUNTIME_IMPORT_LINE,
 						"import test from 'node:test';",
-						"import { value } from './helper.js';",
-						"import './side-effect.js';",
+						'import { value } from "./helper.js";',
+						'import "./side-effect.js";',
 					],
 					statements: ['export function main() { return value; }'],
 					sourceMap: '',
@@ -162,9 +161,10 @@ test('project emitter uses production runtime and module import framing', async 
 	}
 });
 
-test('project emitter runtime sentinel stays bound to Project Compiler preamble', async () => {
+test('Project Compiler preamble stays bound to production runtime and JSON import serialization', async () => {
 	const source = await readFile(join(mvpRoot, 'src', 'project-compiler-contract.virune'), 'utf8');
-	assert.ok(source.includes(`return "${SELFHOST_RUNTIME_IMPORT_LINE}"`));
+	assert.ok(source.includes(`return "${BASE_RUNTIME_IMPORT_LINE}"`));
+	assert.ok(source.includes('Json.encode<String>(runtimeImportSpecifier(importValue.specifier))?'));
 });
 
 test('project emitter fails closed for duplicate outputs, multiline entries, and missing entry', async () => {
