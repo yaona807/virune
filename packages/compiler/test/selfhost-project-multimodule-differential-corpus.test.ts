@@ -1,10 +1,37 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
+import { mkdir, rm } from 'node:fs/promises';
 import test from 'node:test';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { buildProject } from '../src/project/project.js';
+import { snapshotProjectBuild } from '../src/selfhost/bootstrap-artifact-snapshot.js';
+import {
+	loadBootstrapCompilerCandidate,
+	materializeBootstrapCompilerCandidate,
+} from '../src/selfhost/bootstrap-execution-probe.js';
 import { validateKernelInput } from '../src/selfhost/contract.js';
+import {
+	runDifferentialCorpus,
+	type DifferentialFixtureV1,
+} from '../src/selfhost/differential-harness.js';
 import { compileWithLegacyKernel } from '../src/selfhost/legacy-adapter.js';
 import { executeKernelOutputWithNode } from '../src/selfhost/node-executor.js';
+import { createSelfhostProjectKernel } from '../src/selfhost/project-differential-adapter.js';
+
+const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../../..');
+const mvpRoot = join(repositoryRoot, 'selfhost', 'mvp');
+const temporaryRoot = join(repositoryRoot, '.test-tmp');
+const snapshotOptions = {
+	stage: 'stage0' as const,
+	compilerVersion: '1.0.0',
+	runtimeAbi: '1',
+	interopAbi: '1',
+	seedSha256: 'e'.repeat(64),
+};
+
+type GeneratedCompiler = Awaited<ReturnType<typeof loadBootstrapCompilerCandidate>>;
 
 type DifferentialCorpusFixture = {
 	readonly id: string;
@@ -87,6 +114,34 @@ function loadDifferentialCorpus(): { readonly fixtures: readonly DifferentialCor
 	)) as { readonly fixtures: readonly DifferentialCorpusFixture[] };
 }
 
+async function withGeneratedCompiler<T>(
+	run: (module: GeneratedCompiler) => T | Promise<T>,
+): Promise<T> {
+	await mkdir(temporaryRoot, { recursive: true });
+	const build = await buildProject(mvpRoot, { write: false });
+	const artifact = snapshotProjectBuild(build, snapshotOptions);
+	const root = await materializeBootstrapCompilerCandidate(artifact, temporaryRoot);
+	try {
+		return await run(await loadBootstrapCompilerCandidate(root, 'dist/main.js'));
+	} finally {
+		await rm(root, { recursive: true, force: true });
+	}
+}
+
+function selectedFixtures(corpus: { readonly fixtures: readonly DifferentialCorpusFixture[] }): readonly DifferentialFixtureV1[] {
+	return runtimeCases.map(runtimeCase => {
+		const fixture = corpus.fixtures.find(item => item.id === runtimeCase.id);
+		assert.ok(fixture, `missing multi-module runtime fixture ${runtimeCase.id}`);
+		assert.deepEqual(fixture.expectedDivergences, [], `${runtimeCase.id}: unexplained differences must not be whitelisted`);
+		return {
+			id: fixture.id,
+			tags: fixture.tags,
+			input: validateKernelInput(fixture.input),
+			expectedDivergences: [],
+		};
+	});
+}
+
 test('multi-module Project differential fixtures retain canonical source identity and strict v1 profiles', () => {
 	const corpus = loadDifferentialCorpus();
 	for (const [fixtureId, expectedHashes] of Object.entries(sourceHashes)) {
@@ -132,4 +187,36 @@ test('positive multi-module fixtures retain independently grounded Legacy depend
 			assert.deepEqual(execution.returnValue, runtimeCase.expectedReturnValue, `${runtimeCase.id}: runtime return value`);
 		});
 	}
+});
+
+test('positive multi-module fixtures match the actual generated Self-host Project Compiler', async () => {
+	const corpus = loadDifferentialCorpus();
+	const fixtures = selectedFixtures(corpus);
+	await withGeneratedCompiler(async module => {
+		const report = await runDifferentialCorpus({
+			fixtures,
+			left: {
+				name: 'legacy-project',
+				compile: compileWithLegacyKernel,
+				execute: executeKernelOutputWithNode,
+			},
+			right: {
+				...createSelfhostProjectKernel(module),
+				execute: executeKernelOutputWithNode,
+			},
+		});
+		for (const caseReport of report.cases) {
+			assert.deepEqual(caseReport.unexplainedDifferences, [], `${caseReport.fixtureId}: unexplained Legacy/Self-host differences`);
+			assert.deepEqual(caseReport.staleExpectedDivergences, [], `${caseReport.fixtureId}: stale expected divergences`);
+			assert.equal(caseReport.status, 'match', `${caseReport.fixtureId}: differential status`);
+			assert.equal(caseReport.passed, true, `${caseReport.fixtureId}: differential pass`);
+		}
+		assert.equal(report.passed, true);
+		assert.deepEqual(report.totals, {
+			fixtures: runtimeCases.length,
+			matched: runtimeCases.length,
+			expectedDivergence: 0,
+			failed: 0,
+		});
+	});
 });
