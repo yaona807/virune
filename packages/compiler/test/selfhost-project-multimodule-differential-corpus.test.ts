@@ -15,8 +15,7 @@ type DifferentialCorpusFixture = {
 
 type RuntimeCase = {
 	readonly id: string;
-	readonly expectedReturnValue?: unknown;
-	readonly expectedReturnTag?: string;
+	readonly expectedReturnValue: unknown;
 	readonly expectedDependencies: readonly {
 		readonly modulePath: string;
 		readonly sourceKind: string;
@@ -69,7 +68,7 @@ const runtimeCases: readonly RuntimeCase[] = [
 	},
 	{
 		id: 'project-multimodule-public-enum',
-		expectedReturnTag: 'Pending',
+		expectedReturnValue: { $tag: 'Pending', $values: [] },
 		expectedDependencies: [{
 			modulePath: 'src/main.virune',
 			sourceKind: 'virune',
@@ -130,15 +129,7 @@ test('positive multi-module fixtures retain independently grounded Legacy depend
 			assert.equal(execution.exitCode, 0, `${runtimeCase.id}: runtime exit code`);
 			assert.equal(execution.signal, null, `${runtimeCase.id}: runtime signal`);
 			assert.equal(execution.panic, null, `${runtimeCase.id}: runtime panic`);
-			if (runtimeCase.expectedReturnTag !== undefined) {
-				assert.equal(
-					(execution.returnValue as { readonly $tag?: unknown } | null)?.$tag,
-					runtimeCase.expectedReturnTag,
-					`${runtimeCase.id}: runtime return tag`,
-				);
-			} else {
-				assert.deepEqual(execution.returnValue, runtimeCase.expectedReturnValue, `${runtimeCase.id}: runtime return value`);
-			}
+			assert.deepEqual(execution.returnValue, runtimeCase.expectedReturnValue, `${runtimeCase.id}: runtime return value`);
 		});
 	}
 });
