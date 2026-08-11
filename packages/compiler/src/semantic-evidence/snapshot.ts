@@ -107,8 +107,8 @@ export function createExperimentalSemanticSnapshot(
 	};
 }
 
-export function serializeExperimentalSemanticSnapshot(snapshot: ExperimentalSemanticSnapshotV1): string {
-	return JSON.stringify(snapshot);
+export function serializeExperimentalSemanticSnapshot(input: SemanticSnapshotInputV1): string {
+	return JSON.stringify(createExperimentalSemanticSnapshot(input));
 }
 
 function canonicalClosure(value: SemanticInputClosureV1): SemanticInputClosureV1 {
