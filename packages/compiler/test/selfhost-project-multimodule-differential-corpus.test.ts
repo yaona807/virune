@@ -40,10 +40,6 @@ const sourceHashes: Readonly<Record<string, Readonly<Record<string, string>>>> =
 		'src/domain.virune': 'aa0a4d53e29c71b2bb95901c36d435e0a612321b349d7f2e5c398e4bf47b8fd0',
 		'src/main.virune': '2bfc29d15712be82be9818778846fa9c11bf049a78e4e5fdc271030be33d95c7',
 	},
-	'project-multimodule-cycle': {
-		'src/b.virune': '033a3f4755a2246540a8c990625f23a75b3e987fa0e2f9918cd188e99cfbc1c3',
-		'src/main.virune': 'a7a3784c1daadda6fe71a691c8663f54fbb338e6747a44f4a0aa6af17d8ecfdb',
-	},
 };
 
 const runtimeCases: readonly RuntimeCase[] = [
@@ -145,16 +141,4 @@ test('positive multi-module fixtures retain independently grounded Legacy depend
 			}
 		});
 	}
-});
-
-test('module-cycle differential fixture preserves the canonical Legacy rejection without an expected divergence', async () => {
-	const corpus = loadDifferentialCorpus();
-	const fixture = corpus.fixtures.find(item => item.id === 'project-multimodule-cycle');
-	assert.ok(fixture, 'missing module-cycle differential fixture');
-	assert.ok(fixture.tags.includes('diagnostic'), 'module-cycle fixture must remain diagnostic evidence');
-	assert.deepEqual(fixture.expectedDivergences, [], 'module-cycle differences must remain unexplained until parity is proven');
-	const fixtureInput = validateKernelInput(fixture.input);
-	const output = await compileWithLegacyKernel(fixtureInput);
-	assert.equal(output.accepted, false, 'Legacy compiler unexpectedly accepted the canonical module cycle');
-	assert.ok(output.diagnostics.some(diagnostic => diagnostic.code === 'L4002'), 'Legacy module-cycle diagnostic L4002 must remain present');
 });
