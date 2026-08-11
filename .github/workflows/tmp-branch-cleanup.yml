@@ -1,14 +1,10 @@
 name: Temporary stale branch cleanup
 
 on:
-  push:
-    branches:
-      - tmp/branch-cleanup-20260811
   pull_request:
     branches:
       - main
     types:
-      - opened
       - synchronize
 
 permissions:
@@ -29,44 +25,44 @@ jobs:
           git remote add origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
 
           expected_refs="$(cat <<'EOF'
-agent/maintainability-selfhost-operations-baseline 799e29ceebadb0fd23256b7a8c2816edff073808
-agent/selfhost-clean-bootstrap-runner-core 5964ee0744cbb3aea2190905cc38f037678621a2
-agent/selfhost-legacy-rollback-smoke d1d38ee4777d8e9cf612ecfaacb5021ec46b3c0c
-agent/selfhost-nightly-stage12-shadow 48f7f5e0bb6d1c66f91e5b83e5530b6ee20a4313
-agent/selfhost-nightly-stage12-shadow-main 3001a63d819bec25f31028596bd917d2f9040986
-agent/selfhost-nightly-stage12-shadow-main2 7cb22b2e9873070705b5b6e4455b198ecae4b688
-agent/selfhost-project-differential-evidence 4601bacde70c65b6d87e09bb42eca206441bbaa0
-agent/selfhost-project-differential-evidence-main2 c72942ccf4f2dc61f37bb6dbe5c053e00f052882
-agent/selfhost-rollback-selection f29b04cfece830be2e1078c6aeae3772970c3c1c
-agent/selfhost-semantic-differential-corpus 0812bf526cb00298be9c62f6e16307a576d102d6
-agent/selfhost-stage-capability-gate 41642b37b30c4019714a4ec848a53e92e9844859
-agent/selfhost-stage-facade-adapter f8cdbb43f0c716a3f4a37b1a5aaa6673e7ad8113
-agent/79-task-oriented-guide c1111977c7d71504a1bebb594b183baaef2bcc9e
-feat/ci-selfhost-inventory-job 1f419001171f5b29f6f7348ef257c31b20fdd75f
-feat/selfhost-bootstrap-command 10261d944237de65c883e401e8bbd7ffdf61db5a
-feat/selfhost-bootstrap-stage-pipeline 5a9f2b504be9f871b07d7a169d15f0fc66bb8a8d
-feat/selfhost-full-language-readiness 0586513b4e68b82a653abbad498cf1fdd5af4445
-feat/selfhost-full-language-readiness-main 9a1957f78e93e978ae99f015f31c6bae2330fda0
-feat/selfhost-inventory-change-classifier 4f225c011e16e50c0da3b58861eb169fe43d7b0c
-feat/selfhost-inventory-ci-mode 9c6987381e647b4aaf019e56d259e1c7b0d4b391
-feat/selfhost-inventory-ci-wiring 3ac23e69a4759c7bcfa934ea4f849a6dc65348a1
-feat/selfhost-inventory-compile-runs b687b6e1f048b64941215bf32194a7df1335bc2b
-fix/selfhost-inventory-ci-phase-evidence da7b1c60d293216afb746be7308af9b919978213
-fix/selfhost-member-chain-token-kind 121e2153f32a60d5976acd5e4c917fd9472c99f6
-perf/unit-test-bounded-concurrency 39f0f3af8dc3ddcd7ce4bf040c837abb0b2e6fe6
-perf/unit-test-file-timings c90551cc6632780b99aeac830eb69ebf5171e7bf
-probe/selfhost-full-language-readiness da106b8a00117eae6060c5dd14eb45f5144774cd
-probe/selfhost-full-language-readiness-main 85780967abdd90f740d6c052b5c36a1598792d14
-probe/selfhost-inventory-ci-wiring-main 3ac23e69a4759c7bcfa934ea4f849a6dc65348a1
-probe/selfhost-inventory-compile-runs 08c32558d063dc28755a81526d1f4c2788ef147d
-probe/selfhost-inventory-phase-evidence-main da7b1c60d293216afb746be7308af9b919978213
-probe/selfhost-readiness-stack-main 1f419001171f5b29f6f7348ef257c31b20fdd75f
-probe/unit-test-bounded-concurrency-main 39f0f3af8dc3ddcd7ce4bf040c837abb0b2e6fe6
-probe/unit-test-file-timings-main 7068241b2d3bbf6aaba401e740c199ec10ebcd7f
-probe/unit-test-file-timings-main-2 c90551cc6632780b99aeac830eb69ebf5171e7bf
-test/selfhost-retired-readiness-bridge 54d5f6c6417c992b6143b01507ca8c2f39865315
-tmp/selfhost-try-rebuild-run-20260804 4905bc1e8c867a2aba62c1e6fb4f202483bddf58
-EOF
+          agent/maintainability-selfhost-operations-baseline 799e29ceebadb0fd23256b7a8c2816edff073808
+          agent/selfhost-clean-bootstrap-runner-core 5964ee0744cbb3aea2190905cc38f037678621a2
+          agent/selfhost-legacy-rollback-smoke d1d38ee4777d8e9cf612ecfaacb5021ec46b3c0c
+          agent/selfhost-nightly-stage12-shadow 48f7f5e0bb6d1c66f91e5b83e5530b6ee20a4313
+          agent/selfhost-nightly-stage12-shadow-main 3001a63d819bec25f31028596bd917d2f9040986
+          agent/selfhost-nightly-stage12-shadow-main2 7cb22b2e9873070705b5b6e4455b198ecae4b688
+          agent/selfhost-project-differential-evidence 4601bacde70c65b6d87e09bb42eca206441bbaa0
+          agent/selfhost-project-differential-evidence-main2 c72942ccf4f2dc61f37bb6dbe5c053e00f052882
+          agent/selfhost-rollback-selection f29b04cfece830be2e1078c6aeae3772970c3c1c
+          agent/selfhost-semantic-differential-corpus 0812bf526cb00298be9c62f6e16307a576d102d6
+          agent/selfhost-stage-capability-gate 41642b37b30c4019714a4ec848a53e92e9844859
+          agent/selfhost-stage-facade-adapter f8cdbb43f0c716a3f4a37b1a5aaa6673e7ad8113
+          agent/79-task-oriented-guide c1111977c7d71504a1bebb594b183baaef2bcc9e
+          feat/ci-selfhost-inventory-job 1f419001171f5b29f6f7348ef257c31b20fdd75f
+          feat/selfhost-bootstrap-command 10261d944237de65c883e401e8bbd7ffdf61db5a
+          feat/selfhost-bootstrap-stage-pipeline 5a9f2b504be9f871b07d7a169d15f0fc66bb8a8d
+          feat/selfhost-full-language-readiness 0586513b4e68b82a653abbad498cf1fdd5af4445
+          feat/selfhost-full-language-readiness-main 9a1957f78e93e978ae99f015f31c6bae2330fda0
+          feat/selfhost-inventory-change-classifier 4f225c011e16e50c0da3b58861eb169fe43d7b0c
+          feat/selfhost-inventory-ci-mode 9c6987381e647b4aaf019e56d259e1c7b0d4b391
+          feat/selfhost-inventory-ci-wiring 3ac23e69a4759c7bcfa934ea4f849a6dc65348a1
+          feat/selfhost-inventory-compile-runs b687b6e1f048b64941215bf32194a7df1335bc2b
+          fix/selfhost-inventory-ci-phase-evidence da7b1c60d293216afb746be7308af9b919978213
+          fix/selfhost-member-chain-token-kind 121e2153f32a60d5976acd5e4c917fd9472c99f6
+          perf/unit-test-bounded-concurrency 39f0f3af8dc3ddcd7ce4bf040c837abb0b2e6fe6
+          perf/unit-test-file-timings c90551cc6632780b99aeac830eb69ebf5171e7bf
+          probe/selfhost-full-language-readiness da106b8a00117eae6060c5dd14eb45f5144774cd
+          probe/selfhost-full-language-readiness-main 85780967abdd90f740d6c052b5c36a1598792d14
+          probe/selfhost-inventory-ci-wiring-main 3ac23e69a4759c7bcfa934ea4f849a6dc65348a1
+          probe/selfhost-inventory-compile-runs 08c32558d063dc28755a81526d1f4c2788ef147d
+          probe/selfhost-inventory-phase-evidence-main da7b1c60d293216afb746be7308af9b919978213
+          probe/selfhost-readiness-stack-main 1f419001171f5b29f6f7348ef257c31b20fdd75f
+          probe/unit-test-bounded-concurrency-main 39f0f3af8dc3ddcd7ce4bf040c837abb0b2e6fe6
+          probe/unit-test-file-timings-main 7068241b2d3bbf6aaba401e740c199ec10ebcd7f
+          probe/unit-test-file-timings-main-2 c90551cc6632780b99aeac830eb69ebf5171e7bf
+          test/selfhost-retired-readiness-bridge 54d5f6c6417c992b6143b01507ca8c2f39865315
+          tmp/selfhost-try-rebuild-run-20260804 4905bc1e8c867a2aba62c1e6fb4f202483bddf58
+          EOF
           )"
 
           while read -r branch expected; do
