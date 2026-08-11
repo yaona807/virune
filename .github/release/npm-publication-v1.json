@@ -1,0 +1,53 @@
+{
+  "schemaVersion": 1,
+  "stage": "prepublication-audit",
+  "forbidRegistryPublishThroughVersion": "1.0.0",
+  "firstStableRegistryRelease": "1.1.0",
+  "trustedPublishingRequired": true,
+  "publicVerificationRequired": true,
+  "sameReviewedReleaseIdentityRequired": true,
+  "packages": [
+    {
+      "directory": "cli",
+      "name": "virune",
+      "role": "cli"
+    },
+    {
+      "directory": "compiler",
+      "name": "@virune/compiler",
+      "role": "public-runtime-dependency"
+    },
+    {
+      "directory": "formatter",
+      "name": "@virune/formatter",
+      "role": "public-runtime-dependency"
+    },
+    {
+      "directory": "js-interop",
+      "name": "@virune/js-interop",
+      "role": "public-runtime-dependency"
+    },
+    {
+      "directory": "runtime",
+      "name": "@virune/runtime",
+      "role": "public-runtime-dependency"
+    },
+    {
+      "directory": "stdlib",
+      "name": "@virune/stdlib",
+      "role": "public-runtime-dependency"
+    }
+  ],
+  "excludedWorkspacePackages": [
+    {
+      "directory": "language-server",
+      "name": "@virune/language-server",
+      "reason": "Implementation component of the official editor integration; not required by the npm CLI distribution contract."
+    },
+    {
+      "directory": "vscode",
+      "name": "virune-vscode",
+      "reason": "Distributed as the official VS Code extension rather than as an npm runtime package."
+    }
+  ]
+}
