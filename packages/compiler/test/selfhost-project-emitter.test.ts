@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { execFile } from 'node:child_process';
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { dirname, join, relative, resolve } from 'node:path';
 import { promisify } from 'node:util';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -119,7 +119,7 @@ test('project emitter canonicalizes modules and metadata independently of reques
 	}
 });
 
-test('project emitter uses the production runtime import and import framing', async () => {
+test('project emitter uses production runtime and module import framing', async () => {
 	const loaded = await loadEmitter();
 	try {
 		const result = emit(loaded.module, {
@@ -130,6 +130,7 @@ test('project emitter uses the production runtime import and import framing', as
 					outputPath: 'dist/main.js',
 					preamble: [
 						SELFHOST_RUNTIME_IMPORT_LINE,
+						"import test from 'node:test';",
 						"import { value } from './helper.js';",
 						"import './side-effect.js';",
 					],
@@ -146,6 +147,7 @@ test('project emitter uses the production runtime import and import framing', as
 			result.emittedModules[0]?.code,
 			[
 				BASE_RUNTIME_IMPORT_LINE,
+				"import test from 'node:test';",
 				'',
 				'import { value } from "./helper.js";',
 				'import "./side-effect.js";',
@@ -158,6 +160,11 @@ test('project emitter uses the production runtime import and import framing', as
 	} finally {
 		await rm(loaded.root, { recursive: true, force: true });
 	}
+});
+
+test('project emitter runtime sentinel stays bound to Project Compiler preamble', async () => {
+	const source = await readFile(join(mvpRoot, 'src', 'project-compiler-contract.virune'), 'utf8');
+	assert.ok(source.includes(`return "${SELFHOST_RUNTIME_IMPORT_LINE}"`));
 });
 
 test('project emitter fails closed for duplicate outputs, multiline entries, and missing entry', async () => {
