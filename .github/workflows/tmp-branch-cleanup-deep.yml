@@ -1,0 +1,77 @@
+name: Temporary deep stale branch cleanup
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    if: github.head_ref == 'tmp/branch-cleanup-deep-20260811'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Preflight exact branch heads and delete
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          branches=(
+            'agent/interop-provider-facts'
+            'agent/selfhost-project-capability-refresh-20260801'
+            'agent/selfhost-promotion-policy'
+            'agent/selfhost-release-gate-core'
+            'agent/tmp-interop-static-runtime-binding-hardening'
+            'backup/selfhost-canonical-symbol-scope-pre-rebase'
+            'noop'
+            'tmp/selfhost-break-old-child'
+            'tmp/selfhost-break-old-parent'
+            'tmp/selfhost-try-old-child'
+          )
+          expected=(
+            '3ab28f5feae63423bd4fa0db83f4ca2f88a01ddc'
+            'da2287c461c888826ae77ed9d6be1545f15638d4'
+            'c3fa80cf69b6b2d89c69deaf67e60e2bd70c57fc'
+            '30f51ef3c37a5325de5e8f8d79e9c7edb504ea02'
+            'ac1c5bfa19d934aa07dcf5814c9bdbc4e6fae0b7'
+            '2ff99e34def3b9a9e1fb0d37f38ff073dcc5867f'
+            '97b84dbf9ea21b3bd13b11cc43c900218562ff10'
+            '87b1cb360db02221e2a694e1bae01057f8e280f6'
+            '0281b58749e7b84ccf2d2cebc9cb7f4646757049'
+            '1b71d15af9495c5af5086ad45c22223d6976ce01'
+          )
+
+          if [[ "${#branches[@]}" -ne 10 || "${#expected[@]}" -ne 10 ]]; then
+            echo 'candidate contract length mismatch' >&2
+            exit 1
+          fi
+
+          mkdir cleanup-repo
+          git -C cleanup-repo init -q
+          git -C cleanup-repo remote add origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+
+          # All-before-any preflight. No deletion occurs in this loop.
+          for i in "${!branches[@]}"; do
+            branch="${branches[$i]}"
+            want="${expected[$i]}"
+            got="$(git -C cleanup-repo ls-remote --heads origin "refs/heads/${branch}" | awk '{print $1}')"
+            if [[ -z "$got" ]]; then
+              echo "missing candidate branch: ${branch}" >&2
+              exit 1
+            fi
+            if [[ "$got" != "$want" ]]; then
+              echo "candidate head mismatch: ${branch}; expected=${want}; actual=${got}" >&2
+              exit 1
+            fi
+            echo "preflight ok: ${branch} @ ${got}"
+          done
+
+          echo 'all 10 exact-head preflights passed; beginning deletion'
+          for branch in "${branches[@]}"; do
+            git -C cleanup-repo push origin --delete "$branch"
+          done
+
+          git -C cleanup-repo push origin --delete 'tmp/branch-cleanup-deep-20260811'
