@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { validateKernelInput, type KernelInputV1 } from '../src/selfhost/contract.js';
+import { compileWithLegacyKernel } from '../src/selfhost/legacy-adapter.js';
+import { executeKernelOutputWithNode } from '../src/selfhost/node-executor.js';
 import {
 	compileWithSelfhostProject,
 	createSelfhostProjectKernel,
@@ -55,6 +58,78 @@ const acceptedProjectResult = (): ProjectCompilerResultV1 => ({
 	},
 });
 
+type DifferentialCorpusFixture = {
+	readonly id: string;
+	readonly tags: readonly string[];
+	readonly input: unknown;
+	readonly expectedDivergences?: readonly unknown[];
+};
+
+const semanticRuntimeFixtures = [
+	{ id: 'project-semantic-arithmetic-branch', sourceSha256: '39d823ab4f757784c215e7b6a5d8f68197dc1ba9bb01c5d937434d76c99ae52b', expectedReturnValue: 17 },
+	{ id: 'project-semantic-list-fold', sourceSha256: 'a2d603a00cdf2a1e6322415b0bc125ccf76962d234842e5c6f6dfb01851ad5cb', expectedReturnValue: 10 },
+	{ id: 'project-semantic-literal-match', sourceSha256: 'f1cab445d8aba2ef0f7304a88e07b08a80dadaf1bb61630a5a416fe1e3804956', expectedReturnValue: 30 },
+	{ id: 'project-semantic-tuple-roundtrip', sourceSha256: '49e171bbf8f047f7bd9eba010d024444934eaaa8908ddce2239e685ccad25a2a', expectedReturnValue: [4, 7] },
+	{ id: 'project-semantic-record-field', sourceSha256: 'd7431efb1ddae40ea2d98e257a900f6feaaee9681fedcb3bb19eb07655050171', expectedReturnValue: 42 },
+	{ id: 'project-semantic-result-branch', sourceSha256: '8ff0ba426eba08d681b4604cb9e1eb9b66b9ad849b2a5fa35b6c31ab3aab5864', expectedReturnValue: { $tag: 'Ok', $values: [42] } },
+	{ id: 'project-semantic-async-await', sourceSha256: '8575208a0a4bb2d0e1d58d16df820edc3c540369d4af068cf70bcaec5adef854', expectedReturnValue: 42 },
+] as const;
+
+const semanticDiagnosticFixtures = [
+	{
+		id: 'project-semantic-invalid-data-types',
+		sourceSha256: '74d2739d6cde3e7b8e5f531062929da3b5aad4da4753f85d102129d5073aca56',
+		expectedDiagnostics: [
+			{
+				code: 'L1001',
+				severity: 'error',
+				sourcePath: 'src/main.virune',
+				span: {
+					start: { offset: 0, line: 1, column: 1 },
+					end: { offset: 0, line: 1, column: 1 },
+				},
+				help: null,
+			},
+			{
+				code: 'L1001',
+				severity: 'error',
+				sourcePath: 'src/main.virune',
+				span: {
+					start: { offset: 84, line: 5, column: 5 },
+					end: { offset: 97, line: 5, column: 19 },
+				},
+				help: null,
+			},
+			{
+				code: 'L2041',
+				severity: 'error',
+				sourcePath: 'src/main.virune',
+				span: {
+					start: { offset: 112, line: 7, column: 12 },
+					end: { offset: 122, line: 7, column: 23 },
+				},
+				help: null,
+			},
+		],
+	},
+	{
+		id: 'project-semantic-recursive-alias',
+		sourceSha256: 'b7a44ffd0cd0367f01d524c613174034ce5c17c9fc82c964071776c6e55cdefc',
+		expectedDiagnostics: [
+			{
+				code: 'L2040',
+				severity: 'error',
+				sourcePath: 'src/main.virune',
+				span: {
+					start: { offset: 20, line: 1, column: 21 },
+					end: { offset: 20, line: 1, column: 22 },
+				},
+				help: null,
+			},
+		],
+	},
+] as const;
+
 function acceptedProjectModule(onCompile?: (request: string) => void): SelfhostProjectCompilerModule {
 	return {
 		compileMvp: () => ({ $tag: 'Err', $values: ['unused'] }),
@@ -77,6 +152,13 @@ function acceptedProjectModule(onCompile?: (request: string) => void): SelfhostP
 
 function hasErrorMessage(message: string): (error: unknown) => boolean {
 	return error => error instanceof Error && error.message === message;
+}
+
+function loadDifferentialCorpus(): { readonly fixtures: readonly DifferentialCorpusFixture[] } {
+	return JSON.parse(readFileSync(
+		new URL('../../../../.github/self-hosting/differential-corpus-v1.json', import.meta.url),
+		'utf8',
+	)) as { readonly fixtures: readonly DifferentialCorpusFixture[] };
 }
 
 test('project result conversion preserves the shared Kernel contract and omits null optionals', () => {
@@ -178,16 +260,7 @@ test('project differential rejects unsupported evidence profiles before invoking
 });
 
 test('project-tagged differential fixtures preserve required coverage and satisfy the Project Compiler v1 evidence profile', () => {
-	const corpus = JSON.parse(readFileSync(
-		new URL('../../../../.github/self-hosting/differential-corpus-v1.json', import.meta.url),
-		'utf8',
-	)) as {
-		readonly fixtures: readonly {
-			readonly id: string;
-			readonly tags: readonly string[];
-			readonly input: unknown;
-		}[];
-	};
+	const corpus = loadDifferentialCorpus();
 	const requiredProjectFixtureIds = [
 		'project-smoke-return-value',
 		'project-smoke-multi-module',
@@ -195,6 +268,8 @@ test('project-tagged differential fixtures preserve required coverage and satisf
 		'mvp-arithmetic-call',
 		'mvp-primitives-logic',
 		'mvp-unknown-name',
+		...semanticRuntimeFixtures.map(fixture => fixture.id),
+		...semanticDiagnosticFixtures.map(fixture => fixture.id),
 	] as const;
 	const projectFixtures = corpus.fixtures.filter(fixture => fixture.tags.includes('project'));
 	const projectFixtureIds = new Set(projectFixtures.map(fixture => fixture.id));
@@ -207,6 +282,71 @@ test('project-tagged differential fixtures preserve required coverage and satisf
 		assert.deepEqual(fixtureInput.interopManifest.modules, [], `${fixture.id}: interop must remain out of v1 scope`);
 		assert.equal(fixtureInput.emit.sourceMap, false, `${fixture.id}: source maps are outside Project Compiler v1`);
 		assert.equal(fixtureInput.emit.sourcesContent, true, `${fixture.id}: sourcesContent`);
+	}
+});
+
+test('semantic Project differential fixtures retain canonical inputs and independently grounded Legacy runtime meaning', async t => {
+	const corpus = loadDifferentialCorpus();
+	for (const { id: fixtureId, sourceSha256, expectedReturnValue } of semanticRuntimeFixtures) {
+		await t.test(fixtureId, async () => {
+			const fixture = corpus.fixtures.find(item => item.id === fixtureId);
+			assert.ok(fixture, `missing semantic differential fixture ${fixtureId}`);
+			assert.ok(fixture.tags.includes('semantic'), `${fixtureId}: semantic tag`);
+			assert.deepEqual(fixture.expectedDivergences, [], `${fixtureId}: semantic baseline must not whitelist divergences`);
+			const fixtureInput = validateKernelInput(fixture.input);
+			assert.equal(fixtureInput.entryPath, 'src/main.virune', `${fixtureId}: entry path`);
+			assert.equal(fixtureInput.sources.length, 1, `${fixtureId}: representative semantic fixture must stay single-module`);
+			const source = fixtureInput.sources[0]!;
+			assert.equal(source.path, fixtureInput.entryPath, `${fixtureId}: source path`);
+			assert.equal(
+				createHash('sha256').update(source.text, 'utf8').digest('hex'),
+				sourceSha256,
+				`${fixtureId}: canonical semantic source`,
+			);
+			const output = await compileWithLegacyKernel(fixtureInput);
+			assert.equal(output.accepted, true, `${fixtureId}: Legacy compiler rejected representative semantic input`);
+			const execution = await executeKernelOutputWithNode(fixtureInput, output);
+			assert.equal(execution.exitCode, 0, `${fixtureId}: runtime exit code`);
+			assert.equal(execution.signal, null, `${fixtureId}: runtime signal`);
+			assert.equal(execution.panic, null, `${fixtureId}: runtime panic`);
+			assert.deepEqual(execution.returnValue, expectedReturnValue, `${fixtureId}: runtime return value`);
+		});
+	}
+});
+
+test('semantic diagnostic Project differential fixtures retain canonical inputs and the current Legacy diagnostic baseline', async t => {
+	const corpus = loadDifferentialCorpus();
+	for (const { id: fixtureId, sourceSha256, expectedDiagnostics } of semanticDiagnosticFixtures) {
+		await t.test(fixtureId, async () => {
+			const fixture = corpus.fixtures.find(item => item.id === fixtureId);
+			assert.ok(fixture, `missing semantic diagnostic differential fixture ${fixtureId}`);
+			assert.ok(fixture.tags.includes('semantic'), `${fixtureId}: semantic tag`);
+			assert.ok(fixture.tags.includes('diagnostic'), `${fixtureId}: diagnostic tag`);
+			assert.deepEqual(fixture.expectedDivergences, [], `${fixtureId}: semantic diagnostic baseline must not whitelist divergences`);
+			const fixtureInput = validateKernelInput(fixture.input);
+			assert.equal(fixtureInput.entryPath, 'src/main.virune', `${fixtureId}: entry path`);
+			assert.equal(fixtureInput.sources.length, 1, `${fixtureId}: representative semantic diagnostic fixture must stay single-module`);
+			const source = fixtureInput.sources[0]!;
+			assert.equal(source.path, fixtureInput.entryPath, `${fixtureId}: source path`);
+			assert.equal(
+				createHash('sha256').update(source.text, 'utf8').digest('hex'),
+				sourceSha256,
+				`${fixtureId}: canonical semantic diagnostic source`,
+			);
+			const output = await compileWithLegacyKernel(fixtureInput);
+			assert.equal(output.accepted, false, `${fixtureId}: Legacy compiler unexpectedly accepted representative negative semantic input`);
+			assert.deepEqual(
+				output.diagnostics.map(diagnostic => ({
+					code: diagnostic.code,
+					severity: diagnostic.severity,
+					sourcePath: diagnostic.sourcePath ?? null,
+					span: diagnostic.span,
+					help: diagnostic.help ?? null,
+				})),
+				expectedDiagnostics,
+				`${fixtureId}: Legacy diagnostic baseline`,
+			);
+		});
 	}
 });
 
