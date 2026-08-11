@@ -126,6 +126,29 @@ test('allEnumeratedRootsModeled does not claim the analyzer enumerated every pro
 	assert.doesNotMatch(serializeExperimentalSemanticSnapshot(modeledOnly), /"complete":true/u);
 });
 
+test('modeled coverage rejects unresolved semantic dimensions and missing source evidence', () => {
+	const value = input();
+	const root = value.roots[0]!;
+	for (const [field, changed] of [
+		['limitations', { ...root, limitations: ['body analysis incomplete'] }],
+		['panic', { ...root, panic: 'unknown' as const }],
+		['discard', { ...root, discard: 'unknown' as const }],
+		['interop', { ...root, interop: [{ specifier: 'node:crypto', tier: 'unknown' as const, assumptions: [] }] }],
+	] as const) {
+		assert.throws(
+			() => createExperimentalSemanticSnapshot({ ...value, roots: [changed] }),
+			(error: unknown) => error instanceof SemanticSnapshotError
+				&& error.path === `$.roots[0].${field}`,
+		);
+	}
+	assert.throws(
+		() => createExperimentalSemanticSnapshot({ ...value, roots: [{ ...root, sourceEvidence: [] }] }),
+		(error: unknown) => error instanceof SemanticSnapshotError
+			&& error.path === '$.roots[0].sourceEvidence'
+			&& /at least one source evidence range/u.test(error.message),
+	);
+});
+
 test('non-modeled coverage requires an explicit limitation', () => {
 	const value = input();
 	const roots = value.roots.map(root => root.coverage === 'unknown' ? { ...root, limitations: [] } : root);
