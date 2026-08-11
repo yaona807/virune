@@ -170,6 +170,10 @@ test('Nightly preserves semantic differential fuzz failures as isolated non-prom
 	assert.match(recorderBlock, /steps\.selfhost-semantic-differential-fuzz\.outcome/u);
 	assert.match(recorderBlock, /\.cache\/selfhost-semantic-differential-fuzz-\$\{\{ github\.run_id \}\}-\$\{\{ github\.run_attempt \}\}/u);
 	assert.match(recorderBlock, /process\.env\.VIRUNE_SELFHOST_SEMANTIC_DIFFERENTIAL_OUTPUT/u);
+	assert.match(recorderBlock, /lstatSync\(output\)/u);
+	assert.match(recorderBlock, /output directory was not created by the runner/u);
+	assert.match(recorderBlock, /output must be a non-symlink directory/u);
+	assert.doesNotMatch(recorderBlock, /mkdirSync\(output/u);
 	assert.match(recorderBlock, /claim: 'selfhost-semantic-differential-fuzz-execution'/u);
 	assert.match(recorderBlock, /generationPresent: existsSync\(join\(output, 'generation\.json'\)\)/u);
 	assert.match(recorderBlock, /reportPresent: existsSync\(join\(output, 'report\.json'\)\)/u);
