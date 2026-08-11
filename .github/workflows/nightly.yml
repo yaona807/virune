@@ -204,11 +204,13 @@ jobs:
           VIRUNE_SELFHOST_SEMANTIC_DIFFERENTIAL_OUTPUT: .cache/selfhost-semantic-differential-fuzz-${{ github.run_id }}-${{ github.run_attempt }}
         run: >-
           node --input-type=module -e
-          "import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+          "import { existsSync, lstatSync, writeFileSync } from 'node:fs';
           import { join } from 'node:path';
           const output = process.env.VIRUNE_SELFHOST_SEMANTIC_DIFFERENTIAL_OUTPUT;
           if (output === undefined || output.length === 0) throw new Error('missing semantic differential fuzz output path');
-          mkdirSync(output, { recursive: true });
+          if (!existsSync(output)) throw new Error('semantic differential fuzz output directory was not created by the runner');
+          const outputStats = lstatSync(output);
+          if (!outputStats.isDirectory() || outputStats.isSymbolicLink()) throw new Error('semantic differential fuzz output must be a non-symlink directory');
           const evidence = {
             schemaVersion: 1,
             claim: 'selfhost-semantic-differential-fuzz-execution',
