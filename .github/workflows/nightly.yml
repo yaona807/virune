@@ -194,6 +194,7 @@ jobs:
         continue-on-error: true
         run: >-
           node scripts/run-selfhost-semantic-differential-fuzz.mjs
+          --seed=${{ github.run_number }}
           --output=.cache/selfhost-nightly-shadow/semantic-differential-fuzz
       - name: Record Self-host semantic differential fuzz execution status
         if: always()
