@@ -95,19 +95,35 @@ test('experimental Semantic Snapshot is byte-deterministic across input ordering
 test('coverage preserves unknown roots instead of treating empty fact sets as safe', () => {
 	const snapshot = createExperimentalSemanticSnapshot(input());
 	assert.deepEqual(snapshot.coverage, {
-		roots: 2,
+		enumeratedRoots: 2,
 		modeled: 1,
 		partial: 0,
 		opaque: 0,
 		unknown: 1,
-		complete: false,
+		allEnumeratedRootsModeled: false,
 	});
+	assert.equal(Object.hasOwn(snapshot.coverage, 'complete'), false);
 	const unknown = snapshot.roots.find(root => root.coverage === 'unknown');
 	assert.ok(unknown);
 	assert.deepEqual(unknown.limitations, ['dynamic foreign callback topology is not modeled']);
 	assert.equal(unknown.panic, 'unknown');
 	assert.equal(unknown.discard, 'unknown');
 	assert.match(serializeExperimentalSemanticSnapshot(snapshot), /"coverage":"unknown"/u);
+});
+
+test('allEnumeratedRootsModeled does not claim the analyzer enumerated every program root', () => {
+	const value = input();
+	const modeledOnly = createExperimentalSemanticSnapshot({ ...value, roots: [value.roots[0]!] });
+	assert.deepEqual(modeledOnly.coverage, {
+		enumeratedRoots: 1,
+		modeled: 1,
+		partial: 0,
+		opaque: 0,
+		unknown: 0,
+		allEnumeratedRootsModeled: true,
+	});
+	assert.match(serializeExperimentalSemanticSnapshot(modeledOnly), /"allEnumeratedRootsModeled":true/u);
+	assert.doesNotMatch(serializeExperimentalSemanticSnapshot(modeledOnly), /"complete":true/u);
 });
 
 test('non-modeled coverage requires an explicit limitation', () => {
