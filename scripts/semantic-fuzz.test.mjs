@@ -68,7 +68,7 @@ test('self-host semantic differential fuzz fixtures are deterministic and seed-q
 	assert.throws(() => generateSemanticDifferentialFixtures({ seed: 1, iterations: 0 }), /iterations must be greater than zero/u);
 });
 
-test('probe runtime adapter changes only the entry module and does not mutate compiler evidence', () => {
+test('probe runtime adapter changes only the entry module and fails closed when accepted emit is missing', () => {
 	const input = { entryPath: 'src/main.virune' };
 	const output = {
 		accepted: true,
@@ -86,7 +86,10 @@ test('probe runtime adapter changes only the entry module and does not mutate co
 	const rejected = { ...output, accepted: false };
 	assert.equal(adaptKernelOutputForProbe(input, rejected), rejected);
 	const missingEntry = { ...output, emittedModules: output.emittedModules.slice(0, 1) };
-	assert.equal(adaptKernelOutputForProbe(input, missingEntry), missingEntry);
+	assert.throws(
+		() => adaptKernelOutputForProbe(input, missingEntry),
+		/accepted semantic differential output is missing entry module src\/main\.virune/u,
+	);
 });
 
 test('semantic differential evidence directory is bounded and rejects stale evidence without cleanup', async () => {
