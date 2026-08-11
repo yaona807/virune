@@ -242,7 +242,7 @@ function summarizeCoverage(roots: readonly SemanticRootSnapshotV1[]): SemanticCo
 		partial,
 		opaque,
 		unknown,
-		allEnumeratedRootsModeled: partial === 0 && opaque === 0 && unknown === 0,
+		allEnumeratedRootsModeled: roots.length > 0 && partial === 0 && opaque === 0 && unknown === 0,
 	};
 }
 
