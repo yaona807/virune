@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { generateSemanticCase, renderSemanticCase } from './semantic-fuzz.mjs';
@@ -64,11 +64,17 @@ export function parseSemanticDifferentialArguments(argumentsList) {
 	return { seed, iterations, output };
 }
 
+export async function resetSemanticDifferentialEvidenceDirectory(outputDirectory) {
+	await rm(outputDirectory, { recursive: true, force: true });
+	await mkdir(outputDirectory, { recursive: true });
+}
+
 export async function runSelfhostSemanticDifferentialFuzz(options = {}) {
 	const seed = uint32(options.seed ?? process.env.VIRUNE_SELFHOST_SEMANTIC_DIFFERENTIAL_SEED, DEFAULT_SEED, 'seed');
 	const iterations = positiveInteger(options.iterations ?? process.env.VIRUNE_SELFHOST_SEMANTIC_DIFFERENTIAL_ITERATIONS, DEFAULT_ITERATIONS, 'iterations');
 	const output = nonEmpty(options.output ?? process.env.VIRUNE_SELFHOST_SEMANTIC_DIFFERENTIAL_OUTPUT ?? DEFAULT_OUTPUT, 'output');
 	const outputDirectory = resolve(repositoryRoot, output);
+	await resetSemanticDifferentialEvidenceDirectory(outputDirectory);
 	const fixtures = generateSemanticDifferentialFixtures({ seed, iterations });
 	await writeGenerationEvidence(outputDirectory, { fixtures, iterations, seed });
 
@@ -111,7 +117,6 @@ export async function runSelfhostSemanticDifferentialFuzz(options = {}) {
 }
 
 async function writeGenerationEvidence(outputDirectory, { fixtures, iterations, seed }) {
-	await mkdir(outputDirectory, { recursive: true });
 	const evidence = {
 		schemaVersion: 1,
 		claim: 'selfhost-semantic-differential-fuzz-generation',
