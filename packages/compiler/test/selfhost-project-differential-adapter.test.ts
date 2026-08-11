@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { validateKernelInput, type KernelInputV1 } from '../src/selfhost/contract.js';
+import { compileWithLegacyKernel } from '../src/selfhost/legacy-adapter.js';
+import { executeKernelOutputWithNode } from '../src/selfhost/node-executor.js';
 import {
 	compileWithSelfhostProject,
 	createSelfhostProjectKernel,
@@ -55,6 +57,22 @@ const acceptedProjectResult = (): ProjectCompilerResultV1 => ({
 	},
 });
 
+type DifferentialCorpusFixture = {
+	readonly id: string;
+	readonly tags: readonly string[];
+	readonly input: unknown;
+};
+
+const semanticRuntimeExpectations: readonly (readonly [string, unknown])[] = [
+	['project-semantic-arithmetic-branch', 17],
+	['project-semantic-list-fold', 10],
+	['project-semantic-literal-match', 30],
+	['project-semantic-tuple-roundtrip', [4, 7]],
+	['project-semantic-record-field', 42],
+	['project-semantic-result-branch', { $tag: 'Ok', $values: [42] }],
+	['project-semantic-async-await', 42],
+];
+
 function acceptedProjectModule(onCompile?: (request: string) => void): SelfhostProjectCompilerModule {
 	return {
 		compileMvp: () => ({ $tag: 'Err', $values: ['unused'] }),
@@ -77,6 +95,13 @@ function acceptedProjectModule(onCompile?: (request: string) => void): SelfhostP
 
 function hasErrorMessage(message: string): (error: unknown) => boolean {
 	return error => error instanceof Error && error.message === message;
+}
+
+function loadDifferentialCorpus(): { readonly fixtures: readonly DifferentialCorpusFixture[] } {
+	return JSON.parse(readFileSync(
+		new URL('../../../../.github/self-hosting/differential-corpus-v1.json', import.meta.url),
+		'utf8',
+	)) as { readonly fixtures: readonly DifferentialCorpusFixture[] };
 }
 
 test('project result conversion preserves the shared Kernel contract and omits null optionals', () => {
@@ -178,16 +203,7 @@ test('project differential rejects unsupported evidence profiles before invoking
 });
 
 test('project-tagged differential fixtures preserve required coverage and satisfy the Project Compiler v1 evidence profile', () => {
-	const corpus = JSON.parse(readFileSync(
-		new URL('../../../../.github/self-hosting/differential-corpus-v1.json', import.meta.url),
-		'utf8',
-	)) as {
-		readonly fixtures: readonly {
-			readonly id: string;
-			readonly tags: readonly string[];
-			readonly input: unknown;
-		}[];
-	};
+	const corpus = loadDifferentialCorpus();
 	const requiredProjectFixtureIds = [
 		'project-smoke-return-value',
 		'project-smoke-multi-module',
@@ -195,6 +211,7 @@ test('project-tagged differential fixtures preserve required coverage and satisf
 		'mvp-arithmetic-call',
 		'mvp-primitives-logic',
 		'mvp-unknown-name',
+		...semanticRuntimeExpectations.map(([id]) => id),
 	] as const;
 	const projectFixtures = corpus.fixtures.filter(fixture => fixture.tags.includes('project'));
 	const projectFixtureIds = new Set(projectFixtures.map(fixture => fixture.id));
@@ -207,6 +224,25 @@ test('project-tagged differential fixtures preserve required coverage and satisf
 		assert.deepEqual(fixtureInput.interopManifest.modules, [], `${fixture.id}: interop must remain out of v1 scope`);
 		assert.equal(fixtureInput.emit.sourceMap, false, `${fixture.id}: source maps are outside Project Compiler v1`);
 		assert.equal(fixtureInput.emit.sourcesContent, true, `${fixture.id}: sourcesContent`);
+	}
+});
+
+test('semantic Project differential fixtures retain independently grounded Legacy runtime meaning', async t => {
+	const corpus = loadDifferentialCorpus();
+	for (const [fixtureId, expectedReturnValue] of semanticRuntimeExpectations) {
+		await t.test(fixtureId, async () => {
+			const fixture = corpus.fixtures.find(item => item.id === fixtureId);
+			assert.ok(fixture, `missing semantic differential fixture ${fixtureId}`);
+			assert.ok(fixture.tags.includes('semantic'), `${fixtureId}: semantic tag`);
+			const fixtureInput = validateKernelInput(fixture.input);
+			const output = await compileWithLegacyKernel(fixtureInput);
+			assert.equal(output.accepted, true, `${fixtureId}: Legacy compiler rejected representative semantic input`);
+			const execution = await executeKernelOutputWithNode(fixtureInput, output);
+			assert.equal(execution.exitCode, 0, `${fixtureId}: runtime exit code`);
+			assert.equal(execution.signal, null, `${fixtureId}: runtime signal`);
+			assert.equal(execution.panic, null, `${fixtureId}: runtime panic`);
+			assert.deepEqual(execution.returnValue, expectedReturnValue, `${fixtureId}: runtime return value`);
+		});
 	}
 });
 
