@@ -40,7 +40,9 @@ export function generateSemanticDifferentialFixtures({ seed = DEFAULT_SEED, iter
 export function adaptKernelOutputForProbe(input, output) {
 	if (!output.accepted) return output;
 	const entryIndex = output.emittedModules.findIndex(module => module.sourcePath === input.entryPath);
-	if (entryIndex < 0) return output;
+	if (entryIndex < 0) {
+		throw new Error(`accepted semantic differential output is missing entry module ${input.entryPath}`);
+	}
 	const emittedModules = output.emittedModules.map((module, index) => index === entryIndex
 		? {
 			...module,
