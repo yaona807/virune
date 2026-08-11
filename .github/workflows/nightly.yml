@@ -188,11 +188,44 @@ jobs:
             reportPresent: existsSync(join(output, 'report.json')),
           };
           writeFileSync(join(output, 'execution.json'), JSON.stringify(evidence, null, '\t') + '\n', 'utf8');"
+      - name: Run the Self-host semantic differential fuzz suite
+        id: selfhost-semantic-differential-fuzz
+        if: always()
+        continue-on-error: true
+        env:
+          VIRUNE_SELFHOST_SEMANTIC_DIFFERENTIAL_OUTPUT: .cache/selfhost-semantic-differential-fuzz-${{ github.run_id }}-${{ github.run_attempt }}
+        run: >-
+          node scripts/run-selfhost-semantic-differential-fuzz.mjs
+          --seed=${{ github.run_number }}
+      - name: Record Self-host semantic differential fuzz execution status
+        if: always()
+        env:
+          SEMANTIC_DIFFERENTIAL_FUZZ_OUTCOME: ${{ steps.selfhost-semantic-differential-fuzz.outcome }}
+          VIRUNE_SELFHOST_SEMANTIC_DIFFERENTIAL_OUTPUT: .cache/selfhost-semantic-differential-fuzz-${{ github.run_id }}-${{ github.run_attempt }}
+        run: >-
+          node --input-type=module -e
+          "import { existsSync, lstatSync, writeFileSync } from 'node:fs';
+          import { join } from 'node:path';
+          const output = process.env.VIRUNE_SELFHOST_SEMANTIC_DIFFERENTIAL_OUTPUT;
+          if (output === undefined || output.length === 0) throw new Error('missing semantic differential fuzz output path');
+          if (!existsSync(output)) throw new Error('semantic differential fuzz output directory was not created by the runner');
+          const outputStats = lstatSync(output);
+          if (!outputStats.isDirectory() || outputStats.isSymbolicLink()) throw new Error('semantic differential fuzz output must be a non-symlink directory');
+          const evidence = {
+            schemaVersion: 1,
+            claim: 'selfhost-semantic-differential-fuzz-execution',
+            outcome: process.env.SEMANTIC_DIFFERENTIAL_FUZZ_OUTCOME ?? 'unknown',
+            generationPresent: existsSync(join(output, 'generation.json')),
+            reportPresent: existsSync(join(output, 'report.json')),
+          };
+          writeFileSync(join(output, 'execution.json'), JSON.stringify(evidence, null, '\t') + '\n', 'utf8');"
       - name: Upload non-promotable self-host evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: selfhost-stage0-evidence-${{ github.run_id }}-${{ github.run_attempt }}
-          path: .cache/selfhost-nightly-shadow/
+          path: |
+            .cache/selfhost-nightly-shadow/
+            .cache/selfhost-semantic-differential-fuzz-${{ github.run_id }}-${{ github.run_attempt }}/
           if-no-files-found: warn
           retention-days: 30
