@@ -312,6 +312,44 @@
 				"emit": { "target": "es2022", "sourceMap": false, "sourcesContent": true }
 			},
 			"expectedDivergences": []
+		},
+		{
+			"id": "project-semantic-invalid-data-types",
+			"tags": ["project", "semantic", "diagnostic"],
+			"input": {
+				"contractVersion": "1",
+				"languageVersion": "1.0",
+				"platform": "node",
+				"entryPath": "src/main.virune",
+				"sources": [
+					{
+						"path": "src/main.virune",
+						"text": "record Duplicate {}\nrecord Duplicate {}\nrecord Params<T, T> {}\nrecord Unknown {\n    value: Missing\n}\ntype Bad = Result<Int>\n"
+					}
+				],
+				"interopManifest": { "version": "1", "modules": [] },
+				"emit": { "target": "es2022", "sourceMap": false, "sourcesContent": true }
+			},
+			"expectedDivergences": []
+		},
+		{
+			"id": "project-semantic-recursive-alias",
+			"tags": ["project", "semantic", "diagnostic"],
+			"input": {
+				"contractVersion": "1",
+				"languageVersion": "1.0",
+				"platform": "node",
+				"entryPath": "src/main.virune",
+				"sources": [
+					{
+						"path": "src/main.virune",
+						"text": "type Loop<T> = Loop<T>\ntype IntLoop = Loop<Int>\n"
+					}
+				],
+				"interopManifest": { "version": "1", "modules": [] },
+				"emit": { "target": "es2022", "sourceMap": false, "sourcesContent": true }
+			},
+			"expectedDivergences": []
 		}
 	]
 }
