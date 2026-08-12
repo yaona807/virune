@@ -16,7 +16,7 @@
   "packages": [
     {
       "directory": "cli",
-      "workspaceName": "@virune/cli",
+      "workspaceName": "virune",
       "registryName": "virune",
       "role": "cli"
     },
