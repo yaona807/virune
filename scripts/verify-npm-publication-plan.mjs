@@ -117,7 +117,10 @@ export function verifyNpmPublicationPlan(root = process.cwd()) {
 			assert(manifest.bin === undefined, `$.${item.directory}.bin`, 'CLI dependency packages must not expose npm executables');
 		}
 		for (const section of DEPENDENCY_SECTIONS) {
-			for (const [dependency, version] of Object.entries(manifest[section] ?? {})) {
+			const rawDependencies = manifest[section];
+			if (rawDependencies === undefined) continue;
+			const dependencies = record(rawDependencies, `$.${item.directory}.${section}`);
+			for (const [dependency, version] of Object.entries(dependencies)) {
 				const isKnownWorkspace = workspaceNames.has(dependency);
 				const claimsViruneNamespace = dependency === 'virune' || dependency.startsWith('@virune/');
 				if (!isKnownWorkspace && !claimsViruneNamespace) continue;
