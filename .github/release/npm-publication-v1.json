@@ -3,10 +3,18 @@
   "stage": "prepublication-audit",
   "publicationReady": false,
   "unresolvedRequirements": [
+    "clean-registry-install-smoke",
+    "documentation-sync",
+    "generated-project-registry-smoke",
+    "package-contents-audit",
+    "package-publication-enablement",
+    "public-registry-verification",
+    "publication-gate-integration",
+    "recovery-policy",
     "registry-ownership",
-    "trusted-publishing",
     "release-identity-integration",
-    "public-registry-verification"
+    "stable-prerelease-dist-tag-policy",
+    "trusted-publishing"
   ],
   "forbidRegistryPublishThroughVersion": "1.0.0",
   "firstStableRegistryRelease": "1.1.0",
