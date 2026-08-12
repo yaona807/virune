@@ -20,6 +20,8 @@ const REQUIRED_PREPUBLICATION_BLOCKERS = [
 	'stable-prerelease-dist-tag-policy',
 	'trusted-publishing',
 ];
+const DEPENDENCY_SECTIONS = ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies'];
+const RUNTIME_DEPENDENCY_SECTIONS = new Set(['dependencies', 'peerDependencies', 'optionalDependencies']);
 
 export function verifyNpmPublicationPlan(root = process.cwd()) {
 	const plan = readJson(resolve(root, PLAN_PATH));
@@ -57,6 +59,8 @@ export function verifyNpmPublicationPlan(root = process.cwd()) {
 	assert(compareSemver(firstStable, forbiddenThrough) > 0, '$.firstStableRegistryRelease', 'must be later than the forbidden retro-publish boundary');
 	assert(rootManifest.private === true, '$root.private', 'monorepo root must remain private');
 	assert(rootManifest.version === plan.forbidRegistryPublishThroughVersion, '$root.version', 'prepublication plan must be updated deliberately when the repository version advances');
+	const reviewedLicense = nonEmptyString(rootManifest.license, '$root.license');
+	const reviewedNodeEngine = nonEmptyString(rootManifest.engines?.node, '$root.engines.node');
 
 	const publishPackages = array(plan.packages, '$.packages')
 		.map((value, index) => publicationPackage(value, `$.packages[${index}]`))
@@ -91,7 +95,8 @@ export function verifyNpmPublicationPlan(root = process.cwd()) {
 		manifests.set(item.workspaceName, manifest);
 	}
 
-	const publishWorkspaceNames = new Set(publishPackages.map(item => item.workspaceName));
+	const workspaceNames = new Set(manifests.keys());
+	const excludedWorkspaceNames = new Set(excludedPackages.map(item => item.workspaceName));
 	for (const item of publishPackages) {
 		const manifest = manifests.get(item.workspaceName);
 		assert(item.registryName === item.workspaceName, `$.packages.${item.directory}.registryName`, 'registry package renaming is not modeled by the current release packaging path');
@@ -100,17 +105,28 @@ export function verifyNpmPublicationPlan(root = process.cwd()) {
 		assert(manifest.repository?.directory === `packages/${item.directory}`, `$.${item.directory}.repository.directory`, 'unexpected repository directory');
 		assert(manifest.homepage === HOMEPAGE, `$.${item.directory}.homepage`, 'unexpected homepage');
 		assert(manifest.bugs?.url === BUGS_URL, `$.${item.directory}.bugs.url`, 'unexpected bugs URL');
-		assert(typeof manifest.license === 'string' && manifest.license.trim().length > 0, `$.${item.directory}.license`, 'license is required');
+		assert(manifest.license === reviewedLicense, `$.${item.directory}.license`, `must match reviewed root license ${reviewedLicense}`);
 		const files = array(manifest.files, `$.${item.directory}.files`)
 			.map((value, index) => nonEmptyString(value, `$.${item.directory}.files[${index}]`));
 		assert(files.length > 0, `$.${item.directory}.files`, 'files allowlist is required');
 		assertUnique(files, `$.${item.directory}.files`, 'file');
 		assert(hasPackageExports(manifest.exports), `$.${item.directory}.exports`, 'non-empty exports metadata is required');
-		assert(typeof manifest.engines?.node === 'string' && manifest.engines.node.trim().length > 0, `$.${item.directory}.engines.node`, 'Node engine floor is required');
+		assert(manifest.engines?.node === reviewedNodeEngine, `$.${item.directory}.engines.node`, `must match reviewed root Node engine ${reviewedNodeEngine}`);
 		assert(manifest.publishConfig === undefined, `$.${item.directory}.publishConfig`, 'publishConfig must be introduced only in the publication-enablement change');
-		for (const [dependency, version] of Object.entries(manifest.dependencies ?? {})) {
-			if (!publishWorkspaceNames.has(dependency)) continue;
-			assert(version === rootManifest.version, `$.${item.directory}.dependencies.${dependency}`, 'internal published dependencies must use the exact reviewed release version');
+		if (item.role === 'cli-dependency') {
+			assert(manifest.bin === undefined, `$.${item.directory}.bin`, 'CLI dependency packages must not expose npm executables');
+		}
+		for (const section of DEPENDENCY_SECTIONS) {
+			for (const [dependency, version] of Object.entries(manifest[section] ?? {})) {
+				const isKnownWorkspace = workspaceNames.has(dependency);
+				const claimsViruneNamespace = dependency === 'virune' || dependency.startsWith('@virune/');
+				if (!isKnownWorkspace && !claimsViruneNamespace) continue;
+				assert(isKnownWorkspace, `$.${item.directory}.${section}.${dependency}`, 'Virune dependency must refer to a workspace package declared by the publication plan');
+				assert(version === rootManifest.version, `$.${item.directory}.${section}.${dependency}`, 'internal Virune dependencies must use the exact reviewed release version');
+				if (RUNTIME_DEPENDENCY_SECTIONS.has(section)) {
+					assert(!excludedWorkspaceNames.has(dependency), `$.${item.directory}.${section}.${dependency}`, 'publishable package cannot require an excluded workspace package at install/runtime');
+				}
+			}
 		}
 	}
 
@@ -120,7 +136,8 @@ export function verifyNpmPublicationPlan(root = process.cwd()) {
 	const cliManifest = manifests.get(cli.workspaceName);
 	assert(cli.workspaceName === 'virune', '$.packages', 'canonical CLI workspace package must be virune');
 	assert(cli.registryName === 'virune', '$.packages', 'canonical CLI registry name must be virune');
-	assert(cliManifest.bin?.virune === './dist/src/entry.js', `$.${cli.directory}.bin.virune`, 'canonical virune executable mapping is required');
+	assertExactKeys(cliManifest.bin, ['virune'], `$.${cli.directory}.bin`);
+	assert(cliManifest.bin.virune === './dist/src/entry.js', `$.${cli.directory}.bin.virune`, 'canonical virune executable mapping is required');
 	for (const item of publishPackages.filter(item => item.role === 'cli-dependency')) {
 		assert(cliManifest.dependencies?.[item.workspaceName] === rootManifest.version, `$.${cli.directory}.dependencies.${item.workspaceName}`, 'CLI must depend on every planned npm package dependency at the exact release version');
 	}
@@ -221,6 +238,7 @@ function hasPackageExports(value) {
 }
 
 function assertExactKeys(value, expected, path) {
+	assert(value !== null && typeof value === 'object' && !Array.isArray(value), path, 'expected an object');
 	const actual = Object.keys(value).sort(compareText);
 	const canonicalExpected = [...expected].sort(compareText);
 	assert(JSON.stringify(actual) === JSON.stringify(canonicalExpected), path, `expected keys ${canonicalExpected.join(', ')}`);
