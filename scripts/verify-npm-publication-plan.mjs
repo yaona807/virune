@@ -6,6 +6,7 @@ const PLAN_PATH = '.github/release/npm-publication-v1.json';
 const REPOSITORY_URL = 'git+https://github.com/yaona807/virune.git';
 const HOMEPAGE = 'https://github.com/yaona807/virune#readme';
 const BUGS_URL = 'https://github.com/yaona807/virune/issues';
+const CANONICAL_WORKSPACES = ['packages/*'];
 const REQUIRED_PREPUBLICATION_BLOCKERS = [
 	'clean-registry-install-smoke',
 	'documentation-sync',
@@ -59,6 +60,13 @@ export function verifyNpmPublicationPlan(root = process.cwd()) {
 	assert(compareSemver(firstStable, forbiddenThrough) > 0, '$.firstStableRegistryRelease', 'must be later than the forbidden retro-publish boundary');
 	assert(rootManifest.private === true, '$root.private', 'monorepo root must remain private');
 	assert(rootManifest.version === plan.forbidRegistryPublishThroughVersion, '$root.version', 'prepublication plan must be updated deliberately when the repository version advances');
+	const rootWorkspaces = array(rootManifest.workspaces, '$root.workspaces')
+		.map((value, index) => nonEmptyString(value, `$root.workspaces[${index}]`));
+	assert(
+		JSON.stringify(rootWorkspaces) === JSON.stringify(CANONICAL_WORKSPACES),
+		'$root.workspaces',
+		`expected canonical workspace layout ${CANONICAL_WORKSPACES.join(', ')}`,
+	);
 	const reviewedLicense = nonEmptyString(rootManifest.license, '$root.license');
 	const reviewedNodeEngine = nonEmptyString(rootManifest.engines?.node, '$root.engines.node');
 
