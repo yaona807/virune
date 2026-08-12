@@ -282,7 +282,9 @@ function sha256(value: string, path: string): string {
 
 function nonEmptyText(value: string, path: string): string {
 	if (typeof value !== 'string') throw new SemanticSnapshotError(path, 'expected a string');
-	if (value.length === 0) throw new SemanticSnapshotError(path, 'string must not be empty');
+	if (value.length === 0 || value.trim().length === 0) {
+		throw new SemanticSnapshotError(path, 'string must contain non-whitespace text');
+	}
 	if (value.includes('\u0000')) throw new SemanticSnapshotError(path, 'NUL is not allowed');
 	return value;
 }
