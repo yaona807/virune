@@ -283,10 +283,7 @@ test('invalid contract data and malformed JSON fail closed', async () => {
 			readonly accepted: boolean;
 			readonly diagnostics: readonly {
 				readonly code: string;
-				readonly severity: 'error';
-				readonly message: string;
 				readonly sourcePath: string | null;
-				readonly span: unknown;
 				readonly notes: readonly string[];
 			}[];
 			readonly emittedModules: readonly unknown[];
