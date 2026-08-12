@@ -180,15 +180,16 @@ test('modeled coverage rejects unresolved semantic dimensions and missing source
 	);
 });
 
-test('non-modeled coverage requires an explicit limitation', () => {
+test('non-modeled coverage requires a substantive explicit limitation', () => {
 	const value = input();
-	const roots = value.roots.map(root => root.coverage === 'unknown' ? { ...root, limitations: [] } : root);
-	assert.throws(
-		() => createExperimentalSemanticSnapshot({ ...value, roots }),
-		(error: unknown) => error instanceof SemanticSnapshotError
-			&& error.path === '$.roots[1].limitations'
-			&& /requires at least one explicit limitation/u.test(error.message),
-	);
+	for (const limitations of [[], ['   ']]) {
+		const roots = value.roots.map(root => root.coverage === 'unknown' ? { ...root, limitations } : root);
+		assert.throws(
+			() => createExperimentalSemanticSnapshot({ ...value, roots }),
+			(error: unknown) => error instanceof SemanticSnapshotError
+				&& error.path.startsWith('$.roots[1].limitations'),
+		);
+	}
 });
 
 test('duplicate semantic identities fail closed instead of being silently deduplicated', () => {
