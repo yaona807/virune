@@ -86,6 +86,7 @@ export function verifyNpmPublicationPlan(root = process.cwd()) {
 	const publishWorkspaceNames = new Set(publishPackages.map(item => item.workspaceName));
 	for (const item of publishPackages) {
 		const manifest = manifests.get(item.workspaceName);
+		assert(item.registryName === item.workspaceName, `$.packages.${item.directory}.registryName`, 'registry package renaming is not modeled by the current release packaging path');
 		assert(manifest.repository?.type === 'git', `$.${item.directory}.repository.type`, 'expected git repository metadata');
 		assert(manifest.repository?.url === REPOSITORY_URL, `$.${item.directory}.repository.url`, 'unexpected repository URL');
 		assert(manifest.repository?.directory === `packages/${item.directory}`, `$.${item.directory}.repository.directory`, 'unexpected repository directory');
@@ -99,16 +100,13 @@ export function verifyNpmPublicationPlan(root = process.cwd()) {
 			if (!publishWorkspaceNames.has(dependency)) continue;
 			assert(version === rootManifest.version, `$.${item.directory}.dependencies.${dependency}`, 'internal published dependencies must use the exact reviewed release version');
 		}
-		if (item.role === 'cli-dependency') {
-			assert(item.registryName === item.workspaceName, `$.packages.${item.directory}.registryName`, 'non-CLI package renaming is not modeled by the current release packaging path');
-		}
 	}
 
 	const cli = publishPackages.find(item => item.role === 'cli');
 	assert(cli !== undefined, '$.packages', 'exactly one CLI publication package is required');
 	assert(publishPackages.filter(item => item.role === 'cli').length === 1, '$.packages', 'exactly one CLI publication package is required');
 	const cliManifest = manifests.get(cli.workspaceName);
-	assert(cli.workspaceName === '@virune/cli', '$.packages', 'canonical CLI workspace package must remain @virune/cli before staging');
+	assert(cli.workspaceName === 'virune', '$.packages', 'canonical CLI workspace package must be virune');
 	assert(cli.registryName === 'virune', '$.packages', 'canonical CLI registry name must be virune');
 	assert(cliManifest.bin?.virune === './dist/src/entry.js', `$.${cli.directory}.bin.virune`, 'canonical virune executable mapping is required');
 	for (const item of publishPackages.filter(item => item.role === 'cli-dependency')) {
