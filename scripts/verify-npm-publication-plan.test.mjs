@@ -218,7 +218,7 @@ test('only the canonical CLI package may expose the virune npm executable', () =
 	withFixture(root => {
 		const path = resolve(root, 'packages/runtime/package.json');
 		const manifest = readJson(path);
-		manifest.bin = { runtime-tool: './dist/src/tool.js' };
+		manifest.bin = { 'runtime-tool': './dist/src/tool.js' };
 		writeJson(path, manifest);
 		assert.throws(
 			() => verifyNpmPublicationPlan(root),
