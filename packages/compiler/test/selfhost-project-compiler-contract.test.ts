@@ -163,7 +163,7 @@ test('malformed project source returns path-aware frontend diagnostics before pr
 	});
 });
 
-test('record-only source lowers as a type-only declaration with stable export metadata', async () => {
+test('frontend-accepted syntax unsupported by MVP lowering fails closed without losing export metadata', async () => {
 	await withGeneratedCompiler((module, input) => {
 		const projectInput: ProjectInput = {
 			...input,
@@ -174,18 +174,18 @@ test('record-only source lowers as a type-only declaration with stable export me
 			}],
 		};
 		const result = compileWithProjectCompilerBoundary(module, projectInput);
-		assert.equal(result.accepted, true);
-		assert.deepEqual(result.diagnostics, []);
+		assert.equal(result.accepted, false);
 		assert.equal(result.stats.parsedModules, 1);
-		assert.equal(result.stats.checkedModules, 1);
-		assert.equal(result.stats.emittedModules, 1);
+		assert.equal(result.stats.checkedModules, 0);
+		assert.equal(result.stats.emittedModules, 0);
 		assert.deepEqual(result.dependencies, []);
 		assert.deepEqual(result.exportedSymbols, [
 			{ modulePath: 'src/main.virune', name: 'User', declarationKind: 'RecordDeclaration' },
 		]);
-		assert.equal(result.emittedModules.length, 1);
-		assert.equal(result.emittedModules[0]?.sourcePath, 'src/main.virune');
-		assert.doesNotMatch(result.emittedModules[0]?.code ?? '', /record User/u);
+		assert.deepEqual(result.emittedModules, []);
+		assert.ok(result.diagnostics.length > 0);
+		assert.ok(result.diagnostics.every(item => item.sourcePath === 'src/main.virune'));
+		assert.ok(result.diagnostics.every(item => item.severity === 'error'));
 	});
 });
 
