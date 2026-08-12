@@ -271,7 +271,7 @@ test('coverage is derived conservatively from independent semantic dimensions', 
 	});
 });
 
-test('modeled direct effects must be included in modeled transitive effects', () => {
+test('modeled transitive effects require resolved direct coverage and include known direct effects', () => {
 	const value = input();
 	const root = value.roots[0]!;
 	assert.throws(
@@ -283,6 +283,42 @@ test('modeled direct effects must be included in modeled transitive effects', ()
 			&& error.path === '$.roots[0].transitiveEffects'
 			&& /must include direct effect write/u.test(error.message),
 	);
+
+	const partialDirect = {
+		...root,
+		dimensions: {
+			...root.dimensions,
+			directEffects: dimension('partial', 'src/workflow.virune', ['direct effect extraction is incomplete']),
+		},
+	} satisfies SemanticRootInputV1;
+	assert.throws(
+		() => createExperimentalSemanticSnapshot({
+			...value,
+			roots: [{ ...partialDirect, transitiveEffects: ['network'] }],
+		}),
+		(error: unknown) => error instanceof SemanticSnapshotError
+			&& error.path === '$.roots[0].transitiveEffects'
+			&& /must include direct effect write/u.test(error.message),
+	);
+	const acceptedPartial = createExperimentalSemanticSnapshot({ ...value, roots: [partialDirect] });
+	assert.equal(acceptedPartial.roots[0]?.dimensions.transitiveEffects.coverage, 'modeled');
+	assert.equal(acceptedPartial.roots[0]?.coverage, 'partial');
+
+	for (const directCoverage of ['opaque', 'unknown'] as const) {
+		const changed: SemanticRootInputV1 = {
+			...root,
+			dimensions: {
+				...root.dimensions,
+				directEffects: dimension(directCoverage, 'src/workflow.virune', ['direct effect coverage is unresolved']),
+			},
+		};
+		assert.throws(
+			() => createExperimentalSemanticSnapshot({ ...value, roots: [changed] }),
+			(error: unknown) => error instanceof SemanticSnapshotError
+				&& error.path === '$.roots[0].dimensions.transitiveEffects.coverage'
+				&& /require direct effects coverage to be modeled or partial/u.test(error.message),
+		);
+	}
 
 	const unknownTransitive = createExperimentalSemanticSnapshot({
 		...value,
