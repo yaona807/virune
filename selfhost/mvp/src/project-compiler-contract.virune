@@ -492,6 +492,19 @@ fn dependencyTargetPath(
 	return ""
 }
 
+fn dependencyAllowsValueSignatures(
+	dependencies: List<ProjectLinkDependency>,
+	modulePath: String,
+	specifier: String,
+) -> Bool {
+	for dependency in dependencies {
+		if dependency.modulePath == modulePath && dependency.sourceKind == "virune" && dependency.specifier == specifier {
+			return !dependency.typeOnly && match dependency.resolvedPath { Some(_) => true, None => false }
+		}
+	}
+	return false
+}
+
 fn enumIsPublicExport(
 	exports: List<ProjectLinkExport>,
 	modulePath: String,
@@ -708,8 +721,13 @@ fn importedSignatures(
 			projectModule.path,
 			importValue.specifier,
 		)
+		let allowValueSignatures = dependencyAllowsValueSignatures(
+			dependencies,
+			projectModule.path,
+			importValue.specifier,
+		)
 		let targetValue = findParsedMvpSource(modules, targetPath)
-		if match targetValue { Some(_) => true, None => false } {
+		if allowValueSignatures && match targetValue { Some(_) => true, None => false } {
 			let target = match targetValue {
 				Some(value) => value
 				None => ParsedMvpProjectSource {
