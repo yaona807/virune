@@ -57,6 +57,19 @@ test('current repository has a complete but explicitly non-ready npm prepublicat
 	});
 });
 
+test('workspace layout changes fail until publication-plan enumeration is updated', () => {
+	withFixture(root => {
+		const path = resolve(root, 'package.json');
+		const manifest = readJson(path);
+		manifest.workspaces = ['packages/*', 'apps/*'];
+		writeJson(path, manifest);
+		assert.throws(
+			() => verifyNpmPublicationPlan(root),
+			/\$root\.workspaces: expected canonical workspace layout packages\/\*/u,
+		);
+	});
+});
+
 test('prepublication audit fails if a planned package becomes publishable early', () => {
 	withFixture(root => {
 		const path = resolve(root, 'packages/runtime/package.json');
