@@ -41,7 +41,8 @@ export interface SemanticDimensionStateV1 {
 
 export interface SemanticDimensionStatesV1 {
 	readonly publicAbi: SemanticDimensionStateV1;
-	readonly effects: SemanticDimensionStateV1;
+	readonly directEffects: SemanticDimensionStateV1;
+	readonly transitiveEffects: SemanticDimensionStateV1;
 	readonly interop: SemanticDimensionStateV1;
 	readonly reachableFailures: SemanticDimensionStateV1;
 	readonly panic: SemanticDimensionStateV1;
@@ -195,6 +196,13 @@ function canonicalRoot(value: SemanticRootInputV1, path: string): SemanticRootSn
 	const panic = oneOf(value.panic, ['yes', 'no', 'unknown'] as const, `${path}.panic`);
 	const discard = oneOf(value.discard, ['yes', 'no', 'unknown'] as const, `${path}.discard`);
 
+	if (dimensions.directEffects.coverage === 'modeled' && dimensions.transitiveEffects.coverage === 'modeled') {
+		for (const effect of directEffects) {
+			if (!transitiveEffects.includes(effect)) {
+				throw new SemanticSnapshotError(`${path}.transitiveEffects`, `modeled transitive effects must include direct effect ${effect}`);
+			}
+		}
+	}
 	if (dimensions.panic.coverage === 'modeled' && panic === 'unknown') {
 		throw new SemanticSnapshotError(`${path}.panic`, 'modeled panic dimension cannot contain unknown reachability');
 	}
@@ -223,7 +231,8 @@ function canonicalRoot(value: SemanticRootInputV1, path: string): SemanticRootSn
 function canonicalDimensions(value: SemanticDimensionStatesV1, path: string): SemanticDimensionStatesV1 {
 	return {
 		publicAbi: canonicalDimensionState(value.publicAbi, `${path}.publicAbi`),
-		effects: canonicalDimensionState(value.effects, `${path}.effects`),
+		directEffects: canonicalDimensionState(value.directEffects, `${path}.directEffects`),
+		transitiveEffects: canonicalDimensionState(value.transitiveEffects, `${path}.transitiveEffects`),
 		interop: canonicalDimensionState(value.interop, `${path}.interop`),
 		reachableFailures: canonicalDimensionState(value.reachableFailures, `${path}.reachableFailures`),
 		panic: canonicalDimensionState(value.panic, `${path}.panic`),
@@ -259,7 +268,8 @@ function aggregateDimensionCoverage(value: SemanticDimensionStatesV1): SemanticC
 function dimensionStates(value: SemanticDimensionStatesV1): readonly SemanticDimensionStateV1[] {
 	return [
 		value.publicAbi,
-		value.effects,
+		value.directEffects,
+		value.transitiveEffects,
 		value.interop,
 		value.reachableFailures,
 		value.panic,
@@ -379,6 +389,7 @@ function canonicalTextSet(values: readonly string[], path: string): readonly str
 function normalizedSourcePath(value: string, path: string): string {
 	const text = nonEmptyText(value, path).replaceAll('\\', '/').normalize('NFC');
 	if (text.startsWith('/') || /^[A-Za-z]:\//u.test(text)) throw new SemanticSnapshotError(path, 'absolute paths are not allowed');
+	if (/^[A-Za-z][A-Za-z0-9+.-]*:/u.test(text)) throw new SemanticSnapshotError(path, 'URI-scheme source paths are not allowed');
 	const parts: string[] = [];
 	for (const segment of text.split('/')) {
 		if (segment.length === 0 || segment === '.') continue;
