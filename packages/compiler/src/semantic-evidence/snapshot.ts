@@ -32,6 +32,22 @@ export interface SemanticSourceEvidenceV1 {
 	readonly endOffset: number;
 }
 
+export interface SemanticDimensionStateV1 {
+	readonly coverage: SemanticCoverageStatus;
+	readonly reasons: readonly string[];
+	readonly assumptions: readonly string[];
+	readonly sourceEvidence: readonly SemanticSourceEvidenceV1[];
+}
+
+export interface SemanticDimensionStatesV1 {
+	readonly publicAbi: SemanticDimensionStateV1;
+	readonly effects: SemanticDimensionStateV1;
+	readonly interop: SemanticDimensionStateV1;
+	readonly reachableFailures: SemanticDimensionStateV1;
+	readonly panic: SemanticDimensionStateV1;
+	readonly discard: SemanticDimensionStateV1;
+}
+
 export interface SemanticPublicAbiFactV1 {
 	readonly symbol: string;
 	readonly declarationKind: string;
@@ -46,10 +62,8 @@ export interface SemanticInteropFactV1 {
 
 export interface SemanticRootInputV1 {
 	readonly root: string;
-	readonly coverage: SemanticCoverageStatus;
-	readonly limitations: readonly string[];
+	readonly dimensions: SemanticDimensionStatesV1;
 	readonly implementationSha256: string;
-	readonly sourceEvidence: readonly SemanticSourceEvidenceV1[];
 	readonly publicAbi: readonly SemanticPublicAbiFactV1[];
 	readonly directEffects: readonly string[];
 	readonly transitiveEffects: readonly string[];
@@ -74,7 +88,9 @@ export interface SemanticCoverageSummaryV1 {
 	readonly allEnumeratedRootsModeled: boolean;
 }
 
-export type SemanticRootSnapshotV1 = SemanticRootInputV1;
+export interface SemanticRootSnapshotV1 extends SemanticRootInputV1 {
+	readonly coverage: SemanticCoverageStatus;
+}
 
 export interface ExperimentalSemanticSnapshotV1 {
 	readonly version: typeof EXPERIMENTAL_SEMANTIC_SNAPSHOT_VERSION;
@@ -96,14 +112,17 @@ const SHA256_PATTERN = /^[0-9a-f]{64}$/u;
 
 /**
  * Build the experimental Semantic Change Evidence snapshot without assigning
- * safety meaning to missing facts. Every enumerated root carries an explicit
- * coverage state, and partial/opaque/unknown roots must explain their
- * limitation. Root discovery scope is explicit and separate from per-root
- * coverage: all enumerated roots being modeled does not imply project-wide
- * root discovery.
+ * safety meaning to missing facts. Coverage, unresolved reasons, assumptions,
+ * and provenance are explicit per semantic dimension; aggregate root coverage
+ * is derived conservatively from those dimension states and is never accepted
+ * from the caller.
  *
- * The Semantic Input Closure binds source, project, toolchain/runtime, dependency,
- * Interop, and configuration identities needed by later reproducibility checks.
+ * Root discovery scope is explicit and separate from per-root coverage: all
+ * enumerated roots being modeled does not imply project-wide root discovery.
+ * The Semantic Input Closure binds source, project, toolchain/runtime,
+ * dependency, Interop, and configuration identities needed by later
+ * reproducibility checks.
+ *
  * This module is intentionally internal and experimental. It is not a stable
  * Compiler API or artifact-schema compatibility promise.
  */
@@ -115,6 +134,7 @@ export function createExperimentalSemanticSnapshot(
 	const roots = input.roots.map((root, index) => canonicalRoot(root, `$.roots[${index}]`));
 	roots.sort((left, right) => compareText(left.root, right.root));
 	assertUnique(roots.map(root => root.root), '$.roots', 'root');
+	assertNoCaseCollidingSourcePaths(roots);
 	return {
 		version: EXPERIMENTAL_SEMANTIC_SNAPSHOT_VERSION,
 		experimental: true,
@@ -166,41 +186,85 @@ function canonicalRootScope(value: SemanticRootScopeV1): SemanticRootScopeV1 {
 }
 
 function canonicalRoot(value: SemanticRootInputV1, path: string): SemanticRootSnapshotV1 {
-	const coverage = oneOf(value.coverage, ['modeled', 'partial', 'opaque', 'unknown'] as const, `${path}.coverage`);
-	const limitations = canonicalTextSet(value.limitations, `${path}.limitations`);
-	const sourceEvidence = canonicalSourceEvidence(value.sourceEvidence, `${path}.sourceEvidence`);
+	const dimensions = canonicalDimensions(value.dimensions, `${path}.dimensions`);
+	const publicAbi = canonicalPublicAbi(value.publicAbi, `${path}.publicAbi`);
+	const directEffects = canonicalTextSet(value.directEffects, `${path}.directEffects`);
+	const transitiveEffects = canonicalTextSet(value.transitiveEffects, `${path}.transitiveEffects`);
 	const interop = canonicalInterop(value.interop, `${path}.interop`);
+	const reachableFailures = canonicalTextSet(value.reachableFailures, `${path}.reachableFailures`);
 	const panic = oneOf(value.panic, ['yes', 'no', 'unknown'] as const, `${path}.panic`);
 	const discard = oneOf(value.discard, ['yes', 'no', 'unknown'] as const, `${path}.discard`);
-	if (sourceEvidence.length === 0) {
-		throw new SemanticSnapshotError(`${path}.sourceEvidence`, 'at least one source evidence range is required');
+
+	if (dimensions.panic.coverage === 'modeled' && panic === 'unknown') {
+		throw new SemanticSnapshotError(`${path}.panic`, 'modeled panic dimension cannot contain unknown reachability');
 	}
-	if (coverage === 'modeled') {
-		if (limitations.length > 0) {
-			throw new SemanticSnapshotError(`${path}.limitations`, 'modeled coverage must not carry unresolved limitations');
-		}
-		if (panic === 'unknown') throw new SemanticSnapshotError(`${path}.panic`, 'modeled coverage cannot contain unknown panic reachability');
-		if (discard === 'unknown') throw new SemanticSnapshotError(`${path}.discard`, 'modeled coverage cannot contain unknown discard reachability');
-		if (interop.some(item => item.tier === 'unknown')) {
-			throw new SemanticSnapshotError(`${path}.interop`, 'modeled coverage cannot contain an unknown interoperability tier');
-		}
-	} else if (limitations.length === 0) {
-		throw new SemanticSnapshotError(`${path}.limitations`, `${coverage} coverage requires at least one explicit limitation`);
+	if (dimensions.discard.coverage === 'modeled' && discard === 'unknown') {
+		throw new SemanticSnapshotError(`${path}.discard`, 'modeled discard dimension cannot contain unknown reachability');
 	}
+	if (dimensions.interop.coverage === 'modeled' && interop.some(item => item.tier === 'unknown')) {
+		throw new SemanticSnapshotError(`${path}.interop`, 'modeled interoperability dimension cannot contain an unknown tier');
+	}
+
 	return {
 		root: nonEmptyText(value.root, `${path}.root`),
-		coverage,
-		limitations,
+		coverage: aggregateDimensionCoverage(dimensions),
+		dimensions,
 		implementationSha256: sha256(value.implementationSha256, `${path}.implementationSha256`),
-		sourceEvidence,
-		publicAbi: canonicalPublicAbi(value.publicAbi, `${path}.publicAbi`),
-		directEffects: canonicalTextSet(value.directEffects, `${path}.directEffects`),
-		transitiveEffects: canonicalTextSet(value.transitiveEffects, `${path}.transitiveEffects`),
+		publicAbi,
+		directEffects,
+		transitiveEffects,
 		interop,
-		reachableFailures: canonicalTextSet(value.reachableFailures, `${path}.reachableFailures`),
+		reachableFailures,
 		panic,
 		discard,
 	};
+}
+
+function canonicalDimensions(value: SemanticDimensionStatesV1, path: string): SemanticDimensionStatesV1 {
+	return {
+		publicAbi: canonicalDimensionState(value.publicAbi, `${path}.publicAbi`),
+		effects: canonicalDimensionState(value.effects, `${path}.effects`),
+		interop: canonicalDimensionState(value.interop, `${path}.interop`),
+		reachableFailures: canonicalDimensionState(value.reachableFailures, `${path}.reachableFailures`),
+		panic: canonicalDimensionState(value.panic, `${path}.panic`),
+		discard: canonicalDimensionState(value.discard, `${path}.discard`),
+	};
+}
+
+function canonicalDimensionState(value: SemanticDimensionStateV1, path: string): SemanticDimensionStateV1 {
+	const coverage = oneOf(value.coverage, ['modeled', 'partial', 'opaque', 'unknown'] as const, `${path}.coverage`);
+	const reasons = canonicalTextSet(value.reasons, `${path}.reasons`);
+	const assumptions = canonicalTextSet(value.assumptions, `${path}.assumptions`);
+	const sourceEvidence = canonicalSourceEvidence(value.sourceEvidence, `${path}.sourceEvidence`);
+	if (sourceEvidence.length === 0) {
+		throw new SemanticSnapshotError(`${path}.sourceEvidence`, 'at least one source evidence range is required');
+	}
+	if (coverage === 'modeled' && reasons.length > 0) {
+		throw new SemanticSnapshotError(`${path}.reasons`, 'modeled coverage must not carry unresolved reasons');
+	}
+	if (coverage !== 'modeled' && reasons.length === 0) {
+		throw new SemanticSnapshotError(`${path}.reasons`, `${coverage} coverage requires at least one explicit reason`);
+	}
+	return { coverage, reasons, assumptions, sourceEvidence };
+}
+
+function aggregateDimensionCoverage(value: SemanticDimensionStatesV1): SemanticCoverageStatus {
+	const states = dimensionStates(value).map(item => item.coverage);
+	if (states.includes('unknown')) return 'unknown';
+	if (states.includes('opaque')) return 'opaque';
+	if (states.includes('partial')) return 'partial';
+	return 'modeled';
+}
+
+function dimensionStates(value: SemanticDimensionStatesV1): readonly SemanticDimensionStateV1[] {
+	return [
+		value.publicAbi,
+		value.effects,
+		value.interop,
+		value.reachableFailures,
+		value.panic,
+		value.discard,
+	];
 }
 
 function canonicalSourceEvidence(
@@ -288,6 +352,23 @@ function summarizeCoverage(roots: readonly SemanticRootSnapshotV1[]): SemanticCo
 	};
 }
 
+function assertNoCaseCollidingSourcePaths(roots: readonly SemanticRootSnapshotV1[]): void {
+	const seen = new Map<string, string>();
+	for (const root of roots) {
+		for (const dimension of dimensionStates(root.dimensions)) {
+			for (const evidence of dimension.sourceEvidence) {
+				const sourcePath = evidence.sourcePath.normalize('NFC');
+				const folded = sourcePath.toLowerCase();
+				const previous = seen.get(folded);
+				if (previous !== undefined && previous !== sourcePath) {
+					throw new SemanticSnapshotError('$.roots', `case-colliding source paths are not allowed: ${previous}, ${sourcePath}`);
+				}
+				seen.set(folded, sourcePath);
+			}
+		}
+	}
+}
+
 function canonicalTextSet(values: readonly string[], path: string): readonly string[] {
 	if (!Array.isArray(values)) throw new SemanticSnapshotError(path, 'expected an array');
 	const result = values.map((value, index) => nonEmptyText(value, `${path}[${index}]`)).sort(compareText);
@@ -296,7 +377,7 @@ function canonicalTextSet(values: readonly string[], path: string): readonly str
 }
 
 function normalizedSourcePath(value: string, path: string): string {
-	const text = nonEmptyText(value, path).replaceAll('\\', '/');
+	const text = nonEmptyText(value, path).replaceAll('\\', '/').normalize('NFC');
 	if (text.startsWith('/') || /^[A-Za-z]:\//u.test(text)) throw new SemanticSnapshotError(path, 'absolute paths are not allowed');
 	const parts: string[] = [];
 	for (const segment of text.split('/')) {
@@ -340,8 +421,9 @@ function oneOf<const T extends readonly string[]>(value: string, allowed: T, pat
 }
 
 function assertUnique(values: readonly string[], path: string, name: string): void {
-	for (let index = 1; index < values.length; index += 1) {
-		if (values[index] === values[index - 1]) throw new SemanticSnapshotError(path, `duplicate ${name} ${values[index]}`);
+	const sorted = [...values].sort(compareText);
+	for (let index = 1; index < sorted.length; index += 1) {
+		if (sorted[index] === sorted[index - 1]) throw new SemanticSnapshotError(path, `duplicate ${name} ${sorted[index]}`);
 	}
 }
 
