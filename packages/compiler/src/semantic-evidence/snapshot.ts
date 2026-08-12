@@ -4,6 +4,7 @@ export type SemanticEvidencePlatform = 'node' | 'browser' | 'neutral';
 export type SemanticCoverageStatus = 'modeled' | 'partial' | 'opaque' | 'unknown';
 export type SemanticReachability = 'yes' | 'no' | 'unknown';
 export type SemanticInteropTier = 'direct' | 'adapter' | 'host' | 'unsafe' | 'unknown';
+export type SemanticRootScopeStatus = 'project-wide' | 'partial';
 
 export interface SemanticInputClosureV1 {
 	readonly languageVersion: string;
@@ -11,8 +12,18 @@ export interface SemanticInputClosureV1 {
 	readonly profile: string;
 	readonly analyzerSha256: string;
 	readonly sourceManifestSha256: string;
+	readonly projectManifestSha256: string;
+	readonly stdlibSha256: string;
+	readonly runtimeSha256: string;
+	readonly dependencyArtifactsSha256: string;
 	readonly interopManifestSha256: string | null;
 	readonly configurationSha256: string | null;
+}
+
+export interface SemanticRootScopeV1 {
+	readonly status: SemanticRootScopeStatus;
+	readonly includedRootClasses: readonly string[];
+	readonly excludedRootClasses: readonly string[];
 }
 
 export interface SemanticSourceEvidenceV1 {
@@ -50,6 +61,7 @@ export interface SemanticRootInputV1 {
 
 export interface SemanticSnapshotInputV1 {
 	readonly closure: SemanticInputClosureV1;
+	readonly rootScope: SemanticRootScopeV1;
 	readonly roots: readonly SemanticRootInputV1[];
 }
 
@@ -68,6 +80,7 @@ export interface ExperimentalSemanticSnapshotV1 {
 	readonly version: typeof EXPERIMENTAL_SEMANTIC_SNAPSHOT_VERSION;
 	readonly experimental: true;
 	readonly closure: SemanticInputClosureV1;
+	readonly rootScope: SemanticRootScopeV1;
 	readonly coverage: SemanticCoverageSummaryV1;
 	readonly roots: readonly SemanticRootSnapshotV1[];
 }
@@ -85,9 +98,12 @@ const SHA256_PATTERN = /^[0-9a-f]{64}$/u;
  * Build the experimental Semantic Change Evidence snapshot without assigning
  * safety meaning to missing facts. Every enumerated root carries an explicit
  * coverage state, and partial/opaque/unknown roots must explain their
- * limitation. The coverage summary is deliberately scoped to enumerated roots;
- * it does not claim that the analyzer enumerated every relevant program root.
+ * limitation. Root discovery scope is explicit and separate from per-root
+ * coverage: all enumerated roots being modeled does not imply project-wide
+ * root discovery.
  *
+ * The Semantic Input Closure binds source, project, toolchain/runtime, dependency,
+ * Interop, and configuration identities needed by later reproducibility checks.
  * This module is intentionally internal and experimental. It is not a stable
  * Compiler API or artifact-schema compatibility promise.
  */
@@ -95,6 +111,7 @@ export function createExperimentalSemanticSnapshot(
 	input: SemanticSnapshotInputV1,
 ): ExperimentalSemanticSnapshotV1 {
 	const closure = canonicalClosure(input.closure);
+	const rootScope = canonicalRootScope(input.rootScope);
 	const roots = input.roots.map((root, index) => canonicalRoot(root, `$.roots[${index}]`));
 	roots.sort((left, right) => compareText(left.root, right.root));
 	assertUnique(roots.map(root => root.root), '$.roots', 'root');
@@ -102,6 +119,7 @@ export function createExperimentalSemanticSnapshot(
 		version: EXPERIMENTAL_SEMANTIC_SNAPSHOT_VERSION,
 		experimental: true,
 		closure,
+		rootScope,
 		coverage: summarizeCoverage(roots),
 		roots,
 	};
@@ -118,9 +136,33 @@ function canonicalClosure(value: SemanticInputClosureV1): SemanticInputClosureV1
 		profile: nonEmptyText(value.profile, '$.closure.profile'),
 		analyzerSha256: sha256(value.analyzerSha256, '$.closure.analyzerSha256'),
 		sourceManifestSha256: sha256(value.sourceManifestSha256, '$.closure.sourceManifestSha256'),
+		projectManifestSha256: sha256(value.projectManifestSha256, '$.closure.projectManifestSha256'),
+		stdlibSha256: sha256(value.stdlibSha256, '$.closure.stdlibSha256'),
+		runtimeSha256: sha256(value.runtimeSha256, '$.closure.runtimeSha256'),
+		dependencyArtifactsSha256: sha256(value.dependencyArtifactsSha256, '$.closure.dependencyArtifactsSha256'),
 		interopManifestSha256: nullableSha256(value.interopManifestSha256, '$.closure.interopManifestSha256'),
 		configurationSha256: nullableSha256(value.configurationSha256, '$.closure.configurationSha256'),
 	};
+}
+
+function canonicalRootScope(value: SemanticRootScopeV1): SemanticRootScopeV1 {
+	const status = oneOf(value.status, ['project-wide', 'partial'] as const, '$.rootScope.status');
+	const includedRootClasses = canonicalTextSet(value.includedRootClasses, '$.rootScope.includedRootClasses');
+	const excludedRootClasses = canonicalTextSet(value.excludedRootClasses, '$.rootScope.excludedRootClasses');
+	if (includedRootClasses.length === 0) {
+		throw new SemanticSnapshotError('$.rootScope.includedRootClasses', 'at least one included root class is required');
+	}
+	const overlap = includedRootClasses.filter(item => excludedRootClasses.includes(item));
+	if (overlap.length > 0) {
+		throw new SemanticSnapshotError('$.rootScope', `root classes cannot be both included and excluded: ${overlap.join(', ')}`);
+	}
+	if (status === 'project-wide' && excludedRootClasses.length > 0) {
+		throw new SemanticSnapshotError('$.rootScope.excludedRootClasses', 'project-wide scope cannot exclude root classes');
+	}
+	if (status === 'partial' && excludedRootClasses.length === 0) {
+		throw new SemanticSnapshotError('$.rootScope.excludedRootClasses', 'partial scope requires at least one excluded root class');
+	}
+	return { status, includedRootClasses, excludedRootClasses };
 }
 
 function canonicalRoot(value: SemanticRootInputV1, path: string): SemanticRootSnapshotV1 {
