@@ -93,11 +93,13 @@ function input(): SemanticSnapshotInputV1 {
 				implementationSha256: D,
 				publicAbi: [
 					{ symbol: 'submit', declarationKind: 'function', signature: 'fn submit(Order) -> Result<Receipt, SubmitError>' },
+					{ symbol: 'cancel', declarationKind: 'function', signature: 'fn cancel(Order) -> Unit' },
 				],
 				directEffects: ['write', 'network'],
 				transitiveEffects: ['network', 'write'],
 				interop: [
 					{ specifier: 'node:crypto', tier: 'direct', assumptions: ['node runtime binding verified'] },
+					{ specifier: 'node:buffer', tier: 'direct', assumptions: ['node runtime binding verified'] },
 				],
 				reachableFailures: ['SubmitError'],
 				panic: 'no',
@@ -183,7 +185,9 @@ test('experimental Semantic Snapshot is byte-deterministic across input ordering
 		'src/plugin.virune::dispatch',
 		'src/workflow.virune::submit',
 	]);
+	assert.deepEqual(first.roots[1]?.publicAbi.map(item => item.symbol), ['cancel', 'submit']);
 	assert.deepEqual(first.roots[1]?.directEffects, ['network', 'write']);
+	assert.deepEqual(first.roots[1]?.interop.map(item => item.specifier), ['node:buffer', 'node:crypto']);
 	assert.deepEqual(first.roots[1]?.dimensions.publicAbi.sourceEvidence, [
 		{ sourcePath: 'src/workflow.virune', startOffset: 0, endOffset: 10 },
 		{ sourcePath: 'src/workflow.virune', startOffset: 20, endOffset: 30 },
