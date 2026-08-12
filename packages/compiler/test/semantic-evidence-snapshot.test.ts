@@ -11,6 +11,10 @@ const A = 'a'.repeat(64);
 const B = 'b'.repeat(64);
 const C = 'c'.repeat(64);
 const D = 'd'.repeat(64);
+const E = 'e'.repeat(64);
+const F = 'f'.repeat(64);
+const G = '0'.repeat(64);
+const H = '1'.repeat(64);
 
 function input(): SemanticSnapshotInputV1 {
 	return {
@@ -20,8 +24,17 @@ function input(): SemanticSnapshotInputV1 {
 			profile: 'semantic-evidence.experimental.v1',
 			analyzerSha256: A,
 			sourceManifestSha256: B,
+			projectManifestSha256: E,
+			stdlibSha256: F,
+			runtimeSha256: G,
+			dependencyArtifactsSha256: H,
 			interopManifestSha256: C,
 			configurationSha256: null,
+		},
+		rootScope: {
+			status: 'partial',
+			includedRootClasses: ['public-api', 'configured-entrypoints'],
+			excludedRootClasses: ['dynamic-entrypoints'],
 		},
 		roots: [
 			{
@@ -68,6 +81,11 @@ test('experimental Semantic Snapshot is byte-deterministic across input ordering
 	const reorderedInput = input();
 	const reordered = createExperimentalSemanticSnapshot({
 		...reorderedInput,
+		rootScope: {
+			...reorderedInput.rootScope,
+			includedRootClasses: [...reorderedInput.rootScope.includedRootClasses].reverse(),
+			excludedRootClasses: [...reorderedInput.rootScope.excludedRootClasses].reverse(),
+		},
 		roots: [...reorderedInput.roots].reverse().map(root => ({
 			...root,
 			limitations: [...root.limitations].reverse(),
@@ -81,6 +99,7 @@ test('experimental Semantic Snapshot is byte-deterministic across input ordering
 	});
 	assert.deepEqual(first, reordered);
 	assert.equal(serializeExperimentalSemanticSnapshot(first), serializeExperimentalSemanticSnapshot(reordered));
+	assert.deepEqual(first.rootScope.includedRootClasses, ['configured-entrypoints', 'public-api']);
 	assert.deepEqual(first.roots.map(root => root.root), [
 		'src/plugin.virune::dispatch',
 		'src/workflow.virune::submit',
@@ -110,6 +129,34 @@ test('serialization recomputes canonical derived fields instead of trusting a sn
 	assert.equal(parsed.coverage.allEnumeratedRootsModeled, false);
 });
 
+test('root discovery scope is explicit and fail-closed', () => {
+	const value = input();
+	const snapshot = createExperimentalSemanticSnapshot(value);
+	assert.deepEqual(snapshot.rootScope, {
+		status: 'partial',
+		includedRootClasses: ['configured-entrypoints', 'public-api'],
+		excludedRootClasses: ['dynamic-entrypoints'],
+	});
+
+	for (const rootScope of [
+		{ status: 'partial' as const, includedRootClasses: ['public-api'], excludedRootClasses: [] },
+		{ status: 'project-wide' as const, includedRootClasses: ['public-api'], excludedRootClasses: ['dynamic-entrypoints'] },
+		{ status: 'partial' as const, includedRootClasses: ['public-api'], excludedRootClasses: ['public-api'] },
+	]) {
+		assert.throws(
+			() => createExperimentalSemanticSnapshot({ ...value, rootScope }),
+			SemanticSnapshotError,
+		);
+	}
+
+	const projectWide = createExperimentalSemanticSnapshot({
+		...value,
+		rootScope: { status: 'project-wide', includedRootClasses: ['public-api'], excludedRootClasses: [] },
+	});
+	assert.equal(projectWide.rootScope.status, 'project-wide');
+	assert.deepEqual(projectWide.rootScope.excludedRootClasses, []);
+});
+
 test('coverage preserves unknown roots instead of treating empty fact sets as safe', () => {
 	const snapshot = createExperimentalSemanticSnapshot(input());
 	assert.deepEqual(snapshot.coverage, {
@@ -120,6 +167,7 @@ test('coverage preserves unknown roots instead of treating empty fact sets as sa
 		unknown: 1,
 		allEnumeratedRootsModeled: false,
 	});
+	assert.equal(snapshot.rootScope.status, 'partial');
 	assert.equal(Object.hasOwn(snapshot.coverage, 'complete'), false);
 	const unknown = snapshot.roots.find(root => root.coverage === 'unknown');
 	assert.ok(unknown);
@@ -140,6 +188,8 @@ test('allEnumeratedRootsModeled does not claim the analyzer enumerated every pro
 		unknown: 0,
 		allEnumeratedRootsModeled: true,
 	});
+	assert.equal(modeledOnly.rootScope.status, 'partial');
+	assert.deepEqual(modeledOnly.rootScope.excludedRootClasses, ['dynamic-entrypoints']);
 	assert.match(serializeExperimentalSemanticSnapshot(modeledOnly), /"allEnumeratedRootsModeled":true/u);
 	assert.doesNotMatch(serializeExperimentalSemanticSnapshot(modeledOnly), /"complete":true/u);
 });
@@ -213,15 +263,17 @@ test('duplicate semantic identities fail closed instead of being silently dedupl
 	);
 });
 
-test('input closure and source evidence reject stale-looking malformed identity', () => {
+test('input closure and source evidence reject malformed or escaping identity', () => {
 	const value = input();
-	assert.throws(
-		() => createExperimentalSemanticSnapshot({
-			...value,
-			closure: { ...value.closure, analyzerSha256: 'not-a-hash' },
-		}),
-		(error: unknown) => error instanceof SemanticSnapshotError && error.path === '$.closure.analyzerSha256',
-	);
+	for (const closure of [
+		{ ...value.closure, analyzerSha256: 'not-a-hash' },
+		{ ...value.closure, runtimeSha256: 'not-a-hash' },
+	]) {
+		assert.throws(
+			() => createExperimentalSemanticSnapshot({ ...value, closure }),
+			SemanticSnapshotError,
+		);
+	}
 
 	const root = value.roots[0]!;
 	assert.throws(
