@@ -36,7 +36,8 @@ function dimension(
 function modeledDimensions(sourcePath: string): SemanticDimensionStatesV1 {
 	return {
 		publicAbi: dimension('modeled', sourcePath),
-		effects: dimension('modeled', sourcePath),
+		directEffects: dimension('modeled', sourcePath),
+		transitiveEffects: dimension('modeled', sourcePath),
 		interop: dimension('modeled', sourcePath, [], ['runtime binding checked', 'static contract checked']),
 		reachableFailures: dimension('modeled', sourcePath),
 		panic: dimension('modeled', sourcePath),
@@ -47,7 +48,8 @@ function modeledDimensions(sourcePath: string): SemanticDimensionStatesV1 {
 function partiallyUnknownDimensions(sourcePath: string): SemanticDimensionStatesV1 {
 	return {
 		publicAbi: dimension('modeled', sourcePath),
-		effects: dimension('unknown', sourcePath, ['dynamic foreign callback effects are not modeled']),
+		directEffects: dimension('unknown', sourcePath, ['direct foreign callback effects are not modeled']),
+		transitiveEffects: dimension('unknown', sourcePath, ['transitive foreign callback effects are not modeled']),
 		interop: dimension('unknown', sourcePath, ['dynamic foreign callback topology is not modeled']),
 		reachableFailures: dimension('unknown', sourcePath, ['foreign callback failures are not modeled']),
 		panic: dimension('unknown', sourcePath, ['foreign callback panic reachability is not modeled']),
@@ -123,7 +125,8 @@ function reversedDimension(value: SemanticDimensionStateV1): SemanticDimensionSt
 function reversedDimensions(value: SemanticDimensionStatesV1): SemanticDimensionStatesV1 {
 	return {
 		publicAbi: reversedDimension(value.publicAbi),
-		effects: reversedDimension(value.effects),
+		directEffects: reversedDimension(value.directEffects),
+		transitiveEffects: reversedDimension(value.transitiveEffects),
 		interop: reversedDimension(value.interop),
 		reachableFailures: reversedDimension(value.reachableFailures),
 		panic: reversedDimension(value.panic),
@@ -138,7 +141,8 @@ function withDimensionSourcePath(value: SemanticDimensionStatesV1, sourcePath: s
 	});
 	return {
 		publicAbi: rewrite(value.publicAbi),
-		effects: rewrite(value.effects),
+		directEffects: rewrite(value.directEffects),
+		transitiveEffects: rewrite(value.transitiveEffects),
 		interop: rewrite(value.interop),
 		reachableFailures: rewrite(value.reachableFailures),
 		panic: rewrite(value.panic),
@@ -238,8 +242,9 @@ test('coverage is derived conservatively from independent semantic dimensions', 
 	const unknown = snapshot.roots.find(root => root.coverage === 'unknown');
 	assert.ok(unknown);
 	assert.equal(unknown.dimensions.publicAbi.coverage, 'modeled');
-	assert.equal(unknown.dimensions.effects.coverage, 'unknown');
-	assert.deepEqual(unknown.dimensions.effects.reasons, ['dynamic foreign callback effects are not modeled']);
+	assert.equal(unknown.dimensions.directEffects.coverage, 'unknown');
+	assert.equal(unknown.dimensions.transitiveEffects.coverage, 'unknown');
+	assert.deepEqual(unknown.dimensions.directEffects.reasons, ['direct foreign callback effects are not modeled']);
 
 	const value = input();
 	const root = value.roots[0]!;
@@ -249,10 +254,12 @@ test('coverage is derived conservatively from independent semantic dimensions', 
 			...root,
 			dimensions: {
 				...root.dimensions,
-				effects: dimension('partial', 'src/workflow.virune', ['indirect effects are not modeled']),
+				transitiveEffects: dimension('partial', 'src/workflow.virune', ['indirect effects are not modeled']),
 			},
 		}],
 	});
+	assert.equal(partial.roots[0]?.dimensions.directEffects.coverage, 'modeled');
+	assert.equal(partial.roots[0]?.dimensions.transitiveEffects.coverage, 'partial');
 	assert.equal(partial.roots[0]?.coverage, 'partial');
 	assert.deepEqual(partial.coverage, {
 		enumeratedRoots: 1,
@@ -262,6 +269,35 @@ test('coverage is derived conservatively from independent semantic dimensions', 
 		unknown: 0,
 		allEnumeratedRootsModeled: false,
 	});
+});
+
+test('modeled direct effects must be included in modeled transitive effects', () => {
+	const value = input();
+	const root = value.roots[0]!;
+	assert.throws(
+		() => createExperimentalSemanticSnapshot({
+			...value,
+			roots: [{ ...root, transitiveEffects: ['network'] }],
+		}),
+		(error: unknown) => error instanceof SemanticSnapshotError
+			&& error.path === '$.roots[0].transitiveEffects'
+			&& /must include direct effect write/u.test(error.message),
+	);
+
+	const unknownTransitive = createExperimentalSemanticSnapshot({
+		...value,
+		roots: [{
+			...root,
+			transitiveEffects: [],
+			dimensions: {
+				...root.dimensions,
+				transitiveEffects: dimension('unknown', 'src/workflow.virune', ['transitive effect closure is unavailable']),
+			},
+		}],
+	});
+	assert.equal(unknownTransitive.roots[0]?.dimensions.directEffects.coverage, 'modeled');
+	assert.equal(unknownTransitive.roots[0]?.dimensions.transitiveEffects.coverage, 'unknown');
+	assert.equal(unknownTransitive.roots[0]?.coverage, 'unknown');
 });
 
 test('allEnumeratedRootsModeled does not claim the analyzer enumerated every program root', () => {
@@ -297,9 +333,9 @@ test('dimension coverage validates reasons, provenance, and modeled fact complet
 	const value = input();
 	const root = value.roots[0]!;
 	const cases: readonly [string, SemanticRootInputV1][] = [
-		['$.roots[0].dimensions.effects.reasons', {
+		['$.roots[0].dimensions.directEffects.reasons', {
 			...root,
-			dimensions: { ...root.dimensions, effects: { ...root.dimensions.effects, reasons: ['incomplete'] } },
+			dimensions: { ...root.dimensions, directEffects: { ...root.dimensions.directEffects, reasons: ['incomplete'] } },
 		}],
 		['$.roots[0].panic', { ...root, panic: 'unknown' }],
 		['$.roots[0].discard', { ...root, discard: 'unknown' }],
@@ -307,11 +343,11 @@ test('dimension coverage validates reasons, provenance, and modeled fact complet
 			...root,
 			interop: [{ specifier: 'node:crypto', tier: 'unknown', assumptions: [] }],
 		}],
-		['$.roots[0].dimensions.effects.sourceEvidence', {
+		['$.roots[0].dimensions.directEffects.sourceEvidence', {
 			...root,
 			dimensions: {
 				...root.dimensions,
-				effects: { ...root.dimensions.effects, sourceEvidence: [] },
+				directEffects: { ...root.dimensions.directEffects, sourceEvidence: [] },
 			},
 		}],
 	];
@@ -331,13 +367,13 @@ test('non-modeled dimensions require a substantive explicit reason', () => {
 			...root,
 			dimensions: {
 				...root.dimensions,
-				effects: { ...root.dimensions.effects, coverage: 'unknown', reasons },
+				transitiveEffects: { ...root.dimensions.transitiveEffects, coverage: 'unknown', reasons },
 			},
 		};
 		assert.throws(
 			() => createExperimentalSemanticSnapshot({ ...value, roots: [changed] }),
 			(error: unknown) => error instanceof SemanticSnapshotError
-				&& error.path.startsWith('$.roots[0].dimensions.effects.reasons'),
+				&& error.path.startsWith('$.roots[0].dimensions.transitiveEffects.reasons'),
 		);
 	}
 });
@@ -373,18 +409,24 @@ test('input closure and source evidence reject malformed or non-contained identi
 	}
 
 	const root = value.roots[0]!;
-	for (const sourcePath of ['../../outside.virune', 'src/../other.virune']) {
+	for (const sourcePath of [
+		'../../outside.virune',
+		'src/../other.virune',
+		'file:///tmp/source.virune',
+		'https://example.test/source.virune',
+		'node:fs',
+	]) {
 		const changed: SemanticRootInputV1 = {
 			...root,
 			dimensions: {
 				...root.dimensions,
-				effects: dimension('modeled', sourcePath),
+				directEffects: dimension('modeled', sourcePath),
 			},
 		};
 		assert.throws(
 			() => createExperimentalSemanticSnapshot({ ...value, roots: [changed] }),
 			(error: unknown) => error instanceof SemanticSnapshotError
-				&& error.path === '$.roots[0].dimensions.effects.sourceEvidence[0].sourcePath',
+				&& error.path === '$.roots[0].dimensions.directEffects.sourceEvidence[0].sourcePath',
 		);
 	}
 });
@@ -397,7 +439,7 @@ test('case-colliding source paths fail closed across semantic dimensions', () =>
 		...second,
 		dimensions: withDimensionSourcePath(second.dimensions, 'src/Workflow.virune'),
 	};
-	assert.equal(first.dimensions.effects.sourceEvidence[0]?.sourcePath, 'src/workflow.virune');
+	assert.equal(first.dimensions.directEffects.sourceEvidence[0]?.sourcePath, 'src/workflow.virune');
 	assert.throws(
 		() => createExperimentalSemanticSnapshot({ ...value, roots: [first, changed] }),
 		(error: unknown) => error instanceof SemanticSnapshotError
