@@ -47,6 +47,7 @@ const groups = platformSmoke ? platformGroups : [
 			failureOutput: '.cache/selfhost-mvp-test-failure.log',
 		},
 		{ name: 'documentation example policy', files: ['scripts/verify-documentation-examples.test.mjs'] },
+		{ name: 'npm publication plan policy', files: ['scripts/verify-npm-publication-plan.test.mjs'] },
 		{
 			name: 'documentation examples',
 			command: ['scripts/verify-documentation-examples.mjs'],
