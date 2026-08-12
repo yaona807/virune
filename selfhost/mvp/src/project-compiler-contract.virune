@@ -170,6 +170,11 @@ record ParsedMvpProjectSource {
 	moduleValue: MvpModule
 }
 
+record MvpProjectParseSummary {
+	diagnostics: List<ProjectCompilerDiagnosticV1>
+	modules: List<ParsedMvpProjectSource>
+}
+
 record ProjectExternalSignature derives Json {
 	name: String
 	parameters: List<MvpType>
@@ -222,6 +227,17 @@ fn diagnostic(code: String, message: String) -> ProjectCompilerDiagnosticV1 {
 		severity: "error",
 		message: message,
 		sourcePath: None,
+		span: fallbackSpan(),
+		notes: emptyTextList(),
+	}
+}
+
+fn loweringDiagnostic(path: String, code: String, message: String) -> ProjectCompilerDiagnosticV1 {
+	return ProjectCompilerDiagnosticV1 {
+		code: code,
+		severity: "error",
+		message: message,
+		sourcePath: Some(path),
 		span: fallbackSpan(),
 		notes: emptyTextList(),
 	}
@@ -384,32 +400,44 @@ fn parseProjectSources(sources: List<ProjectCompilerSourceV1>) -> Result<Project
 	})
 }
 
-fn emptyMvpModule() -> MvpModule {
-	let imports: List<MvpImport> = []
-	let functions: List<MvpFunction> = []
-	return MvpModule { imports: imports, functions: functions }
-}
-
 fn parseMvpProjectSources(
 	sources: List<ProjectCompilerSourceV1>,
-) -> Result<List<ParsedMvpProjectSource>, List<JsonError>> {
-	let mut values: List<ParsedMvpProjectSource> = []
+) -> Result<MvpProjectParseSummary, List<JsonError>> {
+	let mut diagnostics: List<ProjectCompilerDiagnosticV1> = []
+	let mut modules: List<ParsedMvpProjectSource> = []
 	for source in sources {
 		let lexed = lexMvpJson(source.text)?
 		let parsedEncoded = parseMvpJson(lexed)?
 		let raw = Json.parse(parsedEncoded)?
 		let parsed = Json.decode<MvpParseTransport>(raw)?
-		let moduleValue = match parsed.parsedModule {
-			Some(value) => value
-			None => emptyMvpModule()
+		for value in parsed.diagnostics {
+			diagnostics = List.append(diagnostics, mvpDiagnostic(source.path, value))
 		}
-		values = List.append(values, ParsedMvpProjectSource {
-			path: source.path,
-			parsedEncoded: parsedEncoded,
-			moduleValue: moduleValue,
-		})
+		match parsed.parsedModule {
+			Some(moduleValue) => {
+				if List.isEmpty(parsed.diagnostics) {
+					modules = List.append(modules, ParsedMvpProjectSource {
+						path: source.path,
+						parsedEncoded: parsedEncoded,
+						moduleValue: moduleValue,
+					})
+				}
+			}
+			None => {
+				if List.isEmpty(parsed.diagnostics) {
+					diagnostics = List.append(diagnostics, loweringDiagnostic(
+						source.path,
+						"SHP3301",
+						"MVP lowering parser returned no module without diagnostics",
+					))
+				}
+			}
+		}
 	}
-	return Ok(values)
+	return Ok(MvpProjectParseSummary {
+		diagnostics: diagnostics,
+		modules: modules,
+	})
 }
 
 fn findParsedMvpSource(
@@ -631,7 +659,16 @@ fn lowerProjectSources(
 	sources: List<ProjectCompilerSourceV1>,
 	dependencies: List<ProjectLinkDependency>,
 ) -> Result<ProjectLoweringSummary, List<JsonError>> {
-	let parsedSources = parseMvpProjectSources(sources)?
+	let parsed = parseMvpProjectSources(sources)?
+	if !List.isEmpty(parsed.diagnostics) {
+		let modules: List<ProjectEmitterModule> = []
+		return Ok(ProjectLoweringSummary {
+			diagnostics: parsed.diagnostics,
+			modules: modules,
+			checkedModules: 0,
+		})
+	}
+	let parsedSources = parsed.modules
 	let mut diagnostics: List<ProjectCompilerDiagnosticV1> = []
 	let mut modules: List<ProjectEmitterModule> = []
 	let mut checkedModules = 0
