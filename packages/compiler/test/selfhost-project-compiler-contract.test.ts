@@ -163,7 +163,7 @@ test('malformed project source returns path-aware frontend diagnostics before pr
 	});
 });
 
-test('frontend-accepted syntax unsupported by MVP lowering fails closed without losing export metadata', async () => {
+test('type-only record declarations lower without losing frontend export metadata', async () => {
 	await withGeneratedCompiler((module, input) => {
 		const projectInput: ProjectInput = {
 			...input,
@@ -174,16 +174,43 @@ test('frontend-accepted syntax unsupported by MVP lowering fails closed without 
 			}],
 		};
 		const result = compileWithProjectCompilerBoundary(module, projectInput);
+		assert.equal(result.accepted, true);
+		assert.deepEqual(result.diagnostics, []);
+		assert.equal(result.stats.parsedModules, 1);
+		assert.equal(result.stats.checkedModules, 1);
+		assert.equal(result.stats.emittedModules, 1);
+		assert.deepEqual(result.dependencies, []);
+		assert.deepEqual(result.exportedSymbols, [
+			{ modulePath: 'src/main.virune', name: 'User', declarationKind: 'RecordDeclaration' },
+		]);
+		assert.equal(result.emittedModules.length, 1);
+		assert.equal(result.emittedModules[0]?.sourcePath, 'src/main.virune');
+		assert.ok(result.emittedModules[0]?.code.startsWith(`${BASE_RUNTIME_IMPORT_LINE}\n`));
+		assert.doesNotMatch(result.emittedModules[0]?.code ?? '', /record User/u);
+	});
+});
+
+test('frontend-accepted executable syntax unsupported by MVP lowering fails closed before checking or emission', async () => {
+	await withGeneratedCompiler((module, input) => {
+		const projectInput: ProjectInput = {
+			...input,
+			entryPath: 'src/main.virune',
+			sources: [{
+				path: 'src/main.virune',
+				text: 'pub fn main() -> Int {\n\tdiscard 1\n\treturn 1\n}\n',
+			}],
+		};
+		const result = compileWithProjectCompilerBoundary(module, projectInput);
 		assert.equal(result.accepted, false);
 		assert.equal(result.stats.parsedModules, 1);
 		assert.equal(result.stats.checkedModules, 0);
 		assert.equal(result.stats.emittedModules, 0);
 		assert.deepEqual(result.dependencies, []);
 		assert.deepEqual(result.exportedSymbols, [
-			{ modulePath: 'src/main.virune', name: 'User', declarationKind: 'RecordDeclaration' },
+			{ modulePath: 'src/main.virune', name: 'main', declarationKind: 'FunctionDeclaration' },
 		]);
 		assert.deepEqual(result.emittedModules, []);
-		assert.ok(result.diagnostics.length > 0);
+		assert.deepEqual(result.diagnostics.map(item => item.code), ['L0002']);
 		assert.ok(result.diagnostics.every(item => item.sourcePath === 'src/main.virune'));
 		assert.ok(result.diagnostics.every(item => item.severity === 'error'));
 	});
@@ -256,7 +283,10 @@ test('invalid contract data and malformed JSON fail closed', async () => {
 			readonly accepted: boolean;
 			readonly diagnostics: readonly {
 				readonly code: string;
+				readonly severity: 'error';
+				readonly message: string;
 				readonly sourcePath: string | null;
+				readonly span: unknown;
 				readonly notes: readonly string[];
 			}[];
 			readonly emittedModules: readonly unknown[];
