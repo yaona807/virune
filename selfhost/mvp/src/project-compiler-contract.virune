@@ -258,6 +258,7 @@ fn loweringDiagnostic(path: String, code: String, message: String) -> ProjectCom
 		notes: emptyTextList(),
 	}
 }
+
 fn sourceDiagnostic(path: String, value: ParserDiagnostic) -> ProjectCompilerDiagnosticV1 {
 	return ProjectCompilerDiagnosticV1 {
 		code: value.code,
@@ -541,24 +542,9 @@ fn semanticType(
 }
 
 fn semanticTypeText(values: List<SemanticType>, id: Int) -> String? {
-	let candidate = semanticType(values, id)
-	if match candidate { Some(_) => false, None => true } {
-		return None
-	}
-	let value = match candidate {
+	let value = match semanticType(values, id) {
 		Some(item) => item
-		None => SemanticType {
-			id: -1,
-			kind: "error",
-			name: "",
-			declarationId: None,
-			arguments: [],
-			instantiationId: None,
-			span: match semanticType(values, 0) {
-				Some(item) => item.span
-				None => return None
-			},
-		}
+		None => return None
 	}
 	if value.kind == "error" || value.kind == "missing" || value.kind == "tuple" || value.kind == "function" || value.kind == "type-parameter" || String.length(value.name) == 0 {
 		return None
@@ -670,7 +656,7 @@ fn enumConstructorSignatures(
 		Some(value) => value
 		None => return Ok(signatures)
 	}
-	if declaration.kind != "enum" || !declaration.isPublic {
+	if declaration.kind != "enum" || !declaration.isPublic || !List.isEmpty(declaration.typeParameters) {
 		return Ok(signatures)
 	}
 	for memberId in declaration.memberIds {
