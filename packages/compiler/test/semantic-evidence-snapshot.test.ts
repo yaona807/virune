@@ -263,7 +263,7 @@ test('duplicate semantic identities fail closed instead of being silently dedupl
 	);
 });
 
-test('input closure and source evidence reject malformed or escaping identity', () => {
+test('input closure and source evidence reject malformed or non-contained identity', () => {
 	const value = input();
 	for (const closure of [
 		{ ...value.closure, analyzerSha256: 'not-a-hash' },
@@ -276,15 +276,17 @@ test('input closure and source evidence reject malformed or escaping identity', 
 	}
 
 	const root = value.roots[0]!;
-	assert.throws(
-		() => createExperimentalSemanticSnapshot({
-			...value,
-			roots: [{
-				...root,
-				sourceEvidence: [{ sourcePath: '../../outside.virune', startOffset: 0, endOffset: 1 }],
-			}],
-		}),
-		(error: unknown) => error instanceof SemanticSnapshotError
-			&& error.path === '$.roots[0].sourceEvidence[0].sourcePath',
-	);
+	for (const sourcePath of ['../../outside.virune', 'src/../other.virune']) {
+		assert.throws(
+			() => createExperimentalSemanticSnapshot({
+				...value,
+				roots: [{
+					...root,
+					sourceEvidence: [{ sourcePath, startOffset: 0, endOffset: 1 }],
+				}],
+			}),
+			(error: unknown) => error instanceof SemanticSnapshotError
+				&& error.path === '$.roots[0].sourceEvidence[0].sourcePath',
+		);
+	}
 });
