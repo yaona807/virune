@@ -70,6 +70,21 @@ test('prepublication audit fails if a planned package becomes publishable early'
 	});
 });
 
+test('dependency sections must remain package-name maps', () => {
+	for (const section of dependencySections) {
+		withFixture(root => {
+			const path = resolve(root, 'packages/compiler/package.json');
+			const manifest = readJson(path);
+			manifest[section] = [];
+			writeJson(path, manifest);
+			assert.throws(
+				() => verifyNpmPublicationPlan(root),
+				new RegExp(`\\.compiler\\.${section}: expected an object`, 'u'),
+			);
+		});
+	}
+});
+
 test('internal Virune dependencies stay on the exact reviewed release version in every dependency section', () => {
 	for (const section of dependencySections) {
 		withFixture(root => {
