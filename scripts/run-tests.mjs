@@ -48,6 +48,12 @@ const groups = platformSmoke ? platformGroups : [
 		},
 		{ name: 'documentation example policy', files: ['scripts/verify-documentation-examples.test.mjs'] },
 		{ name: 'npm publication plan policy', files: ['scripts/verify-npm-publication-plan.test.mjs'] },
+		{ name: 'npm package contents audit policy', files: ['scripts/verify-npm-package-contents.test.mjs'] },
+		{
+			name: 'npm package contents audit',
+			command: ['scripts/verify-npm-package-contents.mjs'],
+			failureOutput: '.cache/unit-test-failure.log',
+		},
 		{
 			name: 'documentation examples',
 			command: ['scripts/verify-documentation-examples.mjs'],
