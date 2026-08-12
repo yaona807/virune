@@ -82,7 +82,13 @@ function input(): SemanticSnapshotInputV1 {
 				root: 'src/workflow.virune::submit',
 				dimensions: {
 					...modeledDimensions('src/workflow.virune'),
-					publicAbi: dimension('modeled', './src/workflow.virune'),
+					publicAbi: {
+						...dimension('modeled', './src/workflow.virune'),
+						sourceEvidence: [
+							{ sourcePath: 'src/workflow.virune', startOffset: 20, endOffset: 30 },
+							{ sourcePath: './src/workflow.virune', startOffset: 0, endOffset: 10 },
+						],
+					},
 				},
 				implementationSha256: D,
 				publicAbi: [
@@ -178,7 +184,10 @@ test('experimental Semantic Snapshot is byte-deterministic across input ordering
 		'src/workflow.virune::submit',
 	]);
 	assert.deepEqual(first.roots[1]?.directEffects, ['network', 'write']);
-	assert.equal(first.roots[1]?.dimensions.publicAbi.sourceEvidence[0]?.sourcePath, 'src/workflow.virune');
+	assert.deepEqual(first.roots[1]?.dimensions.publicAbi.sourceEvidence, [
+		{ sourcePath: 'src/workflow.virune', startOffset: 0, endOffset: 10 },
+		{ sourcePath: 'src/workflow.virune', startOffset: 20, endOffset: 30 },
+	]);
 	assert.deepEqual(first.roots[1]?.dimensions.interop.assumptions, ['runtime binding checked', 'static contract checked']);
 });
 
@@ -202,6 +211,23 @@ test('serialization recomputes aggregate coverage instead of trusting a snapshot
 	assert.equal(parsed.coverage.unknown, 1);
 	assert.equal(parsed.coverage.allEnumeratedRootsModeled, false);
 	assert.equal(parsed.roots[0]?.coverage, 'unknown');
+});
+
+test('implementation-only change remains visible without a modeled fact delta', () => {
+	const value = input();
+	const root = value.roots[0]!;
+	const baseline = createExperimentalSemanticSnapshot({ ...value, roots: [root] });
+	const changed = createExperimentalSemanticSnapshot({
+		...value,
+		roots: [{ ...root, implementationSha256: B }],
+	});
+	const baselineRoot = baseline.roots[0]!;
+	const changedRoot = changed.roots[0]!;
+	const { implementationSha256: baselineImplementation, ...baselineFacts } = baselineRoot;
+	const { implementationSha256: changedImplementation, ...changedFacts } = changedRoot;
+	assert.notEqual(baselineImplementation, changedImplementation);
+	assert.deepEqual(baselineFacts, changedFacts);
+	assert.notEqual(serializeExperimentalSemanticSnapshot(baseline), serializeExperimentalSemanticSnapshot(changed));
 });
 
 test('root discovery scope is explicit and fail-closed', () => {
@@ -266,6 +292,27 @@ test('coverage is derived conservatively from independent semantic dimensions', 
 		modeled: 0,
 		partial: 1,
 		opaque: 0,
+		unknown: 0,
+		allEnumeratedRootsModeled: false,
+	});
+
+	const opaque = createExperimentalSemanticSnapshot({
+		...value,
+		roots: [{
+			...root,
+			dimensions: {
+				...root.dimensions,
+				transitiveEffects: dimension('opaque', 'src/workflow.virune', ['transitive effect boundary is opaque']),
+			},
+		}],
+	});
+	assert.equal(opaque.roots[0]?.dimensions.transitiveEffects.coverage, 'opaque');
+	assert.equal(opaque.roots[0]?.coverage, 'opaque');
+	assert.deepEqual(opaque.coverage, {
+		enumeratedRoots: 1,
+		modeled: 0,
+		partial: 0,
+		opaque: 1,
 		unknown: 0,
 		allEnumeratedRootsModeled: false,
 	});
