@@ -196,16 +196,17 @@ function canonicalRoot(value: SemanticRootInputV1, path: string): SemanticRootSn
 	const panic = oneOf(value.panic, ['yes', 'no', 'unknown'] as const, `${path}.panic`);
 	const discard = oneOf(value.discard, ['yes', 'no', 'unknown'] as const, `${path}.discard`);
 
-	if (dimensions.transitiveEffects.coverage === 'modeled') {
-		if (dimensions.directEffects.coverage === 'opaque' || dimensions.directEffects.coverage === 'unknown') {
-			throw new SemanticSnapshotError(
-				`${path}.dimensions.transitiveEffects.coverage`,
-				'modeled transitive effects require direct effects coverage to be modeled or partial',
-			);
-		}
+	if (dimensions.transitiveEffects.coverage === 'modeled'
+		&& (dimensions.directEffects.coverage === 'opaque' || dimensions.directEffects.coverage === 'unknown')) {
+		throw new SemanticSnapshotError(
+			`${path}.dimensions.transitiveEffects.coverage`,
+			'modeled transitive effects require direct effects coverage to be modeled or partial',
+		);
+	}
+	if (dimensions.transitiveEffects.coverage === 'modeled' || dimensions.transitiveEffects.coverage === 'partial') {
 		for (const effect of directEffects) {
 			if (!transitiveEffects.includes(effect)) {
-				throw new SemanticSnapshotError(`${path}.transitiveEffects`, `modeled transitive effects must include direct effect ${effect}`);
+				throw new SemanticSnapshotError(`${path}.transitiveEffects`, `${dimensions.transitiveEffects.coverage} transitive effects must include direct effect ${effect}`);
 			}
 		}
 	}
