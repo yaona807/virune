@@ -227,6 +227,17 @@ fn diagnostic(code: String, message: String) -> ProjectCompilerDiagnosticV1 {
 	}
 }
 
+fn loweringDiagnostic(path: String, code: String, message: String) -> ProjectCompilerDiagnosticV1 {
+	return ProjectCompilerDiagnosticV1 {
+		code: code,
+		severity: "error",
+		message: message,
+		sourcePath: Some(path),
+		span: fallbackSpan(),
+		notes: emptyTextList(),
+	}
+}
+
 fn sourceDiagnostic(path: String, value: ParserDiagnostic) -> ProjectCompilerDiagnosticV1 {
 	return ProjectCompilerDiagnosticV1 {
 		code: value.code,
@@ -384,32 +395,20 @@ fn parseProjectSources(sources: List<ProjectCompilerSourceV1>) -> Result<Project
 	})
 }
 
-fn emptyMvpModule() -> MvpModule {
-	let imports: List<MvpImport> = []
-	let functions: List<MvpFunction> = []
-	return MvpModule { imports: imports, functions: functions }
-}
-
-fn parseMvpProjectSources(
-	sources: List<ProjectCompilerSourceV1>,
-) -> Result<List<ParsedMvpProjectSource>, List<JsonError>> {
-	let mut values: List<ParsedMvpProjectSource> = []
-	for source in sources {
-		let lexed = lexMvpJson(source.text)?
-		let parsedEncoded = parseMvpJson(lexed)?
-		let raw = Json.parse(parsedEncoded)?
-		let parsed = Json.decode<MvpParseTransport>(raw)?
-		let moduleValue = match parsed.parsedModule {
-			Some(value) => value
-			None => emptyMvpModule()
-		}
-		values = List.append(values, ParsedMvpProjectSource {
+fn appendParsedMvpProjectSource(
+	values: List<ParsedMvpProjectSource>,
+	source: ProjectCompilerSourceV1,
+	parsedEncoded: String,
+	parsedModule: MvpModule?,
+) -> List<ParsedMvpProjectSource> {
+	return match parsedModule {
+		Some(moduleValue) => List.append(values, ParsedMvpProjectSource {
 			path: source.path,
 			parsedEncoded: parsedEncoded,
 			moduleValue: moduleValue,
 		})
+		None => values
 	}
-	return Ok(values)
 }
 
 fn findParsedMvpSource(
@@ -627,12 +626,51 @@ fn modulePreamble(
 	return Ok(lines)
 }
 
+fn rejectedLowering(diagnostics: List<ProjectCompilerDiagnosticV1>) -> ProjectLoweringSummary {
+	let modules: List<ProjectEmitterModule> = []
+	return ProjectLoweringSummary {
+		diagnostics: diagnostics,
+		modules: modules,
+		checkedModules: 0,
+	}
+}
+
 fn lowerProjectSources(
 	sources: List<ProjectCompilerSourceV1>,
 	dependencies: List<ProjectLinkDependency>,
 ) -> Result<ProjectLoweringSummary, List<JsonError>> {
-	let parsedSources = parseMvpProjectSources(sources)?
 	let mut diagnostics: List<ProjectCompilerDiagnosticV1> = []
+	let mut parsedSources: List<ParsedMvpProjectSource> = []
+	for source in sources {
+		let lexed = lexMvpJson(source.text)?
+		let parsedEncoded = parseMvpJson(lexed)?
+		let raw = Json.parse(parsedEncoded)?
+		let parsed = Json.decode<MvpParseTransport>(raw)?
+		let hasParseDiagnostics = !List.isEmpty(parsed.diagnostics)
+		for value in parsed.diagnostics {
+			diagnostics = List.append(diagnostics, mvpDiagnostic(source.path, value))
+		}
+		let hasParsedModule = match parsed.parsedModule { Some(_) => true, None => false }
+		if !hasParseDiagnostics && !hasParsedModule {
+			diagnostics = List.append(diagnostics, loweringDiagnostic(
+				source.path,
+				"SHP3301",
+				"MVP lowering parser returned no module without diagnostics",
+			))
+		}
+		if !hasParseDiagnostics && hasParsedModule {
+			parsedSources = appendParsedMvpProjectSource(
+				parsedSources,
+				source,
+				parsedEncoded,
+				parsed.parsedModule,
+			)
+		}
+	}
+	if !List.isEmpty(diagnostics) {
+		return Ok(rejectedLowering(diagnostics))
+	}
+
 	let mut modules: List<ProjectEmitterModule> = []
 	let mut checkedModules = 0
 	for source in parsedSources {
