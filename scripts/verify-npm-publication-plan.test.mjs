@@ -18,18 +18,28 @@ const workspaceDirectories = [
 	'vscode',
 ];
 
+const unresolvedRequirements = [
+	'clean-registry-install-smoke',
+	'documentation-sync',
+	'generated-project-registry-smoke',
+	'package-contents-audit',
+	'package-publication-enablement',
+	'public-registry-verification',
+	'publication-gate-integration',
+	'recovery-policy',
+	'registry-ownership',
+	'release-identity-integration',
+	'stable-prerelease-dist-tag-policy',
+	'trusted-publishing',
+];
+
 test('current repository has a complete but explicitly non-ready npm prepublication plan', () => {
 	const result = verifyNpmPublicationPlan(repositoryRoot);
 	assert.deepEqual(result, {
 		schemaVersion: 1,
 		stage: 'prepublication-audit',
 		publicationReady: false,
-		unresolvedRequirements: [
-			'public-registry-verification',
-			'registry-ownership',
-			'release-identity-integration',
-			'trusted-publishing',
-		],
+		unresolvedRequirements,
 		currentVersion: '1.0.0',
 		firstStableRegistryRelease: '1.1.0',
 		publishPackages: [
@@ -86,7 +96,7 @@ test('registry package names must match current workspace package identities', (
 	}
 });
 
-test('every workspace package must be explicitly public or excluded', () => {
+test('every workspace package must be explicitly public or excluded with a substantive reason', () => {
 	withFixture(root => {
 		const path = resolve(root, '.github/release/npm-publication-v1.json');
 		const plan = readJson(path);
@@ -97,9 +107,52 @@ test('every workspace package must be explicitly public or excluded', () => {
 			/workspace package missing from publication plan: language-server/u,
 		);
 	});
+	withFixture(root => {
+		const path = resolve(root, '.github/release/npm-publication-v1.json');
+		const plan = readJson(path);
+		plan.excludedWorkspacePackages.find(item => item.directory === 'language-server').reason = '   ';
+		writeJson(path, plan);
+		assert.throws(
+			() => verifyNpmPublicationPlan(root),
+			/excludedWorkspacePackages\[0\]\.reason: expected a non-empty non-whitespace string/u,
+		);
+	});
 });
 
-test('prepublication plan cannot claim readiness while required external work is unresolved', () => {
+test('publishable package metadata requires exports and a substantive unique files allowlist', () => {
+	withFixture(root => {
+		const path = resolve(root, 'packages/runtime/package.json');
+		const manifest = readJson(path);
+		delete manifest.exports;
+		writeJson(path, manifest);
+		assert.throws(
+			() => verifyNpmPublicationPlan(root),
+			/\.runtime\.exports: non-empty exports metadata is required/u,
+		);
+	});
+	withFixture(root => {
+		const path = resolve(root, 'packages/runtime/package.json');
+		const manifest = readJson(path);
+		manifest.files = ['   '];
+		writeJson(path, manifest);
+		assert.throws(
+			() => verifyNpmPublicationPlan(root),
+			/\.runtime\.files\[0\]: expected a non-empty non-whitespace string/u,
+		);
+	});
+	withFixture(root => {
+		const path = resolve(root, 'packages/runtime/package.json');
+		const manifest = readJson(path);
+		manifest.files = ['dist/src', 'dist/src'];
+		writeJson(path, manifest);
+		assert.throws(
+			() => verifyNpmPublicationPlan(root),
+			/\.runtime\.files: duplicate file dist\/src/u,
+		);
+	});
+});
+
+test('prepublication plan cannot claim readiness while required work is unresolved', () => {
 	withFixture(root => {
 		const path = resolve(root, '.github/release/npm-publication-v1.json');
 		const plan = readJson(path);
@@ -116,7 +169,7 @@ test('prepublication blockers cannot be silently dropped', () => {
 	withFixture(root => {
 		const path = resolve(root, '.github/release/npm-publication-v1.json');
 		const plan = readJson(path);
-		plan.unresolvedRequirements = plan.unresolvedRequirements.filter(item => item !== 'registry-ownership');
+		plan.unresolvedRequirements = plan.unresolvedRequirements.filter(item => item !== 'package-contents-audit');
 		writeJson(path, plan);
 		assert.throws(
 			() => verifyNpmPublicationPlan(root),
