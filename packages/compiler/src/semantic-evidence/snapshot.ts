@@ -301,11 +301,7 @@ function normalizedSourcePath(value: string, path: string): string {
 	const parts: string[] = [];
 	for (const segment of text.split('/')) {
 		if (segment.length === 0 || segment === '.') continue;
-		if (segment === '..') {
-			if (parts.length === 0) throw new SemanticSnapshotError(path, 'path escapes the source root');
-			parts.pop();
-			continue;
-		}
+		if (segment === '..') throw new SemanticSnapshotError(path, 'parent path segments are not allowed');
 		parts.push(segment);
 	}
 	if (parts.length === 0) throw new SemanticSnapshotError(path, 'path must identify a source');
