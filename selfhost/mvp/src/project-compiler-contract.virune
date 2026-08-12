@@ -526,7 +526,7 @@ fn compileMvpSource(
 }
 
 fn runtimeImportLine() -> String {
-	return "import { intAdd, intDivide, intMultiply, intNegate, intRemainder, intSubtract, isPropagation, propagate, rootTaskContext, viruneEquals } from '@virune/runtime/v2/index.js';"
+	return "import { Err, None, Ok, Some, checkForeignBigInt, checkForeignBool, checkForeignFloat, checkForeignString, debugValue, decodeJsonValue, defensiveCopy, byteCreate, bytesConcat, bytesEmpty, bytesFromBase64, bytesFromHex, bytesFromUtf8, bytesGet, bytesLength, bytesReadInt32, bytesSet, bytesSlice, bytesToBase64, bytesToHex, bytesToUtf8, bytesWriteInt32, mutableBytesCreate, mutableBytesFill, mutableBytesFromBytes, mutableBytesGet, mutableBytesLength, mutableBytesSet, mutableBytesToBytes, durationHours, durationMilliseconds, durationMinutes, durationSeconds, durationToMilliseconds, encodeFfiValue, encodeJsonValue, floatToInt, int16Create, int16ToInt, int32Create, int32ToInt, int64Create, int64ToBigInt, int8Create, int8ToInt, intAdd, intDivide, intMultiply, intNegate, intRemainder, intSubtract, isPropagation, listAll, listAny, listAppend, listConcat, listDrop, listEnumerate, listFilter, listFind, listFirst, listFlatMap, listFold, listGet, listIsEmpty, listIsNotEmpty, listLast, listLength, listMap, listPrepend, listReverse, listTake, listUnique, listUniqueBy, listZip, makeRecord, makeVariant, mapEmpty, mapEntries, mapGet, mapHas, mapKeys, mapMapValues, mapMerge, mapRemove, mapSet, mapSize, mapValues, optionAndThen, optionCollect, optionFilter, optionMap, optionToResult, optionUnwrapOr, panic, parallel, parallelTry, parseJson, propagate, queueDequeue, queueEmpty, queueEnqueue, resultAndThen, resultCollect, resultCollectErrors, resultMap, resultMapError, resultOrElse, resultToOption, resultUnwrapOr, rootTaskContext, runDefers, runDefersAsync, safeCall, safeCallAsync, setAdd, setDifference, setEmpty, setFrom, setHas, setIntersection, setRemove, setSize, setToList, setUnion, stackEmpty, stackPop, stackPush, streamCollect, streamFilter, streamFromList, streamMap, streamTake, stringAt, stringCodePoints, stringContains, stringGraphemeLength, stringGraphemes, stringEndsWith, stringIsEmpty, stringIsNotEmpty, stringJoin, stringNormalizeNfc, stringNormalizeNfd, stringNormalizeNfkc, stringNormalizeNfkd, stringLength, stringReplace, stringSlice, stringSplit, stringStartsWith, stringToLowerCase, stringToUpperCase, stringTrim, stringTrimEnd, stringTrimStart, taskFirstOkBuiltin, taskMapParallelBuiltin, taskRaceBuiltin, taskRetryBuiltin, taskSleepBuiltin, taskSuperviseBuiltin, taskTimeoutBuiltin, uint16Create, uint16ToInt, uint32Create, uint32ToInt, uint64Create, uint64ToBigInt, uint8Create, uint8ToInt, updateRecord, valid, invalid, validationAndThen, validationCollect, validationMap, validateFfiValue, viruneEquals } from '@virune/runtime/v2/index.js';"
 }
 
 fn splitLines(value: String) -> List<String> {
@@ -576,11 +576,11 @@ fn functionImportLine(
 	importValue: MvpImport,
 	modules: List<ParsedMvpProjectSource>,
 	dependencies: List<ProjectLinkDependency>,
-) -> String {
+) -> Result<String, List<JsonError>> {
 	let targetPath = dependencyTargetPath(dependencies, modulePath, importValue.specifier)
 	let targetValue = findParsedMvpSource(modules, targetPath)
 	if match targetValue { Some(_) => false, None => true } {
-		return ""
+		return Ok("")
 	}
 	let target = match targetValue {
 		Some(value) => value
@@ -606,24 +606,25 @@ fn functionImportLine(
 		}
 	}
 	if first {
-		return ""
+		return Ok("")
 	}
-	return "import { " + bindings + " } from '" + runtimeImportSpecifier(importValue.specifier) + "';"
+	let encodedSpecifier = Json.encode<String>(runtimeImportSpecifier(importValue.specifier))?
+	return Ok("import { " + bindings + " } from " + encodedSpecifier + ";")
 }
 
 fn modulePreamble(
 	projectModule: ParsedMvpProjectSource,
 	modules: List<ParsedMvpProjectSource>,
 	dependencies: List<ProjectLinkDependency>,
-) -> List<String> {
+) -> Result<List<String>, List<JsonError>> {
 	let mut lines: List<String> = [runtimeImportLine()]
 	for importValue in projectModule.moduleValue.imports {
-		let line = functionImportLine(projectModule.path, importValue, modules, dependencies)
+		let line = functionImportLine(projectModule.path, importValue, modules, dependencies)?
 		if String.length(line) > 0 {
 			lines = List.append(lines, line)
 		}
 	}
-	return lines
+	return Ok(lines)
 }
 
 fn lowerProjectSources(
@@ -647,7 +648,7 @@ fn lowerProjectSources(
 			modules = List.append(modules, ProjectEmitterModule {
 				sourcePath: source.path,
 				outputPath: outputPath(source.path),
-				preamble: modulePreamble(source, parsedSources, dependencies),
+				preamble: modulePreamble(source, parsedSources, dependencies)?,
 				statements: splitLines(compilation.codeBody),
 				sourceMap: "",
 			})

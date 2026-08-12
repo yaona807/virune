@@ -65,6 +65,26 @@ test('legacy self-comparison covers compilation and Node runtime with zero diffe
 	assert.equal(report.left.runtime?.returnValue, 7);
 });
 
+test('Legacy kernel preserves source maps only when requested', async () => {
+	const value = input();
+	const enabled = await compileWithLegacyKernel(value);
+	assert.ok(enabled.emittedModules.length > 0);
+	for (const module of enabled.emittedModules) {
+		assert.notEqual(module.sourceMap, '');
+		assert.match(module.code, /sourceMappingURL/u);
+	}
+
+	const disabled = await compileWithLegacyKernel({
+		...value,
+		emit: { ...value.emit, sourceMap: false },
+	});
+	assert.equal(disabled.emittedModules.length, enabled.emittedModules.length);
+	for (const module of disabled.emittedModules) {
+		assert.equal(module.sourceMap, '');
+		assert.doesNotMatch(module.code, /sourceMappingURL/u);
+	}
+});
+
 test('canonical ordering and source-map key order do not create differences', async () => {
 	const left = { name: 'left', async compile() { return output(); } } satisfies DifferentialKernelV1;
 	const right = {

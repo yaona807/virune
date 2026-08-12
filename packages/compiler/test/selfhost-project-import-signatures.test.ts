@@ -59,7 +59,7 @@ test('project lowering resolves imported function signatures and emits aliases',
 		}]);
 		const main = result.emittedModules.find(item => item.sourcePath === 'src/main.virune');
 		assert.ok(main);
-		assert.match(main.code, /import \{ double as twice \} from '\.\/helper\.js';/u);
+		assert.match(main.code, /import \{ double as twice \} from "\.\/helper\.js";/u);
 		assert.match(main.code, /twice\(/u);
 	} finally {
 		await rm(root, { recursive: true, force: true });
