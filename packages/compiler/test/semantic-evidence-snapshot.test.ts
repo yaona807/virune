@@ -271,7 +271,7 @@ test('coverage is derived conservatively from independent semantic dimensions', 
 	});
 });
 
-test('modeled transitive effects require resolved direct coverage and include known direct effects', () => {
+test('modeled and partial transitive effects preserve known direct-effect consistency', () => {
 	const value = input();
 	const root = value.roots[0]!;
 	assert.throws(
@@ -303,6 +303,21 @@ test('modeled transitive effects require resolved direct coverage and include kn
 	const acceptedPartial = createExperimentalSemanticSnapshot({ ...value, roots: [partialDirect] });
 	assert.equal(acceptedPartial.roots[0]?.dimensions.transitiveEffects.coverage, 'modeled');
 	assert.equal(acceptedPartial.roots[0]?.coverage, 'partial');
+
+	const partialTransitive: SemanticRootInputV1 = {
+		...root,
+		transitiveEffects: ['network'],
+		dimensions: {
+			...root.dimensions,
+			transitiveEffects: dimension('partial', 'src/workflow.virune', ['transitive effect closure is incomplete']),
+		},
+	};
+	assert.throws(
+		() => createExperimentalSemanticSnapshot({ ...value, roots: [partialTransitive] }),
+		(error: unknown) => error instanceof SemanticSnapshotError
+			&& error.path === '$.roots[0].transitiveEffects'
+			&& /partial transitive effects must include direct effect write/u.test(error.message),
+	);
 
 	for (const directCoverage of ['opaque', 'unknown'] as const) {
 		const changed: SemanticRootInputV1 = {
