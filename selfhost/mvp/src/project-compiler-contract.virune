@@ -400,6 +400,52 @@ fn parseProjectSources(sources: List<ProjectCompilerSourceV1>) -> Result<Project
 	})
 }
 
+fn parsedMvpProjectSourceSummary(
+	source: ProjectCompilerSourceV1,
+	parsedEncoded: String,
+	hasParseDiagnostics: Bool,
+	moduleValue: MvpModule,
+	diagnostics: List<ProjectCompilerDiagnosticV1>,
+	modules: List<ParsedMvpProjectSource>,
+) -> MvpProjectParseSummary {
+	if hasParseDiagnostics {
+		return MvpProjectParseSummary {
+			diagnostics: diagnostics,
+			modules: modules,
+		}
+	}
+	return MvpProjectParseSummary {
+		diagnostics: diagnostics,
+		modules: List.append(modules, ParsedMvpProjectSource {
+			path: source.path,
+			parsedEncoded: parsedEncoded,
+			moduleValue: moduleValue,
+		}),
+	}
+}
+
+fn missingMvpProjectSourceSummary(
+	source: ProjectCompilerSourceV1,
+	hasParseDiagnostics: Bool,
+	diagnostics: List<ProjectCompilerDiagnosticV1>,
+	modules: List<ParsedMvpProjectSource>,
+) -> MvpProjectParseSummary {
+	if hasParseDiagnostics {
+		return MvpProjectParseSummary {
+			diagnostics: diagnostics,
+			modules: modules,
+		}
+	}
+	return MvpProjectParseSummary {
+		diagnostics: List.append(diagnostics, loweringDiagnostic(
+			source.path,
+			"SHP3301",
+			"MVP lowering parser returned no module without diagnostics",
+		)),
+		modules: modules,
+	}
+}
+
 fn parseMvpProjectSources(
 	sources: List<ProjectCompilerSourceV1>,
 ) -> Result<MvpProjectParseSummary, List<JsonError>> {
@@ -410,29 +456,28 @@ fn parseMvpProjectSources(
 		let parsedEncoded = parseMvpJson(lexed)?
 		let raw = Json.parse(parsedEncoded)?
 		let parsed = Json.decode<MvpParseTransport>(raw)?
+		let hasParseDiagnostics = !List.isEmpty(parsed.diagnostics)
 		for value in parsed.diagnostics {
 			diagnostics = List.append(diagnostics, mvpDiagnostic(source.path, value))
 		}
-		match parsed.parsedModule {
-			Some(moduleValue) => {
-				if List.isEmpty(parsed.diagnostics) {
-					modules = List.append(modules, ParsedMvpProjectSource {
-						path: source.path,
-						parsedEncoded: parsedEncoded,
-						moduleValue: moduleValue,
-					})
-				}
-			}
-			None => {
-				if List.isEmpty(parsed.diagnostics) {
-					diagnostics = List.append(diagnostics, loweringDiagnostic(
-						source.path,
-						"SHP3301",
-						"MVP lowering parser returned no module without diagnostics",
-					))
-				}
-			}
+		let summary = match parsed.parsedModule {
+			Some(moduleValue) => parsedMvpProjectSourceSummary(
+				source,
+				parsedEncoded,
+				hasParseDiagnostics,
+				moduleValue,
+				diagnostics,
+				modules,
+			)
+			None => missingMvpProjectSourceSummary(
+				source,
+				hasParseDiagnostics,
+				diagnostics,
+				modules,
+			)
 		}
+		diagnostics = summary.diagnostics
+		modules = summary.modules
 	}
 	return Ok(MvpProjectParseSummary {
 		diagnostics: diagnostics,
