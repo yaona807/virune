@@ -7,9 +7,17 @@ const REPOSITORY_URL = 'git+https://github.com/yaona807/virune.git';
 const HOMEPAGE = 'https://github.com/yaona807/virune#readme';
 const BUGS_URL = 'https://github.com/yaona807/virune/issues';
 const REQUIRED_PREPUBLICATION_BLOCKERS = [
+	'clean-registry-install-smoke',
+	'documentation-sync',
+	'generated-project-registry-smoke',
+	'package-contents-audit',
+	'package-publication-enablement',
 	'public-registry-verification',
+	'publication-gate-integration',
+	'recovery-policy',
 	'registry-ownership',
 	'release-identity-integration',
+	'stable-prerelease-dist-tag-policy',
 	'trusted-publishing',
 ];
 
@@ -92,9 +100,13 @@ export function verifyNpmPublicationPlan(root = process.cwd()) {
 		assert(manifest.repository?.directory === `packages/${item.directory}`, `$.${item.directory}.repository.directory`, 'unexpected repository directory');
 		assert(manifest.homepage === HOMEPAGE, `$.${item.directory}.homepage`, 'unexpected homepage');
 		assert(manifest.bugs?.url === BUGS_URL, `$.${item.directory}.bugs.url`, 'unexpected bugs URL');
-		assert(typeof manifest.license === 'string' && manifest.license.length > 0, `$.${item.directory}.license`, 'license is required');
-		assert(Array.isArray(manifest.files) && manifest.files.length > 0, `$.${item.directory}.files`, 'files allowlist is required');
-		assert(typeof manifest.engines?.node === 'string' && manifest.engines.node.length > 0, `$.${item.directory}.engines.node`, 'Node engine floor is required');
+		assert(typeof manifest.license === 'string' && manifest.license.trim().length > 0, `$.${item.directory}.license`, 'license is required');
+		const files = array(manifest.files, `$.${item.directory}.files`)
+			.map((value, index) => nonEmptyString(value, `$.${item.directory}.files[${index}]`));
+		assert(files.length > 0, `$.${item.directory}.files`, 'files allowlist is required');
+		assertUnique(files, `$.${item.directory}.files`, 'file');
+		assert(hasPackageExports(manifest.exports), `$.${item.directory}.exports`, 'non-empty exports metadata is required');
+		assert(typeof manifest.engines?.node === 'string' && manifest.engines.node.trim().length > 0, `$.${item.directory}.engines.node`, 'Node engine floor is required');
 		assert(manifest.publishConfig === undefined, `$.${item.directory}.publishConfig`, 'publishConfig must be introduced only in the publication-enablement change');
 		for (const [dependency, version] of Object.entries(manifest.dependencies ?? {})) {
 			if (!publishWorkspaceNames.has(dependency)) continue;
@@ -189,7 +201,7 @@ function oneOf(value, values, path) {
 }
 
 function nonEmptyString(value, path) {
-	assert(typeof value === 'string' && value.length > 0, path, 'expected a non-empty string');
+	assert(typeof value === 'string' && value.trim().length > 0, path, 'expected a non-empty non-whitespace string');
 	return value;
 }
 
@@ -201,6 +213,11 @@ function array(value, path) {
 function record(value, path) {
 	assert(value !== null && typeof value === 'object' && !Array.isArray(value), path, 'expected an object');
 	return value;
+}
+
+function hasPackageExports(value) {
+	if (typeof value === 'string') return value.trim().length > 0;
+	return value !== null && typeof value === 'object' && !Array.isArray(value) && Object.keys(value).length > 0;
 }
 
 function assertExactKeys(value, expected, path) {
