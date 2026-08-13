@@ -686,6 +686,10 @@ fn semanticTypeToMvp(values: List<SemanticType>, id: Int) -> MvpType? {
 	return None
 }
 
+fn externalVariantPrefix() -> String {
+	return "$project$"
+}
+
 fn enumConstructorSignatures(
 	binding: MvpImportBinding,
 	targetPath: String,
@@ -742,7 +746,7 @@ fn enumConstructorSignatures(
 				}
 				if supported {
 					signatures = List.append(signatures, ProjectExternalSignature {
-						name: binding.localName + "." + member.name,
+						name: binding.localName + "." + externalVariantPrefix() + member.name,
 						parameters: parameters,
 						returnType: MvpType.NamedType(binding.localName),
 						span: binding.span,
@@ -848,7 +852,21 @@ fn externalVariantName(signature: ProjectExternalSignature) -> String {
 	if String.length(base) == 0 {
 		return ""
 	}
-	return String.slice(signature.name, String.length(base) + 1, None)
+	let encoded = String.slice(signature.name, String.length(base) + 1, None)
+	let prefix = externalVariantPrefix()
+	if !String.startsWith(encoded, prefix) || String.length(encoded) <= String.length(prefix) {
+		return ""
+	}
+	return String.slice(encoded, String.length(prefix), None)
+}
+
+fn externalVariantSourceName(signature: ProjectExternalSignature) -> String {
+	let base = externalVariantBase(signature)
+	let variant = externalVariantName(signature)
+	if String.length(base) == 0 || String.length(variant) == 0 {
+		return ""
+	}
+	return base + "." + variant
 }
 
 fn findExternalVariantSignature(
@@ -856,7 +874,9 @@ fn findExternalVariantSignature(
 	name: String,
 ) -> ProjectExternalSignature? {
 	for signature in signatures {
-		if signature.name == name && String.length(externalVariantBase(signature)) > 0 {
+		let variant = externalVariantName(signature)
+		if String.length(variant) > 0
+			&& (signature.name == name || externalVariantSourceName(signature) == name) {
 			return Some(signature)
 		}
 	}
@@ -867,7 +887,7 @@ fn safeExternalSignatures(values: List<ProjectExternalSignature>) -> List<Projec
 	let mut signatures: List<ProjectExternalSignature> = []
 	for signature in values {
 		if String.contains(signature.name, ".") {
-			if String.length(externalVariantBase(signature)) > 0 {
+			if String.length(externalVariantName(signature)) > 0 {
 				signatures = List.append(signatures, signature)
 			}
 		} else {
@@ -881,10 +901,28 @@ fn prepareExternalVariantExpression(
 	value: MvpExpression,
 	signatures: List<ProjectExternalSignature>,
 ) -> MvpExpression {
-	if value.kind == "identifier" && match findExternalVariantSignature(signatures, value.text) { Some(_) => true, None => false } {
+	let signatureValue = findExternalVariantSignature(signatures, value.text)
+	if match signatureValue { Some(_) => false, None => true } {
+		return value
+	}
+	let signature = match signatureValue {
+		Some(item) => item
+		None => return value
+	}
+	let parameterCount = List.length(signature.parameters)
+	if value.kind == "identifier" && parameterCount == 0 {
 		return MvpExpression {
 			kind: "call",
-			text: value.text,
+			text: signature.name,
+			literalType: value.literalType,
+			children: value.children,
+			span: value.span,
+		}
+	}
+	if value.kind == "call" && parameterCount > 0 {
+		return MvpExpression {
+			kind: value.kind,
+			text: signature.name,
 			literalType: value.literalType,
 			children: value.children,
 			span: value.span,
