@@ -103,7 +103,31 @@ const positiveFixtures: readonly DifferentialFixtureV1[] = [
 	},
 ];
 
-test('imported public enum constructors retain Legacy-equivalent runtime meaning', async () => {
+const legacyRuntimeCases = [
+	{
+		id: 'imported-enum-zero-payload',
+		input: zeroPayloadInput,
+		expectedReturnValue: { $tag: 'Pending', $values: [] },
+	},
+	{
+		id: 'imported-enum-payload-alias',
+		input: payloadAliasInput,
+		expectedReturnValue: { $tag: 'Failed', $values: ['boom'] },
+	},
+] as const;
+
+test('imported public enum constructors retain independently grounded Legacy runtime meaning and Self-host parity', async () => {
+	for (const runtimeCase of legacyRuntimeCases) {
+		const output = await compileWithLegacyKernel(runtimeCase.input);
+		assert.equal(output.accepted, true, `${runtimeCase.id}: Legacy compiler rejected fixture`);
+		assert.deepEqual(output.diagnostics, [], `${runtimeCase.id}: Legacy diagnostics`);
+		const execution = await executeKernelOutputWithNode(runtimeCase.input, output);
+		assert.equal(execution.exitCode, 0, `${runtimeCase.id}: Legacy runtime exit code`);
+		assert.equal(execution.signal, null, `${runtimeCase.id}: Legacy runtime signal`);
+		assert.equal(execution.panic, null, `${runtimeCase.id}: Legacy runtime panic`);
+		assert.deepEqual(execution.returnValue, runtimeCase.expectedReturnValue, `${runtimeCase.id}: Legacy runtime value`);
+	}
+
 	await withGeneratedCompiler(async module => {
 		const report = await runDifferentialCorpus({
 			fixtures: positiveFixtures,
@@ -132,7 +156,7 @@ test('imported public enum constructors retain Legacy-equivalent runtime meaning
 	});
 });
 
-test('imported enum metadata remains fail-closed for unknown and ill-typed variants', async t => {
+test('imported enum metadata remains fail-closed for unknown, ill-typed, type-only, and unsupported variants', async t => {
 	await withGeneratedCompiler(async module => {
 		const kernel = createSelfhostProjectKernel(module);
 		await t.test('unknown variant', async () => {
@@ -152,7 +176,29 @@ test('imported enum metadata remains fail-closed for unknown and ill-typed varia
 			));
 			assert.equal(output.accepted, false);
 			assert.deepEqual(output.emittedModules, []);
-			assert.ok(output.diagnostics.some(item => item.sourcePath === 'src/main.virune'));
+			assert.ok(output.diagnostics.some(item =>
+				item.sourcePath === 'src/main.virune'
+				&& item.code === 'L2043'
+				&& item.message === 'Int cannot be used as String'
+			));
+		});
+
+		await t.test('type-only import does not expose an enum constructor as a runtime value', async () => {
+			const input = projectInput(
+				'pub enum Status {\n\tPending\n}\n',
+				'import type { Status } from "./domain.virune"\n\npub fn main() -> Status {\n\treturn Status.Pending\n}\n',
+			);
+			const legacy = await compileWithLegacyKernel(input);
+			assert.equal(legacy.accepted, false, 'Legacy must reject runtime use through import type');
+			assert.deepEqual(legacy.emittedModules, []);
+			const output = await kernel.compile(input);
+			assert.equal(output.accepted, false);
+			assert.deepEqual(output.emittedModules, []);
+			assert.ok(output.diagnostics.some(item =>
+				item.sourcePath === 'src/main.virune'
+				&& item.code === 'L1010'
+				&& item.message === 'Unknown name Status.Pending'
+			));
 		});
 
 		await t.test('generic enum remains unsupported rather than monomorphically guessed', async () => {
