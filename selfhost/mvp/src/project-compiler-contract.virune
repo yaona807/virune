@@ -9,6 +9,7 @@ import { checkMvpProjectJson } from "./checker.virune"
 import { emitMvpJson } from "./emitter.virune"
 import { parseFrontendCore } from "./frontend-parser-core.virune"
 import {
+	FrontendAstNode,
 	FrontendParseResult,
 	ParserDiagnostic,
 	ParserPosition,
@@ -456,6 +457,105 @@ fn findProjectModule(
 	return None
 }
 
+fn frontendNode(
+	values: List<FrontendAstNode>,
+	id: Int,
+) -> FrontendAstNode? {
+	for value in values {
+		if value.id == id {
+			return Some(value)
+		}
+	}
+	return None
+}
+
+fn canonicalImportSource(value: String) -> String {
+	let length = String.length(value)
+	if length >= 2
+		&& String.slice(value, 0, Some(1)) == "\""
+		&& String.slice(value, length - 1, None) == "\"" {
+		return String.slice(value, 1, Some(length - 1))
+	}
+	return ""
+}
+
+fn frontendImportSpecifier(
+	declaration: FrontendAstNode,
+	nodes: List<FrontendAstNode>,
+) -> String {
+	for childId in declaration.children {
+		let childValue = frontendNode(nodes, childId)
+		if match childValue { Some(_) => true, None => false } {
+			let child = match childValue {
+				Some(value) => value
+				None => return ""
+			}
+			if child.kind == "ImportSource" {
+				return canonicalImportSource(child.text)
+			}
+		}
+	}
+	return ""
+}
+
+fn frontendImportBindingText(binding: MvpImportBinding) -> String {
+	if binding.importedName == binding.localName {
+		return binding.importedName
+	}
+	return binding.importedName + " as " + binding.localName
+}
+
+fn frontendImportHasBinding(
+	declaration: FrontendAstNode,
+	nodes: List<FrontendAstNode>,
+	binding: MvpImportBinding,
+) -> Bool {
+	let expected = frontendImportBindingText(binding)
+	for childId in declaration.children {
+		let childValue = frontendNode(nodes, childId)
+		if match childValue { Some(_) => true, None => false } {
+			let child = match childValue {
+				Some(value) => value
+				None => return false
+			}
+			if child.kind == "ImportItem" && child.text == expected {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+fn bindingAllowsValueSignature(
+	projectModules: List<ProjectLinkModulePayload>,
+	modulePath: String,
+	specifier: String,
+	binding: MvpImportBinding,
+) -> Bool {
+	let moduleValue = findProjectModule(projectModules, modulePath)
+	if match moduleValue { Some(_) => false, None => true } {
+		return false
+	}
+	let projectModule = match moduleValue {
+		Some(value) => value
+		None => return false
+	}
+	let mut matches = 0
+	let mut valueMatches = 0
+	for node in projectModule.parse.nodes {
+		if node.kind == "ImportDeclaration"
+			&& String.startsWith(node.text, "virune")
+			&& frontendImportSpecifier(node, projectModule.parse.nodes) == specifier
+			&& frontendImportHasBinding(node, projectModule.parse.nodes, binding) {
+			matches = matches + 1
+			if !String.contains(node.text, " type") {
+				valueMatches = valueMatches + 1
+			}
+		}
+	}
+	return matches == 1 && valueMatches == 1
+}
+
 fn projectParameterTypes(parameters: List<MvpParameter>) -> List<MvpType> {
 	let mut values: List<MvpType> = []
 	for parameter in parameters {
@@ -490,19 +590,6 @@ fn dependencyTargetPath(
 		}
 	}
 	return ""
-}
-
-fn dependencyAllowsValueSignatures(
-	dependencies: List<ProjectLinkDependency>,
-	modulePath: String,
-	specifier: String,
-) -> Bool {
-	for dependency in dependencies {
-		if dependency.modulePath == modulePath && dependency.sourceKind == "virune" && dependency.specifier == specifier {
-			return !dependency.typeOnly && match dependency.resolvedPath { Some(_) => true, None => false }
-		}
-	}
-	return false
 }
 
 fn enumIsPublicExport(
@@ -681,13 +768,8 @@ fn importedSignatures(
 			projectModule.path,
 			importValue.specifier,
 		)
-		let allowValueSignatures = dependencyAllowsValueSignatures(
-			dependencies,
-			projectModule.path,
-			importValue.specifier,
-		)
 		let targetValue = findParsedMvpSource(modules, targetPath)
-		if allowValueSignatures && match targetValue { Some(_) => true, None => false } {
+		if match targetValue { Some(_) => true, None => false } {
 			let target = match targetValue {
 				Some(value) => value
 				None => ParsedMvpProjectSource {
@@ -697,33 +779,40 @@ fn importedSignatures(
 				}
 			}
 			for binding in importValue.bindings {
-				let functionValue = findPublicFunction(
-					target.moduleValue.functions,
-					binding.importedName,
-				)
-				if match functionValue { Some(_) => true, None => false } {
-					let function = match functionValue {
-						Some(value) => value
-						None => MvpFunction {
-							isPublic: false,
-							name: "",
-							parameters: [],
-							returnType: MvpType.ErrorType,
-							expressions: [],
-							statementIds: [],
-							statements: [],
-							span: binding.span,
+				if bindingAllowsValueSignature(
+					projectModules,
+					projectModule.path,
+					importValue.specifier,
+					binding,
+				) {
+					let functionValue = findPublicFunction(
+						target.moduleValue.functions,
+						binding.importedName,
+					)
+					if match functionValue { Some(_) => true, None => false } {
+						let function = match functionValue {
+							Some(value) => value
+							None => MvpFunction {
+								isPublic: false,
+								name: "",
+								parameters: [],
+								returnType: MvpType.ErrorType,
+								expressions: [],
+								statementIds: [],
+								statements: [],
+								span: binding.span,
+							}
 						}
+						signatures = List.append(signatures, ProjectExternalSignature {
+							name: binding.localName,
+							parameters: projectParameterTypes(function.parameters),
+							returnType: function.returnType,
+							span: binding.span,
+						})
 					}
-					signatures = List.append(signatures, ProjectExternalSignature {
-						name: binding.localName,
-						parameters: projectParameterTypes(function.parameters),
-						returnType: function.returnType,
-						span: binding.span,
-					})
-				}
-				for signature in enumConstructorSignatures(binding, targetPath, projectModules, exports)? {
-					signatures = List.append(signatures, signature)
+					for signature in enumConstructorSignatures(binding, targetPath, projectModules, exports)? {
+						signatures = List.append(signatures, signature)
+					}
 				}
 			}
 		}
