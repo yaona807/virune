@@ -201,6 +201,20 @@ test('imported enum metadata remains fail-closed for unknown, ill-typed, type-on
 			));
 		});
 
+		await t.test('user-defined payload identity is not guessed from an unqualified type name', async () => {
+			const output = await kernel.compile(projectInput(
+				'pub record User {\n\tname: String\n}\n\npub enum Status {\n\tFailed(User)\n}\n',
+				'import { Status } from "./domain.virune"\n\nrecord User {\n\tid: Int\n}\n\nfn wrap(user: User) -> Status {\n\treturn Status.Failed(user)\n}\n\npub fn main() -> Int {\n\treturn 1\n}\n',
+			));
+			assert.equal(output.accepted, false);
+			assert.deepEqual(output.emittedModules, []);
+			assert.ok(output.diagnostics.some(item =>
+				item.sourcePath === 'src/main.virune'
+				&& item.code === 'L1010'
+				&& item.message === 'Unknown name Status.Failed'
+			));
+		});
+
 		await t.test('generic enum remains unsupported rather than monomorphically guessed', async () => {
 			const output = await kernel.compile(projectInput(
 				'pub enum Box<T> {\n\tFull(T)\n}\n',
