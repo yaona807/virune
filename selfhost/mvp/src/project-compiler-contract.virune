@@ -554,40 +554,6 @@ fn semanticType(
 	return None
 }
 
-fn semanticTypeText(values: List<SemanticType>, id: Int) -> String? {
-	let value = match semanticType(values, id) {
-		Some(item) => item
-		None => return None
-	}
-	if value.kind == "error" || value.kind == "missing" || value.kind == "tuple" || value.kind == "function" || value.kind == "type-parameter" || String.length(value.name) == 0 {
-		return None
-	}
-	if List.isEmpty(value.arguments) {
-		return Some(value.name)
-	}
-	let mut text = value.name + "<"
-	let mut index = 0
-	while index < List.length(value.arguments) {
-		let argumentId = match List.get(value.arguments, index) {
-			Some(item) => item
-			None => return None
-		}
-		let argument = semanticTypeText(values, argumentId)
-		if match argument { Some(_) => false, None => true } {
-			return None
-		}
-		if index > 0 {
-			text = text + ","
-		}
-		text = text + match argument {
-			Some(item) => item
-			None => ""
-		}
-		index = index + 1
-	}
-	return Some(text + ">")
-}
-
 fn semanticTypeToMvp(values: List<SemanticType>, id: Int) -> MvpType? {
 	let candidate = semanticType(values, id)
 	if match candidate { Some(_) => false, None => true } {
@@ -630,13 +596,7 @@ fn semanticTypeToMvp(values: List<SemanticType>, id: Int) -> MvpType? {
 			None => None
 		}
 	}
-	if value.kind != "builtin" && value.kind != "named" {
-		return None
-	}
-	return match semanticTypeText(values, id) {
-		Some(name) => Some(MvpType.NamedType(name))
-		None => None
-	}
+	return None
 }
 
 fn enumConstructorSignatures(
