@@ -305,6 +305,24 @@ test('imported enum metadata remains fail-closed for unknown, ill-typed, type-on
 			));
 		});
 
+		await t.test('import alias colliding with a local declaration never creates enum metadata', async () => {
+			const input = projectInput(
+				'pub enum Status {\n\tPending\n}\n',
+				'import { Status as State } from "./domain.virune"\n\nrecord State {\n\tid: Int\n}\n\nfn bad() -> State {\n\treturn State.Pending\n}\n\npub fn main() -> Int {\n\treturn 1\n}\n',
+			);
+			const legacy = await compileWithLegacyKernel(input);
+			assert.equal(legacy.accepted, false, 'Legacy must reject an import alias that collides with a local declaration');
+			assert.deepEqual(legacy.emittedModules, []);
+			const output = await kernel.compile(input);
+			assert.equal(output.accepted, false);
+			assert.deepEqual(output.emittedModules, []);
+			assert.ok(output.diagnostics.some(item =>
+				item.sourcePath === 'src/main.virune'
+				&& item.code === 'L1010'
+				&& item.message === 'Unknown name State.Pending'
+			));
+		});
+
 		await t.test('user-defined payload identity is not guessed from an unqualified type name', async () => {
 			const output = await kernel.compile(projectInput(
 				'pub record User {\n\tname: String\n}\n\npub enum Status {\n\tFailed(User)\n}\n',
