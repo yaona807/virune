@@ -229,6 +229,11 @@ fn emptySemanticReferences() -> List<ProjectSemanticReference> {
 	return values
 }
 
+fn emptyExternalSignatures() -> List<ProjectExternalSignature> {
+	let values: List<ProjectExternalSignature> = []
+	return values
+}
+
 fn fallbackPosition() -> ParserPosition {
 	return parserPosition(0, 1, 1)
 }
@@ -526,6 +531,43 @@ fn frontendImportHasBinding(
 	return false
 }
 
+fn frontendLocalDeclarationKind(kind: String) -> Bool {
+	return kind == "FunctionDeclaration"
+		|| kind == "RecordDeclaration"
+		|| kind == "EnumDeclaration"
+		|| kind == "NewtypeDeclaration"
+		|| kind == "TypeAliasDeclaration"
+		|| kind == "TopLevelValueDeclaration"
+}
+
+fn frontendHasLocalDeclarationName(
+	projectModule: ProjectLinkModulePayload,
+	name: String,
+) -> Bool {
+	let rootValue = frontendNode(projectModule.parse.nodes, projectModule.parse.root)
+	if match rootValue { Some(_) => false, None => true } {
+		return true
+	}
+	let root = match rootValue {
+		Some(value) => value
+		None => return true
+	}
+	for childId in root.children {
+		let childValue = frontendNode(projectModule.parse.nodes, childId)
+		if match childValue { Some(_) => false, None => true } {
+			return true
+		}
+		let child = match childValue {
+			Some(value) => value
+			None => return true
+		}
+		if frontendLocalDeclarationKind(child.kind) && child.text == name {
+			return true
+		}
+	}
+	return false
+}
+
 fn bindingAllowsValueSignature(
 	projectModules: List<ProjectLinkModulePayload>,
 	modulePath: String,
@@ -539,6 +581,9 @@ fn bindingAllowsValueSignature(
 	let projectModule = match moduleValue {
 		Some(value) => value
 		None => return false
+	}
+	if frontendHasLocalDeclarationName(projectModule, binding.localName) {
+		return false
 	}
 	let mut matches = 0
 	let mut valueMatches = 0
@@ -572,7 +617,6 @@ fn importLocalBindingCount(imports: List<MvpImport>, localName: String) -> Int {
 				count = count + 1
 			}
 		}
-	}
 	return count
 }
 
@@ -735,36 +779,54 @@ fn enumConstructorSignatures(
 	if declaration.kind != "enum" || !declaration.isPublic || !List.isEmpty(declaration.typeParameters) {
 		return Ok(signatures)
 	}
+	let mut memberNames: List<String> = []
 	for memberId in declaration.memberIds {
 		let memberValue = semanticMember(semantic.members, memberId)
-		if match memberValue { Some(_) => true, None => false } {
-			let member = match memberValue {
+		if match memberValue { Some(_) => false, None => true } {
+			return Ok(emptyExternalSignatures())
+		}
+		let member = match memberValue {
+			Some(value) => value
+			None => return Ok(emptyExternalSignatures())
+		}
+		if member.declarationId != declaration.id
+			|| member.kind != "variant"
+			|| String.length(member.name) == 0
+			|| containsPath(memberNames, member.name) {
+			return Ok(emptyExternalSignatures())
+		}
+		memberNames = List.append(memberNames, member.name)
+		let mut parameters: List<MvpType> = []
+		let mut supported = true
+		for typeId in member.typeIds {
+			let semanticTypeValue = semanticType(semantic.types, typeId)
+			if match semanticTypeValue { Some(_) => false, None => true } {
+				return Ok(emptyExternalSignatures())
+			}
+			let sourceType = match semanticTypeValue {
 				Some(value) => value
-				None => return Ok(signatures)
+				None => return Ok(emptyExternalSignatures())
 			}
-			if member.kind == "variant" {
-				let mut parameters: List<MvpType> = []
-				let mut supported = true
-				for typeId in member.typeIds {
-					let lowered = semanticTypeToMvp(semantic.types, typeId)
-					if match lowered { Some(_) => false, None => true } {
-						supported = false
-					} else {
-						parameters = List.append(parameters, match lowered {
-							Some(value) => value
-							None => MvpType.ErrorType
-						})
-					}
-				}
-				if supported {
-					signatures = List.append(signatures, ProjectExternalSignature {
-						name: binding.localName + "." + externalVariantPrefix() + member.name,
-						parameters: parameters,
-						returnType: MvpType.NamedType(binding.localName),
-						span: binding.span,
-					})
-				}
+			if sourceType.kind == "error" || sourceType.kind == "missing" {
+				return Ok(emptyExternalSignatures())
 			}
+			let lowered = semanticTypeToMvp(semantic.types, typeId)
+			if match lowered { Some(_) => false, None => true } {
+				supported = false
+			} else {
+				parameters = List.append(parameters, match lowered {
+					Some(value) => value
+					None => MvpType.ErrorType
+				})
+			}
+		}
+		if supported {
+			signatures = List.append(signatures, ProjectExternalSignature {
+				name: binding.localName + "." + externalVariantPrefix() + member.name,
+				parameters: parameters,
+				returnType: MvpType.NamedType(binding.localName),
+				span: binding.span,
+			})
 		}
 	}
 	return Ok(signatures)
