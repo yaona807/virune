@@ -169,6 +169,24 @@ test('imported enum metadata remains fail-closed for unknown, ill-typed, type-on
 			assert.ok(output.diagnostics.some(item => item.code === 'L1010' && item.message === 'Unknown name Status.Missing'));
 		});
 
+		await t.test('zero-payload enum variant remains a value rather than a zero-argument function', async () => {
+			const input = projectInput(
+				'pub enum Status {\n\tPending\n}\n',
+				'import { Status } from "./domain.virune"\n\npub fn main() -> Status {\n\treturn Status.Pending()\n}\n',
+			);
+			const legacy = await compileWithLegacyKernel(input);
+			assert.equal(legacy.accepted, false, 'Legacy must reject calling a zero-payload enum value');
+			assert.deepEqual(legacy.emittedModules, []);
+			const output = await kernel.compile(input);
+			assert.equal(output.accepted, false);
+			assert.deepEqual(output.emittedModules, []);
+			assert.ok(output.diagnostics.some(item =>
+				item.sourcePath === 'src/main.virune'
+				&& item.code === 'L1010'
+				&& item.message === 'Unknown name Status.Pending'
+			));
+		});
+
 		await t.test('payload type mismatch', async () => {
 			const output = await kernel.compile(projectInput(
 				'pub enum Status {\n\tFailed(String)\n}\n',
