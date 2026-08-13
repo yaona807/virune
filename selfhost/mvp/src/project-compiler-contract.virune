@@ -564,6 +564,18 @@ fn projectParameterTypes(parameters: List<MvpParameter>) -> List<MvpType> {
 	return values
 }
 
+fn importLocalBindingCount(imports: List<MvpImport>, localName: String) -> Int {
+	let mut count = 0
+	for importValue in imports {
+		for binding in importValue.bindings {
+			if binding.localName == localName {
+				count = count + 1
+			}
+		}
+	}
+	return count
+}
+
 fn findPublicFunction(
 	functions: List<MvpFunction>,
 	name: String,
@@ -783,12 +795,13 @@ fn importedSignatures(
 				}
 			}
 			for binding in importValue.bindings {
-				if bindingAllowsValueSignature(
-					projectModules,
-					projectModule.path,
-					importValue.specifier,
-					binding,
-				) {
+				if importLocalBindingCount(projectModule.moduleValue.imports, binding.localName) == 1
+					&& bindingAllowsValueSignature(
+						projectModules,
+						projectModule.path,
+						importValue.specifier,
+						binding,
+					) {
 					let functionValue = findPublicFunction(
 						target.moduleValue.functions,
 						binding.importedName,
