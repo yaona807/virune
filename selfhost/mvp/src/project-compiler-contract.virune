@@ -617,6 +617,7 @@ fn importLocalBindingCount(imports: List<MvpImport>, localName: String) -> Int {
 				count = count + 1
 			}
 		}
+	}
 	return count
 }
 
