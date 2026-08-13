@@ -201,6 +201,24 @@ test('imported enum metadata remains fail-closed for unknown, ill-typed, type-on
 			));
 		});
 
+		await t.test('value import from the same specifier cannot upgrade a type-only enum binding', async () => {
+			const input = projectInput(
+				'pub enum Status {\n\tPending\n}\n\npub fn helper() -> Int {\n\treturn 1\n}\n',
+				'import type { Status } from "./domain.virune"\nimport { helper } from "./domain.virune"\n\nfn bad() -> Status {\n\treturn Status.Pending\n}\n\npub fn main() -> Int {\n\treturn helper()\n}\n',
+			);
+			const legacy = await compileWithLegacyKernel(input);
+			assert.equal(legacy.accepted, false, 'Legacy must reject runtime use through the type-only Status binding');
+			assert.deepEqual(legacy.emittedModules, []);
+			const output = await kernel.compile(input);
+			assert.equal(output.accepted, false);
+			assert.deepEqual(output.emittedModules, []);
+			assert.ok(output.diagnostics.some(item =>
+				item.sourcePath === 'src/main.virune'
+				&& item.code === 'L1010'
+				&& item.message === 'Unknown name Status.Pending'
+			));
+		});
+
 		await t.test('user-defined payload identity is not guessed from an unqualified type name', async () => {
 			const output = await kernel.compile(projectInput(
 				'pub record User {\n\tname: String\n}\n\npub enum Status {\n\tFailed(User)\n}\n',
