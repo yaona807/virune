@@ -156,7 +156,7 @@ test('imported public enum constructors retain independently grounded Legacy run
 	});
 });
 
-test('imported enum metadata remains fail-closed for unknown, ill-typed, type-only, private, and unsupported variants', async t => {
+test('imported enum metadata remains fail-closed for unknown, ill-typed, type-only, private, duplicate, and unsupported variants', async t => {
 	await withGeneratedCompiler(async module => {
 		const kernel = createSelfhostProjectKernel(module);
 		await t.test('unknown variant', async () => {
@@ -270,6 +270,38 @@ test('imported enum metadata remains fail-closed for unknown, ill-typed, type-on
 				item.sourcePath === 'src/main.virune'
 				&& item.code === 'L1010'
 				&& item.message === 'Unknown name Status.Pending'
+			));
+		});
+
+		await t.test('duplicate local import aliases never select one external enum signature', async () => {
+			const input = validateKernelInput({
+				contractVersion: '1',
+				languageVersion: '1.0',
+				platform: 'node',
+				entryPath: 'src/main.virune',
+				sources: [
+					{ path: 'src/a.virune', text: 'pub enum Status {\n\tPending\n}\n' },
+					{ path: 'src/b.virune', text: 'pub enum Other {\n\tPending\n}\n' },
+					{
+						path: 'src/main.virune',
+						text: 'import { Status as State } from "./a.virune"\n'
+							+ 'import { Other as State } from "./b.virune"\n\n'
+							+ 'pub fn main() -> State {\n\treturn State.Pending\n}\n',
+					},
+				],
+				interopManifest: { version: '1', modules: [] },
+				emit: { target: 'es2022', sourceMap: false, sourcesContent: true },
+			});
+			const legacy = await compileWithLegacyKernel(input);
+			assert.equal(legacy.accepted, false, 'Legacy must reject duplicate local import aliases');
+			assert.deepEqual(legacy.emittedModules, []);
+			const output = await kernel.compile(input);
+			assert.equal(output.accepted, false);
+			assert.deepEqual(output.emittedModules, []);
+			assert.ok(output.diagnostics.some(item =>
+				item.sourcePath === 'src/main.virune'
+				&& item.code === 'L1010'
+				&& item.message === 'Unknown name State.Pending'
 			));
 		});
 
