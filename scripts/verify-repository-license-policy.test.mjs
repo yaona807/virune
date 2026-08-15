@@ -79,6 +79,23 @@ test('workspace lock license drift fails closed', () => {
 	});
 });
 
+test('stale removed workspace lock entries fail closed', () => {
+	withFixture(root => {
+		const path = resolve(root, 'package-lock.json');
+		const lock = JSON.parse(readFileSync(path, 'utf8'));
+		lock.packages['packages/removed-workspace'] = {
+			name: '@virune/removed-workspace',
+			version: '1.0.0',
+			license: 'Apache-2.0',
+		};
+		writeFileSync(path, `${JSON.stringify(lock, null, 2)}\n`);
+		assert.throws(
+			() => verifyRepositoryLicensePolicy(root),
+			/package-lock\.json: workspace package entries must exactly match repository workspaces/u,
+		);
+	});
+});
+
 function withFixture(run) {
 	const root = mkdtempSync(join(tmpdir(), 'virune-repository-license-'));
 	try {
