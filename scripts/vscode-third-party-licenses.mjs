@@ -6,6 +6,7 @@ const SUPPLEMENTARY_FILE_PATTERN = /^(?:NOTICE|COPYRIGHT)(?:[._-].*)?$/iu;
 
 export async function buildBundledThirdPartyLicenseText(metafiles, root = process.cwd()) {
 	const packageRoots = collectBundledPackageRoots(metafiles, root);
+	if (packageRoots.length === 0) throw new Error('VS Code bundles did not include any third-party npm packages');
 	const packages = [];
 	for (const packageRoot of packageRoots) packages.push(await readPackageLegalMaterial(packageRoot, root));
 	packages.sort(comparePackageMaterial);

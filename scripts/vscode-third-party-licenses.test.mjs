@@ -70,6 +70,15 @@ test('bundled package root discovery handles nested and scoped node_modules path
 	});
 });
 
+test('empty bundled npm package set fails closed', async () => {
+	withFixture(async root => {
+		await assert.rejects(
+			() => buildBundledThirdPartyLicenseText([{ inputs: { 'packages/vscode/src/extension.ts': {} } }], root),
+			/VS Code bundles did not include any third-party npm packages/u,
+		);
+	});
+});
+
 test('bundled package without a license file fails closed', async () => {
 	withFixture(async root => {
 		writePackage(root, 'missing-license', {
