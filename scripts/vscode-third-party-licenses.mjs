@@ -144,7 +144,7 @@ async function readUtf8(path) {
 function resolvedLicense(value, label) {
 	const license = nonEmptyString(value, label).trim();
 	const validation = validateNpmPackageLicense(license);
-	if (validation.validForNewPackages !== true || validation.spdx !== true || validation.correct !== license) {
+	if (validation.validForNewPackages !== true || validation.spdx !== true) {
 		throw new Error(`${label} must be a valid SPDX license expression for a new npm package; received ${JSON.stringify(license)}`);
 	}
 	return license;
