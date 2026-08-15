@@ -116,7 +116,7 @@ test('bundled package with absent license metadata fails closed', async () => {
 	});
 });
 
-test('bundled package with unresolved license declaration fails closed', async () => {
+test('bundled package with unresolved or invalid npm license metadata fails closed', async () => {
 	for (const license of [
 		'UNLICENSED',
 		'UNKNOWN',
@@ -127,36 +127,38 @@ test('bundled package with unresolved license declaration fails closed', async (
 		'(Apache-2.0 AND NOASSERTION)',
 		'MIT OR NONE',
 		'MIT OR SEE LICENSE IN LICENSE.txt',
+		'LicenseRef-UNKNOWN-custom',
+		'LicenseRef-NONE-custom',
+		'banana',
 	]) {
 		await withFixture(async root => {
-			writePackage(root, 'unresolved-license', {
-				name: 'unresolved-license',
+			writePackage(root, 'invalid-license', {
+				name: 'invalid-license',
 				version: '1.0.0',
 				license,
 				files: { LICENSE: 'Some legal text\n' },
 			});
 			await assert.rejects(
-				() => buildBundledThirdPartyLicenseText([{ inputs: { 'node_modules/unresolved-license/index.js': {} } }], root),
-				/must identify a resolved license expression/u,
+				() => buildBundledThirdPartyLicenseText([{ inputs: { 'node_modules/invalid-license/index.js': {} } }], root),
+				/must be a valid SPDX license expression for a new npm package/u,
 			);
 		});
 	}
 });
 
-test('license sentinel substrings inside identifiers are not treated as unresolved tokens', async () => {
-	for (const license of ['LicenseRef-UNKNOWN-custom', 'LicenseRef-NONE-custom']) {
-		await withFixture(async root => {
-			writePackage(root, 'custom-license', {
-				name: 'custom-license',
-				version: '1.0.0',
-				license,
-				files: { LICENSE: 'Custom license text\n' },
-			});
-			await assert.doesNotReject(
-				() => buildBundledThirdPartyLicenseText([{ inputs: { 'node_modules/custom-license/index.js': {} } }], root),
-			);
+test('valid compound SPDX expressions remain accepted', async () => {
+	await withFixture(async root => {
+		writePackage(root, 'compound-license', {
+			name: 'compound-license',
+			version: '1.0.0',
+			license: 'MIT OR Apache-2.0',
+			files: { LICENSE: 'Compound license text\n' },
 		});
-	}
+		const text = await buildBundledThirdPartyLicenseText([{ inputs: {
+			'node_modules/compound-license/index.js': {},
+		} }], root);
+		assert.match(text, /^DECLARED LICENSE: MIT OR Apache-2\.0$/mu);
+	});
 });
 
 test('bundled package without a license file fails closed', async () => {
