@@ -108,11 +108,11 @@ A platform end-of-life, security requirement, or other condition that makes the 
 
 ## Deprecation procedure
 
-Before intentionally removing or incompatibly changing a stable surface, Virune should use this sequence:
+Before intentionally removing or incompatibly changing a Stable surface, Virune must use the following sequence unless the exceptional-fix rules below apply:
 
 1. Mark the old surface deprecated in the relevant public documentation and, where practical, tooling or type metadata.
 2. Document the supported replacement or migration path.
-3. Publish at least one stable release that carries the deprecation while keeping the old surface available before the release that removes it, unless the exceptional-fix rules apply.
+3. Publish at least one stable release that carries the deprecation while keeping the old surface available before the release that removes it.
 4. Remove or incompatibly change it only in a major release.
 5. Include the breaking change and migration steps in that major release's release notes or migration guide.
 
