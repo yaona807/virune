@@ -36,7 +36,7 @@ async function verifyInstalledLegalFiles(extensionPath) {
 	const repositoryRoot = process.env.VIRUNE_REPOSITORY_ROOT;
 	assert.ok(repositoryRoot, 'VIRUNE_REPOSITORY_ROOT is required for installed legal-file verification.');
 	const comparisons = [
-		['LICENSE', resolve(repositoryRoot, 'LICENSE')],
+		['LICENSE.txt', resolve(repositoryRoot, 'LICENSE')],
 		['NOTICE', resolve(repositoryRoot, 'NOTICE')],
 		['THIRD_PARTY_NOTICES.md', resolve(repositoryRoot, 'packages/vscode/THIRD_PARTY_NOTICES.md')],
 	];
