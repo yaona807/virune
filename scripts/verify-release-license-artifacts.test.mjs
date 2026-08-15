@@ -45,6 +45,16 @@ test('rejects a tarball that drops the Virune NOTICE file', () => {
 	});
 });
 
+test('rejects a tarball whose Virune legal file is not a regular file entry', () => {
+	withFixture(root => {
+		writeViruneTarball(root, tarballs[0], { noticeTypeFlag: '2' });
+		assert.throws(
+			() => verifyReleaseLicenseArtifacts(root),
+			/package\/NOTICE must be a regular file; tar typeflag="2"/u,
+		);
+	});
+});
+
 test('rejects release legal files that differ from the repository canonical files', () => {
 	withFixture(root => {
 		writeFileSync(resolve(root, 'release/NOTICE'), 'stale notice\n');
@@ -151,23 +161,27 @@ function withFixture(run) {
 	}
 }
 
-function writeViruneTarball(root, file, { license = expectedLicense, includeNotice = true } = {}) {
+function writeViruneTarball(root, file, {
+	license = expectedLicense,
+	includeNotice = true,
+	noticeTypeFlag = '0',
+} = {}) {
 	const entries = [
 		['package/package.json', `${JSON.stringify({ name: file, version, license })}\n`],
 		['package/LICENSE', readFileSync(resolve(root, 'LICENSE'))],
 	];
-	if (includeNotice) entries.push(['package/NOTICE', readFileSync(resolve(root, 'NOTICE'))]);
+	if (includeNotice) entries.push(['package/NOTICE', readFileSync(resolve(root, 'NOTICE')), noticeTypeFlag]);
 	writeFileSync(resolve(root, 'release', file), gzipSync(buildTar(entries)));
 }
 
 function buildTar(entries) {
 	const chunks = [];
-	for (const [name, value] of entries) {
+	for (const [name, value, typeFlag = '0'] of entries) {
 		const content = Buffer.isBuffer(value) ? value : Buffer.from(value);
 		const header = Buffer.alloc(512);
 		Buffer.from(name).copy(header, 0, 0, 100);
 		header.write(`${content.byteLength.toString(8).padStart(11, '0')}\0`, 124, 12, 'ascii');
-		header[156] = '0'.charCodeAt(0);
+		header[156] = typeFlag.charCodeAt(0);
 		chunks.push(header, content);
 		const padding = (512 - content.byteLength % 512) % 512;
 		if (padding > 0) chunks.push(Buffer.alloc(padding));
