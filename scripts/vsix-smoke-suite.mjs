@@ -53,7 +53,7 @@ async function verifyInstalledLegalFiles(extensionPath) {
 	assert.match(generatedLegalText, /^Virune VS Code Extension — Bundled Third-Party License Texts$/mu);
 	assert.match(generatedLegalText, /^PACKAGE: .+@.+$/mu);
 	assert.match(generatedLegalText, /^DECLARED LICENSE: .+$/mu);
-	assert.match(generatedLegalText, /^FILE: (?:LICENSE|LICENCE|COPYING)/mu);
+	assert.match(generatedLegalText, /^FILE: (?:LICENSE|LICENCE|COPYING)/imu);
 }
 
 async function waitFor(predicate, label) {
