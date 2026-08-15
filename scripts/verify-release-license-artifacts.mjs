@@ -1,5 +1,5 @@
 import { gunzipSync } from 'node:zlib';
-import { readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -56,9 +56,35 @@ export function verifyReleaseLicenseArtifacts(root = repositoryRoot) {
 	if (!Array.isArray(rootLicenses) || rootLicenses.length !== 1 || rootLicenses[0]?.license?.id !== expectedLicense) {
 		throw new Error(`SBOM root component license must be exactly ${expectedLicense}`);
 	}
+	verifySbomWorkspaceLicenses(sbom, listWorkspacePackagePaths(root), expectedLicense);
 
 	console.log(`Release license artifacts verified: ${expectedLicense}, ${tarballs.length} npm packages.`);
 	return { license: expectedLicense, packageCount: tarballs.length };
+}
+
+function listWorkspacePackagePaths(root) {
+	const packagesRoot = resolve(root, 'packages');
+	const paths = readdirSync(packagesRoot, { withFileTypes: true })
+		.filter(entry => entry.isDirectory() && existsSync(resolve(packagesRoot, entry.name, 'package.json')))
+		.map(entry => `packages/${entry.name}`)
+		.sort(compareText);
+	if (paths.length === 0) throw new Error('No package workspaces were found for SBOM license verification');
+	return paths;
+}
+
+function verifySbomWorkspaceLicenses(sbom, workspacePaths, expectedLicense) {
+	const components = Array.isArray(sbom?.components) ? sbom.components : [];
+	for (const workspacePath of workspacePaths) {
+		const matches = components.filter(component => Array.isArray(component?.properties)
+			&& component.properties.some(property => property?.name === 'virune:package-lock:path' && property?.value === workspacePath));
+		if (matches.length !== 1) {
+			throw new Error(`SBOM must contain exactly one component for ${workspacePath}; found ${matches.length}`);
+		}
+		const licenses = matches[0]?.licenses;
+		if (!Array.isArray(licenses) || licenses.length !== 1 || licenses[0]?.license?.id !== expectedLicense) {
+			throw new Error(`SBOM ${workspacePath} component license must be exactly ${expectedLicense}`);
+		}
+	}
 }
 
 function readTarEntries(tgzBytes) {
@@ -102,6 +128,10 @@ function readJson(path) {
 function nonEmptyString(value, label) {
 	if (typeof value !== 'string' || value.trim().length === 0) throw new Error(`${label} must be a non-empty string`);
 	return value;
+}
+
+function compareText(left, right) {
+	return left < right ? -1 : left > right ? 1 : 0;
 }
 
 const entry = process.argv[1] === undefined ? undefined : resolve(process.argv[1]);
