@@ -16,8 +16,9 @@ Stable surfaceは、stable release利用者に対する互換性の約束です�
 - `packages/public-abi.snapshot.json`で追跡する文書化済みpublic standard library surface
 - `packages/compiler/api/stable-api.snapshot.json`で追跡するroot `@virune/compiler` API
 - version付きRuntime ABI／Interop ABI surface
-- 文書化済みpublic CLI command、option、exit codeの意味、stable diagnostic code
-- stableと明示して文書化したmachine-readable schemaとfield
+- 文書化済みpublic CLI command、option、exit codeの意味
+- [`diagnostic-codes_ja.md`](diagnostic-codes_ja.md)で定義したstable diagnostic code／JSON schema contract
+- その他、stableと明示して文書化したmachine-readable schemaとfield
 - 文書化済みVirune固有VS Code setting、およびidentifier自体を文書化したpublic extension command
 
 Stable surfaceはminor releaseで後方互換な追加が可能で、patch releaseで後方互換な修正が可能です。Stable contractを意図的に非互換変更する場合、原則として次のmajor releaseが必要です。
@@ -44,9 +45,9 @@ Internal implementation detailはpublic compatibility contractではありませ
 
 Viruneのstable releaseは、project-levelのcompatibility signalとしてSemantic Versioningを使用します。
 
-- **Patch (`X.Y.Z+1`)**: 後方互換な修正。意図的なStable contract変更だけを理由に、既存のconforming programやsupport対象stable consumerへmigrationを要求しません。
-- **Minor (`X.Y+1.0`)**: 後方互換な追加・改善。既存のconforming programとstable consumerを維持します。
-- **Major (`X+1.0.0`)**: Stable contractを意図的に変更できます。影響surfaceには明示的なmigration文書が必要です。
+- **Patch**（例: `1.0.0` -> `1.0.1`）: 後方互換な修正。意図的なStable contract変更だけを理由に、既存のconforming programやsupport対象stable consumerへmigrationを要求しません。
+- **Minor**（例: `1.0.x` -> `1.1.0`）: 後方互換な追加・改善。既存のconforming programとstable consumerを維持します。
+- **Major**（例: `1.x.y` -> `2.0.0`）: Stable contractを意図的に変更できます。影響surfaceには明示的なmigration文書が必要です。
 
 Prerelease／nightlyの互換性は[`release-channels_ja.md`](release-channels_ja.md)を正本とします。Prerelease間では非互換変更があり得て、nightly snapshotには互換性保証がありません。
 
@@ -74,8 +75,8 @@ Stableな`@virune/compiler` root entry pointは[`compiler-api_ja.md`](compiler-a
 
 - command／option名
 - 文書化済みexit codeの意味
-- stable diagnostic code
-- stableと明示して文書化したmachine-readable schema version／field
+- [`diagnostic-codes_ja.md`](diagnostic-codes_ja.md)で定義したdiagnostic code、severity、coordinate、JSON schemaの保証
+- その他、stableと明示して文書化したmachine-readable schema version／field
 
 人間向けpresentationはbyte-stable interfaceではありません。文書化された意味を維持する限り、文言、空白、色、折返し等のpresentation detailは変更できます。
 
@@ -83,7 +84,7 @@ JSON modeであることだけを理由に全fieldがStableになるわけでは
 
 ## LSP／VS Code compatibility
 
-Protocol-level interoperabilityは、宣言済みVS Code API baselineとupstream Language Server Protocolに従います。Virune固有のpublic setting／command identifierは、Stableとして文書化したものだけをStable contractとします。
+Protocol-level interoperabilityは、宣言済みVS Code API baselineとupstream Language Server Protocolに従います。文書化済みVirune固有VS Code setting keyはStableです。Public extension command identifierは、表示labelだけでなくidentifier自体をpublic interfaceとして文書化した場合にStableとします。未文書化のVirune固有LSP extension／wire detailは暗黙にStableとは扱いません。
 
 内部indexing、cache、scheduling、request implementation、analysis storageはcompatibility contractではありません。以前supportしていたstable environmentを除外する形でminimum VS Code API baselineを引き上げる場合、下記例外がない限りplatform baselineのbreaking changeとして扱います。
 
@@ -99,7 +100,7 @@ Stable surfaceを意図的に削除または非互換変更する前に、原則
 
 1. 該当public documentation、および実用的な場合はtooling／type metadataで旧surfaceをdeprecatedと明示する。
 2. Support対象replacementまたはmigration pathを文書化する。
-3. 下記exceptional fix ruleが適用されない限り、削除前に少なくとも1回の公開stable releaseでdeprecated surfaceを利用可能なまま維持する。
+3. 下記exceptional fix ruleが適用されない限り、旧surfaceを利用可能なままdeprecationを含むstable releaseを少なくとも1回公開してから、削除するreleaseへ進む。
 4. 削除または非互換変更はmajor releaseでのみ行う。
 5. Major releaseのrelease noteまたはmigration guideへbreaking changeとmigration手順を記載する。
 
@@ -142,7 +143,7 @@ Compatibility判断では次をauthorityとします。
 
 1. **Language semantics**: [`../spec/`](../spec/)を規範とする。解説文書と実装はこれに従う。
 2. **Public ABI／API inventory**: commit済みABI／API snapshotはreview対象public surfaceを機械的に特定する。Snapshot更新自体はbreaking changeの承認にならない。
-3. **Surface固有documentation**: Runtime／Interop ABI、Compiler API、CLI、VS Code、release channel、Self-hosting文書が各surfaceの詳細contract／lifecycleを定義する。
+3. **Surface固有documentation**: Runtime／Interop ABI、Compiler API、diagnostic／JSON、CLI、VS Code、release channel、Self-hosting文書が各surfaceの詳細contract／lifecycleを定義する。
 4. **Release note／migration guide**: 各releaseで何が変わり、どう移行するかを記述する。規範仕様や本policyを暗黙に上書きしない。
 5. **Implementation／test**: conformanceを示しregressionを検出する。Conflictする規範contractを、testがpassするという理由だけで再定義しない。
 
@@ -159,4 +160,4 @@ Authority間に不整合が見つかった場合、より許容的な解釈を�
 - compatibility維持のためsecurity、correctness、ABI、reproducibility、Self-hosting promotion gateを弱める
 - snapshot／CIがgreenであることを、非互換変更を許可する根拠として扱う
 
-[`release-channels_ja.md`](release-channels_ja.md)、[`compiler-api_ja.md`](compiler-api_ja.md)、[`runtime-abi_ja.md`](runtime-abi_ja.md)、規範的な[`../spec/`](../spec/)も参照してください。
+[`release-channels_ja.md`](release-channels_ja.md)、[`compiler-api_ja.md`](compiler-api_ja.md)、[`runtime-abi_ja.md`](runtime-abi_ja.md)、[`diagnostic-codes_ja.md`](diagnostic-codes_ja.md)、規範的な[`../spec/`](../spec/)も参照してください。
