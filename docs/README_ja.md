@@ -18,6 +18,7 @@ Virune 1.0の規範的な言語仕様は[`../spec/`](../spec/)にあります。
 
 ## 安定性と相互運用
 
+- [互換性・非推奨化ポリシー](compatibility-policy_ja.md)
 - [Compiler APIの安定性](compiler-api_ja.md)
 - [Compiler architecture](compiler-architecture_ja.md)
 - [Self-hosting architecture](self-hosting-architecture_ja.md)
