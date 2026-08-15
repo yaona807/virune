@@ -1,0 +1,59 @@
+name: Temporary #383 lock refresh
+
+on:
+  push:
+    branches:
+      - docs/383-apache-2-license-transition
+    paths:
+      - package.json
+
+permissions:
+  contents: write
+
+concurrency:
+  group: temporary-383-lock-refresh
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: docs/383-apache-2-license-transition
+          fetch-depth: 0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 24
+      - name: Refresh package lock without lifecycle scripts
+        run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+      - name: Verify lock-only diff
+        shell: bash
+        run: |
+          mapfile -t changed < <(git diff --name-only)
+          [[ ${#changed[@]} -eq 1 && "${changed[0]}" == 'package-lock.json' ]] || {
+            printf 'Unexpected lock refresh diff:\n%s\n' "${changed[*]}" >&2
+            exit 1
+          }
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          const manifest = JSON.parse(readFileSync('package.json', 'utf8'));
+          const lock = JSON.parse(readFileSync('package-lock.json', 'utf8'));
+          const expected = manifest.devDependencies?.['validate-npm-package-license'];
+          if (expected !== '3.0.4') throw new Error(`Unexpected manifest validator version: ${expected}`);
+          if (lock.packages?.['']?.devDependencies?.['validate-npm-package-license'] !== expected) {
+            throw new Error('package-lock root devDependency is not synchronized with package.json');
+          }
+          if (lock.packages?.['node_modules/validate-npm-package-license']?.version !== expected) {
+            throw new Error('package-lock validator package version is not 3.0.4');
+          }
+          NODE
+      - name: Commit canonical lock refresh
+        shell: bash
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add package-lock.json
+          git commit -m 'chore(governance): refresh lock for SPDX validator'
+          git push origin HEAD:docs/383-apache-2-license-transition
