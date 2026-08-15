@@ -23,6 +23,7 @@ const requiredFiles = [
 	'syntaxes/virune.tmLanguage.json',
 	'dist/extension.cjs',
 	'dist/server.cjs',
+	'dist/THIRD_PARTY_LICENSES.txt',
 ];
 for (const required of requiredFiles) {
 	if (!includedFiles.includes(required)) throw new Error(`VSIX input is missing ${required}`);

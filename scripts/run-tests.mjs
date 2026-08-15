@@ -54,6 +54,7 @@ const groups = platformSmoke ? platformGroups : [
 				'scripts/verify-npm-publication-license.test.mjs',
 			],
 		},
+		{ name: 'VS Code third-party license packaging policy', files: ['scripts/vscode-third-party-licenses.test.mjs'] },
 		{
 			name: 'documentation examples',
 			command: ['scripts/verify-documentation-examples.mjs'],

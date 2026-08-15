@@ -9,4 +9,4 @@ The Virune VS Code extension bundles the Virune compiler and formatter together 
 | `@jridgewell/*` source map packages | MIT | Virune compiler source maps |
 | Virune compiler, formatter, and runtime packages | Apache-2.0 | Bundled Virune language implementation |
 
-The complete dependency license texts remain available in the source npm packages. Virune and this extension are licensed under the Apache License 2.0.
+This table is a summary. The packaged VSIX includes `dist/THIRD_PARTY_LICENSES.txt`, generated deterministically from the actual bundled npm packages and their license, notice, and copyright files. Virune and this extension are licensed under the Apache License 2.0.
