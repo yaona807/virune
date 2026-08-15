@@ -59,12 +59,22 @@ test('deduplicates identical package identities while preserving lockfile paths'
 	const examples = sbom.components.filter(component => component.name === 'example');
 	assert.equal(examples.length, 1);
 	assert.equal(examples[0].scope, 'required');
+	assert.equal(examples[0].licenses?.[0]?.license.id, 'MIT');
 	assert.deepEqual(
 		examples[0].properties.filter(property => property.name === 'virune:package-lock:path').map(property => property.value),
 		['node_modules/example', 'node_modules/nested/node_modules/example'],
 	);
 	assert.equal(new Set(sbom.components.map(component => component['bom-ref'])).size, sbom.components.length);
 	assert.equal(new Set(sbom.dependencies.map(dependency => dependency.ref)).size, sbom.dependencies.length);
+});
+
+test('rejects conflicting license metadata for duplicate package identities', () => {
+	const conflicting = structuredClone(lock);
+	conflicting.packages['node_modules/nested/node_modules/example'].license = 'Apache-2.0';
+	assert.throws(
+		() => buildCycloneDxSbom({ lock: conflicting, manifest }),
+		/Conflicting license metadata for example@2\.0\.0: MIT vs Apache-2\.0/u,
+	);
 });
 
 test('normalizes stale lockfile workspace versions from release manifests', async t => {
