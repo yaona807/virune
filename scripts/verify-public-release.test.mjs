@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
+import { spawnSync } from 'node:child_process';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -54,6 +55,17 @@ test('validates downloaded checksums, reviewed legal assets and CycloneDX 1.6 SB
 	assert.equal(result.sbom.specVersion, '1.6');
 	assert.equal(result.sbom.license, 'Apache-2.0');
 	assert.equal(result.assets.length, 8);
+});
+
+test('validates reviewed legal assets against an immutable Git commit object', async t => {
+	const directory = await mkdtemp(join(tmpdir(), 'virune-public-release-commit-'));
+	t.after(() => rm(directory, { recursive: true, force: true }));
+	await writeDownloadedReleaseFixture(directory);
+	const result = spawnSync('git', ['rev-parse', 'HEAD'], { cwd: repositoryRoot, encoding: 'utf8' });
+	assert.equal(result.status, 0, result.stderr);
+	const reviewedCommit = result.stdout.trim();
+	assert.match(reviewedCommit, /^[0-9a-f]{40}$/u);
+	await assert.doesNotReject(() => validateDownloadedRelease(directory, version, { reviewedCommit }));
 });
 
 test('rejects a downloaded release whose package metadata has a stale license', async t => {
