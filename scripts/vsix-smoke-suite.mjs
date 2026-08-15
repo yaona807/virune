@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import * as vscode from 'vscode';
@@ -35,15 +36,19 @@ export async function run() {
 async function verifyInstalledLegalFiles(extensionPath) {
 	const repositoryRoot = process.env.VIRUNE_REPOSITORY_ROOT;
 	assert.ok(repositoryRoot, 'VIRUNE_REPOSITORY_ROOT is required for installed legal-file verification.');
+	const reviewedCommit = process.env.VIRUNE_REVIEWED_COMMIT;
+	if (reviewedCommit !== undefined) {
+		assert.match(reviewedCommit, /^[0-9a-f]{40}$/u, 'VIRUNE_REVIEWED_COMMIT must be a full commit SHA.');
+	}
 	const comparisons = [
-		['LICENSE.txt', resolve(repositoryRoot, 'LICENSE')],
-		['NOTICE', resolve(repositoryRoot, 'NOTICE')],
-		['THIRD_PARTY_NOTICES.md', resolve(repositoryRoot, 'packages/vscode/THIRD_PARTY_NOTICES.md')],
+		['LICENSE.txt', 'LICENSE'],
+		['NOTICE', 'NOTICE'],
+		['THIRD_PARTY_NOTICES.md', 'packages/vscode/THIRD_PARTY_NOTICES.md'],
 	];
-	for (const [installedPath, expectedPath] of comparisons) {
+	for (const [installedPath, sourcePath] of comparisons) {
 		const [actual, expected] = await Promise.all([
 			readFile(resolve(extensionPath, installedPath)),
-			readFile(expectedPath),
+			readReviewedFile(repositoryRoot, sourcePath, reviewedCommit),
 		]);
 		assert.deepEqual(actual, expected, `Installed VSIX ${installedPath} differs from the reviewed packaging input.`);
 	}
@@ -54,6 +59,20 @@ async function verifyInstalledLegalFiles(extensionPath) {
 	assert.match(generatedLegalText, /^PACKAGE: .+@.+$/mu);
 	assert.match(generatedLegalText, /^DECLARED LICENSE: .+$/mu);
 	assert.match(generatedLegalText, /^FILE: (?:LICENSE|LICENCE|COPYING)/imu);
+}
+
+async function readReviewedFile(repositoryRoot, sourcePath, reviewedCommit) {
+	if (reviewedCommit === undefined) return readFile(resolve(repositoryRoot, sourcePath));
+	const result = spawnSync('git', ['show', `${reviewedCommit}:${sourcePath}`], {
+		cwd: repositoryRoot,
+		encoding: null,
+		maxBuffer: 16 * 1024 * 1024,
+	});
+	if (result.error !== undefined) throw new Error(`Failed to read reviewed VSIX source ${sourcePath} from ${reviewedCommit}: ${result.error.message}`);
+	if ((result.status ?? 1) !== 0) {
+		throw new Error(`Failed to read reviewed VSIX source ${sourcePath} from ${reviewedCommit}: ${(result.stderr ?? Buffer.alloc(0)).toString('utf8').trim()}`);
+	}
+	return result.stdout;
 }
 
 async function waitFor(predicate, label) {
