@@ -1,5 +1,5 @@
-import { readdir, readFile } from 'node:fs/promises';
-import { relative, resolve, sep } from 'node:path';
+import { readdir, readFile, realpath } from 'node:fs/promises';
+import { isAbsolute, relative, resolve, sep } from 'node:path';
 import { TextDecoder } from 'node:util';
 import validateNpmPackageLicense from 'validate-npm-package-license';
 
@@ -10,8 +10,9 @@ const utf8Decoder = new TextDecoder('utf-8', { fatal: true });
 export async function buildBundledThirdPartyLicenseText(metafiles, root = process.cwd()) {
 	const packageRoots = collectBundledPackageRoots(metafiles, root);
 	if (packageRoots.length === 0) throw new Error('VS Code bundles did not include any third-party npm packages');
+	const rootRealPath = await realpath(root);
 	const packages = [];
-	for (const packageRoot of packageRoots) packages.push(await readPackageLegalMaterial(packageRoot, root));
+	for (const packageRoot of packageRoots) packages.push(await readPackageLegalMaterial(packageRoot, root, rootRealPath));
 	packages.sort(comparePackageMaterial);
 
 	const deduplicated = [];
@@ -59,7 +60,12 @@ export function collectBundledPackageRoots(metafiles, root = process.cwd()) {
 			throw new Error('Expected esbuild metafile inputs');
 		}
 		for (const input of Object.keys(inputs)) {
-			const relativeInput = normalizePath(relative(root, resolve(root, input)));
+			const absoluteInput = resolve(root, input);
+			const nativeRelativeInput = relative(root, absoluteInput);
+			if (escapesRoot(nativeRelativeInput)) {
+				throw new Error(`VS Code bundle input escapes the repository root: ${input}`);
+			}
+			const relativeInput = normalizePath(nativeRelativeInput);
 			const marker = 'node_modules/';
 			const markerIndex = relativeInput.lastIndexOf(marker);
 			if (markerIndex < 0) continue;
@@ -77,7 +83,17 @@ export function collectBundledPackageRoots(metafiles, root = process.cwd()) {
 	return [...roots].sort(compareText);
 }
 
-async function readPackageLegalMaterial(packageRoot, root) {
+async function readPackageLegalMaterial(packageRoot, root, rootRealPath) {
+	let packageRealPath;
+	try {
+		packageRealPath = await realpath(packageRoot);
+	} catch (error) {
+		throw new Error(`Cannot resolve bundled package root ${normalizePath(relative(root, packageRoot))}: ${error.message}`);
+	}
+	if (escapesRoot(relative(rootRealPath, packageRealPath))) {
+		throw new Error(`Bundled package root escapes the repository through filesystem resolution: ${normalizePath(relative(root, packageRoot))}`);
+	}
+
 	const manifestPath = resolve(packageRoot, 'package.json');
 	let manifest;
 	try {
@@ -131,6 +147,10 @@ function resolvedLicense(value, label) {
 function nonEmptyString(value, label) {
 	if (typeof value !== 'string' || value.trim().length === 0) throw new Error(`${label} must be a non-empty string`);
 	return value;
+}
+
+function escapesRoot(relativePath) {
+	return relativePath === '..' || relativePath.startsWith(`..${sep}`) || isAbsolute(relativePath);
 }
 
 function normalizeNewlines(value) {
