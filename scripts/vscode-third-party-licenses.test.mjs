@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import test from 'node:test';
@@ -81,6 +81,37 @@ test('bundled package root discovery handles nested and scoped node_modules path
 			resolve(root, 'node_modules/plain'),
 		].sort());
 	});
+});
+
+test('bundle inputs cannot lexically escape the repository root', () => {
+	withFixture(root => {
+		assert.throws(
+			() => collectBundledPackageRoots([{ inputs: { '../outside/node_modules/pkg/index.js': {} } }], root),
+			/VS Code bundle input escapes the repository root/u,
+		);
+	});
+});
+
+test('bundled package roots cannot escape through filesystem symlinks', async () => {
+	const external = mkdtempSync(join(tmpdir(), 'virune-vscode-external-license-'));
+	try {
+		await withFixture(async root => {
+			writePackage(external, 'outside', {
+				name: 'outside',
+				version: '1.0.0',
+				license: 'MIT',
+				files: { LICENSE: 'External license\n' },
+			});
+			mkdirSync(resolve(root, 'node_modules'), { recursive: true });
+			symlinkSync(resolve(external, 'node_modules/outside'), resolve(root, 'node_modules/linked'), 'dir');
+			await assert.rejects(
+				() => buildBundledThirdPartyLicenseText([{ inputs: { 'node_modules/linked/index.js': {} } }], root),
+				/Bundled package root escapes the repository through filesystem resolution/u,
+			);
+		});
+	} finally {
+		rmSync(external, { recursive: true, force: true });
+	}
 });
 
 test('malformed esbuild metadata fails closed', async () => {
