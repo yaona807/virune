@@ -16,6 +16,8 @@ const includedFiles = await listFiles({
 });
 const requiredFiles = [
 	'package.json',
+	'LICENSE',
+	'NOTICE',
 	'language-configuration.json',
 	'syntaxes/virune.tmLanguage.json',
 	'dist/extension.cjs',
