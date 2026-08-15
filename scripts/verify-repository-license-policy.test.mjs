@@ -21,6 +21,7 @@ test('current repository license policy is canonical and synchronized', () => {
 	const result = verifyRepositoryLicensePolicy(repositoryRoot);
 	assert.equal(result.license, 'Apache-2.0');
 	assert.deepEqual(result.workspaces, [...workspaceDirectories].sort());
+	assert.ok(result.packageManifests.includes('scripts/vsix-smoke-harness/package.json'));
 });
 
 test('modified root Apache license text fails closed', () => {
@@ -62,6 +63,22 @@ test('workspace license metadata drift fails closed', () => {
 		assert.throws(
 			() => verifyRepositoryLicensePolicy(root),
 			/packages\/vscode\/package\.json license must be Apache-2\.0/u,
+		);
+	});
+});
+
+test('non-workspace Virune package license drift fails closed', () => {
+	withFixture(root => {
+		mkdirSync(resolve(root, 'tools/virune-helper'), { recursive: true });
+		writeFileSync(resolve(root, 'tools/virune-helper/package.json'), `${JSON.stringify({
+			name: 'virune-helper',
+			version: '0.0.0',
+			private: true,
+			license: 'MIT',
+		}, null, 2)}\n`);
+		assert.throws(
+			() => verifyRepositoryLicensePolicy(root),
+			/tools\/virune-helper\/package\.json license must be Apache-2\.0/u,
 		);
 	});
 });
