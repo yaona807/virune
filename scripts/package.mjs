@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { execNpmSync } from './npm-cli.mjs';
 import { writeReleaseIntegrityFiles } from './release-manifest.mjs';
+import { verifyReleaseLicenseArtifacts } from './verify-release-license-artifacts.mjs';
 
 const rootPackage = JSON.parse(readFileSync(resolve('package.json'), 'utf8'));
 const version = rootPackage.version;
@@ -100,3 +101,4 @@ const packageEntries = packages.map(item => {
 });
 writeFileSync(resolve(out, 'MANIFEST.json'), `${JSON.stringify({ schemaVersion: 1, version, packages: packageEntries }, null, 2)}\n`);
 writeReleaseIntegrityFiles(out, version);
+verifyReleaseLicenseArtifacts();
