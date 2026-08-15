@@ -56,7 +56,13 @@ const groups = platformSmoke ? platformGroups : [
 		},
 		{ name: 'repository license policy', files: ['scripts/verify-repository-license-policy.test.mjs'] },
 		{ name: 'release license artifact policy', files: ['scripts/verify-release-license-artifacts.test.mjs'] },
-		{ name: 'VS Code third-party license packaging policy', files: ['scripts/vscode-third-party-licenses.test.mjs'] },
+		{
+			name: 'VS Code license packaging policy',
+			files: [
+				'scripts/vscode-third-party-licenses.test.mjs',
+				'scripts/reviewed-repository-source.test.mjs',
+			],
+		},
 		{
 			name: 'documentation examples',
 			command: ['scripts/verify-documentation-examples.mjs'],
