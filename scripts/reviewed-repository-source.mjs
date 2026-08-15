@@ -30,6 +30,26 @@ export function createReviewedRepositorySourceReader(repositoryRoot, reviewedCom
 				}
 			}
 
+			const listing = spawnSync('git', ['ls-tree', '-z', '--name-only', reviewedCommit, '--', sourcePath], {
+				cwd: repositoryRoot,
+				encoding: null,
+				maxBuffer: 16 * 1024 * 1024,
+			});
+			if (listing.error !== undefined) {
+				throw new Error(`Failed to inspect reviewed source ${sourcePath} from ${reviewedCommit}: ${listing.error.message}`);
+			}
+			if ((listing.status ?? 1) !== 0) {
+				throw new Error(`Failed to inspect reviewed source ${sourcePath} from ${reviewedCommit}: ${(listing.stderr ?? Buffer.alloc(0)).toString('utf8').trim()}`);
+			}
+			const listedPaths = (listing.stdout ?? Buffer.alloc(0)).toString('utf8').split('\0').filter(Boolean);
+			if (listedPaths.length === 0) {
+				if (optional) return undefined;
+				throw new Error(`Failed to read reviewed source ${sourcePath} from ${reviewedCommit}: path is absent from the reviewed commit`);
+			}
+			if (listedPaths.length !== 1 || listedPaths[0] !== sourcePath) {
+				throw new Error(`Reviewed source lookup for ${sourcePath} from ${reviewedCommit} returned an unexpected path set`);
+			}
+
 			const result = spawnSync('git', ['show', `${reviewedCommit}:${sourcePath}`], {
 				cwd: repositoryRoot,
 				encoding: null,
@@ -37,7 +57,6 @@ export function createReviewedRepositorySourceReader(repositoryRoot, reviewedCom
 			});
 			if (result.error !== undefined) throw new Error(`Failed to read reviewed source ${sourcePath} from ${reviewedCommit}: ${result.error.message}`);
 			if ((result.status ?? 1) !== 0) {
-				if (optional) return undefined;
 				throw new Error(`Failed to read reviewed source ${sourcePath} from ${reviewedCommit}: ${(result.stderr ?? Buffer.alloc(0)).toString('utf8').trim()}`);
 			}
 			return result.stdout;
