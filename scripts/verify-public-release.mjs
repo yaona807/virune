@@ -36,7 +36,7 @@ export async function verifyPublicRelease({
 		if (!response.ok) throw new Error(`Failed to download ${asset.name}: HTTP ${response.status}`);
 		await writeFile(resolve(outputDirectory, asset.name), Buffer.from(await response.arrayBuffer()));
 	}
-	const integrity = await validateDownloadedRelease(outputDirectory, version);
+	const integrity = await validateDownloadedRelease(outputDirectory, version, { reviewedCommit: expectedCommit });
 	const installation = await validatePublicInstallation({ version, repository, runCommand });
 	const report = {
 		schemaVersion: 1,
@@ -74,7 +74,8 @@ export function validateReleaseRecord(release, { tag, version }) {
 	for (const required of requiredAssetNames(version)) if (!names.has(required)) throw new Error(`Release is missing ${required}.`);
 }
 
-export async function validateDownloadedRelease(directory, version, { sourceRoot = repositoryRoot } = {}) {
+export async function validateDownloadedRelease(directory, version, { sourceRoot = repositoryRoot, reviewedCommit } = {}) {
+	if (reviewedCommit !== undefined && !/^[0-9a-f]{40}$/u.test(reviewedCommit)) throw new Error('reviewedCommit must be a full commit SHA.');
 	const files = (await readdir(directory)).sort();
 	const checksums = parseChecksums(await readFile(resolve(directory, 'SHA256SUMS'), 'utf8'));
 	const expectedChecksumFiles = files.filter(file => file !== 'SHA256SUMS').sort();
@@ -105,7 +106,7 @@ export async function validateDownloadedRelease(directory, version, { sourceRoot
 	for (const file of REVIEWED_LEGAL_FILES) {
 		const [published, reviewed] = await Promise.all([
 			readFile(resolve(directory, file)),
-			readFile(resolve(sourceRoot, file)),
+			readReviewedFile(file, { sourceRoot, reviewedCommit }),
 		]);
 		if (!published.equals(reviewed)) throw new Error(`Public release ${file} does not match the reviewed release source.`);
 	}
@@ -135,6 +136,20 @@ export function parseChecksums(source) {
 		output.set(match[2], match[1]);
 	}
 	return output;
+}
+
+async function readReviewedFile(file, { sourceRoot, reviewedCommit }) {
+	if (reviewedCommit === undefined) return readFile(resolve(sourceRoot, file));
+	const result = spawnSync('git', ['show', `${reviewedCommit}:${file}`], {
+		cwd: sourceRoot,
+		encoding: null,
+		maxBuffer: 16 * 1024 * 1024,
+	});
+	if (result.error !== undefined) throw new Error(`Failed to read reviewed ${file} from ${reviewedCommit}: ${result.error.message}`);
+	if ((result.status ?? 1) !== 0) {
+		throw new Error(`Failed to read reviewed ${file} from ${reviewedCommit}: ${(result.stderr ?? Buffer.alloc(0)).toString('utf8').trim()}`);
+	}
+	return result.stdout;
 }
 
 async function validatePublicInstallation({ version, repository, runCommand }) {
