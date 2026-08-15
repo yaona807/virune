@@ -105,15 +105,21 @@ async function readPackageLegalMaterial(packageRoot, root, rootRealPath) {
 	const version = nonEmptyString(manifest.version, `${manifestPath}: version`);
 	const license = resolvedLicense(manifest.license, `${manifestPath}: license`);
 	const entries = await readdir(packageRoot, { withFileTypes: true });
-	const licenseFiles = entries
-		.filter(entry => entry.isFile() && LICENSE_FILE_PATTERN.test(entry.name))
+	const legalEntries = entries.filter(entry => LICENSE_FILE_PATTERN.test(entry.name) || SUPPLEMENTARY_FILE_PATTERN.test(entry.name));
+	for (const entry of legalEntries) {
+		if (!entry.isFile()) {
+			throw new Error(`Bundled package ${name}@${version} legal entry ${entry.name} must be a regular file`);
+		}
+	}
+	const licenseFiles = legalEntries
+		.filter(entry => LICENSE_FILE_PATTERN.test(entry.name))
 		.map(entry => entry.name)
 		.sort(compareText);
 	if (licenseFiles.length === 0) {
 		throw new Error(`Bundled package ${name}@${version} does not contain a LICENSE/LICENCE/COPYING file`);
 	}
-	const supplementaryFiles = entries
-		.filter(entry => entry.isFile() && SUPPLEMENTARY_FILE_PATTERN.test(entry.name))
+	const supplementaryFiles = legalEntries
+		.filter(entry => SUPPLEMENTARY_FILE_PATTERN.test(entry.name))
 		.map(entry => entry.name)
 		.sort(compareText);
 	const fileNames = [...licenseFiles, ...supplementaryFiles.filter(name => !licenseFiles.includes(name))];
