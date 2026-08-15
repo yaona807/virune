@@ -6,6 +6,7 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const repositoryRoot = resolve(fileURLToPath(new URL('..', import.meta.url)));
+const EXPECTED_LICENSE = 'Apache-2.0';
 
 export async function verifyPublicRelease({
 	version,
@@ -97,12 +98,16 @@ export async function validateDownloadedRelease(directory, version) {
 	const sbom = JSON.parse(await readFile(resolve(directory, 'SBOM.cdx.json'), 'utf8'));
 	if (sbom.bomFormat !== 'CycloneDX' || sbom.specVersion !== '1.6') throw new Error('Release SBOM is not CycloneDX 1.6.');
 	if (sbom.metadata?.component?.version !== version) throw new Error('Release SBOM version does not match the candidate.');
+	const rootLicenses = sbom.metadata?.component?.licenses;
+	if (!Array.isArray(rootLicenses) || rootLicenses.length !== 1 || rootLicenses[0]?.license?.id !== EXPECTED_LICENSE) {
+		throw new Error(`Release SBOM root license must be exactly ${EXPECTED_LICENSE}.`);
+	}
 	const sbomAsset = assetByName.get('SBOM.cdx.json');
 	if (manifest.sbom?.sha256 !== sbomAsset?.sha256 || manifest.sbom?.bytes !== sbomAsset?.bytes) throw new Error('SBOM manifest digest mismatch.');
 	return {
 		assets,
 		manifest: { schemaVersion: manifest.schemaVersion, version: manifest.version, fileCount: manifest.files.length },
-		sbom: { format: sbom.bomFormat, specVersion: sbom.specVersion, serialNumber: sbom.serialNumber, componentCount: sbom.components?.length ?? 0 },
+		sbom: { format: sbom.bomFormat, specVersion: sbom.specVersion, serialNumber: sbom.serialNumber, componentCount: sbom.components?.length ?? 0, license: EXPECTED_LICENSE },
 	};
 }
 
@@ -178,7 +183,7 @@ function requestHeaders(token) {
 
 function requiredAssetNames(version) {
 	return [
-		'MANIFEST.json', 'README.md', 'README_ja.md', 'RELEASE-MANIFEST.json', 'SBOM.cdx.json', 'SHA256SUMS', 'THIRD_PARTY_NOTICES.md', 'THIRD_PARTY_NOTICES_ja.md', 'package.json',
+		'LICENSE', 'MANIFEST.json', 'NOTICE', 'README.md', 'README_ja.md', 'RELEASE-MANIFEST.json', 'SBOM.cdx.json', 'SHA256SUMS', 'THIRD_PARTY_NOTICES.md', 'THIRD_PARTY_NOTICES_ja.md', 'package.json',
 		`virune-${version}.tgz`, `virune-compiler-${version}.tgz`, `virune-formatter-${version}.tgz`, `virune-js-interop-${version}.tgz`, `virune-runtime-${version}.tgz`, `virune-stdlib-${version}.tgz`, `virune-vscode-${version}.vsix`,
 	];
 }
