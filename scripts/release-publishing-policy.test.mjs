@@ -33,6 +33,14 @@ test('releases generate provenance and SBOM attestations for every asset', async
 	assert.match(source, /sbom-path: release\/SBOM\.cdx\.json/u);
 });
 
+test('public VSIX legal verification is pinned to the reviewed release commit', async () => {
+	const workflow = await readWorkflow('release-public-verify.yml');
+	assert.match(workflow, /VIRUNE_REVIEWED_COMMIT: \$\{\{ steps\.request\.outputs\.expected_commit \}\}/u);
+	const smoke = await readFile(resolve('scripts/vsix-smoke-suite.mjs'), 'utf8');
+	assert.match(smoke, /VIRUNE_REVIEWED_COMMIT must be a full commit SHA/u);
+	assert.match(smoke, /spawnSync\('git', \['show', `\$\{reviewedCommit\}:\$\{sourcePath\}`\]/u);
+});
+
 test('exceptional replacement is manual, confirmed and audited', async () => {
 	const source = await readWorkflow('release-repair.yml');
 	assert.match(source, /^on:\n  workflow_dispatch:/mu);
