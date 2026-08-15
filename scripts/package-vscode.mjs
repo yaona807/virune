@@ -2,7 +2,10 @@ import { createHash } from 'node:crypto';
 import { mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { basename, resolve } from 'node:path';
 import { writeReleaseIntegrityFiles } from './release-manifest.mjs';
+import { verifyRepositoryLicensePolicy } from './verify-repository-license-policy.mjs';
 import { createVSIX, listFiles } from '@vscode/vsce';
+
+verifyRepositoryLicensePolicy();
 
 const extensionDirectory = resolve('packages/vscode');
 const extensionPackage = JSON.parse(readFileSync(resolve(extensionDirectory, 'package.json'), 'utf8'));
