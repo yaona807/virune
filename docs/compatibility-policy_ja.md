@@ -59,7 +59,7 @@ Prerelease／nightlyの互換性は[`release-channels_ja.md`](release-channels_j
 
 既存conforming programの意味を維持するsource-compatibleなsyntax／semantics追加はminor releaseで導入できます。
 
-既存の規範仕様が要求している挙動へCompilerを戻す修正は、Language contractの再定義ではなくcorrectness fixです。ただし誤実装へ依存していたcodeに実質的なmigrationが必要になる場合、release noteで影響挙動を明示しmigration guidanceを提供します。
+既存の規範仕様が要求している挙動へCompilerを戻す修正は、Language contractの再定義ではなくcorrectness fixです。修正自体がStable surfaceと非互換になる場合は、次のmajor releaseまで待つか、下記のCorrectness／Safety／Security例外修正条件を満たす必要があります。また、誤実装へ依存していたcodeに実質的なmigrationが必要になる場合、release noteで影響挙動を明示しmigration guidanceを提供します。
 
 ## Runtime ABI、Interop ABI、Compiler API、standard library
 
