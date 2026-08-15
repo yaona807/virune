@@ -16,7 +16,7 @@ const lock = {
 	packages: {
 		'': { name: 'virune-monorepo', version: '1.0.0', dependencies: { virune: '1.0.0' }, devDependencies: { typescript: '6.0.3' } },
 		'packages/cli': { name: 'virune', version: '1.0.0', dependencies: { '@virune/runtime': '1.0.0' } },
-		'packages/runtime': { name: '@virune/runtime', version: '1.0.0', license: 'MIT' },
+		'packages/runtime': { name: '@virune/runtime', version: '1.0.0', license: 'Apache-2.0' },
 		'node_modules/virune': { resolved: 'packages/cli', link: true },
 		'node_modules/@virune/runtime': { resolved: 'packages/runtime', link: true },
 		'node_modules/typescript': { version: '6.0.3', dev: true, license: 'Apache-2.0' },
@@ -43,7 +43,7 @@ test('records workspace packages, development scope and dependency relationships
 	const runtime = sbom.components.find(component => component.name === '@virune/runtime');
 	const typescript = sbom.components.find(component => component.name === 'typescript');
 	assert.equal(cli?.type, 'application');
-	assert.equal(runtime?.licenses?.[0]?.license.id, 'MIT');
+	assert.equal(runtime?.licenses?.[0]?.license.id, 'Apache-2.0');
 	assert.equal(typescript?.scope, 'optional');
 	const rootDependency = sbom.dependencies.find(item => item.ref === sbom.metadata.component['bom-ref']);
 	assert.ok(rootDependency?.dependsOn.includes(cli['bom-ref']));
