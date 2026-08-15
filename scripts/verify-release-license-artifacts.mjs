@@ -42,13 +42,13 @@ export function verifyReleaseLicenseArtifacts(root = repositoryRoot) {
 	];
 	for (const file of tarballs) {
 		const entries = readTarEntries(readFileSync(resolve(releaseDirectory, file)));
-		const manifestBytes = requireEntry(entries, 'package/package.json', file);
+		const manifestBytes = requireRegularFileEntry(entries, 'package/package.json', file);
 		const manifest = JSON.parse(manifestBytes.toString('utf8'));
 		if (manifest.license !== expectedLicense) {
 			throw new Error(`${file} package license ${JSON.stringify(manifest.license)} does not match ${expectedLicense}`);
 		}
-		assertEqualBytes(requireEntry(entries, 'package/LICENSE', file), canonicalLicense, `${file}: package/LICENSE`);
-		assertEqualBytes(requireEntry(entries, 'package/NOTICE', file), canonicalNotice, `${file}: package/NOTICE`);
+		assertEqualBytes(requireRegularFileEntry(entries, 'package/LICENSE', file), canonicalLicense, `${file}: package/LICENSE`);
+		assertEqualBytes(requireRegularFileEntry(entries, 'package/NOTICE', file), canonicalNotice, `${file}: package/NOTICE`);
 	}
 
 	const sbom = readJson(resolve(releaseDirectory, 'SBOM.cdx.json'));
@@ -114,16 +114,22 @@ function readTarEntries(tgzBytes) {
 		const dataEnd = dataStart + size;
 		if (dataEnd > tar.byteLength) throw new Error(`Truncated tar entry ${fullName}`);
 		if (entries.has(fullName)) throw new Error(`Duplicate tar entry ${fullName}`);
-		entries.set(fullName, tar.subarray(dataStart, dataEnd));
+		entries.set(fullName, {
+			bytes: tar.subarray(dataStart, dataEnd),
+			typeFlag: header[156],
+		});
 		offset = dataStart + Math.ceil(size / 512) * 512;
 	}
 	return entries;
 }
 
-function requireEntry(entries, path, archive) {
+function requireRegularFileEntry(entries, path, archive) {
 	const value = entries.get(path);
 	if (value === undefined) throw new Error(`${archive} is missing ${path}`);
-	return value;
+	if (value.typeFlag !== 0 && value.typeFlag !== '0'.charCodeAt(0)) {
+		throw new Error(`${archive} ${path} must be a regular file; tar typeflag=${JSON.stringify(String.fromCharCode(value.typeFlag))}`);
+	}
+	return value.bytes;
 }
 
 function assertEqualBytes(actual, expected, label) {
