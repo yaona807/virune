@@ -13,6 +13,10 @@ export function verifyReleaseLicenseArtifacts(root = repositoryRoot) {
 	const canonicalLicense = readFileSync(resolve(root, 'LICENSE'));
 	const canonicalNotice = readFileSync(resolve(root, 'NOTICE'));
 
+	const releasePackageManifest = readJson(resolve(releaseDirectory, 'package.json'));
+	if (releasePackageManifest.license !== expectedLicense) {
+		throw new Error(`release/package.json license ${JSON.stringify(releasePackageManifest.license)} does not match ${expectedLicense}`);
+	}
 	assertEqualBytes(readFileSync(resolve(releaseDirectory, 'LICENSE')), canonicalLicense, 'release/LICENSE');
 	assertEqualBytes(readFileSync(resolve(releaseDirectory, 'NOTICE')), canonicalNotice, 'release/NOTICE');
 
