@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { gzipSync } from 'node:zlib';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import test from 'node:test';
@@ -51,6 +51,26 @@ test('rejects release legal files that differ from the repository canonical file
 	});
 });
 
+test('rejects modified release third-party notices', () => {
+	withFixture(root => {
+		writeFileSync(resolve(root, 'release/THIRD_PARTY_NOTICES.md'), 'stale third-party notice\n');
+		assert.throws(
+			() => verifyReleaseLicenseArtifacts(root),
+			/release\/THIRD_PARTY_NOTICES\.md does not match the canonical repository file/u,
+		);
+	});
+});
+
+test('rejects a release that drops the Japanese third-party notices', () => {
+	withFixture(root => {
+		unlinkSync(resolve(root, 'release/THIRD_PARTY_NOTICES_ja.md'));
+		assert.throws(
+			() => verifyReleaseLicenseArtifacts(root),
+			/THIRD_PARTY_NOTICES_ja\.md/u,
+		);
+	});
+});
+
 test('rejects a stale SBOM root license', () => {
 	withFixture(root => {
 		writeJson(resolve(root, 'release/SBOM.cdx.json'), {
@@ -67,9 +87,12 @@ function withFixture(run) {
 		writeJson(resolve(root, 'package.json'), { name: 'virune-monorepo', version, license: expectedLicense });
 		writeFileSync(resolve(root, 'LICENSE'), 'canonical Apache license text\n');
 		writeFileSync(resolve(root, 'NOTICE'), 'Virune\nCopyright 2026 Yaona and the Virune project authors\n');
+		writeFileSync(resolve(root, 'THIRD_PARTY_NOTICES.md'), '# Third-Party Notices\n\nExample notice\n');
+		writeFileSync(resolve(root, 'THIRD_PARTY_NOTICES_ja.md'), '# 第三者ライセンス\n\nExample notice ja\n');
 		writeJson(resolve(root, 'release/package.json'), { name: 'virune-local-release', version, license: expectedLicense });
-		writeFileSync(resolve(root, 'release/LICENSE'), readFileSync(resolve(root, 'LICENSE')));
-		writeFileSync(resolve(root, 'release/NOTICE'), readFileSync(resolve(root, 'NOTICE')));
+		for (const file of ['LICENSE', 'NOTICE', 'THIRD_PARTY_NOTICES.md', 'THIRD_PARTY_NOTICES_ja.md']) {
+			writeFileSync(resolve(root, 'release', file), readFileSync(resolve(root, file)));
+		}
 		writeJson(resolve(root, 'release/SBOM.cdx.json'), {
 			metadata: { component: { licenses: [{ license: { id: expectedLicense } }] } },
 		});
