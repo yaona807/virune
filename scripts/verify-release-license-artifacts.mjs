@@ -10,6 +10,7 @@ export function verifyReleaseLicenseArtifacts(root = repositoryRoot) {
 	const rootManifest = readJson(resolve(root, 'package.json'));
 	const expectedLicense = nonEmptyString(rootManifest.license, 'root package license');
 	const version = nonEmptyString(rootManifest.version, 'root package version');
+	const rootName = nonEmptyString(rootManifest.name, 'root package name');
 	const canonicalLicense = readFileSync(resolve(root, 'LICENSE'));
 	const canonicalNotice = readFileSync(resolve(root, 'NOTICE'));
 	const canonicalThirdPartyNotices = readFileSync(resolve(root, 'THIRD_PARTY_NOTICES.md'));
@@ -52,28 +53,41 @@ export function verifyReleaseLicenseArtifacts(root = repositoryRoot) {
 	}
 
 	const sbom = readJson(resolve(releaseDirectory, 'SBOM.cdx.json'));
-	const rootLicenses = sbom?.metadata?.component?.licenses;
+	const rootComponent = sbom?.metadata?.component;
+	if (rootComponent?.name !== rootName || rootComponent?.version !== version) {
+		throw new Error(`SBOM root component identity must match ${rootName}@${version}`);
+	}
+	const rootLicenses = rootComponent?.licenses;
 	if (!Array.isArray(rootLicenses) || rootLicenses.length !== 1 || rootLicenses[0]?.license?.id !== expectedLicense) {
 		throw new Error(`SBOM root component license must be exactly ${expectedLicense}`);
 	}
-	verifySbomWorkspaceLicenses(sbom, listWorkspacePackagePaths(root), expectedLicense);
+	verifySbomWorkspaceComponents(sbom, listWorkspacePackages(root), expectedLicense);
 
 	console.log(`Release license artifacts verified: ${expectedLicense}, ${tarballs.length} npm packages.`);
 	return { license: expectedLicense, packageCount: tarballs.length };
 }
 
-function listWorkspacePackagePaths(root) {
+function listWorkspacePackages(root) {
 	const packagesRoot = resolve(root, 'packages');
-	const paths = readdirSync(packagesRoot, { withFileTypes: true })
+	const packages = readdirSync(packagesRoot, { withFileTypes: true })
 		.filter(entry => entry.isDirectory() && existsSync(resolve(packagesRoot, entry.name, 'package.json')))
-		.map(entry => `packages/${entry.name}`)
-		.sort(compareText);
-	if (paths.length === 0) throw new Error('No package workspaces were found for SBOM license verification');
-	return paths;
+		.map(entry => {
+			const path = `packages/${entry.name}`;
+			const manifest = readJson(resolve(packagesRoot, entry.name, 'package.json'));
+			return {
+				path,
+				name: nonEmptyString(manifest.name, `${path} package name`),
+				version: nonEmptyString(manifest.version, `${path} package version`),
+			};
+		})
+		.sort((left, right) => compareText(left.path, right.path));
+	if (packages.length === 0) throw new Error('No package workspaces were found for SBOM license verification');
+	return packages;
 }
 
-function verifySbomWorkspaceLicenses(sbom, workspacePaths, expectedLicense) {
+function verifySbomWorkspaceComponents(sbom, workspaces, expectedLicense) {
 	const components = Array.isArray(sbom?.components) ? sbom.components : [];
+	const workspacePaths = workspaces.map(workspace => workspace.path);
 	const actualWorkspacePaths = [...new Set(components.flatMap(component => Array.isArray(component?.properties)
 		? component.properties
 			.filter(property => property?.name === 'virune:package-lock:path' && /^packages\/[^/]+$/u.test(property?.value ?? ''))
@@ -83,15 +97,19 @@ function verifySbomWorkspaceLicenses(sbom, workspacePaths, expectedLicense) {
 		throw new Error(`SBOM workspace component set must exactly match repository workspaces. expected=${JSON.stringify(workspacePaths)} actual=${JSON.stringify(actualWorkspacePaths)}`);
 	}
 
-	for (const workspacePath of workspacePaths) {
+	for (const workspace of workspaces) {
 		const matches = components.filter(component => Array.isArray(component?.properties)
-			&& component.properties.some(property => property?.name === 'virune:package-lock:path' && property?.value === workspacePath));
+			&& component.properties.some(property => property?.name === 'virune:package-lock:path' && property?.value === workspace.path));
 		if (matches.length !== 1) {
-			throw new Error(`SBOM must contain exactly one component for ${workspacePath}; found ${matches.length}`);
+			throw new Error(`SBOM must contain exactly one component for ${workspace.path}; found ${matches.length}`);
 		}
-		const licenses = matches[0]?.licenses;
+		const component = matches[0];
+		if (component?.name !== workspace.name || component?.version !== workspace.version) {
+			throw new Error(`SBOM ${workspace.path} component identity must match ${workspace.name}@${workspace.version}`);
+		}
+		const licenses = component?.licenses;
 		if (!Array.isArray(licenses) || licenses.length !== 1 || licenses[0]?.license?.id !== expectedLicense) {
-			throw new Error(`SBOM ${workspacePath} component license must be exactly ${expectedLicense}`);
+			throw new Error(`SBOM ${workspace.path} component license must be exactly ${expectedLicense}`);
 		}
 	}
 }
