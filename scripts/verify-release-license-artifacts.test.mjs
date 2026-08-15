@@ -82,12 +82,31 @@ test('rejects a release that drops the Japanese third-party notices', () => {
 	});
 });
 
+test('rejects a stale SBOM root identity', () => {
+	withFixture(root => {
+		const sbom = readJson(resolve(root, 'release/SBOM.cdx.json'));
+		sbom.metadata.component.name = 'not-virune';
+		writeJson(resolve(root, 'release/SBOM.cdx.json'), sbom);
+		assert.throws(() => verifyReleaseLicenseArtifacts(root), /SBOM root component identity must match virune-monorepo@1\.0\.0/u);
+	});
+});
+
 test('rejects a stale SBOM root license', () => {
 	withFixture(root => {
 		const sbom = readJson(resolve(root, 'release/SBOM.cdx.json'));
 		sbom.metadata.component.licenses[0].license.id = 'MIT';
 		writeJson(resolve(root, 'release/SBOM.cdx.json'), sbom);
 		assert.throws(() => verifyReleaseLicenseArtifacts(root), /SBOM root component license must be exactly Apache-2\.0/u);
+	});
+});
+
+test('rejects a stale Virune workspace identity in the SBOM', () => {
+	withFixture(root => {
+		const sbom = readJson(resolve(root, 'release/SBOM.cdx.json'));
+		const runtime = sbom.components.find(component => component.properties.some(property => property.value === 'packages/runtime'));
+		runtime.name = '@virune/compiler';
+		writeJson(resolve(root, 'release/SBOM.cdx.json'), sbom);
+		assert.throws(() => verifyReleaseLicenseArtifacts(root), /SBOM packages\/runtime component identity must match @virune\/runtime@1\.0\.0/u);
 	});
 });
 
@@ -146,7 +165,13 @@ function withFixture(run) {
 			writeFileSync(resolve(root, 'release', file), readFileSync(resolve(root, file)));
 		}
 		writeJson(resolve(root, 'release/SBOM.cdx.json'), {
-			metadata: { component: { licenses: [{ license: { id: expectedLicense } }] } },
+			metadata: {
+				component: {
+					name: 'virune-monorepo',
+					version,
+					licenses: [{ license: { id: expectedLicense } }],
+				},
+			},
 			components: workspaceDirectories.map(directory => ({
 				name: `@virune/${directory}`,
 				version,
