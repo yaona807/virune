@@ -66,10 +66,24 @@ test('workspace license metadata drift fails closed', () => {
 	});
 });
 
+test('workspace lock license drift fails closed', () => {
+	withFixture(root => {
+		const path = resolve(root, 'package-lock.json');
+		const lock = JSON.parse(readFileSync(path, 'utf8'));
+		lock.packages['packages/runtime'].license = 'MIT';
+		writeFileSync(path, `${JSON.stringify(lock, null, 2)}\n`);
+		assert.throws(
+			() => verifyRepositoryLicensePolicy(root),
+			/package-lock\.json: packages\["packages\/runtime"\]\.license must match reviewed root license Apache-2\.0/u,
+		);
+	});
+});
+
 function withFixture(run) {
 	const root = mkdtempSync(join(tmpdir(), 'virune-repository-license-'));
 	try {
 		writeFileSync(resolve(root, 'package.json'), readFileSync(resolve(repositoryRoot, 'package.json')));
+		writeFileSync(resolve(root, 'package-lock.json'), readFileSync(resolve(repositoryRoot, 'package-lock.json')));
 		writeFileSync(resolve(root, 'LICENSE'), readFileSync(resolve(repositoryRoot, 'LICENSE')));
 		writeFileSync(resolve(root, 'NOTICE'), readFileSync(resolve(repositoryRoot, 'NOTICE')));
 		for (const directory of workspaceDirectories) {
