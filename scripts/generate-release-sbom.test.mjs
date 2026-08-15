@@ -8,6 +8,7 @@ import { buildCycloneDxSbom, normalizeWorkspaceLockVersions } from './generate-r
 const manifest = {
 	name: 'virune-monorepo',
 	version: '1.0.0',
+	license: 'Apache-2.0',
 	dependencies: { virune: '1.0.0' },
 	devDependencies: { typescript: '6.0.3' },
 };
@@ -33,6 +34,7 @@ test('builds a deterministic CycloneDX 1.6 SBOM from package-lock v3', () => {
 	assert.equal(first.specVersion, '1.6');
 	assert.match(first.serialNumber, /^urn:uuid:[0-9a-f-]{36}$/u);
 	assert.equal(first.metadata.component.version, '1.0.0');
+	assert.equal(first.metadata.component.licenses?.[0]?.license.id, 'Apache-2.0');
 	assert.equal(first.metadata.component.properties.find(item => item.name === 'virune:release:commit')?.value, 'abc123');
 	assert.notEqual(first.serialNumber, buildCycloneDxSbom({ lock, manifest, commit: 'different' }).serialNumber);
 });
@@ -88,4 +90,11 @@ test('normalizes stale lockfile workspace versions from release manifests', asyn
 
 test('rejects unsupported lockfiles', () => {
 	assert.throws(() => buildCycloneDxSbom({ lock: { lockfileVersion: 2, packages: {} }, manifest }), /lockfileVersion 3/u);
+});
+
+test('rejects a root package manifest without license metadata', () => {
+	assert.throws(
+		() => buildCycloneDxSbom({ lock, manifest: { ...manifest, license: '' } }),
+		/name, version, and license/u,
+	);
 });
