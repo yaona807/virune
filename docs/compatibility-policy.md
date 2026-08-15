@@ -59,7 +59,7 @@ An intentional change is language-breaking when a previously conforming program 
 
 Source-compatible additive syntax or semantics may ship in a minor release only when existing conforming programs retain their prior meaning.
 
-A compiler fix that restores behavior required by the existing normative specification is a correctness fix rather than a redefinition of the language contract. If such a fix creates material migration work for code that depended on the incorrect implementation, release notes must identify the affected behavior and provide migration guidance.
+A compiler fix that restores behavior required by the existing normative specification is a correctness fix rather than a redefinition of the language contract. If the repair itself is incompatible with a Stable surface, it must either wait for the next major release or satisfy the exceptional correctness, safety, and security fix rules below. If such a fix creates material migration work for code that depended on the incorrect implementation, release notes must identify the affected behavior and provide migration guidance.
 
 ## Runtime ABI, Interop ABI, Compiler API, and standard library
 
