@@ -10,10 +10,17 @@ export function verifyWorkspaceLicenseLock(root = process.cwd(), expectedLicense
 	if (lock.packages === null || typeof lock.packages !== 'object' || Array.isArray(lock.packages)) {
 		throw new Error('package-lock.json: packages must be an object');
 	}
-	assertLicense(lock.packages[''], '', expectedLicense);
-	for (const directory of listWorkspacePackageDirectories(root)) {
-		assertLicense(lock.packages[`packages/${directory}`], `packages/${directory}`, expectedLicense);
+
+	const workspacePaths = listWorkspacePackageDirectories(root).map(directory => `packages/${directory}`);
+	const lockWorkspacePaths = Object.keys(lock.packages)
+		.filter(path => /^packages\/[^/]+$/u.test(path))
+		.sort(compareText);
+	if (JSON.stringify(lockWorkspacePaths) !== JSON.stringify(workspacePaths)) {
+		throw new Error(`package-lock.json: workspace package entries must exactly match repository workspaces. expected=${JSON.stringify(workspacePaths)} actual=${JSON.stringify(lockWorkspacePaths)}`);
 	}
+
+	assertLicense(lock.packages[''], '', expectedLicense);
+	for (const path of workspacePaths) assertLicense(lock.packages[path], path, expectedLicense);
 }
 
 function listWorkspacePackageDirectories(root) {
