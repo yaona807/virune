@@ -5,6 +5,9 @@ import { join, resolve } from 'node:path';
 import { execNpmSync } from './npm-cli.mjs';
 import { writeReleaseIntegrityFiles } from './release-manifest.mjs';
 import { verifyReleaseLicenseArtifacts } from './verify-release-license-artifacts.mjs';
+import { verifyRepositoryLicensePolicy } from './verify-repository-license-policy.mjs';
+
+verifyRepositoryLicensePolicy();
 
 const rootPackage = JSON.parse(readFileSync(resolve('package.json'), 'utf8'));
 const version = rootPackage.version;
