@@ -1,10 +1,12 @@
 import { readdir, readFile } from 'node:fs/promises';
 import { relative, resolve, sep } from 'node:path';
+import { TextDecoder } from 'node:util';
 
 const LICENSE_FILE_PATTERN = /^(?:LICEN[CS]E|COPYING)(?:[._-].*)?$/iu;
 const SUPPLEMENTARY_FILE_PATTERN = /^(?:(?:NOTICE|COPYRIGHT)(?:[._-].*)?|THIRD[._-]?PARTY[._-]?(?:NOTICES?|LICEN[CS]ES?)(?:[._-].*)?)$/iu;
 const UNRESOLVED_LICENSE_PATTERN = /^(?:UNLICENSED|UNKNOWN|NOASSERTION|NONE)$/iu;
 const REFERENCED_LICENSE_PATTERN = /^SEE\s+LICEN[CS]E\s+IN(?:\s|$)/iu;
+const utf8Decoder = new TextDecoder('utf-8', { fatal: true });
 
 export async function buildBundledThirdPartyLicenseText(metafiles, root = process.cwd()) {
 	const packageRoots = collectBundledPackageRoots(metafiles, root);
@@ -80,7 +82,7 @@ async function readPackageLegalMaterial(packageRoot, root) {
 	const manifestPath = resolve(packageRoot, 'package.json');
 	let manifest;
 	try {
-		manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
+		manifest = JSON.parse(await readUtf8(manifestPath));
 	} catch (error) {
 		throw new Error(`Cannot read bundled package manifest ${normalizePath(relative(root, manifestPath))}: ${error.message}`);
 	}
@@ -102,11 +104,20 @@ async function readPackageLegalMaterial(packageRoot, root) {
 	const fileNames = [...licenseFiles, ...supplementaryFiles.filter(name => !licenseFiles.includes(name))];
 	const files = [];
 	for (const fileName of fileNames) {
-		const content = normalizeNewlines(await readFile(resolve(packageRoot, fileName), 'utf8'));
+		let content;
+		try {
+			content = normalizeNewlines(await readUtf8(resolve(packageRoot, fileName)));
+		} catch (error) {
+			throw new Error(`Bundled package ${name}@${version} legal file ${fileName} is not valid UTF-8: ${error.message}`);
+		}
 		if (content.trim().length === 0) throw new Error(`Bundled package ${name}@${version} has empty legal file ${fileName}`);
 		files.push({ name: fileName, content });
 	}
 	return { name, version, license, files };
+}
+
+async function readUtf8(path) {
+	return utf8Decoder.decode(await readFile(path));
 }
 
 function resolvedLicense(value, label) {
