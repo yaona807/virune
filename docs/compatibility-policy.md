@@ -16,8 +16,9 @@ Stable surfaces are compatibility commitments for users of stable releases:
 - the documented public standard-library surface tracked by `packages/public-abi.snapshot.json`
 - the root `@virune/compiler` API tracked by `packages/compiler/api/stable-api.snapshot.json`
 - versioned Runtime ABI and Interop ABI surfaces
-- documented public CLI commands, options, exit-code meanings, and stable diagnostic codes
-- explicitly documented stable machine-readable schemas and fields
+- documented public CLI commands, options, and exit-code meanings
+- the stable diagnostic-code and JSON-schema contract documented in [`diagnostic-codes.md`](diagnostic-codes.md)
+- other explicitly documented stable machine-readable schemas and fields
 - documented Virune-owned VS Code settings and public extension command identifiers, when such identifiers are documented
 
 A stable surface may grow compatibly in a minor release and may receive compatible corrections in a patch release. An intentional incompatible change to a stable contract normally requires the next major release.
@@ -44,9 +45,9 @@ Internal changes may be made without deprecation as long as they preserve all ap
 
 Stable Virune releases use Semantic Versioning as the project-level compatibility signal.
 
-- **Patch (`X.Y.Z+1`)**: backward-compatible corrections. A conforming program or supported stable consumer should not require migration solely because of an intentional stable-contract change.
-- **Minor (`X.Y+1.0`)**: backward-compatible additions and improvements. Existing conforming programs and stable consumers remain supported.
-- **Major (`X+1.0.0`)**: may intentionally change stable contracts and therefore requires explicit migration documentation for affected surfaces.
+- **Patch** (for example, `1.0.0` -> `1.0.1`): backward-compatible corrections. A conforming program or supported stable consumer should not require migration solely because of an intentional stable-contract change.
+- **Minor** (for example, `1.0.x` -> `1.1.0`): backward-compatible additions and improvements. Existing conforming programs and stable consumers remain supported.
+- **Major** (for example, `1.x.y` -> `2.0.0`): may intentionally change stable contracts and therefore requires explicit migration documentation for affected surfaces.
 
 Prerelease and nightly compatibility remain governed by [`release-channels.md`](release-channels.md): prereleases may change incompatibly between prerelease builds, and nightly snapshots have no compatibility guarantee.
 
@@ -74,8 +75,8 @@ The following documented CLI behavior is stable unless explicitly marked otherwi
 
 - command and option names
 - documented exit-code meanings
-- stable diagnostic codes
-- explicitly documented machine-readable schema versions and fields
+- the diagnostic code, severity, coordinate, and JSON schema guarantees in [`diagnostic-codes.md`](diagnostic-codes.md)
+- other explicitly documented stable machine-readable schema versions and fields
 
 Human-oriented presentation is not a byte-stable interface. Wording, whitespace, color, wrapping, and similar presentation details may change when the documented meaning is preserved.
 
@@ -83,7 +84,7 @@ A mode being JSON does not automatically make every emitted field a stable contr
 
 ## LSP and VS Code compatibility
 
-Virune follows its declared VS Code API baseline and the upstream Language Server Protocol for protocol-level interoperability. Virune-owned public settings and command identifiers are stable only when documented as such.
+Virune follows its declared VS Code API baseline and the upstream Language Server Protocol for protocol-level interoperability. Documented Virune-owned VS Code setting keys are Stable. A public extension command identifier is Stable when the identifier itself, rather than only its display label, is documented as part of the public interface. Undocumented Virune-specific LSP extensions or wire details are not implicitly Stable.
 
 Internal indexing, caching, scheduling, request implementation, and analysis storage are not compatibility contracts. Raising the minimum supported VS Code API baseline in a way that drops a previously supported stable environment is treated like a platform-baseline breaking change unless an exception below applies.
 
@@ -99,7 +100,7 @@ Before intentionally removing or incompatibly changing a stable surface, Virune 
 
 1. Mark the old surface deprecated in the relevant public documentation and, where practical, tooling or type metadata.
 2. Document the supported replacement or migration path.
-3. Keep the deprecated surface available for at least one published stable release before removal, unless the exceptional-fix rules apply.
+3. Publish at least one stable release that carries the deprecation while keeping the old surface available before the release that removes it, unless the exceptional-fix rules apply.
 4. Remove or incompatibly change it only in a major release.
 5. Include the breaking change and migration steps in that major release's release notes or migration guide.
 
@@ -142,7 +143,7 @@ Compatibility decisions use the following authorities:
 
 1. **Language semantics**: [`../spec/`](../spec/) is normative. Explanatory documentation and implementation must conform to it.
 2. **Public ABI and API inventory**: committed ABI/API snapshots mechanically identify reviewed public surfaces. Snapshot updates require review, but a snapshot update does not by itself authorize a breaking change.
-3. **Surface-specific documentation**: Runtime/Interop ABI, Compiler API, CLI, VS Code, release-channel, and self-hosting documents define the detailed contract and lifecycle of their respective surfaces.
+3. **Surface-specific documentation**: Runtime/Interop ABI, Compiler API, diagnostics/JSON, CLI, VS Code, release-channel, and self-hosting documents define the detailed contract and lifecycle of their respective surfaces.
 4. **Release notes and migration guides**: describe what changed in a particular release and how to migrate. They do not silently override the normative specification or this policy.
 5. **Implementation and tests**: demonstrate conformance and detect regressions; they do not redefine a conflicting normative contract merely by passing.
 
@@ -159,4 +160,4 @@ This policy does not:
 - weaken security, correctness, ABI, reproducibility, or self-hosting promotion gates in order to preserve compatibility
 - treat a green snapshot/CI update as proof that an incompatible change is acceptable
 
-See also [`release-channels.md`](release-channels.md), [`compiler-api.md`](compiler-api.md), [`runtime-abi.md`](runtime-abi.md), and the normative [`../spec/`](../spec/).
+See also [`release-channels.md`](release-channels.md), [`compiler-api.md`](compiler-api.md), [`runtime-abi.md`](runtime-abi.md), [`diagnostic-codes.md`](diagnostic-codes.md), and the normative [`../spec/`](../spec/).
