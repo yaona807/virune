@@ -17,7 +17,12 @@ test('bundled third-party license text is deterministic and contains package leg
 			name: '@scope/alpha',
 			version: '1.0.0',
 			license: 'Apache-2.0',
-			files: { LICENSE: 'Alpha license\n', NOTICE: 'Alpha notice\n' },
+			files: {
+				LICENSE: 'Alpha license\n',
+				NOTICE: 'Alpha notice\n',
+				'ThirdPartyNotices.txt': 'Alpha third-party notices\r\n',
+				'THIRD_PARTY_LICENSES.txt': 'Alpha third-party license material\n',
+			},
 		});
 		const metafiles = [{ inputs: {
 			'packages/vscode/dist/src/extension.js': {},
@@ -43,6 +48,14 @@ test('bundled third-party license text is deterministic and contains package leg
 			'FILE: NOTICE',
 			'',
 			'Alpha notice',
+			'-------------------------------------------------------------------------------',
+			'FILE: THIRD_PARTY_LICENSES.txt',
+			'',
+			'Alpha third-party license material',
+			'-------------------------------------------------------------------------------',
+			'FILE: ThirdPartyNotices.txt',
+			'',
+			'Alpha third-party notices',
 			'',
 			'===============================================================================',
 			'PACKAGE: zeta@2.0.0',
