@@ -13,6 +13,7 @@ Viruneのsurfaceは **Stable**、**Experimental**、**Internal** の3つへ分�
 Stable surfaceは、stable release利用者に対する互換性の約束です。
 
 - [`../spec/`](../spec/)にある規範的なVirune言語挙動
+- 文書化済み`virune.json` project configurationのkey、受理するstable value、その意味、default
 - `packages/public-abi.snapshot.json`で追跡する文書化済みpublic standard library surface
 - `packages/compiler/api/stable-api.snapshot.json`で追跡するroot `@virune/compiler` API
 - stable release向けにStableと明示したRuntime ABI／Interop ABI version
@@ -60,6 +61,12 @@ Prerelease／nightlyの互換性は[`release-channels_ja.md`](release-channels_j
 既存conforming programの意味を維持するsource-compatibleなsyntax／semantics追加はminor releaseで導入できます。
 
 既存の規範仕様が要求している挙動へCompilerを戻す修正は、Language contractの再定義ではなくcorrectness fixです。修正自体がStable surfaceと非互換になる場合は、次のmajor releaseまで待つか、下記のCorrectness／Safety／Security例外修正条件を満たす必要があります。また、誤実装へ依存していたcodeに実質的なmigrationが必要になる場合、release noteで影響挙動を明示しmigration guidanceを提供します。
+
+## Project configuration
+
+文書化済み`virune.json` key、その受理するstable valueと意味、文書化済みdefaultをStableとします。Optional keyや新しいaccepted valueは、既存valid configurationの意味を維持する場合にminor releaseで追加できます。
+
+文書化済みkeyの削除／rename、以前文書上validだったconfigurationの拒否、既存valueの意味変更、同じ既存projectが非互換な挙動を得るような文書化済みdefault変更はbreakingです。未文書化extra keyやimplementation固有parser挙動は、あるCompiler versionで偶然受理されたという理由だけではStableになりません。
 
 ## Runtime ABI、Interop ABI、Compiler API、standard library
 
@@ -143,7 +150,7 @@ Compatibility判断では次をauthorityとします。
 
 1. **Language semantics**: [`../spec/`](../spec/)を規範とする。解説文書と実装はこれに従う。
 2. **Public ABI／API inventory**: commit済みABI／API snapshotはreview対象public surfaceを機械的に特定する。Snapshot更新自体はbreaking changeの承認にならない。
-3. **Surface固有documentation**: Runtime／Interop ABI、Compiler API、diagnostic／JSON、CLI、VS Code、release channel、Self-hosting文書が各surfaceの詳細contract／lifecycleを定義する。
+3. **Surface固有documentation**: project configuration、Runtime／Interop ABI、Compiler API、diagnostic／JSON、CLI、VS Code、release channel、Self-hosting文書が各surfaceの詳細contract／lifecycleを定義する。
 4. **Release note／migration guide**: 各releaseで何が変わり、どう移行するかを記述する。規範仕様や本policyを暗黙に上書きしない。
 5. **Implementation／test**: conformanceを示しregressionを検出する。Conflictする規範contractを、testがpassするという理由だけで再定義しない。
 
@@ -155,7 +162,7 @@ Authority間に不整合が見つかった場合、より許容的な解釈を�
 
 - Experimental／Internal implementation detailをfreezeする
 - 人間向けCLI出力のbyte-for-byte互換性を保証する
-- 未文書化JSON fieldをStable化する
+- 未文書化JSON field／project configuration keyをStable化する
 - 古いmajor release lineを無期限supportすると約束する
 - compatibility維持のためsecurity、correctness、ABI、reproducibility、Self-hosting promotion gateを弱める
 - snapshot／CIがgreenであることを、非互換変更を許可する根拠として扱う
