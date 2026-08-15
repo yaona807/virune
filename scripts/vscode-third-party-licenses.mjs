@@ -2,7 +2,7 @@ import { readdir, readFile } from 'node:fs/promises';
 import { relative, resolve, sep } from 'node:path';
 
 const LICENSE_FILE_PATTERN = /^(?:LICEN[CS]E|COPYING)(?:[._-].*)?$/iu;
-const SUPPLEMENTARY_FILE_PATTERN = /^(?:NOTICE|COPYRIGHT)(?:[._-].*)?$/iu;
+const SUPPLEMENTARY_FILE_PATTERN = /^(?:(?:NOTICE|COPYRIGHT)(?:[._-].*)?|THIRD[._-]?PARTY[._-]?(?:NOTICES?|LICEN[CS]ES?)(?:[._-].*)?)$/iu;
 const UNRESOLVED_LICENSE_PATTERN = /^(?:UNLICENSED|UNKNOWN|NOASSERTION|NONE)$/iu;
 const REFERENCED_LICENSE_PATTERN = /^SEE\s+LICEN[CS]E\s+IN(?:\s|$)/iu;
 
