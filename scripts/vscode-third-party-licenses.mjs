@@ -3,6 +3,8 @@ import { relative, resolve, sep } from 'node:path';
 
 const LICENSE_FILE_PATTERN = /^(?:LICEN[CS]E|COPYING)(?:[._-].*)?$/iu;
 const SUPPLEMENTARY_FILE_PATTERN = /^(?:NOTICE|COPYRIGHT)(?:[._-].*)?$/iu;
+const UNRESOLVED_LICENSE_PATTERN = /^(?:UNLICENSED|UNKNOWN|NOASSERTION|NONE)$/iu;
+const REFERENCED_LICENSE_PATTERN = /^SEE\s+LICEN[CS]E\s+IN(?:\s|$)/iu;
 
 export async function buildBundledThirdPartyLicenseText(metafiles, root = process.cwd()) {
 	const packageRoots = collectBundledPackageRoots(metafiles, root);
@@ -84,7 +86,7 @@ async function readPackageLegalMaterial(packageRoot, root) {
 	}
 	const name = nonEmptyString(manifest.name, `${manifestPath}: name`);
 	const version = nonEmptyString(manifest.version, `${manifestPath}: version`);
-	const license = nonEmptyString(manifest.license, `${manifestPath}: license`);
+	const license = resolvedLicense(manifest.license, `${manifestPath}: license`);
 	const entries = await readdir(packageRoot, { withFileTypes: true });
 	const licenseFiles = entries
 		.filter(entry => entry.isFile() && LICENSE_FILE_PATTERN.test(entry.name))
@@ -105,6 +107,14 @@ async function readPackageLegalMaterial(packageRoot, root) {
 		files.push({ name: fileName, content });
 	}
 	return { name, version, license, files };
+}
+
+function resolvedLicense(value, label) {
+	const license = nonEmptyString(value, label).trim();
+	if (UNRESOLVED_LICENSE_PATTERN.test(license) || REFERENCED_LICENSE_PATTERN.test(license)) {
+		throw new Error(`${label} must identify a resolved license expression; received ${JSON.stringify(license)}`);
+	}
+	return license;
 }
 
 function nonEmptyString(value, label) {
