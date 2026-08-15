@@ -192,6 +192,22 @@ test('valid compound SPDX expressions remain accepted', async () => {
 	});
 });
 
+test('legal-looking symlink entries fail closed instead of being silently omitted', async () => {
+	await withFixture(async root => {
+		writePackage(root, 'symlinked-notice', {
+			name: 'symlinked-notice',
+			version: '1.0.0',
+			license: 'MIT',
+			files: { LICENSE: 'License text\n' },
+		});
+		symlinkSync('LICENSE', resolve(root, 'node_modules/symlinked-notice/NOTICE'));
+		await assert.rejects(
+			() => buildBundledThirdPartyLicenseText([{ inputs: { 'node_modules/symlinked-notice/index.js': {} } }], root),
+			/legal entry NOTICE must be a regular file/u,
+		);
+	});
+});
+
 test('bundled package without a license file fails closed', async () => {
 	await withFixture(async root => {
 		writePackage(root, 'missing-license', {
