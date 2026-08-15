@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
+import { mkdtempSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
-import { resolve } from 'node:path';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
 import test from 'node:test';
 import { createReviewedRepositorySourceReader } from './reviewed-repository-source.mjs';
 
@@ -24,8 +26,29 @@ test('optional reviewed paths may be absent without weakening required reads', a
 	assert.equal(await reader.read('definitely-not-present-for-reviewed-source-test.txt', { optional: true }), undefined);
 	await assert.rejects(
 		() => reader.read('definitely-not-present-for-reviewed-source-test.txt'),
-		/Failed to read reviewed source/u,
+		/path is absent from the reviewed commit/u,
 	);
+});
+
+test('optional reviewed reads still fail closed when Git becomes unavailable', async () => {
+	const root = mkdtempSync(join(tmpdir(), 'virune-reviewed-source-'));
+	try {
+		execFileSync('git', ['init', '-q'], { cwd: root });
+		execFileSync('git', ['config', 'user.name', 'Virune Test'], { cwd: root });
+		execFileSync('git', ['config', 'user.email', 'virune-test@example.invalid'], { cwd: root });
+		writeFileSync(resolve(root, 'present.txt'), 'present\n');
+		execFileSync('git', ['add', 'present.txt'], { cwd: root });
+		execFileSync('git', ['commit', '-q', '-m', 'fixture'], { cwd: root });
+		const commit = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim();
+		const reader = createReviewedRepositorySourceReader(root, commit);
+		renameSync(resolve(root, '.git'), resolve(root, '.git-unavailable'));
+		await assert.rejects(
+			() => reader.read('optional.txt', { optional: true }),
+			/Failed to inspect reviewed source/u,
+		);
+	} finally {
+		rmSync(root, { recursive: true, force: true });
+	}
 });
 
 test('working-tree mode preserves required and optional file semantics', async () => {
