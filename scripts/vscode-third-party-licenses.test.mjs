@@ -70,11 +70,35 @@ test('bundled package root discovery handles nested and scoped node_modules path
 	});
 });
 
+test('malformed esbuild metadata fails closed', async () => {
+	await withFixture(async root => {
+		await assert.rejects(
+			() => buildBundledThirdPartyLicenseText([{}], root),
+			/Expected esbuild metafile inputs/u,
+		);
+	});
+});
+
 test('empty bundled npm package set fails closed', async () => {
 	await withFixture(async root => {
 		await assert.rejects(
 			() => buildBundledThirdPartyLicenseText([{ inputs: { 'packages/vscode/src/extension.ts': {} } }], root),
 			/VS Code bundles did not include any third-party npm packages/u,
+		);
+	});
+});
+
+test('bundled package with unresolved license metadata fails closed', async () => {
+	await withFixture(async root => {
+		writePackage(root, 'unknown-license', {
+			name: 'unknown-license',
+			version: '1.0.0',
+			license: undefined,
+			files: { LICENSE: 'Some legal text\n' },
+		});
+		await assert.rejects(
+			() => buildBundledThirdPartyLicenseText([{ inputs: { 'node_modules/unknown-license/index.js': {} } }], root),
+			/package\.json: license must be a non-empty string/u,
 		);
 	});
 });
@@ -90,6 +114,30 @@ test('bundled package without a license file fails closed', async () => {
 		await assert.rejects(
 			() => buildBundledThirdPartyLicenseText([{ inputs: { 'node_modules/missing-license/index.js': {} } }], root),
 			/Bundled package missing-license@1\.0\.0 does not contain a LICENSE\/LICENCE\/COPYING file/u,
+		);
+	});
+});
+
+test('duplicate bundled package identity with conflicting legal material fails closed', async () => {
+	await withFixture(async root => {
+		writePackage(root, 'duplicate-a/node_modules/shared', {
+			name: 'shared',
+			version: '1.0.0',
+			license: 'MIT',
+			files: { LICENSE: 'First license text\n' },
+		});
+		writePackage(root, 'duplicate-b/node_modules/shared', {
+			name: 'shared',
+			version: '1.0.0',
+			license: 'MIT',
+			files: { LICENSE: 'Different license text\n' },
+		});
+		await assert.rejects(
+			() => buildBundledThirdPartyLicenseText([{ inputs: {
+				'node_modules/duplicate-a/node_modules/shared/index.js': {},
+				'node_modules/duplicate-b/node_modules/shared/index.js': {},
+			} }], root),
+			/Bundled package shared@1\.0\.0 has inconsistent legal metadata across installations/u,
 		);
 	});
 });
