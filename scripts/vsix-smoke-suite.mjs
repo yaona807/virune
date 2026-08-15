@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import * as vscode from 'vscode';
+import { createReviewedRepositorySourceReader } from './reviewed-repository-source.mjs';
 
 export async function run() {
 	const extension = vscode.extensions.getExtension('virune.virune-vscode');
@@ -35,14 +35,8 @@ export async function run() {
 async function verifyInstalledPackageAndLegalFiles(extension) {
 	const repositoryRoot = process.env.VIRUNE_REPOSITORY_ROOT;
 	assert.ok(repositoryRoot, 'VIRUNE_REPOSITORY_ROOT is required for installed legal-file verification.');
-	const reviewedCommit = process.env.VIRUNE_REVIEWED_COMMIT;
-	if (reviewedCommit !== undefined) {
-		assert.match(reviewedCommit, /^[0-9a-f]{40}$/u, 'VIRUNE_REVIEWED_COMMIT must be a full commit SHA.');
-	}
-
-	const reviewedManifest = JSON.parse(
-		(await readReviewedFile(repositoryRoot, 'packages/vscode/package.json', reviewedCommit)).toString('utf8'),
-	);
+	const reviewed = createReviewedRepositorySourceReader(repositoryRoot, process.env.VIRUNE_REVIEWED_COMMIT);
+	const reviewedManifest = JSON.parse((await reviewed.read('packages/vscode/package.json')).toString('utf8'));
 	assert.equal(
 		extension.packageJSON.license,
 		reviewedManifest.license,
@@ -55,19 +49,13 @@ async function verifyInstalledPackageAndLegalFiles(extension) {
 		['THIRD_PARTY_NOTICES.md', 'packages/vscode/THIRD_PARTY_NOTICES.md', false],
 	];
 	for (const [installedPath, sourcePath, required] of comparisons) {
-		const expected = required
-			? await readReviewedFile(repositoryRoot, sourcePath, reviewedCommit)
-			: await readOptionalReviewedFile(repositoryRoot, sourcePath, reviewedCommit);
+		const expected = await reviewed.read(sourcePath, { optional: !required });
 		if (expected === undefined) continue;
 		const actual = await readFile(resolve(extension.extensionPath, installedPath));
 		assert.deepEqual(actual, expected, `Installed VSIX ${installedPath} differs from the reviewed packaging input.`);
 	}
 
-	const generator = await readOptionalReviewedFile(
-		repositoryRoot,
-		'scripts/vscode-third-party-licenses.mjs',
-		reviewedCommit,
-	);
+	const generator = await reviewed.read('scripts/vscode-third-party-licenses.mjs', { optional: true });
 	if (generator !== undefined) {
 		const generatedLegalText = await readFile(resolve(extension.extensionPath, 'dist/THIRD_PARTY_LICENSES.txt'), 'utf8');
 		assert.ok(generatedLegalText.trim().length > 0, 'Installed VSIX third-party license text is empty.');
@@ -76,38 +64,6 @@ async function verifyInstalledPackageAndLegalFiles(extension) {
 		assert.match(generatedLegalText, /^DECLARED LICENSE: .+$/mu);
 		assert.match(generatedLegalText, /^FILE: (?:LICENSE|LICENCE|COPYING)/imu);
 	}
-}
-
-async function readOptionalReviewedFile(repositoryRoot, sourcePath, reviewedCommit) {
-	if (reviewedCommit === undefined) {
-		try {
-			return await readFile(resolve(repositoryRoot, sourcePath));
-		} catch (error) {
-			if (error?.code === 'ENOENT') return undefined;
-			throw error;
-		}
-	}
-	const result = spawnSync('git', ['show', `${reviewedCommit}:${sourcePath}`], {
-		cwd: repositoryRoot,
-		encoding: null,
-		maxBuffer: 16 * 1024 * 1024,
-	});
-	if (result.error !== undefined) throw new Error(`Failed to inspect reviewed VSIX source ${sourcePath} from ${reviewedCommit}: ${result.error.message}`);
-	return (result.status ?? 1) === 0 ? result.stdout : undefined;
-}
-
-async function readReviewedFile(repositoryRoot, sourcePath, reviewedCommit) {
-	if (reviewedCommit === undefined) return readFile(resolve(repositoryRoot, sourcePath));
-	const result = spawnSync('git', ['show', `${reviewedCommit}:${sourcePath}`], {
-		cwd: repositoryRoot,
-		encoding: null,
-		maxBuffer: 16 * 1024 * 1024,
-	});
-	if (result.error !== undefined) throw new Error(`Failed to read reviewed VSIX source ${sourcePath} from ${reviewedCommit}: ${result.error.message}`);
-	if ((result.status ?? 1) !== 0) {
-		throw new Error(`Failed to read reviewed VSIX source ${sourcePath} from ${reviewedCommit}: ${(result.stderr ?? Buffer.alloc(0)).toString('utf8').trim()}`);
-	}
-	return result.stdout;
 }
 
 async function waitFor(predicate, label) {
