@@ -10,8 +10,7 @@ export async function run() {
 	const expectedRoot = process.env.VIRUNE_VSIX_EXTENSIONS_DIR;
 	assert.ok(expectedRoot && extension.extensionPath.startsWith(expectedRoot), `Virune was not loaded from the isolated VSIX directory: ${extension.extensionPath}`);
 	assert.equal(extension.packageJSON.main, './dist/extension.cjs');
-	assert.equal(extension.packageJSON.license, 'Apache-2.0');
-	await verifyInstalledLegalFiles(extension.extensionPath);
+	await verifyInstalledPackageAndLegalFiles(extension);
 	await extension.activate();
 	assert.equal(extension.isActive, true);
 
@@ -33,13 +32,23 @@ export async function run() {
 	assert.ok(Array.isArray(symbols) && symbols.some(symbol => symbol.name === 'add'), 'Language Server did not return document symbols.');
 }
 
-async function verifyInstalledLegalFiles(extensionPath) {
+async function verifyInstalledPackageAndLegalFiles(extension) {
 	const repositoryRoot = process.env.VIRUNE_REPOSITORY_ROOT;
 	assert.ok(repositoryRoot, 'VIRUNE_REPOSITORY_ROOT is required for installed legal-file verification.');
 	const reviewedCommit = process.env.VIRUNE_REVIEWED_COMMIT;
 	if (reviewedCommit !== undefined) {
 		assert.match(reviewedCommit, /^[0-9a-f]{40}$/u, 'VIRUNE_REVIEWED_COMMIT must be a full commit SHA.');
 	}
+
+	const reviewedManifest = JSON.parse(
+		(await readReviewedFile(repositoryRoot, 'packages/vscode/package.json', reviewedCommit)).toString('utf8'),
+	);
+	assert.equal(
+		extension.packageJSON.license,
+		reviewedManifest.license,
+		'Installed VSIX license metadata differs from the reviewed package manifest.',
+	);
+
 	const comparisons = [
 		['LICENSE.txt', 'LICENSE'],
 		['NOTICE', 'NOTICE'],
@@ -47,13 +56,13 @@ async function verifyInstalledLegalFiles(extensionPath) {
 	];
 	for (const [installedPath, sourcePath] of comparisons) {
 		const [actual, expected] = await Promise.all([
-			readFile(resolve(extensionPath, installedPath)),
+			readFile(resolve(extension.extensionPath, installedPath)),
 			readReviewedFile(repositoryRoot, sourcePath, reviewedCommit),
 		]);
 		assert.deepEqual(actual, expected, `Installed VSIX ${installedPath} differs from the reviewed packaging input.`);
 	}
 
-	const generatedLegalText = await readFile(resolve(extensionPath, 'dist/THIRD_PARTY_LICENSES.txt'), 'utf8');
+	const generatedLegalText = await readFile(resolve(extension.extensionPath, 'dist/THIRD_PARTY_LICENSES.txt'), 'utf8');
 	assert.ok(generatedLegalText.trim().length > 0, 'Installed VSIX third-party license text is empty.');
 	assert.match(generatedLegalText, /^Virune VS Code Extension — Bundled Third-Party License Texts$/mu);
 	assert.match(generatedLegalText, /^PACKAGE: .+@.+$/mu);
