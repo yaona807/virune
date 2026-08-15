@@ -2,14 +2,12 @@
 
 ## Supported versions
 
-Virune has not published its first stable GitHub Release yet. Until that release is available, security fixes are made on the `main` branch.
-
-After the first stable release, the latest stable release line and `main` are supported. Older release lines are unsupported unless a maintainer explicitly announces a temporary backport window for a high-impact vulnerability.
+The latest stable release line and `main` are supported. Older release lines are unsupported unless a maintainer explicitly announces a temporary backport window for a high-impact vulnerability.
 
 | Version | Supported |
 |---|---|
 | `main` | Yes |
-| Latest stable release | Yes, after publication |
+| Latest stable release | Yes |
 | Older releases | No, unless explicitly announced |
 
 ## Reporting a vulnerability
