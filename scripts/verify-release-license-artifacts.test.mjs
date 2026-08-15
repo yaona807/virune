@@ -96,7 +96,21 @@ test('rejects a missing Virune workspace component in the SBOM', () => {
 		const sbom = readJson(resolve(root, 'release/SBOM.cdx.json'));
 		sbom.components = sbom.components.filter(component => !component.properties.some(property => property.value === 'packages/runtime'));
 		writeJson(resolve(root, 'release/SBOM.cdx.json'), sbom);
-		assert.throws(() => verifyReleaseLicenseArtifacts(root), /SBOM must contain exactly one component for packages\/runtime; found 0/u);
+		assert.throws(() => verifyReleaseLicenseArtifacts(root), /SBOM workspace component set must exactly match repository workspaces/u);
+	});
+});
+
+test('rejects a stale removed Virune workspace component in the SBOM', () => {
+	withFixture(root => {
+		const sbom = readJson(resolve(root, 'release/SBOM.cdx.json'));
+		sbom.components.push({
+			name: '@virune/removed-workspace',
+			version,
+			licenses: [{ license: { id: expectedLicense } }],
+			properties: [{ name: 'virune:package-lock:path', value: 'packages/removed-workspace' }],
+		});
+		writeJson(resolve(root, 'release/SBOM.cdx.json'), sbom);
+		assert.throws(() => verifyReleaseLicenseArtifacts(root), /SBOM workspace component set must exactly match repository workspaces/u);
 	});
 });
 
