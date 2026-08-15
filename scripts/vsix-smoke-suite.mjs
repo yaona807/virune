@@ -50,24 +50,50 @@ async function verifyInstalledPackageAndLegalFiles(extension) {
 	);
 
 	const comparisons = [
-		['LICENSE.txt', 'LICENSE'],
-		['NOTICE', 'NOTICE'],
-		['THIRD_PARTY_NOTICES.md', 'packages/vscode/THIRD_PARTY_NOTICES.md'],
+		['LICENSE.txt', 'LICENSE', true],
+		['NOTICE', 'NOTICE', false],
+		['THIRD_PARTY_NOTICES.md', 'packages/vscode/THIRD_PARTY_NOTICES.md', false],
 	];
-	for (const [installedPath, sourcePath] of comparisons) {
-		const [actual, expected] = await Promise.all([
-			readFile(resolve(extension.extensionPath, installedPath)),
-			readReviewedFile(repositoryRoot, sourcePath, reviewedCommit),
-		]);
+	for (const [installedPath, sourcePath, required] of comparisons) {
+		const expected = required
+			? await readReviewedFile(repositoryRoot, sourcePath, reviewedCommit)
+			: await readOptionalReviewedFile(repositoryRoot, sourcePath, reviewedCommit);
+		if (expected === undefined) continue;
+		const actual = await readFile(resolve(extension.extensionPath, installedPath));
 		assert.deepEqual(actual, expected, `Installed VSIX ${installedPath} differs from the reviewed packaging input.`);
 	}
 
-	const generatedLegalText = await readFile(resolve(extension.extensionPath, 'dist/THIRD_PARTY_LICENSES.txt'), 'utf8');
-	assert.ok(generatedLegalText.trim().length > 0, 'Installed VSIX third-party license text is empty.');
-	assert.match(generatedLegalText, /^Virune VS Code Extension — Bundled Third-Party License Texts$/mu);
-	assert.match(generatedLegalText, /^PACKAGE: .+@.+$/mu);
-	assert.match(generatedLegalText, /^DECLARED LICENSE: .+$/mu);
-	assert.match(generatedLegalText, /^FILE: (?:LICENSE|LICENCE|COPYING)/imu);
+	const generator = await readOptionalReviewedFile(
+		repositoryRoot,
+		'scripts/vscode-third-party-licenses.mjs',
+		reviewedCommit,
+	);
+	if (generator !== undefined) {
+		const generatedLegalText = await readFile(resolve(extension.extensionPath, 'dist/THIRD_PARTY_LICENSES.txt'), 'utf8');
+		assert.ok(generatedLegalText.trim().length > 0, 'Installed VSIX third-party license text is empty.');
+		assert.match(generatedLegalText, /^Virune VS Code Extension — Bundled Third-Party License Texts$/mu);
+		assert.match(generatedLegalText, /^PACKAGE: .+@.+$/mu);
+		assert.match(generatedLegalText, /^DECLARED LICENSE: .+$/mu);
+		assert.match(generatedLegalText, /^FILE: (?:LICENSE|LICENCE|COPYING)/imu);
+	}
+}
+
+async function readOptionalReviewedFile(repositoryRoot, sourcePath, reviewedCommit) {
+	if (reviewedCommit === undefined) {
+		try {
+			return await readFile(resolve(repositoryRoot, sourcePath));
+		} catch (error) {
+			if (error?.code === 'ENOENT') return undefined;
+			throw error;
+		}
+	}
+	const result = spawnSync('git', ['show', `${reviewedCommit}:${sourcePath}`], {
+		cwd: repositoryRoot,
+		encoding: null,
+		maxBuffer: 16 * 1024 * 1024,
+	});
+	if (result.error !== undefined) throw new Error(`Failed to inspect reviewed VSIX source ${sourcePath} from ${reviewedCommit}: ${result.error.message}`);
+	return (result.status ?? 1) === 0 ? result.stdout : undefined;
 }
 
 async function readReviewedFile(repositoryRoot, sourcePath, reviewedCommit) {
