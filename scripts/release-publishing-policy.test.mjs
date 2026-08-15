@@ -33,12 +33,17 @@ test('releases generate provenance and SBOM attestations for every asset', async
 	assert.match(source, /sbom-path: release\/SBOM\.cdx\.json/u);
 });
 
-test('public VSIX legal verification is pinned to the reviewed release commit', async () => {
-	const workflow = await readWorkflow('release-public-verify.yml');
-	assert.match(workflow, /VIRUNE_REVIEWED_COMMIT: \$\{\{ steps\.request\.outputs\.expected_commit \}\}/u);
+test('public and restored VSIX legal verification are pinned to their reviewed commits', async () => {
+	const publicWorkflow = await readWorkflow('release-public-verify.yml');
+	assert.match(publicWorkflow, /VIRUNE_REVIEWED_COMMIT: \$\{\{ steps\.request\.outputs\.expected_commit \}\}/u);
+	const restoreWorkflow = await readWorkflow('release-restore.yml');
+	assert.match(restoreWorkflow, /VIRUNE_REVIEWED_COMMIT: \$\{\{ steps\.verified\.outputs\.expected_commit \}\}/u);
 	const smoke = await readFile(resolve('scripts/vsix-smoke-suite.mjs'), 'utf8');
 	assert.match(smoke, /VIRUNE_REVIEWED_COMMIT must be a full commit SHA/u);
-	assert.match(smoke, /spawnSync\('git', \['show', `\$\{reviewedCommit\}:\$\{sourcePath\}`\]/u);
+	assert.match(smoke, /packages\/vscode\/package\.json/u);
+	assert.match(smoke, /reviewedManifest\.license/u);
+	assert.doesNotMatch(smoke, /extension\.packageJSON\.license,\s*'Apache-2\.0'/u);
+	assert.match(smoke, /readOptionalReviewedFile/u);
 });
 
 test('exceptional replacement is manual, confirmed and audited', async () => {
