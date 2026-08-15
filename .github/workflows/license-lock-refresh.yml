@@ -1,0 +1,50 @@
+name: License lock refresh
+
+on:
+  push:
+    branches: [docs/383-apache-2-license-transition]
+
+permissions:
+  contents: read
+
+jobs:
+  refresh:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 24
+          cache: npm
+      - name: Preserve original lock metadata
+        run: cp package-lock.json "$RUNNER_TEMP/package-lock.before.json"
+      - name: Regenerate lock metadata from manifests
+        run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+      - name: Prove only Virune-owned license metadata changed
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import { readFileSync } from 'node:fs';
+
+          const before = JSON.parse(readFileSync(process.env.RUNNER_TEMP + '/package-lock.before.json', 'utf8'));
+          const after = JSON.parse(readFileSync('package-lock.json', 'utf8'));
+          const paths = ['', 'packages/cli', 'packages/compiler', 'packages/formatter', 'packages/js-interop', 'packages/language-server', 'packages/runtime', 'packages/stdlib', 'packages/vscode'];
+
+          for (const path of paths) {
+            assert.equal(before.packages[path]?.license, 'MIT', `${path || '<root>'}: expected previous MIT license`);
+            assert.equal(after.packages[path]?.license, 'Apache-2.0', `${path || '<root>'}: expected Apache-2.0 license`);
+          }
+
+          const normalizedAfter = structuredClone(after);
+          for (const path of paths) normalizedAfter.packages[path].license = before.packages[path].license;
+          assert.deepEqual(normalizedAfter, before, 'npm changed lock metadata beyond the nine Virune-owned license fields');
+          NODE
+      - name: Upload canonical lockfile
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: apache-license-package-lock
+          path: package-lock.json
+          if-no-files-found: error
+          retention-days: 1
