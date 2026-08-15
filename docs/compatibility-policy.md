@@ -15,7 +15,7 @@ Stable surfaces are compatibility commitments for users of stable releases:
 - the normative Virune language behavior under [`../spec/`](../spec/)
 - the documented public standard-library surface tracked by `packages/public-abi.snapshot.json`
 - the root `@virune/compiler` API tracked by `packages/compiler/api/stable-api.snapshot.json`
-- versioned Runtime ABI and Interop ABI surfaces
+- Runtime ABI and Interop ABI versions explicitly declared stable for a stable release
 - documented public CLI commands, options, and exit-code meanings
 - the stable diagnostic-code and JSON-schema contract documented in [`diagnostic-codes.md`](diagnostic-codes.md)
 - other explicitly documented stable machine-readable schemas and fields
@@ -30,7 +30,7 @@ Experimental surfaces are available for evaluation but are not covered by stable
 Current examples include:
 
 - `@virune/compiler/experimental`
-- Semantic Snapshot / Semantic Change Evidence schemas while the prototype and corpus evaluation in #213 are incomplete
+- Semantic Snapshot / Semantic Change Evidence schemas, which remain Experimental unless and until they are explicitly stabilized after the prototype and corpus evaluation required by #213; completing that evaluation does not by itself make the schema Stable
 - other APIs or schemas explicitly marked experimental or prerelease-only
 
 Using an experimental surface does not make unrelated stable surfaces experimental.
@@ -63,7 +63,7 @@ A compiler fix that restores behavior required by the existing normative specifi
 
 ## Runtime ABI, Interop ABI, Compiler API, and standard library
 
-Runtime and Interop ABIs use versioned paths and snapshots. The current ABI-specific rules remain authoritative in [`runtime-abi.md`](runtime-abi.md). A breaking ABI change requires a new versioned ABI path and migration documentation; updating a snapshot alone does not make a breaking change compatible.
+Stable Runtime and Interop ABI versions use versioned paths and snapshots. The current ABI-specific rules remain authoritative in [`runtime-abi.md`](runtime-abi.md). Assigning a version number or path to a new ABI candidate does not make it Stable; stabilization must be explicit. A breaking change to an already-Stable ABI requires a new versioned ABI path and migration documentation; updating a snapshot alone does not make a breaking change compatible.
 
 The stable `@virune/compiler` root entry point follows [`compiler-api.md`](compiler-api.md). Removing, renaming, or incompatibly changing a stable exported symbol is breaking. `@virune/compiler/experimental` remains outside this guarantee.
 
