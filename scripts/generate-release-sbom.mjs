@@ -32,6 +32,11 @@ export function buildCycloneDxSbom({ lock, manifest, commit = null }) {
 			...(typeof entry.integrity === 'string' ? [{ name: 'virune:package-lock:integrity', value: entry.integrity }] : []),
 		];
 		const existing = componentsByRef.get(purl);
+		const declaredLicense = typeof entry.license === 'string' ? entry.license : undefined;
+		const existingLicense = existing?.licenses?.[0]?.license?.id;
+		if (existingLicense !== undefined && declaredLicense !== undefined && existingLicense !== declaredLicense) {
+			throw new Error(`Conflicting license metadata for ${name}@${entry.version}: ${existingLicense} vs ${declaredLicense}`);
+		}
 		const component = existing ?? {
 			type: name === 'virune' ? 'application' : 'library',
 			'bom-ref': purl,
@@ -39,11 +44,11 @@ export function buildCycloneDxSbom({ lock, manifest, commit = null }) {
 			version: entry.version,
 			purl,
 			scope: entry.dev === true ? 'optional' : 'required',
-			...(typeof entry.license === 'string' ? { licenses: [{ license: { id: entry.license } }] } : {}),
+			...(declaredLicense === undefined ? {} : { licenses: [{ license: { id: declaredLicense } }] }),
 			properties: [],
 		};
 		if (entry.dev !== true) component.scope = 'required';
-		if (component.licenses === undefined && typeof entry.license === 'string') component.licenses = [{ license: { id: entry.license } }];
+		if (component.licenses === undefined && declaredLicense !== undefined) component.licenses = [{ license: { id: declaredLicense } }];
 		component.properties = uniqueProperties([...component.properties, ...properties]);
 		componentsByRef.set(purl, component);
 		componentsByPath.set(path, component);
