@@ -15,12 +15,13 @@ Stable surfaceは、stable release利用者に対する互換性の約束です�
 - [`../spec/`](../spec/)にある規範的なVirune言語挙動
 - 文書化済み`virune.json` project configurationのkey、受理するstable value、その意味、default
 - `packages/public-abi.snapshot.json`で追跡する文書化済みpublic standard library surface
-- `packages/compiler/api/stable-api.snapshot.json`で追跡するroot `@virune/compiler` API
+- `packages/compiler/api/stable-api.snapshot.json`で追跡するroot `@virune/compiler` APIと、その文書化済みbehavior contract
 - stable release向けにStableと明示したRuntime ABI／Interop ABI version
-- 文書化済みpublic CLI command、option、exit codeの意味
+- 文書化済みpublic CLI command／optionとその意味、および文書化済みexit codeの意味
 - [`diagnostic-codes_ja.md`](diagnostic-codes_ja.md)で定義したstable diagnostic code／JSON schema contract
 - その他、stableと明示して文書化したmachine-readable schemaとfield
-- 文書化済みVirune固有VS Code setting、およびidentifier自体を文書化したpublic extension command
+- stable release向けに文書化したVirune LSP／VS Code public capability、および文書化済みVirune固有settingのkey、受理するstable value、その意味、default
+- identifier自体を文書化したpublic extension command identifier
 
 Stable surfaceはminor releaseで後方互換な追加が可能で、patch releaseで後方互換な修正が可能です。Stable contractを意図的に非互換変更する場合、原則として次のmajor releaseが必要です。
 
@@ -72,7 +73,7 @@ Prerelease／nightlyの互換性は[`release-channels_ja.md`](release-channels_j
 
 StableなRuntime／Interop ABI versionはversion付きpathとsnapshotを使用します。ABI固有の詳細規則は[`runtime-abi_ja.md`](runtime-abi_ja.md)を正本とします。新しいABI candidateへversion番号やpathを与えただけではStableにならず、stabilizationは明示的に行う必要があります。すでにStableなABIへのbreaking changeには新しいversion付きABI pathとmigration文書が必要で、snapshotを更新しただけではbreaking changeは互換になりません。
 
-Stableな`@virune/compiler` root entry pointは[`compiler-api_ja.md`](compiler-api_ja.md)に従います。Stable export symbolの削除、rename、非互換なsignature変更はbreakingです。`@virune/compiler/experimental`はこの保証の対象外です。
+Stableな`@virune/compiler` root entry pointは[`compiler-api_ja.md`](compiler-api_ja.md)に従います。Stable export symbolの削除／rename、signatureの非互換変更、文書化済みbehavior contractの非互換変更はbreakingです。`@virune/compiler/experimental`はこの保証の対象外です。
 
 文書化済みpublic standard library declarationとexport mapはStableです。既存public declaration／package entry pointの削除または非互換変更はbreakingです。既存programの意味を変えないadditive APIはminor releaseで追加できます。
 
@@ -80,10 +81,12 @@ Stableな`@virune/compiler` root entry pointは[`compiler-api_ja.md`](compiler-a
 
 明示的に別扱いとしない限り、次の文書化済みCLI挙動をStableとします。
 
-- command／option名
+- command／option名と、その文書化済みの意味
 - 文書化済みexit codeの意味
 - [`diagnostic-codes_ja.md`](diagnostic-codes_ja.md)で定義したdiagnostic code、severity、coordinate、JSON schemaの保証
 - その他、stableと明示して文書化したmachine-readable schema version／field
+
+文書化済みcommand／optionの削除／rename、または同じ名前を維持したまま文書化済みeffectを非互換に変更することはbreakingです。
 
 人間向けpresentationはbyte-stable interfaceではありません。文書化された意味を維持する限り、文言、空白、色、折返し等のpresentation detailは変更できます。
 
@@ -91,9 +94,11 @@ JSON modeであることだけを理由に全fieldがStableになるわけでは
 
 ## LSP／VS Code compatibility
 
-Protocol-level interoperabilityは、宣言済みVS Code API baselineとupstream Language Server Protocolに従います。文書化済みVirune固有VS Code setting keyはStableです。Public extension command identifierは、表示labelだけでなくidentifier自体をpublic interfaceとして文書化した場合にStableとします。未文書化のVirune固有LSP extension／wire detailは暗黙にStableとは扱いません。
+Protocol-level interoperabilityは、宣言済みVS Code API baselineとupstream Language Server Protocolに従います。Stable release向けに文書化したVirune public capabilityは、capabilityの存在と文書化済みcontractの範囲でStableです。Advertise／document済みcapabilityの削除、またはその文書化済みprotocol behaviorの非互換変更はbreakingで、capability追加は原則compatibleです。
 
-内部indexing、cache、scheduling、request implementation、analysis storageはcompatibility contractではありません。以前supportしていたstable environmentを除外する形でminimum VS Code API baselineを引き上げる場合、下記例外がない限りplatform baselineのbreaking changeとして扱います。
+文書化済みVirune固有VS Code setting key、その受理するstable valueと意味、文書化済みdefaultはStableです。Settingの削除／rename、以前文書上validだったvalueの拒否、同じconfigurationが非互換な挙動を得るような文書化済みdefault変更はbreakingです。Public extension command identifierは、表示labelだけでなくidentifier自体をpublic interfaceとして文書化した場合にStableとします。
+
+Completion ranking、presentation text、UI layout、内部indexing、cache、scheduling、request implementation、analysis storageは、明示的に別のcontractを定義しない限りcompatibility対象外です。未文書化のVirune固有LSP extension／wire detailは暗黙にStableとは扱いません。以前supportしていたstable environmentを除外する形でminimum VS Code API baselineを引き上げる場合、下記例外がない限りplatform baselineのbreaking changeとして扱います。
 
 ## Node.js baseline
 
@@ -150,7 +155,7 @@ Compatibility判断では次をauthorityとします。
 
 1. **Language semantics**: [`../spec/`](../spec/)を規範とする。解説文書と実装はこれに従う。
 2. **Public ABI／API inventory**: commit済みABI／API snapshotはreview対象public surfaceを機械的に特定する。Snapshot更新自体はbreaking changeの承認にならない。
-3. **Surface固有documentation**: project configuration、Runtime／Interop ABI、Compiler API、diagnostic／JSON、CLI、VS Code、release channel、Self-hosting文書が各surfaceの詳細contract／lifecycleを定義する。
+3. **Surface固有documentation**: project configuration、Runtime／Interop ABI、Compiler API、diagnostic／JSON、CLI、LSP／VS Code、release channel、Self-hosting文書が各surfaceの詳細contract／lifecycleを定義する。
 4. **Release note／migration guide**: 各releaseで何が変わり、どう移行するかを記述する。規範仕様や本policyを暗黙に上書きしない。
 5. **Implementation／test**: conformanceを示しregressionを検出する。Conflictする規範contractを、testがpassするという理由だけで再定義しない。
 
@@ -162,7 +167,7 @@ Authority間に不整合が見つかった場合、より許容的な解釈を�
 
 - Experimental／Internal implementation detailをfreezeする
 - 人間向けCLI出力のbyte-for-byte互換性を保証する
-- 未文書化JSON field／project configuration keyをStable化する
+- 未文書化JSON field、project configuration key、editor setting、protocol extensionをStable化する
 - 古いmajor release lineを無期限supportすると約束する
 - compatibility維持のためsecurity、correctness、ABI、reproducibility、Self-hosting promotion gateを弱める
 - snapshot／CIがgreenであることを、非互換変更を許可する根拠として扱う
