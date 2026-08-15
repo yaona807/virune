@@ -1,11 +1,10 @@
 import { readdir, readFile } from 'node:fs/promises';
 import { relative, resolve, sep } from 'node:path';
 import { TextDecoder } from 'node:util';
+import validateNpmPackageLicense from 'validate-npm-package-license';
 
 const LICENSE_FILE_PATTERN = /^(?:LICEN[CS]E|COPYING)(?:[._-].*)?$/iu;
 const SUPPLEMENTARY_FILE_PATTERN = /^(?:(?:NOTICE|COPYRIGHT)(?:[._-].*)?|THIRD[._-]?PARTY[._-]?(?:NOTICES?|LICEN[CS]ES?)(?:[._-].*)?)$/iu;
-const UNRESOLVED_LICENSE_TOKEN_PATTERN = /(?:^|[^A-Za-z0-9.+-])(?:UNLICENSED|UNKNOWN|NOASSERTION|NONE)(?=$|[^A-Za-z0-9.+-])/iu;
-const REFERENCED_LICENSE_PATTERN = /(?:^|[^A-Za-z0-9.+-])SEE\s+LICEN[CS]E\s+IN(?:\s|$)/iu;
 const utf8Decoder = new TextDecoder('utf-8', { fatal: true });
 
 export async function buildBundledThirdPartyLicenseText(metafiles, root = process.cwd()) {
@@ -122,8 +121,9 @@ async function readUtf8(path) {
 
 function resolvedLicense(value, label) {
 	const license = nonEmptyString(value, label).trim();
-	if (UNRESOLVED_LICENSE_TOKEN_PATTERN.test(license) || REFERENCED_LICENSE_PATTERN.test(license)) {
-		throw new Error(`${label} must identify a resolved license expression; received ${JSON.stringify(license)}`);
+	const validation = validateNpmPackageLicense(license);
+	if (validation.validForNewPackages !== true || validation.spdx !== true || validation.correct !== license) {
+		throw new Error(`${label} must be a valid SPDX license expression for a new npm package; received ${JSON.stringify(license)}`);
 	}
 	return license;
 }
