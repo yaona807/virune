@@ -13,4 +13,4 @@ Virune depends on the following third-party packages. They are installed as inde
 | `@types/node` | 24.13.3 | MIT | Development type definitions |
 | `undici-types` | 7.18.2 | MIT | Transitive development type definitions |
 
-The complete license texts remain available in the installed npm packages. Virune itself is licensed under the MIT License.
+The complete license texts remain available in the installed npm packages. Virune itself is licensed under the Apache License 2.0.

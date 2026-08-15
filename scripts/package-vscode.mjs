@@ -18,6 +18,7 @@ const requiredFiles = [
 	'package.json',
 	'LICENSE',
 	'NOTICE',
+	'THIRD_PARTY_NOTICES.md',
 	'language-configuration.json',
 	'syntaxes/virune.tmLanguage.json',
 	'dist/extension.cjs',

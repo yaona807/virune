@@ -13,4 +13,4 @@ Viruneは以下の第三者npmパッケージを利用します。これらは�
 | `@types/node` | 24.13.3 | MIT | 開発時の型定義 |
 | `undici-types` | 7.18.2 | MIT | 開発時の推移型定義 |
 
-各ライセンス全文はインストールされたnpmパッケージ内で確認できます。Virune自体はMIT Licenseです。
+各ライセンス全文はインストールされたnpmパッケージ内で確認できます。Virune自体はApache License 2.0です。
