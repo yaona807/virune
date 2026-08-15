@@ -108,11 +108,11 @@ Platform EOL、security requirement等により以前のbaselineを安全また�
 
 ## Deprecation手順
 
-Stable surfaceを意図的に削除または非互換変更する前に、原則として次の順序を使用します。
+Stable surfaceを意図的に削除または非互換変更する前に、下記exceptional fix ruleが適用される場合を除き、次の順序を必須とします。
 
 1. 該当public documentation、および実用的な場合はtooling／type metadataで旧surfaceをdeprecatedと明示する。
 2. Support対象replacementまたはmigration pathを文書化する。
-3. 下記exceptional fix ruleが適用されない限り、旧surfaceを利用可能なままdeprecationを含むstable releaseを少なくとも1回公開してから、削除するreleaseへ進む。
+3. 旧surfaceを利用可能なままdeprecationを含むstable releaseを少なくとも1回公開してから、削除するreleaseへ進む。
 4. 削除または非互換変更はmajor releaseでのみ行う。
 5. Major releaseのrelease noteまたはmigration guideへbreaking changeとmigration手順を記載する。
 
