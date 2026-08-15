@@ -39,11 +39,11 @@ test('public and restored VSIX legal verification are pinned to their reviewed c
 	const restoreWorkflow = await readWorkflow('release-restore.yml');
 	assert.match(restoreWorkflow, /VIRUNE_REVIEWED_COMMIT: \$\{\{ steps\.verified\.outputs\.expected_commit \}\}/u);
 	const smoke = await readFile(resolve('scripts/vsix-smoke-suite.mjs'), 'utf8');
-	assert.match(smoke, /VIRUNE_REVIEWED_COMMIT must be a full commit SHA/u);
+	assert.match(smoke, /createReviewedRepositorySourceReader/u);
 	assert.match(smoke, /packages\/vscode\/package\.json/u);
 	assert.match(smoke, /reviewedManifest\.license/u);
 	assert.doesNotMatch(smoke, /extension\.packageJSON\.license,\s*'Apache-2\.0'/u);
-	assert.match(smoke, /readOptionalReviewedFile/u);
+	assert.match(smoke, /scripts\/vscode-third-party-licenses\.mjs', \{ optional: true \}/u);
 });
 
 test('exceptional replacement is manual, confirmed and audited', async () => {
