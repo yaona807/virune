@@ -8,6 +8,7 @@ import { verifyReleaseLicenseArtifacts } from './verify-release-license-artifact
 
 const version = '1.0.0';
 const expectedLicense = 'Apache-2.0';
+const workspaceDirectories = ['compiler', 'runtime'];
 const tarballs = [
 	`virune-runtime-${version}.tgz`,
 	`virune-compiler-${version}.tgz`,
@@ -73,10 +74,29 @@ test('rejects a release that drops the Japanese third-party notices', () => {
 
 test('rejects a stale SBOM root license', () => {
 	withFixture(root => {
-		writeJson(resolve(root, 'release/SBOM.cdx.json'), {
-			metadata: { component: { licenses: [{ license: { id: 'MIT' } }] } },
-		});
+		const sbom = readJson(resolve(root, 'release/SBOM.cdx.json'));
+		sbom.metadata.component.licenses[0].license.id = 'MIT';
+		writeJson(resolve(root, 'release/SBOM.cdx.json'), sbom);
 		assert.throws(() => verifyReleaseLicenseArtifacts(root), /SBOM root component license must be exactly Apache-2\.0/u);
+	});
+});
+
+test('rejects a stale Virune workspace license in the SBOM', () => {
+	withFixture(root => {
+		const sbom = readJson(resolve(root, 'release/SBOM.cdx.json'));
+		const runtime = sbom.components.find(component => component.properties.some(property => property.value === 'packages/runtime'));
+		runtime.licenses[0].license.id = 'MIT';
+		writeJson(resolve(root, 'release/SBOM.cdx.json'), sbom);
+		assert.throws(() => verifyReleaseLicenseArtifacts(root), /SBOM packages\/runtime component license must be exactly Apache-2\.0/u);
+	});
+});
+
+test('rejects a missing Virune workspace component in the SBOM', () => {
+	withFixture(root => {
+		const sbom = readJson(resolve(root, 'release/SBOM.cdx.json'));
+		sbom.components = sbom.components.filter(component => !component.properties.some(property => property.value === 'packages/runtime'));
+		writeJson(resolve(root, 'release/SBOM.cdx.json'), sbom);
+		assert.throws(() => verifyReleaseLicenseArtifacts(root), /SBOM must contain exactly one component for packages\/runtime; found 0/u);
 	});
 });
 
@@ -89,12 +109,26 @@ function withFixture(run) {
 		writeFileSync(resolve(root, 'NOTICE'), 'Virune\nCopyright 2026 Yaona and the Virune project authors\n');
 		writeFileSync(resolve(root, 'THIRD_PARTY_NOTICES.md'), '# Third-Party Notices\n\nExample notice\n');
 		writeFileSync(resolve(root, 'THIRD_PARTY_NOTICES_ja.md'), '# 第三者ライセンス\n\nExample notice ja\n');
+		for (const directory of workspaceDirectories) {
+			mkdirSync(resolve(root, 'packages', directory), { recursive: true });
+			writeJson(resolve(root, 'packages', directory, 'package.json'), {
+				name: `@virune/${directory}`,
+				version,
+				license: expectedLicense,
+			});
+		}
 		writeJson(resolve(root, 'release/package.json'), { name: 'virune-local-release', version, license: expectedLicense });
 		for (const file of ['LICENSE', 'NOTICE', 'THIRD_PARTY_NOTICES.md', 'THIRD_PARTY_NOTICES_ja.md']) {
 			writeFileSync(resolve(root, 'release', file), readFileSync(resolve(root, file)));
 		}
 		writeJson(resolve(root, 'release/SBOM.cdx.json'), {
 			metadata: { component: { licenses: [{ license: { id: expectedLicense } }] } },
+			components: workspaceDirectories.map(directory => ({
+				name: `@virune/${directory}`,
+				version,
+				licenses: [{ license: { id: expectedLicense } }],
+				properties: [{ name: 'virune:package-lock:path', value: `packages/${directory}` }],
+			})),
 		});
 		for (const file of tarballs) writeViruneTarball(root, file);
 		return run(root);
@@ -126,6 +160,10 @@ function buildTar(entries) {
 	}
 	chunks.push(Buffer.alloc(1024));
 	return Buffer.concat(chunks);
+}
+
+function readJson(path) {
+	return JSON.parse(readFileSync(path, 'utf8'));
 }
 
 function writeJson(path, value) {
