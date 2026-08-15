@@ -117,7 +117,17 @@ test('bundled package with absent license metadata fails closed', async () => {
 });
 
 test('bundled package with unresolved license declaration fails closed', async () => {
-	for (const license of ['UNLICENSED', 'UNKNOWN', 'NOASSERTION', 'NONE', 'SEE LICENSE IN LICENSE']) {
+	for (const license of [
+		'UNLICENSED',
+		'UNKNOWN',
+		'NOASSERTION',
+		'NONE',
+		'SEE LICENSE IN LICENSE',
+		'MIT OR UNKNOWN',
+		'(Apache-2.0 AND NOASSERTION)',
+		'MIT OR NONE',
+		'MIT OR SEE LICENSE IN LICENSE.txt',
+	]) {
 		await withFixture(async root => {
 			writePackage(root, 'unresolved-license', {
 				name: 'unresolved-license',
@@ -128,6 +138,22 @@ test('bundled package with unresolved license declaration fails closed', async (
 			await assert.rejects(
 				() => buildBundledThirdPartyLicenseText([{ inputs: { 'node_modules/unresolved-license/index.js': {} } }], root),
 				/must identify a resolved license expression/u,
+			);
+		});
+	}
+});
+
+test('license sentinel substrings inside identifiers are not treated as unresolved tokens', async () => {
+	for (const license of ['LicenseRef-UNKNOWN-custom', 'LicenseRef-NONE-custom']) {
+		await withFixture(async root => {
+			writePackage(root, 'custom-license', {
+				name: 'custom-license',
+				version: '1.0.0',
+				license,
+				files: { LICENSE: 'Custom license text\n' },
+			});
+			await assert.doesNotReject(
+				() => buildBundledThirdPartyLicenseText([{ inputs: { 'node_modules/custom-license/index.js': {} } }], root),
 			);
 		});
 	}
