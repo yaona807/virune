@@ -74,6 +74,15 @@ function listWorkspacePackagePaths(root) {
 
 function verifySbomWorkspaceLicenses(sbom, workspacePaths, expectedLicense) {
 	const components = Array.isArray(sbom?.components) ? sbom.components : [];
+	const actualWorkspacePaths = [...new Set(components.flatMap(component => Array.isArray(component?.properties)
+		? component.properties
+			.filter(property => property?.name === 'virune:package-lock:path' && /^packages\/[^/]+$/u.test(property?.value ?? ''))
+			.map(property => property.value)
+		: []))].sort(compareText);
+	if (JSON.stringify(actualWorkspacePaths) !== JSON.stringify(workspacePaths)) {
+		throw new Error(`SBOM workspace component set must exactly match repository workspaces. expected=${JSON.stringify(workspacePaths)} actual=${JSON.stringify(actualWorkspacePaths)}`);
+	}
+
 	for (const workspacePath of workspacePaths) {
 		const matches = components.filter(component => Array.isArray(component?.properties)
 			&& component.properties.some(property => property?.name === 'virune:package-lock:path' && property?.value === workspacePath));
