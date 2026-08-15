@@ -5,7 +5,7 @@ Virune depends on the following third-party packages. They are installed as inde
 | Package | Version | License | Usage |
 |---|---:|---|---|
 | TypeScript | 6.0.3 | Apache-2.0 | TypeScript declaration analysis and development tooling |
-| Chevrotain and its scoped packages | 13.0.0 | Apache-2.0 | Lexer and parser implementation |
+| Chevrotain and its scoped packages | 12.0.0 | Apache-2.0 | Lexer and parser implementation |
 | `@jridgewell/gen-mapping` | 0.3.13 | MIT | Source Map generation |
 | `@jridgewell/trace-mapping` | 0.3.31 | MIT | Source Map verification |
 | `@jridgewell/resolve-uri` | 3.1.2 | MIT | Transitive Source Map dependency |
