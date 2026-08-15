@@ -92,7 +92,7 @@ test('bundle inputs cannot lexically escape the repository root', () => {
 	});
 });
 
-test('bundled package roots cannot escape through filesystem symlinks', async () => {
+test('bundled package roots cannot escape through filesystem links', async () => {
 	const external = mkdtempSync(join(tmpdir(), 'virune-vscode-external-license-'));
 	try {
 		await withFixture(async root => {
@@ -103,7 +103,11 @@ test('bundled package roots cannot escape through filesystem symlinks', async ()
 				files: { LICENSE: 'External license\n' },
 			});
 			mkdirSync(resolve(root, 'node_modules'), { recursive: true });
-			symlinkSync(resolve(external, 'node_modules/outside'), resolve(root, 'node_modules/linked'), 'dir');
+			symlinkSync(
+				resolve(external, 'node_modules/outside'),
+				resolve(root, 'node_modules/linked'),
+				process.platform === 'win32' ? 'junction' : 'dir',
+			);
 			await assert.rejects(
 				() => buildBundledThirdPartyLicenseText([{ inputs: { 'node_modules/linked/index.js': {} } }], root),
 				/Bundled package root escapes the repository through filesystem resolution/u,
@@ -192,17 +196,17 @@ test('valid compound SPDX expressions remain accepted', async () => {
 	});
 });
 
-test('legal-looking symlink entries fail closed instead of being silently omitted', async () => {
+test('legal-looking non-file entries fail closed instead of being silently omitted', async () => {
 	await withFixture(async root => {
-		writePackage(root, 'symlinked-notice', {
-			name: 'symlinked-notice',
+		writePackage(root, 'non-file-notice', {
+			name: 'non-file-notice',
 			version: '1.0.0',
 			license: 'MIT',
 			files: { LICENSE: 'License text\n' },
 		});
-		symlinkSync('LICENSE', resolve(root, 'node_modules/symlinked-notice/NOTICE'));
+		mkdirSync(resolve(root, 'node_modules/non-file-notice/NOTICE'));
 		await assert.rejects(
-			() => buildBundledThirdPartyLicenseText([{ inputs: { 'node_modules/symlinked-notice/index.js': {} } }], root),
+			() => buildBundledThirdPartyLicenseText([{ inputs: { 'node_modules/non-file-notice/index.js': {} } }], root),
 			/legal entry NOTICE must be a regular file/u,
 		);
 	});
