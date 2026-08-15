@@ -88,7 +88,7 @@ test('empty bundled npm package set fails closed', async () => {
 	});
 });
 
-test('bundled package with unresolved license metadata fails closed', async () => {
+test('bundled package with absent license metadata fails closed', async () => {
 	await withFixture(async root => {
 		writePackage(root, 'unknown-license', {
 			name: 'unknown-license',
@@ -101,6 +101,23 @@ test('bundled package with unresolved license metadata fails closed', async () =
 			/package\.json: license must be a non-empty string/u,
 		);
 	});
+});
+
+test('bundled package with unresolved license declaration fails closed', async () => {
+	for (const license of ['UNLICENSED', 'UNKNOWN', 'NOASSERTION', 'NONE', 'SEE LICENSE IN LICENSE']) {
+		await withFixture(async root => {
+			writePackage(root, 'unresolved-license', {
+				name: 'unresolved-license',
+				version: '1.0.0',
+				license,
+				files: { LICENSE: 'Some legal text\n' },
+			});
+			await assert.rejects(
+				() => buildBundledThirdPartyLicenseText([{ inputs: { 'node_modules/unresolved-license/index.js': {} } }], root),
+				/must identify a resolved license expression/u,
+			);
+		});
+	}
 });
 
 test('bundled package without a license file fails closed', async () => {
