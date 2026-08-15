@@ -13,7 +13,7 @@
   <a href="https://github.com/yaona807/virune/actions/workflows/ci.yml"><img src="https://github.com/yaona807/virune/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI"></a>
   <img src="https://img.shields.io/badge/version-1.0.0-5A54E8" alt="Version 1.0.0">
   <img src="https://img.shields.io/badge/Node.js-%3E%3D24-339933?logo=nodedotjs&logoColor=white" alt="Node.js 24 or later">
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT License"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue.svg" alt="Apache License 2.0"></a>
 </p>
 
 <p align="center">
@@ -253,4 +253,6 @@ Virune is not a security sandbox. JavaScript execution and `unsafe` interoperabi
 
 ## License
 
-Virune is available under the [MIT License](LICENSE). Third-party notices are listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+The current Virune repository snapshot is available under the [Apache License 2.0](LICENSE). Copyright attribution is recorded in [NOTICE](NOTICE), and third-party notices are listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
+The historical `v1.0.0` release and copies already distributed under MIT remain available under the MIT terms that accompanied those copies. The license transition does not revoke those grants.
