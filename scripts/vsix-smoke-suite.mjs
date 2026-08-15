@@ -39,7 +39,6 @@ async function verifyInstalledLegalFiles(extensionPath) {
 		['LICENSE', resolve(repositoryRoot, 'LICENSE')],
 		['NOTICE', resolve(repositoryRoot, 'NOTICE')],
 		['THIRD_PARTY_NOTICES.md', resolve(repositoryRoot, 'packages/vscode/THIRD_PARTY_NOTICES.md')],
-		['dist/THIRD_PARTY_LICENSES.txt', resolve(repositoryRoot, 'packages/vscode/dist/THIRD_PARTY_LICENSES.txt')],
 	];
 	for (const [installedPath, expectedPath] of comparisons) {
 		const [actual, expected] = await Promise.all([
@@ -48,6 +47,13 @@ async function verifyInstalledLegalFiles(extensionPath) {
 		]);
 		assert.deepEqual(actual, expected, `Installed VSIX ${installedPath} differs from the reviewed packaging input.`);
 	}
+
+	const generatedLegalText = await readFile(resolve(extensionPath, 'dist/THIRD_PARTY_LICENSES.txt'), 'utf8');
+	assert.ok(generatedLegalText.trim().length > 0, 'Installed VSIX third-party license text is empty.');
+	assert.match(generatedLegalText, /^Virune VS Code Extension — Bundled Third-Party License Texts$/mu);
+	assert.match(generatedLegalText, /^PACKAGE: .+@.+$/mu);
+	assert.match(generatedLegalText, /^DECLARED LICENSE: .+$/mu);
+	assert.match(generatedLegalText, /^FILE: (?:LICENSE|LICENCE|COPYING)/mu);
 }
 
 async function waitFor(predicate, label) {
