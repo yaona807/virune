@@ -13,6 +13,7 @@ Virune surfaces are classified as **Stable**, **Experimental**, or **Internal**.
 Stable surfaces are compatibility commitments for users of stable releases:
 
 - the normative Virune language behavior under [`../spec/`](../spec/)
+- documented `virune.json` project-configuration keys, accepted stable values, meanings, and defaults
 - the documented public standard-library surface tracked by `packages/public-abi.snapshot.json`
 - the root `@virune/compiler` API tracked by `packages/compiler/api/stable-api.snapshot.json`
 - Runtime ABI and Interop ABI versions explicitly declared stable for a stable release
@@ -60,6 +61,12 @@ An intentional change is language-breaking when a previously conforming program 
 Source-compatible additive syntax or semantics may ship in a minor release only when existing conforming programs retain their prior meaning.
 
 A compiler fix that restores behavior required by the existing normative specification is a correctness fix rather than a redefinition of the language contract. If the repair itself is incompatible with a Stable surface, it must either wait for the next major release or satisfy the exceptional correctness, safety, and security fix rules below. If such a fix creates material migration work for code that depended on the incorrect implementation, release notes must identify the affected behavior and provide migration guidance.
+
+## Project configuration
+
+Documented `virune.json` keys, their accepted stable values and meanings, and documented defaults are Stable. Adding an optional key or a new accepted value may be a minor-release change when existing valid configurations retain their prior meaning.
+
+Removing or renaming a documented key, rejecting a previously documented-valid configuration, changing the meaning of an existing value, or changing a documented default so that the same existing project acquires incompatible behavior is breaking. Undocumented extra keys or implementation-only parser behavior are not made Stable merely because a particular compiler version happened to accept them.
 
 ## Runtime ABI, Interop ABI, Compiler API, and standard library
 
@@ -143,7 +150,7 @@ Compatibility decisions use the following authorities:
 
 1. **Language semantics**: [`../spec/`](../spec/) is normative. Explanatory documentation and implementation must conform to it.
 2. **Public ABI and API inventory**: committed ABI/API snapshots mechanically identify reviewed public surfaces. Snapshot updates require review, but a snapshot update does not by itself authorize a breaking change.
-3. **Surface-specific documentation**: Runtime/Interop ABI, Compiler API, diagnostics/JSON, CLI, VS Code, release-channel, and self-hosting documents define the detailed contract and lifecycle of their respective surfaces.
+3. **Surface-specific documentation**: project configuration, Runtime/Interop ABI, Compiler API, diagnostics/JSON, CLI, VS Code, release-channel, and self-hosting documents define the detailed contract and lifecycle of their respective surfaces.
 4. **Release notes and migration guides**: describe what changed in a particular release and how to migrate. They do not silently override the normative specification or this policy.
 5. **Implementation and tests**: demonstrate conformance and detect regressions; they do not redefine a conflicting normative contract merely by passing.
 
@@ -155,7 +162,7 @@ This policy does not:
 
 - freeze Experimental or Internal implementation details
 - guarantee byte-for-byte human CLI output
-- make undocumented JSON fields stable
+- make undocumented JSON fields or project-configuration keys stable
 - promise indefinite support for old major release lines
 - weaken security, correctness, ABI, reproducibility, or self-hosting promotion gates in order to preserve compatibility
 - treat a green snapshot/CI update as proof that an incompatible change is acceptable
