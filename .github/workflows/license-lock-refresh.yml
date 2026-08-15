@@ -5,7 +5,7 @@ on:
     branches: [docs/383-apache-2-license-transition]
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   refresh:
@@ -13,6 +13,8 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: 24
@@ -41,10 +43,16 @@ jobs:
           for (const path of paths) normalizedAfter.packages[path].license = before.packages[path].license;
           assert.deepEqual(normalizedAfter, before, 'npm changed lock metadata beyond the nine Virune-owned license fields');
           NODE
-      - name: Upload canonical lockfile
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        with:
-          name: apache-license-package-lock
-          path: package-lock.json
-          if-no-files-found: error
-          retention-days: 1
+      - name: Commit canonical lock metadata and remove temporary workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin "$GITHUB_REF_NAME"
+          test "$(git rev-parse "origin/$GITHUB_REF_NAME")" = "$GITHUB_SHA"
+          git rm .github/workflows/license-lock-refresh.yml
+          git add package-lock.json
+          test "$(git diff --cached --name-only | sort)" = $'.github/workflows/license-lock-refresh.yml\npackage-lock.json'
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'chore(governance): sync Apache-2.0 lock metadata'
+          git push origin HEAD:"$GITHUB_REF_NAME"
