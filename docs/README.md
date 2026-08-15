@@ -18,6 +18,7 @@ The normative Virune 1.0 language specification is in [`../spec/`](../spec/).
 
 ## Stability and interoperability
 
+- [Compatibility and deprecation policy](compatibility-policy.md)
 - [Compiler API stability](compiler-api.md)
 - [Compiler architecture](compiler-architecture.md)
 - [Self-hosting architecture](self-hosting-architecture.md)
