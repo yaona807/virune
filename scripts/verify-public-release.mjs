@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 
 const repositoryRoot = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const EXPECTED_LICENSE = 'Apache-2.0';
+const REVIEWED_LEGAL_FILES = ['LICENSE', 'NOTICE', 'THIRD_PARTY_NOTICES.md', 'THIRD_PARTY_NOTICES_ja.md'];
 
 export async function verifyPublicRelease({
 	version,
@@ -73,7 +74,7 @@ export function validateReleaseRecord(release, { tag, version }) {
 	for (const required of requiredAssetNames(version)) if (!names.has(required)) throw new Error(`Release is missing ${required}.`);
 }
 
-export async function validateDownloadedRelease(directory, version) {
+export async function validateDownloadedRelease(directory, version, { sourceRoot = repositoryRoot } = {}) {
 	const files = (await readdir(directory)).sort();
 	const checksums = parseChecksums(await readFile(resolve(directory, 'SHA256SUMS'), 'utf8'));
 	const expectedChecksumFiles = files.filter(file => file !== 'SHA256SUMS').sort();
@@ -95,6 +96,20 @@ export async function validateDownloadedRelease(directory, version) {
 		const actual = assetByName.get(item.file);
 		if (actual?.sha256 !== item.sha256 || actual.bytes !== item.bytes) throw new Error(`Manifest mismatch for ${item.file}.`);
 	}
+
+	const releasePackage = JSON.parse(await readFile(resolve(directory, 'package.json'), 'utf8'));
+	if (releasePackage.version !== version) throw new Error('Public release package.json version does not match the candidate.');
+	if (releasePackage.license !== EXPECTED_LICENSE) {
+		throw new Error(`Public release package.json license must be exactly ${EXPECTED_LICENSE}.`);
+	}
+	for (const file of REVIEWED_LEGAL_FILES) {
+		const [published, reviewed] = await Promise.all([
+			readFile(resolve(directory, file)),
+			readFile(resolve(sourceRoot, file)),
+		]);
+		if (!published.equals(reviewed)) throw new Error(`Public release ${file} does not match the reviewed release source.`);
+	}
+
 	const sbom = JSON.parse(await readFile(resolve(directory, 'SBOM.cdx.json'), 'utf8'));
 	if (sbom.bomFormat !== 'CycloneDX' || sbom.specVersion !== '1.6') throw new Error('Release SBOM is not CycloneDX 1.6.');
 	if (sbom.metadata?.component?.version !== version) throw new Error('Release SBOM version does not match the candidate.');
