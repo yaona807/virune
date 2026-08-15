@@ -9,8 +9,13 @@ export function buildCycloneDxSbom({ lock, manifest, commit = null }) {
 	if (lock?.lockfileVersion !== 3 || typeof lock.packages !== 'object' || lock.packages === null) {
 		throw new Error('A package-lock.json with lockfileVersion 3 is required.');
 	}
-	if (typeof manifest?.name !== 'string' || typeof manifest?.version !== 'string') {
-		throw new Error('A package manifest with name and version is required.');
+	if (
+		typeof manifest?.name !== 'string'
+		|| typeof manifest?.version !== 'string'
+		|| typeof manifest?.license !== 'string'
+		|| manifest.license.trim().length === 0
+	) {
+		throw new Error('A package manifest with name, version, and license is required.');
 	}
 
 	const packageEntries = new Map(Object.entries(lock.packages));
@@ -80,6 +85,7 @@ export function buildCycloneDxSbom({ lock, manifest, commit = null }) {
 				name: manifest.name,
 				version: manifest.version,
 				purl: rootRef,
+				licenses: [{ license: { id: manifest.license } }],
 				externalReferences: [{
 					type: 'vcs',
 					url: 'https://github.com/yaona807/virune',
