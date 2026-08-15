@@ -76,6 +76,7 @@ const localPackage = {
 	version,
 	private: true,
 	type: 'module',
+	license: rootPackage.license,
 	description: `Local installation bundle for Virune v${version}.`,
 	dependencies: { virune: `file:./${cliPackage.file}` },
 };
@@ -88,6 +89,8 @@ writeFileSync(
 	resolve(out, 'README_ja.md'),
 	`# Virune v${version} リリースパッケージ\n\nViruneはnpm Registryへ公開しません。CLI tarballには依存関係一式が含まれており、npmから直接インストールできます。\n\nこのディレクトリからインストールします。\n\n\`\`\`bash\nnpm install --global ./${cliPackage.file}\nvirune --version\n\`\`\`\n\nGitHub Releasesからインストールします。\n\n\`\`\`bash\nnpm install --global ${releaseAssetBase}/${cliPackage.file}\n\`\`\`\n\nプロジェクト単位で導入する場合は\`--global\`を外し、\`--save-dev\`を指定します。Node.js 24以上が必要です。インストール前に\`SHA256SUMS\`、\`RELEASE-MANIFEST.json\`、GitHub artifact attestationを使用してdownload fileを検証してください。\n`,
 );
+copyFileSync(resolve('LICENSE'), resolve(out, 'LICENSE'));
+copyFileSync(resolve('NOTICE'), resolve(out, 'NOTICE'));
 copyFileSync(resolve('THIRD_PARTY_NOTICES.md'), resolve(out, 'THIRD_PARTY_NOTICES.md'));
 copyFileSync(resolve('THIRD_PARTY_NOTICES_ja.md'), resolve(out, 'THIRD_PARTY_NOTICES_ja.md'));
 
