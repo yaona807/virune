@@ -148,6 +148,21 @@ test('bundled package without a license file fails closed', async () => {
 	});
 });
 
+test('bundled package with non-UTF-8 legal text fails closed', async () => {
+	await withFixture(async root => {
+		writePackage(root, 'invalid-utf8-license', {
+			name: 'invalid-utf8-license',
+			version: '1.0.0',
+			license: 'MIT',
+			files: { LICENSE: Buffer.from([0xff, 0xfe, 0xfd]) },
+		});
+		await assert.rejects(
+			() => buildBundledThirdPartyLicenseText([{ inputs: { 'node_modules/invalid-utf8-license/index.js': {} } }], root),
+			/legal file LICENSE is not valid UTF-8/u,
+		);
+	});
+});
+
 test('duplicate bundled package identity with conflicting legal material fails closed', async () => {
 	await withFixture(async root => {
 		writePackage(root, 'duplicate-a/node_modules/shared', {
