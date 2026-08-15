@@ -15,7 +15,7 @@ Stable surfaceは、stable release利用者に対する互換性の約束です�
 - [`../spec/`](../spec/)にある規範的なVirune言語挙動
 - `packages/public-abi.snapshot.json`で追跡する文書化済みpublic standard library surface
 - `packages/compiler/api/stable-api.snapshot.json`で追跡するroot `@virune/compiler` API
-- version付きRuntime ABI／Interop ABI surface
+- stable release向けにStableと明示したRuntime ABI／Interop ABI version
 - 文書化済みpublic CLI command、option、exit codeの意味
 - [`diagnostic-codes_ja.md`](diagnostic-codes_ja.md)で定義したstable diagnostic code／JSON schema contract
 - その他、stableと明示して文書化したmachine-readable schemaとfield
@@ -30,7 +30,7 @@ Experimental surfaceは評価のため利用できますが、stable互換性保
 現在の例:
 
 - `@virune/compiler/experimental`
-- #213のprototype／corpus評価が完了するまでのSemantic Snapshot／Semantic Change Evidence schema
+- Semantic Snapshot／Semantic Change Evidence schema。#213が要求するprototype／corpus評価の後に明示的にstabilizeされない限りExperimentalのままであり、評価完了だけでは自動的にStableにならない
 - その他、experimentalまたはprerelease-onlyと明示したAPI／schema
 
 Experimental surfaceを利用していても、無関係なStable surfaceまでExperimentalになるわけではありません。
@@ -63,7 +63,7 @@ Prerelease／nightlyの互換性は[`release-channels_ja.md`](release-channels_j
 
 ## Runtime ABI、Interop ABI、Compiler API、standard library
 
-Runtime／Interop ABIはversion付きpathとsnapshotを使用します。ABI固有の詳細規則は[`runtime-abi_ja.md`](runtime-abi_ja.md)を正本とします。Breaking ABI changeには新しいversion付きABI pathとmigration文書が必要で、snapshotを更新しただけではbreaking changeは互換になりません。
+StableなRuntime／Interop ABI versionはversion付きpathとsnapshotを使用します。ABI固有の詳細規則は[`runtime-abi_ja.md`](runtime-abi_ja.md)を正本とします。新しいABI candidateへversion番号やpathを与えただけではStableにならず、stabilizationは明示的に行う必要があります。すでにStableなABIへのbreaking changeには新しいversion付きABI pathとmigration文書が必要で、snapshotを更新しただけではbreaking changeは互換になりません。
 
 Stableな`@virune/compiler` root entry pointは[`compiler-api_ja.md`](compiler-api_ja.md)に従います。Stable export symbolの削除、rename、非互換なsignature変更はbreakingです。`@virune/compiler/experimental`はこの保証の対象外です。
 
