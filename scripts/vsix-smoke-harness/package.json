@@ -4,6 +4,7 @@
   "version": "0.0.0",
   "publisher": "virune-tests",
   "private": true,
+  "license": "Apache-2.0",
   "engines": { "vscode": ">=1.100.0" },
   "main": "./extension.cjs",
   "activationEvents": ["*"],
