@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { verifyWorkspaceLicenseLock } from './verify-workspace-license-lock.mjs';
 
 const repositoryRoot = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const EXPECTED_LICENSE_ID = 'Apache-2.0';
@@ -41,6 +42,8 @@ export function verifyRepositoryLicensePolicy(root = repositoryRoot) {
 		assertEqualBytes(readFileSync(resolve(workspaceRoot, 'LICENSE')), licenseBytes, `packages/${directory}/LICENSE`);
 		assertEqualBytes(readFileSync(resolve(workspaceRoot, 'NOTICE')), noticeBytes, `packages/${directory}/NOTICE`);
 	}
+
+	verifyWorkspaceLicenseLock(root, EXPECTED_LICENSE_ID);
 
 	return { license: EXPECTED_LICENSE_ID, workspaces: workspaceDirectories };
 }
