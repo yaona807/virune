@@ -6,7 +6,7 @@ import test from 'node:test';
 import { buildBundledThirdPartyLicenseText, collectBundledPackageRoots } from './vscode-third-party-licenses.mjs';
 
 test('bundled third-party license text is deterministic and contains package legal files', async () => {
-	withFixture(async root => {
+	await withFixture(async root => {
 		writePackage(root, 'zeta', {
 			name: 'zeta',
 			version: '2.0.0',
@@ -71,7 +71,7 @@ test('bundled package root discovery handles nested and scoped node_modules path
 });
 
 test('empty bundled npm package set fails closed', async () => {
-	withFixture(async root => {
+	await withFixture(async root => {
 		await assert.rejects(
 			() => buildBundledThirdPartyLicenseText([{ inputs: { 'packages/vscode/src/extension.ts': {} } }], root),
 			/VS Code bundles did not include any third-party npm packages/u,
@@ -80,7 +80,7 @@ test('empty bundled npm package set fails closed', async () => {
 });
 
 test('bundled package without a license file fails closed', async () => {
-	withFixture(async root => {
+	await withFixture(async root => {
 		writePackage(root, 'missing-license', {
 			name: 'missing-license',
 			version: '1.0.0',
