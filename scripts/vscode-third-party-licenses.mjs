@@ -41,7 +41,7 @@ export async function buildBundledThirdPartyLicenseText(metafiles, root = proces
 		}
 		lines.push('');
 	}
-	return `${lines.join('\n').replace(/\n{3,}$/u, '\n\n')}\n`;
+	return `${lines.join('\n').replace(/\n+$/u, '')}\n`;
 }
 
 export function collectBundledPackageRoots(metafiles, root = process.cwd()) {
