@@ -15,12 +15,13 @@ Stable surfaces are compatibility commitments for users of stable releases:
 - the normative Virune language behavior under [`../spec/`](../spec/)
 - documented `virune.json` project-configuration keys, accepted stable values, meanings, and defaults
 - the documented public standard-library surface tracked by `packages/public-abi.snapshot.json`
-- the root `@virune/compiler` API tracked by `packages/compiler/api/stable-api.snapshot.json`
+- the root `@virune/compiler` API tracked by `packages/compiler/api/stable-api.snapshot.json`, including its documented behavior contracts
 - Runtime ABI and Interop ABI versions explicitly declared stable for a stable release
-- documented public CLI commands, options, and exit-code meanings
+- documented public CLI commands and options, including their meanings, plus documented exit-code meanings
 - the stable diagnostic-code and JSON-schema contract documented in [`diagnostic-codes.md`](diagnostic-codes.md)
 - other explicitly documented stable machine-readable schemas and fields
-- documented Virune-owned VS Code settings and public extension command identifiers, when such identifiers are documented
+- documented Virune LSP / VS Code public capabilities and documented Virune-owned settings, including their accepted stable values, meanings, and defaults
+- public extension command identifiers when the identifier itself is documented
 
 A stable surface may grow compatibly in a minor release and may receive compatible corrections in a patch release. An intentional incompatible change to a stable contract normally requires the next major release.
 
@@ -72,7 +73,7 @@ Removing or renaming a documented key, rejecting a previously documented-valid c
 
 Stable Runtime and Interop ABI versions use versioned paths and snapshots. The current ABI-specific rules remain authoritative in [`runtime-abi.md`](runtime-abi.md). Assigning a version number or path to a new ABI candidate does not make it Stable; stabilization must be explicit. A breaking change to an already-Stable ABI requires a new versioned ABI path and migration documentation; updating a snapshot alone does not make a breaking change compatible.
 
-The stable `@virune/compiler` root entry point follows [`compiler-api.md`](compiler-api.md). Removing, renaming, or incompatibly changing a stable exported symbol is breaking. `@virune/compiler/experimental` remains outside this guarantee.
+The stable `@virune/compiler` root entry point follows [`compiler-api.md`](compiler-api.md). Removing or renaming a stable exported symbol, incompatibly changing its signature, or incompatibly changing its documented behavior contract is breaking. `@virune/compiler/experimental` remains outside this guarantee.
 
 The documented public standard-library declarations and export map are stable. Removing or incompatibly changing an existing public declaration or package entry point is breaking. Additive APIs may ship in a minor release when they do not change existing program meaning.
 
@@ -80,10 +81,12 @@ The documented public standard-library declarations and export map are stable. R
 
 The following documented CLI behavior is stable unless explicitly marked otherwise:
 
-- command and option names
+- command and option names and their documented meanings
 - documented exit-code meanings
 - the diagnostic code, severity, coordinate, and JSON schema guarantees in [`diagnostic-codes.md`](diagnostic-codes.md)
 - other explicitly documented stable machine-readable schema versions and fields
+
+Removing or renaming a documented command or option, or changing its documented effect incompatibly while retaining the same name, is breaking.
 
 Human-oriented presentation is not a byte-stable interface. Wording, whitespace, color, wrapping, and similar presentation details may change when the documented meaning is preserved.
 
@@ -91,9 +94,11 @@ A mode being JSON does not automatically make every emitted field a stable contr
 
 ## LSP and VS Code compatibility
 
-Virune follows its declared VS Code API baseline and the upstream Language Server Protocol for protocol-level interoperability. Documented Virune-owned VS Code setting keys are Stable. A public extension command identifier is Stable when the identifier itself, rather than only its display label, is documented as part of the public interface. Undocumented Virune-specific LSP extensions or wire details are not implicitly Stable.
+Virune follows its declared VS Code API baseline and the upstream Language Server Protocol for protocol-level interoperability. Public Virune capabilities documented for a stable release are Stable at the capability and documented-contract level. Removing an advertised/documented capability or changing its documented protocol behavior incompatibly is breaking; adding a capability is normally compatible.
 
-Internal indexing, caching, scheduling, request implementation, and analysis storage are not compatibility contracts. Raising the minimum supported VS Code API baseline in a way that drops a previously supported stable environment is treated like a platform-baseline breaking change unless an exception below applies.
+Documented Virune-owned VS Code setting keys, their accepted stable values and meanings, and documented defaults are Stable. Removing or renaming a setting, rejecting a previously documented-valid value, or changing a documented default so that the same configuration acquires incompatible behavior is breaking. A public extension command identifier is Stable when the identifier itself, rather than only its display label, is documented as part of the public interface.
+
+Completion ranking, presentation text, UI layout, internal indexing, caching, scheduling, request implementation, and analysis storage are not compatibility contracts unless explicitly documented otherwise. Undocumented Virune-specific LSP extensions or wire details are not implicitly Stable. Raising the minimum supported VS Code API baseline in a way that drops a previously supported stable environment is treated like a platform-baseline breaking change unless an exception below applies.
 
 ## Node.js baseline
 
@@ -150,7 +155,7 @@ Compatibility decisions use the following authorities:
 
 1. **Language semantics**: [`../spec/`](../spec/) is normative. Explanatory documentation and implementation must conform to it.
 2. **Public ABI and API inventory**: committed ABI/API snapshots mechanically identify reviewed public surfaces. Snapshot updates require review, but a snapshot update does not by itself authorize a breaking change.
-3. **Surface-specific documentation**: project configuration, Runtime/Interop ABI, Compiler API, diagnostics/JSON, CLI, VS Code, release-channel, and self-hosting documents define the detailed contract and lifecycle of their respective surfaces.
+3. **Surface-specific documentation**: project configuration, Runtime/Interop ABI, Compiler API, diagnostics/JSON, CLI, LSP/VS Code, release-channel, and self-hosting documents define the detailed contract and lifecycle of their respective surfaces.
 4. **Release notes and migration guides**: describe what changed in a particular release and how to migrate. They do not silently override the normative specification or this policy.
 5. **Implementation and tests**: demonstrate conformance and detect regressions; they do not redefine a conflicting normative contract merely by passing.
 
@@ -162,7 +167,7 @@ This policy does not:
 
 - freeze Experimental or Internal implementation details
 - guarantee byte-for-byte human CLI output
-- make undocumented JSON fields or project-configuration keys stable
+- make undocumented JSON fields, project-configuration keys, editor settings, or protocol extensions stable
 - promise indefinite support for old major release lines
 - weaken security, correctness, ABI, reproducibility, or self-hosting promotion gates in order to preserve compatibility
 - treat a green snapshot/CI update as proof that an incompatible change is acceptable
