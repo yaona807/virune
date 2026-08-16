@@ -302,8 +302,8 @@ test('imported enum metadata remains fail-closed outside the supported public va
 			assertEntryNotEmitted(output, 'duplicate aliases must not emit the rejected entry module');
 			assert.ok(output.diagnostics.some(item =>
 				item.sourcePath === 'src/main.virune'
-				&& item.code === 'L1010'
-				&& item.message === 'Unknown name State.Pending'
+				&& item.code === 'L1001'
+				&& item.message === 'Duplicate imported name State'
 			));
 		});
 
