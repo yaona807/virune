@@ -54,6 +54,12 @@ const groups = platformSmoke ? platformGroups : [
 				'scripts/verify-npm-publication-license.test.mjs',
 			],
 		},
+		{ name: 'npm package contents audit policy', files: ['scripts/verify-npm-package-contents.test.mjs'] },
+		{
+			name: 'npm package contents audit',
+			command: ['scripts/verify-npm-package-contents.mjs'],
+			failureOutput: '.cache/unit-test-failure.log',
+		},
 		{ name: 'repository license policy', files: ['scripts/verify-repository-license-policy.test.mjs'] },
 		{ name: 'release license artifact policy', files: ['scripts/verify-release-license-artifacts.test.mjs'] },
 		{
