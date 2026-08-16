@@ -1264,6 +1264,63 @@ fn expressionTreeContains(
 	return false
 }
 
+fn patternTreeBindsBase(
+	expressions: List<MvpExpression>,
+	rootId: Int,
+	base: String,
+	seen: List<Int>,
+) -> Bool {
+	if containsInt(seen, rootId) {
+		return true
+	}
+	let pattern = match List.get(expressions, rootId) {
+		Some(item) => item
+		None => panic("Missing MVP pattern arena entry while tracking imported enum shadowing")
+	}
+	if pattern.kind == "patternBinding" && pattern.text == base {
+		return true
+	}
+	let nextSeen = List.append(seen, rootId)
+	for childId in pattern.children {
+		if patternTreeBindsBase(expressions, childId, base, nextSeen) {
+			return true
+		}
+	}
+	return false
+}
+
+fn matchPatternShadowsBaseAtExpression(
+	value: MvpFunction,
+	base: String,
+	expressionId: Int,
+) -> Bool {
+	let mut armId = 0
+	for expression in value.expressions {
+		if expression.kind == "matchArm" {
+			if List.length(expression.children) != 2 {
+				if expressionTreeContains(value.expressions, armId, expressionId, []) {
+					return true
+				}
+			} else {
+				let patternId = match List.get(expression.children, 0) {
+					Some(value) => value
+					None => panic("Missing match pattern after arity check")
+				}
+				let bodyId = match List.get(expression.children, 1) {
+					Some(value) => value
+					None => panic("Missing match arm body after arity check")
+				}
+				if expressionTreeContains(value.expressions, bodyId, expressionId, [])
+					&& patternTreeBindsBase(value.expressions, patternId, base, []) {
+					return true
+				}
+			}
+		}
+		armId = armId + 1
+	}
+	return false
+}
+
 fn blockShadowsBaseAtExpression(
 	value: MvpFunction,
 	statementIds: List<Int>,
@@ -1361,6 +1418,9 @@ fn functionShadowsBaseAtExpression(
 		if parameter.name == base {
 			return true
 		}
+	}
+	if matchPatternShadowsBaseAtExpression(value, base, expressionId) {
+		return true
 	}
 	return blockShadowsBaseAtExpression(value, value.statementIds, base, false, expressionId)
 }

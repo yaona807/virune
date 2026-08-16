@@ -71,6 +71,13 @@ const visibleAliasCases = [
 				+ 'pub fn main() -> state {\n\tfor state in [1] {\n\t\tdiscard state\n\t}\n\treturn state.Pending\n}\n',
 		),
 	},
+	{
+		name: 'match pattern binding shadowing ends when the arm body ends',
+		input: projectInput(
+			'import { Status as state } from "./domain.virune"\n\n'
+				+ 'pub fn main() -> state {\n\tlet matched = match 1 {\n\t\tstate => state\n\t}\n\tdiscard matched\n\treturn state.Pending\n}\n',
+		),
+	},
 ] as const;
 
 const shadowCases = [
@@ -96,6 +103,14 @@ const shadowCases = [
 			'import { Status as state } from "./domain.virune"\n\n'
 				+ 'fn bad() -> Int {\n\tfor state in [1] {\n\t\tdiscard state.Pending\n\t}\n\treturn 1\n}\n\n'
 				+ 'pub fn main() -> Int {\n\treturn bad()\n}\n',
+		),
+	},
+	{
+		name: 'match pattern binding shadows the imported enum alias only inside its arm body',
+		input: projectInput(
+			'import { Status as state } from "./domain.virune"\n\n'
+				+ 'fn bad(value: Int) -> state {\n\treturn match value {\n\t\tstate => state.Pending\n\t}\n}\n\n'
+				+ 'pub fn main() -> Int {\n\treturn 1\n}\n',
 		),
 	},
 ] as const;
