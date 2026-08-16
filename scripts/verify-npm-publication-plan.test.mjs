@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { verifyNpmPublicationPlan } from './verify-npm-publication-plan.mjs';
+import { verifyReleaseChannelDocumentation } from './verify-release-channel.mjs';
 
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const workspaceDirectories = [
@@ -29,7 +30,6 @@ const unresolvedRequirements = [
 	'recovery-policy',
 	'registry-ownership',
 	'release-identity-integration',
-	'stable-prerelease-dist-tag-policy',
 	'trusted-publishing',
 ];
 
@@ -44,7 +44,13 @@ test('current repository has a complete but explicitly non-ready npm prepublicat
 		publicationReady: false,
 		unresolvedRequirements,
 		currentVersion: '1.0.0',
+		forbidRegistryPublishThroughVersion: '1.0.0',
 		firstStableRegistryRelease: '1.1.0',
+		distTagPolicy: {
+			stable: 'latest',
+			prerelease: 'next',
+			nightly: null,
+		},
 		publishPackages: [
 			{ workspaceName: 'virune', registryName: 'virune' },
 			{ workspaceName: '@virune/compiler', registryName: '@virune/compiler' },
@@ -55,6 +61,29 @@ test('current repository has a complete but explicitly non-ready npm prepublicat
 		],
 		excludedWorkspacePackages: ['@virune/language-server', 'virune-vscode'],
 	});
+});
+
+test('release-channel documentation is bound to the canonical npm publication policy', () => {
+	const publicationPlan = verifyNpmPublicationPlan(repositoryRoot);
+	const english = readFileSync(resolve(repositoryRoot, 'docs/release-channels.md'), 'utf8');
+	const japanese = readFileSync(resolve(repositoryRoot, 'docs/release-channels_ja.md'), 'utf8');
+	assert.doesNotThrow(() => verifyReleaseChannelDocumentation(publicationPlan, english, japanese));
+	assert.throws(
+		() => verifyReleaseChannelDocumentation(
+			publicationPlan,
+			english.replace('stable uses `latest`', 'stable uses `stable`'),
+			japanese,
+		),
+		/English release-channel documentation does not match the canonical npm publication plan/u,
+	);
+	assert.throws(
+		() => verifyReleaseChannelDocumentation(
+			publicationPlan,
+			english,
+			japanese.replace('stableは`latest`', 'stableは`stable`'),
+		),
+		/Japanese release-channel documentation does not match the canonical npm publication plan/u,
+	);
 });
 
 test('workspace layout changes fail until publication-plan enumeration is updated', () => {
@@ -296,15 +325,68 @@ test('prepublication blockers cannot be silently dropped', () => {
 	});
 });
 
-test('v1.0.0 retro-publish boundary must precede the first stable npm release', () => {
+test('retro-publish and first-stable npm release boundaries cannot drift during prepublication', () => {
 	withFixture(root => {
 		const path = resolve(root, '.github/release/npm-publication-v1.json');
 		const plan = readJson(path);
-		plan.firstStableRegistryRelease = '1.0.0';
+		plan.forbidRegistryPublishThroughVersion = '0.9.0';
 		writeJson(path, plan);
 		assert.throws(
 			() => verifyNpmPublicationPlan(root),
-			/firstStableRegistryRelease: must be later than the forbidden retro-publish boundary/u,
+			/forbidRegistryPublishThroughVersion: expected 1\.0\.0 retro-publish boundary/u,
+		);
+	});
+	withFixture(root => {
+		const path = resolve(root, '.github/release/npm-publication-v1.json');
+		const plan = readJson(path);
+		plan.firstStableRegistryRelease = '1.2.0';
+		writeJson(path, plan);
+		assert.throws(
+			() => verifyNpmPublicationPlan(root),
+			/firstStableRegistryRelease: expected first stable npm release 1\.1\.0/u,
+		);
+	});
+});
+
+test('npm dist-tag policy fails closed on drift, malformed tags, and nightly enablement', () => {
+	withFixture(root => {
+		const path = resolve(root, '.github/release/npm-publication-v1.json');
+		const plan = readJson(path);
+		plan.distTagPolicy.stable = 'stable';
+		writeJson(path, plan);
+		assert.throws(
+			() => verifyNpmPublicationPlan(root),
+			/distTagPolicy\.stable: stable npm releases must use the latest dist-tag/u,
+		);
+	});
+	withFixture(root => {
+		const path = resolve(root, '.github/release/npm-publication-v1.json');
+		const plan = readJson(path);
+		plan.distTagPolicy.prerelease = 'next!';
+		writeJson(path, plan);
+		assert.throws(
+			() => verifyNpmPublicationPlan(root),
+			/distTagPolicy\.prerelease: invalid npm dist-tag/u,
+		);
+	});
+	withFixture(root => {
+		const path = resolve(root, '.github/release/npm-publication-v1.json');
+		const plan = readJson(path);
+		plan.distTagPolicy.nightly = 'nightly';
+		writeJson(path, plan);
+		assert.throws(
+			() => verifyNpmPublicationPlan(root),
+			/distTagPolicy\.nightly: nightly releases must not be published to npm/u,
+		);
+	});
+	withFixture(root => {
+		const path = resolve(root, '.github/release/npm-publication-v1.json');
+		const plan = readJson(path);
+		plan.distTagPolicy.preview = 'preview';
+		writeJson(path, plan);
+		assert.throws(
+			() => verifyNpmPublicationPlan(root),
+			/distTagPolicy: expected keys nightly, prerelease, stable/u,
 		);
 	});
 });
