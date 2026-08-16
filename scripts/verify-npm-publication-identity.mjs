@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { lstatSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { gunzipSync } from 'node:zlib';
 import { verifyNpmPublicationPlan } from './verify-npm-publication-plan.mjs';
 
 const PUBLICATION_MANIFEST = 'PUBLICATION-MANIFEST.json';
@@ -138,6 +139,8 @@ export function buildNpmPublicationIdentity({ root = process.cwd(), releaseDirec
 		assert(metadata.isFile() && !metadata.isSymbolicLink(), `$.releaseTarballs.${file}`, 'release tarball must be a regular file');
 		return [file, readFileSync(path)];
 	}));
+	const cliRegistryAsset = registryReleaseAssetNameForPackage('virune', publicationPlan.currentVersion);
+	verifyRegistryCliCandidateTarball(assetBytes[cliRegistryAsset], publicationPlan.currentVersion, cliRegistryAsset);
 	return buildNpmPublicationIdentityFromInputs({
 		version: publicationPlan.currentVersion,
 		publicationReady: publicationPlan.publicationReady,
@@ -175,6 +178,62 @@ export function verifyNpmPublicationIdentity(options = {}) {
 	verifyPublicationIdentityDocument(expected, actual);
 	process.stdout.write(`Verified npm publication identity for ${expected.packages.length} reviewed release tarballs (${expected.version}).\n`);
 	return expected;
+}
+
+export function verifyRegistryCliCandidateTarball(bytes, version, file = registryReleaseAssetNameForPackage('virune', version)) {
+	assert(Buffer.isBuffer(bytes) || bytes instanceof Uint8Array, `$.registryCli.${file}`, 'expected package bytes');
+	const entries = readTarEntries(Buffer.from(bytes), `$.registryCli.${file}`);
+	const manifestEntry = entries.get('package/package.json');
+	assert(manifestEntry !== undefined && manifestEntry.typeFlag === 48, `$.registryCli.${file}`, 'package/package.json must be a regular file');
+	let manifest;
+	try {
+		manifest = JSON.parse(manifestEntry.bytes.toString('utf8'));
+	} catch (error) {
+		throw new Error(`$.registryCli.${file}: invalid package.json: ${error instanceof Error ? error.message : String(error)}`);
+	}
+	assert(manifest.name === 'virune', `$.registryCli.${file}.name`, 'expected virune');
+	assert(manifest.version === version, `$.registryCli.${file}.version`, `expected ${version}`);
+	assert(manifest.private === true, `$.registryCli.${file}.private`, 'prepublication Registry candidate must remain private:true');
+	assert(manifest.publishConfig === undefined, `$.registryCli.${file}.publishConfig`, 'publishConfig must not be present before publication enablement');
+	assert(manifest.bundledDependencies === undefined && manifest.bundleDependencies === undefined, `$.registryCli.${file}`, 'Registry CLI candidate must not declare bundled dependencies');
+	for (const path of entries.keys()) {
+		assert(!path.startsWith('package/node_modules/'), `$.registryCli.${file}`, `Registry CLI candidate must not contain bundled dependency path ${path}`);
+	}
+	for (const [dependency, dependencyVersion] of Object.entries(manifest.dependencies ?? {})) {
+		if (dependency === 'virune' || dependency.startsWith('@virune/')) {
+			assert(dependencyVersion === version, `$.registryCli.${file}.dependencies.${dependency}`, `expected exact release version ${version}`);
+		}
+	}
+	return { name: manifest.name, version: manifest.version, entryCount: entries.size };
+}
+
+function readTarEntries(tgzBytes, path) {
+	let tar;
+	try {
+		tar = gunzipSync(tgzBytes);
+	} catch (error) {
+		throw new Error(`${path}: invalid gzip tarball: ${error instanceof Error ? error.message : String(error)}`);
+	}
+	const entries = new Map();
+	let offset = 0;
+	while (offset + 512 <= tar.byteLength) {
+		const header = tar.subarray(offset, offset + 512);
+		if (header.every(byte => byte === 0)) break;
+		const stringField = (start, length) => header.subarray(start, start + length).toString('utf8').replace(/\0.*$/su, '');
+		const name = stringField(0, 100);
+		const prefix = stringField(345, 155);
+		const fullName = prefix.length > 0 ? `${prefix}/${name}` : name;
+		const sizeText = stringField(124, 12).trim();
+		const size = sizeText.length > 0 ? Number.parseInt(sizeText, 8) : 0;
+		assert(Number.isSafeInteger(size) && size >= 0, path, `invalid tar entry size for ${fullName}`);
+		const dataStart = offset + 512;
+		const dataEnd = dataStart + size;
+		assert(dataEnd <= tar.byteLength, path, `truncated tar entry ${fullName}`);
+		assert(!entries.has(fullName), path, `duplicate tar entry ${fullName}`);
+		entries.set(fullName, { bytes: tar.subarray(dataStart, dataEnd), typeFlag: header[156] });
+		offset = dataStart + Math.ceil(size / 512) * 512;
+	}
+	return entries;
 }
 
 function publicationPackage(value, path, version) {
