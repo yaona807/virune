@@ -39,7 +39,6 @@ import {
 	MvpModule,
 	MvpParameter,
 	MvpSpan,
-	MvpStatement,
 	MvpType,
 	listType,
 	optionalType,
@@ -334,15 +333,6 @@ fn stats(parsedModules: Int, checkedModules: Int, emittedModules: Int) -> Projec
 }
 
 fn containsPath(values: List<String>, value: String) -> Bool {
-	for item in values {
-		if item == value {
-			return true
-		}
-	}
-	return false
-}
-
-fn containsInt(values: List<Int>, value: Int) -> Bool {
 	for item in values {
 		if item == value {
 			return true
@@ -654,6 +644,7 @@ fn dependencyTargetPath(
 				Some(value) => value
 				None => ""
 			}
+		}
 	}
 	return ""
 }
@@ -867,31 +858,6 @@ fn importedSignatures(
 				}
 			}
 			for binding in importValue.bindings {
-				let functionValue = findPublicFunction(
-					target.moduleValue.functions,
-					binding.importedName,
-				)
-				if match functionValue { Some(_) => true, None => false } {
-					let function = match functionValue {
-						Some(value) => value
-						None => MvpFunction {
-							isPublic: false,
-							name: "",
-							parameters: [],
-							returnType: MvpType.ErrorType,
-							expressions: [],
-							statementIds: [],
-							statements: [],
-							span: binding.span,
-						}
-					}
-					signatures = List.append(signatures, ProjectExternalSignature {
-						name: binding.localName,
-						parameters: projectParameterTypes(function.parameters),
-						returnType: function.returnType,
-						span: binding.span,
-					})
-				}
 				if importLocalBindingCount(projectModule.moduleValue.imports, binding.localName) == 1
 					&& bindingAllowsValueSignature(
 						projectModules,
@@ -899,6 +865,31 @@ fn importedSignatures(
 						importValue.specifier,
 						binding,
 					) {
+					let functionValue = findPublicFunction(
+						target.moduleValue.functions,
+						binding.importedName,
+					)
+					if match functionValue { Some(_) => true, None => false } {
+						let function = match functionValue {
+							Some(value) => value
+							None => MvpFunction {
+								isPublic: false,
+								name: "",
+								parameters: [],
+								returnType: MvpType.ErrorType,
+								expressions: [],
+								statementIds: [],
+								statements: [],
+								span: binding.span,
+							}
+						}
+						signatures = List.append(signatures, ProjectExternalSignature {
+							name: binding.localName,
+							parameters: projectParameterTypes(function.parameters),
+							returnType: function.returnType,
+							span: binding.span,
+						})
+					}
 					for signature in enumConstructorSignatures(binding, targetPath, projectModules, exports)? {
 						signatures = List.append(signatures, signature)
 					}
@@ -982,133 +973,8 @@ fn safeExternalSignatures(values: List<ProjectExternalSignature>) -> List<Projec
 	return signatures
 }
 
-fn expressionTreeContains(
-	expressions: List<MvpExpression>,
-	rootId: Int,
-	targetId: Int,
-	seen: List<Int>,
-) -> Bool {
-	if rootId == targetId {
-		return true
-	}
-	if containsInt(seen, rootId) {
-		return true
-	}
-	let value = List.get(expressions, rootId)
-	if match value { Some(_) => false, None => true } {
-		return true
-	}
-	let expression = match value {
-		Some(item) => item
-		None => return true
-	}
-	let nextSeen = List.append(seen, rootId)
-	for childId in expression.children {
-		if expressionTreeContains(expressions, childId, targetId, nextSeen) {
-			return true
-		}
-	}
-	return false
-}
-
-fn functionParameterShadowsBase(value: MvpFunction, base: String) -> Bool {
-	for parameter in value.parameters {
-		if parameter.name == base {
-			return true
-		}
-	}
-	return false
-}
-
-fn statementValue(
-	statements: List<MvpStatement>,
-	id: Int,
-) -> MvpStatement? {
-	return List.get(statements, id)
-}
-
-fn blockShadowsBaseAtExpression(
-	value: MvpFunction,
-	statementIds: List<Int>,
-	base: String,
-	inheritedShadow: Bool,
-	expressionId: Int,
-) -> Bool {
-	let mut shadowed = inheritedShadow
-	for statementId in statementIds {
-		let statementOption = statementValue(value.statements, statementId)
-		if match statementOption { Some(_) => false, None => true } {
-			return true
-		}
-		let statement = match statementOption {
-			Some(item) => item
-			None => return true
-		}
-		match statement {
-			LetValue(name, _, _, initializerId, _) => {
-				if shadowed && expressionTreeContains(value.expressions, initializerId, expressionId, []) {
-					return true
-				}
-				if name == base {
-					shadowed = true
-				}
-			}
-			AssignValue(_, assignedId, _) => {
-				if shadowed && expressionTreeContains(value.expressions, assignedId, expressionId, []) {
-					return true
-				}
-			}
-			ForValue(name, iterableId, bodyIds, _) => {
-				if shadowed && expressionTreeContains(value.expressions, iterableId, expressionId, []) {
-					return true
-				}
-				if blockShadowsBaseAtExpression(value, bodyIds, base, shadowed || name == base, expressionId) {
-					return true
-				}
-			}
-			WhileValue(conditionId, bodyIds, _) => {
-				if shadowed && expressionTreeContains(value.expressions, conditionId, expressionId, []) {
-					return true
-				}
-				if blockShadowsBaseAtExpression(value, bodyIds, base, shadowed, expressionId) {
-					return true
-				}
-			}
-			IfValue(conditionId, thenIds, elseIds, _) => {
-				if shadowed && expressionTreeContains(value.expressions, conditionId, expressionId, []) {
-					return true
-				}
-				if blockShadowsBaseAtExpression(value, thenIds, base, shadowed, expressionId)
-					|| blockShadowsBaseAtExpression(value, elseIds, base, shadowed, expressionId) {
-					return true
-				}
-			}
-			ReturnValue(returnId, _) => {
-				if shadowed && expressionTreeContains(value.expressions, returnId, expressionId, []) {
-					return true
-				}
-			}
-			_ => {}
-		}
-	}
-	return false
-}
-
-fn functionShadowsBaseAtExpression(
-	value: MvpFunction,
-	base: String,
-	expressionId: Int,
-) -> Bool {
-	if functionParameterShadowsBase(value, base) {
-		return true
-	}
-	return blockShadowsBaseAtExpression(value, value.statementIds, base, false, expressionId)
-}
-
 fn prepareExternalVariantExpression(
 	value: MvpExpression,
-	functionValue: MvpFunction,
-	expressionId: Int,
 	signatures: List<ProjectExternalSignature>,
 ) -> MvpExpression {
 	let signatureValue = findExternalVariantSignature(signatures, value.text)
@@ -1118,10 +984,6 @@ fn prepareExternalVariantExpression(
 	let signature = match signatureValue {
 		Some(item) => item
 		None => return value
-	}
-	let base = externalVariantBase(signature)
-	if String.length(base) == 0 || functionShadowsBaseAtExpression(functionValue, base, expressionId) {
-		return value
 	}
 	let parameterCount = List.length(signature.parameters)
 	if value.kind == "identifier" && parameterCount == 0 {
@@ -1150,10 +1012,8 @@ fn prepareExternalVariantFunction(
 	signatures: List<ProjectExternalSignature>,
 ) -> MvpFunction {
 	let mut expressions: List<MvpExpression> = []
-	let mut expressionId = 0
 	for expression in value.expressions {
-		expressions = List.append(expressions, prepareExternalVariantExpression(expression, value, expressionId, signatures))
-		expressionId = expressionId + 1
+		expressions = List.append(expressions, prepareExternalVariantExpression(expression, signatures))
 	}
 	return MvpFunction {
 		isPublic: value.isPublic,
@@ -1544,7 +1404,7 @@ fn appendLinkDiagnostics(
 ) -> List<ProjectCompilerDiagnosticV1> {
 	let mut result = diagnostics
 	for value in values {
-		result = List.append(result, diagnostic)
+		result = List.append(result, linkDiagnostic(value))
 	}
 	return result
 }
