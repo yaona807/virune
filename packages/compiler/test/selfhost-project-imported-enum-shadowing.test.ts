@@ -59,16 +59,16 @@ const shadowCases = [
 	{
 		name: 'function parameter shadows the imported enum alias',
 		input: projectInput(
-			'import { Status as State } from "./domain.virune"\n\n'
-				+ 'fn bad(State: Int) -> State {\n\treturn State.Pending\n}\n\n'
+			'import { Status as state } from "./domain.virune"\n\n'
+				+ 'fn bad(state: Int) -> state {\n\treturn state.Pending\n}\n\n'
 				+ 'pub fn main() -> Int {\n\treturn 1\n}\n',
 		),
 	},
 	{
 		name: 'local let binding shadows the imported enum alias after its initializer',
 		input: projectInput(
-			'import { Status as State } from "./domain.virune"\n\n'
-				+ 'fn bad() -> State {\n\tlet State = 1\n\treturn State.Pending\n}\n\n'
+			'import { Status as state } from "./domain.virune"\n\n'
+				+ 'fn bad() -> state {\n\tlet state = 1\n\treturn state.Pending\n}\n\n'
 				+ 'pub fn main() -> Int {\n\treturn 1\n}\n',
 		),
 	},
@@ -99,7 +99,7 @@ test('imported enum constructor lowering preserves lexical shadowing', async () 
 				output.diagnostics.some(item =>
 					item.sourcePath === 'src/main.virune'
 					&& item.code === 'L1010'
-					&& item.message === 'Unknown name State.Pending'
+					&& item.message === 'Unknown name state.Pending'
 				),
 				`${shadowCase.name}: Self-host must not rewrite the shadowed name into imported enum metadata`,
 			);
