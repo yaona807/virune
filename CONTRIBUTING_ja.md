@@ -1,0 +1,197 @@
+# Viruneへのコントリビューション
+
+English: [CONTRIBUTING.md](CONTRIBUTING.md)
+
+Viruneへのコントリビューションありがとうございます。この文書では、Issue、branch、Pull Request、validation、review、Contributorの権利に関するrepository-levelの運用を定義します。
+
+## 原則
+
+優先順位は、correctness、safety、compatibility、determinism、reproducibility、maintainability、performance、implementation speedの順です。
+
+実装やCIを容易にすることだけを理由に、言語semantics、安全境界、test、quality/security/compatibility/reproducibility gate、public API/ABI contractを弱めないでください。unknownまたは未解決の状態は保守的に扱い、根拠なしにsafeまたは成功へ昇格させないでください。
+
+formattingとvalidationについては、repository-ownedの設定、script、CIを正本とします。新しいvalidation pathを追加する前に、既存commandを確認してください。
+
+## Security report
+
+Security vulnerabilityの疑いを、public Issue、Discussion、Pull Request、その他のpublic channelへ公開しないでください。Private vulnerability reportingと、それが利用できない場合のfallback手順は[`SECURITY.md`](SECURITY.md)に従ってください。
+
+## Contributorの権利とライセンス
+
+Viruneの現在のproject-owned repository snapshotは[Apache License 2.0](LICENSE)で配布されています。明示的に別の条件を示さない限り、Viruneへ取り込む目的で意図して提出したContributionは、Apache License 2.0のSection 5に沿って、追加の条件を付けずに同Licenseのterms and conditionsの下で提出されるものとします。このguideとLicense本文が矛盾する場合は、License本文を優先します。
+
+Contributionを提出する人は、そのContributionを提出するために必要な権利と権限を有していることについて責任を負います。勤務先、他project、private source、その他の第三者から取得したcodeやcontentなど、適用される条件上提出が認められていないmaterialを提出しないでください。
+
+Contributionに第三者のcode、data、documentation、生成material、その他のcontentが含まれる、またはそれらから派生している場合、review上重要となるsourceと適用Licenseまたはpermissionを明示してください。必要なcopyright、attribution、license、notice情報を削除しないでください。provenanceまたはlicenseがunknown・未解決のmaterialをproject-ownedのApache-2.0 materialとして扱ってはいけません。merge前に解決できるようIssueまたはPull Requestで明示してください。
+
+Code generationやAI-assisted developmentを利用したこと自体を理由に、特別な申告を必須とはしません。Contributionを提出する人は、使用したtoolにかかわらず、そのcorrectness、safety、provenance、licensing、およびこのrepositoryのreview・validation要件への適合について責任を負います。Toolの出力だけを、そのmaterialが安全に提出できることやProjectのLicenseと互換であることの根拠にしないでください。
+
+Viruneのproject attributionは[`NOTICE`](NOTICE)に記録します。Contributorは、自身のoriginal contributionについて保有するcopyrightを引き続き保持します。上記条件でContributionを提出しても、copyright ownershipがProjectへ移転するものではありません。別途reviewされたgovernance上の理由なしに、project-wideのcopyrightまたはattribution noticeを追加・書き換えないでください。
+
+Viruneでは現在、Contributor License Agreement（CLA）、Developer Certificate of Origin（DCO）、`Signed-off-by` lineを必須としていません。これらは、将来の具体的要件によって独立に必要性が正当化された場合のみ再検討します。通常のContributionが受理されたことによって、現在これらが要求されているとみなされることはありません。
+
+Contributionの受理は、Projectが将来そのContributionを異なる条件でrelicenseできることを表明または保証するものではありません。
+
+## Issue
+
+Implementation変更は原則としてIssueへ紐付けてください。Tracking Issueとimplementation Issueを区別します。
+
+必要に応じて次を含めます。
+
+- Background / Problem
+- Goal
+- Scope
+- Acceptance Criteria
+- Non-goals
+- Architecture / invariants
+- Dependencies
+- Compatibility / safety boundaries
+
+PRがmergeされたことだけではIssue完了を意味しません。current `main`上でAcceptance Criteriaを満たした時点でIssueをcloseします。Nightly、release、observation period、その他のpost-merge evidenceが必要な場合は、そのevidenceが揃うまでIssueをopenのまま維持してください。
+
+PRでは原則として`Refs #...`を使用します。PRのmerge自体ですべてのAcceptance Criteriaを満たす場合だけ`Closes #...`を使用してください。
+
+### Label taxonomy
+
+Labelは整理用metadataにすぎません。safety、required CI、merge eligibilityの判断根拠にしてはいけません。
+
+**Type** — 原則1つだけ:
+
+`type:bug`, `type:feature`, `type:refactor`, `type:test`, `type:ci`, `type:docs`, `type:security`, `type:chore`
+
+**Area** — 必要に応じて0個以上:
+
+`area:compiler`, `area:selfhost`, `area:interop`, `area:runtime`, `area:stdlib`, `area:cli`, `area:dx`, `area:release`, `area:governance`
+
+**Priority** — 任意、最大1つ:
+
+`priority:p0`から`priority:p3`
+
+**Workflow** — 例外状態だけ:
+
+`workflow:validation-only`, `workflow:superseded`, `workflow:blocked`
+
+Backlog Issueはunassignedのままで構いません。現在その作業にaccountableな人をassignしてください。Assigneeはownership metadataであり、concurrency lockではありません。
+
+## Branch
+
+独立した作業はcurrent `main`から開始してください。
+
+Branch名は目的と、可能ならIssueを識別できる名前を推奨します。例:
+
+- `feat/326-interop-provider-facts`
+- `fix/349-selfhost-propagation`
+- `docs/269-contributor-workflow`
+
+Stacked PRは例外です。stack depthは1を推奨し、2を超えないでください。
+
+親PRがsquash mergeされた後、history修復が複雑になる場合は、childをcurrent `main`からcleanに再構築することを優先してください。ancestry repairだけのPRを通常運用として作らず、古いbranchやsuperseded branchを現在のものに見せるためだけにforce updateしないでください。
+
+## Pull Request
+
+各PRは1つのlogicalかつreview可能な変更に限定してください。Titleは`feat(interop): ...`、`fix(selfhost): ...`、`test(selfhost): ...`、`ci(selfhost): ...`、`docs(governance): ...`などのConventional Commit形式を推奨します。
+
+必要に応じて次を記載してください。
+
+- Summary / Scope
+- Related issue
+- evidenceが依存する場合のExact base / current head
+- Changed boundaries
+- Non-goals / invariants
+- Validation
+- Compatibility / safety impact
+- Stackまたはsuperseded relationship
+
+Safety-sensitiveな変更では、変更したものと意図的に変更していないものの両方を明示してください。
+
+Implementation未完成、dependency待ち、formal validation未完了、validation-only、design review中の場合はDraft PRを使用してください。
+
+Validation-only PRは明示的にその旨を示し、mergeしてはいけません。必要なevidenceを取得した後にcloseしてください。Superseded PRはreplacementを明示し、mergeしてはいけません。
+
+原則としてsquash mergeを使用します。
+
+## Testとvalidation
+
+Behavior変更にはtestが必要です。Bug fixには可能な限りregression testを追加してください。
+
+変更内容に応じて、positive/negative、malformed、stale、partial、unknown、boundary、cleanup/rollback、determinism、compatibilityなどのcaseを選択してください。
+
+Test自体もreviewしてください。Assertionは誤ったimplementationを検出できる強さを持たせ、implementationと同じ誤解をtestへそのまま固定しないでください。
+
+既存のrepository-owned commandを優先してください。General verificationや、focused Self-hosting inventory、differential、reconstruction、bootstrap、rollback checkを含む関連commandは`package.json`に定義されています。
+
+## CI evidence
+
+Formal CI evidenceはexact PR head SHAに紐付きます。Headが変更された後に、古いheadの成功を新しいheadのevidenceとして使わないでください。
+
+Merge前に、必要に応じて次を確認します。
+
+- current headのrequired formal checksが成功している
+- required checkが意図せずmissingまたはskipされていない
+- unresolved review threadが0
+- PRにconflictがない
+- Issue/PR固有gateを満たしている
+- final adversarial reviewを通過している
+
+CI failureは原因を分類してから対応します。
+
+- **Repository / implementation failure:** 原因を修正し、新しいheadをvalidateします。同じheadをgreenになるまで盲目的にrerunしないでください。
+- **Infrastructure failure:** repository変更が原因ではないとevidenceで確認できる場合に限り、同じheadをrerunできます。
+
+繰り返し有用なdiagnosticは、temporary validation infrastructureへ依存せず、repository-owned commandまたはworkflowにしてください。
+
+## 敵対的レビュー
+
+Design、implementation、PR readiness、merge判断ではadversarial reviewが必要です。目的はimplementationを擁護することではなく、壊れる経路を見つけることです。
+
+次のcycleを繰り返します。
+
+1. Requirements、Acceptance Criteria、invariantsを再確認する。
+2. Current implementation/diffを敵対的にreviewする。
+3. Actionable findingを列挙する。
+4. Findingが1件でもあれば修正する。
+5. 必要なfocused validationを実行する。
+6. 変更後の状態を最初から再reviewする。
+7. 完全なreview passで新しいactionable findingが0件になるまで続ける。
+
+Actionable findingとは、correctness、safety、specification compliance、compatibility、determinism、reproducibility、failure handling、security boundary、test validity、maintainability、scope integrity、documentation、recoveryを具体的に改善する問題です。
+
+Actionable findingが0件になった後、styleだけのfindingを作り続けないでください。
+
+最低限、次を疑ってください。
+
+- Acceptance Criteriaを狭く解釈していないか
+- happy pathだけで成立していないか
+- malformed、stale、partial、duplicate、out-of-order inputで壊れないか
+- unknownをsafeへ昇格していないか、fail-openになっていないか
+- Language Specification、Compiler API、Runtime ABI、Interop ABI、target compatibilityを壊していないか
+- locale、time、randomness、path、filesystem order、concurrency orderによるnondeterminismがないか
+- testが弱すぎないか、implementationと同じ前提を共有していないか
+- required checkやskip pathを弱めていないか
+- stale CI/evidenceを利用していないか
+- unrelated refactorやtemporary workaroundが混入していないか
+- partial failure後のcleanup、rollback、retryが安全か
+
+Source、test、configuration、workflow、artifact contract、relevant base、relevant specificationのいずれかが変わった場合、0件判定をresetし、最初からreviewしてください。
+
+## Final exact-head review
+
+Adversarial reviewでactionable findingが0件になった後、current exact headでrequired formal CIを実行します。その後、exact head identity、formal CI、final diff、unexpected files、review thread、Acceptance Criteria、evidence、残存TODO/temporary path、superseded relationshipを含むfinal adversarial reviewを実行してください。
+
+Final reviewでactionable issueが1件でも見つかった場合はmergeしません。修正し、新しいheadについてrequired formal CIを再実行し、final reviewを繰り返してください。
+
+Completionにはfinal exact headでactionable finding 0件が必要です。CI greenだけでは十分ではありません。
+
+## Self-hosting guardrail
+
+Self-hostingの都合でViruneのlanguage semanticsやsafety modelを変更してはいけません。現行のcanonical Self-hosting Issue/policyに従ってください。
+
+Self-hostingを容易にすることだけを理由にgrammar/keywordを追加する、unsafe ruleを緩和する、compiler-only language featureを追加する、Self-host専用public stdlib APIを追加する、public API/ABI contractを壊す、quality/reproducibility gateを弱めることは禁止します。
+
+原則として、次の順で解決してください。
+
+1. 既存language featureを使った再設計
+2. internal algorithmの改善
+3. data-only contractの改善
+4. Host側へ責務を残す
+5. 一般利用でも独立して必要性が証明された場合のみ、別language proposalとして扱う

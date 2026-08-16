@@ -245,6 +245,8 @@ Viruneは、公開済みのstable APIと規範言語仕様にSemantic Versioning
 
 言語機能を変更する場合は、実装前にIssueを作成してください。構文、意味論、互換性への影響、仕様更新、適合性試験をまとめて確認します。Pull Requestでは英語版と日本語版のドキュメントを同期し、`npm run verify`を通してください。
 
+Repository workflowとContributor rights方針は[CONTRIBUTING_ja.md](CONTRIBUTING_ja.md)を参照してください。英語版は[CONTRIBUTING.md](CONTRIBUTING.md)です。
+
 Viruneは現在、[Yaona](https://github.com/yaona807)がメンテナンスしています。
 
 ## セキュリティと保証範囲

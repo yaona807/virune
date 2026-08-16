@@ -1,6 +1,8 @@
 # Contributing to Virune
 
-Thank you for contributing to Virune. This document defines the repository-level workflow for issues, branches, pull requests, validation, and review.
+日本語: [CONTRIBUTING_ja.md](CONTRIBUTING_ja.md)
+
+Thank you for contributing to Virune. This document defines the repository-level workflow for issues, branches, pull requests, validation, review, and contribution rights.
 
 ## Principles
 
@@ -13,6 +15,22 @@ Repository-owned configuration, scripts, and CI are canonical for formatting and
 ## Security reports
 
 Do not disclose suspected security vulnerabilities in public issues, discussions, pull requests, or other public channels. Follow [`SECURITY.md`](SECURITY.md) for private vulnerability reporting and the fallback procedure when private reporting is unavailable.
+
+## Contributor rights and licensing
+
+Virune's current project-owned repository snapshot is distributed under the [Apache License 2.0](LICENSE). Unless you explicitly state otherwise, a Contribution that you intentionally submit for inclusion in Virune is submitted under the terms and conditions of Apache License 2.0, without additional terms or conditions, consistent with Section 5 of that license. If this guide conflicts with the license text, the license text controls.
+
+By submitting a Contribution, you are responsible for ensuring that you have the rights and authorization necessary to submit it. Do not submit material that you do not have permission to contribute, including code or content copied from an employer, another project, a private source, or any other third party when the applicable terms do not permit the submission.
+
+When a Contribution includes or is derived from third-party code, data, documentation, generated material, or other content, identify the source and applicable license or permission when that information is material to review. Do not remove required copyright, attribution, license, or notice information. Unknown or unresolved provenance or licensing must not be treated as project-owned Apache-2.0 material; raise it in the issue or pull request so it can be resolved before merge.
+
+Using code generation or AI-assisted development does not, by itself, require a special disclosure. The person submitting the Contribution remains responsible for its correctness, safety, provenance, licensing, and compliance with this repository's review and validation requirements. Do not rely on a tool's output as evidence that material is safe to submit or compatible with the project's license.
+
+Virune records project attribution in [`NOTICE`](NOTICE). Contributors retain whatever copyright they hold in their original contributions; submitting a Contribution under the terms above does not transfer copyright ownership to the project. Do not add or rewrite project-wide copyright or attribution notices without a separately reviewed governance reason.
+
+Virune does not currently require a Contributor License Agreement (CLA), Developer Certificate of Origin (DCO), or `Signed-off-by` line. These mechanisms may be reconsidered only if a concrete future requirement independently justifies them; they are not implied by ordinary contribution acceptance today.
+
+Acceptance of a Contribution does not represent or guarantee that the project will be able to relicense that Contribution under different terms in the future.
 
 ## Issues
 
