@@ -1303,11 +1303,11 @@ fn matchPatternShadowsBaseAtExpression(
 				}
 			} else {
 				let patternId = match List.get(expression.children, 0) {
-					Some(value) => value
+					Some(item) => item
 					None => panic("Missing match pattern after arity check")
 				}
 				let bodyId = match List.get(expression.children, 1) {
-					Some(value) => value
+					Some(item) => item
 					None => panic("Missing match arm body after arity check")
 				}
 				if expressionTreeContains(value.expressions, bodyId, expressionId, [])
@@ -1809,6 +1809,7 @@ fn semanticSymbols(modulePath: String, values: List<ProjectLinkExport>) -> List<
 	let mut symbols: List<ProjectSemanticSymbol> = []
 	for value in values {
 		if value.modulePath == modulePath {
+			values = values
 			symbols = List.append(symbols, ProjectSemanticSymbol {
 				name: value.name,
 				declarationKind: value.declarationKind,
