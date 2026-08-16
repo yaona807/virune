@@ -23,7 +23,25 @@ const snapshotOptions = {
 	seedSha256: '7'.repeat(64),
 };
 
-test('an unsupported payload variant invalidates the imported enum metadata as a whole', async () => {
+function projectInput(main: string) {
+	return validateKernelInput({
+		contractVersion: '1',
+		languageVersion: '1.0',
+		platform: 'node',
+		entryPath: 'src/main.virune',
+		sources: [
+			{
+				path: 'src/domain.virune',
+				text: 'pub record User {\n\tname: String\n}\n\npub enum Status {\n\tPending\n\tFailed(User)\n}\n',
+			},
+			{ path: 'src/main.virune', text: main },
+		],
+		interopManifest: { version: '1', modules: [] },
+		emit: { target: 'es2022', sourceMap: false, sourcesContent: true },
+	});
+}
+
+test('unsupported payload variants stay blocked without hiding independently grounded siblings', async () => {
 	await mkdir(temporaryRoot, { recursive: true });
 	const build = await buildProject(mvpRoot, { write: false });
 	const errors = build.diagnostics.filter(item => item.severity === 'error');
@@ -33,31 +51,26 @@ test('an unsupported payload variant invalidates the imported enum metadata as a
 	try {
 		const module = await loadBootstrapCompilerCandidate(root, 'dist/main.js');
 		const kernel = createSelfhostProjectKernel(module);
-		const input = validateKernelInput({
-			contractVersion: '1',
-			languageVersion: '1.0',
-			platform: 'node',
-			entryPath: 'src/main.virune',
-			sources: [
-				{
-					path: 'src/domain.virune',
-					text: 'pub record User {\n\tname: String\n}\n\npub enum Status {\n\tPending\n\tFailed(User)\n}\n',
-				},
-				{
-					path: 'src/main.virune',
-					text: 'import { Status } from "./domain.virune"\n\npub fn main() -> Status {\n\treturn Status.Pending\n}\n',
-				},
-			],
-			interopManifest: { version: '1', modules: [] },
-			emit: { target: 'es2022', sourceMap: false, sourcesContent: true },
-		});
-		const output = await kernel.compile(input);
-		assert.equal(output.accepted, false, 'partial enum metadata must not expose the otherwise-lowerable Pending variant');
-		assert.deepEqual(output.emittedModules, []);
-		assert.ok(output.diagnostics.some(item =>
+
+		const supported = await kernel.compile(projectInput(
+			'import { Status } from "./domain.virune"\n\npub fn main() -> Status {\n\treturn Status.Pending\n}\n',
+		));
+		assert.equal(supported.accepted, true, JSON.stringify(supported.diagnostics, null, 2));
+		assert.deepEqual(supported.diagnostics, []);
+
+		const unsupported = await kernel.compile(projectInput(
+			'import { Status } from "./domain.virune"\n\npub fn main() -> Status {\n\treturn Status.Failed("boom")\n}\n',
+		));
+		assert.equal(unsupported.accepted, false, 'an unsupported nominal payload must not be guessed from its source type name');
+		assert.equal(
+			unsupported.emittedModules.some(item => item.sourcePath === 'src/main.virune'),
+			false,
+			'the rejected entry module must not be emitted',
+		);
+		assert.ok(unsupported.diagnostics.some(item =>
 			item.sourcePath === 'src/main.virune'
 			&& item.code === 'L1010'
-			&& item.message === 'Unknown name Status.Pending'
+			&& item.message === 'Unknown name Status.Failed'
 		));
 	} finally {
 		await rm(root, { recursive: true, force: true });

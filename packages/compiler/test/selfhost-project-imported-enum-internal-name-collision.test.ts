@@ -56,6 +56,14 @@ function projectInput(main: string): KernelInputV1 {
 	});
 }
 
+function assertEntryNotEmitted(output: { readonly emittedModules: readonly { readonly sourcePath: string }[] }, context: string): void {
+	assert.equal(
+		output.emittedModules.some(item => item.sourcePath === 'src/main.virune'),
+		false,
+		context,
+	);
+}
+
 const validAliasInput = projectInput(
 	'import { Status as MvpType } from "./domain.virune"\n\n'
 		+ 'pub fn main() -> MvpType {\n\treturn MvpType.Pending\n}\n',
@@ -79,7 +87,7 @@ test('imported enum aliases take precedence over Self-host internal qualified en
 
 	const legacyUnknown = await compileWithLegacyKernel(unknownVariantInput);
 	assert.equal(legacyUnknown.accepted, false, 'Legacy must resolve MvpType to the imported Status enum, not a Self-host internal enum');
-	assert.deepEqual(legacyUnknown.emittedModules, []);
+	assertEntryNotEmitted(legacyUnknown, 'Legacy must not emit the rejected entry module');
 
 	await withGeneratedCompiler(async module => {
 		const kernel = createSelfhostProjectKernel(module);
@@ -95,7 +103,7 @@ test('imported enum aliases take precedence over Self-host internal qualified en
 
 		const unknown = await kernel.compile(unknownVariantInput);
 		assert.equal(unknown.accepted, false, 'Self-host must not fall through to the internal MvpType qualified-variant allowlist');
-		assert.deepEqual(unknown.emittedModules, []);
+		assertEntryNotEmitted(unknown, 'Self-host must not emit the rejected entry module');
 		assert.ok(unknown.diagnostics.some(item =>
 			item.sourcePath === 'src/main.virune'
 			&& item.code === 'L1010'

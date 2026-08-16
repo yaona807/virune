@@ -837,6 +837,7 @@ fn enumConstructorSignatures(
 		}
 		memberNames = List.append(memberNames, member.name)
 		let mut parameters: List<MvpType> = []
+		let mut memberSupported = true
 		for typeId in member.typeIds {
 			let semanticTypeValue = semanticType(semantic.types, typeId)
 			if match semanticTypeValue { Some(_) => false, None => true } {
@@ -851,19 +852,22 @@ fn enumConstructorSignatures(
 			}
 			let lowered = semanticTypeToMvp(semantic.types, typeId)
 			if match lowered { Some(_) => false, None => true } {
-				return Ok(emptyExternalSignatures())
+				memberSupported = false
+			} else {
+				parameters = List.append(parameters, match lowered {
+					Some(value) => value
+					None => MvpType.ErrorType
+				})
 			}
-			parameters = List.append(parameters, match lowered {
-				Some(value) => value
-				None => MvpType.ErrorType
+		}
+		if memberSupported {
+			signatures = List.append(signatures, ProjectExternalSignature {
+				name: binding.localName + "." + externalVariantPrefix() + member.name,
+				parameters: parameters,
+				returnType: MvpType.NamedType(binding.localName),
+				span: binding.span,
 			})
 		}
-		signatures = List.append(signatures, ProjectExternalSignature {
-			name: binding.localName + "." + externalVariantPrefix() + member.name,
-			parameters: parameters,
-			returnType: MvpType.NamedType(binding.localName),
-			span: binding.span,
-		})
 	}
 	return Ok(signatures)
 }
