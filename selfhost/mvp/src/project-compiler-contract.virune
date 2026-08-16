@@ -672,12 +672,59 @@ fn enumIsPublicExport(
 	return false
 }
 
+fn publicTypeExportKind(kind: String) -> String {
+	if kind == "record" {
+		return "RecordDeclaration"
+	}
+	if kind == "enum" {
+		return "EnumDeclaration"
+	}
+	if kind == "newtype" {
+		return "NewtypeDeclaration"
+	}
+	return ""
+}
+
+fn declarationIsPublicTypeExport(
+	exports: List<ProjectLinkExport>,
+	modulePath: String,
+	declaration: SemanticDeclaration,
+) -> Bool {
+	if !declaration.isPublic || !List.isEmpty(declaration.typeParameters) {
+		return false
+	}
+	let expectedKind = publicTypeExportKind(declaration.kind)
+	if String.length(expectedKind) == 0 {
+		return false
+	}
+	for value in exports {
+		if value.modulePath == modulePath
+			&& value.name == declaration.name
+			&& value.declarationKind == expectedKind {
+			return true
+		}
+	}
+	return false
+}
+
 fn semanticDeclaration(
 	values: List<SemanticDeclaration>,
 	name: String,
 ) -> SemanticDeclaration? {
 	for value in values {
 		if value.name == name {
+			return Some(value)
+		}
+	}
+	return None
+}
+
+fn semanticDeclarationById(
+	values: List<SemanticDeclaration>,
+	id: Int,
+) -> SemanticDeclaration? {
+	for value in values {
+		if value.id == id {
 			return Some(value)
 		}
 	}
@@ -759,6 +806,125 @@ fn semanticTypeToMvp(values: List<SemanticType>, id: Int) -> MvpType? {
 	return None
 }
 
+fn importedPayloadLocalName(
+	projectModule: ParsedMvpProjectSource,
+	projectModules: List<ProjectLinkModulePayload>,
+	dependencies: List<ProjectLinkDependency>,
+	targetPath: String,
+	importedName: String,
+) -> String {
+	let mut matches = 0
+	let mut localName = ""
+	for importValue in projectModule.moduleValue.imports {
+		if dependencyTargetPath(dependencies, projectModule.path, importValue.specifier) == targetPath {
+			for candidate in importValue.bindings {
+				if candidate.importedName == importedName
+					&& importLocalBindingCount(projectModule.moduleValue.imports, candidate.localName) == 1
+					&& bindingAllowsValueSignature(
+						projectModules,
+						projectModule.path,
+						importValue.specifier,
+						candidate,
+					) {
+					matches = matches + 1
+					localName = candidate.localName
+				}
+			}
+		}
+	}
+	return if matches == 1 then localName else ""
+}
+
+fn semanticPayloadTypeToMvp(
+	semantic: FrontendSemanticResult,
+	typeId: Int,
+	projectModule: ParsedMvpProjectSource,
+	projectModules: List<ProjectLinkModulePayload>,
+	exports: List<ProjectLinkExport>,
+	dependencies: List<ProjectLinkDependency>,
+	targetPath: String,
+) -> MvpType? {
+	let direct = semanticTypeToMvp(semantic.types, typeId)
+	if match direct { Some(_) => true, None => false } {
+		return direct
+	}
+	let sourceValue = semanticType(semantic.types, typeId)
+	if match sourceValue { Some(_) => false, None => true } {
+		return None
+	}
+	let sourceType = match sourceValue {
+		Some(value) => value
+		None => panic("Missing semantic payload type after presence check")
+	}
+	if sourceType.kind == "named" && List.isEmpty(sourceType.arguments) {
+		let declarationId = match sourceType.declarationId {
+			Some(value) => value
+			None => -1
+		}
+		if declarationId >= 0 {
+			let declarationValue = semanticDeclarationById(semantic.declarations, declarationId)
+			if match declarationValue { Some(_) => true, None => false } {
+				let declaration = match declarationValue {
+					Some(value) => value
+					None => panic("Missing semantic payload declaration after presence check")
+				}
+				if declaration.name == sourceType.name
+					&& declarationIsPublicTypeExport(exports, targetPath, declaration) {
+					let localName = importedPayloadLocalName(
+						projectModule,
+						projectModules,
+						dependencies,
+						targetPath,
+						declaration.name,
+					)
+					if String.length(localName) > 0 {
+						return Some(MvpType.NamedType(localName))
+					}
+				}
+			}
+		}
+	}
+	if sourceType.kind == "builtin" && sourceType.name == "List" && List.length(sourceType.arguments) == 1 {
+		let elementId = match List.get(sourceType.arguments, 0) {
+			Some(value) => value
+			None => panic("Missing List payload type argument")
+		}
+		let element = semanticPayloadTypeToMvp(
+			semantic,
+			elementId,
+			projectModule,
+			projectModules,
+			exports,
+			dependencies,
+			targetPath,
+		)
+		return match element {
+			Some(value) => listType(value)
+			None => None
+		}
+	}
+	if sourceType.kind == "builtin" && sourceType.name == "Option" && List.length(sourceType.arguments) == 1 {
+		let elementId = match List.get(sourceType.arguments, 0) {
+			Some(value) => value
+			None => panic("Missing Option payload type argument")
+		}
+		let element = semanticPayloadTypeToMvp(
+			semantic,
+			elementId,
+			projectModule,
+			projectModules,
+			exports,
+			dependencies,
+			targetPath,
+		)
+		return match element {
+			Some(value) => optionalType(value)
+			None => None
+		}
+	}
+	return None
+}
+
 fn externalVariantPrefix() -> String {
 	return "$project$"
 }
@@ -785,10 +951,12 @@ fn enumNamespaceMarker(binding: MvpImportBinding) -> ProjectExternalSignature {
 }
 
 fn enumConstructorSignatures(
+	projectModule: ParsedMvpProjectSource,
 	binding: MvpImportBinding,
 	targetPath: String,
 	projectModules: List<ProjectLinkModulePayload>,
 	exports: List<ProjectLinkExport>,
+	dependencies: List<ProjectLinkDependency>,
 ) -> Result<List<ProjectExternalSignature>, List<JsonError>> {
 	let mut signatures: List<ProjectExternalSignature> = []
 	if !enumIsPublicExport(exports, targetPath, binding.importedName) {
@@ -850,7 +1018,15 @@ fn enumConstructorSignatures(
 			if sourceType.kind == "error" || sourceType.kind == "missing" {
 				return Ok(emptyExternalSignatures())
 			}
-			let lowered = semanticTypeToMvp(semantic.types, typeId)
+			let lowered = semanticPayloadTypeToMvp(
+				semantic,
+				typeId,
+				projectModule,
+				projectModules,
+				exports,
+				dependencies,
+				targetPath,
+			)
 			if match lowered { Some(_) => false, None => true } {
 				memberSupported = false
 			} else {
@@ -932,7 +1108,14 @@ fn importedSignatures(
 					if enumIsPublicExport(exports, targetPath, binding.importedName) {
 						signatures = List.append(signatures, enumNamespaceMarker(binding))
 					}
-					for signature in enumConstructorSignatures(binding, targetPath, projectModules, exports)? {
+					for signature in enumConstructorSignatures(
+						projectModule,
+						binding,
+						targetPath,
+						projectModules,
+						exports,
+						dependencies,
+					)? {
 						signatures = List.append(signatures, signature)
 					}
 				}
