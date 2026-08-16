@@ -9,6 +9,7 @@ import { checkMvpProjectJson } from "./checker.virune"
 import { emitMvpJson } from "./emitter.virune"
 import { parseFrontendCore } from "./frontend-parser-core.virune"
 import {
+	FrontendAstNode,
 	FrontendParseResult,
 	ParserDiagnostic,
 	ParserPosition,
@@ -16,16 +17,31 @@ import {
 	parserPosition,
 	parserSpan,
 } from "./frontend-parser-model.virune"
+import { checkFrontendDataTypes } from "./frontend-semantic.virune"
+import {
+	FrontendSemanticResult,
+	SemanticDeclaration,
+	SemanticMember,
+	SemanticType,
+} from "./frontend-semantic-model.virune"
 import { lexMvpJson } from "./lexer.virune"
 import {
 	MvpCompilation,
 	MvpDiagnostic,
+	MvpExport,
+	MvpExpression,
 	MvpFunction,
+	MvpHirExpression,
+	MvpHirFunction,
+	MvpHirModule,
 	MvpImport,
+	MvpImportBinding,
 	MvpModule,
 	MvpParameter,
 	MvpSpan,
 	MvpType,
+	listType,
+	optionalType,
 } from "./model.virune"
 import { parseMvpJson } from "./parser.virune"
 import {
@@ -164,6 +180,12 @@ record MvpParseTransport derives Json {
 	diagnostics: List<MvpDiagnostic>
 }
 
+record MvpCheckTransport derives Json {
+	hirModule: MvpHirModule?
+	diagnostics: List<MvpDiagnostic>
+	exports: List<MvpExport>
+}
+
 record ParsedMvpProjectSource {
 	path: String
 	parsedEncoded: String
@@ -204,6 +226,11 @@ fn emptyCompilerExports() -> List<ProjectCompilerExportedSymbolV1> {
 
 fn emptySemanticReferences() -> List<ProjectSemanticReference> {
 	let values: List<ProjectSemanticReference> = []
+	return values
+}
+
+fn emptyExternalSignatures() -> List<ProjectExternalSignature> {
+	let values: List<ProjectExternalSignature> = []
 	return values
 }
 
@@ -423,12 +450,175 @@ fn findParsedMvpSource(
 	return None
 }
 
+fn findProjectModule(
+	values: List<ProjectLinkModulePayload>,
+	path: String,
+) -> ProjectLinkModulePayload? {
+	for value in values {
+		if value.path == path {
+			return Some(value)
+		}
+	}
+	return None
+}
+
+fn frontendNode(
+	values: List<FrontendAstNode>,
+	id: Int,
+) -> FrontendAstNode? {
+	for value in values {
+		if value.id == id {
+			return Some(value)
+		}
+	}
+	return None
+}
+
+fn canonicalImportSource(value: String) -> String {
+	let length = String.length(value)
+	if length >= 2
+		&& String.slice(value, 0, Some(1)) == "\""
+		&& String.slice(value, length - 1, None) == "\"" {
+		return String.slice(value, 1, Some(length - 1))
+	}
+	return ""
+}
+
+fn frontendImportSpecifier(
+	declaration: FrontendAstNode,
+	nodes: List<FrontendAstNode>,
+) -> String {
+	for childId in declaration.children {
+		let childValue = frontendNode(nodes, childId)
+		if match childValue { Some(_) => true, None => false } {
+			let child = match childValue {
+				Some(value) => value
+				None => return ""
+			}
+			if child.kind == "ImportSource" {
+				return canonicalImportSource(child.text)
+			}
+		}
+	}
+	return ""
+}
+
+fn frontendImportBindingText(binding: MvpImportBinding) -> String {
+	if binding.importedName == binding.localName {
+		return binding.importedName
+	}
+	return binding.importedName + " as " + binding.localName
+}
+
+fn frontendImportHasBinding(
+	declaration: FrontendAstNode,
+	nodes: List<FrontendAstNode>,
+	binding: MvpImportBinding,
+) -> Bool {
+	let expected = frontendImportBindingText(binding)
+	for childId in declaration.children {
+		let childValue = frontendNode(nodes, childId)
+		if match childValue { Some(_) => true, None => false } {
+			let child = match childValue {
+				Some(value) => value
+				None => return false
+			}
+			if child.kind == "ImportItem" && child.text == expected {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+fn frontendLocalDeclarationKind(kind: String) -> Bool {
+	return kind == "FunctionDeclaration"
+		|| kind == "RecordDeclaration"
+		|| kind == "EnumDeclaration"
+		|| kind == "NewtypeDeclaration"
+		|| kind == "TypeAliasDeclaration"
+		|| kind == "TopLevelValueDeclaration"
+}
+
+fn frontendHasLocalDeclarationName(
+	projectModule: ProjectLinkModulePayload,
+	name: String,
+) -> Bool {
+	let rootValue = frontendNode(projectModule.parse.nodes, projectModule.parse.root)
+	if match rootValue { Some(_) => false, None => true } {
+		return true
+	}
+	let root = match rootValue {
+		Some(value) => value
+		None => return true
+	}
+	for childId in root.children {
+		let childValue = frontendNode(projectModule.parse.nodes, childId)
+		if match childValue { Some(_) => false, None => true } {
+			return true
+		}
+		let child = match childValue {
+			Some(value) => value
+			None => return true
+		}
+		if frontendLocalDeclarationKind(child.kind) && child.text == name {
+			return true
+		}
+	}
+	return false
+}
+
+fn bindingAllowsValueSignature(
+	projectModules: List<ProjectLinkModulePayload>,
+	modulePath: String,
+	specifier: String,
+	binding: MvpImportBinding,
+) -> Bool {
+	let moduleValue = findProjectModule(projectModules, modulePath)
+	if match moduleValue { Some(_) => false, None => true } {
+		return false
+	}
+	let projectModule = match moduleValue {
+		Some(value) => value
+		None => return false
+	}
+	if frontendHasLocalDeclarationName(projectModule, binding.localName) {
+		return false
+	}
+	let mut matches = 0
+	let mut valueMatches = 0
+	for node in projectModule.parse.nodes {
+		if node.kind == "ImportDeclaration"
+			&& String.startsWith(node.text, "virune")
+			&& frontendImportSpecifier(node, projectModule.parse.nodes) == specifier
+			&& frontendImportHasBinding(node, projectModule.parse.nodes, binding) {
+			matches = matches + 1
+			if !String.contains(node.text, " type") {
+				valueMatches = valueMatches + 1
+			}
+		}
+	}
+	return matches == 1 && valueMatches == 1
+}
+
 fn projectParameterTypes(parameters: List<MvpParameter>) -> List<MvpType> {
 	let mut values: List<MvpType> = []
 	for parameter in parameters {
 		values = List.append(values, parameter.valueType)
 	}
 	return values
+}
+
+fn importLocalBindingCount(imports: List<MvpImport>, localName: String) -> Int {
+	let mut count = 0
+	for importValue in imports {
+		for binding in importValue.bindings {
+			if binding.localName == localName {
+				count = count + 1
+			}
+		}
+	}
+	return count
 }
 
 fn findPublicFunction(
@@ -459,11 +649,197 @@ fn dependencyTargetPath(
 	return ""
 }
 
+fn enumIsPublicExport(
+	exports: List<ProjectLinkExport>,
+	modulePath: String,
+	name: String,
+) -> Bool {
+	for value in exports {
+		if value.modulePath == modulePath && value.name == name && value.declarationKind == "EnumDeclaration" {
+			return true
+		}
+	}
+	return false
+}
+
+fn semanticDeclaration(
+	values: List<SemanticDeclaration>,
+	name: String,
+) -> SemanticDeclaration? {
+	for value in values {
+		if value.name == name {
+			return Some(value)
+		}
+	}
+	return None
+}
+
+fn semanticMember(
+	values: List<SemanticMember>,
+	id: Int,
+) -> SemanticMember? {
+	for value in values {
+		if value.id == id {
+			return Some(value)
+		}
+	}
+	return None
+}
+
+fn semanticType(
+	values: List<SemanticType>,
+	id: Int,
+) -> SemanticType? {
+	for value in values {
+		if value.id == id {
+			return Some(value)
+		}
+	}
+	return None
+}
+
+fn semanticTypeToMvp(values: List<SemanticType>, id: Int) -> MvpType? {
+	let candidate = semanticType(values, id)
+	if match candidate { Some(_) => false, None => true } {
+		return None
+	}
+	let value = match candidate {
+		Some(item) => item
+		None => return None
+	}
+	if value.kind == "builtin" && List.isEmpty(value.arguments) {
+		if value.name == "Bool" {
+			return Some(MvpType.BoolType)
+		}
+		if value.name == "Int" {
+			return Some(MvpType.IntType)
+		}
+		if value.name == "Float" {
+			return Some(MvpType.FloatType)
+		}
+		if value.name == "String" {
+			return Some(MvpType.StringType)
+		}
+		if value.name == "Unit" {
+			return Some(MvpType.UnitType)
+		}
+	}
+	if value.kind == "builtin" && value.name == "List" && List.length(value.arguments) == 1 {
+		let elementId = match List.get(value.arguments, 0) { Some(item) => item, None => return None }
+		let element = semanticTypeToMvp(values, elementId)
+		return match element {
+			Some(item) => listType(item)
+			None => None
+		}
+	}
+	if value.kind == "builtin" && value.name == "Option" && List.length(value.arguments) == 1 {
+		let elementId = match List.get(value.arguments, 0) { Some(item) => item, None => return None }
+		let element = semanticTypeToMvp(values, elementId)
+		return match element {
+			Some(item) => optionalType(item)
+			None => None
+		}
+	}
+	return None
+}
+
+fn externalVariantPrefix() -> String {
+	return "$project$"
+}
+
+fn enumConstructorSignatures(
+	binding: MvpImportBinding,
+	targetPath: String,
+	projectModules: List<ProjectLinkModulePayload>,
+	exports: List<ProjectLinkExport>,
+) -> Result<List<ProjectExternalSignature>, List<JsonError>> {
+	let mut signatures: List<ProjectExternalSignature> = []
+	if !enumIsPublicExport(exports, targetPath, binding.importedName) {
+		return Ok(signatures)
+	}
+	let targetValue = findProjectModule(projectModules, targetPath)
+	if match targetValue { Some(_) => false, None => true } {
+		return Ok(signatures)
+	}
+	let target = match targetValue {
+		Some(value) => value
+		None => return Ok(signatures)
+	}
+	let semantic: FrontendSemanticResult = checkFrontendDataTypes(target.source)?
+	if !semantic.accepted {
+		return Ok(signatures)
+	}
+	let declarationValue = semanticDeclaration(semantic.declarations, binding.importedName)
+	if match declarationValue { Some(_) => false, None => true } {
+		return Ok(signatures)
+	}
+	let declaration = match declarationValue {
+		Some(value) => value
+		None => return Ok(signatures)
+	}
+	if declaration.kind != "enum" || !declaration.isPublic || !List.isEmpty(declaration.typeParameters) {
+		return Ok(signatures)
+	}
+	let mut memberNames: List<String> = []
+	for memberId in declaration.memberIds {
+		let memberValue = semanticMember(semantic.members, memberId)
+		if match memberValue { Some(_) => false, None => true } {
+			return Ok(emptyExternalSignatures())
+		}
+		let member = match memberValue {
+			Some(value) => value
+			None => return Ok(emptyExternalSignatures())
+		}
+		if member.declarationId != declaration.id
+			|| member.kind != "variant"
+			|| String.length(member.name) == 0
+			|| containsPath(memberNames, member.name) {
+			return Ok(emptyExternalSignatures())
+		}
+		memberNames = List.append(memberNames, member.name)
+		let mut parameters: List<MvpType> = []
+		let mut supported = true
+		for typeId in member.typeIds {
+			let semanticTypeValue = semanticType(semantic.types, typeId)
+			if match semanticTypeValue { Some(_) => false, None => true } {
+				return Ok(emptyExternalSignatures())
+			}
+			let sourceType = match semanticTypeValue {
+				Some(value) => value
+				None => return Ok(emptyExternalSignatures())
+			}
+			if sourceType.kind == "error" || sourceType.kind == "missing" {
+				return Ok(emptyExternalSignatures())
+			}
+			let lowered = semanticTypeToMvp(semantic.types, typeId)
+			if match lowered { Some(_) => false, None => true } {
+				supported = false
+			} else {
+				parameters = List.append(parameters, match lowered {
+					Some(value) => value
+					None => MvpType.ErrorType
+				})
+			}
+		}
+		if supported {
+			signatures = List.append(signatures, ProjectExternalSignature {
+				name: binding.localName + "." + externalVariantPrefix() + member.name,
+				parameters: parameters,
+				returnType: MvpType.NamedType(binding.localName),
+				span: binding.span,
+			})
+		}
+	}
+	return Ok(signatures)
+}
+
 fn importedSignatures(
 	projectModule: ParsedMvpProjectSource,
 	modules: List<ParsedMvpProjectSource>,
+	projectModules: List<ProjectLinkModulePayload>,
+	exports: List<ProjectLinkExport>,
 	dependencies: List<ProjectLinkDependency>,
-) -> List<ProjectExternalSignature> {
+) -> Result<List<ProjectExternalSignature>, List<JsonError>> {
 	let mut signatures: List<ProjectExternalSignature> = []
 	for importValue in projectModule.moduleValue.imports {
 		let targetPath = dependencyTargetPath(
@@ -482,44 +858,270 @@ fn importedSignatures(
 				}
 			}
 			for binding in importValue.bindings {
-				let functionValue = findPublicFunction(
-					target.moduleValue.functions,
-					binding.importedName,
-				)
-				if match functionValue { Some(_) => true, None => false } {
-					let function = match functionValue {
-						Some(value) => value
-						None => MvpFunction {
-							isPublic: false,
-							name: "",
-							parameters: [],
-							returnType: MvpType.ErrorType,
-							expressions: [],
-							statementIds: [],
-							statements: [],
-							span: binding.span,
+				if importLocalBindingCount(projectModule.moduleValue.imports, binding.localName) == 1
+					&& bindingAllowsValueSignature(
+						projectModules,
+						projectModule.path,
+						importValue.specifier,
+						binding,
+					) {
+					let functionValue = findPublicFunction(
+						target.moduleValue.functions,
+						binding.importedName,
+					)
+					if match functionValue { Some(_) => true, None => false } {
+						let function = match functionValue {
+							Some(value) => value
+							None => MvpFunction {
+								isPublic: false,
+								name: "",
+								parameters: [],
+								returnType: MvpType.ErrorType,
+								expressions: [],
+								statementIds: [],
+								statements: [],
+								span: binding.span,
+							}
 						}
+						signatures = List.append(signatures, ProjectExternalSignature {
+							name: binding.localName,
+							parameters: projectParameterTypes(function.parameters),
+							returnType: function.returnType,
+							span: binding.span,
+						})
 					}
-					signatures = List.append(signatures, ProjectExternalSignature {
-						name: binding.localName,
-						parameters: projectParameterTypes(function.parameters),
-						returnType: function.returnType,
-						span: binding.span,
-					})
+					for signature in enumConstructorSignatures(binding, targetPath, projectModules, exports)? {
+						signatures = List.append(signatures, signature)
+					}
 				}
 			}
 		}
 	}
+	return Ok(signatures)
+}
+
+fn externalVariantBase(signature: ProjectExternalSignature) -> String {
+	let mut dot = -1
+	let mut index = 0
+	while index < String.length(signature.name) {
+		if String.slice(signature.name, index, Some(index + 1)) == "." {
+			if dot >= 0 {
+				return ""
+			}
+			dot = index
+		}
+		index = index + 1
+	}
+	if dot <= 0 || dot + 1 >= String.length(signature.name) {
+		return ""
+	}
+	let base = String.slice(signature.name, 0, Some(dot))
+	let returnName = match signature.returnType {
+		NamedType(name) => name
+		_ => ""
+	}
+	return if returnName == base then base else ""
+}
+
+fn externalVariantName(signature: ProjectExternalSignature) -> String {
+	let base = externalVariantBase(signature)
+	if String.length(base) == 0 {
+		return ""
+	}
+	let encoded = String.slice(signature.name, String.length(base) + 1, None)
+	let prefix = externalVariantPrefix()
+	if !String.startsWith(encoded, prefix) || String.length(encoded) <= String.length(prefix) {
+		return ""
+	}
+	return String.slice(encoded, String.length(prefix), None)
+}
+
+fn externalVariantSourceName(signature: ProjectExternalSignature) -> String {
+	let base = externalVariantBase(signature)
+	let variant = externalVariantName(signature)
+	if String.length(base) == 0 || String.length(variant) == 0 {
+		return ""
+	}
+	return base + "." + variant
+}
+
+fn findExternalVariantSignature(
+	signatures: List<ProjectExternalSignature>,
+	name: String,
+) -> ProjectExternalSignature? {
+	for signature in signatures {
+		let variant = externalVariantName(signature)
+		if String.length(variant) > 0
+			&& (signature.name == name || externalVariantSourceName(signature) == name) {
+			return Some(signature)
+		}
+	}
+	return None
+}
+
+fn safeExternalSignatures(values: List<ProjectExternalSignature>) -> List<ProjectExternalSignature> {
+	let mut signatures: List<ProjectExternalSignature> = []
+	for signature in values {
+		if String.contains(signature.name, ".") {
+			if String.length(externalVariantName(signature)) > 0 {
+				signatures = List.append(signatures, signature)
+			}
+		} else {
+			signatures = List.append(signatures, signature)
+		}
+	}
 	return signatures
+}
+
+fn prepareExternalVariantExpression(
+	value: MvpExpression,
+	signatures: List<ProjectExternalSignature>,
+) -> MvpExpression {
+	let signatureValue = findExternalVariantSignature(signatures, value.text)
+	if match signatureValue { Some(_) => false, None => true } {
+		return value
+	}
+	let signature = match signatureValue {
+		Some(item) => item
+		None => return value
+	}
+	let parameterCount = List.length(signature.parameters)
+	if value.kind == "identifier" && parameterCount == 0 {
+		return MvpExpression {
+			kind: "call",
+			text: signature.name,
+			literalType: value.literalType,
+			children: value.children,
+			span: value.span,
+		}
+	}
+	if value.kind == "call" && parameterCount > 0 {
+		return MvpExpression {
+			kind: value.kind,
+			text: signature.name,
+			literalType: value.literalType,
+			children: value.children,
+			span: value.span,
+		}
+	}
+	return value
+}
+
+fn prepareExternalVariantFunction(
+	value: MvpFunction,
+	signatures: List<ProjectExternalSignature>,
+) -> MvpFunction {
+	let mut expressions: List<MvpExpression> = []
+	for expression in value.expressions {
+		expressions = List.append(expressions, prepareExternalVariantExpression(expression, signatures))
+	}
+	return MvpFunction {
+		isPublic: value.isPublic,
+		name: value.name,
+		parameters: value.parameters,
+		returnType: value.returnType,
+		expressions: expressions,
+		statementIds: value.statementIds,
+		statements: value.statements,
+		span: value.span,
+	}
+}
+
+fn prepareExternalVariantInput(
+	encoded: String,
+	signatures: List<ProjectExternalSignature>,
+) -> Result<String, List<JsonError>> {
+	let raw = Json.parse(encoded)?
+	let parsed = Json.decode<MvpParseTransport>(raw)?
+	let moduleValue = match parsed.parsedModule {
+		Some(value) => value
+		None => return Ok(encoded)
+	}
+	let mut functions: List<MvpFunction> = []
+	for function in moduleValue.functions {
+		functions = List.append(functions, prepareExternalVariantFunction(function, signatures))
+	}
+	return Json.encode<MvpParseTransport>(MvpParseTransport {
+		parsedModule: Some(MvpModule {
+			imports: moduleValue.imports,
+			functions: functions,
+		}),
+		diagnostics: parsed.diagnostics,
+	})
+}
+
+fn normalizeExternalVariantExpression(
+	value: MvpHirExpression,
+	signatures: List<ProjectExternalSignature>,
+) -> MvpHirExpression {
+	let signatureValue = findExternalVariantSignature(signatures, value.text)
+	if value.kind == "call" && match signatureValue { Some(_) => true, None => false } {
+		let signature = match signatureValue {
+			Some(item) => item
+			None => return value
+		}
+		return MvpHirExpression {
+			kind: "variant",
+			text: externalVariantName(signature),
+			valueType: value.valueType,
+			children: value.children,
+			span: value.span,
+		}
+	}
+	return value
+}
+
+fn normalizeExternalVariantFunction(
+	value: MvpHirFunction,
+	signatures: List<ProjectExternalSignature>,
+) -> MvpHirFunction {
+	let mut expressions: List<MvpHirExpression> = []
+	for expression in value.expressions {
+		expressions = List.append(expressions, normalizeExternalVariantExpression(expression, signatures))
+	}
+	return MvpHirFunction {
+		isPublic: value.isPublic,
+		name: value.name,
+		parameters: value.parameters,
+		returnType: value.returnType,
+		expressions: expressions,
+		statementIds: value.statementIds,
+		statements: value.statements,
+		span: value.span,
+	}
+}
+
+fn normalizeExternalVariantHir(
+	encoded: String,
+	signatures: List<ProjectExternalSignature>,
+) -> Result<String, List<JsonError>> {
+	let raw = Json.parse(encoded)?
+	let checked = Json.decode<MvpCheckTransport>(raw)?
+	let hirValue = match checked.hirModule {
+		Some(value) => value
+		None => return Ok(encoded)
+	}
+	let mut functions: List<MvpHirFunction> = []
+	for function in hirValue.functions {
+		functions = List.append(functions, normalizeExternalVariantFunction(function, signatures))
+	}
+	return Json.encode<MvpCheckTransport>(MvpCheckTransport {
+		hirModule: Some(MvpHirModule { functions: functions }),
+		diagnostics: checked.diagnostics,
+		exports: checked.exports,
+	})
 }
 
 fn compileMvpSource(
 	source: ParsedMvpProjectSource,
 	externalSignatures: List<ProjectExternalSignature>,
 ) -> Result<MvpCompilation, List<JsonError>> {
-	let externalEncoded = Json.encode<List<ProjectExternalSignature>>(externalSignatures)?
-	let checked = checkMvpProjectJson(source.parsedEncoded, externalEncoded)?
-	let emitted = emitMvpJson(checked)?
+	let signatures = safeExternalSignatures(externalSignatures)
+	let externalEncoded = Json.encode<List<ProjectExternalSignature>>(signatures)?
+	let prepared = prepareExternalVariantInput(source.parsedEncoded, signatures)?
+	let checked = checkMvpProjectJson(prepared, externalEncoded)?
+	let normalized = normalizeExternalVariantHir(checked, signatures)?
+	let emitted = emitMvpJson(normalized)?
 	let raw = Json.parse(emitted)?
 	return Json.decode<MvpCompilation>(raw)
 }
@@ -637,6 +1239,8 @@ fn rejectedLowering(diagnostics: List<ProjectCompilerDiagnosticV1>) -> ProjectLo
 
 fn lowerProjectSources(
 	sources: List<ProjectCompilerSourceV1>,
+	projectModules: List<ProjectLinkModulePayload>,
+	exports: List<ProjectLinkExport>,
 	dependencies: List<ProjectLinkDependency>,
 ) -> Result<ProjectLoweringSummary, List<JsonError>> {
 	let mut diagnostics: List<ProjectCompilerDiagnosticV1> = []
@@ -676,7 +1280,7 @@ fn lowerProjectSources(
 	for source in parsedSources {
 		let compilation = compileMvpSource(
 			source,
-			importedSignatures(source, parsedSources, dependencies),
+			importedSignatures(source, parsedSources, projectModules, exports, dependencies)?,
 		)?
 		checkedModules = checkedModules + 1
 		for value in compilation.diagnostics {
@@ -915,7 +1519,7 @@ pub fn compileProjectMvpJson(encoded: String) -> Result<String, List<JsonError>>
 		)
 	}
 
-	let lowered = lowerProjectSources(request.sources, linked.dependencies)?
+	let lowered = lowerProjectSources(request.sources, parsed.modules, linked.exportedSymbols, linked.dependencies)?
 	if !List.isEmpty(lowered.diagnostics) {
 		return rejectedResult(
 			request,
