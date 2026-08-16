@@ -6,7 +6,8 @@ import { dirname, extname, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const repositoryRoot = resolve(fileURLToPath(new URL('..', import.meta.url)));
-const excludedSegments = new Set(['.git', '.cache', '.vscode-test', 'coverage', 'dist', 'node_modules', 'release']);
+const excludedSegments = new Set(['.git', '.cache', '.vscode-test', 'coverage', 'dist', 'node_modules']);
+const excludedTopLevelPaths = new Set(['release']);
 const archiveExtensions = new Set(['.tgz', '.vsix']);
 
 export async function verifyReproducibleRelease({
@@ -105,14 +106,16 @@ export async function compareReleaseDirectories(leftRoot, rightRoot, { forbidden
 	return { passed: differences.length === 0, differences, archives };
 }
 
-async function copyCleanWorkspace(root, destination) {
+export async function copyCleanWorkspace(root, destination) {
 	await cp(root, destination, {
 		recursive: true,
 		preserveTimestamps: true,
 		filter(source) {
 			const path = relative(root, source);
 			if (path === '') return true;
-			return !path.split(sep).some(segment => excludedSegments.has(segment));
+			const segments = path.split(sep);
+			if (excludedTopLevelPaths.has(segments[0])) return false;
+			return !segments.some(segment => excludedSegments.has(segment));
 		},
 	});
 }
@@ -247,7 +250,6 @@ async function scanForWorkspacePaths(root, forbiddenPaths, differences, scope) {
 				break;
 			}
 		}
-	}
 }
 
 async function writeReport(outputDirectory, report) {
