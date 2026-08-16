@@ -5,8 +5,9 @@ import { resolve } from 'node:path';
 import test from 'node:test';
 import {
 	buildNpmPublicationIdentityFromInputs,
+	bundledCliReleaseAssetName,
 	registryPolicyForVersion,
-	releaseAssetNameForPackage,
+	registryReleaseAssetNameForPackage,
 	verifyPublicationIdentityDocument,
 } from './verify-npm-publication-identity.mjs';
 
@@ -19,7 +20,7 @@ const publishPackages = [
 	{ workspaceName: '@virune/stdlib', registryName: '@virune/stdlib' },
 ];
 const expectedAssets = {
-	virune: 'virune-1.0.0.tgz',
+	virune: 'virune-npm-1.0.0.tgz',
 	'@virune/compiler': 'virune-compiler-1.0.0.tgz',
 	'@virune/formatter': 'virune-formatter-1.0.0.tgz',
 	'@virune/js-interop': 'virune-js-interop-1.0.0.tgz',
@@ -32,7 +33,7 @@ function fixture(version = '1.0.0') {
 	const releaseManifestPackages = [];
 	const releaseTarballs = [];
 	for (const pkg of publishPackages) {
-		const file = releaseAssetNameForPackage(pkg.registryName, version);
+		const file = registryReleaseAssetNameForPackage(pkg.registryName, version);
 		const bytes = Buffer.from(`fixture:${pkg.registryName}:${version}\n`, 'utf8');
 		assetBytes[file] = bytes;
 		releaseTarballs.push(file);
@@ -42,6 +43,15 @@ function fixture(version = '1.0.0') {
 			bytes: bytes.byteLength,
 		});
 	}
+	const bundledCli = bundledCliReleaseAssetName(version);
+	const bundledBytes = Buffer.from(`fixture:bundled-cli:${version}\n`, 'utf8');
+	assetBytes[bundledCli] = bundledBytes;
+	releaseTarballs.push(bundledCli);
+	releaseManifestPackages.push({
+		file: bundledCli,
+		sha256: createHash('sha256').update(bundledBytes).digest('hex'),
+		bytes: bundledBytes.byteLength,
+	});
 	return {
 		version,
 		publicationReady: false,
@@ -60,10 +70,12 @@ function build(input = fixture()) {
 
 test('current six public packages have independently fixed canonical release asset names', () => {
 	for (const [registryName, expected] of Object.entries(expectedAssets)) {
-		assert.equal(releaseAssetNameForPackage(registryName, '1.0.0'), expected);
+		assert.equal(registryReleaseAssetNameForPackage(registryName, '1.0.0'), expected);
 	}
-	assert.throws(() => releaseAssetNameForPackage('@other/runtime', '1.0.0'), /expected virune or an @virune\/\* package name/u);
-	assert.throws(() => releaseAssetNameForPackage('@virune/runtime', '1.0.0-preview.1'), /expected stable, alpha, beta, rc, or nightly/u);
+	assert.throws(() => registryReleaseAssetNameForPackage('@other/runtime', '1.0.0'), /expected virune or an @virune\/\* package name/u);
+	assert.throws(() => registryReleaseAssetNameForPackage('@virune/runtime', '1.0.0-preview.1'), /expected stable, alpha, beta, rc, or nightly/u);
+	assert.equal(bundledCliReleaseAssetName('1.0.0'), 'virune-1.0.0.tgz');
+	assert.notEqual(expectedAssets.virune, bundledCliReleaseAssetName('1.0.0'));
 });
 
 test('v1.0.0 publication identity is deterministic, byte-bound, and registry-ineligible', () => {
@@ -71,7 +83,8 @@ test('v1.0.0 publication identity is deterministic, byte-bound, and registry-ine
 	const identity = build(input);
 	assert.equal(identity.version, '1.0.0');
 	assert.equal(identity.githubReleaseTag, 'v1.0.0');
-	assert.equal(identity.publishSource, 'reviewed-release-tarball');
+	assert.equal(identity.publishSource, 'reviewed-release-registry-candidate-tarball');
+	assert.equal(identity.bundledCliReleaseAsset, 'virune-1.0.0.tgz');
 	assert.equal(identity.publicationReady, false);
 	assert.equal(identity.registryVersionEligible, false);
 	assert.equal(identity.distTag, null);
@@ -109,13 +122,13 @@ test('version policy fails closed before v1.1.0 and selects only approved stable
 test('package and tarball sets must be exact and unique', () => {
 	const missingTarball = fixture();
 	missingTarball.releaseTarballs.pop();
-	assert.throws(() => build(missingTarball), /expected exact npm tarball set/u);
+	assert.throws(() => build(missingTarball), /expected exact release tarball set/u);
 
 	const extraTarball = fixture();
 	const extra = 'virune-extra-1.0.0.tgz';
 	extraTarball.releaseTarballs.push(extra);
 	extraTarball.assetBytes[extra] = Buffer.from('extra');
-	assert.throws(() => build(extraTarball), /expected exact npm tarball set/u);
+	assert.throws(() => build(extraTarball), /expected exact release tarball set/u);
 
 	const duplicateTarball = fixture();
 	duplicateTarball.releaseTarballs.push(duplicateTarball.releaseTarballs[0]);
@@ -123,11 +136,11 @@ test('package and tarball sets must be exact and unique', () => {
 
 	const missingManifestPackage = fixture();
 	missingManifestPackage.releaseManifest.packages.pop();
-	assert.throws(() => build(missingManifestPackage), /expected exact npm package manifest set/u);
+	assert.throws(() => build(missingManifestPackage), /expected exact release package manifest set/u);
 
 	const extraManifestPackage = fixture();
 	extraManifestPackage.releaseManifest.packages.push({ file: 'virune-extra-1.0.0.tgz', sha256: '0'.repeat(64), bytes: 1 });
-	assert.throws(() => build(extraManifestPackage), /expected exact npm package manifest set/u);
+	assert.throws(() => build(extraManifestPackage), /expected exact release package manifest set/u);
 
 	const duplicateManifestPackage = fixture();
 	duplicateManifestPackage.releaseManifest.packages.push(structuredClone(duplicateManifestPackage.releaseManifest.packages[0]));
