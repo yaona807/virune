@@ -60,7 +60,13 @@ const groups = platformSmoke ? platformGroups : [
 			command: ['scripts/verify-npm-package-contents.mjs'],
 			failureOutput: '.cache/unit-test-failure.log',
 		},
-		{ name: 'npm publication identity policy', files: ['scripts/verify-npm-publication-identity.test.mjs'] },
+		{
+			name: 'npm publication identity policy',
+			files: [
+				'scripts/verify-npm-publication-identity.test.mjs',
+				'scripts/verify-npm-publication-identity-boundaries.test.mjs',
+			],
+		},
 		{ name: 'repository license policy', files: ['scripts/verify-repository-license-policy.test.mjs'] },
 		{ name: 'release license artifact policy', files: ['scripts/verify-release-license-artifacts.test.mjs'] },
 		{
