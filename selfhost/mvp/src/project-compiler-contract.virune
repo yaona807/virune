@@ -1698,10 +1698,59 @@ fn runtimeSafeName(name: String) -> String {
 	return if containsPath(reserved, name) then "$v_" + name else name
 }
 
-fn publicEnumExportCount(exports: List<ProjectLinkExport>, modulePath: String) -> Int {
+fn enumHasRuntimeValueImporter(
+	modules: List<ParsedMvpProjectSource>,
+	projectModules: List<ProjectLinkModulePayload>,
+	exports: List<ProjectLinkExport>,
+	dependencies: List<ProjectLinkDependency>,
+	targetPath: String,
+	enumName: String,
+) -> Bool {
+	if !enumIsPublicExport(exports, targetPath, enumName) {
+		return false
+	}
+	for source in modules {
+		if source.path != targetPath {
+			for importValue in source.moduleValue.imports {
+				if dependencyTargetPath(dependencies, source.path, importValue.specifier) == targetPath {
+					for binding in importValue.bindings {
+						if binding.importedName == enumName
+							&& importLocalBindingCount(source.moduleValue.imports, binding.localName) == 1
+							&& bindingAllowsValueSignature(
+								projectModules,
+								source.path,
+								importValue.specifier,
+								binding,
+							) {
+							return true
+						}
+					}
+				}
+			}
+		}
+	}
+	return false
+}
+
+fn runtimeEnumExportCount(
+	modules: List<ParsedMvpProjectSource>,
+	projectModules: List<ProjectLinkModulePayload>,
+	exports: List<ProjectLinkExport>,
+	dependencies: List<ProjectLinkDependency>,
+	targetPath: String,
+) -> Int {
 	let mut count = 0
 	for value in exports {
-		if value.modulePath == modulePath && value.declarationKind == "EnumDeclaration" {
+		if value.modulePath == targetPath
+			&& value.declarationKind == "EnumDeclaration"
+			&& enumHasRuntimeValueImporter(
+				modules,
+				projectModules,
+				exports,
+				dependencies,
+				targetPath,
+				value.name,
+			) {
 			count = count + 1
 		}
 	}
@@ -1717,9 +1766,18 @@ fn runtimeMetadataFailure(path: String) -> ProjectRuntimeSummary {
 
 fn publicEnumRuntimeLines(
 	projectModule: ProjectLinkModulePayload,
+	modules: List<ParsedMvpProjectSource>,
+	projectModules: List<ProjectLinkModulePayload>,
 	exports: List<ProjectLinkExport>,
+	dependencies: List<ProjectLinkDependency>,
 ) -> Result<ProjectRuntimeSummary, List<JsonError>> {
-	let exportCount = publicEnumExportCount(exports, projectModule.path)
+	let exportCount = runtimeEnumExportCount(
+		modules,
+		projectModules,
+		exports,
+		dependencies,
+		projectModule.path,
+	)
 	if exportCount == 0 {
 		return Ok(ProjectRuntimeSummary { diagnostics: [], lines: [] })
 	}
@@ -1733,7 +1791,16 @@ fn publicEnumRuntimeLines(
 	let mut emittedNames: List<String> = []
 	let mut emittedCount = 0
 	for exportValue in exports {
-		if exportValue.modulePath == projectModule.path && exportValue.declarationKind == "EnumDeclaration" {
+		if exportValue.modulePath == projectModule.path
+			&& exportValue.declarationKind == "EnumDeclaration"
+			&& enumHasRuntimeValueImporter(
+				modules,
+				projectModules,
+				exports,
+				dependencies,
+				projectModule.path,
+				exportValue.name,
+			) {
 			let declarationValue = semanticDeclaration(semantic.declarations, exportValue.name)
 			if match declarationValue { Some(_) => false, None => true } {
 				return Ok(runtimeMetadataFailure(projectModule.path))
@@ -1950,7 +2017,13 @@ fn lowerProjectSources(
 			Some(value) => value
 			None => panic("Missing project module while emitting public enum runtime")
 		}
-		let runtimeSummary = publicEnumRuntimeLines(projectModule, exports)?
+		let runtimeSummary = publicEnumRuntimeLines(
+			projectModule,
+			parsedSources,
+			projectModules,
+			exports,
+			dependencies,
+		)?
 		for value in runtimeSummary.diagnostics {
 			diagnostics = List.append(diagnostics, value)
 		}
