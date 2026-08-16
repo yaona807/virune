@@ -245,6 +245,8 @@ Bug reports, documentation corrections, interoperability cases, and focused pull
 
 Before implementing a language change, open an issue so the syntax, semantics, compatibility impact, specification updates, and conformance coverage can be reviewed together. Pull requests should keep the English and Japanese documentation synchronized and pass `npm run verify`.
 
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the repository workflow and contributor-rights policy. The Japanese guide is available at [CONTRIBUTING_ja.md](CONTRIBUTING_ja.md).
+
 Virune is currently maintained by [Yaona](https://github.com/yaona807).
 
 ## Security and scope
