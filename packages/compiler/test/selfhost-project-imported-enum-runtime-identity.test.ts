@@ -52,6 +52,37 @@ pub fn main() -> State {
 	emit: { target: 'es2022', sourceMap: false, sourcesContent: true },
 });
 
+const functionOnlyInput = validateKernelInput({
+	contractVersion: '1',
+	languageVersion: '1.0',
+	platform: 'node',
+	entryPath: 'src/main.virune',
+	sources: [
+		{
+			path: 'src/domain.virune',
+			text: `pub enum Status {
+	Pending
+}
+
+pub fn answer() -> Int {
+	return 42
+}
+`,
+		},
+		{
+			path: 'src/main.virune',
+			text: `import { answer } from "./domain.virune"
+
+pub fn main() -> Int {
+	return answer()
+}
+`,
+		},
+	],
+	interopManifest: { version: '1', modules: [] },
+	emit: { target: 'es2022', sourceMap: false, sourcesContent: true },
+});
+
 test('imported payload enum constructors preserve module runtime identity', async () => {
 	await mkdir(temporaryRoot, { recursive: true });
 	const build = await buildProject(mvpRoot, { write: false });
@@ -93,6 +124,23 @@ test('imported payload enum constructors preserve module runtime identity', asyn
 		assert.equal(execution.signal, null);
 		assert.equal(execution.panic, null);
 		assert.deepEqual(execution.returnValue, { $tag: 'Failed', $values: ['boom'] });
+
+		const functionOnlyOutput = await kernel.compile(functionOnlyInput);
+		assert.equal(functionOnlyOutput.accepted, true, JSON.stringify(functionOnlyOutput.diagnostics, null, 2));
+		assert.deepEqual(functionOnlyOutput.diagnostics, []);
+		const functionOnlyDomain = functionOnlyOutput.emittedModules.find(item => item.sourcePath === 'src/domain.virune');
+		assert.ok(functionOnlyDomain, 'expected emitted function dependency module');
+		assert.match(functionOnlyDomain.code, /export function answer/u);
+		assert.doesNotMatch(
+			functionOnlyDomain.code,
+			/\/\/ enum Status|export const Pending|export const Status/u,
+			'function-only imports must not promote unrelated public enums into runtime output',
+		);
+		const functionOnlyExecution = await executeKernelOutputWithNode(functionOnlyInput, functionOnlyOutput);
+		assert.equal(functionOnlyExecution.exitCode, 0);
+		assert.equal(functionOnlyExecution.signal, null);
+		assert.equal(functionOnlyExecution.panic, null);
+		assert.equal(functionOnlyExecution.returnValue, 42);
 	} finally {
 		await rm(root, { recursive: true, force: true });
 	}
