@@ -757,6 +757,27 @@ fn externalVariantPrefix() -> String {
 	return "$project$"
 }
 
+fn externalNamespaceMarkerVariant() -> String {
+	return "$namespace$"
+}
+
+fn blockedExternalVariantPrefix() -> String {
+	return "$project$blocked$"
+}
+
+fn externalNamespaceMarkerName(base: String) -> String {
+	return base + "." + externalVariantPrefix() + externalNamespaceMarkerVariant()
+}
+
+fn enumNamespaceMarker(binding: MvpImportBinding) -> ProjectExternalSignature {
+	return ProjectExternalSignature {
+		name: externalNamespaceMarkerName(binding.localName),
+		parameters: [],
+		returnType: MvpType.NamedType(binding.localName),
+		span: binding.span,
+	}
+}
+
 fn enumConstructorSignatures(
 	binding: MvpImportBinding,
 	targetPath: String,
@@ -896,6 +917,9 @@ fn importedSignatures(
 						importValue.specifier,
 						binding,
 					) {
+					if enumIsPublicExport(exports, targetPath, binding.importedName) {
+						signatures = List.append(signatures, enumNamespaceMarker(binding))
+					}
 					for signature in enumConstructorSignatures(binding, targetPath, projectModules, exports)? {
 						signatures = List.append(signatures, signature)
 					}
@@ -945,7 +969,7 @@ fn externalVariantName(signature: ProjectExternalSignature) -> String {
 fn externalVariantSourceName(signature: ProjectExternalSignature) -> String {
 	let base = externalVariantBase(signature)
 	let variant = externalVariantName(signature)
-	if String.length(base) == 0 || String.length(variant) == 0 {
+	if String.length(base) == 0 || String.length(variant) == 0 || variant == externalNamespaceMarkerVariant() {
 		return ""
 	}
 	return base + "." + variant
@@ -958,11 +982,52 @@ fn findExternalVariantSignature(
 	for signature in signatures {
 		let variant = externalVariantName(signature)
 		if String.length(variant) > 0
+			&& variant != externalNamespaceMarkerVariant()
 			&& (signature.name == name || externalVariantSourceName(signature) == name) {
 			return Some(signature)
 		}
 	}
 	return None
+}
+
+fn externalNamespaceOwned(signatures: List<ProjectExternalSignature>, base: String) -> Bool {
+	let marker = externalNamespaceMarkerName(base)
+	for signature in signatures {
+		if signature.name == marker {
+			return true
+		}
+	}
+	return false
+}
+
+fn qualifiedSourceBase(value: String) -> String {
+	let mut dot = -1
+	let mut index = 0
+	while index < String.length(value) {
+		if String.slice(value, index, Some(index + 1)) == "." {
+			if dot >= 0 {
+				return ""
+			}
+			dot = index
+		}
+		index = index + 1
+	}
+	if dot <= 0 || dot + 1 >= String.length(value) {
+		return ""
+	}
+	return String.slice(value, 0, Some(dot))
+}
+
+fn blockedExternalVariantName(value: String) -> String {
+	return blockedExternalVariantPrefix() + value
+}
+
+fn blockedExternalVariantSourceName(value: String) -> String {
+	let prefix = blockedExternalVariantPrefix()
+	if String.startsWith(value, prefix) && String.length(value) > String.length(prefix) {
+		return String.slice(value, String.length(prefix), None)
+	}
+	return ""
 }
 
 fn safeExternalSignatures(values: List<ProjectExternalSignature>) -> List<ProjectExternalSignature> {
@@ -1105,6 +1170,16 @@ fn functionShadowsBaseAtExpression(
 	return blockShadowsBaseAtExpression(value, value.statementIds, base, false, expressionId)
 }
 
+fn blockedExternalVariantExpression(value: MvpExpression) -> MvpExpression {
+	return MvpExpression {
+		kind: value.kind,
+		text: blockedExternalVariantName(value.text),
+		literalType: value.literalType,
+		children: value.children,
+		span: value.span,
+	}
+}
+
 fn prepareExternalVariantExpression(
 	value: MvpExpression,
 	functionValue: MvpFunction,
@@ -1112,35 +1187,39 @@ fn prepareExternalVariantExpression(
 	signatures: List<ProjectExternalSignature>,
 ) -> MvpExpression {
 	let signatureValue = findExternalVariantSignature(signatures, value.text)
-	if match signatureValue { Some(_) => false, None => true } {
-		return value
-	}
-	let signature = match signatureValue {
-		Some(item) => item
-		None => return value
-	}
-	let base = externalVariantBase(signature)
-	if String.length(base) == 0 || functionShadowsBaseAtExpression(functionValue, base, expressionId) {
-		return value
-	}
-	let parameterCount = List.length(signature.parameters)
-	if value.kind == "identifier" && parameterCount == 0 {
-		return MvpExpression {
-			kind: "call",
-			text: signature.name,
-			literalType: value.literalType,
-			children: value.children,
-			span: value.span,
+	if match signatureValue { Some(_) => true, None => false } {
+		let signature = match signatureValue {
+			Some(item) => item
+			None => return value
 		}
-	}
-	if value.kind == "call" && parameterCount > 0 {
-		return MvpExpression {
-			kind: value.kind,
-			text: signature.name,
-			literalType: value.literalType,
-			children: value.children,
-			span: value.span,
+		let base = externalVariantBase(signature)
+		if String.length(base) == 0 || functionShadowsBaseAtExpression(functionValue, base, expressionId) {
+			return blockedExternalVariantExpression(value)
 		}
+		let parameterCount = List.length(signature.parameters)
+		if value.kind == "identifier" && parameterCount == 0 {
+			return MvpExpression {
+				kind: "call",
+				text: signature.name,
+				literalType: value.literalType,
+				children: value.children,
+				span: value.span,
+			}
+		}
+		if value.kind == "call" && parameterCount > 0 {
+			return MvpExpression {
+				kind: value.kind,
+				text: signature.name,
+				literalType: value.literalType,
+				children: value.children,
+				span: value.span,
+			}
+		}
+		return blockedExternalVariantExpression(value)
+	}
+	let base = qualifiedSourceBase(value.text)
+	if String.length(base) > 0 && externalNamespaceOwned(signatures, base) {
+		return blockedExternalVariantExpression(value)
 	}
 	return value
 }
@@ -1211,6 +1290,19 @@ fn normalizeExternalVariantExpression(
 	return value
 }
 
+fn normalizeExternalVariantDiagnostic(value: MvpDiagnostic) -> MvpDiagnostic {
+	let unknownPrefix = "Unknown name " + blockedExternalVariantPrefix()
+	if value.code == "L1010" && String.startsWith(value.message, unknownPrefix) {
+		let sourceName = String.slice(value.message, String.length(unknownPrefix), None)
+		return MvpDiagnostic {
+			code: value.code,
+			message: "Unknown name " + sourceName,
+			span: value.span,
+		}
+	}
+	return value
+}
+
 fn normalizeExternalVariantFunction(
 	value: MvpHirFunction,
 	signatures: List<ProjectExternalSignature>,
@@ -1237,9 +1329,17 @@ fn normalizeExternalVariantHir(
 ) -> Result<String, List<JsonError>> {
 	let raw = Json.parse(encoded)?
 	let checked = Json.decode<MvpCheckTransport>(raw)?
+	let mut diagnostics: List<MvpDiagnostic> = []
+	for value in checked.diagnostics {
+		diagnostics = List.append(diagnostics, normalizeExternalVariantDiagnostic(value))
+	}
 	let hirValue = match checked.hirModule {
 		Some(value) => value
-		None => return Ok(encoded)
+		None => return Json.encode<MvpCheckTransport>(MvpCheckTransport {
+			hirModule: None,
+			diagnostics: diagnostics,
+			exports: checked.exports,
+		})
 	}
 	let mut functions: List<MvpHirFunction> = []
 	for function in hirValue.functions {
@@ -1247,7 +1347,7 @@ fn normalizeExternalVariantHir(
 	}
 	return Json.encode<MvpCheckTransport>(MvpCheckTransport {
 		hirModule: Some(MvpHirModule { functions: functions }),
-		diagnostics: checked.diagnostics,
+		diagnostics: diagnostics,
 		exports: checked.exports,
 	})
 }
