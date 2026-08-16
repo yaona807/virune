@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { gzipSync } from 'node:zlib';
 import test from 'node:test';
 import {
 	buildNpmPublicationIdentityFromInputs,
@@ -9,6 +10,7 @@ import {
 	registryPolicyForVersion,
 	registryReleaseAssetNameForPackage,
 	verifyPublicationIdentityDocument,
+	verifyRegistryCliCandidateTarball,
 } from './verify-npm-publication-identity.mjs';
 
 const publishPackages = [
@@ -174,6 +176,33 @@ test('release manifest hash, size, version, and schema are verified against actu
 	assert.throws(() => build(staleBytes), /does not match actual release tarball/u);
 });
 
+test('Registry CLI candidate is unbundled, private, and pinned to the exact Virune dependency version', () => {
+	const good = registryCliTarball({
+		name: 'virune',
+		version: '1.0.0',
+		private: true,
+		dependencies: { '@virune/compiler': '1.0.0' },
+	});
+	assert.deepEqual(verifyRegistryCliCandidateTarball(good, '1.0.0'), { name: 'virune', version: '1.0.0', entryCount: 1 });
+
+	const bundledDeclaration = registryCliTarball({
+		name: 'virune', version: '1.0.0', private: true,
+		dependencies: { '@virune/compiler': '1.0.0' },
+		bundledDependencies: ['@virune/compiler'],
+	});
+	assert.throws(() => verifyRegistryCliCandidateTarball(bundledDeclaration, '1.0.0'), /must not declare bundled dependencies/u);
+
+	const bundledFiles = registryCliTarball(
+		{ name: 'virune', version: '1.0.0', private: true, dependencies: { '@virune/compiler': '1.0.0' } },
+		[['package/node_modules/@virune/compiler/package.json', '{}\n']],
+	);
+	assert.throws(() => verifyRegistryCliCandidateTarball(bundledFiles, '1.0.0'), /must not contain bundled dependency path/u);
+
+	assert.throws(() => verifyRegistryCliCandidateTarball(registryCliTarball({ name: 'virune', version: '1.0.0', private: false }), '1.0.0'), /must remain private:true/u);
+	assert.throws(() => verifyRegistryCliCandidateTarball(registryCliTarball({ name: 'virune', version: '1.0.0', private: true, publishConfig: { access: 'public' } }), '1.0.0'), /publishConfig must not be present/u);
+	assert.throws(() => verifyRegistryCliCandidateTarball(registryCliTarball({ name: 'virune', version: '1.0.0', private: true, dependencies: { '@virune/compiler': '0.9.0' } }), '1.0.0'), /expected exact release version 1\.0\.0/u);
+});
+
 test('publication manifest verification rejects stale or mutated evidence', () => {
 	const expected = build();
 	assert.equal(verifyPublicationIdentityDocument(expected, structuredClone(expected)), expected);
@@ -205,3 +234,26 @@ test('stable release gate validates publication identity after release artifacts
 		evidence: ['npm-publication-identity'],
 	});
 });
+
+function registryCliTarball(manifest, extraEntries = []) {
+	return gzipSync(buildTar([
+		['package/package.json', `${JSON.stringify(manifest)}\n`],
+		...extraEntries,
+	]));
+}
+
+function buildTar(entries) {
+	const chunks = [];
+	for (const [name, value] of entries) {
+		const content = Buffer.isBuffer(value) ? value : Buffer.from(value);
+		const header = Buffer.alloc(512);
+		Buffer.from(name).copy(header, 0, 0, 100);
+		header.write(`${content.byteLength.toString(8).padStart(11, '0')}\0`, 124, 12, 'ascii');
+		header[156] = '0'.charCodeAt(0);
+		chunks.push(header, content);
+		const padding = (512 - content.byteLength % 512) % 512;
+		if (padding > 0) chunks.push(Buffer.alloc(padding));
+	}
+	chunks.push(Buffer.alloc(1024));
+	return Buffer.concat(chunks);
+}
