@@ -4,6 +4,8 @@ import { pathToFileURL } from 'node:url';
 import { verifyNpmPublicationPlan } from './verify-npm-publication-plan.mjs';
 
 const REQUIRED_STABLE_GATE_IDS = ['public-abi', 'nightly-evidence', 'clean-install', 'node-browser-conformance'];
+const LEGACY_ENGLISH_GITHUB_ONLY_CLAIM = 'Virune packages are not published to the npm Registry and do not use npm Registry dist-tags.';
+const LEGACY_JAPANESE_GITHUB_ONLY_CLAIM = 'Viruneパッケージをnpm Registryへ公開せず、npm Registryのdist-tagも使用しません。';
 
 export async function verifyReleaseChannel(rootDirectory = process.cwd()) {
 	const root = JSON.parse(await readFile(resolve(rootDirectory, 'package.json'), 'utf8'));
@@ -74,6 +76,12 @@ export function verifyReleaseChannelDocumentation(publicationPlan, english, japa
 	}
 	if (!japanese.includes(japanesePolicy)) {
 		throw new Error('Japanese release-channel documentation does not match the canonical npm publication plan.');
+	}
+	if (english.includes(LEGACY_ENGLISH_GITHUB_ONLY_CLAIM)) {
+		throw new Error('English release-channel documentation contains the superseded GitHub-only npm policy.');
+	}
+	if (japanese.includes(LEGACY_JAPANESE_GITHUB_ONLY_CLAIM)) {
+		throw new Error('Japanese release-channel documentation contains the superseded GitHub-only npm policy.');
 	}
 
 	const englishGitHubInvariant = 'GitHub Releases remain an official immutable distribution channel for stable, prerelease, and nightly releases.';
