@@ -189,7 +189,7 @@ export function verifyRegistryCliCandidateTarball(bytes, version, file = registr
 	assert(Buffer.isBuffer(bytes) || bytes instanceof Uint8Array, `$.registryCli.${file}`, 'expected package bytes');
 	const entries = readTarEntries(Buffer.from(bytes), `$.registryCli.${file}`);
 	const manifestEntry = entries.get('package/package.json');
-	assert(manifestEntry !== undefined && manifestEntry.typeFlag === 48, `$.registryCli.${file}`, 'package/package.json must be a regular file');
+	assert(manifestEntry !== undefined && isRegularTarEntry(manifestEntry), `$.registryCli.${file}`, 'package/package.json must be a regular file');
 	let manifest;
 	try {
 		manifest = JSON.parse(manifestEntry.bytes.toString('utf8'));
@@ -215,9 +215,13 @@ export function verifyRegistryCliCandidateTarball(bytes, version, file = registr
 	return { name: manifest.name, version: manifest.version, entryCount: entries.size };
 }
 
+function isRegularTarEntry(entry) {
+	return entry.typeFlag === 0 || entry.typeFlag === '0'.charCodeAt(0);
+}
+
 function verifyCanonicalLegalEntry(entries, entryPath, expectedBytes, path) {
 	const entry = entries.get(entryPath);
-	assert(entry !== undefined && entry.typeFlag === 48, path, `${entryPath} must be a regular file`);
+	assert(entry !== undefined && isRegularTarEntry(entry), path, `${entryPath} must be a regular file`);
 	if (expectedBytes !== undefined) {
 		const expected = Buffer.from(expectedBytes);
 		assert(entry.bytes.equals(expected), path, `${entryPath} does not match the canonical repository file`);
