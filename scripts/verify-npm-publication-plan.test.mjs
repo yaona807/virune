@@ -84,6 +84,22 @@ test('release-channel documentation is bound to the canonical npm publication po
 		),
 		/Japanese release-channel documentation does not match the canonical npm publication plan/u,
 	);
+	assert.throws(
+		() => verifyReleaseChannelDocumentation(
+			publicationPlan,
+			`${english}\nVirune packages are not published to the npm Registry and do not use npm Registry dist-tags.\n`,
+			japanese,
+		),
+		/English release-channel documentation contains the superseded GitHub-only npm policy/u,
+	);
+	assert.throws(
+		() => verifyReleaseChannelDocumentation(
+			publicationPlan,
+			english,
+			`${japanese}\nViruneパッケージをnpm Registryへ公開せず、npm Registryのdist-tagも使用しません。\n`,
+		),
+		/Japanese release-channel documentation contains the superseded GitHub-only npm policy/u,
+	);
 });
 
 test('workspace layout changes fail until publication-plan enumeration is updated', () => {
