@@ -17,7 +17,7 @@ import {
 	parserPosition,
 	parserSpan,
 } from "./frontend-parser-model.virune"
-import { checkFrontendDataTypes } from "./frontend-semantic.virune"
+import { checkFrontendDataTypesJson } from "./frontend-semantic.virune"
 import {
 	FrontendSemanticResult,
 	SemanticDeclaration,
@@ -802,7 +802,9 @@ fn enumConstructorSignatures(
 		Some(value) => value
 		None => panic("Missing enum target module after presence check")
 	}
-	let semantic: FrontendSemanticResult = checkFrontendDataTypes(target.source)?
+	let semanticEncoded = checkFrontendDataTypesJson(target.source)?
+	let semanticRaw = Json.parse(semanticEncoded)?
+	let semantic = Json.decode<FrontendSemanticResult>(semanticRaw)?
 	if !semantic.accepted {
 		return Ok(signatures)
 	}
@@ -1305,6 +1307,7 @@ fn normalizeExternalVariantDiagnostic(value: MvpDiagnostic) -> MvpDiagnostic {
 		let sourceName = String.slice(value.message, String.length(unknownPrefix), None)
 		return MvpDiagnostic {
 			code: value.code,
+			severity: value.severity,
 			message: "Unknown name " + sourceName,
 			span: value.span,
 		}
