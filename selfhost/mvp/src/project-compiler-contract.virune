@@ -200,11 +200,6 @@ record ProjectExternalSignature derives Json {
 	span: MvpSpan
 }
 
-record ShadowStep {
-	shadowed: Bool
-	found: Bool
-}
-
 fn emptyTextList() -> List<String> {
 	let values: List<String> = []
 	return values
@@ -1013,34 +1008,6 @@ fn expressionTreeContains(
 	return false
 }
 
-fn shadowStep(shadowed: Bool, found: Bool) -> ShadowStep {
-	return ShadowStep { shadowed: shadowed, found: found }
-}
-
-fn expressionShadowStep(
-	value: MvpFunction,
-	rootId: Int,
-	shadowed: Bool,
-	expressionId: Int,
-) -> ShadowStep {
-	return shadowStep(
-		shadowed,
-		shadowed && expressionTreeContains(value.expressions, rootId, expressionId, []),
-	)
-}
-
-fn letShadowStep(
-	value: MvpFunction,
-	name: String,
-	initializerId: Int,
-	base: String,
-	shadowed: Bool,
-	expressionId: Int,
-) -> ShadowStep {
-	let found = shadowed && expressionTreeContains(value.expressions, initializerId, expressionId, [])
-	return shadowStep(shadowed || name == base, found)
-}
-
 fn blockShadowsBaseAtExpression(
 	value: MvpFunction,
 	statementIds: List<Int>,
@@ -1054,16 +1021,17 @@ fn blockShadowsBaseAtExpression(
 			Some(item) => item
 			None => return true
 		}
-		let step = statementShadowStep(value, statement, base, shadowed, expressionId)
-		if step.found {
+		if statementFindsShadowedExpression(value, statement, base, shadowed, expressionId) {
 			return true
 		}
-		shadowed = step.shadowed
+		if statementIntroducesBase(statement, base) {
+			shadowed = true
+		}
 	}
 	return false
 }
 
-fn forShadowStep(
+fn forFindsShadowedExpression(
 	value: MvpFunction,
 	name: String,
 	iterableId: Int,
@@ -1071,26 +1039,24 @@ fn forShadowStep(
 	base: String,
 	shadowed: Bool,
 	expressionId: Int,
-) -> ShadowStep {
-	let found = shadowed && expressionTreeContains(value.expressions, iterableId, expressionId, [])
+) -> Bool {
+	return shadowed && expressionTreeContains(value.expressions, iterableId, expressionId, [])
 		|| blockShadowsBaseAtExpression(value, bodyIds, base, shadowed || name == base, expressionId)
-	return shadowStep(shadowed, found)
 }
 
-fn whileShadowStep(
+fn whileFindsShadowedExpression(
 	value: MvpFunction,
 	conditionId: Int,
 	bodyIds: List<Int>,
 	base: String,
 	shadowed: Bool,
 	expressionId: Int,
-) -> ShadowStep {
-	let found = shadowed && expressionTreeContains(value.expressions, conditionId, expressionId, [])
+) -> Bool {
+	return shadowed && expressionTreeContains(value.expressions, conditionId, expressionId, [])
 		|| blockShadowsBaseAtExpression(value, bodyIds, base, shadowed, expressionId)
-	return shadowStep(shadowed, found)
 }
 
-fn ifShadowStep(
+fn ifFindsShadowedExpression(
 	value: MvpFunction,
 	conditionId: Int,
 	thenIds: List<Int>,
@@ -1098,29 +1064,35 @@ fn ifShadowStep(
 	base: String,
 	shadowed: Bool,
 	expressionId: Int,
-) -> ShadowStep {
-	let found = shadowed && expressionTreeContains(value.expressions, conditionId, expressionId, [])
+) -> Bool {
+	return shadowed && expressionTreeContains(value.expressions, conditionId, expressionId, [])
 		|| blockShadowsBaseAtExpression(value, thenIds, base, shadowed, expressionId)
 		|| blockShadowsBaseAtExpression(value, elseIds, base, shadowed, expressionId)
-	return shadowStep(shadowed, found)
 }
 
-fn statementShadowStep(
+fn statementFindsShadowedExpression(
 	value: MvpFunction,
 	statement: MvpStatement,
 	base: String,
 	shadowed: Bool,
 	expressionId: Int,
-) -> ShadowStep {
+) -> Bool {
 	return match statement {
-		LetValue(name, _, _, initializerId, _) => letShadowStep(value, name, initializerId, base, shadowed, expressionId)
-		AssignValue(_, assignedId, _) => expressionShadowStep(value, assignedId, shadowed, expressionId)
-		ForValue(name, iterableId, bodyIds, _) => forShadowStep(value, name, iterableId, bodyIds, base, shadowed, expressionId)
-		WhileValue(conditionId, bodyIds, _) => whileShadowStep(value, conditionId, bodyIds, base, shadowed, expressionId)
-		IfValue(conditionId, thenIds, elseIds, _) => ifShadowStep(value, conditionId, thenIds, elseIds, base, shadowed, expressionId)
-		BreakValue(_) => shadowStep(shadowed, false)
-		ContinueValue(_) => shadowStep(shadowed, false)
-		ReturnValue(returnId, _) => expressionShadowStep(value, returnId, shadowed, expressionId)
+		LetValue(_, _, _, initializerId, _) => shadowed && expressionTreeContains(value.expressions, initializerId, expressionId, [])
+		AssignValue(_, assignedId, _) => shadowed && expressionTreeContains(value.expressions, assignedId, expressionId, [])
+		ForValue(name, iterableId, bodyIds, _) => forFindsShadowedExpression(value, name, iterableId, bodyIds, base, shadowed, expressionId)
+		WhileValue(conditionId, bodyIds, _) => whileFindsShadowedExpression(value, conditionId, bodyIds, base, shadowed, expressionId)
+		IfValue(conditionId, thenIds, elseIds, _) => ifFindsShadowedExpression(value, conditionId, thenIds, elseIds, base, shadowed, expressionId)
+		BreakValue(_) => false
+		ContinueValue(_) => false
+		ReturnValue(returnId, _) => shadowed && expressionTreeContains(value.expressions, returnId, expressionId, [])
+	}
+}
+
+fn statementIntroducesBase(statement: MvpStatement, base: String) -> Bool {
+	return match statement {
+		LetValue(name, _, _, _, _) => name == base
+		_ => false
 	}
 }
 
