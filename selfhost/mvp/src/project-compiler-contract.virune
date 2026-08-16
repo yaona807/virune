@@ -176,6 +176,11 @@ record ProjectLoweringSummary {
 	checkedModules: Int
 }
 
+record ProjectRuntimeSummary {
+	diagnostics: List<ProjectCompilerDiagnosticV1>
+	lines: List<String>
+}
+
 record MvpParseTransport derives Json {
 	parsedModule: MvpModule?
 	diagnostics: List<MvpDiagnostic>
@@ -1537,6 +1542,15 @@ fn normalizeExternalVariantExpression(
 			Some(item) => item
 			None => panic("Missing external enum HIR signature after presence check")
 		}
+		if List.isEmpty(signature.parameters) {
+			return MvpHirExpression {
+				kind: "local",
+				text: externalVariantSourceName(signature),
+				valueType: value.valueType,
+				children: value.children,
+				span: value.span,
+			}
+		}
 		return MvpHirExpression {
 			kind: "variant",
 			text: externalVariantName(signature),
@@ -1674,13 +1688,146 @@ fn importBindingText(importedName: String, localName: String) -> String {
 	return importedName + " as " + localName
 }
 
-fn functionImportLine(
-	modulePath: String,
+fn runtimeSafeName(name: String) -> String {
+	let reserved = [
+		"await", "break", "case", "catch", "class", "const", "continue", "debugger", "default", "delete",
+		"do", "else", "export", "extends", "false", "finally", "for", "function", "if", "import", "in",
+		"instanceof", "let", "new", "null", "return", "static", "super", "switch", "this", "throw", "true",
+		"try", "typeof", "var", "void", "while", "with", "yield",
+	]
+	return if containsPath(reserved, name) then "$v_" + name else name
+}
+
+fn publicEnumExportCount(exports: List<ProjectLinkExport>, modulePath: String) -> Int {
+	let mut count = 0
+	for value in exports {
+		if value.modulePath == modulePath && value.declarationKind == "EnumDeclaration" {
+			count = count + 1
+		}
+	}
+	return count
+}
+
+fn runtimeMetadataFailure(path: String) -> ProjectRuntimeSummary {
+	return ProjectRuntimeSummary {
+		diagnostics: [loweringDiagnostic(path, "SHP3302", "Public enum runtime metadata is incomplete")],
+		lines: [],
+	}
+}
+
+fn publicEnumRuntimeLines(
+	projectModule: ProjectLinkModulePayload,
+	exports: List<ProjectLinkExport>,
+) -> Result<ProjectRuntimeSummary, List<JsonError>> {
+	let exportCount = publicEnumExportCount(exports, projectModule.path)
+	if exportCount == 0 {
+		return Ok(ProjectRuntimeSummary { diagnostics: [], lines: [] })
+	}
+	let semanticEncoded = checkFrontendDataTypesJson(projectModule.source)?
+	let semanticRaw = Json.parse(semanticEncoded)?
+	let semantic = Json.decode<FrontendSemanticResult>(semanticRaw)?
+	if !semantic.accepted {
+		return Ok(runtimeMetadataFailure(projectModule.path))
+	}
+	let mut lines: List<String> = []
+	let mut emittedNames: List<String> = []
+	let mut emittedCount = 0
+	for exportValue in exports {
+		if exportValue.modulePath == projectModule.path && exportValue.declarationKind == "EnumDeclaration" {
+			let declarationValue = semanticDeclaration(semantic.declarations, exportValue.name)
+			if match declarationValue { Some(_) => false, None => true } {
+				return Ok(runtimeMetadataFailure(projectModule.path))
+			}
+			let declaration = match declarationValue {
+				Some(value) => value
+				None => panic("Missing public enum runtime declaration after presence check")
+			}
+			let sourceNodeValue = frontendNode(projectModule.parse.nodes, declaration.sourceNodeId)
+			if declaration.kind != "enum"
+				|| !declaration.isPublic
+				|| declaration.name != exportValue.name
+				|| containsPath(emittedNames, declaration.name)
+				|| match sourceNodeValue { Some(_) => false, None => true } {
+				return Ok(runtimeMetadataFailure(projectModule.path))
+			}
+			let sourceNode = match sourceNodeValue {
+				Some(value) => value
+				None => panic("Missing public enum frontend node after presence check")
+			}
+			if sourceNode.kind != "EnumDeclaration" || sourceNode.text != declaration.name {
+				return Ok(runtimeMetadataFailure(projectModule.path))
+			}
+			emittedNames = List.append(emittedNames, declaration.name)
+			emittedCount = emittedCount + 1
+			let encodedTypeId = Json.encode<String>("project:" + projectModule.path + "#" + declaration.name)?
+			let mut memberNames: List<String> = []
+			let mut namespaceBindings = ""
+			let mut firstMember = true
+			lines = List.append(lines, "// enum " + declaration.name)
+			for memberId in declaration.memberIds {
+				let memberValue = semanticMember(semantic.members, memberId)
+				if match memberValue { Some(_) => false, None => true } {
+					return Ok(runtimeMetadataFailure(projectModule.path))
+				}
+				let member = match memberValue {
+					Some(value) => value
+					None => panic("Missing public enum runtime member after presence check")
+				}
+				if member.declarationId != declaration.id
+					|| member.kind != "variant"
+					|| String.length(member.name) == 0
+					|| containsPath(memberNames, member.name) {
+					return Ok(runtimeMetadataFailure(projectModule.path))
+				}
+				for typeId in member.typeIds {
+					if match semanticType(semantic.types, typeId) { Some(_) => false, None => true } {
+						return Ok(runtimeMetadataFailure(projectModule.path))
+					}
+				}
+				memberNames = List.append(memberNames, member.name)
+				let runtimeName = runtimeSafeName(member.name)
+				if !firstMember {
+					namespaceBindings = namespaceBindings + ", "
+				}
+				namespaceBindings = namespaceBindings + runtimeName
+				firstMember = false
+				let encodedVariant = Json.encode<String>(member.name)?
+				if List.isEmpty(member.typeIds) {
+					lines = List.append(lines, "export const " + runtimeName + " = Object.freeze(makeVariant(" + encodedVariant + ", [], " + encodedTypeId + "));")
+				} else {
+					let mut arguments = ""
+					let mut firstArgument = true
+					let mut index = 0
+					for _ in member.typeIds {
+						if !firstArgument {
+							arguments = arguments + ", "
+						}
+						arguments = arguments + "$value" + Json.encode<Int>(index)?
+						firstArgument = false
+						index = index + 1
+					}
+					lines = List.append(lines, "export function " + runtimeName + "(" + arguments + ") { return makeVariant(" + encodedVariant + ", [" + arguments + "], " + encodedTypeId + "); }")
+				}
+			}
+			lines = List.append(lines, "export const " + runtimeSafeName(declaration.name) + " = Object.freeze({ " + namespaceBindings + " });")
+			lines = List.append(lines, "")
+		}
+	}
+	if emittedCount != exportCount {
+		return Ok(runtimeMetadataFailure(projectModule.path))
+	}
+	return Ok(ProjectRuntimeSummary { diagnostics: [], lines: lines })
+}
+
+fn valueImportLine(
+	projectModule: ParsedMvpProjectSource,
 	importValue: MvpImport,
 	modules: List<ParsedMvpProjectSource>,
+	projectModules: List<ProjectLinkModulePayload>,
+	exports: List<ProjectLinkExport>,
 	dependencies: List<ProjectLinkDependency>,
 ) -> Result<String, List<JsonError>> {
-	let targetPath = dependencyTargetPath(dependencies, modulePath, importValue.specifier)
+	let targetPath = dependencyTargetPath(dependencies, projectModule.path, importValue.specifier)
 	let targetValue = findParsedMvpSource(modules, targetPath)
 	if match targetValue { Some(_) => false, None => true } {
 		return Ok("")
@@ -1697,7 +1844,15 @@ fn functionImportLine(
 	let mut first = true
 	for binding in importValue.bindings {
 		let functionValue = findPublicFunction(target.moduleValue.functions, binding.importedName)
-		if match functionValue { Some(_) => true, None => false } {
+		let enumAllowed = importLocalBindingCount(projectModule.moduleValue.imports, binding.localName) == 1
+			&& bindingAllowsValueSignature(
+				projectModules,
+				projectModule.path,
+				importValue.specifier,
+				binding,
+			)
+			&& enumIsPublicExport(exports, targetPath, binding.importedName)
+		if match functionValue { Some(_) => true, None => false } || enumAllowed {
 			if !first {
 				bindings = bindings + ", "
 			}
@@ -1718,11 +1873,13 @@ fn functionImportLine(
 fn modulePreamble(
 	projectModule: ParsedMvpProjectSource,
 	modules: List<ParsedMvpProjectSource>,
+	projectModules: List<ProjectLinkModulePayload>,
+	exports: List<ProjectLinkExport>,
 	dependencies: List<ProjectLinkDependency>,
 ) -> Result<List<String>, List<JsonError>> {
 	let mut lines: List<String> = [runtimeImportLine()]
 	for importValue in projectModule.moduleValue.imports {
-		let line = functionImportLine(projectModule.path, importValue, modules, dependencies)?
+		let line = valueImportLine(projectModule, importValue, modules, projectModules, exports, dependencies)?
 		if String.length(line) > 0 {
 			lines = List.append(lines, line)
 		}
@@ -1780,6 +1937,23 @@ fn lowerProjectSources(
 	let mut modules: List<ProjectEmitterModule> = []
 	let mut checkedModules = 0
 	for source in parsedSources {
+		let projectModuleValue = findProjectModule(projectModules, source.path)
+		if match projectModuleValue { Some(_) => false, None => true } {
+			diagnostics = List.append(diagnostics, loweringDiagnostic(
+				source.path,
+				"SHP3302",
+				"Public enum runtime metadata is incomplete",
+			))
+			continue
+		}
+		let projectModule = match projectModuleValue {
+			Some(value) => value
+			None => panic("Missing project module while emitting public enum runtime")
+		}
+		let runtimeSummary = publicEnumRuntimeLines(projectModule, exports)?
+		for value in runtimeSummary.diagnostics {
+			diagnostics = List.append(diagnostics, value)
+		}
 		let compilation = compileMvpSource(
 			source,
 			importedSignatures(source, parsedSources, projectModules, exports, dependencies)?,
@@ -1788,12 +1962,16 @@ fn lowerProjectSources(
 		for value in compilation.diagnostics {
 			diagnostics = List.append(diagnostics, mvpDiagnostic(source.path, value))
 		}
-		if compilation.accepted {
+		if compilation.accepted && List.isEmpty(runtimeSummary.diagnostics) {
+			let mut statements = runtimeSummary.lines
+			for line in splitLines(compilation.codeBody) {
+				statements = List.append(statements, line)
+			}
 			modules = List.append(modules, ProjectEmitterModule {
 				sourcePath: source.path,
 				outputPath: outputPath(source.path),
-				preamble: modulePreamble(source, parsedSources, dependencies)?,
-				statements: splitLines(compilation.codeBody),
+				preamble: modulePreamble(source, parsedSources, projectModules, exports, dependencies)?,
+				statements: statements,
 				sourceMap: "",
 			})
 		}
@@ -2037,7 +2215,7 @@ pub fn compileProjectMvpJson(encoded: String) -> Result<String, List<JsonError>>
 		entryPath: request.entryPath,
 		modules: lowered.modules,
 		dependencies: emitterDependencies(linked.dependencies),
-			 exportedSymbols: emitterExports(linked.exportedSymbols),
+		exportedSymbols: emitterExports(linked.exportedSymbols),
 	})
 	if !emitted.accepted {
 		return rejectedResult(
