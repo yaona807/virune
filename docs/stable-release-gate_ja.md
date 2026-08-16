@@ -16,6 +16,7 @@ tag起点のRelease workflowと手動のRelease dry-run workflowは、同じ`npm
 - FFIのUnknown fallback、unsafe boundary、review済みbinding corpus。
 - Parser、Formatter、Checker、semantic fuzz suite。
 - 公開用package、manifest、checksum、VSIX packaging、offline clean install、生成projectの実行。
+- Registry publicationを有効化する前に、各公開予定npm packageをreview済みrelease tarballの正確なfilename、SHA-256 digest、byte sizeへ固定するnpm publication identity。
 - policyで定義した有効期間内に成功し、`head_sha`がrelease対象commitと完全に一致するNightly quality run。
 
 release対象commitについて、gateは完了済みNightly runを新しい順に確認します。後から作られた`cancelled`または`skipped`のrunは、それ以前の利用可能な結果を隠しません。一方、より新しい完了済みrunが失敗している場合は、古い成功へフォールバックせずreleaseを停止します。
