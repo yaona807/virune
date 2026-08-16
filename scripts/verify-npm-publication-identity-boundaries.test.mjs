@@ -5,19 +5,21 @@ import { gzipSync } from 'node:zlib';
 import test from 'node:test';
 import { verifyRegistryCliCandidateTarball } from './verify-npm-publication-identity.mjs';
 
-test('release packaging disables npm lifecycle scripts for every pack path', () => {
+test('release packaging disables lifecycle scripts and stamps both CLI package variants', () => {
 	const source = readFileSync(resolve('scripts/package.mjs'), 'utf8');
 	assert.match(source, /execNpmSync\(\['pack', '--ignore-scripts', directory, '--pack-destination', out\]/u);
-	assert.match(source, /execNpmSync\(\['pack', '--ignore-scripts', '\.\/packages\/cli', '--pack-destination', registryCliStagingRoot\]/u);
+	assert.match(source, /execNpmSync\(\['pack', '--ignore-scripts', registryCliStagingPackage, '--pack-destination', registryCliStagingRoot\]/u);
 	assert.doesNotMatch(source, /execNpmSync\(\['pack', directory,/u);
-	assert.doesNotMatch(source, /execNpmSync\(\['pack', '\.\/packages\/cli',/u);
+	assert.match(source, /stampCliVersion\(registryCliStagingPackage\);/u);
+	assert.match(source, /stampCliVersion\(stagingPackage\);/u);
 });
 
-test('Registry CLI legal entries accept canonical regular typeflags and reject symlinks', () => {
+test('Registry CLI legal entries accept canonical regular typeflags, reject symlinks, and bind embedded version', () => {
 	const legal = {
 		expectedLicense: 'Apache-2.0',
 		licenseBytes: Buffer.from('license\n'),
 		noticeBytes: Buffer.from('notice\n'),
+		requireEmbeddedCliVersion: true,
 	};
 	const manifest = {
 		name: 'virune',
@@ -38,17 +40,25 @@ test('Registry CLI legal entries accept canonical regular typeflags and reject s
 		undefined,
 		legal,
 	), /package\/NOTICE must be a regular file/u);
+	assert.throws(() => verifyRegistryCliCandidateTarball(
+		registryCliTarball(manifest, { embeddedVersion: '0.9.0' }),
+		'1.0.0',
+		undefined,
+		legal,
+	), /embedded VERSION 0\.9\.0 does not match 1\.0\.0/u);
 });
 
 function registryCliTarball(manifest, {
 	packageTypeFlag = '0',
 	licenseTypeFlag = '0',
 	noticeTypeFlag = '0',
+	embeddedVersion = manifest.version,
 } = {}) {
 	return gzipSync(buildTar([
 		['package/package.json', `${JSON.stringify(manifest)}\n`, packageTypeFlag],
 		['package/LICENSE', 'license\n', licenseTypeFlag],
 		['package/NOTICE', 'notice\n', noticeTypeFlag],
+		['package/dist/src/main.js', `const VERSION = ${JSON.stringify(embeddedVersion)};\n`, '0'],
 	]));
 }
 
