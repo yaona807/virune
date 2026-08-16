@@ -536,6 +536,7 @@ fn frontendImportHasBinding(
 			if child.kind == "ImportItem" && child.text == expected {
 				return true
 			}
+		}
 	}
 	return false
 }
@@ -2036,7 +2037,7 @@ pub fn compileProjectMvpJson(encoded: String) -> Result<String, List<JsonError>>
 		entryPath: request.entryPath,
 		modules: lowered.modules,
 		dependencies: emitterDependencies(linked.dependencies),
-		exportedSymbols: emitterExports(linked.exportedSymbols),
+			 exportedSymbols: emitterExports(linked.exportedSymbols),
 	})
 	if !emitted.accepted {
 		return rejectedResult(
