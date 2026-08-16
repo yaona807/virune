@@ -195,11 +195,11 @@ test('publishable package metadata remains bound to reviewed root license and No
 	withFixture(root => {
 		const path = resolve(root, 'packages/runtime/package.json');
 		const manifest = readJson(path);
-		manifest.license = 'Apache-2.0';
+		manifest.license = 'MIT';
 		writeJson(path, manifest);
 		assert.throws(
 			() => verifyNpmPublicationPlan(root),
-			/\.runtime\.license: must match reviewed root license MIT/u,
+			/\.runtime\.license: must match reviewed root license Apache-2\.0/u,
 		);
 	});
 	withFixture(root => {

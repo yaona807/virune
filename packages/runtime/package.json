@@ -26,6 +26,7 @@
 	},
 	"files": [
 		"LICENSE",
+		"NOTICE",
 		"README.md",
 		"README_ja.md",
 		"dist/src"
@@ -34,7 +35,7 @@
 		"build": "tsc -b",
 		"test": "node --test dist/test/**/*.test.js"
 	},
-	"license": "MIT",
+	"license": "Apache-2.0",
 	"description": "Versioned Runtime ABI for JavaScript emitted by the Virune compiler.",
 	"keywords": [
 		"virune",

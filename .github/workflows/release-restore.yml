@@ -131,6 +131,8 @@ jobs:
           npm run --prefix "$project" start | tee "$root/project-output.txt"
           grep -q 'Hello from Virune' "$root/project-output.txt"
       - name: Verify the public VSIX in a clean profile
+        env:
+          VIRUNE_REVIEWED_COMMIT: ${{ steps.verified.outputs.expected_commit }}
         shell: bash
         run: |
           rm -rf release

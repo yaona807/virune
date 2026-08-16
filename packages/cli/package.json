@@ -23,6 +23,7 @@
 	},
 	"files": [
 		"LICENSE",
+		"NOTICE",
 		"README.md",
 		"README_ja.md",
 		"dist/src"
@@ -39,7 +40,7 @@
 		"build": "tsc -b",
 		"test": "node --test dist/test/**/*.test.js"
 	},
-	"license": "MIT",
+	"license": "Apache-2.0",
 	"description": "Virune command-line compiler, formatter, test runner, FFI binder, and package tools.",
 	"keywords": [
 		"virune",

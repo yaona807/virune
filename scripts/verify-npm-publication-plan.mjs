@@ -100,6 +100,7 @@ export function verifyNpmPublicationPlan(root = process.cwd()) {
 		assert(manifest.name === item.workspaceName, `$.${item.directory}.name`, `expected workspace package name ${item.workspaceName}`);
 		assert(manifest.version === rootManifest.version, `$.${item.directory}.version`, 'must match the reviewed root release version');
 		assert(manifest.private === true, `$.${item.directory}.private`, 'prepublication audit requires private:true until the publication-enablement change');
+		assert(manifest.license === reviewedLicense, `$.${item.directory}.license`, `must match reviewed root license ${reviewedLicense}`);
 		manifests.set(item.workspaceName, manifest);
 	}
 
@@ -113,11 +114,13 @@ export function verifyNpmPublicationPlan(root = process.cwd()) {
 		assert(manifest.repository?.directory === `packages/${item.directory}`, `$.${item.directory}.repository.directory`, 'unexpected repository directory');
 		assert(manifest.homepage === HOMEPAGE, `$.${item.directory}.homepage`, 'unexpected homepage');
 		assert(manifest.bugs?.url === BUGS_URL, `$.${item.directory}.bugs.url`, 'unexpected bugs URL');
-		assert(manifest.license === reviewedLicense, `$.${item.directory}.license`, `must match reviewed root license ${reviewedLicense}`);
 		const files = array(manifest.files, `$.${item.directory}.files`)
 			.map((value, index) => nonEmptyString(value, `$.${item.directory}.files[${index}]`));
 		assert(files.length > 0, `$.${item.directory}.files`, 'files allowlist is required');
 		assertUnique(files, `$.${item.directory}.files`, 'file');
+		for (const requiredLicenseFile of ['LICENSE', 'NOTICE']) {
+			assert(files.includes(requiredLicenseFile), `$.${item.directory}.files`, `required license file ${requiredLicenseFile} is missing`);
+		}
 		assert(hasPackageExports(manifest.exports), `$.${item.directory}.exports`, 'non-empty exports metadata is required');
 		assert(manifest.engines?.node === reviewedNodeEngine, `$.${item.directory}.engines.node`, `must match reviewed root Node engine ${reviewedNodeEngine}`);
 		assert(manifest.publishConfig === undefined, `$.${item.directory}.publishConfig`, 'publishConfig must be introduced only in the publication-enablement change');

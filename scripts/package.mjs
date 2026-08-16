@@ -4,6 +4,10 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { execNpmSync } from './npm-cli.mjs';
 import { writeReleaseIntegrityFiles } from './release-manifest.mjs';
+import { verifyReleaseLicenseArtifacts } from './verify-release-license-artifacts.mjs';
+import { verifyRepositoryLicensePolicy } from './verify-repository-license-policy.mjs';
+
+verifyRepositoryLicensePolicy();
 
 const rootPackage = JSON.parse(readFileSync(resolve('package.json'), 'utf8'));
 const version = rootPackage.version;
@@ -76,6 +80,7 @@ const localPackage = {
 	version,
 	private: true,
 	type: 'module',
+	license: rootPackage.license,
 	description: `Local installation bundle for Virune v${version}.`,
 	dependencies: { virune: `file:./${cliPackage.file}` },
 };
@@ -88,6 +93,8 @@ writeFileSync(
 	resolve(out, 'README_ja.md'),
 	`# Virune v${version} リリースパッケージ\n\nViruneはnpm Registryへ公開しません。CLI tarballには依存関係一式が含まれており、npmから直接インストールできます。\n\nこのディレクトリからインストールします。\n\n\`\`\`bash\nnpm install --global ./${cliPackage.file}\nvirune --version\n\`\`\`\n\nGitHub Releasesからインストールします。\n\n\`\`\`bash\nnpm install --global ${releaseAssetBase}/${cliPackage.file}\n\`\`\`\n\nプロジェクト単位で導入する場合は\`--global\`を外し、\`--save-dev\`を指定します。Node.js 24以上が必要です。インストール前に\`SHA256SUMS\`、\`RELEASE-MANIFEST.json\`、GitHub artifact attestationを使用してdownload fileを検証してください。\n`,
 );
+copyFileSync(resolve('LICENSE'), resolve(out, 'LICENSE'));
+copyFileSync(resolve('NOTICE'), resolve(out, 'NOTICE'));
 copyFileSync(resolve('THIRD_PARTY_NOTICES.md'), resolve(out, 'THIRD_PARTY_NOTICES.md'));
 copyFileSync(resolve('THIRD_PARTY_NOTICES_ja.md'), resolve(out, 'THIRD_PARTY_NOTICES_ja.md'));
 
@@ -97,3 +104,4 @@ const packageEntries = packages.map(item => {
 });
 writeFileSync(resolve(out, 'MANIFEST.json'), `${JSON.stringify({ schemaVersion: 1, version, packages: packageEntries }, null, 2)}\n`);
 writeReleaseIntegrityFiles(out, version);
+verifyReleaseLicenseArtifacts();

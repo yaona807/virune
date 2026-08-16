@@ -47,7 +47,22 @@ const groups = platformSmoke ? platformGroups : [
 			failureOutput: '.cache/selfhost-mvp-test-failure.log',
 		},
 		{ name: 'documentation example policy', files: ['scripts/verify-documentation-examples.test.mjs'] },
-		{ name: 'npm publication plan policy', files: ['scripts/verify-npm-publication-plan.test.mjs'] },
+		{
+			name: 'npm publication plan policy',
+			files: [
+				'scripts/verify-npm-publication-plan.test.mjs',
+				'scripts/verify-npm-publication-license.test.mjs',
+			],
+		},
+		{ name: 'repository license policy', files: ['scripts/verify-repository-license-policy.test.mjs'] },
+		{ name: 'release license artifact policy', files: ['scripts/verify-release-license-artifacts.test.mjs'] },
+		{
+			name: 'VS Code license packaging policy',
+			files: [
+				'scripts/vscode-third-party-licenses.test.mjs',
+				'scripts/reviewed-repository-source.test.mjs',
+			],
+		},
 		{
 			name: 'documentation examples',
 			command: ['scripts/verify-documentation-examples.mjs'],

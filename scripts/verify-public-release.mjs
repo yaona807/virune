@@ -6,6 +6,8 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const repositoryRoot = resolve(fileURLToPath(new URL('..', import.meta.url)));
+const EXPECTED_LICENSE = 'Apache-2.0';
+const REVIEWED_LEGAL_FILES = ['LICENSE', 'NOTICE', 'THIRD_PARTY_NOTICES.md', 'THIRD_PARTY_NOTICES_ja.md'];
 
 export async function verifyPublicRelease({
 	version,
@@ -34,7 +36,7 @@ export async function verifyPublicRelease({
 		if (!response.ok) throw new Error(`Failed to download ${asset.name}: HTTP ${response.status}`);
 		await writeFile(resolve(outputDirectory, asset.name), Buffer.from(await response.arrayBuffer()));
 	}
-	const integrity = await validateDownloadedRelease(outputDirectory, version);
+	const integrity = await validateDownloadedRelease(outputDirectory, version, { reviewedCommit: expectedCommit });
 	const installation = await validatePublicInstallation({ version, repository, runCommand });
 	const report = {
 		schemaVersion: 1,
@@ -72,7 +74,8 @@ export function validateReleaseRecord(release, { tag, version }) {
 	for (const required of requiredAssetNames(version)) if (!names.has(required)) throw new Error(`Release is missing ${required}.`);
 }
 
-export async function validateDownloadedRelease(directory, version) {
+export async function validateDownloadedRelease(directory, version, { sourceRoot = repositoryRoot, reviewedCommit } = {}) {
+	if (reviewedCommit !== undefined && !/^[0-9a-f]{40}$/u.test(reviewedCommit)) throw new Error('reviewedCommit must be a full commit SHA.');
 	const files = (await readdir(directory)).sort();
 	const checksums = parseChecksums(await readFile(resolve(directory, 'SHA256SUMS'), 'utf8'));
 	const expectedChecksumFiles = files.filter(file => file !== 'SHA256SUMS').sort();
@@ -94,15 +97,33 @@ export async function validateDownloadedRelease(directory, version) {
 		const actual = assetByName.get(item.file);
 		if (actual?.sha256 !== item.sha256 || actual.bytes !== item.bytes) throw new Error(`Manifest mismatch for ${item.file}.`);
 	}
+
+	const releasePackage = JSON.parse(await readFile(resolve(directory, 'package.json'), 'utf8'));
+	if (releasePackage.version !== version) throw new Error('Public release package.json version does not match the candidate.');
+	if (releasePackage.license !== EXPECTED_LICENSE) {
+		throw new Error(`Public release package.json license must be exactly ${EXPECTED_LICENSE}.`);
+	}
+	for (const file of REVIEWED_LEGAL_FILES) {
+		const [published, reviewed] = await Promise.all([
+			readFile(resolve(directory, file)),
+			readReviewedFile(file, { sourceRoot, reviewedCommit }),
+		]);
+		if (!published.equals(reviewed)) throw new Error(`Public release ${file} does not match the reviewed release source.`);
+	}
+
 	const sbom = JSON.parse(await readFile(resolve(directory, 'SBOM.cdx.json'), 'utf8'));
 	if (sbom.bomFormat !== 'CycloneDX' || sbom.specVersion !== '1.6') throw new Error('Release SBOM is not CycloneDX 1.6.');
 	if (sbom.metadata?.component?.version !== version) throw new Error('Release SBOM version does not match the candidate.');
+	const rootLicenses = sbom.metadata?.component?.licenses;
+	if (!Array.isArray(rootLicenses) || rootLicenses.length !== 1 || rootLicenses[0]?.license?.id !== EXPECTED_LICENSE) {
+		throw new Error(`Release SBOM root license must be exactly ${EXPECTED_LICENSE}.`);
+	}
 	const sbomAsset = assetByName.get('SBOM.cdx.json');
 	if (manifest.sbom?.sha256 !== sbomAsset?.sha256 || manifest.sbom?.bytes !== sbomAsset?.bytes) throw new Error('SBOM manifest digest mismatch.');
 	return {
 		assets,
 		manifest: { schemaVersion: manifest.schemaVersion, version: manifest.version, fileCount: manifest.files.length },
-		sbom: { format: sbom.bomFormat, specVersion: sbom.specVersion, serialNumber: sbom.serialNumber, componentCount: sbom.components?.length ?? 0 },
+		sbom: { format: sbom.bomFormat, specVersion: sbom.specVersion, serialNumber: sbom.serialNumber, componentCount: sbom.components?.length ?? 0, license: EXPECTED_LICENSE },
 	};
 }
 
@@ -115,6 +136,20 @@ export function parseChecksums(source) {
 		output.set(match[2], match[1]);
 	}
 	return output;
+}
+
+async function readReviewedFile(file, { sourceRoot, reviewedCommit }) {
+	if (reviewedCommit === undefined) return readFile(resolve(sourceRoot, file));
+	const result = spawnSync('git', ['show', `${reviewedCommit}:${file}`], {
+		cwd: sourceRoot,
+		encoding: null,
+		maxBuffer: 16 * 1024 * 1024,
+	});
+	if (result.error !== undefined) throw new Error(`Failed to read reviewed ${file} from ${reviewedCommit}: ${result.error.message}`);
+	if ((result.status ?? 1) !== 0) {
+		throw new Error(`Failed to read reviewed ${file} from ${reviewedCommit}: ${(result.stderr ?? Buffer.alloc(0)).toString('utf8').trim()}`);
+	}
+	return result.stdout;
 }
 
 async function validatePublicInstallation({ version, repository, runCommand }) {
@@ -178,7 +213,7 @@ function requestHeaders(token) {
 
 function requiredAssetNames(version) {
 	return [
-		'MANIFEST.json', 'README.md', 'README_ja.md', 'RELEASE-MANIFEST.json', 'SBOM.cdx.json', 'SHA256SUMS', 'THIRD_PARTY_NOTICES.md', 'THIRD_PARTY_NOTICES_ja.md', 'package.json',
+		'LICENSE', 'MANIFEST.json', 'NOTICE', 'README.md', 'README_ja.md', 'RELEASE-MANIFEST.json', 'SBOM.cdx.json', 'SHA256SUMS', 'THIRD_PARTY_NOTICES.md', 'THIRD_PARTY_NOTICES_ja.md', 'package.json',
 		`virune-${version}.tgz`, `virune-compiler-${version}.tgz`, `virune-formatter-${version}.tgz`, `virune-js-interop-${version}.tgz`, `virune-runtime-${version}.tgz`, `virune-stdlib-${version}.tgz`, `virune-vscode-${version}.vsix`,
 	];
 }

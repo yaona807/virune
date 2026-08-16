@@ -1,0 +1,136 @@
+import assert from 'node:assert/strict';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
+import test from 'node:test';
+import { verifyRepositoryLicensePolicy } from './verify-repository-license-policy.mjs';
+
+const repositoryRoot = resolve(import.meta.dirname, '..');
+const workspaceDirectories = [
+	'cli',
+	'compiler',
+	'formatter',
+	'js-interop',
+	'language-server',
+	'runtime',
+	'stdlib',
+	'vscode',
+];
+
+test('current repository license policy is canonical and synchronized', () => {
+	const result = verifyRepositoryLicensePolicy(repositoryRoot);
+	assert.equal(result.license, 'Apache-2.0');
+	assert.deepEqual(result.workspaces, [...workspaceDirectories].sort());
+	assert.ok(result.packageManifests.includes('scripts/vsix-smoke-harness/package.json'));
+});
+
+test('modified root Apache license text fails closed', () => {
+	withFixture(root => {
+		writeFileSync(resolve(root, 'LICENSE'), `${readFileSync(resolve(root, 'LICENSE'), 'utf8')}modified\n`);
+		assert.throws(
+			() => verifyRepositoryLicensePolicy(root),
+			/Root LICENSE must be the canonical unmodified Apache-2\.0 text/u,
+		);
+	});
+});
+
+test('modified root notice attribution fails closed', () => {
+	withFixture(root => {
+		writeFileSync(resolve(root, 'NOTICE'), 'Virune\nCopyright 2026 Someone Else\n');
+		assert.throws(
+			() => verifyRepositoryLicensePolicy(root),
+			/Root NOTICE must contain the reviewed Virune attribution exactly/u,
+		);
+	});
+});
+
+test('workspace legal-file drift fails closed', () => {
+	withFixture(root => {
+		writeFileSync(resolve(root, 'packages/runtime/NOTICE'), 'stale notice\n');
+		assert.throws(
+			() => verifyRepositoryLicensePolicy(root),
+			/packages\/runtime\/NOTICE must match the reviewed repository root file byte-for-byte/u,
+		);
+	});
+});
+
+test('workspace license metadata drift fails closed', () => {
+	withFixture(root => {
+		const path = resolve(root, 'packages/vscode/package.json');
+		const manifest = JSON.parse(readFileSync(path, 'utf8'));
+		manifest.license = 'MIT';
+		writeFileSync(path, `${JSON.stringify(manifest, null, 2)}\n`);
+		assert.throws(
+			() => verifyRepositoryLicensePolicy(root),
+			/packages\/vscode\/package\.json license must be Apache-2\.0/u,
+		);
+	});
+});
+
+test('non-workspace Virune package license drift fails closed', () => {
+	withFixture(root => {
+		mkdirSync(resolve(root, 'tools/virune-helper'), { recursive: true });
+		writeFileSync(resolve(root, 'tools/virune-helper/package.json'), `${JSON.stringify({
+			name: 'virune-helper',
+			version: '0.0.0',
+			private: true,
+			license: 'MIT',
+		}, null, 2)}\n`);
+		assert.throws(
+			() => verifyRepositoryLicensePolicy(root),
+			/tools\/virune-helper\/package\.json license must be Apache-2\.0/u,
+		);
+	});
+});
+
+test('workspace lock license drift fails closed', () => {
+	withFixture(root => {
+		const path = resolve(root, 'package-lock.json');
+		const lock = JSON.parse(readFileSync(path, 'utf8'));
+		lock.packages['packages/runtime'].license = 'MIT';
+		writeFileSync(path, `${JSON.stringify(lock, null, 2)}\n`);
+		assert.throws(
+			() => verifyRepositoryLicensePolicy(root),
+			/package-lock\.json: packages\["packages\/runtime"\]\.license must match reviewed root license Apache-2\.0/u,
+		);
+	});
+});
+
+test('stale removed workspace lock entries fail closed', () => {
+	withFixture(root => {
+		const path = resolve(root, 'package-lock.json');
+		const lock = JSON.parse(readFileSync(path, 'utf8'));
+		lock.packages['packages/removed-workspace'] = {
+			name: '@virune/removed-workspace',
+			version: '1.0.0',
+			license: 'Apache-2.0',
+		};
+		writeFileSync(path, `${JSON.stringify(lock, null, 2)}\n`);
+		assert.throws(
+			() => verifyRepositoryLicensePolicy(root),
+			/package-lock\.json: workspace package entries must exactly match repository workspaces/u,
+		);
+	});
+});
+
+function withFixture(run) {
+	const root = mkdtempSync(join(tmpdir(), 'virune-repository-license-'));
+	try {
+		writeFileSync(resolve(root, 'package.json'), readFileSync(resolve(repositoryRoot, 'package.json')));
+		writeFileSync(resolve(root, 'package-lock.json'), readFileSync(resolve(repositoryRoot, 'package-lock.json')));
+		writeFileSync(resolve(root, 'LICENSE'), readFileSync(resolve(repositoryRoot, 'LICENSE')));
+		writeFileSync(resolve(root, 'NOTICE'), readFileSync(resolve(repositoryRoot, 'NOTICE')));
+		for (const directory of workspaceDirectories) {
+			mkdirSync(resolve(root, 'packages', directory), { recursive: true });
+			for (const file of ['package.json', 'LICENSE', 'NOTICE']) {
+				writeFileSync(
+					resolve(root, 'packages', directory, file),
+					readFileSync(resolve(repositoryRoot, 'packages', directory, file)),
+				);
+			}
+		}
+		run(root);
+	} finally {
+		rmSync(root, { recursive: true, force: true });
+	}
+}

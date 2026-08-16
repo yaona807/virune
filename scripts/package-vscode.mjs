@@ -2,7 +2,10 @@ import { createHash } from 'node:crypto';
 import { mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { basename, resolve } from 'node:path';
 import { writeReleaseIntegrityFiles } from './release-manifest.mjs';
+import { verifyRepositoryLicensePolicy } from './verify-repository-license-policy.mjs';
 import { createVSIX, listFiles } from '@vscode/vsce';
+
+verifyRepositoryLicensePolicy();
 
 const extensionDirectory = resolve('packages/vscode');
 const extensionPackage = JSON.parse(readFileSync(resolve(extensionDirectory, 'package.json'), 'utf8'));
@@ -16,10 +19,14 @@ const includedFiles = await listFiles({
 });
 const requiredFiles = [
 	'package.json',
+	'LICENSE',
+	'NOTICE',
+	'THIRD_PARTY_NOTICES.md',
 	'language-configuration.json',
 	'syntaxes/virune.tmLanguage.json',
 	'dist/extension.cjs',
 	'dist/server.cjs',
+	'dist/THIRD_PARTY_LICENSES.txt',
 ];
 for (const required of requiredFiles) {
 	if (!includedFiles.includes(required)) throw new Error(`VSIX input is missing ${required}`);

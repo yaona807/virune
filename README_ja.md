@@ -13,7 +13,7 @@
   <a href="https://github.com/yaona807/virune/actions/workflows/ci.yml"><img src="https://github.com/yaona807/virune/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI"></a>
   <img src="https://img.shields.io/badge/version-1.0.0-5A54E8" alt="Version 1.0.0">
   <img src="https://img.shields.io/badge/Node.js-%3E%3D24-339933?logo=nodedotjs&logoColor=white" alt="Node.js 24以上">
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT License"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue.svg" alt="Apache License 2.0"></a>
 </p>
 
 <p align="center">
@@ -253,4 +253,6 @@ Viruneはセキュリティサンドボックスではありません。JavaScri
 
 ## ライセンス
 
-Viruneは[MIT License](LICENSE)で提供します。第三者ライセンスは[THIRD_PARTY_NOTICES_ja.md](THIRD_PARTY_NOTICES_ja.md)を参照してください。
+現在のVirune repository snapshotは[Apache License 2.0](LICENSE)で提供します。著作権表示は[NOTICE](NOTICE)に記載し、第三者ライセンスは[THIRD_PARTY_NOTICES_ja.md](THIRD_PARTY_NOTICES_ja.md)を参照してください。
+
+過去の`v1.0.0` ReleaseおよびMIT条件で既に配布されたcopyは、その配布時に付与されたMIT条件で引き続き利用できます。このライセンス移行によって既存の許諾を取り消すことはありません。

@@ -59,6 +59,8 @@ jobs:
           done
           gh attestation verify .cache/public-release/SBOM.cdx.json --repo "$GITHUB_REPOSITORY" --predicate-type https://cyclonedx.org/bom
       - name: Verify public VSIX in a clean profile
+        env:
+          VIRUNE_REVIEWED_COMMIT: ${{ steps.request.outputs.expected_commit }}
         shell: bash
         run: |
           rm -rf release

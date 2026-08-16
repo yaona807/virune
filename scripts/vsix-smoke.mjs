@@ -4,6 +4,7 @@ import { dirname, join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { downloadAndUnzipVSCode, runTests } from '@vscode/test-electron';
 
+const repositoryRoot = process.cwd();
 const releaseDirectory = resolve('release');
 const rootManifest = JSON.parse(await readFile(resolve('package.json'), 'utf8'));
 const version = rootManifest.version;
@@ -35,12 +36,17 @@ try {
 		extensionDevelopmentPath: resolve('scripts/vsix-smoke-harness'),
 		extensionTestsPath: resolve('scripts/vsix-smoke-suite.mjs'),
 		launchArgs: [workspace, '--extensions-dir', extensionsDirectory, '--user-data-dir', userDataDirectory, '--disable-updates', '--skip-welcome', '--skip-release-notes'],
-		extensionTestsEnv: { ...process.env, VIRUNE_VSIX_EXTENSIONS_DIR: extensionsDirectory, VIRUNE_VSIX_WORKSPACE: workspace },
+		extensionTestsEnv: {
+			...process.env,
+			VIRUNE_REPOSITORY_ROOT: repositoryRoot,
+			VIRUNE_VSIX_EXTENSIONS_DIR: extensionsDirectory,
+			VIRUNE_VSIX_WORKSPACE: workspace,
+		},
 	});
 	execFileSync(cli, ['--uninstall-extension', 'virune.virune-vscode', ...common], { stdio: 'inherit' });
 	const after = execFileSync(cli, ['--list-extensions', ...common], { encoding: 'utf8' });
 	if (/^virune\.virune-vscode$/mu.test(after)) throw new Error('Virune extension remained installed after uninstall.');
-	console.log('VSIX clean-install, activation, Language Server and uninstall smoke passed.');
+	console.log('VSIX clean-install, legal files, activation, Language Server and uninstall smoke passed.');
 } finally {
 	await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 250 });
 }

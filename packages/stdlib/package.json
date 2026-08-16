@@ -32,6 +32,7 @@
 	},
 	"files": [
 		"LICENSE",
+		"NOTICE",
 		"README.md",
 		"README_ja.md",
 		"dist/src"
@@ -44,7 +45,7 @@
 		"test": "node --test dist/test/**/*.test.js"
 	},
 	"description": "Virune standard-library adapters for Node.js and browsers.",
-	"license": "MIT",
+	"license": "Apache-2.0",
 	"keywords": [
 		"virune",
 		"standard-library",

@@ -9,8 +9,13 @@ export function buildCycloneDxSbom({ lock, manifest, commit = null }) {
 	if (lock?.lockfileVersion !== 3 || typeof lock.packages !== 'object' || lock.packages === null) {
 		throw new Error('A package-lock.json with lockfileVersion 3 is required.');
 	}
-	if (typeof manifest?.name !== 'string' || typeof manifest?.version !== 'string') {
-		throw new Error('A package manifest with name and version is required.');
+	if (
+		typeof manifest?.name !== 'string'
+		|| typeof manifest?.version !== 'string'
+		|| typeof manifest?.license !== 'string'
+		|| manifest.license.trim().length === 0
+	) {
+		throw new Error('A package manifest with name, version, and license is required.');
 	}
 
 	const packageEntries = new Map(Object.entries(lock.packages));
@@ -27,6 +32,11 @@ export function buildCycloneDxSbom({ lock, manifest, commit = null }) {
 			...(typeof entry.integrity === 'string' ? [{ name: 'virune:package-lock:integrity', value: entry.integrity }] : []),
 		];
 		const existing = componentsByRef.get(purl);
+		const declaredLicense = typeof entry.license === 'string' ? entry.license : undefined;
+		const existingLicense = existing?.licenses?.[0]?.license?.id;
+		if (existingLicense !== undefined && declaredLicense !== undefined && existingLicense !== declaredLicense) {
+			throw new Error(`Conflicting license metadata for ${name}@${entry.version}: ${existingLicense} vs ${declaredLicense}`);
+		}
 		const component = existing ?? {
 			type: name === 'virune' ? 'application' : 'library',
 			'bom-ref': purl,
@@ -34,11 +44,11 @@ export function buildCycloneDxSbom({ lock, manifest, commit = null }) {
 			version: entry.version,
 			purl,
 			scope: entry.dev === true ? 'optional' : 'required',
-			...(typeof entry.license === 'string' ? { licenses: [{ license: { id: entry.license } }] } : {}),
+			...(declaredLicense === undefined ? {} : { licenses: [{ license: { id: declaredLicense } }] }),
 			properties: [],
 		};
 		if (entry.dev !== true) component.scope = 'required';
-		if (component.licenses === undefined && typeof entry.license === 'string') component.licenses = [{ license: { id: entry.license } }];
+		if (component.licenses === undefined && declaredLicense !== undefined) component.licenses = [{ license: { id: declaredLicense } }];
 		component.properties = uniqueProperties([...component.properties, ...properties]);
 		componentsByRef.set(purl, component);
 		componentsByPath.set(path, component);
@@ -80,6 +90,7 @@ export function buildCycloneDxSbom({ lock, manifest, commit = null }) {
 				name: manifest.name,
 				version: manifest.version,
 				purl: rootRef,
+				licenses: [{ license: { id: manifest.license } }],
 				externalReferences: [{
 					type: 'vcs',
 					url: 'https://github.com/yaona807/virune',

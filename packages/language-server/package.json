@@ -26,6 +26,6 @@
 		"build": "tsc -b",
 		"test": "node --test dist/test/**/*.test.js"
 	},
-	"license": "MIT",
+	"license": "Apache-2.0",
 	"description": "Virune Language Server used by the official VS Code extension."
 }

@@ -141,8 +141,9 @@
 		"playwright": "1.62.0",
 		"rxjs": "7.8.2",
 		"typescript": "6.0.3",
+		"validate-npm-package-license": "3.0.4",
 		"zod": "4.4.3"
 	},
 	"description": "Virune programming language monorepo.",
-	"license": "MIT"
+	"license": "Apache-2.0"
 }
