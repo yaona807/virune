@@ -541,7 +541,6 @@ fn frontendImportHasBinding(
 			if child.kind == "ImportItem" && child.text == expected {
 				return true
 			}
-		}
 	}
 	return false
 }
@@ -1798,7 +1797,7 @@ fn publicEnumRuntimeLines(
 					let mut arguments = ""
 					let mut firstArgument = true
 					let mut index = 0
-					for _ in member.typeIds {
+					for payloadTypeId in member.typeIds {
 						if !firstArgument {
 							arguments = arguments + ", "
 						}
