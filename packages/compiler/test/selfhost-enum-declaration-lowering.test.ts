@@ -53,7 +53,7 @@ pub fn main() -> Int {
 }
 `;
 
-test('project lowering preserves public enum metadata and emits its runtime declaration', async () => {
+test('project lowering preserves enum metadata while erasing its runtime declaration', async () => {
 	await withGeneratedCompiler((module, input) => {
 		const projectInput: ProjectInput = {
 			...input,
@@ -72,18 +72,8 @@ test('project lowering preserves public enum metadata and emits its runtime decl
 		assert.equal(result.stats.checkedModules, 1);
 		assert.equal(result.stats.emittedModules, 1);
 		assert.equal(result.emittedModules.length, 1);
-		const code = result.emittedModules[0]?.code ?? '';
-		assert.match(code, /\/\/ enum Status/u);
-		assert.match(
-			code,
-			/export const Pending = Object\.freeze\(makeVariant\("Pending", \[\], "project:src\/main\.virune#Status"\)\);/u,
-		);
-		assert.match(
-			code,
-			/export function Ready\(\$value0\) \{ return makeVariant\("Ready", \[\$value0\], "project:src\/main\.virune#Status"\); \}/u,
-		);
-		assert.match(code, /export const Status = Object\.freeze\(\{ Pending, Ready \}\);/u);
-		assert.match(code, /export function main/u);
+		assert.match(result.emittedModules[0]?.code ?? '', /export function main/u);
+		assert.doesNotMatch(result.emittedModules[0]?.code ?? '', /enum Status|Pending|Ready/u);
 	});
 });
 
