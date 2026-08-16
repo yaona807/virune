@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { lstatSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { verifyNpmPublicationPlan } from './verify-npm-publication-plan.mjs';
@@ -7,13 +7,18 @@ import { verifyNpmPublicationPlan } from './verify-npm-publication-plan.mjs';
 const PUBLICATION_MANIFEST = 'PUBLICATION-MANIFEST.json';
 const RELEASE_PACKAGE_MANIFEST = 'MANIFEST.json';
 
-export function releaseAssetNameForPackage(registryName, version) {
+export function registryReleaseAssetNameForPackage(registryName, version) {
 	const name = nonEmptyString(registryName, '$.registryName');
 	const releaseVersion = parseReleaseVersion(version, '$.version').text;
-	if (name === 'virune') return `virune-${releaseVersion}.tgz`;
+	if (name === 'virune') return `virune-npm-${releaseVersion}.tgz`;
 	const scoped = /^@virune\/([a-z0-9][a-z0-9-]*)$/u.exec(name);
 	assert(scoped !== null, '$.registryName', 'expected virune or an @virune/* package name');
 	return `virune-${scoped[1]}-${releaseVersion}.tgz`;
+}
+
+export function bundledCliReleaseAssetName(version) {
+	const releaseVersion = parseReleaseVersion(version, '$.version').text;
+	return `virune-${releaseVersion}.tgz`;
 }
 
 export function registryPolicyForVersion(version, firstStableRegistryRelease, distTagPolicy) {
@@ -60,11 +65,14 @@ export function buildNpmPublicationIdentityFromInputs({
 		.map((value, index) => releaseAssetFilename(value, `$.releaseTarballs[${index}]`))
 		.sort(compareText);
 	assertUnique(actualTarballs, '$.releaseTarballs', 'tarball');
-	const expectedTarballs = packages.map(item => item.releaseAsset).sort(compareText);
+	const registryTarballs = packages.map(item => item.releaseAsset).sort(compareText);
+	const bundledCliReleaseAsset = bundledCliReleaseAssetName(parsedVersion.text);
+	const expectedTarballs = [...registryTarballs, bundledCliReleaseAsset].sort(compareText);
+	assertUnique(expectedTarballs, '$.publishPackages', 'release tarball');
 	assert(
 		JSON.stringify(actualTarballs) === JSON.stringify(expectedTarballs),
 		'$.releaseTarballs',
-		`expected exact npm tarball set ${expectedTarballs.join(', ')}`,
+		`expected exact release tarball set ${expectedTarballs.join(', ')}`,
 	);
 
 	const manifest = record(releaseManifest, '$.releaseManifest');
@@ -78,23 +86,25 @@ export function buildNpmPublicationIdentityFromInputs({
 	assert(
 		JSON.stringify(manifestFiles) === JSON.stringify(expectedTarballs),
 		'$.releaseManifest.packages',
-		`expected exact npm package manifest set ${expectedTarballs.join(', ')}`,
+		`expected exact release package manifest set ${expectedTarballs.join(', ')}`,
 	);
 	const byFile = new Map(manifestPackages.map(item => [item.file, item]));
 	const bytesByFile = record(assetBytes, '$.assetBytes');
 	assertExactKeys(bytesByFile, expectedTarballs, '$.assetBytes');
+	const actualByFile = new Map();
+	for (const file of expectedTarballs) {
+		const bytes = bytesByFile[file];
+		assert(Buffer.isBuffer(bytes) || bytes instanceof Uint8Array, `$.assetBytes.${file}`, 'expected package bytes');
+		const buffer = Buffer.from(bytes);
+		const actual = { sha256: createHash('sha256').update(buffer).digest('hex'), bytes: buffer.byteLength };
+		const declared = byFile.get(file);
+		assert(declared.sha256 === actual.sha256, `$.releaseManifest.packages.${file}.sha256`, 'does not match actual release tarball bytes');
+		assert(declared.bytes === actual.bytes, `$.releaseManifest.packages.${file}.bytes`, 'does not match actual release tarball byte size');
+		actualByFile.set(file, actual);
+	}
 
 	const identityPackages = packages.map(item => {
-		const bytes = bytesByFile[item.releaseAsset];
-		assert(Buffer.isBuffer(bytes) || bytes instanceof Uint8Array, `$.assetBytes.${item.releaseAsset}`, 'expected package bytes');
-		const buffer = Buffer.from(bytes);
-		const actual = {
-			sha256: createHash('sha256').update(buffer).digest('hex'),
-			bytes: buffer.byteLength,
-		};
-		const declared = byFile.get(item.releaseAsset);
-		assert(declared.sha256 === actual.sha256, `$.releaseManifest.packages.${item.releaseAsset}.sha256`, 'does not match actual release tarball bytes');
-		assert(declared.bytes === actual.bytes, `$.releaseManifest.packages.${item.releaseAsset}.bytes`, 'does not match actual release tarball byte size');
+		const actual = actualByFile.get(item.releaseAsset);
 		return {
 			registryName: item.registryName,
 			releaseAsset: item.releaseAsset,
@@ -107,7 +117,8 @@ export function buildNpmPublicationIdentityFromInputs({
 		schemaVersion: 1,
 		version: parsedVersion.text,
 		githubReleaseTag: `v${parsedVersion.text}`,
-		publishSource: 'reviewed-release-tarball',
+		publishSource: 'reviewed-release-registry-candidate-tarball',
+		bundledCliReleaseAsset,
 		publicationReady,
 		registryVersionEligible: registryPolicy.registryVersionEligible,
 		distTag: registryPolicy.distTag,
@@ -121,7 +132,12 @@ export function buildNpmPublicationIdentity({ root = process.cwd(), releaseDirec
 	const releaseTarballs = readdirSync(releaseDirectory)
 		.filter(file => file.endsWith('.tgz'))
 		.sort(compareText);
-	const assetBytes = Object.fromEntries(releaseTarballs.map(file => [file, readFileSync(resolve(releaseDirectory, file))]));
+	const assetBytes = Object.fromEntries(releaseTarballs.map(file => {
+		const path = resolve(releaseDirectory, file);
+		const metadata = lstatSync(path);
+		assert(metadata.isFile() && !metadata.isSymbolicLink(), `$.releaseTarballs.${file}`, 'release tarball must be a regular file');
+		return [file, readFileSync(path)];
+	}));
 	return buildNpmPublicationIdentityFromInputs({
 		version: publicationPlan.currentVersion,
 		publicationReady: publicationPlan.publicationReady,
@@ -167,7 +183,7 @@ function publicationPackage(value, path, version) {
 	const workspaceName = packageName(item.workspaceName, `${path}.workspaceName`);
 	const registryName = packageName(item.registryName, `${path}.registryName`);
 	assert(workspaceName === registryName, path, 'registry package renaming is not supported by the reviewed release identity');
-	return { registryName, releaseAsset: releaseAssetNameForPackage(registryName, version) };
+	return { registryName, releaseAsset: registryReleaseAssetNameForPackage(registryName, version) };
 }
 
 function releaseManifestPackage(value, path) {
