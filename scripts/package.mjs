@@ -3,7 +3,7 @@ import { copyFileSync, cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, sta
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { execNpmSync } from './npm-cli.mjs';
-import { releaseAssetNameForPackage, writeNpmPublicationIdentity } from './verify-npm-publication-identity.mjs';
+import { bundledCliReleaseAssetName, registryReleaseAssetNameForPackage, writeNpmPublicationIdentity } from './verify-npm-publication-identity.mjs';
 import { writeReleaseIntegrityFiles } from './release-manifest.mjs';
 import { verifyReleaseLicenseArtifacts } from './verify-release-license-artifacts.mjs';
 import { verifyRepositoryLicensePolicy } from './verify-repository-license-policy.mjs';
@@ -22,9 +22,10 @@ const internalPackages = [
 	{ directory: 'formatter', name: '@virune/formatter' },
 	{ directory: 'js-interop', name: '@virune/js-interop' },
 	{ directory: 'stdlib', name: '@virune/stdlib' },
-].map(item => ({ ...item, file: releaseAssetNameForPackage(item.name, version) }));
-const cliPackage = { directory: 'cli', name: 'virune', file: releaseAssetNameForPackage('virune', version) };
-const packages = [...internalPackages, cliPackage];
+].map(item => ({ ...item, file: registryReleaseAssetNameForPackage(item.name, version) }));
+const registryCliPackage = { directory: 'cli', name: 'virune', file: registryReleaseAssetNameForPackage('virune', version) };
+const cliPackage = { directory: 'cli', name: 'virune', file: bundledCliReleaseAssetName(version) };
+const packages = [...internalPackages, registryCliPackage, cliPackage];
 
 const pack = directory => {
 	execNpmSync(['pack', directory, '--pack-destination', out], { stdio: 'inherit' });
@@ -34,6 +35,16 @@ for (const item of internalPackages) {
 	pack(`./packages/${item.directory}`);
 	const path = resolve(out, item.file);
 	if (!statSync(path).isFile()) throw new Error(`npm pack did not create ${item.file}`);
+}
+
+const registryCliStagingRoot = mkdtempSync(join(tmpdir(), 'virune-registry-cli-release-'));
+try {
+	execNpmSync(['pack', './packages/cli', '--pack-destination', registryCliStagingRoot], { stdio: 'inherit' });
+	const packedCli = resolve(registryCliStagingRoot, bundledCliReleaseAssetName(version));
+	if (!statSync(packedCli).isFile()) throw new Error(`npm pack did not create ${bundledCliReleaseAssetName(version)}`);
+	copyFileSync(packedCli, resolve(out, registryCliPackage.file));
+} finally {
+	rmSync(registryCliStagingRoot, { recursive: true, force: true });
 }
 
 const stagingRoot = mkdtempSync(join(tmpdir(), 'virune-cli-release-'));
