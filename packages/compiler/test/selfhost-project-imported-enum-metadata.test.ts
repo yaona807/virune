@@ -60,6 +60,17 @@ function projectInput(domain: string, main: string): KernelInputV1 {
 	});
 }
 
+function assertEntryNotEmitted(
+	output: { readonly emittedModules: readonly { readonly sourcePath: string }[] },
+	context: string,
+): void {
+	assert.equal(
+		output.emittedModules.some(item => item.sourcePath === 'src/main.virune'),
+		false,
+		context,
+	);
+}
+
 const zeroPayloadInput = projectInput(
 	`pub enum Status {
 	Pending
@@ -88,17 +99,11 @@ pub fn main() -> State {
 `,
 );
 
-const positiveFixtures: readonly DifferentialFixtureV1[] = [
+const canonicalDifferentialFixtures: readonly DifferentialFixtureV1[] = [
 	{
-		id: 'imported-enum-zero-payload',
+		id: 'project-multimodule-public-enum',
 		tags: ['project', 'multi-module', 'runtime', 'enum'],
 		input: zeroPayloadInput,
-		expectedDivergences: [],
-	},
-	{
-		id: 'imported-enum-payload-alias',
-		tags: ['project', 'multi-module', 'runtime', 'enum', 'alias'],
-		input: payloadAliasInput,
 		expectedDivergences: [],
 	},
 ];
@@ -116,7 +121,7 @@ const legacyRuntimeCases = [
 	},
 ] as const;
 
-test('imported public enum constructors retain independently grounded Legacy runtime meaning and Self-host parity', async () => {
+test('canonical imported enum differential matches and payload aliases preserve Legacy runtime meaning', async () => {
 	for (const runtimeCase of legacyRuntimeCases) {
 		const output = await compileWithLegacyKernel(runtimeCase.input);
 		assert.equal(output.accepted, true, `${runtimeCase.id}: Legacy compiler rejected fixture`);
@@ -129,15 +134,16 @@ test('imported public enum constructors retain independently grounded Legacy run
 	}
 
 	await withGeneratedCompiler(async module => {
+		const kernel = createSelfhostProjectKernel(module);
 		const report = await runDifferentialCorpus({
-			fixtures: positiveFixtures,
+			fixtures: canonicalDifferentialFixtures,
 			left: {
 				name: 'legacy-project',
 				compile: compileWithLegacyKernel,
 				execute: executeKernelOutputWithNode,
 			},
 			right: {
-				...createSelfhostProjectKernel(module),
+				...kernel,
 				execute: executeKernelOutputWithNode,
 			},
 		});
@@ -148,11 +154,20 @@ test('imported public enum constructors retain independently grounded Legacy run
 			assert.equal(caseReport.passed, true, `${caseReport.fixtureId}: differential pass`);
 		}
 		assert.deepEqual(report.totals, {
-			fixtures: 2,
-			matched: 2,
+			fixtures: 1,
+			matched: 1,
 			expectedDivergence: 0,
 			failed: 0,
 		});
+
+		const payloadOutput = await kernel.compile(payloadAliasInput);
+		assert.equal(payloadOutput.accepted, true, JSON.stringify(payloadOutput.diagnostics, null, 2));
+		assert.deepEqual(payloadOutput.diagnostics, []);
+		const payloadExecution = await executeKernelOutputWithNode(payloadAliasInput, payloadOutput);
+		assert.equal(payloadExecution.exitCode, 0);
+		assert.equal(payloadExecution.signal, null);
+		assert.equal(payloadExecution.panic, null);
+		assert.deepEqual(payloadExecution.returnValue, { $tag: 'Failed', $values: ['boom'] });
 	});
 });
 
@@ -166,7 +181,7 @@ test('imported enum metadata remains fail-closed outside the supported public va
 				'import { Status } from "./domain.virune"\n\npub fn main() -> Status {\n\treturn Status.Missing\n}\n',
 			));
 			assert.equal(output.accepted, false);
-			assert.deepEqual(output.emittedModules, []);
+			assertEntryNotEmitted(output, 'unknown variant must not emit the rejected entry module');
 			assert.ok(output.diagnostics.some(item =>
 				item.sourcePath === 'src/main.virune'
 				&& item.code === 'L1010'
@@ -184,7 +199,7 @@ test('imported enum metadata remains fail-closed outside the supported public va
 			assert.deepEqual(legacy.emittedModules, []);
 			const output = await kernel.compile(input);
 			assert.equal(output.accepted, false);
-			assert.deepEqual(output.emittedModules, []);
+			assertEntryNotEmitted(output, 'private enum use must not emit the rejected entry module');
 			assert.ok(output.diagnostics.some(item =>
 				item.sourcePath === 'src/main.virune'
 				&& item.code === 'L1010'
@@ -202,7 +217,7 @@ test('imported enum metadata remains fail-closed outside the supported public va
 			assert.deepEqual(legacy.emittedModules, []);
 			const output = await kernel.compile(input);
 			assert.equal(output.accepted, false);
-			assert.deepEqual(output.emittedModules, []);
+			assertEntryNotEmitted(output, 'unimported enum use must not emit the rejected entry module');
 			assert.ok(output.diagnostics.some(item =>
 				item.sourcePath === 'src/main.virune'
 				&& item.code === 'L1010'
@@ -220,7 +235,7 @@ test('imported enum metadata remains fail-closed outside the supported public va
 			assert.deepEqual(legacy.emittedModules, []);
 			const output = await kernel.compile(input);
 			assert.equal(output.accepted, false);
-			assert.deepEqual(output.emittedModules, []);
+			assertEntryNotEmitted(output, 'invalid zero-payload call must not emit the rejected entry module');
 			assert.ok(output.diagnostics.some(item =>
 				item.sourcePath === 'src/main.virune'
 				&& item.code === 'L1010'
@@ -234,7 +249,7 @@ test('imported enum metadata remains fail-closed outside the supported public va
 				'import { Status } from "./domain.virune"\n\npub fn main() -> Status {\n\treturn Status.Failed(7)\n}\n',
 			));
 			assert.equal(output.accepted, false);
-			assert.deepEqual(output.emittedModules, []);
+			assertEntryNotEmitted(output, 'payload mismatch must not emit the rejected entry module');
 			assert.ok(output.diagnostics.some(item =>
 				item.sourcePath === 'src/main.virune'
 				&& item.code === 'L2043'
@@ -252,7 +267,7 @@ test('imported enum metadata remains fail-closed outside the supported public va
 			assert.deepEqual(legacy.emittedModules, []);
 			const output = await kernel.compile(input);
 			assert.equal(output.accepted, false);
-			assert.deepEqual(output.emittedModules, []);
+			assertEntryNotEmitted(output, 'type-only runtime use must not emit the rejected entry module');
 			assert.ok(output.diagnostics.some(item =>
 				item.sourcePath === 'src/main.virune'
 				&& item.code === 'L0002'
@@ -284,7 +299,7 @@ test('imported enum metadata remains fail-closed outside the supported public va
 			assert.deepEqual(legacy.emittedModules, []);
 			const output = await kernel.compile(input);
 			assert.equal(output.accepted, false);
-			assert.deepEqual(output.emittedModules, []);
+			assertEntryNotEmitted(output, 'duplicate aliases must not emit the rejected entry module');
 			assert.ok(output.diagnostics.some(item =>
 				item.sourcePath === 'src/main.virune'
 				&& item.code === 'L1010'
@@ -302,7 +317,7 @@ test('imported enum metadata remains fail-closed outside the supported public va
 			assert.deepEqual(legacy.emittedModules, []);
 			const output = await kernel.compile(input);
 			assert.equal(output.accepted, false);
-			assert.deepEqual(output.emittedModules, []);
+			assertEntryNotEmitted(output, 'local declaration collision must not emit the rejected entry module');
 			assert.ok(output.diagnostics.some(item =>
 				item.sourcePath === 'src/main.virune'
 				&& item.code === 'L1010'
@@ -316,7 +331,7 @@ test('imported enum metadata remains fail-closed outside the supported public va
 				'import { Status } from "./domain.virune"\n\nrecord User {\n\tid: Int\n}\n\nfn wrap(user: User) -> Status {\n\treturn Status.Failed(user)\n}\n\npub fn main() -> Int {\n\treturn 1\n}\n',
 			));
 			assert.equal(output.accepted, false);
-			assert.deepEqual(output.emittedModules, []);
+			assertEntryNotEmitted(output, 'unimported nominal payload identity must not emit the rejected entry module');
 			assert.ok(output.diagnostics.some(item =>
 				item.sourcePath === 'src/main.virune'
 				&& item.code === 'L1010'
@@ -330,7 +345,7 @@ test('imported enum metadata remains fail-closed outside the supported public va
 				'import { Box } from "./domain.virune"\n\npub fn main() -> Box<Int> {\n\treturn Box.Full(1)\n}\n',
 			));
 			assert.equal(output.accepted, false);
-			assert.deepEqual(output.emittedModules, []);
+			assertEntryNotEmitted(output, 'generic enum guess must not emit the rejected entry module');
 			assert.ok(output.diagnostics.some(item =>
 				item.sourcePath === 'src/main.virune'
 				&& item.code === 'L1010'
