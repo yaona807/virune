@@ -503,7 +503,7 @@ fn frontendImportSpecifier(
 		if match childValue { Some(_) => true, None => false } {
 			let child = match childValue {
 				Some(value) => value
-				None => return ""
+				None => panic("Missing frontend import child after presence check")
 			}
 			if child.kind == "ImportSource" {
 				return canonicalImportSource(child.text)
@@ -531,7 +531,7 @@ fn frontendImportHasBinding(
 		if match childValue { Some(_) => true, None => false } {
 			let child = match childValue {
 				Some(value) => value
-				None => return false
+				None => panic("Missing frontend import item after presence check")
 			}
 			if child.kind == "ImportItem" && child.text == expected {
 				return true
@@ -560,7 +560,7 @@ fn frontendHasLocalDeclarationName(
 	}
 	let root = match rootValue {
 		Some(value) => value
-		None => return true
+		None => panic("Missing frontend root after presence check")
 	}
 	for childId in root.children {
 		let childValue = frontendNode(projectModule.parse.nodes, childId)
@@ -569,7 +569,7 @@ fn frontendHasLocalDeclarationName(
 		}
 		let child = match childValue {
 			Some(value) => value
-			None => return true
+			None => panic("Missing frontend declaration after presence check")
 		}
 		if frontendLocalDeclarationKind(child.kind) && child.text == name {
 			return true
@@ -590,7 +590,7 @@ fn bindingAllowsValueSignature(
 	}
 	let projectModule = match moduleValue {
 		Some(value) => value
-		None => return false
+		None => panic("Missing project module after presence check")
 	}
 	if frontendHasLocalDeclarationName(projectModule, binding.localName) {
 		return false
@@ -715,7 +715,7 @@ fn semanticTypeToMvp(values: List<SemanticType>, id: Int) -> MvpType? {
 	}
 	let value = match candidate {
 		Some(item) => item
-		None => return None
+		None => panic("Missing semantic type after presence check")
 	}
 	if value.kind == "builtin" && List.isEmpty(value.arguments) {
 		if value.name == "Bool" {
@@ -735,7 +735,10 @@ fn semanticTypeToMvp(values: List<SemanticType>, id: Int) -> MvpType? {
 		}
 	}
 	if value.kind == "builtin" && value.name == "List" && List.length(value.arguments) == 1 {
-		let elementId = match List.get(value.arguments, 0) { Some(item) => item, None => return None }
+		let elementId = match List.get(value.arguments, 0) {
+			Some(item) => item
+			None => panic("Missing List semantic type argument")
+		}
 		let element = semanticTypeToMvp(values, elementId)
 		return match element {
 			Some(item) => listType(item)
@@ -743,7 +746,10 @@ fn semanticTypeToMvp(values: List<SemanticType>, id: Int) -> MvpType? {
 		}
 	}
 	if value.kind == "builtin" && value.name == "Option" && List.length(value.arguments) == 1 {
-		let elementId = match List.get(value.arguments, 0) { Some(item) => item, None => return None }
+		let elementId = match List.get(value.arguments, 0) {
+			Some(item) => item
+			None => panic("Missing Option semantic type argument")
+		}
 		let element = semanticTypeToMvp(values, elementId)
 		return match element {
 			Some(item) => optionalType(item)
@@ -794,7 +800,7 @@ fn enumConstructorSignatures(
 	}
 	let target = match targetValue {
 		Some(value) => value
-		None => return Ok(signatures)
+		None => panic("Missing enum target module after presence check")
 	}
 	let semantic: FrontendSemanticResult = checkFrontendDataTypes(target.source)?
 	if !semantic.accepted {
@@ -806,7 +812,7 @@ fn enumConstructorSignatures(
 	}
 	let declaration = match declarationValue {
 		Some(value) => value
-		None => return Ok(signatures)
+		None => panic("Missing enum declaration after presence check")
 	}
 	if declaration.kind != "enum" || !declaration.isPublic || !List.isEmpty(declaration.typeParameters) {
 		return Ok(signatures)
@@ -819,7 +825,7 @@ fn enumConstructorSignatures(
 		}
 		let member = match memberValue {
 			Some(value) => value
-			None => return Ok(emptyExternalSignatures())
+			None => panic("Missing enum member after presence check")
 		}
 		if member.declarationId != declaration.id
 			|| member.kind != "variant"
@@ -836,7 +842,7 @@ fn enumConstructorSignatures(
 			}
 			let sourceType = match semanticTypeValue {
 				Some(value) => value
-				None => return Ok(emptyExternalSignatures())
+				None => panic("Missing enum payload type after presence check")
 			}
 			if sourceType.kind == "error" || sourceType.kind == "missing" {
 				return Ok(emptyExternalSignatures())
@@ -1058,7 +1064,7 @@ fn expressionTreeContains(
 	}
 	let expression = match List.get(expressions, rootId) {
 		Some(item) => item
-		None => return true
+		None => panic("Missing MVP expression arena entry while tracking imported enum shadowing")
 	}
 	let nextSeen = List.append(seen, rootId)
 	for childId in expression.children {
@@ -1080,7 +1086,7 @@ fn blockShadowsBaseAtExpression(
 	for statementId in statementIds {
 		let statement = match List.get(value.statements, statementId) {
 			Some(item) => item
-			None => return true
+			None => panic("Missing MVP statement arena entry while tracking imported enum shadowing")
 		}
 		if statementFindsShadowedExpression(value, statement, base, shadowed, expressionId) {
 			return true
@@ -1190,7 +1196,7 @@ fn prepareExternalVariantExpression(
 	if match signatureValue { Some(_) => true, None => false } {
 		let signature = match signatureValue {
 			Some(item) => item
-			None => return value
+			None => panic("Missing external enum signature after presence check")
 		}
 		let base = externalVariantBase(signature)
 		if String.length(base) == 0 || functionShadowsBaseAtExpression(functionValue, base, expressionId) {
@@ -1252,9 +1258,12 @@ fn prepareExternalVariantInput(
 ) -> Result<String, List<JsonError>> {
 	let raw = Json.parse(encoded)?
 	let parsed = Json.decode<MvpParseTransport>(raw)?
+	if match parsed.parsedModule { Some(_) => false, None => true } {
+		return Ok(encoded)
+	}
 	let moduleValue = match parsed.parsedModule {
 		Some(value) => value
-		None => return Ok(encoded)
+		None => panic("Missing parsed MVP module after presence check")
 	}
 	let mut functions: List<MvpFunction> = []
 	for function in moduleValue.functions {
@@ -1277,7 +1286,7 @@ fn normalizeExternalVariantExpression(
 	if value.kind == "call" && match signatureValue { Some(_) => true, None => false } {
 		let signature = match signatureValue {
 			Some(item) => item
-			None => return value
+			None => panic("Missing external enum HIR signature after presence check")
 		}
 		return MvpHirExpression {
 			kind: "variant",
@@ -1333,13 +1342,16 @@ fn normalizeExternalVariantHir(
 	for value in checked.diagnostics {
 		diagnostics = List.append(diagnostics, normalizeExternalVariantDiagnostic(value))
 	}
-	let hirValue = match checked.hirModule {
-		Some(value) => value
-		None => return Json.encode<MvpCheckTransport>(MvpCheckTransport {
+	if match checked.hirModule { Some(_) => false, None => true } {
+		return Json.encode<MvpCheckTransport>(MvpCheckTransport {
 			hirModule: None,
 			diagnostics: diagnostics,
 			exports: checked.exports,
 		})
+	}
+	let hirValue = match checked.hirModule {
+		Some(value) => value
+		None => panic("Missing checked HIR module after presence check")
 	}
 	let mut functions: List<MvpHirFunction> = []
 	for function in hirValue.functions {
