@@ -56,10 +56,22 @@ function projectInput(main: string): KernelInputV1 {
 	});
 }
 
-const initializerUsesImportedAlias = projectInput(
-	'import { Status as state } from "./domain.virune"\n\n'
-		+ 'pub fn main() -> state {\n\tlet state = state.Pending\n\treturn state\n}\n',
-);
+const visibleAliasCases = [
+	{
+		name: 'let initializer resolves the imported alias before the local binding begins',
+		input: projectInput(
+			'import { Status as state } from "./domain.virune"\n\n'
+				+ 'pub fn main() -> state {\n\tlet state = state.Pending\n\treturn state\n}\n',
+		),
+	},
+	{
+		name: 'for binder shadowing ends when the loop body ends',
+		input: projectInput(
+			'import { Status as state } from "./domain.virune"\n\n'
+				+ 'pub fn main() -> state {\n\tfor state in [1] {\n\t\tdiscard state\n\t}\n\treturn state.Pending\n}\n',
+		),
+	},
+] as const;
 
 const shadowCases = [
 	{
@@ -78,17 +90,27 @@ const shadowCases = [
 				+ 'pub fn main() -> Int {\n\treturn 1\n}\n',
 		),
 	},
+	{
+		name: 'for binder shadows the imported enum alias only inside the loop body',
+		input: projectInput(
+			'import { Status as state } from "./domain.virune"\n\n'
+				+ 'fn bad() -> Int {\n\tfor state in [1] {\n\t\tdiscard state.Pending\n\t}\n\treturn 1\n}\n\n'
+				+ 'pub fn main() -> Int {\n\treturn bad()\n}\n',
+		),
+	},
 ] as const;
 
 test('imported enum constructor lowering preserves lexical shadowing', async () => {
-	const legacyInitializer = await compileWithLegacyKernel(initializerUsesImportedAlias);
-	assert.equal(legacyInitializer.accepted, true, JSON.stringify(legacyInitializer.diagnostics, null, 2));
-	assert.deepEqual(legacyInitializer.diagnostics, []);
-	const legacyExecution = await executeKernelOutputWithNode(initializerUsesImportedAlias, legacyInitializer);
-	assert.equal(legacyExecution.exitCode, 0);
-	assert.equal(legacyExecution.signal, null);
-	assert.equal(legacyExecution.panic, null);
-	assert.deepEqual(legacyExecution.returnValue, { $tag: 'Pending', $values: [] });
+	for (const visibleCase of visibleAliasCases) {
+		const legacy = await compileWithLegacyKernel(visibleCase.input);
+		assert.equal(legacy.accepted, true, `${visibleCase.name}: ${JSON.stringify(legacy.diagnostics, null, 2)}`);
+		assert.deepEqual(legacy.diagnostics, [], `${visibleCase.name}: Legacy diagnostics`);
+		const execution = await executeKernelOutputWithNode(visibleCase.input, legacy);
+		assert.equal(execution.exitCode, 0, `${visibleCase.name}: Legacy runtime exit code`);
+		assert.equal(execution.signal, null, `${visibleCase.name}: Legacy runtime signal`);
+		assert.equal(execution.panic, null, `${visibleCase.name}: Legacy runtime panic`);
+		assert.deepEqual(execution.returnValue, { $tag: 'Pending', $values: [] }, `${visibleCase.name}: Legacy runtime value`);
+	}
 
 	for (const shadowCase of shadowCases) {
 		const legacy = await compileWithLegacyKernel(shadowCase.input);
@@ -106,14 +128,16 @@ test('imported enum constructor lowering preserves lexical shadowing', async () 
 
 	await withGeneratedCompiler(async module => {
 		const kernel = createSelfhostProjectKernel(module);
-		const initializerOutput = await kernel.compile(initializerUsesImportedAlias);
-		assert.equal(initializerOutput.accepted, true, JSON.stringify(initializerOutput.diagnostics, null, 2));
-		assert.deepEqual(initializerOutput.diagnostics, []);
-		const initializerExecution = await executeKernelOutputWithNode(initializerUsesImportedAlias, initializerOutput);
-		assert.equal(initializerExecution.exitCode, 0);
-		assert.equal(initializerExecution.signal, null);
-		assert.equal(initializerExecution.panic, null);
-		assert.deepEqual(initializerExecution.returnValue, { $tag: 'Pending', $values: [] });
+		for (const visibleCase of visibleAliasCases) {
+			const output = await kernel.compile(visibleCase.input);
+			assert.equal(output.accepted, true, `${visibleCase.name}: ${JSON.stringify(output.diagnostics, null, 2)}`);
+			assert.deepEqual(output.diagnostics, [], `${visibleCase.name}: Self-host diagnostics`);
+			const execution = await executeKernelOutputWithNode(visibleCase.input, output);
+			assert.equal(execution.exitCode, 0, `${visibleCase.name}: Self-host runtime exit code`);
+			assert.equal(execution.signal, null, `${visibleCase.name}: Self-host runtime signal`);
+			assert.equal(execution.panic, null, `${visibleCase.name}: Self-host runtime panic`);
+			assert.deepEqual(execution.returnValue, { $tag: 'Pending', $values: [] }, `${visibleCase.name}: Self-host runtime value`);
+		}
 
 		for (const shadowCase of shadowCases) {
 			const output = await kernel.compile(shadowCase.input);
