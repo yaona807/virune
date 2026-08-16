@@ -71,6 +71,14 @@ function assertEntryNotEmitted(
 	);
 }
 
+function assertEmittedSourcePaths(
+	output: { readonly emittedModules: readonly { readonly sourcePath: string }[] },
+	expected: readonly string[],
+	context: string,
+): void {
+	assert.deepEqual(output.emittedModules.map(item => item.sourcePath), expected, context);
+}
+
 const zeroPayloadInput = projectInput(
 	`pub enum Status {
 	Pending
@@ -196,10 +204,12 @@ test('imported enum metadata remains fail-closed outside the supported public va
 			);
 			const legacy = await compileWithLegacyKernel(input);
 			assert.equal(legacy.accepted, false, 'Legacy must reject importing a private enum');
-			assert.deepEqual(legacy.emittedModules, []);
+			assertEntryNotEmitted(legacy, 'Legacy private enum rejection must not emit the entry module');
+			assertEmittedSourcePaths(legacy, ['src/domain.virune'], 'Legacy must preserve the independently valid private-enum dependency');
 			const output = await kernel.compile(input);
 			assert.equal(output.accepted, false);
 			assertEntryNotEmitted(output, 'private enum use must not emit the rejected entry module');
+			assertEmittedSourcePaths(output, ['src/domain.virune'], 'Self-host must preserve the independently valid private-enum dependency');
 			assert.ok(output.diagnostics.some(item =>
 				item.sourcePath === 'src/main.virune'
 				&& item.code === 'L1010'
@@ -232,10 +242,12 @@ test('imported enum metadata remains fail-closed outside the supported public va
 			);
 			const legacy = await compileWithLegacyKernel(input);
 			assert.equal(legacy.accepted, false, 'Legacy must reject calling a zero-payload enum value');
-			assert.deepEqual(legacy.emittedModules, []);
+			assertEntryNotEmitted(legacy, 'Legacy zero-payload call rejection must not emit the entry module');
+			assertEmittedSourcePaths(legacy, ['src/domain.virune'], 'Legacy must preserve the valid enum dependency after zero-payload call rejection');
 			const output = await kernel.compile(input);
 			assert.equal(output.accepted, false);
 			assertEntryNotEmitted(output, 'invalid zero-payload call must not emit the rejected entry module');
+			assertEmittedSourcePaths(output, ['src/domain.virune'], 'Self-host must preserve the valid enum dependency after zero-payload call rejection');
 			assert.ok(output.diagnostics.some(item =>
 				item.sourcePath === 'src/main.virune'
 				&& item.code === 'L1010'
@@ -264,10 +276,12 @@ test('imported enum metadata remains fail-closed outside the supported public va
 			);
 			const legacy = await compileWithLegacyKernel(input);
 			assert.equal(legacy.accepted, false, 'Legacy must reject runtime use through import type');
-			assert.deepEqual(legacy.emittedModules, []);
+			assertEntryNotEmitted(legacy, 'Legacy type-only runtime rejection must not emit the entry module');
+			assertEmittedSourcePaths(legacy, ['src/domain.virune'], 'Legacy must preserve the valid enum dependency at the #380 parser boundary');
 			const output = await kernel.compile(input);
 			assert.equal(output.accepted, false);
 			assertEntryNotEmitted(output, 'type-only runtime use must not emit the rejected entry module');
+			assertEmittedSourcePaths(output, ['src/domain.virune'], 'Self-host must preserve the valid enum dependency at the #380 parser boundary');
 			assert.ok(output.diagnostics.some(item =>
 				item.sourcePath === 'src/main.virune'
 				&& item.code === 'L0002'
@@ -296,10 +310,12 @@ test('imported enum metadata remains fail-closed outside the supported public va
 			});
 			const legacy = await compileWithLegacyKernel(input);
 			assert.equal(legacy.accepted, false, 'Legacy must reject duplicate local import aliases');
-			assert.deepEqual(legacy.emittedModules, []);
+			assertEntryNotEmitted(legacy, 'Legacy duplicate-alias rejection must not emit the entry module');
+			assertEmittedSourcePaths(legacy, ['src/a.virune', 'src/b.virune'], 'Legacy must preserve both independently valid enum dependencies');
 			const output = await kernel.compile(input);
 			assert.equal(output.accepted, false);
 			assertEntryNotEmitted(output, 'duplicate aliases must not emit the rejected entry module');
+			assertEmittedSourcePaths(output, ['src/a.virune', 'src/b.virune'], 'Self-host must preserve both independently valid enum dependencies');
 			assert.ok(output.diagnostics.some(item =>
 				item.sourcePath === 'src/main.virune'
 				&& item.code === 'L1010'
@@ -314,10 +330,12 @@ test('imported enum metadata remains fail-closed outside the supported public va
 			);
 			const legacy = await compileWithLegacyKernel(input);
 			assert.equal(legacy.accepted, false, 'Legacy must reject an import alias that collides with a local declaration');
-			assert.deepEqual(legacy.emittedModules, []);
+			assertEntryNotEmitted(legacy, 'Legacy local-declaration collision must not emit the entry module');
+			assertEmittedSourcePaths(legacy, ['src/domain.virune'], 'Legacy must preserve the independently valid enum dependency after local collision');
 			const output = await kernel.compile(input);
 			assert.equal(output.accepted, false);
 			assertEntryNotEmitted(output, 'local declaration collision must not emit the rejected entry module');
+			assertEmittedSourcePaths(output, ['src/domain.virune'], 'Self-host must preserve the independently valid enum dependency after local collision');
 			assert.ok(output.diagnostics.some(item =>
 				item.sourcePath === 'src/main.virune'
 				&& item.code === 'L1010'
