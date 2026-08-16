@@ -7,6 +7,8 @@ const REPOSITORY_URL = 'git+https://github.com/yaona807/virune.git';
 const HOMEPAGE = 'https://github.com/yaona807/virune#readme';
 const BUGS_URL = 'https://github.com/yaona807/virune/issues';
 const CANONICAL_WORKSPACES = ['packages/*'];
+const RETRO_PUBLISH_BOUNDARY = '1.0.0';
+const FIRST_STABLE_REGISTRY_RELEASE = '1.1.0';
 const REQUIRED_PREPUBLICATION_BLOCKERS = [
 	'clean-registry-install-smoke',
 	'documentation-sync',
@@ -18,7 +20,6 @@ const REQUIRED_PREPUBLICATION_BLOCKERS = [
 	'recovery-policy',
 	'registry-ownership',
 	'release-identity-integration',
-	'stable-prerelease-dist-tag-policy',
 	'trusted-publishing',
 ];
 const DEPENDENCY_SECTIONS = ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies'];
@@ -34,6 +35,7 @@ export function verifyNpmPublicationPlan(root = process.cwd()) {
 		'unresolvedRequirements',
 		'forbidRegistryPublishThroughVersion',
 		'firstStableRegistryRelease',
+		'distTagPolicy',
 		'trustedPublishingRequired',
 		'publicVerificationRequired',
 		'sameReviewedReleaseIdentityRequired',
@@ -55,9 +57,21 @@ export function verifyNpmPublicationPlan(root = process.cwd()) {
 	assert(plan.trustedPublishingRequired === true, '$.trustedPublishingRequired', 'must remain true');
 	assert(plan.publicVerificationRequired === true, '$.publicVerificationRequired', 'must remain true');
 	assert(plan.sameReviewedReleaseIdentityRequired === true, '$.sameReviewedReleaseIdentityRequired', 'must remain true');
-	const forbiddenThrough = semver(plan.forbidRegistryPublishThroughVersion, '$.forbidRegistryPublishThroughVersion');
-	const firstStable = semver(plan.firstStableRegistryRelease, '$.firstStableRegistryRelease');
+	const forbiddenThroughText = nonEmptyString(plan.forbidRegistryPublishThroughVersion, '$.forbidRegistryPublishThroughVersion');
+	const firstStableText = nonEmptyString(plan.firstStableRegistryRelease, '$.firstStableRegistryRelease');
+	const forbiddenThrough = semver(forbiddenThroughText, '$.forbidRegistryPublishThroughVersion');
+	const firstStable = semver(firstStableText, '$.firstStableRegistryRelease');
+	assert(forbiddenThroughText === RETRO_PUBLISH_BOUNDARY, '$.forbidRegistryPublishThroughVersion', `expected ${RETRO_PUBLISH_BOUNDARY} retro-publish boundary`);
+	assert(firstStableText === FIRST_STABLE_REGISTRY_RELEASE, '$.firstStableRegistryRelease', `expected first stable npm release ${FIRST_STABLE_REGISTRY_RELEASE}`);
 	assert(compareSemver(firstStable, forbiddenThrough) > 0, '$.firstStableRegistryRelease', 'must be later than the forbidden retro-publish boundary');
+	const distTagPolicy = record(plan.distTagPolicy, '$.distTagPolicy');
+	assertExactKeys(distTagPolicy, ['stable', 'prerelease', 'nightly'], '$.distTagPolicy');
+	const stableDistTag = npmDistTag(distTagPolicy.stable, '$.distTagPolicy.stable');
+	const prereleaseDistTag = npmDistTag(distTagPolicy.prerelease, '$.distTagPolicy.prerelease');
+	assert(stableDistTag === 'latest', '$.distTagPolicy.stable', 'stable npm releases must use the latest dist-tag');
+	assert(prereleaseDistTag === 'next', '$.distTagPolicy.prerelease', 'prerelease npm releases must use the next dist-tag');
+	assert(stableDistTag !== prereleaseDistTag, '$.distTagPolicy', 'stable and prerelease dist-tags must be distinct');
+	assert(distTagPolicy.nightly === null, '$.distTagPolicy.nightly', 'nightly releases must not be published to npm in this policy');
 	assert(rootManifest.private === true, '$root.private', 'monorepo root must remain private');
 	assert(rootManifest.version === plan.forbidRegistryPublishThroughVersion, '$root.version', 'prepublication plan must be updated deliberately when the repository version advances');
 	const rootWorkspaces = array(rootManifest.workspaces, '$root.workspaces')
@@ -162,7 +176,13 @@ export function verifyNpmPublicationPlan(root = process.cwd()) {
 		publicationReady: false,
 		unresolvedRequirements,
 		currentVersion: rootManifest.version,
-		firstStableRegistryRelease: plan.firstStableRegistryRelease,
+		forbidRegistryPublishThroughVersion: forbiddenThroughText,
+		firstStableRegistryRelease: firstStableText,
+		distTagPolicy: {
+			stable: stableDistTag,
+			prerelease: prereleaseDistTag,
+			nightly: null,
+		},
 		publishPackages: publishPackages.map(item => ({ workspaceName: item.workspaceName, registryName: item.registryName })),
 		excludedWorkspacePackages: excludedPackages.map(item => item.workspaceName),
 	};
@@ -212,6 +232,12 @@ function compareSemver(left, right) {
 		if (left[index] !== right[index]) return left[index] < right[index] ? -1 : 1;
 	}
 	return 0;
+}
+
+function npmDistTag(value, path) {
+	const tag = nonEmptyString(value, path);
+	assert(/^[a-z0-9][a-z0-9._-]*$/u.test(tag), path, 'invalid npm dist-tag');
+	return tag;
 }
 
 function packageName(value, path) {
