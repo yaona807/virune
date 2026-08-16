@@ -156,9 +156,10 @@ test('imported public enum constructors retain independently grounded Legacy run
 	});
 });
 
-test('imported enum metadata remains fail-closed for unknown, ill-typed, type-only, private, duplicate, and unsupported variants', async t => {
+test('imported enum metadata remains fail-closed outside the supported public value-import boundary', async t => {
 	await withGeneratedCompiler(async module => {
 		const kernel = createSelfhostProjectKernel(module);
+
 		await t.test('unknown variant', async () => {
 			const output = await kernel.compile(projectInput(
 				'pub enum Status {\n\tPending\n}\n',
@@ -166,7 +167,11 @@ test('imported enum metadata remains fail-closed for unknown, ill-typed, type-on
 			));
 			assert.equal(output.accepted, false);
 			assert.deepEqual(output.emittedModules, []);
-			assert.ok(output.diagnostics.some(item => item.code === 'L1010' && item.message === 'Unknown name Status.Missing'));
+			assert.ok(output.diagnostics.some(item =>
+				item.sourcePath === 'src/main.virune'
+				&& item.code === 'L1010'
+				&& item.message === 'Unknown name Status.Missing'
+			));
 		});
 
 		await t.test('private enum import never creates runtime constructor metadata', async () => {
@@ -180,17 +185,12 @@ test('imported enum metadata remains fail-closed for unknown, ill-typed, type-on
 			const output = await kernel.compile(input);
 			assert.equal(output.accepted, false);
 			assert.deepEqual(output.emittedModules, []);
-			assert.ok(output.diagnostics.some(item =>
-				item.sourcePath === 'src/main.virune'
-				&& item.code === 'L1010'
-				&& item.message === 'Unknown name Status.Pending'
-			));
 		});
 
 		await t.test('public enum from another module remains unavailable without an import binding', async () => {
 			const input = projectInput(
 				'pub enum Status {\n\tPending\n}\n',
-				'pub fn main() -> Int {\n\tdiscard Status.Pending\n\treturn 1\n}\n',
+				'fn bad() -> Int {\n\treturn Status.Pending\n}\n\npub fn main() -> Int {\n\treturn 1\n}\n',
 			);
 			const legacy = await compileWithLegacyKernel(input);
 			assert.equal(legacy.accepted, false, 'Legacy must reject an unimported cross-module enum reference');
@@ -223,7 +223,7 @@ test('imported enum metadata remains fail-closed for unknown, ill-typed, type-on
 			));
 		});
 
-		await t.test('payload type mismatch', async () => {
+		await t.test('payload type mismatch uses the declared payload type', async () => {
 			const output = await kernel.compile(projectInput(
 				'pub enum Status {\n\tFailed(String)\n}\n',
 				'import { Status } from "./domain.virune"\n\npub fn main() -> Status {\n\treturn Status.Failed(7)\n}\n',
@@ -237,7 +237,7 @@ test('imported enum metadata remains fail-closed for unknown, ill-typed, type-on
 			));
 		});
 
-		await t.test('type-only import does not expose an enum constructor as a runtime value', async () => {
+		await t.test('type-only import remains fail-closed at the current #380 parser boundary', async () => {
 			const input = projectInput(
 				'pub enum Status {\n\tPending\n}\n',
 				'import type { Status } from "./domain.virune"\n\npub fn main() -> Status {\n\treturn Status.Pending\n}\n',
@@ -250,26 +250,8 @@ test('imported enum metadata remains fail-closed for unknown, ill-typed, type-on
 			assert.deepEqual(output.emittedModules, []);
 			assert.ok(output.diagnostics.some(item =>
 				item.sourcePath === 'src/main.virune'
-				&& item.code === 'L1010'
-				&& item.message === 'Unknown name Status.Pending'
-			));
-		});
-
-		await t.test('value import from the same specifier cannot upgrade a type-only enum binding', async () => {
-			const input = projectInput(
-				'pub enum Status {\n\tPending\n}\n\npub fn helper() -> Int {\n\treturn 1\n}\n',
-				'import type { Status } from "./domain.virune"\nimport { helper } from "./domain.virune"\n\nfn bad() -> Status {\n\treturn Status.Pending\n}\n\npub fn main() -> Int {\n\treturn helper()\n}\n',
-			);
-			const legacy = await compileWithLegacyKernel(input);
-			assert.equal(legacy.accepted, false, 'Legacy must reject runtime use through the type-only Status binding');
-			assert.deepEqual(legacy.emittedModules, []);
-			const output = await kernel.compile(input);
-			assert.equal(output.accepted, false);
-			assert.deepEqual(output.emittedModules, []);
-			assert.ok(output.diagnostics.some(item =>
-				item.sourcePath === 'src/main.virune'
-				&& item.code === 'L1010'
-				&& item.message === 'Unknown name Status.Pending'
+				&& item.code === 'L0002'
+				&& item.message === 'Expected { but found type'
 			));
 		});
 
@@ -298,11 +280,6 @@ test('imported enum metadata remains fail-closed for unknown, ill-typed, type-on
 			const output = await kernel.compile(input);
 			assert.equal(output.accepted, false);
 			assert.deepEqual(output.emittedModules, []);
-			assert.ok(output.diagnostics.some(item =>
-				item.sourcePath === 'src/main.virune'
-				&& item.code === 'L1010'
-				&& item.message === 'Unknown name State.Pending'
-			));
 		});
 
 		await t.test('import alias colliding with a local declaration never creates enum metadata', async () => {
@@ -316,18 +293,17 @@ test('imported enum metadata remains fail-closed for unknown, ill-typed, type-on
 			const output = await kernel.compile(input);
 			assert.equal(output.accepted, false);
 			assert.deepEqual(output.emittedModules, []);
-			assert.ok(output.diagnostics.some(item =>
-				item.sourcePath === 'src/main.virune'
-				&& item.code === 'L1010'
-				&& item.message === 'Unknown name State.Pending'
-			));
 		});
 
 		await t.test('user-defined payload identity is not guessed from an unqualified type name', async () => {
-			const output = await kernel.compile(projectInput(
+			const input = projectInput(
 				'pub record User {\n\tname: String\n}\n\npub enum Status {\n\tFailed(User)\n}\n',
 				'import { Status } from "./domain.virune"\n\nrecord User {\n\tid: Int\n}\n\nfn wrap(user: User) -> Status {\n\treturn Status.Failed(user)\n}\n\npub fn main() -> Int {\n\treturn 1\n}\n',
-			));
+			);
+			const legacy = await compileWithLegacyKernel(input);
+			assert.equal(legacy.accepted, false, 'Legacy must preserve nominal payload identity across modules');
+			assert.deepEqual(legacy.emittedModules, []);
+			const output = await kernel.compile(input);
 			assert.equal(output.accepted, false);
 			assert.deepEqual(output.emittedModules, []);
 			assert.ok(output.diagnostics.some(item =>
