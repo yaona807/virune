@@ -28,7 +28,7 @@ const cliPackage = { directory: 'cli', name: 'virune', file: bundledCliReleaseAs
 const packages = [...internalPackages, registryCliPackage, cliPackage];
 
 const pack = directory => {
-	execNpmSync(['pack', directory, '--pack-destination', out], { stdio: 'inherit' });
+	execNpmSync(['pack', '--ignore-scripts', directory, '--pack-destination', out], { stdio: 'inherit' });
 };
 
 for (const item of internalPackages) {
@@ -39,7 +39,7 @@ for (const item of internalPackages) {
 
 const registryCliStagingRoot = mkdtempSync(join(tmpdir(), 'virune-registry-cli-release-'));
 try {
-	execNpmSync(['pack', './packages/cli', '--pack-destination', registryCliStagingRoot], { stdio: 'inherit' });
+	execNpmSync(['pack', '--ignore-scripts', './packages/cli', '--pack-destination', registryCliStagingRoot], { stdio: 'inherit' });
 	const packedCli = resolve(registryCliStagingRoot, bundledCliReleaseAssetName(version));
 	if (!statSync(packedCli).isFile()) throw new Error(`npm pack did not create ${bundledCliReleaseAssetName(version)}`);
 	copyFileSync(packedCli, resolve(out, registryCliPackage.file));
