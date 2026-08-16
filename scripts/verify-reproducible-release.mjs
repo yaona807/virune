@@ -250,6 +250,7 @@ async function scanForWorkspacePaths(root, forbiddenPaths, differences, scope) {
 				break;
 			}
 		}
+	}
 }
 
 async function writeReport(outputDirectory, report) {
