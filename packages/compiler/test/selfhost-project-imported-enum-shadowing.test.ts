@@ -1,0 +1,96 @@
+import assert from 'node:assert/strict';
+import { mkdir, rm } from 'node:fs/promises';
+import test from 'node:test';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { buildProject } from '../src/project/project.js';
+import { snapshotProjectBuild } from '../src/selfhost/bootstrap-artifact-snapshot.js';
+import {
+	loadBootstrapCompilerCandidate,
+	materializeBootstrapCompilerCandidate,
+} from '../src/selfhost/bootstrap-execution-probe.js';
+import { validateKernelInput, type KernelInputV1 } from '../src/selfhost/contract.js';
+import { compileWithLegacyKernel } from '../src/selfhost/legacy-adapter.js';
+import { createSelfhostProjectKernel } from '../src/selfhost/project-differential-adapter.js';
+
+const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../../..');
+const mvpRoot = join(repositoryRoot, 'selfhost', 'mvp');
+const temporaryRoot = join(repositoryRoot, '.test-tmp');
+const snapshotOptions = {
+	stage: 'stage0' as const,
+	compilerVersion: '1.0.0',
+	runtimeAbi: '1',
+	interopAbi: '1',
+	seedSha256: '6'.repeat(64),
+};
+
+type GeneratedCompiler = Awaited<ReturnType<typeof loadBootstrapCompilerCandidate>>;
+
+async function withGeneratedCompiler<T>(run: (module: GeneratedCompiler) => T | Promise<T>): Promise<T> {
+	await mkdir(temporaryRoot, { recursive: true });
+	const build = await buildProject(mvpRoot, { write: false });
+	const errors = build.diagnostics.filter(item => item.severity === 'error');
+	assert.deepEqual(errors.map(item => `${item.code}:${item.message}`), []);
+	const artifact = snapshotProjectBuild(build, snapshotOptions);
+	const root = await materializeBootstrapCompilerCandidate(artifact, temporaryRoot);
+	try {
+		return await run(await loadBootstrapCompilerCandidate(root, 'dist/main.js'));
+	} finally {
+		await rm(root, { recursive: true, force: true });
+	}
+}
+
+function projectInput(main: string): KernelInputV1 {
+	return validateKernelInput({
+		contractVersion: '1',
+		languageVersion: '1.0',
+		platform: 'node',
+		entryPath: 'src/main.virune',
+		sources: [
+			{ path: 'src/domain.virune', text: 'pub enum Status {\n\tPending\n}\n' },
+			{ path: 'src/main.virune', text: main },
+		],
+		interopManifest: { version: '1', modules: [] },
+		emit: { target: 'es2022', sourceMap: false, sourcesContent: true },
+	});
+}
+
+const shadowCases = [
+	{
+		name: 'function parameter shadows the imported enum alias',
+		input: projectInput(
+			'import { Status as State } from "./domain.virune"\n\n'
+				+ 'fn bad(State: Int) -> State {\n\treturn State.Pending\n}\n\n'
+				+ 'pub fn main() -> Int {\n\treturn 1\n}\n',
+		),
+	},
+	{
+		name: 'local let binding shadows the imported enum alias after its initializer',
+		input: projectInput(
+			'import { Status as State } from "./domain.virune"\n\n'
+				+ 'fn bad() -> State {\n\tlet State = 1\n\treturn State.Pending\n}\n\n'
+				+ 'pub fn main() -> Int {\n\treturn 1\n}\n',
+		),
+	},
+] as const;
+
+test('imported enum constructor lowering preserves lexical shadowing', async () => {
+	for (const shadowCase of shadowCases) {
+		const legacy = await compileWithLegacyKernel(shadowCase.input);
+		assert.equal(legacy.accepted, false, `${shadowCase.name}: Legacy unexpectedly accepted the shadowed enum access`);
+		assert.deepEqual(legacy.emittedModules, [], `${shadowCase.name}: Legacy emitted code for a rejected project`);
+	}
+
+	await withGeneratedCompiler(async module => {
+		const kernel = createSelfhostProjectKernel(module);
+		for (const shadowCase of shadowCases) {
+			const output = await kernel.compile(shadowCase.input);
+			assert.equal(output.accepted, false, `${shadowCase.name}: Self-host unexpectedly accepted the shadowed enum access`);
+			assert.deepEqual(output.emittedModules, [], `${shadowCase.name}: Self-host emitted code for a rejected project`);
+			assert.ok(
+				output.diagnostics.some(item => item.sourcePath === 'src/main.virune'),
+				`${shadowCase.name}: Self-host rejection must remain source-grounded`,
+			);
+		}
+	});
+});
