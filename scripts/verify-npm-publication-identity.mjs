@@ -140,7 +140,12 @@ export function buildNpmPublicationIdentity({ root = process.cwd(), releaseDirec
 		return [file, readFileSync(path)];
 	}));
 	const cliRegistryAsset = registryReleaseAssetNameForPackage('virune', publicationPlan.currentVersion);
-	verifyRegistryCliCandidateTarball(assetBytes[cliRegistryAsset], publicationPlan.currentVersion, cliRegistryAsset);
+	const rootManifest = readJson(resolve(root, 'package.json'));
+	verifyRegistryCliCandidateTarball(assetBytes[cliRegistryAsset], publicationPlan.currentVersion, cliRegistryAsset, {
+		expectedLicense: rootManifest.license,
+		licenseBytes: readFileSync(resolve(root, 'LICENSE')),
+		noticeBytes: readFileSync(resolve(root, 'NOTICE')),
+	});
 	return buildNpmPublicationIdentityFromInputs({
 		version: publicationPlan.currentVersion,
 		publicationReady: publicationPlan.publicationReady,
@@ -180,7 +185,7 @@ export function verifyNpmPublicationIdentity(options = {}) {
 	return expected;
 }
 
-export function verifyRegistryCliCandidateTarball(bytes, version, file = registryReleaseAssetNameForPackage('virune', version)) {
+export function verifyRegistryCliCandidateTarball(bytes, version, file = registryReleaseAssetNameForPackage('virune', version), legal = {}) {
 	assert(Buffer.isBuffer(bytes) || bytes instanceof Uint8Array, `$.registryCli.${file}`, 'expected package bytes');
 	const entries = readTarEntries(Buffer.from(bytes), `$.registryCli.${file}`);
 	const manifestEntry = entries.get('package/package.json');
@@ -195,6 +200,9 @@ export function verifyRegistryCliCandidateTarball(bytes, version, file = registr
 	assert(manifest.version === version, `$.registryCli.${file}.version`, `expected ${version}`);
 	assert(manifest.private === true, `$.registryCli.${file}.private`, 'prepublication Registry candidate must remain private:true');
 	assert(manifest.publishConfig === undefined, `$.registryCli.${file}.publishConfig`, 'publishConfig must not be present before publication enablement');
+	if (legal.expectedLicense !== undefined) assert(manifest.license === legal.expectedLicense, `$.registryCli.${file}.license`, `expected ${legal.expectedLicense}`);
+	verifyCanonicalLegalEntry(entries, 'package/LICENSE', legal.licenseBytes, `$.registryCli.${file}.LICENSE`);
+	verifyCanonicalLegalEntry(entries, 'package/NOTICE', legal.noticeBytes, `$.registryCli.${file}.NOTICE`);
 	assert(manifest.bundledDependencies === undefined && manifest.bundleDependencies === undefined, `$.registryCli.${file}`, 'Registry CLI candidate must not declare bundled dependencies');
 	for (const path of entries.keys()) {
 		assert(!path.startsWith('package/node_modules/'), `$.registryCli.${file}`, `Registry CLI candidate must not contain bundled dependency path ${path}`);
@@ -205,6 +213,15 @@ export function verifyRegistryCliCandidateTarball(bytes, version, file = registr
 		}
 	}
 	return { name: manifest.name, version: manifest.version, entryCount: entries.size };
+}
+
+function verifyCanonicalLegalEntry(entries, entryPath, expectedBytes, path) {
+	const entry = entries.get(entryPath);
+	assert(entry !== undefined && entry.typeFlag === 48, path, `${entryPath} must be a regular file`);
+	if (expectedBytes !== undefined) {
+		const expected = Buffer.from(expectedBytes);
+		assert(entry.bytes.equals(expected), path, `${entryPath} does not match the canonical repository file`);
+	}
 }
 
 function readTarEntries(tgzBytes, path) {
