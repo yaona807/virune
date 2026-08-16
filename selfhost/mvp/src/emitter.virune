@@ -1,3 +1,5 @@
+//! Readable ES2022 emitter for the checked MVP HIR.
+
 import {
 	MvpCompilation,
 	MvpDiagnostic,
@@ -5,234 +7,164 @@ import {
 	MvpHirExpression,
 	MvpHirFunction,
 	MvpHirModule,
-	MvpSpan,
-	MvpStatement,
+	MvpHirStatement,
+	MvpParameter,
 	MvpType,
-	mvpDiagnostic,
 } from "./model.virune"
 
-record MvpEmitInput derives Json {
+record MvpCheckTransport derives Json {
 	hirModule: MvpHirModule?
 	diagnostics: List<MvpDiagnostic>
 	exports: List<MvpExport>
 }
 
-fn emptyDiagnostics() -> List<MvpDiagnostic> {
-	let values: List<MvpDiagnostic> = []
-	return values
-}
-
-fn emptyExports() -> List<MvpExport> {
-	let values: List<MvpExport> = []
-	return values
-}
-
 fn safeName(name: String) -> String {
-	let reserved = [
-		"await", "break", "case", "catch", "class", "const", "continue", "debugger", "default", "delete",
-		"do", "else", "export", "extends", "false", "finally", "for", "function", "if", "import", "in",
-		"instanceof", "let", "new", "null", "return", "static", "super", "switch", "this", "throw", "true",
-		"try", "typeof", "var", "void", "while", "with", "yield",
+	let reservedNames = [
+		"await", "break", "case", "catch", "class", "const", "continue", "debugger",
+		"default", "delete", "do", "else", "export", "extends", "false", "finally",
+		"for", "function", "if", "import", "in", "instanceof", "let", "new", "null",
+		"return", "static", "super", "switch", "this", "throw", "true", "try", "typeof",
+		"var", "void", "while", "with", "yield",
 	]
-	for value in reserved {
-		if value == name {
+	for reservedName in reservedNames {
+		if name == reservedName {
 			return "$v_" + name
 		}
 	}
 	return name
 }
 
-fn quote(value: String) -> String {
-	let mut result = "\""
-	let mut index = 0
-	while index < String.length(value) {
-		let character = String.slice(value, index, Some(index + 1))
-		if character == "\\" {
-			result = result + "\\\\"
-		} else if character == "\"" {
-			result = result + "\\\""
-		} else if character == "\n" {
-			result = result + "\\n"
-		} else if character == "\r" {
-			result = result + "\\r"
-		} else if character == "\t" {
-			result = result + "\\t"
-		} else {
-			result = result + character
-		}
-		index = index + 1
-	}
-	return result + "\""
-}
-
-fn indent(depth: Int) -> String {
-	let mut result = ""
-	let mut index = 0
-	while index < depth {
-		result = result + "\t"
-		index = index + 1
-	}
-	return result
-}
-
-fn expressionAt(expressions: List<MvpHirExpression>, id: Int) -> MvpHirExpression? {
-	return List.get(expressions, id)
-}
-
-fn statementAt(statements: List<MvpStatement>, id: Int) -> MvpStatement? {
-	return List.get(statements, id)
-}
-
-fn emitArguments(ids: List<Int>, expressions: List<MvpHirExpression>) -> List<String> {
+fn parameterNames(parameters: List<MvpParameter>) -> List<String> {
 	let mut values: List<String> = []
-	for id in ids {
-		values = List.append(values, emitExpressionById(id, expressions))
+	for parameter in parameters {
+		values = List.append(values, safeName(parameter.name))
 	}
 	return values
 }
 
-fn emitPatternById(id: Int, expressions: List<MvpHirExpression>) -> String {
-	let value = expressionAt(expressions, id)
-	return match value {
-		Some(expression) => emitPattern(expression, expressions)
-		None => "_"
-	}
-}
-
-fn emitPattern(expression: MvpHirExpression, expressions: List<MvpHirExpression>) -> String {
-	if expression.kind == "patternWildcard" {
-		return "_"
-	}
-	if expression.kind == "patternBinding" {
-		return safeName(expression.text)
-	}
-	if expression.kind == "patternLiteral" {
-		return if expression.valueType == MvpType.StringType then quote(expression.text) else expression.text
-	}
-	if expression.kind == "patternConstructor" {
-		if List.isEmpty(expression.children) {
-			return expression.text
-		}
-		let values: List<String> = []
-		let mut parts = values
-		for childId in expression.children {
-			parts = List.append(parts, emitPatternById(childId, expressions))
-		}
-		return expression.text + "(" + String.join(parts, ", ") + ")"
-	}
-	return "_"
-}
-
-fn emitMatchArm(expression: MvpHirExpression, expressions: List<MvpHirExpression>) -> String {
-	if List.length(expression.children) != 2 {
-		return "_ => undefined"
-	}
-	let patternId = match List.get(expression.children, 0) {
+fn expressionAt(expressions: List<MvpHirExpression>, expressionId: Int) -> MvpHirExpression {
+	return match List.get(expressions, expressionId) {
 		Some(value) => value
-		None => -1
+		None => panic("Missing HIR expression arena entry")
 	}
-	let bodyId = match List.get(expression.children, 1) {
+}
+
+fn statementAt(statements: List<MvpHirStatement>, statementId: Int) -> MvpHirStatement {
+	return match List.get(statements, statementId) {
 		Some(value) => value
-		None => -1
-	}
-	return emitPatternById(patternId, expressions) + " => " + emitExpressionById(bodyId, expressions)
-}
-
-fn emitExpressionById(id: Int, expressions: List<MvpHirExpression>) -> String {
-	let value = expressionAt(expressions, id)
-	return match value {
-		Some(expression) => emitExpression(expression, expressions)
-		None => "undefined"
+		None => panic("Missing HIR statement arena entry")
 	}
 }
 
-fn emitList(expression: MvpHirExpression, expressions: List<MvpHirExpression>) -> String {
-	return "[" + String.join(emitArguments(expression.children, expressions), ", ") + "]"
-}
-
-fn emitObject(expression: MvpHirExpression, expressions: List<MvpHirExpression>) -> String {
-	let mut entries: List<String> = []
-	let mut index = 0
-	while index + 1 < List.length(expression.children) {
-		let keyId = match List.get(expression.children, index) {
-			Some(value) => value
-			None => -1
-		}
-		let valueId = match List.get(expression.children, index + 1) {
-			Some(value) => value
-			None => -1
-		}
-		let key = expressionAt(expressions, keyId)
-		let keyText = match key {
-			Some(keyExpression) => quote(keyExpression.text)
-			None => quote("")
-		}
-		entries = List.append(entries, keyText + ": " + emitExpressionById(valueId, expressions))
-		index = index + 2
-	}
-	return "{" + String.join(entries, ", ") + "}"
-}
-
-fn emitUnary(expression: MvpHirExpression, expressions: List<MvpHirExpression>) -> String {
-	let operandId = match List.get(expression.children, 0) {
+fn childAt(expression: MvpHirExpression, index: Int) -> Int {
+	return match List.get(expression.children, index) {
 		Some(value) => value
-		None => -1
+		None => panic("Missing HIR child expression arena index")
 	}
-	let operand = emitExpressionById(operandId, expressions)
-	if expression.text == "!" {
-		return "(!" + operand + ")"
-	}
-	if expression.text == "-" {
-		return "(-" + operand + ")"
-	}
-	return operand
 }
 
-fn binaryRuntimeHelper(operator: String) -> String {
-	if operator == "+" {
-		return "intAdd"
+fn textAt(values: List<String>, index: Int) -> String {
+	return match List.get(values, index) {
+		Some(value) => value
+		None => panic("Missing emitted argument")
 	}
-	if operator == "-" {
-		return "intSubtract"
-	}
-	if operator == "*" {
-		return "intMultiply"
-	}
-	if operator == "/" {
-		return "intDivide"
-	}
-	if operator == "%" {
-		return "intRemainder"
-	}
-	return ""
 }
 
-fn emitBinary(expression: MvpHirExpression, expressions: List<MvpHirExpression>) -> String {
-	let leftId = match List.get(expression.children, 0) {
-		Some(value) => value
-		None => -1
+fn emitArguments(expressionIds: List<Int>, expressions: List<MvpHirExpression>) -> List<String> {
+	let mut values: List<String> = []
+	for expressionId in expressionIds {
+		values = List.append(values, emitExpression(expressionId, expressions))
 	}
-	let rightId = match List.get(expression.children, 1) {
-		Some(value) => value
-		None => -1
+	return values
+}
+
+fn emitJsonParse(valueCode: String) -> String {
+	return "((text) => { try { return ({$tag: \"Ok\", $values: [JSON.parse(text)]}); } catch (error) { return ({$tag: \"Err\", $values: [[{path: \"$\", expected: \"valid JSON\", actual: \"invalid JSON\", message: error instanceof Error ? error.message : String(error)}]]}); } })(" + valueCode + ")"
+}
+
+fn emitJsonDecode(valueCode: String) -> String {
+	return "((input) => { const convert = (value) => { if (Array.isArray(value)) return value.map(convert); if (value !== null && typeof value === \"object\") { if (typeof value.tag === \"string\" && Array.isArray(value.values)) return ({$tag: value.tag, $values: value.values.map(convert)}); const output = {}; for (const [key, item] of Object.entries(value)) output[key] = convert(item); return output; } return value; }; return ({$tag: \"Ok\", $values: [convert(input)]}); })(" + valueCode + ")"
+}
+
+fn emitJsonEncode(valueCode: String) -> String {
+	return "((input) => { const convert = (value) => { if (Array.isArray(value)) return value.map(convert); if (value !== null && typeof value === \"object\") { if (typeof value.$tag === \"string\" && Array.isArray(value.$values)) return ({tag: value.$tag, values: value.$values.map(convert)}); const output = {}; for (const [key, item] of Object.entries(value)) output[key] = convert(item); return output; } return value; }; try { return ({$tag: \"Ok\", $values: [JSON.stringify(convert(input))]}); } catch (error) { return ({$tag: \"Err\", $values: [[{path: \"$\", expected: \"JSON-serializable value\", actual: typeof input, message: error instanceof Error ? error.message : String(error)}]]}); } })(" + valueCode + ")"
+}
+
+fn emitProjectCompilerResultJsonEncode(valueCode: String) -> String {
+	return "((input) => { const convert = (value) => { if (Array.isArray(value)) return value.map(convert); if (value !== null && typeof value === \"object\") { if (value.$tag === \"None\" && Array.isArray(value.$values)) return null; if (value.$tag === \"Some\" && Array.isArray(value.$values) && value.$values.length === 1) return convert(value.$values[0]); if (typeof value.$tag === \"string\" && Array.isArray(value.$values)) return ({tag: value.$tag, values: value.$values.map(convert)}); const output = {}; for (const [key, item] of Object.entries(value)) output[key] = convert(item); return output; } return value; }; try { return ({$tag: \"Ok\", $values: [JSON.stringify(convert(input))]}); } catch (error) { return ({$tag: \"Err\", $values: [[{path: \"$\", expected: \"ProjectCompilerResultV1 JSON value\", actual: typeof input, message: error instanceof Error ? error.message : String(error)}]]}); } })(" + valueCode + ")"
+}
+
+fn isProjectCompilerResultEncoder(expression: MvpHirExpression) -> Bool {
+	if expression.kind != "function" || expression.text != "Json.encode" {
+		return false
 	}
-	let left = emitExpressionById(leftId, expressions)
-	let right = emitExpressionById(rightId, expressions)
-	let helper = binaryRuntimeHelper(expression.text)
-	if String.length(helper) > 0 && expression.valueType == MvpType.IntType {
-		return helper + "(" + left + ", " + right + ")"
+	return match expression.valueType {
+		NamedType(name) => String.contains(name, "fn(ProjectCompilerResultV1)->")
+		_ => false
 	}
-	if expression.text == "==" {
-		return "viruneEquals(" + left + ", " + right + ")"
+}
+
+fn emitBuiltinCall(name: String, values: List<String>) -> String? {
+	if name == "List.get" {
+		return Some("((items, index) => index >= 0 && index < items.length ? ({$tag: \"Some\", $values: [items[index]]}) : ({$tag: \"None\", $values: []}))(" + textAt(values, 0) + ", " + textAt(values, 1) + ")")
 	}
-	if expression.text == "!=" {
-		return "(!viruneEquals(" + left + ", " + right + "))"
+	if name == "List.append" {
+		return Some("[..." + textAt(values, 0) + ", " + textAt(values, 1) + "]")
 	}
-	return "(" + left + " " + expression.text + " " + right + ")"
+	if name == "List.length" {
+		return Some("(" + textAt(values, 0) + ").length")
+	}
+	if name == "List.concat" {
+		return Some("[..." + textAt(values, 0) + ", ..." + textAt(values, 1) + "]")
+	}
+	if name == "List.isEmpty" {
+		return Some("((" + textAt(values, 0) + ").length === 0)")
+	}
+	if name == "List.isNotEmpty" {
+		return Some("((" + textAt(values, 0) + ").length !== 0)")
+	}
+	if name == "List.last" {
+		return Some("((items) => items.length === 0 ? ({$tag: \"None\", $values: []}) : ({$tag: \"Some\", $values: [items[items.length - 1]]}))(" + textAt(values, 0) + ")")
+	}
+	if name == "String.length" {
+		return Some("[..." + textAt(values, 0) + "].length")
+	}
+	if name == "String.codePoints" {
+		return Some("[..." + textAt(values, 0) + "]")
+	}
+	if name == "String.slice" {
+		return Some("((text, start, end) => [...text].slice(start, end?.$tag === \"Some\" ? end.$values[0] : undefined).join(\"\"))(" + textAt(values, 0) + ", " + textAt(values, 1) + ", " + textAt(values, 2) + ")")
+	}
+	if name == "String.contains" {
+		return Some("(" + textAt(values, 0) + ").includes(" + textAt(values, 1) + ")")
+	}
+	if name == "String.startsWith" {
+		return Some("(" + textAt(values, 0) + ").startsWith(" + textAt(values, 1) + ")")
+	}
+	if name == "String.join" {
+		return Some("(" + textAt(values, 0) + ").join(" + textAt(values, 1) + ")")
+	}
+	if name == "Debug.format" {
+		return Some("((value) => { if (typeof value === \"string\") return JSON.stringify(value); if (typeof value === \"bigint\") return String(value) + \"n\"; try { const encoded = JSON.stringify(value); return encoded === undefined ? String(value) : encoded; } catch { return String(value); } })(" + textAt(values, 0) + ")")
+	}
+	if name == "panic" {
+		return Some("((message) => { throw new Error(message); })(" + textAt(values, 0) + ")")
+	}
+	if name == "Json.parse" {
+		return Some(emitJsonParse(textAt(values, 0)))
+	}
+	return None
 }
 
 fn emitCall(expression: MvpHirExpression, expressions: List<MvpHirExpression>) -> String {
 	let values = emitArguments(expression.children, expressions)
+	let builtin = emitBuiltinCall(expression.text, values)
+	if match builtin { Some(_) => true, None => false } {
+		return match builtin {
+			Some(value) => value
+			None => ""
+		}
+	}
 	let callee = safeName(expression.text)
 	if List.isEmpty(values) {
 		return callee + "($ctx)"
@@ -240,84 +172,211 @@ fn emitCall(expression: MvpHirExpression, expressions: List<MvpHirExpression>) -
 	return callee + "(" + String.join(values, ", ") + ", $ctx)"
 }
 
-fn emitExternalVariant(expression: MvpHirExpression, expressions: List<MvpHirExpression>) -> String {
-	let values = emitArguments(expression.children, expressions)
-	let callee = safeName(expression.text)
-	if List.isEmpty(values) {
-		return callee + "()"
-	}
-	return callee + "(" + String.join(values, ", ") + ")"
-}
-
 fn emitVariant(expression: MvpHirExpression, expressions: List<MvpHirExpression>) -> String {
 	let values = emitArguments(expression.children, expressions)
-	return "({$tag: " + quote(expression.text) + ", $values: [" + String.join(values, ", ") + "]})"
+	return "({$tag: " + Debug.format(expression.text) + ", $values: [" + String.join(values, ", ") + "]})"
 }
 
-fn emitMember(expression: MvpHirExpression, expressions: List<MvpHirExpression>) -> String {
-	let objectId = match List.get(expression.children, 0) {
-		Some(value) => value
-		None => -1
+fn emitField(expression: MvpHirExpression, expressions: List<MvpHirExpression>) -> String {
+	return "(" + emitExpression(childAt(expression, 0), expressions) + ")." + expression.text
+}
+
+fn emitInvoke(expression: MvpHirExpression, expressions: List<MvpHirExpression>) -> String {
+	let calleeId = childAt(expression, 0)
+	let calleeExpression = expressionAt(expressions, calleeId)
+	let mut argumentValues: List<String> = []
+	let mut index = 1
+	while index < List.length(expression.children) {
+		argumentValues = List.append(argumentValues, emitExpression(childAt(expression, index), expressions))
+		index = index + 1
 	}
-	return emitExpressionById(objectId, expressions) + "." + safeName(expression.text)
+	if calleeExpression.kind == "function" && calleeExpression.text == "Json.decode" && List.length(argumentValues) == 1 {
+		return emitJsonDecode(textAt(argumentValues, 0))
+	}
+	if isProjectCompilerResultEncoder(calleeExpression) && List.length(argumentValues) == 1 {
+		return emitProjectCompilerResultJsonEncode(textAt(argumentValues, 0))
+	}
+	if calleeExpression.kind == "function" && calleeExpression.text == "Json.encode" && List.length(argumentValues) == 1 {
+		return emitJsonEncode(textAt(argumentValues, 0))
+	}
+	if calleeExpression.kind == "function" && calleeExpression.text == "Json.parse" && List.length(argumentValues) == 1 {
+		return emitJsonParse(textAt(argumentValues, 0))
+	}
+	let callee = emitExpression(calleeId, expressions)
+	if List.isEmpty(argumentValues) {
+		return "(" + callee + ")($ctx)"
+	}
+	return "(" + callee + ")(" + String.join(argumentValues, ", ") + ", $ctx)"
+}
+
+fn emitList(expression: MvpHirExpression, expressions: List<MvpHirExpression>) -> String {
+	return "[" + String.join(emitArguments(expression.children, expressions), ", ") + "]"
+}
+
+fn emitRecordField(expression: MvpHirExpression, expressions: List<MvpHirExpression>) -> String {
+	return expression.text + ": " + emitExpression(childAt(expression, 0), expressions)
+}
+
+fn emitRecord(expression: MvpHirExpression, expressions: List<MvpHirExpression>) -> String {
+	return "({" + String.join(emitArguments(expression.children, expressions), ", ") + "})"
+}
+
+fn emitConditional(expression: MvpHirExpression, expressions: List<MvpHirExpression>) -> String {
+	let condition = emitExpression(childAt(expression, 0), expressions)
+	let consequent = emitExpression(childAt(expression, 1), expressions)
+	let alternate = emitExpression(childAt(expression, 2), expressions)
+	return "(" + condition + " ? " + consequent + " : " + alternate + ")"
 }
 
 fn emitIndex(expression: MvpHirExpression, expressions: List<MvpHirExpression>) -> String {
-	let objectId = match List.get(expression.children, 0) {
-		Some(value) => value
-		None => -1
-	}
-	let indexId = match List.get(expression.children, 1) {
-		Some(value) => value
-		None => -1
-	}
-	return emitExpressionById(objectId, expressions) + "[" + emitExpressionById(indexId, expressions) + "]"
+	let target = emitExpression(childAt(expression, 0), expressions)
+	let index = emitExpression(childAt(expression, 1), expressions)
+	return "(" + target + ")[" + index + "]"
 }
 
-fn emitMatch(expression: MvpHirExpression, expressions: List<MvpHirExpression>) -> String {
-	if List.isEmpty(expression.children) {
-		return "undefined"
+fn emitUnary(expression: MvpHirExpression, expressions: List<MvpHirExpression>) -> String {
+	let value = emitExpression(childAt(expression, 0), expressions)
+	if expression.text == "-" && expression.valueType == MvpType.IntType {
+		return "intNegate(" + value + ")"
 	}
-	let subjectId = match List.get(expression.children, 0) {
-		Some(value) => value
-		None => -1
+	return "(" + expression.text + value + ")"
+}
+
+fn emitBinary(expression: MvpHirExpression, expressions: List<MvpHirExpression>) -> String {
+	let leftCode = emitExpression(childAt(expression, 0), expressions)
+	let rightCode = emitExpression(childAt(expression, 1), expressions)
+	if expression.text == "==" {
+		return "viruneEquals(" + leftCode + ", " + rightCode + ")"
 	}
-	let mut arms: List<String> = []
-	let mut index = 1
-	while index < List.length(expression.children) {
-		let armId = match List.get(expression.children, index) {
-			Some(value) => value
-			None => -1
+	if expression.text == "!=" {
+		return "!viruneEquals(" + leftCode + ", " + rightCode + ")"
+	}
+	if expression.valueType == MvpType.IntType {
+		if expression.text == "+" {
+			return "intAdd(" + leftCode + ", " + rightCode + ")"
 		}
-		let arm = expressionAt(expressions, armId)
-		match arm {
-			Some(armExpression) => {
-				if armExpression.kind == "matchArm" {
-					arms = List.append(arms, emitMatchArm(armExpression, expressions))
-				}
-			}
-			None => {}
+		if expression.text == "-" {
+			return "intSubtract(" + leftCode + ", " + rightCode + ")"
 		}
+		if expression.text == "*" {
+			return "intMultiply(" + leftCode + ", " + rightCode + ")"
+		}
+		if expression.text == "/" {
+			return "intDivide(" + leftCode + ", " + rightCode + ")"
+		}
+		if expression.text == "%" {
+			return "intRemainder(" + leftCode + ", " + rightCode + ")"
+		}
+	}
+	return "(" + leftCode + " " + expression.text + " " + rightCode + ")"
+}
+
+fn patternPayload(valueCode: String, index: Int) -> String {
+	return "(" + valueCode + ").$values[" + Debug.format(index) + "]"
+}
+
+fn emitPatternCondition(patternId: Int, valueCode: String, expressions: List<MvpHirExpression>) -> String {
+	let pattern = expressionAt(expressions, patternId)
+	if pattern.kind == "patternWildcard" || pattern.kind == "patternBinding" {
+		return "true"
+	}
+	if pattern.kind == "patternLiteral" {
+		return "viruneEquals(" + valueCode + ", " + pattern.text + ")"
+	}
+	if pattern.kind == "patternVariant" {
+		let mut conditions: List<String> = ["(" + valueCode + "?.$tag === \"" + pattern.text + "\")"]
+		let mut index = 0
+		for childId in pattern.children {
+			conditions = List.append(conditions, emitPatternCondition(childId, patternPayload(valueCode, index), expressions))
+			index = index + 1
+		}
+		return "(" + String.join(conditions, " && ") + ")"
+	}
+	return panic("Unknown HIR match pattern kind " + pattern.kind)
+}
+
+fn emitPatternBindings(patternId: Int, valueCode: String, expressions: List<MvpHirExpression>, depth: Int) -> String {
+	let pattern = expressionAt(expressions, patternId)
+	if pattern.kind == "patternBinding" {
+		return indentation(depth) + "const " + safeName(pattern.text) + " = " + valueCode + ";\n"
+	}
+	if pattern.kind != "patternVariant" {
+		return ""
+	}
+	let mut code = ""
+	let mut index = 0
+	for childId in pattern.children {
+		code = code + emitPatternBindings(childId, patternPayload(valueCode, index), expressions, depth)
 		index = index + 1
 	}
-	return "matchValue(" + emitExpressionById(subjectId, expressions) + ", [" + String.join(arms, ", ") + "])"
+	return code
 }
 
-fn emitExpression(expression: MvpHirExpression, expressions: List<MvpHirExpression>) -> String {
-	if expression.kind == "literal" {
-		return if expression.valueType == MvpType.StringType then quote(expression.text) else expression.text
+fn emitMatch(expressionId: Int, expression: MvpHirExpression, expressions: List<MvpHirExpression>) -> String {
+	let targetCode = emitExpression(childAt(expression, 0), expressions)
+	let temporary = "$match" + Debug.format(expressionId)
+	let mut code = "(() => {\n\tconst " + temporary + " = " + targetCode + ";\n"
+	let mut index = 1
+	while index < List.length(expression.children) {
+		let arm = expressionAt(expressions, childAt(expression, index))
+		let patternId = childAt(arm, 0)
+		let bodyId = childAt(arm, 1)
+		let condition = emitPatternCondition(patternId, temporary, expressions)
+		let bindings = emitPatternBindings(patternId, temporary, expressions, 2)
+		code = code + "\tif (" + condition + ") {\n" + bindings + "\t\treturn " + emitExpression(bodyId, expressions) + ";\n\t}\n"
+		index = index + 1
 	}
-	if expression.kind == "local" {
+	return code + "\tthrow new Error(\"Non-exhaustive match\");\n})()"
+}
+
+fn emitTry(expression: MvpHirExpression, expressions: List<MvpHirExpression>) -> String {
+	let value = emitExpression(childAt(expression, 0), expressions)
+	return "propagate(" + value + ")"
+}
+
+fn emitExpression(expressionId: Int, expressions: List<MvpHirExpression>) -> String {
+	let expression = expressionAt(expressions, expressionId)
+	if expression.kind == "bool" || expression.kind == "number" || expression.kind == "string" {
+		return expression.text
+	}
+	if expression.kind == "unit" {
+		return "undefined"
+	}
+	if expression.kind == "local" || expression.kind == "function" {
 		return safeName(expression.text)
 	}
-	if expression.kind == "function" {
-		return safeName(expression.text)
+	if expression.kind == "variant" {
+		return emitVariant(expression, expressions)
+	}
+	if expression.kind == "field" {
+		return emitField(expression, expressions)
+	}
+	if expression.kind == "invoke" {
+		return emitInvoke(expression, expressions)
+	}
+	if expression.kind == "call" {
+		return emitCall(expression, expressions)
 	}
 	if expression.kind == "list" {
 		return emitList(expression, expressions)
 	}
-	if expression.kind == "object" {
-		return emitObject(expression, expressions)
+	if expression.kind == "recordField" {
+		return emitRecordField(expression, expressions)
+	}
+	if expression.kind == "record" {
+		return emitRecord(expression, expressions)
+	}
+	if expression.kind == "if" {
+		return emitConditional(expression, expressions)
+	}
+	if expression.kind == "match" {
+		return emitMatch(expressionId, expression, expressions)
+	}
+	if expression.kind == "try" {
+		return emitTry(expression, expressions)
+	}
+	if expression.kind == "index" {
+		return emitIndex(expression, expressions)
 	}
 	if expression.kind == "unary" {
 		return emitUnary(expression, expressions)
@@ -325,150 +384,83 @@ fn emitExpression(expression: MvpHirExpression, expressions: List<MvpHirExpressi
 	if expression.kind == "binary" {
 		return emitBinary(expression, expressions)
 	}
-	if expression.kind == "call" {
-		return emitCall(expression, expressions)
-	}
-	if expression.kind == "externalVariant" {
-		return emitExternalVariant(expression, expressions)
-	}
-	if expression.kind == "variant" {
-		return emitVariant(expression, expressions)
-	}
-	if expression.kind == "member" {
-		return emitMember(expression, expressions)
-	}
-	if expression.kind == "index" {
-		return emitIndex(expression, expressions)
-	}
-	if expression.kind == "match" {
-		return emitMatch(expression, expressions)
-	}
-	return "undefined"
+	return panic("Unknown HIR expression kind " + expression.kind)
 }
 
-fn emitStatementById(
-	id: Int,
-	function: MvpHirFunction,
-	depth: Int,
-) -> List<String> {
-	let value = statementAt(function.statements, id)
-	return match value {
-		Some(statement) => emitStatement(statement, function, depth)
-		None => []
+fn indentation(depth: Int) -> String {
+	let mut value = ""
+	let mut index = 0
+	while index < depth {
+		value = value + "\t"
+		index = index + 1
 	}
+	return value
 }
 
-fn emitStatementIds(
-	ids: List<Int>,
-	function: MvpHirFunction,
-	depth: Int,
-) -> List<String> {
-	let mut lines: List<String> = []
-	for id in ids {
-		for line in emitStatementById(id, function, depth) {
-			lines = List.append(lines, line)
-		}
-	}
-	return lines
-}
-
-fn emitStatement(
-	statement: MvpStatement,
-	function: MvpHirFunction,
-	depth: Int,
-) -> List<String> {
-	let prefix = indent(depth)
+fn emitStatement(statementId: Int, statements: List<MvpHirStatement>, expressions: List<MvpHirExpression>, depth: Int) -> String {
+	let statement = statementAt(statements, statementId)
+	let prefix = indentation(depth)
 	return match statement {
-		LetValue(name, mutable, _, initializerId, _) => [prefix + (if mutable then "let " else "const ") + safeName(name) + " = " + emitExpressionById(initializerId, function.expressions) + ";"]
-		AssignValue(name, expressionId, _) => [prefix + safeName(name) + " = " + emitExpressionById(expressionId, function.expressions) + ";"]
-		ForValue(name, iterableId, bodyIds, _) => {
-			let mut lines = [prefix + "for (const " + safeName(name) + " of " + emitExpressionById(iterableId, function.expressions) + ") {"]
-			for line in emitStatementIds(bodyIds, function, depth + 1) {
-				lines = List.append(lines, line)
-			}
-			List.append(lines, prefix + "}")
-		}
-		WhileValue(conditionId, bodyIds, _) => {
-			let mut lines = [prefix + "while (" + emitExpressionById(conditionId, function.expressions) + ") {"]
-			for line in emitStatementIds(bodyIds, function, depth + 1) {
-				lines = List.append(lines, line)
-			}
-			List.append(lines, prefix + "}")
-		}
-		IfValue(conditionId, thenIds, elseIds, _) => {
-			let mut lines = [prefix + "if (" + emitExpressionById(conditionId, function.expressions) + ") {"]
-			for line in emitStatementIds(thenIds, function, depth + 1) {
-				lines = List.append(lines, line)
-			}
-			lines = List.append(lines, prefix + "}")
-			if !List.isEmpty(elseIds) {
-				lines = List.append(lines, prefix + "else {")
-				for line in emitStatementIds(elseIds, function, depth + 1) {
-					lines = List.append(lines, line)
-				}
-				lines = List.append(lines, prefix + "}")
-			}
-			lines
-		}
-		BreakValue(_) => [prefix + "break;"]
-		ContinueValue(_) => [prefix + "continue;"]
-		ReturnValue(expressionId, _) => [prefix + "return " + emitExpressionById(expressionId, function.expressions) + ";"]
+		HirLet(name, mutable, _, expressionId, _) => prefix + (if mutable then "let " else "const ") + safeName(name) + " = " + emitExpression(expressionId, expressions) + ";\n"
+		HirAssign(name, _, expressionId, _) => prefix + safeName(name) + " = " + emitExpression(expressionId, expressions) + ";\n"
+		HirFor(name, _, iterableExpressionId, bodyStatementIds, _) => prefix + "for (const " + safeName(name) + " of " + emitExpression(iterableExpressionId, expressions) + ") {\n" + emitStatements(bodyStatementIds, statements, expressions, depth + 1) + prefix + "}\n"
+		HirWhile(conditionExpressionId, bodyStatementIds, _) => prefix + "while (" + emitExpression(conditionExpressionId, expressions) + ") {\n" + emitStatements(bodyStatementIds, statements, expressions, depth + 1) + prefix + "}\n"
+		HirIf(conditionExpressionId, consequentStatementIds, alternateStatementIds, _) => prefix + "if (" + emitExpression(conditionExpressionId, expressions) + ") {\n" + emitStatements(consequentStatementIds, statements, expressions, depth + 1) + prefix + "}" + (if List.isEmpty(alternateStatementIds) then "\n" else " else {\n" + emitStatements(alternateStatementIds, statements, expressions, depth + 1) + prefix + "}\n")
+		HirBreak(_) => prefix + "break;\n"
+		HirContinue(_) => prefix + "continue;\n"
+		HirReturn(expressionId, _) => prefix + "return " + emitExpression(expressionId, expressions) + ";\n"
 	}
+}
+
+fn emitStatements(statementIds: List<Int>, statements: List<MvpHirStatement>, expressions: List<MvpHirExpression>, depth: Int) -> String {
+	let mut code = ""
+	for statementId in statementIds {
+		code = code + emitStatement(statementId, statements, expressions, depth)
+	}
+	return code
 }
 
 fn emitFunction(function: MvpHirFunction) -> String {
-	let mut parameters: List<String> = []
-	for parameter in function.parameters {
-		parameters = List.append(parameters, safeName(parameter.name))
-	}
-	parameters = List.append(parameters, "$ctx = rootTaskContext()")
+	let names = parameterNames(function.parameters)
+	let parameters = if List.isEmpty(names) then "$ctx = rootTaskContext()" else String.join(names, ", ") + ", $ctx = rootTaskContext()"
 	let prefix = if function.isPublic then "export " else ""
-	let mut lines = [prefix + "function " + safeName(function.name) + "(" + String.join(parameters, ", ") + ") {"]
-	lines = List.append(lines, "\ttry {")
-	for line in emitStatementIds(function.statementIds, function, 2) {
-		lines = List.append(lines, line)
-	}
-	lines = List.append(lines, "\t} catch ($error) {")
-	lines = List.append(lines, "\t\tif (isPropagation($error)) return $error.value;")
-	lines = List.append(lines, "\t\tthrow $error;")
-	lines = List.append(lines, "\t}")
-	lines = List.append(lines, "}")
-	return String.join(lines, "\n")
+	return prefix + "function " + safeName(function.name) + "(" + parameters + ") {\n" +
+		"\ttry {\n" +
+		emitStatements(function.statementIds, function.statements, function.expressions, 2) +
+		"\t} catch ($error) {\n" +
+		"\t\tif (isPropagation($error)) return $error.value;\n" +
+		"\t\tthrow $error;\n" +
+		"\t}\n" +
+		"}\n\n"
 }
 
-fn emitModule(module: MvpHirModule) -> String {
-	let mut blocks: List<String> = []
-	for function in module.functions {
-		blocks = List.append(blocks, emitFunction(function))
+fn emitMvp(moduleValue: MvpHirModule) -> String {
+	let mut code = ""
+	for function in moduleValue.functions {
+		code = code + emitFunction(function)
 	}
-	return String.join(blocks, "\n\n") + (if List.isEmpty(blocks) then "" else "\n")
-}
-
-fn failureCompilation(diagnostics: List<MvpDiagnostic>, exports: List<MvpExport>) -> MvpCompilation {
-	return MvpCompilation {
-		accepted: false,
-		diagnostics: diagnostics,
-		exports: exports,
-		codeBody: "",
-	}
+	return code
 }
 
 pub fn emitMvpJson(encoded: String) -> Result<String, List<JsonError>> {
 	let raw = Json.parse(encoded)?
-	let input = Json.decode<MvpEmitInput>(raw)?
-	if !List.isEmpty(input.diagnostics) {
-		return Json.encode<MvpCompilation>(failureCompilation(input.diagnostics, input.exports))
-	}
-	return match input.hirModule {
-		Some(module) => Json.encode<MvpCompilation>(MvpCompilation {
-			accepted: true,
-			diagnostics: emptyDiagnostics(),
-			exports: input.exports,
-			codeBody: emitModule(module),
+	let checked = Json.decode<MvpCheckTransport>(raw)?
+	if List.isNotEmpty(checked.diagnostics) || match checked.hirModule { Some(_) => false, None => true } {
+		return Json.encode<MvpCompilation>(MvpCompilation {
+			accepted: false,
+			diagnostics: checked.diagnostics,
+			codeBody: "",
+			exports: checked.exports,
 		})
-		None => Json.encode<MvpCompilation>(failureCompilation(
-			[mvpDiagnostic("L4001", "Emitter requires a checked HIR module", MvpSpan { start: input.exports |> List.first() |> match { Some(value) => value.span.start, None => MvpPosition { offset: 0, line: 1, column: 1 } }, end: input.exports |> List.first() |> match { Some(value) => value.span.end, None => MvpPosition { offset: 0, line: 1, column: 1 } } })],
-			input.exports,
-		))
 	}
+	let hir = match checked.hirModule {
+		Some(value) => value
+		None => MvpHirModule { functions: [] }
+	}
+	return Json.encode<MvpCompilation>(MvpCompilation {
+		accepted: true,
+		diagnostics: [],
+		codeBody: emitMvp(hir),
+		exports: checked.exports,
+	})
 }
