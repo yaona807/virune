@@ -145,6 +145,7 @@ export function buildNpmPublicationIdentity({ root = process.cwd(), releaseDirec
 		expectedLicense: rootManifest.license,
 		licenseBytes: readFileSync(resolve(root, 'LICENSE')),
 		noticeBytes: readFileSync(resolve(root, 'NOTICE')),
+		requireEmbeddedCliVersion: true,
 	});
 	return buildNpmPublicationIdentityFromInputs({
 		version: publicationPlan.currentVersion,
@@ -203,6 +204,7 @@ export function verifyRegistryCliCandidateTarball(bytes, version, file = registr
 	if (legal.expectedLicense !== undefined) assert(manifest.license === legal.expectedLicense, `$.registryCli.${file}.license`, `expected ${legal.expectedLicense}`);
 	verifyCanonicalLegalEntry(entries, 'package/LICENSE', legal.licenseBytes, `$.registryCli.${file}.LICENSE`);
 	verifyCanonicalLegalEntry(entries, 'package/NOTICE', legal.noticeBytes, `$.registryCli.${file}.NOTICE`);
+	if (legal.requireEmbeddedCliVersion === true) verifyEmbeddedCliVersion(entries, version, file);
 	assert(manifest.bundledDependencies === undefined && manifest.bundleDependencies === undefined, `$.registryCli.${file}`, 'Registry CLI candidate must not declare bundled dependencies');
 	for (const path of entries.keys()) {
 		assert(!path.startsWith('package/node_modules/'), `$.registryCli.${file}`, `Registry CLI candidate must not contain bundled dependency path ${path}`);
@@ -213,6 +215,16 @@ export function verifyRegistryCliCandidateTarball(bytes, version, file = registr
 		}
 	}
 	return { name: manifest.name, version: manifest.version, entryCount: entries.size };
+}
+
+function verifyEmbeddedCliVersion(entries, version, file) {
+	const entry = entries.get('package/dist/src/main.js');
+	assert(entry !== undefined && isRegularTarEntry(entry), `$.registryCli.${file}.dist/src/main.js`, 'package/dist/src/main.js must be a regular file');
+	const source = entry.bytes.toString('utf8');
+	const pattern = /const VERSION = (['"])([^'"]+)\1;/gu;
+	const matches = [...source.matchAll(pattern)];
+	assert(matches.length === 1, `$.registryCli.${file}.dist/src/main.js`, `expected exactly one embedded VERSION declaration; found ${matches.length}`);
+	assert(matches[0][2] === version, `$.registryCli.${file}.dist/src/main.js`, `embedded VERSION ${matches[0][2]} does not match ${version}`);
 }
 
 function isRegularTarEntry(entry) {
