@@ -3,6 +3,7 @@ import { copyFileSync, cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, sta
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { execNpmSync } from './npm-cli.mjs';
+import { releaseAssetNameForPackage, writeNpmPublicationIdentity } from './verify-npm-publication-identity.mjs';
 import { writeReleaseIntegrityFiles } from './release-manifest.mjs';
 import { verifyReleaseLicenseArtifacts } from './verify-release-license-artifacts.mjs';
 import { verifyRepositoryLicensePolicy } from './verify-repository-license-policy.mjs';
@@ -16,13 +17,13 @@ rmSync(out, { recursive: true, force: true });
 mkdirSync(out, { recursive: true });
 
 const internalPackages = [
-	{ directory: 'runtime', name: '@virune/runtime', file: `virune-runtime-${version}.tgz` },
-	{ directory: 'compiler', name: '@virune/compiler', file: `virune-compiler-${version}.tgz` },
-	{ directory: 'formatter', name: '@virune/formatter', file: `virune-formatter-${version}.tgz` },
-	{ directory: 'js-interop', name: '@virune/js-interop', file: `virune-js-interop-${version}.tgz` },
-	{ directory: 'stdlib', name: '@virune/stdlib', file: `virune-stdlib-${version}.tgz` },
-];
-const cliPackage = { directory: 'cli', name: 'virune', file: `virune-${version}.tgz` };
+	{ directory: 'runtime', name: '@virune/runtime' },
+	{ directory: 'compiler', name: '@virune/compiler' },
+	{ directory: 'formatter', name: '@virune/formatter' },
+	{ directory: 'js-interop', name: '@virune/js-interop' },
+	{ directory: 'stdlib', name: '@virune/stdlib' },
+].map(item => ({ ...item, file: releaseAssetNameForPackage(item.name, version) }));
+const cliPackage = { directory: 'cli', name: 'virune', file: releaseAssetNameForPackage('virune', version) };
 const packages = [...internalPackages, cliPackage];
 
 const pack = directory => {
@@ -103,5 +104,6 @@ const packageEntries = packages.map(item => {
 	return { file: item.file, sha256: createHash('sha256').update(bytes).digest('hex'), bytes: bytes.byteLength };
 });
 writeFileSync(resolve(out, 'MANIFEST.json'), `${JSON.stringify({ schemaVersion: 1, version, packages: packageEntries }, null, 2)}\n`);
+writeNpmPublicationIdentity({ releaseDirectory: out });
 writeReleaseIntegrityFiles(out, version);
 verifyReleaseLicenseArtifacts();
