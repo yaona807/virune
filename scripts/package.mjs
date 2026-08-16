@@ -31,6 +31,15 @@ const pack = directory => {
 	execNpmSync(['pack', '--ignore-scripts', directory, '--pack-destination', out], { stdio: 'inherit' });
 };
 
+const stampCliVersion = directory => {
+	const cliEntryPath = resolve(directory, 'dist/src/main.js');
+	const cliEntry = readFileSync(cliEntryPath, 'utf8');
+	const versionDeclaration = /const VERSION = ['"][^'"]+['"];/gu;
+	const matches = [...cliEntry.matchAll(versionDeclaration)];
+	if (matches.length !== 1) throw new Error(`Packaged CLI must contain exactly one VERSION declaration; found ${matches.length}.`);
+	writeFileSync(cliEntryPath, cliEntry.replace(matches[0][0], `const VERSION = ${JSON.stringify(version)};`));
+};
+
 for (const item of internalPackages) {
 	pack(`./packages/${item.directory}`);
 	const path = resolve(out, item.file);
@@ -38,8 +47,11 @@ for (const item of internalPackages) {
 }
 
 const registryCliStagingRoot = mkdtempSync(join(tmpdir(), 'virune-registry-cli-release-'));
+const registryCliStagingPackage = resolve(registryCliStagingRoot, 'package');
 try {
-	execNpmSync(['pack', '--ignore-scripts', './packages/cli', '--pack-destination', registryCliStagingRoot], { stdio: 'inherit' });
+	cpSync(resolve('packages/cli'), registryCliStagingPackage, { recursive: true });
+	stampCliVersion(registryCliStagingPackage);
+	execNpmSync(['pack', '--ignore-scripts', registryCliStagingPackage, '--pack-destination', registryCliStagingRoot], { stdio: 'inherit' });
 	const packedCli = resolve(registryCliStagingRoot, bundledCliReleaseAssetName(version));
 	if (!statSync(packedCli).isFile()) throw new Error(`npm pack did not create ${bundledCliReleaseAssetName(version)}`);
 	copyFileSync(packedCli, resolve(out, registryCliPackage.file));
@@ -57,12 +69,7 @@ try {
 	delete stagingManifest.publishConfig;
 	stagingManifest.bundledDependencies = Object.keys(stagingManifest.dependencies ?? {}).sort();
 	writeFileSync(stagingManifestPath, `${JSON.stringify(stagingManifest, null, '\t')}\n`);
-
-	const stagingCliEntryPath = resolve(stagingPackage, 'dist/src/main.js');
-	const stagingCliEntry = readFileSync(stagingCliEntryPath, 'utf8');
-	const versionDeclaration = /const VERSION = ['"][^'"]+['"];/u;
-	if (!versionDeclaration.test(stagingCliEntry)) throw new Error('Packaged CLI version declaration was not found.');
-	writeFileSync(stagingCliEntryPath, stagingCliEntry.replace(versionDeclaration, `const VERSION = ${JSON.stringify(version)};`));
+	stampCliVersion(stagingPackage);
 
 	const internalTarballs = internalPackages.map(item => resolve(out, item.file));
 	execNpmSync(
