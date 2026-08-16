@@ -79,6 +79,14 @@ test('imported enum constructor lowering preserves lexical shadowing', async () 
 		const legacy = await compileWithLegacyKernel(shadowCase.input);
 		assert.equal(legacy.accepted, false, `${shadowCase.name}: Legacy unexpectedly accepted the shadowed enum access`);
 		assert.deepEqual(legacy.emittedModules, [], `${shadowCase.name}: Legacy emitted code for a rejected project`);
+		assert.ok(
+			legacy.diagnostics.some(item =>
+				item.sourcePath === 'src/main.virune'
+				&& item.code === 'L2014'
+				&& item.message === 'Type Int has no field Pending'
+			),
+			`${shadowCase.name}: Legacy rejection must be caused by lexical shadowing`,
+		);
 	}
 
 	await withGeneratedCompiler(async module => {
@@ -88,8 +96,12 @@ test('imported enum constructor lowering preserves lexical shadowing', async () 
 			assert.equal(output.accepted, false, `${shadowCase.name}: Self-host unexpectedly accepted the shadowed enum access`);
 			assert.deepEqual(output.emittedModules, [], `${shadowCase.name}: Self-host emitted code for a rejected project`);
 			assert.ok(
-				output.diagnostics.some(item => item.sourcePath === 'src/main.virune'),
-				`${shadowCase.name}: Self-host rejection must remain source-grounded`,
+				output.diagnostics.some(item =>
+					item.sourcePath === 'src/main.virune'
+					&& item.code === 'L1010'
+					&& item.message === 'Unknown name State.Pending'
+				),
+				`${shadowCase.name}: Self-host must not rewrite the shadowed name into imported enum metadata`,
 			);
 		}
 	});
