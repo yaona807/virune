@@ -74,6 +74,25 @@ const shadowCases = [
 	},
 ] as const;
 
+const visibleAliasCases = [
+	{
+		name: 'a later local binding does not shadow an earlier imported enum access',
+		input: projectInput(
+			'import { Status as state } from "./domain.virune"\n\n'
+				+ 'fn choose() -> state {\n\tlet selected = state.Pending\n\tlet state = 1\n\treturn selected\n}\n\n'
+				+ 'pub fn main() -> Int {\n\tdiscard choose()\n\treturn 1\n}\n',
+		),
+	},
+	{
+		name: 'a for binding does not shadow the imported enum alias after the loop body',
+		input: projectInput(
+			'import { Status as state } from "./domain.virune"\n\n'
+				+ 'fn choose() -> state {\n\tfor state in [1] {\n\t\tdiscard state\n\t}\n\treturn state.Pending\n}\n\n'
+				+ 'pub fn main() -> Int {\n\tdiscard choose()\n\treturn 1\n}\n',
+		),
+	},
+] as const;
+
 test('imported enum constructor lowering preserves lexical shadowing', async () => {
 	for (const shadowCase of shadowCases) {
 		const legacy = await compileWithLegacyKernel(shadowCase.input);
@@ -103,6 +122,24 @@ test('imported enum constructor lowering preserves lexical shadowing', async () 
 				),
 				`${shadowCase.name}: Self-host must not rewrite the shadowed name into imported enum metadata`,
 			);
+		}
+	});
+});
+
+test('imported enum constructor lowering keeps the alias visible outside lexical shadow scope', async () => {
+	for (const visibleCase of visibleAliasCases) {
+		const legacy = await compileWithLegacyKernel(visibleCase.input);
+		assert.equal(legacy.accepted, true, `${visibleCase.name}: Legacy unexpectedly rejected the visible enum access`);
+		assert.deepEqual(legacy.diagnostics, [], `${visibleCase.name}: Legacy diagnostics`);
+	}
+
+	await withGeneratedCompiler(async module => {
+		const kernel = createSelfhostProjectKernel(module);
+		for (const visibleCase of visibleAliasCases) {
+			const output = await kernel.compile(visibleCase.input);
+			assert.equal(output.accepted, true, `${visibleCase.name}: Self-host over-extended the lexical shadow`);
+			assert.deepEqual(output.diagnostics, [], `${visibleCase.name}: Self-host diagnostics`);
+			assert.ok(output.emittedModules.length > 0, `${visibleCase.name}: Self-host emitted no modules`);
 		}
 	});
 });
