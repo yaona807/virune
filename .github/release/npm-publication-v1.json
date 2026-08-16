@@ -13,11 +13,15 @@
     "recovery-policy",
     "registry-ownership",
     "release-identity-integration",
-    "stable-prerelease-dist-tag-policy",
     "trusted-publishing"
   ],
   "forbidRegistryPublishThroughVersion": "1.0.0",
   "firstStableRegistryRelease": "1.1.0",
+  "distTagPolicy": {
+    "stable": "latest",
+    "prerelease": "next",
+    "nightly": null
+  },
   "trustedPublishingRequired": true,
   "publicVerificationRequired": true,
   "sameReviewedReleaseIdentityRequired": true,
