@@ -1552,8 +1552,8 @@ fn normalizeExternalVariantExpression(
 			}
 		}
 		return MvpHirExpression {
-			kind: "variant",
-			text: externalVariantName(signature),
+			kind: "externalVariant",
+			text: externalVariantSourceName(signature),
 			valueType: value.valueType,
 			children: value.children,
 			span: value.span,
@@ -1795,18 +1795,18 @@ fn publicEnumRuntimeLines(
 				if List.isEmpty(member.typeIds) {
 					lines = List.append(lines, "export const " + runtimeName + " = Object.freeze(makeVariant(" + encodedVariant + ", [], " + encodedTypeId + "));")
 				} else {
-					let mut arguments = ""
+					let mut constructorArguments = ""
 					let mut firstArgument = true
 					let mut index = 0
 					for payloadTypeId in member.typeIds {
 						if !firstArgument {
-							arguments = arguments + ", "
+							constructorArguments = constructorArguments + ", "
 						}
-						arguments = arguments + "$value" + Json.encode<Int>(index)?
+						constructorArguments = constructorArguments + "$value" + Json.encode<Int>(index)?
 						firstArgument = false
 						index = index + 1
 					}
-					lines = List.append(lines, "export function " + runtimeName + "(" + arguments + ") { return makeVariant(" + encodedVariant + ", [" + arguments + "], " + encodedTypeId + "); }")
+					lines = List.append(lines, "export function " + runtimeName + "(" + constructorArguments + ") { return makeVariant(" + encodedVariant + ", [" + constructorArguments + "], " + encodedTypeId + "); }")
 				}
 			}
 			lines = List.append(lines, "export const " + runtimeSafeName(declaration.name) + " = Object.freeze({ " + namespaceBindings + " });")
