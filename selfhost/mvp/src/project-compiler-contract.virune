@@ -536,7 +536,6 @@ fn frontendImportHasBinding(
 			if child.kind == "ImportItem" && child.text == expected {
 				return true
 			}
-		}
 	}
 	return false
 }
@@ -1809,7 +1808,6 @@ fn semanticSymbols(modulePath: String, values: List<ProjectLinkExport>) -> List<
 	let mut symbols: List<ProjectSemanticSymbol> = []
 	for value in values {
 		if value.modulePath == modulePath {
-			values = values
 			symbols = List.append(symbols, ProjectSemanticSymbol {
 				name: value.name,
 				declarationKind: value.declarationKind,
