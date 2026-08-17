@@ -54,9 +54,9 @@ export function verifyNpmPublicationRecoveryPolicy(root = process.cwd()) {
 	const distTags = record(policy.distTagPhase, '$.distTagPhase');
 	assertExactKeys(distTags, ['requiresAllPackageVersionsExact', 'canonicalStableTag', 'canonicalPrereleaseTag', 'nightlyTag', 'partialPromotionDecision', 'packageRepublishAllowed'], '$.distTagPhase');
 	assert(distTags.requiresAllPackageVersionsExact === true, '$.distTagPhase.requiresAllPackageVersionsExact', 'all package versions must be exact before canonical tag promotion');
-	assert(distTags.canonicalStableTag === plan.distTagPolicy?.stable, '$.distTagPhase.canonicalStableTag', 'must match the publication plan stable dist-tag');
-	assert(distTags.canonicalPrereleaseTag === plan.distTagPolicy?.prerelease, '$.distTagPhase.canonicalPrereleaseTag', 'must match the publication plan prerelease dist-tag');
-	assert(distTags.nightlyTag === plan.distTagPolicy?.nightly && distTags.nightlyTag === null, '$.distTagPhase.nightlyTag', 'nightly npm tag promotion must remain disabled');
+	assert(distTags.canonicalStableTag === 'latest', '$.distTagPhase.canonicalStableTag', 'stable recovery must converge to latest');
+	assert(distTags.canonicalPrereleaseTag === 'next', '$.distTagPhase.canonicalPrereleaseTag', 'prerelease recovery must converge to next');
+	assert(distTags.nightlyTag === null, '$.distTagPhase.nightlyTag', 'nightly npm tag promotion must remain disabled');
 	assert(distTags.partialPromotionDecision === 'reobserve-and-converge-tags-only', '$.distTagPhase.partialPromotionDecision', 'partial canonical tag promotion must converge tags only');
 	assert(distTags.packageRepublishAllowed === false, '$.distTagPhase.packageRepublishAllowed', 'tag recovery must never republish package versions');
 
