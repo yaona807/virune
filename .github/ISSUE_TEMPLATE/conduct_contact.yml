@@ -1,0 +1,19 @@
+name: Conduct contact request
+description: Request a private moderation channel without posting conduct incident details publicly
+title: "conduct: request private moderation contact"
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this public form only to request a private moderation channel for a possible Code of Conduct concern.
+
+        Do not include incident details, allegations about identifiable people, names of affected people or witnesses, private messages, screenshots, personal information, or other sensitive information. Maintainers will arrange a private channel before asking for information needed to review the report.
+
+        Security vulnerabilities are handled separately under the security policy. Do not include vulnerability or exploit details here.
+  - type: checkboxes
+    id: confirmation
+    attributes:
+      label: Public-content confirmation
+      options:
+        - label: I have not included conduct incident details, personal information, or vulnerability details in this public issue and only need a private moderation channel.
+          required: true
