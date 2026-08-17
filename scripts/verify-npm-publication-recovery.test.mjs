@@ -46,6 +46,21 @@ test('exact recovery requires every reviewed identity dimension', () => {
 	}
 });
 
+test('exact recovery identity dimensions have canonical comparison rules', () => {
+	for (const mutation of [
+		rules => { rules.downloadedTarballSha256 = 'presence-only'; },
+		rules => { rules.registryDistIntegrity = 'trust-metadata-without-bytes'; },
+		rules => { delete rules.sourceCommit; },
+		rules => { rules.provenanceWorkflow = 'any-workflow'; },
+	]) {
+		withFixture((fixture, policy) => {
+			mutation(policy.packageVersionPhase.identityMatchRules);
+			writeJson(resolve(fixture, '.github/release/npm-publication-recovery-v1.json'), policy);
+			assert.throws(() => verifyNpmPublicationRecoveryPolicy(fixture));
+		});
+	}
+});
+
 test('exact partial publication can resume only missing reviewed candidates', () => {
 	withFixture((fixture, policy) => {
 		const state = policy.packageVersionPhase.states.find(item => item.state === 'exact-subset-observed');
