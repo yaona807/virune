@@ -53,7 +53,7 @@ function parseOctalField(header, start, length, path, description) {
 	const field = header.subarray(start, start + length);
 	assert((field[0] & 0x80) === 0, path, `unsupported base-256 tar ${description}`);
 	const text = field.toString('latin1');
-	const core = text.replace(/[\0 ]+$/u, '').trimStart();
+	const core = text.replace(/[\0 ]+$/u, '').replace(/^ +/u, '');
 	assert(core.length === 0 || /^[0-7]+$/u.test(core), path, `invalid octal tar ${description}`);
 	if (core.length === 0) return 0;
 	const value = Number.parseInt(core, 8);
