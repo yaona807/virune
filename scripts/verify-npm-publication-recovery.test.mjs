@@ -93,6 +93,11 @@ test('dist-tag recovery cannot run before exact package publication or republish
 		assert.throws(() => verifyNpmPublicationRecoveryPolicy(fixture), /all package versions must be exact/u);
 	});
 	withFixture((fixture, policy) => {
+		policy.distTagPhase.tagConvergenceIdempotentRequired = false;
+		writeJson(resolve(fixture, '.github/release/npm-publication-recovery-v1.json'), policy);
+		assert.throws(() => verifyNpmPublicationRecoveryPolicy(fixture), /tag convergence must be idempotent/u);
+	});
+	withFixture((fixture, policy) => {
 		policy.distTagPhase.packageRepublishAllowed = true;
 		writeJson(resolve(fixture, '.github/release/npm-publication-recovery-v1.json'), policy);
 		assert.throws(() => verifyNpmPublicationRecoveryPolicy(fixture), /must never republish package versions/u);

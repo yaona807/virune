@@ -88,6 +88,7 @@
     "newerCanonicalTargetDecision": "halt-stale-recovery",
     "unexpectedCanonicalTargetDecision": "halt-manual-investigation",
     "partialPromotionDecision": "reobserve-and-converge-tags-only",
+    "tagConvergenceIdempotentRequired": true,
     "packageRepublishAllowed": false
   },
   "completion": {

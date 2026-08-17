@@ -106,6 +106,7 @@ export function verifyNpmPublicationRecoveryPolicy(root = process.cwd()) {
 		'newerCanonicalTargetDecision',
 		'unexpectedCanonicalTargetDecision',
 		'partialPromotionDecision',
+		'tagConvergenceIdempotentRequired',
 		'packageRepublishAllowed',
 	], '$.distTagPhase');
 	assert(distTags.requiresAllPackageVersionsExact === true, '$.distTagPhase.requiresAllPackageVersionsExact', 'all package versions must be exact before canonical tag promotion');
@@ -117,6 +118,7 @@ export function verifyNpmPublicationRecoveryPolicy(root = process.cwd()) {
 	assert(distTags.newerCanonicalTargetDecision === 'halt-stale-recovery', '$.distTagPhase.newerCanonicalTargetDecision', 'a newer canonical tag target must halt stale recovery');
 	assert(distTags.unexpectedCanonicalTargetDecision === 'halt-manual-investigation', '$.distTagPhase.unexpectedCanonicalTargetDecision', 'an unexpected canonical tag target must halt for investigation');
 	assert(distTags.partialPromotionDecision === 'reobserve-and-converge-tags-only', '$.distTagPhase.partialPromotionDecision', 'partial canonical tag promotion must converge tags only');
+	assert(distTags.tagConvergenceIdempotentRequired === true, '$.distTagPhase.tagConvergenceIdempotentRequired', 'canonical tag convergence must be idempotent');
 	assert(distTags.packageRepublishAllowed === false, '$.distTagPhase.packageRepublishAllowed', 'tag recovery must never republish package versions');
 
 	const completion = record(policy.completion, '$.completion');
@@ -143,6 +145,7 @@ export function verifyNpmPublicationRecoveryDocumentation(policy, english, japan
 		'SemVer precedence',
 		'never move a canonical tag backward',
 		'newer version, recovery is stale and must halt',
+		'idempotent tag convergence',
 		'reobserve and converge tags only',
 		'public Registry verification',
 	];
@@ -159,6 +162,7 @@ export function verifyNpmPublicationRecoveryDocumentation(policy, english, japan
 		'SemVer precedence',
 		'canonical tagを過去versionへ巻き戻さない',
 		'より新しいversionを指している場合、recoveryはstaleとして停止',
+		'冪等なtag収束',
 		'tagだけを再観測して収束',
 		'public Registry verification',
 	];
