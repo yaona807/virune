@@ -29,6 +29,14 @@ test('release packaging stages every Registry candidate as publishable while kee
 	assert.doesNotMatch(source, /execNpmSync\(\['pack', directory,/u);
 });
 
+test('release smoke derives Registry candidates from canonical publication policy and keeps the bundled CLI private', () => {
+	const source = readFileSync(resolve('scripts/smoke-release.mjs'), 'utf8');
+	assert.match(source, /const publicationPlan = verifyNpmPublicationPlan\(\);/u);
+	assert.match(source, /\.map\(item => registryReleaseAssetNameForPackage\(item\.registryName, version\)\)/u);
+	assert.match(source, /if \('private' in packageManifest\) throw new Error\(`\$\{file\} must omit private so the reviewed Registry candidate is publishable\.`\);/u);
+	assert.match(source, /if \(packageManifest\.private !== true\) throw new Error\(`\$\{file\} must remain private because it is the bundled direct-install CLI artifact\.`\);/u);
+});
+
 test('all planned source workspaces remain private and publishConfig-free', () => {
 	for (const directory of registryDirectories) {
 		const manifest = JSON.parse(readFileSync(resolve('packages', directory, 'package.json'), 'utf8'));
@@ -48,6 +56,7 @@ test('all six Registry candidate manifests are publishable and reject private or
 			name,
 			version: '1.0.0',
 			license: 'Apache-2.0',
+			homepage: 'https://example.test/readme',
 			dependencies: name === 'virune' ? { '@virune/runtime': '1.0.0' } : {},
 		};
 		assert.doesNotThrow(() => verifyRegistryCandidateTarball(
@@ -55,7 +64,7 @@ test('all six Registry candidate manifests are publishable and reject private or
 			'1.0.0',
 			name,
 			undefined,
-			legal,
+			{ ...legal, expectedManifest: { ...manifest, private: true } },
 		));
 		assert.throws(() => verifyRegistryCandidateTarball(
 			registryTarball({ ...manifest, private: true }),
@@ -64,6 +73,14 @@ test('all six Registry candidate manifests are publishable and reject private or
 			undefined,
 			legal,
 		), /must omit private/u);
+		const { homepage: _homepage, ...metadataDrift } = manifest;
+		assert.throws(() => verifyRegistryCandidateTarball(
+			registryTarball(metadataDrift),
+			'1.0.0',
+			name,
+			undefined,
+			{ ...legal, expectedManifest: { ...manifest, private: true } },
+		), /must match the reviewed source manifest with only private removed/u);
 	}
 	assert.throws(() => verifyRegistryCandidateTarball(
 		registryTarball({ name: '@virune/runtime', version: '1.0.0', license: 'Apache-2.0', publishConfig: { access: 'public' } }),
