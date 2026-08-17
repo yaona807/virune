@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import test from 'node:test';
 import { verifyNpmPublicationRecoveryDocumentation, verifyNpmPublicationRecoveryPolicy } from './verify-npm-publication-recovery.mjs';
 
@@ -99,5 +99,6 @@ function withFixture(callback) {
 }
 
 function writeJson(path, value) {
-	writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`, { recursive: true });
+	mkdirSync(dirname(path), { recursive: true });
+	writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`);
 }
