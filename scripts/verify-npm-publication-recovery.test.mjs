@@ -87,6 +87,21 @@ test('dist-tag recovery cannot run before exact package publication or republish
 	});
 });
 
+test('dist-tag recovery cannot downgrade a newer canonical release', () => {
+	for (const mutation of [
+		phase => { phase.targetVersionOrderingRequired = false; },
+		phase => { phase.canonicalTagDowngradeAllowed = true; },
+		phase => { phase.newerCanonicalTargetDecision = 'converge-tags'; },
+		phase => { phase.unexpectedCanonicalTargetDecision = 'converge-tags'; },
+	]) {
+		withFixture((fixture, policy) => {
+			mutation(policy.distTagPhase);
+			writeJson(resolve(fixture, '.github/release/npm-publication-recovery-v1.json'), policy);
+			assert.throws(() => verifyNpmPublicationRecoveryPolicy(fixture));
+		});
+	}
+});
+
 test('recovery policy cannot claim publication readiness or remove public verification', () => {
 	withFixture((fixture, policy, plan) => {
 		plan.publicationReady = true;
