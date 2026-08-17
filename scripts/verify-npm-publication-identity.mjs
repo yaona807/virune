@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { closeSync, constants, fstatSync, openSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { closeSync, constants, fstatSync, lstatSync, openSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { gunzipSync } from 'node:zlib';
@@ -127,23 +127,32 @@ export function buildNpmPublicationIdentityFromInputs({
 	};
 }
 
+export function readRegularReleaseAsset(path, logicalPath, { noFollowFlag = constants.O_NOFOLLOW } = {}) {
+	const portableNoFollowFlag = typeof noFollowFlag === 'number' ? noFollowFlag : 0;
+	const fd = openSync(path, constants.O_RDONLY | portableNoFollowFlag);
+	try {
+		const opened = fstatSync(fd, { bigint: true });
+		assert(opened.isFile(), logicalPath, 'release tarball must be a regular file');
+		const bytes = readFileSync(fd);
+		const current = lstatSync(path, { bigint: true });
+		assert(current.isFile() && !current.isSymbolicLink(), logicalPath, 'release tarball must be a regular file');
+		assert(current.dev === opened.dev && current.ino === opened.ino, logicalPath, 'release tarball path changed while being read');
+		return bytes;
+	} finally {
+		closeSync(fd);
+	}
+}
+
 export function buildNpmPublicationIdentity({ root = process.cwd(), releaseDirectory = resolve(root, 'release') } = {}) {
 	const publicationPlan = verifyNpmPublicationPlan(root);
 	const releaseManifest = readJson(resolve(releaseDirectory, RELEASE_PACKAGE_MANIFEST));
 	const releaseTarballs = readdirSync(releaseDirectory)
 		.filter(file => file.endsWith('.tgz'))
 		.sort(compareText);
-	const assetBytes = Object.fromEntries(releaseTarballs.map(file => {
-		const path = resolve(releaseDirectory, file);
-		const fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW);
-		try {
-			const metadata = fstatSync(fd);
-			assert(metadata.isFile(), `$.releaseTarballs.${file}`, 'release tarball must be a regular file');
-			return [file, readFileSync(fd)];
-		} finally {
-			closeSync(fd);
-		}
-	}));
+	const assetBytes = Object.fromEntries(releaseTarballs.map(file => [
+		file,
+		readRegularReleaseAsset(resolve(releaseDirectory, file), `$.releaseTarballs.${file}`),
+	]));
 	const cliRegistryAsset = registryReleaseAssetNameForPackage('virune', publicationPlan.currentVersion);
 	const rootManifest = readJson(resolve(root, 'package.json'));
 	verifyRegistryCliCandidateTarball(assetBytes[cliRegistryAsset], publicationPlan.currentVersion, cliRegistryAsset, {
