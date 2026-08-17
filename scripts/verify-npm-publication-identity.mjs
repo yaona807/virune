@@ -7,6 +7,7 @@ import { verifyNpmPublicationPlan } from './verify-npm-publication-plan.mjs';
 
 const PUBLICATION_MANIFEST = 'PUBLICATION-MANIFEST.json';
 const RELEASE_PACKAGE_MANIFEST = 'MANIFEST.json';
+const CANDIDATE_DEPENDENCY_SECTIONS = ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies'];
 
 export function registryReleaseAssetNameForPackage(registryName, version) {
 	const name = nonEmptyString(registryName, '$.registryName');
@@ -153,14 +154,19 @@ export function buildNpmPublicationIdentity({ root = process.cwd(), releaseDirec
 		file,
 		readRegularReleaseAsset(resolve(releaseDirectory, file), `$.releaseTarballs.${file}`),
 	]));
-	const cliRegistryAsset = registryReleaseAssetNameForPackage('virune', publicationPlan.currentVersion);
 	const rootManifest = readJson(resolve(root, 'package.json'));
-	verifyRegistryCliCandidateTarball(assetBytes[cliRegistryAsset], publicationPlan.currentVersion, cliRegistryAsset, {
+	const legal = {
 		expectedLicense: rootManifest.license,
 		licenseBytes: readFileSync(resolve(root, 'LICENSE')),
 		noticeBytes: readFileSync(resolve(root, 'NOTICE')),
-		requireEmbeddedCliVersion: true,
-	});
+	};
+	for (const pkg of publicationPlan.publishPackages) {
+		const file = registryReleaseAssetNameForPackage(pkg.registryName, publicationPlan.currentVersion);
+		verifyRegistryCandidateTarball(assetBytes[file], publicationPlan.currentVersion, pkg.registryName, file, {
+			...legal,
+			requireEmbeddedCliVersion: pkg.registryName === 'virune',
+		});
+	}
 	return buildNpmPublicationIdentityFromInputs({
 		version: publicationPlan.currentVersion,
 		publicationReady: publicationPlan.publicationReady,
@@ -200,35 +206,48 @@ export function verifyNpmPublicationIdentity(options = {}) {
 	return expected;
 }
 
-export function verifyRegistryCliCandidateTarball(bytes, version, file = registryReleaseAssetNameForPackage('virune', version), legal = {}) {
-	assert(Buffer.isBuffer(bytes) || bytes instanceof Uint8Array, `$.registryCli.${file}`, 'expected package bytes');
-	const entries = readTarEntries(Buffer.from(bytes), `$.registryCli.${file}`);
+export function verifyRegistryCandidateTarball(bytes, version, registryName, file = registryReleaseAssetNameForPackage(registryName, version), legal = {}) {
+	const name = packageName(registryName, '$.registryName');
+	const path = `$.registryCandidate.${file}`;
+	assert(Buffer.isBuffer(bytes) || bytes instanceof Uint8Array, path, 'expected package bytes');
+	const entries = readTarEntries(Buffer.from(bytes), path);
 	const manifestEntry = entries.get('package/package.json');
-	assert(manifestEntry !== undefined && isRegularTarEntry(manifestEntry), `$.registryCli.${file}`, 'package/package.json must be a regular file');
+	assert(manifestEntry !== undefined && isRegularTarEntry(manifestEntry), path, 'package/package.json must be a regular file');
 	let manifest;
 	try {
-		manifest = JSON.parse(manifestEntry.bytes.toString('utf8'));
+		manifest = record(JSON.parse(manifestEntry.bytes.toString('utf8')), `${path}.packageJson`);
 	} catch (error) {
-		throw new Error(`$.registryCli.${file}: invalid package.json: ${error instanceof Error ? error.message : String(error)}`);
+		throw new Error(`${path}: invalid package.json: ${error instanceof Error ? error.message : String(error)}`);
 	}
-	assert(manifest.name === 'virune', `$.registryCli.${file}.name`, 'expected virune');
-	assert(manifest.version === version, `$.registryCli.${file}.version`, `expected ${version}`);
-	assert(manifest.private === true, `$.registryCli.${file}.private`, 'prepublication Registry candidate must remain private:true');
-	assert(manifest.publishConfig === undefined, `$.registryCli.${file}.publishConfig`, 'publishConfig must not be present before publication enablement');
-	if (legal.expectedLicense !== undefined) assert(manifest.license === legal.expectedLicense, `$.registryCli.${file}.license`, `expected ${legal.expectedLicense}`);
-	verifyCanonicalLegalEntry(entries, 'package/LICENSE', legal.licenseBytes, `$.registryCli.${file}.LICENSE`);
-	verifyCanonicalLegalEntry(entries, 'package/NOTICE', legal.noticeBytes, `$.registryCli.${file}.NOTICE`);
-	if (legal.requireEmbeddedCliVersion === true) verifyEmbeddedCliVersion(entries, version, file);
-	assert(manifest.bundledDependencies === undefined && manifest.bundleDependencies === undefined, `$.registryCli.${file}`, 'Registry CLI candidate must not declare bundled dependencies');
-	for (const path of entries.keys()) {
-		assert(!path.startsWith('package/node_modules/'), `$.registryCli.${file}`, `Registry CLI candidate must not contain bundled dependency path ${path}`);
+	assert(manifest.name === name, `${path}.name`, `expected ${name}`);
+	assert(manifest.version === version, `${path}.version`, `expected ${version}`);
+	assert(manifest.private === undefined, `${path}.private`, 'reviewed Registry candidate must omit private so the exact tarball is publishable');
+	assert(manifest.publishConfig === undefined, `${path}.publishConfig`, 'publishConfig must not be present before publication enablement');
+	if (legal.expectedLicense !== undefined) assert(manifest.license === legal.expectedLicense, `${path}.license`, `expected ${legal.expectedLicense}`);
+	verifyCanonicalLegalEntry(entries, 'package/LICENSE', legal.licenseBytes, `${path}.LICENSE`);
+	verifyCanonicalLegalEntry(entries, 'package/NOTICE', legal.noticeBytes, `${path}.NOTICE`);
+	if (legal.requireEmbeddedCliVersion === true) {
+		assert(name === 'virune', path, 'embedded CLI version validation is only valid for the virune package');
+		verifyEmbeddedCliVersion(entries, version, file);
 	}
-	for (const [dependency, dependencyVersion] of Object.entries(manifest.dependencies ?? {})) {
-		if (dependency === 'virune' || dependency.startsWith('@virune/')) {
-			assert(dependencyVersion === version, `$.registryCli.${file}.dependencies.${dependency}`, `expected exact release version ${version}`);
+	assert(manifest.bundledDependencies === undefined && manifest.bundleDependencies === undefined, path, 'Registry candidate must not declare bundled dependencies');
+	for (const entryPath of entries.keys()) {
+		assert(!entryPath.startsWith('package/node_modules/'), path, `Registry candidate must not contain bundled dependency path ${entryPath}`);
+	}
+	for (const section of CANDIDATE_DEPENDENCY_SECTIONS) {
+		if (manifest[section] === undefined) continue;
+		const dependencies = record(manifest[section], `${path}.${section}`);
+		for (const [dependency, dependencyVersion] of Object.entries(dependencies)) {
+			if (dependency === 'virune' || dependency.startsWith('@virune/')) {
+				assert(dependencyVersion === version, `${path}.${section}.${dependency}`, `expected exact release version ${version}`);
+			}
 		}
 	}
 	return { name: manifest.name, version: manifest.version, entryCount: entries.size };
+}
+
+export function verifyRegistryCliCandidateTarball(bytes, version, file = registryReleaseAssetNameForPackage('virune', version), legal = {}) {
+	return verifyRegistryCandidateTarball(bytes, version, 'virune', file, legal);
 }
 
 function verifyEmbeddedCliVersion(entries, version, file) {

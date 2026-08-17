@@ -4,15 +4,102 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { gzipSync } from 'node:zlib';
 import test from 'node:test';
-import { readRegularReleaseAsset, verifyRegistryCliCandidateTarball } from './verify-npm-publication-identity.mjs';
+import { readRegularReleaseAsset, verifyRegistryCandidateTarball, verifyRegistryCliCandidateTarball } from './verify-npm-publication-identity.mjs';
 
-test('release packaging disables lifecycle scripts and stamps both CLI package variants', () => {
+const registryPackages = [
+	'virune',
+	'@virune/compiler',
+	'@virune/formatter',
+	'@virune/js-interop',
+	'@virune/runtime',
+	'@virune/stdlib',
+];
+const registryDirectories = ['cli', 'compiler', 'formatter', 'js-interop', 'runtime', 'stdlib'];
+
+test('release packaging stages every Registry candidate as publishable while keeping bundled CLI private', () => {
 	const source = readFileSync(resolve('scripts/package.mjs'), 'utf8');
-	assert.match(source, /execNpmSync\(\['pack', '--ignore-scripts', directory, '--pack-destination', out\]/u);
-	assert.match(source, /execNpmSync\(\['pack', '--ignore-scripts', registryCliStagingPackage, '--pack-destination', registryCliStagingRoot\]/u);
+	assert.match(source, /const registryPackages = \[\.\.\.internalPackages, registryCliPackage\];/u);
+	assert.match(source, /if \(stagingManifest\.private !== true\) throw new Error\(`Registry source workspace \$\{item\.name\} must remain private:true\.`\);/u);
+	assert.match(source, /delete stagingManifest\.private;/u);
+	assert.match(source, /for \(const item of registryPackages\) stageRegistryPackage\(item\);/u);
+	assert.match(source, /execNpmSync\(\['pack', '--ignore-scripts', stagingPackage, '--pack-destination', stagingRoot\]/u);
+	assert.match(source, /if \(item\.name === 'virune'\) stampCliVersion\(stagingPackage\);/u);
+	assert.match(source, /stagingManifest\.private = true;/u);
+	assert.match(source, /stagingManifest\.bundledDependencies = Object\.keys\(stagingManifest\.dependencies \?\? \{\}\)\.sort\(\);/u);
 	assert.doesNotMatch(source, /execNpmSync\(\['pack', directory,/u);
-	assert.match(source, /stampCliVersion\(registryCliStagingPackage\);/u);
-	assert.match(source, /stampCliVersion\(stagingPackage\);/u);
+});
+
+test('all planned source workspaces remain private and publishConfig-free', () => {
+	for (const directory of registryDirectories) {
+		const manifest = JSON.parse(readFileSync(resolve('packages', directory, 'package.json'), 'utf8'));
+		assert.equal(manifest.private, true, `${directory} must remain private:true in source`);
+		assert.equal(manifest.publishConfig, undefined, `${directory} must not define publishConfig in source`);
+	}
+});
+
+test('all six Registry candidate manifests are publishable and reject private or stale internal metadata', () => {
+	const legal = {
+		expectedLicense: 'Apache-2.0',
+		licenseBytes: Buffer.from('license\n'),
+		noticeBytes: Buffer.from('notice\n'),
+	};
+	for (const name of registryPackages) {
+		const manifest = {
+			name,
+			version: '1.0.0',
+			license: 'Apache-2.0',
+			dependencies: name === 'virune' ? { '@virune/runtime': '1.0.0' } : {},
+		};
+		assert.doesNotThrow(() => verifyRegistryCandidateTarball(
+			registryTarball(manifest),
+			'1.0.0',
+			name,
+			undefined,
+			legal,
+		));
+		assert.throws(() => verifyRegistryCandidateTarball(
+			registryTarball({ ...manifest, private: true }),
+			'1.0.0',
+			name,
+			undefined,
+			legal,
+		), /must omit private/u);
+	}
+	assert.throws(() => verifyRegistryCandidateTarball(
+		registryTarball({ name: '@virune/runtime', version: '1.0.0', license: 'Apache-2.0', publishConfig: { access: 'public' } }),
+		'1.0.0',
+		'@virune/runtime',
+		undefined,
+		legal,
+	), /publishConfig must not be present/u);
+	assert.throws(() => verifyRegistryCandidateTarball(
+		registryTarball({ name: '@virune/runtime', version: '1.0.0', license: 'Apache-2.0', bundledDependencies: ['@virune/stdlib'] }),
+		'1.0.0',
+		'@virune/runtime',
+		undefined,
+		legal,
+	), /must not declare bundled dependencies/u);
+	assert.throws(() => verifyRegistryCandidateTarball(
+		registryTarball({ name: '@virune/runtime', version: '1.0.0', license: 'Apache-2.0', peerDependencies: { '@virune/stdlib': '0.9.0' } }),
+		'1.0.0',
+		'@virune/runtime',
+		undefined,
+		legal,
+	), /expected exact release version 1\.0\.0/u);
+	assert.throws(() => verifyRegistryCandidateTarball(
+		registryTarball({ name: '@virune/runtime', version: '1.0.0', license: 'Apache-2.0', optionalDependencies: [] }),
+		'1.0.0',
+		'@virune/runtime',
+		undefined,
+		legal,
+	), /optionalDependencies: expected an object/u);
+	assert.throws(() => verifyRegistryCandidateTarball(
+		gzipSync(buildTar([['package/LICENSE', 'license\n', '0'], ['package/NOTICE', 'notice\n', '0']])),
+		'1.0.0',
+		'@virune/runtime',
+		undefined,
+		legal,
+	), /package\/package\.json must be a regular file/u);
 });
 
 test('publication identity binds validation and reads to one file descriptor', () => {
@@ -55,7 +142,6 @@ test('Registry CLI legal entries accept canonical regular typeflags, reject syml
 	const manifest = {
 		name: 'virune',
 		version: '1.0.0',
-		private: true,
 		license: 'Apache-2.0',
 		dependencies: { '@virune/runtime': '1.0.0' },
 	};
@@ -90,6 +176,14 @@ test('Registry CLI legal entries accept canonical regular typeflags, reject syml
 		legal,
 	), /expected exactly one embedded VERSION declaration; found 2/u);
 });
+
+function registryTarball(manifest) {
+	return gzipSync(buildTar([
+		['package/package.json', `${JSON.stringify(manifest)}\n`, '0'],
+		['package/LICENSE', 'license\n', '0'],
+		['package/NOTICE', 'notice\n', '0'],
+	]));
+}
 
 function registryCliTarball(manifest, {
 	packageTypeFlag = '0',
