@@ -29,7 +29,7 @@ Package-version publication and **dist-tag promotion** are separate phases. Cano
 
 Stable releases converge to `latest`; approved prereleases converge to `next`; nightly remains unpublished to npm. Recovery must compare the current canonical tag target with the target release using **SemVer precedence** and **never move a canonical tag backward**. If `latest` or `next` already points to a **newer version, recovery is stale and must halt** rather than downgrade the tag. An unexpected or non-canonical target also halts for investigation. Only a missing, older, target-matching, or partially promoted canonical state may proceed with tag convergence.
 
-If canonical tags are only partially promoted, do not republish packages. **Reobserve and converge tags only** until every planned package has the intended canonical tag target.
+If canonical tags are only partially promoted, do not republish packages; **reobserve and converge tags only** until every planned package has the intended canonical tag target.
 
 ## Completion
 
