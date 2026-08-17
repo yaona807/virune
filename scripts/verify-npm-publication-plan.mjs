@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { verifyNpmPublicationRecoveryPolicy } from './verify-npm-publication-recovery.mjs';
 
 const PLAN_PATH = '.github/release/npm-publication-v1.json';
 const REPOSITORY_URL = 'git+https://github.com/yaona807/virune.git';
@@ -17,7 +18,6 @@ const REQUIRED_PREPUBLICATION_BLOCKERS = [
 	'package-publication-enablement',
 	'public-registry-verification',
 	'publication-gate-integration',
-	'recovery-policy',
 	'registry-ownership',
 	'release-identity-integration',
 	'trusted-publishing',
@@ -28,6 +28,7 @@ const RUNTIME_DEPENDENCY_SECTIONS = new Set(['dependencies', 'peerDependencies',
 export function verifyNpmPublicationPlan(root = process.cwd()) {
 	const plan = readJson(resolve(root, PLAN_PATH));
 	const rootManifest = readJson(resolve(root, 'package.json'));
+	verifyNpmPublicationRecoveryPolicy(root);
 	assertExactKeys(plan, [
 		'schemaVersion',
 		'stage',
