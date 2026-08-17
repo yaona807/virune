@@ -1,3 +1,4 @@
+import { TextDecoder } from 'node:util';
 import { gunzipSync } from 'node:zlib';
 
 const BLOCK_SIZE = 512;
@@ -26,19 +27,22 @@ export function validateNpmTarArchive(tgzBytes, path) {
 			return true;
 		}
 
-		const name = tarString(header, 0, 100) || '<unnamed>';
-		const declaredChecksum = parseOctalField(header, CHECKSUM_OFFSET, CHECKSUM_LENGTH, path, `checksum for ${name}`);
+		const block = offset / BLOCK_SIZE;
+		const declaredChecksum = parseOctalField(header, CHECKSUM_OFFSET, CHECKSUM_LENGTH, path, `checksum for entry at block ${block}`);
 		let actualChecksum = 0;
 		for (let index = 0; index < BLOCK_SIZE; index += 1) {
 			actualChecksum += index >= CHECKSUM_OFFSET && index < CHECKSUM_OFFSET + CHECKSUM_LENGTH ? 0x20 : header[index];
 		}
-		assert(declaredChecksum === actualChecksum, path, `invalid tar header checksum for ${name}`);
+		assert(declaredChecksum === actualChecksum, path, `invalid tar header checksum for entry at block ${block}`);
 
-		const size = parseOctalField(header, SIZE_OFFSET, SIZE_LENGTH, path, `size for ${name}`);
+		const name = decodeTarPathField(header, 0, 100, path, 'entry name', { required: true });
+		const prefix = decodeTarPathField(header, 345, 155, path, 'entry prefix');
+		const fullName = prefix.length > 0 ? `${prefix}/${name}` : name;
+		const size = parseOctalField(header, SIZE_OFFSET, SIZE_LENGTH, path, `size for ${fullName}`);
 		const dataStart = offset + BLOCK_SIZE;
 		const paddedSize = Math.ceil(size / BLOCK_SIZE) * BLOCK_SIZE;
 		const nextOffset = dataStart + paddedSize;
-		assert(Number.isSafeInteger(nextOffset) && nextOffset <= tar.byteLength, path, `truncated tar entry ${name}`);
+		assert(Number.isSafeInteger(nextOffset) && nextOffset <= tar.byteLength, path, `truncated tar entry ${fullName}`);
 		offset = nextOffset;
 	}
 
@@ -57,8 +61,21 @@ function parseOctalField(header, start, length, path, description) {
 	return value;
 }
 
-function tarString(header, start, length) {
-	return header.subarray(start, start + length).toString('utf8').replace(/\0.*$/su, '');
+function decodeTarPathField(header, start, length, path, description, { required = false } = {}) {
+	const field = header.subarray(start, start + length);
+	const nulIndex = field.indexOf(0);
+	const bytes = nulIndex === -1 ? field : field.subarray(0, nulIndex);
+	if (nulIndex !== -1) {
+		assert(field.subarray(nulIndex).every(byte => byte === 0), path, `non-zero data after NUL in tar ${description}`);
+	}
+	let text;
+	try {
+		text = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+	} catch {
+		throw new Error(`${path}: invalid UTF-8 tar ${description}`);
+	}
+	if (required) assert(text.length > 0, path, `tar ${description} must not be empty`);
+	return text;
 }
 
 function isZeroBlock(block) {
