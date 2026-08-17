@@ -205,7 +205,7 @@ test('exact candidate rejects malformed tar headers and archive termination', ()
 	);
 	const trailingData = buildTarGzip(
 		[['package/package.json', `${JSON.stringify(baseManifest)}\n`]],
-		{ trailingBytes: Buffer.from('unexpected') },
+		{ trailingBytes: Buffer.alloc(512, 1) },
 	);
 	const unalignedTrailingZero = buildTarGzip(
 		[['package/package.json', `${JSON.stringify(baseManifest)}\n`]],
@@ -219,7 +219,7 @@ test('exact candidate rejects malformed tar headers and archive termination', ()
 		[invalidUtf8Path, /invalid UTF-8 tar entry name/u],
 		[nonZeroAfterNulPath, /non-zero data after NUL in tar entry name/u],
 		[missingSecondEndBlock, /missing the canonical second end block/u],
-		[trailingData, /tar archive byte length must be aligned to 512-byte blocks/u],
+		[trailingData, /non-zero data after the canonical end marker/u],
 		[unalignedTrailingZero, /tar archive byte length must be aligned to 512-byte blocks/u],
 	]) {
 		assert.throws(
