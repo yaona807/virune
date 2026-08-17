@@ -151,6 +151,10 @@ test('package and tarball sets must be exact and unique', () => {
 	const duplicateRegistry = fixture();
 	duplicateRegistry.publishPackages[1] = structuredClone(duplicateRegistry.publishPackages[0]);
 	assert.throws(() => build(duplicateRegistry), /duplicate registryName/u);
+
+	const packageNameDrift = fixture();
+	packageNameDrift.publishPackages[1].registryName = '@virune/compiler-renamed';
+	assert.throws(() => build(packageNameDrift), /registry package renaming is not supported/u);
 });
 
 test('release manifest hash, size, version, and schema are verified against actual bytes', () => {
