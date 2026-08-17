@@ -15,6 +15,7 @@ export function validateNpmTarArchive(tgzBytes, path) {
 		throw new Error(`${path}: invalid gzip tarball: ${error instanceof Error ? error.message : String(error)}`);
 	}
 	assert(tar.byteLength >= BLOCK_SIZE * 2, path, 'tar archive is missing the canonical two-block end marker');
+	assert(tar.byteLength % BLOCK_SIZE === 0, path, 'tar archive byte length must be aligned to 512-byte blocks');
 
 	let offset = 0;
 	while (offset + BLOCK_SIZE <= tar.byteLength) {
