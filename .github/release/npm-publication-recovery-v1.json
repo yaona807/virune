@@ -4,6 +4,15 @@
     "source": "public-npm-registry",
     "freshRequired": true,
     "completePlannedPackageSetRequired": true,
+    "failureDecisions": {
+      "stale": "halt-and-reobserve",
+      "partial": "halt-and-reobserve",
+      "malformed": "halt-and-reobserve",
+      "unavailable": "halt-and-reobserve",
+      "timeout": "halt-and-reobserve",
+      "contradictory": "halt-manual-investigation",
+      "unknown": "halt-and-reobserve"
+    },
     "unknownAuthorizesWrites": false
   },
   "writePreconditions": {

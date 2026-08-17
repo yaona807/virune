@@ -18,6 +18,9 @@ test('unknown or partial observation cannot authorize writes', () => {
 	for (const mutation of [
 		policy => { policy.observation.freshRequired = false; },
 		policy => { policy.observation.completePlannedPackageSetRequired = false; },
+		policy => { policy.observation.failureDecisions.partial = 'resume-publication'; },
+		policy => { delete policy.observation.failureDecisions.timeout; },
+		policy => { policy.observation.failureDecisions.contradictory = 'halt-and-reobserve'; },
 		policy => { policy.observation.unknownAuthorizesWrites = true; },
 		policy => { policy.packageVersionPhase.states.find(item => item.state === 'unknown').writes = 'planned-package-versions-only'; },
 	]) {

@@ -22,6 +22,15 @@ const IDENTITY_MATCH_RULES = {
 	sourceCommit: 'must-equal-reviewed-release-commit',
 	provenanceWorkflow: 'must-equal-approved-publication-workflow',
 };
+const OBSERVATION_FAILURE_DECISIONS = {
+	stale: 'halt-and-reobserve',
+	partial: 'halt-and-reobserve',
+	malformed: 'halt-and-reobserve',
+	unavailable: 'halt-and-reobserve',
+	timeout: 'halt-and-reobserve',
+	contradictory: 'halt-manual-investigation',
+	unknown: 'halt-and-reobserve',
+};
 const EXPECTED_STATES = [
 	['none-observed', 'publish-all-reviewed-candidates', 'planned-package-versions-only'],
 	['exact-subset-observed', 'resume-missing-reviewed-candidates-only', 'missing-planned-package-versions-only'],
@@ -44,10 +53,15 @@ export function verifyNpmPublicationRecoveryPolicy(root = process.cwd()) {
 	assert(policy.schemaVersion === 1, '$.schemaVersion', 'expected schemaVersion 1');
 
 	const observation = record(policy.observation, '$.observation');
-	assertExactKeys(observation, ['source', 'freshRequired', 'completePlannedPackageSetRequired', 'unknownAuthorizesWrites'], '$.observation');
+	assertExactKeys(observation, ['source', 'freshRequired', 'completePlannedPackageSetRequired', 'failureDecisions', 'unknownAuthorizesWrites'], '$.observation');
 	assert(observation.source === 'public-npm-registry', '$.observation.source', 'recovery must observe the public npm Registry');
 	assert(observation.freshRequired === true, '$.observation.freshRequired', 'fresh Registry observation is required');
 	assert(observation.completePlannedPackageSetRequired === true, '$.observation.completePlannedPackageSetRequired', 'the complete planned package set must be observed');
+	const failureDecisions = record(observation.failureDecisions, '$.observation.failureDecisions');
+	assertExactKeys(failureDecisions, Object.keys(OBSERVATION_FAILURE_DECISIONS), '$.observation.failureDecisions');
+	for (const [key, expected] of Object.entries(OBSERVATION_FAILURE_DECISIONS)) {
+		assert(failureDecisions[key] === expected, `$.observation.failureDecisions.${key}`, `expected ${expected}`);
+	}
 	assert(observation.unknownAuthorizesWrites === false, '$.observation.unknownAuthorizesWrites', 'unknown Registry state must not authorize writes');
 
 	const preconditions = record(policy.writePreconditions, '$.writePreconditions');
