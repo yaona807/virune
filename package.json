@@ -54,7 +54,7 @@
 		"test:ci-policy": "node --test scripts/classify-ci-changes.test.mjs scripts/ci-observability.test.mjs",
 		"typescript:boundary:check": "node scripts/verify-typescript-boundary.mjs",
 		"test:typescript-boundary": "node --test scripts/verify-typescript-boundary.test.mjs scripts/probe-typescript-7.test.mjs",
-		"prototype:typescript7": "node scripts/probe-typescript-7.mjs",
+		"prototype:typescript7": "node scripts/probe-typescript-7.test.mjs",
 		"vscode:api-baseline:check": "node scripts/verify-vscode-api-baseline.mjs",
 		"test:vscode-api-baseline": "node --test scripts/verify-vscode-api-baseline.test.mjs",
 		"bootstrap": "node scripts/bootstrap.mjs",
@@ -113,7 +113,7 @@
 		"verify:release": "npm run pack:virune && node scripts/verify-npm-release-candidate-contents.mjs && npm run pack:vscode && npm run smoke:release",
 		"verify:reproducible-release": "node scripts/verify-reproducible-release.mjs",
 		"benchmark:lsp:built": "node scripts/benchmark-lsp-completion.mjs",
-		"benchmark:interop-heap:built": "node --expose-gc scripts/benchmark-js-interop-heap.mjs",
+		"benchmark:interop-heap:built": "node --expose-gc scripts/benchmark-interop-heap.mjs",
 		"check:performance": "node scripts/check-performance-regression.mjs",
 		"test:performance-regression": "node --test scripts/performance-regression.test.mjs",
 		"docs:check": "node scripts/verify-documentation.mjs",
@@ -138,17 +138,12 @@
 		"esbuild": "0.28.1",
 		"lodash": "4.18.1",
 		"nanoid": "6.0.0",
-		"react": "19.2.4",
-		"react-dom": "19.2.4",
-		"terser": "5.46.0",
-		"typescript": "5.9.3",
-		"@types/react": "19.2.14",
-		"@types/react-dom": "19.2.3",
-		"chevrotain": "13.0.0"
+		"playwright": "1.62.0",
+		"rxjs": "7.8.2",
+		"typescript": "6.0.3",
+		"validate-npm-package-license": "3.0.4",
+		"zod": "4.4.3"
 	},
-	"overrides": {
-		"xml2js": "0.6.2",
-		"minimist": "1.2.8"
-	},
+	"description": "Virune programming language monorepo.",
 	"license": "Apache-2.0"
 }
