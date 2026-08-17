@@ -22,6 +22,8 @@ Do not post incident details, private information, screenshots containing sensit
 
 Virune does not currently operate a universal confidential project-reporting service. The repository's **Conduct contact request** Issue Form may be used only when your GitHub profile already exposes a contact method that supports private communication and that you are willing for the maintainer to use. Do not add a contact address or incident details to the public Issue itself. The maintainer may use the profile contact route to continue privately.
 
+The request Issue, its author, and its fixed conduct-contact title are themselves public. Do not use the form if the fact that you are requesting moderation contact must remain confidential. The form also does not provide independent review of the sole maintainer; do not use it as if it did.
+
 If your profile has no usable private-capable contact route, Virune cannot currently promise confidential project-level intake. Do not disclose sensitive details publicly merely to obtain a response. Conduct or content on GitHub that violates GitHub's policies can be reported through GitHub's own **Report content / Report abuse** mechanisms.
 
 Security vulnerabilities are not conduct reports. Follow [SECURITY.md](SECURITY.md) for vulnerability reporting and do not place exploit-sensitive information in the conduct-reporting path.
