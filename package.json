@@ -110,7 +110,7 @@
 		"smoke:release": "node scripts/smoke-release.mjs",
 		"verify:metadata": "npm run node:check && npm run registry:check && npm run workflow:check && npm run test:workflow-policy && npm run test:ci-policy && npm run typescript:boundary:check && npm run test:typescript-boundary && npm run vscode:api-baseline:check && npm run test:vscode-api-baseline && npm run docs:check && npm run release:check && npm run api:check && npm run abi:check && npm run test:public-abi && npm run test:selfhost-seed && npm run selfhost:seed:verify && npm run test:selfhost-inventory-cli && npm run test:selfhost-focused-cli && npm run test:selfhost-reconstruction-cli && npm run test:selfhost-bootstrap-cli && npm run test:selfhost-rollback-smoke-cli && npm run test:selfhost-release-gate-core && npm run test:release-gate && npm run test:release-sbom && npm run spec:check",
 		"verify:quality": "npm run check && npm run test:selfhost-focused:built && npm run test:core:built && npm run test:integration:browser:built && npm run test:binding-corpus:built && npm run test:fuzz:smoke:built && npm run test:vscode:built && npm run test:conformance:built && npm run fmt:check:built && npm run smoke:clone:built && npm run test:performance-regression",
-		"verify:release": "npm run pack:virune && npm run pack:vscode && npm run smoke:release",
+		"verify:release": "npm run pack:virune && node scripts/verify-npm-release-candidate-contents.mjs && npm run pack:vscode && npm run smoke:release",
 		"verify:reproducible-release": "node scripts/verify-reproducible-release.mjs",
 		"benchmark:lsp:built": "node scripts/benchmark-lsp-completion.mjs",
 		"benchmark:interop-heap:built": "node --expose-gc scripts/benchmark-js-interop-heap.mjs",
@@ -138,12 +138,17 @@
 		"esbuild": "0.28.1",
 		"lodash": "4.18.1",
 		"nanoid": "6.0.0",
-		"playwright": "1.62.0",
-		"rxjs": "7.8.2",
-		"typescript": "6.0.3",
-		"validate-npm-package-license": "3.0.4",
-		"zod": "4.4.3"
+		"react": "19.2.4",
+		"react-dom": "19.2.4",
+		"terser": "5.46.0",
+		"typescript": "5.9.3",
+		"@types/react": "19.2.14",
+		"@types/react-dom": "19.2.3",
+		"chevrotain": "13.0.0"
 	},
-	"description": "Virune programming language monorepo.",
+	"overrides": {
+		"xml2js": "0.6.2",
+		"minimist": "1.2.8"
+	},
 	"license": "Apache-2.0"
 }
