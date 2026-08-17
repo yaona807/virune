@@ -86,11 +86,16 @@ test('identity mismatch permanently blocks package-version reuse and forbidden r
 	});
 });
 
-test('dist-tag recovery cannot run before exact package publication or republish package bytes', () => {
+test('dist-tag recovery requires exact package state and idempotent tag-only convergence', () => {
 	withFixture((fixture, policy) => {
 		policy.distTagPhase.requiresAllPackageVersionsExact = false;
 		writeJson(resolve(fixture, '.github/release/npm-publication-recovery-v1.json'), policy);
 		assert.throws(() => verifyNpmPublicationRecoveryPolicy(fixture), /all package versions must be exact/u);
+	});
+	withFixture((fixture, policy) => {
+		policy.distTagPhase.partialPromotionDecision = 'republish-packages';
+		writeJson(resolve(fixture, '.github/release/npm-publication-recovery-v1.json'), policy);
+		assert.throws(() => verifyNpmPublicationRecoveryPolicy(fixture), /partial canonical tag promotion must converge tags only/u);
 	});
 	withFixture((fixture, policy) => {
 		policy.distTagPhase.tagConvergenceIdempotentRequired = false;
