@@ -1,13 +1,15 @@
 name: Conduct contact request
-description: Request a private moderation channel without posting conduct incident details publicly
+description: Request private moderation contact only when your GitHub profile exposes a usable private-capable contact route
 title: "conduct: request private moderation contact"
 body:
   - type: markdown
     attributes:
       value: |
-        Use this public form only to request a private moderation channel for a possible Code of Conduct concern.
+        Use this public form only when your GitHub profile already exposes a contact method that supports private communication and you are willing for the Virune maintainer to use it.
 
-        Do not include incident details, allegations about identifiable people, names of affected people or witnesses, private messages, screenshots, personal information, or other sensitive information. Maintainers will arrange a private channel before asking for information needed to review the report.
+        Do not include a contact address in this Issue. Do not include incident details, allegations about identifiable people, names of affected people or witnesses, private messages, screenshots, personal information, or other sensitive information. The maintainer may use the contact route already published on your profile to continue privately.
+
+        If your profile has no usable private-capable contact route, Virune cannot currently promise confidential project-level intake. Do not disclose sensitive details publicly. Conduct or content on GitHub that violates GitHub policies can be reported through GitHub's Report content / Report abuse mechanisms.
 
         Security vulnerabilities are handled separately under the security policy. Do not include vulnerability or exploit details here.
   - type: checkboxes
@@ -15,5 +17,7 @@ body:
     attributes:
       label: Public-content confirmation
       options:
-        - label: I have not included conduct incident details, personal information, or vulnerability details in this public issue and only need a private moderation channel.
+        - label: My GitHub profile already exposes a contact method that supports private communication and I am willing for the Virune maintainer to use it.
+          required: true
+        - label: I have not included contact details, conduct incident details, personal information, or vulnerability details in this public issue.
           required: true
