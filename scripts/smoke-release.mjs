@@ -5,18 +5,20 @@ import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, w
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { execNpmSync } from './npm-cli.mjs';
+import { registryReleaseAssetNameForPackage } from './verify-npm-publication-identity.mjs';
+import { verifyNpmPublicationPlan } from './verify-npm-publication-plan.mjs';
 
 const releaseDirectory = resolve('release');
 const rootPackage = JSON.parse(readFileSync(resolve('package.json'), 'utf8'));
 const version = rootPackage.version;
-const expectedPackages = [
-	`virune-runtime-${version}.tgz`,
-	`virune-compiler-${version}.tgz`,
-	`virune-formatter-${version}.tgz`,
-	`virune-js-interop-${version}.tgz`,
-	`virune-stdlib-${version}.tgz`,
-	`virune-${version}.tgz`,
-];
+const publicationPlan = verifyNpmPublicationPlan();
+const cliFile = `virune-${version}.tgz`;
+const registryCandidateFiles = publicationPlan.publishPackages
+	.map(item => registryReleaseAssetNameForPackage(item.registryName, version))
+	.sort();
+if (new Set(registryCandidateFiles).size !== registryCandidateFiles.length) throw new Error('Duplicate Registry candidate release asset.');
+const expectedPackages = [...registryCandidateFiles, cliFile];
+const registryCandidateFileSet = new Set(registryCandidateFiles);
 const internalPackageFiles = new Map([
 	['@virune/runtime', `virune-runtime-${version}.tgz`],
 	['@virune/compiler', `virune-compiler-${version}.tgz`],
@@ -135,7 +137,13 @@ for (const file of expectedPackages) {
 	const packageManifestBytes = entries.get('package/package.json');
 	if (packageManifestBytes === undefined) throw new Error(`${file} does not contain package/package.json`);
 	const packageManifest = JSON.parse(packageManifestBytes.toString('utf8'));
-	if (packageManifest.private !== true) throw new Error(`${file} must be marked private to prevent npm publication.`);
+	if (registryCandidateFileSet.has(file)) {
+		if ('private' in packageManifest) throw new Error(`${file} must omit private so the reviewed Registry candidate is publishable.`);
+	} else if (file === cliFile) {
+		if (packageManifest.private !== true) throw new Error(`${file} must remain private because it is the bundled direct-install CLI artifact.`);
+	} else {
+		throw new Error(`Unknown release package role: ${file}`);
+	}
 	if ('publishConfig' in packageManifest) throw new Error(`${file} must not contain publishConfig.`);
 	for (const entry of entries.keys()) {
 		for (const forbidden of forbiddenEntries) {
@@ -144,12 +152,11 @@ for (const file of expectedPackages) {
 	}
 }
 
-const cliFile = `virune-${version}.tgz`;
 const cliEntries = readTarEntries(bytesFor(cliFile));
 const cliManifestBytes = cliEntries.get('package/package.json');
 if (cliManifestBytes === undefined) throw new Error(`${cliFile} does not contain package/package.json`);
 const cliManifest = JSON.parse(cliManifestBytes.toString('utf8'));
-if (cliManifest.private !== true) throw new Error(`${cliFile} must be marked private to prevent npm publication.`);
+if (cliManifest.private !== true) throw new Error(`${cliFile} must remain private because it is the bundled direct-install CLI artifact.`);
 if ('publishConfig' in cliManifest) throw new Error(`${cliFile} must not contain publishConfig.`);
 const expectedBundled = Object.keys(cliManifest.dependencies ?? {}).sort();
 const actualBundled = [...(cliManifest.bundledDependencies ?? cliManifest.bundleDependencies ?? [])].sort();

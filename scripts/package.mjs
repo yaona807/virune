@@ -24,8 +24,9 @@ const internalPackages = [
 	{ directory: 'stdlib', name: '@virune/stdlib' },
 ].map(item => ({ ...item, file: registryReleaseAssetNameForPackage(item.name, version) }));
 const registryCliPackage = { directory: 'cli', name: 'virune', file: registryReleaseAssetNameForPackage('virune', version) };
+const registryPackages = [...internalPackages, registryCliPackage];
 const cliPackage = { directory: 'cli', name: 'virune', file: bundledCliReleaseAssetName(version) };
-const packages = [...internalPackages, registryCliPackage, cliPackage];
+const packages = [...registryPackages, cliPackage];
 
 const pack = directory => {
 	execNpmSync(['pack', '--ignore-scripts', directory, '--pack-destination', out], { stdio: 'inherit' });
@@ -40,24 +41,29 @@ const stampCliVersion = directory => {
 	writeFileSync(cliEntryPath, cliEntry.replace(matches[0][0], `const VERSION = ${JSON.stringify(version)};`));
 };
 
-for (const item of internalPackages) {
-	pack(`./packages/${item.directory}`);
-	const path = resolve(out, item.file);
-	if (!statSync(path).isFile()) throw new Error(`npm pack did not create ${item.file}`);
-}
+const stageRegistryPackage = item => {
+	const stagingRoot = mkdtempSync(join(tmpdir(), `virune-registry-${item.directory}-release-`));
+	const stagingPackage = resolve(stagingRoot, 'package');
+	try {
+		cpSync(resolve('packages', item.directory), stagingPackage, { recursive: true });
+		const stagingManifestPath = resolve(stagingPackage, 'package.json');
+		const stagingManifest = JSON.parse(readFileSync(stagingManifestPath, 'utf8'));
+		if (stagingManifest.private !== true) throw new Error(`Registry source workspace ${item.name} must remain private:true.`);
+		if (stagingManifest.publishConfig !== undefined) throw new Error(`Registry source workspace ${item.name} must not define publishConfig.`);
+		delete stagingManifest.private;
+		writeFileSync(stagingManifestPath, `${JSON.stringify(stagingManifest, null, '\t')}\n`);
+		if (item.name === 'virune') stampCliVersion(stagingPackage);
+		execNpmSync(['pack', '--ignore-scripts', stagingPackage, '--pack-destination', stagingRoot], { stdio: 'inherit' });
+		const npmPackedFile = item.name === 'virune' ? bundledCliReleaseAssetName(version) : item.file;
+		const packedPath = resolve(stagingRoot, npmPackedFile);
+		if (!statSync(packedPath).isFile()) throw new Error(`npm pack did not create ${npmPackedFile}`);
+		copyFileSync(packedPath, resolve(out, item.file));
+	} finally {
+		rmSync(stagingRoot, { recursive: true, force: true });
+	}
+};
 
-const registryCliStagingRoot = mkdtempSync(join(tmpdir(), 'virune-registry-cli-release-'));
-const registryCliStagingPackage = resolve(registryCliStagingRoot, 'package');
-try {
-	cpSync(resolve('packages/cli'), registryCliStagingPackage, { recursive: true });
-	stampCliVersion(registryCliStagingPackage);
-	execNpmSync(['pack', '--ignore-scripts', registryCliStagingPackage, '--pack-destination', registryCliStagingRoot], { stdio: 'inherit' });
-	const packedCli = resolve(registryCliStagingRoot, bundledCliReleaseAssetName(version));
-	if (!statSync(packedCli).isFile()) throw new Error(`npm pack did not create ${bundledCliReleaseAssetName(version)}`);
-	copyFileSync(packedCli, resolve(out, registryCliPackage.file));
-} finally {
-	rmSync(registryCliStagingRoot, { recursive: true, force: true });
-}
+for (const item of registryPackages) stageRegistryPackage(item);
 
 const stagingRoot = mkdtempSync(join(tmpdir(), 'virune-cli-release-'));
 const stagingPackage = resolve(stagingRoot, 'package');
