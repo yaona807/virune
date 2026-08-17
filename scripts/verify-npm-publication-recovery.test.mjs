@@ -29,6 +29,23 @@ test('unknown or partial observation cannot authorize writes', () => {
 	}
 });
 
+test('exact recovery requires every reviewed identity dimension', () => {
+	for (const mutation of [
+		identity => identity.pop(),
+		identity => { identity[2] = 'sha1-only'; },
+		identity => { [identity[4], identity[5]] = [identity[5], identity[4]]; },
+	]) {
+		withFixture((fixture, policy) => {
+			mutation(policy.packageVersionPhase.requiredObservedIdentity);
+			writeJson(resolve(fixture, '.github/release/npm-publication-recovery-v1.json'), policy);
+			assert.throws(
+				() => verifyNpmPublicationRecoveryPolicy(fixture),
+				/expected exact recovery identity dimensions/u,
+			);
+		});
+	}
+});
+
 test('exact partial publication can resume only missing reviewed candidates', () => {
 	withFixture((fixture, policy) => {
 		const state = policy.packageVersionPhase.states.find(item => item.state === 'exact-subset-observed');
