@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { resolve } from 'node:path';
+import { TextDecoder } from 'node:util';
 import { pathToFileURL } from 'node:url';
 import { auditNpmPackageFileSet } from './npm-package-contents-policy.mjs';
 import { validateNpmTarArchive } from './validate-npm-tar-archive.mjs';
@@ -41,9 +42,15 @@ export function verifyNpmReleaseCandidateContents({
 		assert(entries.size > 0, path, 'candidate tarball must contain entries');
 		const manifestEntry = entries.get('package/package.json');
 		assert(manifestEntry !== undefined && isRegularTarEntry(manifestEntry), `${path}.packageJson`, 'package/package.json must be a regular file');
+		let manifestText;
+		try {
+			manifestText = new TextDecoder('utf-8', { fatal: true }).decode(manifestEntry.bytes);
+		} catch {
+			throw new Error(`${path}.packageJson: invalid UTF-8 package.json`);
+		}
 		let manifest;
 		try {
-			manifest = record(JSON.parse(manifestEntry.bytes.toString('utf8')), `${path}.packageJson`);
+			manifest = record(JSON.parse(manifestText), `${path}.packageJson`);
 		} catch (error) {
 			throw new Error(`${path}.packageJson: invalid package.json: ${error instanceof Error ? error.message : String(error)}`);
 		}
