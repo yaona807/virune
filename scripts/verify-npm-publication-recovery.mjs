@@ -4,6 +4,15 @@ import { pathToFileURL } from 'node:url';
 
 const POLICY_PATH = '.github/release/npm-publication-recovery-v1.json';
 const PUBLICATION_PLAN_PATH = '.github/release/npm-publication-v1.json';
+const REQUIRED_OBSERVED_IDENTITY = [
+	'package-name',
+	'package-version',
+	'registry-dist-integrity',
+	'downloaded-tarball-sha256',
+	'source-repository',
+	'source-commit',
+	'provenance-workflow',
+];
 const EXPECTED_STATES = [
 	['none-observed', 'publish-all-reviewed-candidates', 'planned-package-versions-only'],
 	['exact-subset-observed', 'resume-missing-reviewed-candidates-only', 'missing-planned-package-versions-only'],
@@ -38,8 +47,15 @@ export function verifyNpmPublicationRecoveryPolicy(root = process.cwd()) {
 	assert(preconditions.exactReviewedReleaseIdentityRequired === true, '$.writePreconditions.exactReviewedReleaseIdentityRequired', 'recovery writes must use the exact reviewed release identity');
 
 	const packagePhase = record(policy.packageVersionPhase, '$.packageVersionPhase');
-	assertExactKeys(packagePhase, ['identity', 'states', 'forbiddenRecovery'], '$.packageVersionPhase');
+	assertExactKeys(packagePhase, ['identity', 'requiredObservedIdentity', 'states', 'forbiddenRecovery'], '$.packageVersionPhase');
 	assert(packagePhase.identity === 'publication-manifest-exact-candidate', '$.packageVersionPhase.identity', 'package identity must be the reviewed PUBLICATION-MANIFEST candidate');
+	const observedIdentity = array(packagePhase.requiredObservedIdentity, '$.packageVersionPhase.requiredObservedIdentity')
+		.map((value, index) => nonEmptyString(value, `$.packageVersionPhase.requiredObservedIdentity[${index}]`));
+	assert(
+		JSON.stringify(observedIdentity) === JSON.stringify(REQUIRED_OBSERVED_IDENTITY),
+		'$.packageVersionPhase.requiredObservedIdentity',
+		`expected exact recovery identity dimensions ${REQUIRED_OBSERVED_IDENTITY.join(', ')}`,
+	);
 	const states = array(packagePhase.states, '$.packageVersionPhase.states').map((value, index) => recoveryState(value, `$.packageVersionPhase.states[${index}]`));
 	assert(states.length === EXPECTED_STATES.length, '$.packageVersionPhase.states', `expected ${EXPECTED_STATES.length} canonical recovery states`);
 	for (let index = 0; index < EXPECTED_STATES.length; index += 1) {
@@ -75,6 +91,9 @@ export function verifyNpmPublicationRecoveryDocumentation(policy, english, japan
 		'fresh public npm Registry observation',
 		'exact subset',
 		'missing reviewed candidates only',
+		'registry `dist.integrity`',
+		'downloaded tarball SHA-256',
+		'source repository, source commit, and provenance workflow',
 		'permanently blocks reuse of that package version',
 		'unknown state authorizes no writes',
 		'dist-tag promotion',
@@ -85,6 +104,9 @@ export function verifyNpmPublicationRecoveryDocumentation(policy, english, japan
 		'public npm Registryをfreshに観測',
 		'exact subset',
 		'未publishのreview済みcandidateだけ',
+		'Registryの`dist.integrity`',
+		'downloadしたtarballのSHA-256',
+		'source repository・source commit・provenance workflow',
 		'そのpackage versionの再利用を永久に禁止',
 		'unknown状態はwriteを一切許可しない',
 		'dist-tag promotion',
