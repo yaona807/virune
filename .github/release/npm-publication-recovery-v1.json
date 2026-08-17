@@ -21,6 +21,15 @@
       "source-commit",
       "provenance-workflow"
     ],
+    "identityMatchRules": {
+      "packageName": "must-equal-publication-manifest-registry-name",
+      "packageVersion": "must-equal-publication-manifest-version",
+      "registryDistIntegrity": "must-verify-downloaded-tarball",
+      "downloadedTarballSha256": "must-equal-publication-manifest-sha256",
+      "sourceRepository": "must-equal-reviewed-repository",
+      "sourceCommit": "must-equal-reviewed-release-commit",
+      "provenanceWorkflow": "must-equal-approved-publication-workflow"
+    },
     "states": [
       {
         "state": "none-observed",
