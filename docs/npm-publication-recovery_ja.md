@@ -27,7 +27,7 @@ unpublish→republish、review後のrebuild、同一versionで異なるbytesをp
 
 package-version publicationと **dist-tag promotion** は別phaseです。planned package versionがすべてfreshに観測され、exact reviewed identityと一致した後にだけcanonical tagをpromotionできます。
 
-stableは`latest`、承認済みprereleaseは`next`へ収束し、nightlyはnpmへpublishしません。recoveryでは現在のcanonical tag targetと対象releaseのversion順序を必ず比較し、**canonical tagを過去versionへ巻き戻さない**ことを保証します。`latest`または`next`が対象より**より新しいversionを指している場合、recoveryはstaleとして停止**し、tagをdowngradeしてはいけません。unexpectedまたはnon-canonicalなtargetもmanual investigationまで停止します。missing、より古いversion、対象version一致、またはpartial promotionの場合だけtag収束へ進めます。
+stableは`latest`、承認済みprereleaseは`next`へ収束し、nightlyはnpmへpublishしません。recoveryでは現在のcanonical tag targetと対象releaseを **SemVer precedence** で比較し、**canonical tagを過去versionへ巻き戻さない**ことを保証します。`latest`または`next`が対象より**より新しいversionを指している場合、recoveryはstaleとして停止**し、tagをdowngradeしてはいけません。unexpectedまたはnon-canonicalなtargetもmanual investigationまで停止します。missing、より古いversion、対象version一致、またはpartial promotionの場合だけtag収束へ進めます。
 
 canonical tagがpartialにpromotionされた場合、packageをrepublishしてはいけません。**tagだけを再観測して収束**させ、planned packageすべてを意図したcanonical tag targetへ一致させます。
 
