@@ -14,6 +14,15 @@ test('release packaging disables lifecycle scripts and stamps both CLI package v
 	assert.match(source, /stampCliVersion\(stagingPackage\);/u);
 });
 
+test('publication identity reads release tarballs through one non-following file descriptor', () => {
+	const source = readFileSync(resolve('scripts/verify-npm-publication-identity.mjs'), 'utf8');
+	assert.doesNotMatch(source, /\blstatSync\(/u);
+	assert.match(source, /const fd = openSync\(path, constants\.O_RDONLY \| constants\.O_NOFOLLOW\);/u);
+	assert.match(source, /const metadata = fstatSync\(fd\);/u);
+	assert.match(source, /return \[file, readFileSync\(fd\)\];/u);
+	assert.match(source, /finally \{\s*closeSync\(fd\);\s*\}/u);
+});
+
 test('Registry CLI legal entries accept canonical regular typeflags, reject symlinks, and bind embedded version', () => {
 	const legal = {
 		expectedLicense: 'Apache-2.0',
