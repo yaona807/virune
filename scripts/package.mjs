@@ -3,6 +3,7 @@ import { copyFileSync, cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, sta
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { execNpmSync } from './npm-cli.mjs';
+import { bundledCliReleaseAssetName, registryReleaseAssetNameForPackage, writeNpmPublicationIdentity } from './verify-npm-publication-identity.mjs';
 import { writeReleaseIntegrityFiles } from './release-manifest.mjs';
 import { verifyReleaseLicenseArtifacts } from './verify-release-license-artifacts.mjs';
 import { verifyRepositoryLicensePolicy } from './verify-repository-license-policy.mjs';
@@ -16,23 +17,46 @@ rmSync(out, { recursive: true, force: true });
 mkdirSync(out, { recursive: true });
 
 const internalPackages = [
-	{ directory: 'runtime', name: '@virune/runtime', file: `virune-runtime-${version}.tgz` },
-	{ directory: 'compiler', name: '@virune/compiler', file: `virune-compiler-${version}.tgz` },
-	{ directory: 'formatter', name: '@virune/formatter', file: `virune-formatter-${version}.tgz` },
-	{ directory: 'js-interop', name: '@virune/js-interop', file: `virune-js-interop-${version}.tgz` },
-	{ directory: 'stdlib', name: '@virune/stdlib', file: `virune-stdlib-${version}.tgz` },
-];
-const cliPackage = { directory: 'cli', name: 'virune', file: `virune-${version}.tgz` };
-const packages = [...internalPackages, cliPackage];
+	{ directory: 'runtime', name: '@virune/runtime' },
+	{ directory: 'compiler', name: '@virune/compiler' },
+	{ directory: 'formatter', name: '@virune/formatter' },
+	{ directory: 'js-interop', name: '@virune/js-interop' },
+	{ directory: 'stdlib', name: '@virune/stdlib' },
+].map(item => ({ ...item, file: registryReleaseAssetNameForPackage(item.name, version) }));
+const registryCliPackage = { directory: 'cli', name: 'virune', file: registryReleaseAssetNameForPackage('virune', version) };
+const cliPackage = { directory: 'cli', name: 'virune', file: bundledCliReleaseAssetName(version) };
+const packages = [...internalPackages, registryCliPackage, cliPackage];
 
 const pack = directory => {
-	execNpmSync(['pack', directory, '--pack-destination', out], { stdio: 'inherit' });
+	execNpmSync(['pack', '--ignore-scripts', directory, '--pack-destination', out], { stdio: 'inherit' });
+};
+
+const stampCliVersion = directory => {
+	const cliEntryPath = resolve(directory, 'dist/src/main.js');
+	const cliEntry = readFileSync(cliEntryPath, 'utf8');
+	const versionDeclaration = /const VERSION = ['"][^'"]+['"];/gu;
+	const matches = [...cliEntry.matchAll(versionDeclaration)];
+	if (matches.length !== 1) throw new Error(`Packaged CLI must contain exactly one VERSION declaration; found ${matches.length}.`);
+	writeFileSync(cliEntryPath, cliEntry.replace(matches[0][0], `const VERSION = ${JSON.stringify(version)};`));
 };
 
 for (const item of internalPackages) {
 	pack(`./packages/${item.directory}`);
 	const path = resolve(out, item.file);
 	if (!statSync(path).isFile()) throw new Error(`npm pack did not create ${item.file}`);
+}
+
+const registryCliStagingRoot = mkdtempSync(join(tmpdir(), 'virune-registry-cli-release-'));
+const registryCliStagingPackage = resolve(registryCliStagingRoot, 'package');
+try {
+	cpSync(resolve('packages/cli'), registryCliStagingPackage, { recursive: true });
+	stampCliVersion(registryCliStagingPackage);
+	execNpmSync(['pack', '--ignore-scripts', registryCliStagingPackage, '--pack-destination', registryCliStagingRoot], { stdio: 'inherit' });
+	const packedCli = resolve(registryCliStagingRoot, bundledCliReleaseAssetName(version));
+	if (!statSync(packedCli).isFile()) throw new Error(`npm pack did not create ${bundledCliReleaseAssetName(version)}`);
+	copyFileSync(packedCli, resolve(out, registryCliPackage.file));
+} finally {
+	rmSync(registryCliStagingRoot, { recursive: true, force: true });
 }
 
 const stagingRoot = mkdtempSync(join(tmpdir(), 'virune-cli-release-'));
@@ -45,12 +69,7 @@ try {
 	delete stagingManifest.publishConfig;
 	stagingManifest.bundledDependencies = Object.keys(stagingManifest.dependencies ?? {}).sort();
 	writeFileSync(stagingManifestPath, `${JSON.stringify(stagingManifest, null, '\t')}\n`);
-
-	const stagingCliEntryPath = resolve(stagingPackage, 'dist/src/main.js');
-	const stagingCliEntry = readFileSync(stagingCliEntryPath, 'utf8');
-	const versionDeclaration = /const VERSION = ['"][^'"]+['"];/u;
-	if (!versionDeclaration.test(stagingCliEntry)) throw new Error('Packaged CLI version declaration was not found.');
-	writeFileSync(stagingCliEntryPath, stagingCliEntry.replace(versionDeclaration, `const VERSION = ${JSON.stringify(version)};`));
+	stampCliVersion(stagingPackage);
 
 	const internalTarballs = internalPackages.map(item => resolve(out, item.file));
 	execNpmSync(
@@ -103,5 +122,6 @@ const packageEntries = packages.map(item => {
 	return { file: item.file, sha256: createHash('sha256').update(bytes).digest('hex'), bytes: bytes.byteLength };
 });
 writeFileSync(resolve(out, 'MANIFEST.json'), `${JSON.stringify({ schemaVersion: 1, version, packages: packageEntries }, null, 2)}\n`);
+writeNpmPublicationIdentity({ releaseDirectory: out });
 writeReleaseIntegrityFiles(out, version);
 verifyReleaseLicenseArtifacts();
