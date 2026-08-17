@@ -28,6 +28,7 @@ export function auditNpmPackageFileSet({ manifest, files, manifestPath, filesPat
 	assertUnique(rules, `${manifestPath}.files`, 'file rule');
 
 	const paths = packedFiles.map(file => file.path).sort(compareText);
+	assertNoFileAncestorCollisions(paths, filesPath);
 	assert(paths.includes('package.json'), filesPath, 'package.json is required');
 	for (const path of paths) {
 		assert(
@@ -91,6 +92,17 @@ function canonicalRelativePath(value, path) {
 
 function matchesRule(path, rule) {
 	return path === rule || path.startsWith(`${rule}/`);
+}
+
+function assertNoFileAncestorCollisions(paths, filesPath) {
+	const filePaths = new Set(paths);
+	for (const path of paths) {
+		const segments = path.split('/');
+		for (let index = 1; index < segments.length; index += 1) {
+			const ancestor = segments.slice(0, index).join('/');
+			assert(!filePaths.has(ancestor), filesPath, `file path cannot also be an ancestor directory: ${ancestor} conflicts with ${path}`);
+		}
+	}
 }
 
 function assertSafePackedPath(path, filesPath) {
