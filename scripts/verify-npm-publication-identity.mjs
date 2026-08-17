@@ -212,7 +212,7 @@ export function verifyRegistryCandidateTarball(bytes, version, registryName, fil
 	const name = packageName(registryName, '$.registryName');
 	const path = `$.registryCandidate.${file}`;
 	assert(Buffer.isBuffer(bytes) || bytes instanceof Uint8Array, path, 'expected package bytes');
-	const entries = readTarEntries(Buffer.from(bytes), path);
+	const entries = readRegistryCandidateTarEntries(Buffer.from(bytes), path);
 	const manifestEntry = entries.get('package/package.json');
 	assert(manifestEntry !== undefined && isRegularTarEntry(manifestEntry), path, 'package/package.json must be a regular file');
 	let manifest;
@@ -286,7 +286,7 @@ function verifyEmbeddedCliVersion(entries, version, file) {
 	assert(matches[0][2] === version, `$.registryCli.${file}.dist/src/main.js`, `embedded VERSION ${matches[0][2]} does not match ${version}`);
 }
 
-function isRegularTarEntry(entry) {
+export function isRegularTarEntry(entry) {
 	return entry.typeFlag === 0 || entry.typeFlag === '0'.charCodeAt(0);
 }
 
@@ -299,7 +299,7 @@ function verifyCanonicalLegalEntry(entries, entryPath, expectedBytes, path) {
 	}
 }
 
-function readTarEntries(tgzBytes, path) {
+export function readRegistryCandidateTarEntries(tgzBytes, path) {
 	let tar;
 	try {
 		tar = gunzipSync(tgzBytes);
