@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
 import { gzipSync } from 'node:zlib';
 import test from 'node:test';
-import { verifyRegistryCliCandidateTarball } from './verify-npm-publication-identity.mjs';
+import { readRegularReleaseAsset, verifyRegistryCliCandidateTarball } from './verify-npm-publication-identity.mjs';
 
 test('release packaging disables lifecycle scripts and stamps both CLI package variants', () => {
 	const source = readFileSync(resolve('scripts/package.mjs'), 'utf8');
@@ -14,13 +15,34 @@ test('release packaging disables lifecycle scripts and stamps both CLI package v
 	assert.match(source, /stampCliVersion\(stagingPackage\);/u);
 });
 
-test('publication identity reads release tarballs through one non-following file descriptor', () => {
+test('publication identity binds validation and reads to one file descriptor', () => {
 	const source = readFileSync(resolve('scripts/verify-npm-publication-identity.mjs'), 'utf8');
-	assert.doesNotMatch(source, /\blstatSync\(/u);
-	assert.match(source, /const fd = openSync\(path, constants\.O_RDONLY \| constants\.O_NOFOLLOW\);/u);
-	assert.match(source, /const metadata = fstatSync\(fd\);/u);
-	assert.match(source, /return \[file, readFileSync\(fd\)\];/u);
+	assert.match(source, /const fd = openSync\(path, constants\.O_RDONLY \| portableNoFollowFlag\);/u);
+	assert.match(source, /const opened = fstatSync\(fd, \{ bigint: true \}\);/u);
+	assert.match(source, /const bytes = readFileSync\(fd\);/u);
+	assert.match(source, /const current = lstatSync\(path, \{ bigint: true \}\);/u);
+	assert.match(source, /current\.dev === opened\.dev && current\.ino === opened\.ino/u);
 	assert.match(source, /finally \{\s*closeSync\(fd\);\s*\}/u);
+});
+
+test('descriptor fallback rejects symlink tarballs when O_NOFOLLOW is unavailable', () => {
+	const root = mkdtempSync(join(tmpdir(), 'virune-publication-fd-'));
+	const target = resolve(root, 'target.tgz');
+	const link = resolve(root, 'link.tgz');
+	try {
+		writeFileSync(target, 'reviewed-bytes\n');
+		assert.equal(
+			readRegularReleaseAsset(target, '$.releaseTarballs.target.tgz', { noFollowFlag: null }).toString('utf8'),
+			'reviewed-bytes\n',
+		);
+		symlinkSync(target, link, 'file');
+		assert.throws(
+			() => readRegularReleaseAsset(link, '$.releaseTarballs.link.tgz', { noFollowFlag: null }),
+			/release tarball must be a regular file/u,
+		);
+	} finally {
+		rmSync(root, { recursive: true, force: true });
+	}
 });
 
 test('Registry CLI legal entries accept canonical regular typeflags, reject symlinks, and bind embedded version', () => {
