@@ -89,7 +89,7 @@ test('dist-tag recovery cannot run before exact package publication or republish
 
 test('dist-tag recovery cannot downgrade a newer canonical release', () => {
 	for (const mutation of [
-		phase => { phase.targetVersionOrderingRequired = false; },
+		phase => { phase.targetVersionOrdering = 'lexical'; },
 		phase => { phase.canonicalTagDowngradeAllowed = true; },
 		phase => { phase.newerCanonicalTargetDecision = 'converge-tags'; },
 		phase => { phase.unexpectedCanonicalTargetDecision = 'converge-tags'; },
