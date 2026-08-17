@@ -84,6 +84,7 @@ function manifestFileRule(value, path) {
 function canonicalRelativePath(value, path) {
 	const text = nonEmptyString(value, path);
 	assert(!text.includes('\\'), path, 'backslashes are not canonical package paths');
+	assert(!/[\u0000-\u001f\u007f]/u.test(text), path, 'control characters are forbidden in package paths');
 	assert(!text.startsWith('/'), path, 'absolute package paths are forbidden');
 	const normalized = posix.normalize(text);
 	assert(normalized === text, path, 'package path must already be normalized');
@@ -116,7 +117,7 @@ function assertSafePackedPath(path, filesPath) {
 	assert(!/^\.env(?:\.|$)/u.test(basename), filesPath, `high-risk development or credential file is forbidden: ${path}`);
 	assert(!FORBIDDEN_BASENAMES.has(basename), filesPath, `high-risk development or credential file is forbidden: ${path}`);
 	assert(!/\.(?:pem|p12|pfx|key)$/iu.test(basename), filesPath, `credential-like file is forbidden: ${path}`);
-	assert(!/\.(?:test|spec)\.(?:[cm]?[jt]sx?|d\.[cm]?ts|js\.map)$/iu.test(basename), filesPath, `test artifact is forbidden: ${path}`);
+	assert(!/\.(?:test|spec)(?:\.|$)/iu.test(basename), filesPath, `test artifact is forbidden: ${path}`);
 	if (/\.(?:ts|tsx|mts|cts)$/iu.test(basename)) {
 		assert(/\.d\.(?:ts|mts|cts)$/iu.test(basename), filesPath, `raw TypeScript source is forbidden: ${path}`);
 	}
