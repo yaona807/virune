@@ -77,6 +77,18 @@ test('Registry CLI legal entries accept canonical regular typeflags, reject syml
 		undefined,
 		legal,
 	), /embedded VERSION 0\.9\.0 does not match 1\.0\.0/u);
+	assert.throws(() => verifyRegistryCliCandidateTarball(
+		registryCliTarball(manifest, { embeddedSource: 'export const main = 1;\n' }),
+		'1.0.0',
+		undefined,
+		legal,
+	), /expected exactly one embedded VERSION declaration; found 0/u);
+	assert.throws(() => verifyRegistryCliCandidateTarball(
+		registryCliTarball(manifest, { embeddedSource: 'const VERSION = "1.0.0";\nconst VERSION = "1.0.0";\n' }),
+		'1.0.0',
+		undefined,
+		legal,
+	), /expected exactly one embedded VERSION declaration; found 2/u);
 });
 
 function registryCliTarball(manifest, {
@@ -84,12 +96,14 @@ function registryCliTarball(manifest, {
 	licenseTypeFlag = '0',
 	noticeTypeFlag = '0',
 	embeddedVersion = manifest.version,
+	embeddedSource,
 } = {}) {
+	const cliSource = embeddedSource ?? `const VERSION = ${JSON.stringify(embeddedVersion)};\n`;
 	return gzipSync(buildTar([
 		['package/package.json', `${JSON.stringify(manifest)}\n`, packageTypeFlag],
 		['package/LICENSE', 'license\n', licenseTypeFlag],
 		['package/NOTICE', 'notice\n', noticeTypeFlag],
-		['package/dist/src/main.js', `const VERSION = ${JSON.stringify(embeddedVersion)};\n`, '0'],
+		['package/dist/src/main.js', cliSource, '0'],
 	]));
 }
 
