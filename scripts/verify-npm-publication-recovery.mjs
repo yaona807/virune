@@ -13,6 +13,15 @@ const REQUIRED_OBSERVED_IDENTITY = [
 	'source-commit',
 	'provenance-workflow',
 ];
+const IDENTITY_MATCH_RULES = {
+	packageName: 'must-equal-publication-manifest-registry-name',
+	packageVersion: 'must-equal-publication-manifest-version',
+	registryDistIntegrity: 'must-verify-downloaded-tarball',
+	downloadedTarballSha256: 'must-equal-publication-manifest-sha256',
+	sourceRepository: 'must-equal-reviewed-repository',
+	sourceCommit: 'must-equal-reviewed-release-commit',
+	provenanceWorkflow: 'must-equal-approved-publication-workflow',
+};
 const EXPECTED_STATES = [
 	['none-observed', 'publish-all-reviewed-candidates', 'planned-package-versions-only'],
 	['exact-subset-observed', 'resume-missing-reviewed-candidates-only', 'missing-planned-package-versions-only'],
@@ -47,7 +56,7 @@ export function verifyNpmPublicationRecoveryPolicy(root = process.cwd()) {
 	assert(preconditions.exactReviewedReleaseIdentityRequired === true, '$.writePreconditions.exactReviewedReleaseIdentityRequired', 'recovery writes must use the exact reviewed release identity');
 
 	const packagePhase = record(policy.packageVersionPhase, '$.packageVersionPhase');
-	assertExactKeys(packagePhase, ['identity', 'requiredObservedIdentity', 'states', 'forbiddenRecovery'], '$.packageVersionPhase');
+	assertExactKeys(packagePhase, ['identity', 'requiredObservedIdentity', 'identityMatchRules', 'states', 'forbiddenRecovery'], '$.packageVersionPhase');
 	assert(packagePhase.identity === 'publication-manifest-exact-candidate', '$.packageVersionPhase.identity', 'package identity must be the reviewed PUBLICATION-MANIFEST candidate');
 	const observedIdentity = array(packagePhase.requiredObservedIdentity, '$.packageVersionPhase.requiredObservedIdentity')
 		.map((value, index) => nonEmptyString(value, `$.packageVersionPhase.requiredObservedIdentity[${index}]`));
@@ -56,6 +65,11 @@ export function verifyNpmPublicationRecoveryPolicy(root = process.cwd()) {
 		'$.packageVersionPhase.requiredObservedIdentity',
 		`expected exact recovery identity dimensions ${REQUIRED_OBSERVED_IDENTITY.join(', ')}`,
 	);
+	const identityMatchRules = record(packagePhase.identityMatchRules, '$.packageVersionPhase.identityMatchRules');
+	assertExactKeys(identityMatchRules, Object.keys(IDENTITY_MATCH_RULES), '$.packageVersionPhase.identityMatchRules');
+	for (const [key, expected] of Object.entries(IDENTITY_MATCH_RULES)) {
+		assert(identityMatchRules[key] === expected, `$.packageVersionPhase.identityMatchRules.${key}`, `expected ${expected}`);
+	}
 	const states = array(packagePhase.states, '$.packageVersionPhase.states').map((value, index) => recoveryState(value, `$.packageVersionPhase.states[${index}]`));
 	assert(states.length === EXPECTED_STATES.length, '$.packageVersionPhase.states', `expected ${EXPECTED_STATES.length} canonical recovery states`);
 	for (let index = 0; index < EXPECTED_STATES.length; index += 1) {
