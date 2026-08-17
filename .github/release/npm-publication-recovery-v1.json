@@ -1,0 +1,65 @@
+{
+  "schemaVersion": 1,
+  "observation": {
+    "source": "public-npm-registry",
+    "freshRequired": true,
+    "completePlannedPackageSetRequired": true,
+    "unknownAuthorizesWrites": false
+  },
+  "writePreconditions": {
+    "publicationGateReadyRequired": true,
+    "exactReviewedReleaseIdentityRequired": true
+  },
+  "packageVersionPhase": {
+    "identity": "publication-manifest-exact-candidate",
+    "states": [
+      {
+        "state": "none-observed",
+        "decision": "publish-all-reviewed-candidates",
+        "writes": "planned-package-versions-only"
+      },
+      {
+        "state": "exact-subset-observed",
+        "decision": "resume-missing-reviewed-candidates-only",
+        "writes": "missing-planned-package-versions-only"
+      },
+      {
+        "state": "all-exact-observed",
+        "decision": "advance-to-dist-tag-phase",
+        "writes": "no-package-version-writes"
+      },
+      {
+        "state": "identity-mismatch",
+        "decision": "block-version-permanently",
+        "writes": "none"
+      },
+      {
+        "state": "unexpected-or-contradictory",
+        "decision": "halt-manual-investigation",
+        "writes": "none"
+      },
+      {
+        "state": "unknown",
+        "decision": "halt-and-reobserve",
+        "writes": "none"
+      }
+    ],
+    "forbiddenRecovery": [
+      "alternate-head-publication",
+      "different-bytes-same-version",
+      "rebuild-after-review",
+      "unpublish-republish"
+    ]
+  },
+  "distTagPhase": {
+    "requiresAllPackageVersionsExact": true,
+    "canonicalStableTag": "latest",
+    "canonicalPrereleaseTag": "next",
+    "nightlyTag": null,
+    "partialPromotionDecision": "reobserve-and-converge-tags-only",
+    "packageRepublishAllowed": false
+  },
+  "completion": {
+    "publicRegistryVerificationRequired": true
+  }
+}
