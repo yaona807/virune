@@ -65,7 +65,7 @@
     "canonicalStableTag": "latest",
     "canonicalPrereleaseTag": "next",
     "nightlyTag": null,
-    "targetVersionOrderingRequired": true,
+    "targetVersionOrdering": "semver-precedence",
     "canonicalTagDowngradeAllowed": false,
     "newerCanonicalTargetDecision": "halt-stale-recovery",
     "unexpectedCanonicalTargetDecision": "halt-manual-investigation",
