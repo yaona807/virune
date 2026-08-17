@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { verifyNpmPublicationRecoveryPolicy } from './verify-npm-publication-recovery.mjs';
 
 const PLAN_PATH = '.github/release/npm-publication-v1.json';
 const REPOSITORY_URL = 'git+https://github.com/yaona807/virune.git';
@@ -17,7 +18,6 @@ const REQUIRED_PREPUBLICATION_BLOCKERS = [
 	'package-publication-enablement',
 	'public-registry-verification',
 	'publication-gate-integration',
-	'recovery-policy',
 	'registry-ownership',
 	'release-identity-integration',
 	'trusted-publishing',
@@ -57,6 +57,7 @@ export function verifyNpmPublicationPlan(root = process.cwd()) {
 	assert(plan.trustedPublishingRequired === true, '$.trustedPublishingRequired', 'must remain true');
 	assert(plan.publicVerificationRequired === true, '$.publicVerificationRequired', 'must remain true');
 	assert(plan.sameReviewedReleaseIdentityRequired === true, '$.sameReviewedReleaseIdentityRequired', 'must remain true');
+	verifyNpmPublicationRecoveryPolicy(root);
 	const forbiddenThroughText = nonEmptyString(plan.forbidRegistryPublishThroughVersion, '$.forbidRegistryPublishThroughVersion');
 	const firstStableText = nonEmptyString(plan.firstStableRegistryRelease, '$.firstStableRegistryRelease');
 	const forbiddenThrough = semver(forbiddenThroughText, '$.forbidRegistryPublishThroughVersion');
