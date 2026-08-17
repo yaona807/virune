@@ -115,6 +115,8 @@ test('fails closed on non-canonical, development-only, raw source, nested depend
     'dist/node_modules/dependency.js',
     'dist/source.ts',
     'dist/private.pem',
+    'dist/trailing/',
+    'dist/index.js/child.js',
   ]) {
     withFixture(({ root }) => {
       const pack = structuredClone(basePack);
