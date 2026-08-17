@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { posix } from 'node:path';
 
-const FORBIDDEN_SEGMENTS = new Set(['.git', '.github', '.cache', '__tests__', 'coverage', 'fixtures', 'test', 'tests']);
+const FORBIDDEN_SEGMENTS = new Set(['.git', '.github', '.cache', '__tests__', 'coverage', 'fixtures', 'node_modules', 'test', 'tests']);
 const FORBIDDEN_BASENAMES = new Set([
 	'.env',
 	'.npmrc',
@@ -100,6 +100,7 @@ function assertSafePackedPath(path, filesPath) {
 	for (const segment of segments) {
 		assert(!FORBIDDEN_SEGMENTS.has(segment), filesPath, `development-only path is forbidden: ${path}`);
 	}
+	assert(!/^\.env(?:\.|$)/u.test(basename), filesPath, `high-risk development or credential file is forbidden: ${path}`);
 	assert(!FORBIDDEN_BASENAMES.has(basename), filesPath, `high-risk development or credential file is forbidden: ${path}`);
 	assert(!/\.(?:pem|p12|pfx|key)$/iu.test(basename), filesPath, `credential-like file is forbidden: ${path}`);
 	assert(!/\.(?:test|spec)\.(?:[cm]?[jt]sx?|d\.[cm]?ts|js\.map)$/iu.test(basename), filesPath, `test artifact is forbidden: ${path}`);
