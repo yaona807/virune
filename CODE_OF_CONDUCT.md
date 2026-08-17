@@ -20,18 +20,20 @@ Technical disagreement is expected. Criticism must address code, design, evidenc
 
 Do not post incident details, private information, screenshots containing sensitive information, or allegations about identifiable people in a public Issue.
 
-Use the repository's **Conduct contact request** Issue Form only to request a private moderation channel. The public request must contain no incident details. The maintainer will arrange a private channel before asking for information needed to review the report.
+Virune does not currently operate a universal confidential project-reporting service. The repository's **Conduct contact request** Issue Form may be used only when your GitHub profile already exposes a contact method that supports private communication and that you are willing for the maintainer to use. Do not add a contact address or incident details to the public Issue itself. The maintainer may use the profile contact route to continue privately.
+
+If your profile has no usable private-capable contact route, Virune cannot currently promise confidential project-level intake. Do not disclose sensitive details publicly merely to obtain a response. Conduct or content on GitHub that violates GitHub's policies can be reported through GitHub's own **Report content / Report abuse** mechanisms.
 
 Security vulnerabilities are not conduct reports. Follow [SECURITY.md](SECURITY.md) for vulnerability reporting and do not place exploit-sensitive information in the conduct-reporting path.
 
 ## Moderation and enforcement
 
-Virune currently has one project maintainer. For ordinary conduct reports, that maintainer acts as the community moderator and applies the Contributor Covenant 3.0 enforcement guidance proportionately, considering safety, confidentiality, context, impact, recurrence, and opportunities to repair harm.
+Virune currently has one project maintainer. For ordinary conduct reports that can be received safely, that maintainer acts as the community moderator and applies the Contributor Covenant 3.0 enforcement guidance proportionately, considering safety, confidentiality, context, impact, recurrence, and opportunities to repair harm.
 
 Possible project actions include moderating repository content, limiting participation in project-controlled spaces, or escalating platform-policy violations to the relevant hosting provider. Enforcement details should remain private when disclosure would expose reporters, affected people, witnesses, or sensitive evidence.
 
-Virune does **not** currently claim to have an independent moderation body for a report concerning the sole maintainer. In that case, do not publish incident details in the repository. Platform-policy violations may be reported through GitHub's own reporting mechanisms. If Virune later establishes independent project moderation, the actual authority and contact boundary must be documented in [GOVERNANCE.md](GOVERNANCE.md) before the project claims that process exists.
+Virune does **not** currently claim to have an independent moderation body for a report concerning the sole maintainer. In that case, do not publish incident details in the repository. Platform-policy violations may be reported through GitHub's own reporting mechanisms; Virune does not claim an independent confidential project remedy where none exists. If Virune later establishes independent project moderation, the actual authority and contact boundary must be documented in [GOVERNANCE.md](GOVERNANCE.md) before the project claims that process exists.
 
 ## Project responsibility
 
-The existence of this Code of Conduct is not a substitute for consistent enforcement. Maintainers must not ignore reports merely because they are inconvenient, and must not use the Code of Conduct to suppress good-faith technical disagreement or security reporting.
+The existence of this Code of Conduct is not a substitute for consistent enforcement. Maintainers must not ignore reports merely because they are inconvenient, and must not use the Code of Conduct to suppress good-faith technical disagreement or security reporting. Where the current project structure cannot provide an independent or confidential remedy, the documentation must state that limitation rather than promising a process that does not exist.
