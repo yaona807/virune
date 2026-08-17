@@ -12,6 +12,15 @@
   },
   "packageVersionPhase": {
     "identity": "publication-manifest-exact-candidate",
+    "requiredObservedIdentity": [
+      "package-name",
+      "package-version",
+      "registry-dist-integrity",
+      "downloaded-tarball-sha256",
+      "source-repository",
+      "source-commit",
+      "provenance-workflow"
+    ],
     "states": [
       {
         "state": "none-observed",
