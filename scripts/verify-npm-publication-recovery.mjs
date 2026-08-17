@@ -73,7 +73,7 @@ export function verifyNpmPublicationRecoveryPolicy(root = process.cwd()) {
 		'canonicalStableTag',
 		'canonicalPrereleaseTag',
 		'nightlyTag',
-		'targetVersionOrderingRequired',
+		'targetVersionOrdering',
 		'canonicalTagDowngradeAllowed',
 		'newerCanonicalTargetDecision',
 		'unexpectedCanonicalTargetDecision',
@@ -84,7 +84,7 @@ export function verifyNpmPublicationRecoveryPolicy(root = process.cwd()) {
 	assert(distTags.canonicalStableTag === 'latest', '$.distTagPhase.canonicalStableTag', 'stable recovery must converge to latest');
 	assert(distTags.canonicalPrereleaseTag === 'next', '$.distTagPhase.canonicalPrereleaseTag', 'prerelease recovery must converge to next');
 	assert(distTags.nightlyTag === null, '$.distTagPhase.nightlyTag', 'nightly npm tag promotion must remain disabled');
-	assert(distTags.targetVersionOrderingRequired === true, '$.distTagPhase.targetVersionOrderingRequired', 'canonical tag recovery must compare target version ordering');
+	assert(distTags.targetVersionOrdering === 'semver-precedence', '$.distTagPhase.targetVersionOrdering', 'canonical tag recovery must use SemVer precedence');
 	assert(distTags.canonicalTagDowngradeAllowed === false, '$.distTagPhase.canonicalTagDowngradeAllowed', 'canonical tag recovery must never downgrade to an older release');
 	assert(distTags.newerCanonicalTargetDecision === 'halt-stale-recovery', '$.distTagPhase.newerCanonicalTargetDecision', 'a newer canonical tag target must halt stale recovery');
 	assert(distTags.unexpectedCanonicalTargetDecision === 'halt-manual-investigation', '$.distTagPhase.unexpectedCanonicalTargetDecision', 'an unexpected canonical tag target must halt for investigation');
@@ -112,6 +112,7 @@ export function verifyNpmPublicationRecoveryDocumentation(policy, english, japan
 		'permanently blocks reuse of that package version',
 		'unknown state authorizes no writes',
 		'dist-tag promotion',
+		'SemVer precedence',
 		'never move a canonical tag backward',
 		'newer version, recovery is stale and must halt',
 		'reobserve and converge tags only',
@@ -127,6 +128,7 @@ export function verifyNpmPublicationRecoveryDocumentation(policy, english, japan
 		'そのpackage versionの再利用を永久に禁止',
 		'unknown状態はwriteを一切許可しない',
 		'dist-tag promotion',
+		'SemVer precedence',
 		'canonical tagを過去versionへ巻き戻さない',
 		'より新しいversionを指している場合、recoveryはstaleとして停止',
 		'tagだけを再観測して収束',
