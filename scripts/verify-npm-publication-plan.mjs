@@ -28,7 +28,6 @@ const RUNTIME_DEPENDENCY_SECTIONS = new Set(['dependencies', 'peerDependencies',
 export function verifyNpmPublicationPlan(root = process.cwd()) {
 	const plan = readJson(resolve(root, PLAN_PATH));
 	const rootManifest = readJson(resolve(root, 'package.json'));
-	verifyNpmPublicationRecoveryPolicy(root);
 	assertExactKeys(plan, [
 		'schemaVersion',
 		'stage',
@@ -58,6 +57,7 @@ export function verifyNpmPublicationPlan(root = process.cwd()) {
 	assert(plan.trustedPublishingRequired === true, '$.trustedPublishingRequired', 'must remain true');
 	assert(plan.publicVerificationRequired === true, '$.publicVerificationRequired', 'must remain true');
 	assert(plan.sameReviewedReleaseIdentityRequired === true, '$.sameReviewedReleaseIdentityRequired', 'must remain true');
+	verifyNpmPublicationRecoveryPolicy(root);
 	const forbiddenThroughText = nonEmptyString(plan.forbidRegistryPublishThroughVersion, '$.forbidRegistryPublishThroughVersion');
 	const firstStableText = nonEmptyString(plan.firstStableRegistryRelease, '$.firstStableRegistryRelease');
 	const forbiddenThrough = semver(forbiddenThroughText, '$.forbidRegistryPublishThroughVersion');
