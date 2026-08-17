@@ -6,6 +6,8 @@
 
 すべてのrecovery判断は、planned package集合全体について **public npm Registryをfreshに観測**するところから開始します。cache済み、partial、malformed、unavailable、contradictory、その他unknownな観測結果からwriteを許可してはいけません。通常のpublication gateもreadyである必要があり、writeは`PUBLICATION-MANIFEST.json`で固定したexact reviewed release identityだけを使用します。
 
+観測したpackageを`exact`と扱えるのは、必要なidentity evidenceがすべて一致した場合だけです。package name、package version、Registryの`dist.integrity`、review済みcandidateと比較した **downloadしたtarballのSHA-256**、provenanceで結び付いた **source repository・source commit・provenance workflow** を確認します。identity evidenceが欠落または検証不能ならexact matchではなく、recovery writeを許可しません。将来のpublication/verification実装はこれらの観測値をreviewed release identityへ結び付ける必要があり、証拠が取得できない場合にこのpolicyが代替値を推測することはありません。
+
 ## Package-version phase
 
 一度publishされたnpm package versionは不可逆なidentityとして扱います。
