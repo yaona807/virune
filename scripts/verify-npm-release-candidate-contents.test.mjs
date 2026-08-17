@@ -91,6 +91,24 @@ test('candidate byte drift fails before contents can be accepted as reviewed evi
 	);
 });
 
+test('candidate package.json rejects invalid UTF-8 before manifest semantics are audited', () => {
+	const manifestBytes = Buffer.from(`${JSON.stringify({ ...baseManifest, description: 'x' })}\n`);
+	const marker = manifestBytes.indexOf(Buffer.from('"x"'));
+	assert(marker >= 0);
+	manifestBytes[marker + 1] = 0xff;
+	const bytes = buildTarGzip([
+		['package/package.json', manifestBytes],
+		['package/LICENSE', 'license\n'],
+		['package/NOTICE', 'notice\n'],
+		['package/dist/index.js', 'export const value = 1;\n'],
+		['package/dist/index.d.ts', 'export declare const value: number;\n'],
+	]);
+	assert.throws(
+		() => verifyFixture([{ registryName: '@virune/runtime', releaseAsset: 'virune-runtime-1.1.0.tgz', bytes }]),
+		/invalid UTF-8 package\.json/u,
+	);
+});
+
 test('exact candidate rejects out-of-allowlist, development, credential-like, nested dependency, and raw-source entries', () => {
 	for (const [entryPath, expected] of [
 		['package/src/index.js', /unexpected file outside package\.json files allowlist/u],
