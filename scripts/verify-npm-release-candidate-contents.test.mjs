@@ -246,6 +246,10 @@ test('exact candidate rejects malformed, duplicate, non-canonical, outside-prefi
 			expected: /duplicate tar entry package\/dist\/index\.js/u,
 		},
 		{
+			bytes: canonicalCandidate(baseManifest, [['package/dist/index.js/child.js', 'bad\n']]),
+			expected: /file path cannot also be an ancestor directory: dist\/index\.js conflicts with dist\/index\.js\/child\.js/u,
+		},
+		{
 			bytes: buildTarGzip([
 				['package/package.json', `${JSON.stringify(baseManifest)}\n`],
 				['package/LICENSE', 'license\n'],
