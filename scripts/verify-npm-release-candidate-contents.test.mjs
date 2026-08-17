@@ -91,11 +91,13 @@ test('candidate byte drift fails before contents can be accepted as reviewed evi
 	);
 });
 
-test('exact candidate rejects out-of-allowlist, development, credential-like, and raw-source entries', () => {
+test('exact candidate rejects out-of-allowlist, development, credential-like, nested dependency, and raw-source entries', () => {
 	for (const [entryPath, expected] of [
 		['package/src/index.js', /unexpected file outside package\.json files allowlist/u],
 		['package/dist/.env', /high-risk development or credential file is forbidden/u],
+		['package/dist/.env.production', /high-risk development or credential file is forbidden/u],
 		['package/dist/helper.test.js', /test artifact is forbidden/u],
+		['package/dist/node_modules/dependency.js', /development-only path is forbidden/u],
 		['package/dist/source.ts', /raw TypeScript source is forbidden/u],
 		['package/dist/private.pem', /credential-like file is forbidden/u],
 	]) {
