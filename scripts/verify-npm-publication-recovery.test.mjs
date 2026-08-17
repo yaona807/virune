@@ -65,7 +65,7 @@ test('dist-tag recovery cannot run before exact package publication or republish
 	withFixture((fixture, policy, plan) => {
 		policy.distTagPhase.canonicalStableTag = 'stable';
 		writeJson(resolve(fixture, '.github/release/npm-publication-recovery-v1.json'), policy);
-		assert.throws(() => verifyNpmPublicationRecoveryPolicy(fixture), /must match the publication plan stable dist-tag/u);
+		assert.throws(() => verifyNpmPublicationRecoveryPolicy(fixture), /stable recovery must converge to latest/u);
 		assert.equal(plan.distTagPolicy.stable, 'latest');
 	});
 });
