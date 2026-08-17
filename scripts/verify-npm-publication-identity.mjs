@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { closeSync, constants, fstatSync, lstatSync, openSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { closeSync, constants, existsSync, fstatSync, lstatSync, openSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { gunzipSync } from 'node:zlib';
@@ -162,8 +162,10 @@ export function buildNpmPublicationIdentity({ root = process.cwd(), releaseDirec
 	};
 	for (const pkg of publicationPlan.publishPackages) {
 		const file = registryReleaseAssetNameForPackage(pkg.registryName, publicationPlan.currentVersion);
+		const sourceManifest = findWorkspaceManifest(root, pkg.workspaceName);
 		verifyRegistryCandidateTarball(assetBytes[file], publicationPlan.currentVersion, pkg.registryName, file, {
 			...legal,
+			expectedManifest: sourceManifest,
 			requireEmbeddedCliVersion: pkg.registryName === 'virune',
 		});
 	}
@@ -223,6 +225,16 @@ export function verifyRegistryCandidateTarball(bytes, version, registryName, fil
 	assert(manifest.version === version, `${path}.version`, `expected ${version}`);
 	assert(manifest.private === undefined, `${path}.private`, 'reviewed Registry candidate must omit private so the exact tarball is publishable');
 	assert(manifest.publishConfig === undefined, `${path}.publishConfig`, 'publishConfig must not be present before publication enablement');
+	if (legal.expectedManifest !== undefined) {
+		const sourceManifest = structuredClone(record(legal.expectedManifest, `${path}.expectedManifest`));
+		assert(sourceManifest.private === true, `${path}.expectedManifest.private`, 'reviewed source workspace must remain private:true');
+		delete sourceManifest.private;
+		assert(
+			canonicalJson(manifest) === canonicalJson(sourceManifest),
+			`${path}.packageJson`,
+			'must match the reviewed source manifest with only private removed',
+		);
+	}
 	if (legal.expectedLicense !== undefined) assert(manifest.license === legal.expectedLicense, `${path}.license`, `expected ${legal.expectedLicense}`);
 	verifyCanonicalLegalEntry(entries, 'package/LICENSE', legal.licenseBytes, `${path}.LICENSE`);
 	verifyCanonicalLegalEntry(entries, 'package/NOTICE', legal.noticeBytes, `${path}.NOTICE`);
@@ -248,6 +260,20 @@ export function verifyRegistryCandidateTarball(bytes, version, registryName, fil
 
 export function verifyRegistryCliCandidateTarball(bytes, version, file = registryReleaseAssetNameForPackage('virune', version), legal = {}) {
 	return verifyRegistryCandidateTarball(bytes, version, 'virune', file, legal);
+}
+
+function findWorkspaceManifest(root, workspaceName) {
+	const packagesDirectory = resolve(root, 'packages');
+	const matches = [];
+	for (const entry of readdirSync(packagesDirectory, { withFileTypes: true }).sort((left, right) => compareText(left.name, right.name))) {
+		if (!entry.isDirectory()) continue;
+		const manifestPath = resolve(packagesDirectory, entry.name, 'package.json');
+		if (!existsSync(manifestPath)) continue;
+		const manifest = readJson(manifestPath);
+		if (manifest.name === workspaceName) matches.push(manifest);
+	}
+	assert(matches.length === 1, `$.sourceWorkspace.${workspaceName}`, `expected exactly one workspace manifest; found ${matches.length}`);
+	return matches[0];
 }
 
 function verifyEmbeddedCliVersion(entries, version, file) {
@@ -348,6 +374,18 @@ function packageName(value, path) {
 	const name = nonEmptyString(value, path);
 	assert(/^(?:@virune\/[a-z0-9][a-z0-9-]*|virune)$/u.test(name), path, 'expected virune or an @virune/* package name');
 	return name;
+}
+
+function canonicalJson(value) {
+	return JSON.stringify(canonicalValue(value));
+}
+
+function canonicalValue(value) {
+	if (Array.isArray(value)) return value.map(canonicalValue);
+	if (value !== null && typeof value === 'object') {
+		return Object.fromEntries(Object.keys(value).sort(compareText).map(key => [key, canonicalValue(value[key])]));
+	}
+	return value;
 }
 
 function readJson(path) {
