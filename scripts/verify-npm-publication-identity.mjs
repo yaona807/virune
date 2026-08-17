@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { lstatSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { closeSync, constants, fstatSync, openSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { gunzipSync } from 'node:zlib';
@@ -135,9 +135,14 @@ export function buildNpmPublicationIdentity({ root = process.cwd(), releaseDirec
 		.sort(compareText);
 	const assetBytes = Object.fromEntries(releaseTarballs.map(file => {
 		const path = resolve(releaseDirectory, file);
-		const metadata = lstatSync(path);
-		assert(metadata.isFile() && !metadata.isSymbolicLink(), `$.releaseTarballs.${file}`, 'release tarball must be a regular file');
-		return [file, readFileSync(path)];
+		const fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+		try {
+			const metadata = fstatSync(fd);
+			assert(metadata.isFile(), `$.releaseTarballs.${file}`, 'release tarball must be a regular file');
+			return [file, readFileSync(fd)];
+		} finally {
+			closeSync(fd);
+		}
 	}));
 	const cliRegistryAsset = registryReleaseAssetNameForPackage('virune', publicationPlan.currentVersion);
 	const rootManifest = readJson(resolve(root, 'package.json'));
