@@ -131,6 +131,36 @@ test('exact candidate requires exports and bin targets to exist in the audited t
 	);
 });
 
+test('exact candidate rejects malformed tar headers and archive termination', () => {
+	const invalidChecksum = buildTarGzip(
+		[['package/package.json', `${JSON.stringify(baseManifest)}\n`]],
+		{ afterChecksum: header => { header[148] = header[148] === 0x30 ? 0x31 : 0x30; } },
+	);
+	const invalidSize = buildTarGzip(
+		[['package/package.json', `${JSON.stringify(baseManifest)}\n`]],
+		{ beforeChecksum: header => { header.write('00000000009\0', 124, 12, 'ascii'); } },
+	);
+	const missingSecondEndBlock = buildTarGzip(
+		[['package/package.json', `${JSON.stringify(baseManifest)}\n`]],
+		{ endBlocks: 1 },
+	);
+	const trailingData = buildTarGzip(
+		[['package/package.json', `${JSON.stringify(baseManifest)}\n`]],
+		{ trailingBytes: Buffer.from('unexpected') },
+	);
+	for (const [bytes, expected] of [
+		[invalidChecksum, /invalid tar header checksum/u],
+		[invalidSize, /invalid octal tar size/u],
+		[missingSecondEndBlock, /missing the canonical second end block/u],
+		[trailingData, /non-zero data after the canonical end marker/u],
+	]) {
+		assert.throws(
+			() => verifyFixture([{ registryName: '@virune/runtime', releaseAsset: 'virune-runtime-1.1.0.tgz', bytes }]),
+			expected,
+		);
+	}
+});
+
 test('exact candidate rejects malformed, duplicate, non-canonical, outside-prefix, and non-regular tar entries', () => {
 	const badCases = [
 		{
@@ -193,7 +223,7 @@ test('release paths require exact candidate contents after candidate generation 
 	);
 });
 
-function buildTarGzip(entries) {
+function buildTarGzip(entries, options = {}) {
 	const chunks = [];
 	for (const [name, value, typeFlag = '0'] of entries) {
 		const content = Buffer.isBuffer(value) ? value : Buffer.from(value);
@@ -201,10 +231,18 @@ function buildTarGzip(entries) {
 		Buffer.from(name).copy(header, 0, 0, 100);
 		header.write(`${content.byteLength.toString(8).padStart(11, '0')}\0`, 124, 12, 'ascii');
 		header[156] = typeFlag.charCodeAt(0);
+		options.beforeChecksum?.(header, name);
+		header.fill(0x20, 148, 156);
+		const checksum = header.reduce((sum, byte) => sum + byte, 0);
+		header.write(checksum.toString(8).padStart(6, '0'), 148, 6, 'ascii');
+		header[154] = 0;
+		header[155] = 0x20;
+		options.afterChecksum?.(header, name);
 		chunks.push(header, content);
 		const padding = (512 - content.byteLength % 512) % 512;
 		if (padding > 0) chunks.push(Buffer.alloc(padding));
 	}
-	chunks.push(Buffer.alloc(1024));
+	for (let index = 0; index < (options.endBlocks ?? 2); index += 1) chunks.push(Buffer.alloc(512));
+	if (options.trailingBytes !== undefined) chunks.push(options.trailingBytes);
 	return gzipSync(Buffer.concat(chunks));
 }
