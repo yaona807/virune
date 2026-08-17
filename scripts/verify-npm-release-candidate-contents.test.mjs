@@ -236,6 +236,10 @@ test('exact candidate rejects malformed, duplicate, non-canonical, outside-prefi
 			expected: /package path must already be normalized/u,
 		},
 		{
+			bytes: canonicalCandidate(baseManifest, [['package/dist/trailing/', 'bad\n']]),
+			expected: /packed file path must not end with \//u,
+		},
+		{
 			bytes: buildTarGzip([
 				['package/package.json', `${JSON.stringify(baseManifest)}\n`],
 				['package/LICENSE', 'license\n'],
