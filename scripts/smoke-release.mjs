@@ -5,19 +5,18 @@ import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, w
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { execNpmSync } from './npm-cli.mjs';
+import { registryReleaseAssetNameForPackage } from './verify-npm-publication-identity.mjs';
+import { verifyNpmPublicationPlan } from './verify-npm-publication-plan.mjs';
 
 const releaseDirectory = resolve('release');
 const rootPackage = JSON.parse(readFileSync(resolve('package.json'), 'utf8'));
 const version = rootPackage.version;
+const publicationPlan = verifyNpmPublicationPlan();
 const cliFile = `virune-${version}.tgz`;
-const registryCandidateFiles = [
-	`virune-runtime-${version}.tgz`,
-	`virune-compiler-${version}.tgz`,
-	`virune-formatter-${version}.tgz`,
-	`virune-js-interop-${version}.tgz`,
-	`virune-stdlib-${version}.tgz`,
-	`virune-npm-${version}.tgz`,
-];
+const registryCandidateFiles = publicationPlan.publishPackages
+	.map(item => registryReleaseAssetNameForPackage(item.registryName, version))
+	.sort();
+if (new Set(registryCandidateFiles).size !== registryCandidateFiles.length) throw new Error('Duplicate Registry candidate release asset.');
 const expectedPackages = [...registryCandidateFiles, cliFile];
 const registryCandidateFileSet = new Set(registryCandidateFiles);
 const internalPackageFiles = new Map([
