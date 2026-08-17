@@ -70,6 +70,7 @@ export function auditNpmPackageFileSet({ manifest, files, manifestPath, filesPat
 function packedFile(value, path) {
 	const item = record(value, path);
 	const filePath = canonicalRelativePath(item.path, `${path}.path`);
+	assert(!filePath.endsWith('/'), `${path}.path`, 'packed file path must not end with /');
 	assert(Number.isInteger(item.size) && item.size >= 0, `${path}.size`, 'expected a non-negative integer');
 	return { path: filePath, size: item.size };
 }
