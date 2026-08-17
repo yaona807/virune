@@ -140,6 +140,36 @@ test('exact candidate rejects malformed tar headers and archive termination', ()
 		[['package/package.json', `${JSON.stringify(baseManifest)}\n`]],
 		{ beforeChecksum: header => { header.write('00000000009\0', 124, 12, 'ascii'); } },
 	);
+	const invalidUtf8Path = buildTarGzip(
+		[
+			['package/package.json', `${JSON.stringify(baseManifest)}\n`],
+			['package/LICENSE', 'license\n'],
+			['package/NOTICE', 'notice\n'],
+			['package/dist/index.js', 'export const value = 1;\n'],
+			['package/dist/index.d.ts', 'export declare const value: number;\n'],
+			['package/dist/extra.js', 'export const extra = 1;\n'],
+		],
+		{
+			beforeChecksum: (header, name) => {
+				if (name === 'package/dist/extra.js') header[Buffer.byteLength('package/dist/')] = 0xff;
+			},
+		},
+	);
+	const nonZeroAfterNulPath = buildTarGzip(
+		[
+			['package/package.json', `${JSON.stringify(baseManifest)}\n`],
+			['package/LICENSE', 'license\n'],
+			['package/NOTICE', 'notice\n'],
+			['package/dist/index.js', 'export const value = 1;\n'],
+			['package/dist/index.d.ts', 'export declare const value: number;\n'],
+			['package/dist/extra.js', 'export const extra = 1;\n'],
+		],
+		{
+			beforeChecksum: (header, name) => {
+				if (name === 'package/dist/extra.js') header[Buffer.byteLength(name) + 1] = 0x41;
+			},
+		},
+	);
 	const missingSecondEndBlock = buildTarGzip(
 		[['package/package.json', `${JSON.stringify(baseManifest)}\n`]],
 		{ endBlocks: 1 },
@@ -151,6 +181,8 @@ test('exact candidate rejects malformed tar headers and archive termination', ()
 	for (const [bytes, expected] of [
 		[invalidChecksum, /invalid tar header checksum/u],
 		[invalidSize, /invalid octal tar size/u],
+		[invalidUtf8Path, /invalid UTF-8 tar entry name/u],
+		[nonZeroAfterNulPath, /non-zero data after NUL in tar entry name/u],
 		[missingSecondEndBlock, /missing the canonical second end block/u],
 		[trailingData, /non-zero data after the canonical end marker/u],
 	]) {
