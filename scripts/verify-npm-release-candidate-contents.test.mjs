@@ -172,7 +172,7 @@ test('exact candidate rejects malformed, duplicate, non-canonical, outside-prefi
 	}
 });
 
-test('stable release policy requires exact candidate contents after publication identity', () => {
+test('release paths require exact candidate contents after candidate generation and identity binding', () => {
 	const policy = JSON.parse(readFileSync('.github/stable-release-gate.json', 'utf8'));
 	const releaseIndex = policy.checks.findIndex(item => item.id === 'release-artifacts');
 	const identityIndex = policy.checks.findIndex(item => item.id === 'npm-publication-identity');
@@ -183,6 +183,12 @@ test('stable release policy requires exact candidate contents after publication 
 		id: 'npm-exact-candidate-contents',
 		evidence: ['npm-exact-candidate-contents'],
 	});
+
+	const rootManifest = JSON.parse(readFileSync('package.json', 'utf8'));
+	assert.equal(
+		rootManifest.scripts['verify:release'],
+		'npm run pack:virune && node scripts/verify-npm-release-candidate-contents.mjs && npm run pack:vscode && npm run smoke:release',
+	);
 });
 
 function buildTarGzip(entries) {
