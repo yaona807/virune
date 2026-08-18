@@ -583,15 +583,17 @@ function isDefinitelyNonPrimitive(type: ts.Type, checker: ts.TypeChecker): boole
 }
 
 function typeContainsAny(type: ts.Type, checker: ts.TypeChecker, location: ts.Node, seen: Set<ts.Type>): boolean {
-	if ((type.getFlags() & ts.TypeFlags.Any) !== 0) return true;
+	const flags = type.getFlags();
+	if ((flags & ts.TypeFlags.Any) !== 0) return true;
+	if (primitiveKind(type) !== undefined || (flags & (ts.TypeFlags.ESSymbol | ts.TypeFlags.UniqueESSymbol)) !== 0) return false;
 	if (seen.has(type)) return false;
 	seen.add(type);
 	if (type.isUnionOrIntersection() && type.types.some(item => typeContainsAny(item, checker, location, seen))) return true;
-	if ((type.getFlags() & ts.TypeFlags.TypeParameter) !== 0) {
+	if ((flags & ts.TypeFlags.TypeParameter) !== 0) {
 		const constraint = checker.getBaseConstraintOfType(type);
 		if (constraint !== undefined && constraint !== type && typeContainsAny(constraint, checker, location, seen)) return true;
 	}
-	if ((type.getFlags() & ts.TypeFlags.Object) !== 0) {
+	if ((flags & ts.TypeFlags.Object) !== 0) {
 		const objectType = type as ts.ObjectType;
 		if ((objectType.objectFlags & ts.ObjectFlags.Reference) !== 0) {
 			const typeArguments = checker.getTypeArguments(type as ts.TypeReference);
