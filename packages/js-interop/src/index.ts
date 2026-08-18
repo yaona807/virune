@@ -230,13 +230,18 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 			argumentExpressions.push(name);
 		}
 
-		const sourceText = `${declarations.join('\n')}\n${callTarget}(${argumentExpressions.join(', ')});\n`;
-		const virtualPath = join(usageDirectory, `.virune-interop-usage-${workspace.platform}.ts`);
+		const callText = `${callTarget}(${argumentExpressions.join(', ')})`;
+		const sourceText = `${declarations.join('\n')}\nexport const __viruneResult = ${callText};\n`;
+		const virtualFileName = `.virune-interop-usage-${workspace.platform}-${hash(sourceText)}.ts`;
+		const virtualPath = join(usageDirectory, virtualFileName);
 		const virtualKey = canonicalFilePath(virtualPath);
 		const existing = workspace.virtualFiles.get(virtualKey);
-		if (existing?.text !== sourceText) {
-			workspace.virtualFiles.set(virtualKey, { path: virtualPath, text: sourceText, version: (existing?.version ?? 0) + 1 });
+		if (existing === undefined) {
+			workspace.virtualFiles.set(virtualKey, { path: virtualPath, text: sourceText, version: 1 });
 			workspace.projectVersion++;
+		} else if (existing.text !== sourceText) {
+			// Hash collision or external mutation of provider-owned virtual state.
+			return undefined;
 		}
 		const program = workspace.languageService.getProgram();
 		if (program === undefined) return undefined;
@@ -248,7 +253,11 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 		if (diagnostics.some(item => item.category === ts.DiagnosticCategory.Error)) return undefined;
 		const sourceFile = program.getSourceFile(virtualPath)
 			?? program.getSourceFiles().find(item => canonicalFilePath(item.fileName) === virtualKey);
-		const call = sourceFile?.statements.find(ts.isExpressionStatement)?.expression;
+		const resultDeclaration = sourceFile?.statements
+			.filter(ts.isVariableStatement)
+			.flatMap(statement => [...statement.declarationList.declarations])
+			.find(declaration => ts.isIdentifier(declaration.name) && declaration.name.text === '__viruneResult');
+		const call = resultDeclaration?.initializer;
 		if (call === undefined || !ts.isCallExpression(call)) return undefined;
 		const checker = program.getTypeChecker();
 		const signature = checker.getResolvedSignature(call);
@@ -259,7 +268,11 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 		if (selectedGeneric && (result.getFlags() & ts.TypeFlags.Unknown) !== 0) return undefined;
 		const parameters = signature.getParameters();
 		const { minimum, optional, rest } = signatureArity(parameters);
-		const resultSnapshot = this.store(result, checker, call, callee.origin, workspace);
+		const resultProjection: UsageProjection = {
+			typeExpression: `(typeof import(${JSON.stringify(`./${virtualFileName}`)}))["__viruneResult"]`,
+			directory: usageDirectory,
+		};
+		const resultSnapshot = this.store(result, checker, call, callee.origin, workspace, resultProjection);
 		return {
 			result: resultSnapshot,
 			parameterCount: parameters.length,
@@ -283,7 +296,11 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 		const stored = this.requireType(reference);
 		const awaited = stored.checker.getAwaitedType(stored.type);
 		if (awaited === undefined || awaited === stored.type) return undefined;
-		return this.store(awaited, stored.checker, stored.location, stored.origin, stored.workspace);
+		const usageProjection = stored.usageProjection === undefined ? undefined : {
+			typeExpression: `Awaited<${stored.usageProjection.typeExpression}>`,
+			directory: stored.usageProjection.directory,
+		};
+		return this.store(awaited, stored.checker, stored.location, stored.origin, stored.workspace, usageProjection);
 	}
 
 	public display(reference: ForeignTypeRef): string {
