@@ -202,6 +202,8 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 		const parameterFlags = parameter.getFlags();
 		if (argument.kind === 'foreign') {
 			const source = this.requireType(argument.type);
+			const sourceFlags = source.type.getFlags();
+			if ((sourceFlags & ts.TypeFlags.Any) !== 0) return (parameterFlags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) !== 0;
 			if (source.checker === checker) return checker.isTypeAssignableTo(source.type, parameter);
 			// Type identities are scoped to one TypeScript Program. Across Programs,
 			// preserve only representation-level facts that do not require shared identity.
