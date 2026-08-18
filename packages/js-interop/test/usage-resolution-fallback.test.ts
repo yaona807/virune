@@ -70,7 +70,7 @@ test('compiler never falls back to legacy resolveCall after whole-usage rejectio
 	const compiled = compileSource({
 		id: 1,
 		path: join(root, 'src/no-fallback.virune'),
-		text: `import js { fn } from "./library.js"\n\nfn use() -> Unit uses JavaScript {\n\tfn("value")\n}\n`,
+		text: `import js { fn } from "./library.js"\n\nfn use() -> Unit uses JavaScript {\n\tdiscard fn("value")\n}\n`,
 	}, { platform: 'node', jsInteropProvider: provider });
 	assert.deepEqual(compiled.diagnostics.filter(item => item.severity === 'error').map(item => item.code), ['L4204']);
 	assert.equal(provider.wholeCalls, 1);
