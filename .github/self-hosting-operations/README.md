@@ -1,6 +1,6 @@
 # Self-hosting development operations
 
-This document defines the repository-owned operating rules for Virune self-hosting pull requests. It complements the technical quality gates. It does not relax compiler, compatibility, security, reproducibility, or release requirements.
+This document defines the repository-owned operating rules for Virune self-hosting pull requests. It complements the technical quality gates and the repository-wide contributor workflow in [CONTRIBUTING.md](../../CONTRIBUTING.md). It does not relax compiler, compatibility, security, reproducibility, release, work-item, or exact-head evidence requirements.
 
 Japanese: [README_ja.md](README_ja.md)
 
@@ -11,6 +11,7 @@ Japanese: [README_ja.md](README_ja.md)
 3. Preserve an exact explanation of dependencies, validation, and temporary artifacts in the pull request.
 4. Do not use history repair to hide an unclear feature diff.
 5. Do not merge while a required failure is unexplained.
+6. A specialized Self-hosting pull request extends, but never replaces or weakens, the repository-wide Implementation/Tracking work-item contract.
 
 ## Stacked pull requests
 
@@ -37,12 +38,14 @@ Do not create a zero-change or ancestry-only pull request to reconnect history.
 Use this sequence:
 
 1. stop writes to the child branch;
-2. fetch the new `main` and record its commit SHA;
+2. fetch the new `main` and record its commit SHA as the immutable reconstruction input;
 3. create a replacement branch from that exact `main` commit;
 4. cherry-pick or reapply only the child's feature commits;
 5. compare the replacement diff with the intended changed-path list;
 6. rerun the repository-owned focused validation and the ordinary pull-request gates;
 7. update the existing pull request safely, or close it as superseded and open one replacement pull request when its head cannot be updated without history-only commits.
+
+GitHub remains authoritative for the mutable current pull-request base and head. Recording an immutable reconstruction input or commit-specific evidence does not create a manually maintained `current base` or `current head` field.
 
 A merge commit whose only purpose is ancestry repair is not feature evidence and must not be introduced into `main`.
 
@@ -94,14 +97,17 @@ A failed test, compiler diagnostic mismatch, compatibility check, security check
 
 Every self-hosting pull request must state:
 
+- the `Implementation` Issue using plain `Refs #...` and any `Tracking` parent separately, following [CONTRIBUTING.md](../../CONTRIBUTING.md);
 - change classification and one-sentence intent;
-- base branch and exact dependency, or `none`;
-- stack depth and why a stack is required, or `not stacked`;
+- exact dependency/parent pull request and stack topology, or `none` / `not stacked`;
 - intended changed paths or boundaries;
 - repository-owned commands executed and their results;
+- immutable exact SHA alongside formal CI or other commit-specific evidence;
 - current CI failure classification, if any;
 - temporary artifacts, their removal trigger, and merge disposition, or `none`;
 - remaining work intentionally excluded from the pull request.
+
+Do not maintain copied mutable current-base/current-head fields in the pull-request body. Use GitHub for current PR identity and exact SHAs only with the immutable evidence they identify.
 
 Use the repository template in `.github/PULL_REQUEST_TEMPLATE/self-hosting.md`.
 
@@ -118,8 +124,11 @@ Inventory generation and feature implementation may share an engine, but a pull 
 
 A self-hosting operations change is complete only when:
 
-- its permanent command or policy is on `main`;
-- all required workflow families pass on the exact merged head;
+- its permanent command or policy is on current `main`;
+- all required workflow families passed on the reviewed exact pull-request head before merge;
+- the work item's explicit observable completion criteria are verified again on current `main` after merge;
 - superseded diagnostic-only pull requests are closed;
 - temporary workflow files are absent;
-- Issue #269 records the result and remaining phase work.
+- Issue #269 records the result and remaining phase work when that tracking record is applicable.
+
+A successful workflow on an older PR head is stale after the head changes, and a squash-merge commit is not a substitute for the reviewed exact PR-head evidence. The implementation Issue is closed explicitly only after its completion criteria are verified on current `main`.
