@@ -71,6 +71,39 @@ test('rejects native Unknown outbound while preserving known primitive arguments
 	assert.deepEqual(errorCodes(unsafe), ['L4212']);
 });
 
+test('does not use foreign any as evidence for a specific parameter type', async () => {
+	const root = await fixtureRoot();
+	await writeFile(join(root, 'src/library.d.ts'), [
+		'export interface Api {',
+		'  anyValue: any;',
+		'  acceptString(value: string): void;',
+		'  acceptUnknown(value: unknown): void;',
+		'  acceptAny(value: any): void;',
+		'}',
+		'export declare const api: Api;',
+		'',
+	].join('\n'), 'utf8');
+	await writeFile(join(root, 'src/library.js'), 'export const api = { anyValue: "value", acceptString() {}, acceptUnknown() {}, acceptAny() {} };\n', 'utf8');
+	const provider = new TypeScriptInteropProvider({ projectRoot: root });
+	const api = resolveNamed(provider, root, 'api');
+	const anyValue = provider.getProperty(api.ref, 'anyValue');
+	const acceptString = provider.getProperty(api.ref, 'acceptString');
+	const acceptUnknown = provider.getProperty(api.ref, 'acceptUnknown');
+	const acceptAny = provider.getProperty(api.ref, 'acceptAny');
+	assert.ok(anyValue && acceptString && acceptUnknown && acceptAny);
+	assert.equal(anyValue.category, 'any');
+	assert.equal(provider.resolveCall(acceptString.ref, [{ kind: 'foreign', type: anyValue.ref }]), undefined);
+	assert.ok(provider.resolveCall(acceptUnknown.ref, [{ kind: 'foreign', type: anyValue.ref }]));
+	assert.ok(provider.resolveCall(acceptAny.ref, [{ kind: 'foreign', type: anyValue.ref }]));
+
+	const rejectedSpecific = compileSource({
+		id: 5,
+		path: join(root, 'src/rejected-foreign-any.virune'),
+		text: `import js { api } from "./library.js"\n\nfn use() -> Unit uses JavaScript {\n\tapi.acceptString(api.anyValue)\n}\n`,
+	}, { platform: 'node', jsInteropProvider: provider });
+	assert.deepEqual(errorCodes(rejectedSpecific), ['L4204']);
+});
+
 test('does not treat broad native primitives as TypeScript literal values', async () => {
 	const root = await fixtureRoot();
 	await writeFile(join(root, 'src/library.d.ts'), [
