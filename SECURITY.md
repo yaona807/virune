@@ -1,5 +1,7 @@
 # Security Policy
 
+日本語: [SECURITY_ja.md](SECURITY_ja.md)
+
 ## Supported versions
 
 The latest stable release line and `main` are supported. Older release lines are unsupported unless a maintainer explicitly announces a temporary backport window for a high-impact vulnerability.

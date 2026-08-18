@@ -1,0 +1,29 @@
+name: Conduct contact request
+description: Request private moderation contact only when your GitHub profile exposes a usable private-capable contact route
+title: "conduct: request private moderation contact"
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This request Issue, your GitHub identity, title, and body are public. GitHub lets you edit the pre-populated title and the Issue after submission. Do not use this form if the fact that you are requesting moderation contact must remain confidential.
+
+        Use this public form only when your GitHub profile already exposes a contact method that supports private communication and you are willing for the Virune maintainer to use it. This form does not provide independent review of the sole maintainer.
+
+        Do not put incident details or sensitive information in the Issue title or body. Do not include a contact address, allegations about identifiable people, names of affected people or witnesses, private messages, screenshots, personal information, or other sensitive information. The maintainer may use the contact route already published on your profile to continue privately.
+
+        If your profile has no usable private-capable contact route, Virune cannot currently promise confidential project-level intake. Do not disclose sensitive details publicly. Conduct or content on GitHub that violates GitHub policies can be reported through GitHub's Report content / Report abuse mechanisms.
+
+        Security vulnerabilities are handled separately under the security policy. Do not include vulnerability or exploit details here.
+  - type: checkboxes
+    id: confirmation
+    attributes:
+      label: Public-content confirmation
+      options:
+        - label: I understand that this request Issue, my GitHub identity, its title, and its body will be public and editable.
+          required: true
+        - label: I will not add conduct incident details, personal information, vulnerability details, or other sensitive information to the Issue title or body.
+          required: true
+        - label: My GitHub profile already exposes a contact method that supports private communication and I am willing for the Virune maintainer to use it.
+          required: true
+        - label: I understand that this form does not provide independent review of the sole Virune maintainer.
+          required: true
