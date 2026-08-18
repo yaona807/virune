@@ -49,6 +49,16 @@ test('fails deterministically when the Issue Template directory is missing', asy
 	]);
 });
 
+test('requires the Issue Template root path to be a real directory', async t => {
+	const root = await mkdtemp(join(tmpdir(), 'virune-issue-forms-root-'));
+	t.after(async () => rm(root, { recursive: true, force: true }));
+	await mkdir(join(root, '.github'), { recursive: true });
+	await writeFile(join(root, '.github', 'ISSUE_TEMPLATE'), 'not a directory', 'utf8');
+	assert.deepEqual(await verifyIssueForms(root), [
+		'.github/ISSUE_TEMPLATE: Issue Template path must be a real directory',
+	]);
+});
+
 test('requires every canonical Issue Template/config file', async t => {
 	const root = await createTemplateRoot(t, { 'config.yml': validConfig });
 	assert.deepEqual(await verifyIssueForms(root), [
