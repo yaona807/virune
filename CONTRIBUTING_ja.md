@@ -92,7 +92,7 @@ Labelは整理用metadataにすぎません。safety、required CI、merge eligi
 
 `workflow:validation-only`, `workflow:superseded`, `workflow:blocked`
 
-Backlogまたは未着手のIssueはunassignedのままで構いません。Implementation workを実際に開始したら、その作業を継続して完了へ運ぶaccountableな人をassignしてください。Assigneeはownership metadataであり、concurrency lockでも、safetyやmerge eligibilityのevidenceでもありません。
+Backlogまたは未着手のIssueはunassignedのままで構いません。Implementation workを実際に開始したら、accountable ownerが明示されている必要があります。十分なrepository permissionを持つContributorはassigneeを直接更新できます。権限がない場合、ContributorはIssueまたはlinked PRでそのworkを担当する意思を明示し、MaintainerがGitHub assignee metadataを設定または更新します。Assigneeを編集できないことを理由に広範なrepository accessを付与したり、ownership ruleを迂回したりしてはいけません。Assigneeはownership metadataであり、concurrency lockでも、safetyやmerge eligibilityのevidenceでもありません。
 
 ## Branch
 
