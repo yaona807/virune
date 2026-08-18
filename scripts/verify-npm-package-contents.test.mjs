@@ -78,7 +78,7 @@ test('fails closed when an allowlist entry selects no packed file', () => {
 
 test('fails closed on unsupported globbed files rules or wildcard package targets', () => {
   withFixture(({ root, manifestPath }) => {
-    writeJson(manifestPath, { ...baseManifest, files: ['dist/+'] });
+    writeJson(manifestPath, { ...baseManifest, files: ['dist/*'] });
     assert.throws(() => verifyNpmPackageContents(root, { packDryRun: () => structuredClone(basePack) }), /globbed files entries are not supported/u);
   });
   withFixture(({ root, manifestPath }) => {
