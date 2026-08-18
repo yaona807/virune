@@ -19,6 +19,11 @@
 				"contents": "read",
 				"security-events": "write"
 			},
+			"repository-metadata-audit.yml": {
+				"contents": "read",
+				"issues": "read",
+				"pull-requests": "read"
+			},
 			"release-dry-run.yml": {
 				"actions": "read",
 				"contents": "read"
