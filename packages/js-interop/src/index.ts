@@ -129,6 +129,7 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 	public resolveCallUsage(reference: ForeignTypeRef, usage: InteropCallUsage): ForeignCallResolution | undefined {
 		const callee = this.lookupType(reference);
 		if (callee === undefined) return undefined;
+		const workspace = callee.workspace;
 		const calleeFlags = callee.type.getFlags();
 		if ((calleeFlags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) !== 0 || callee.type.getCallSignatures().length === 0) return undefined;
 
@@ -137,7 +138,7 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 		let callTarget: string;
 		if (usage.target.kind === 'member') {
 			const receiver = this.lookupType(usage.target.receiver);
-			if (receiver === undefined || (receiver.type.getFlags() & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) !== 0) return undefined;
+			if (receiver === undefined || receiver.workspace !== workspace || (receiver.type.getFlags() & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) !== 0) return undefined;
 			const property = JSON.stringify(usage.target.property);
 			declarations.push(`declare const __viruneReceiver: ${this.usageTypeText(receiver)};`);
 			declarations.push(`declare const __viruneCallee: ${calleeText};`);
@@ -154,7 +155,7 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 			if (argument.kind === 'unknown') return undefined;
 			if (argument.kind === 'foreign') {
 				const source = this.lookupType(argument.type);
-				if (source === undefined) return undefined;
+				if (source === undefined || source.workspace !== workspace) return undefined;
 				const sourceType = (source.type.getFlags() & ts.TypeFlags.Any) !== 0 ? 'unknown' : this.usageTypeText(source);
 				const name = `__viruneArg${index}`;
 				declarations.push(`declare const ${name}: ${sourceType};`);
@@ -177,7 +178,6 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 		}
 
 		const sourceText = `${declarations.join('\n')}\n${callTarget}(${argumentExpressions.join(', ')});\n`;
-		const workspace = callee.workspace;
 		const virtualPath = join(this.#projectRoot, `.virune-interop-usage-${workspace.platform}.ts`);
 		const virtualKey = canonicalFilePath(virtualPath);
 		const existing = workspace.virtualFiles.get(virtualKey);
