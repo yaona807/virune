@@ -297,6 +297,24 @@ test('provider collection rejects duplicate normalized numbers and malformed pro
 		collectGitHubWorkItems({ repository: 'yaona807/virune', token: 'token', fetchImpl: malformedFetch }),
 		/issue.labels must be an array/u,
 	);
+	const malformedItemFetch = async url => ({
+		ok: true,
+		status: 200,
+		json: async () => url.includes('/issues?') ? [null] : [],
+	});
+	await assert.rejects(
+		collectGitHubWorkItems({ repository: 'yaona807/virune', token: 'token', fetchImpl: malformedItemFetch }),
+		/GitHub Issues response\[0\] must be an object/u,
+	);
+	const malformedPullMarkerFetch = async url => ({
+		ok: true,
+		status: 200,
+		json: async () => url.includes('/issues?') ? [{ number: 10, state: 'open', pull_request: null }] : [],
+	});
+	await assert.rejects(
+		collectGitHubWorkItems({ repository: 'yaona807/virune', token: 'token', fetchImpl: malformedPullMarkerFetch }),
+		/GitHub Issues response\[0\]\.pull_request must be an object/u,
+	);
 });
 
 test('provider collection fails closed on HTTP, response-shape, token, or repository errors', async () => {
