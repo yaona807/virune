@@ -57,6 +57,7 @@ test('resolves complete TypeScript call usages with literal, generic, rest, and 
 		'export declare function collect(...values: string[]): number;',
 		'export declare function acceptItem(value: Item): void;',
 		'export declare function makeItem(): Item;',
+		'export declare function makeItemAsync(): Promise<Item>;',
 		'export declare function acceptString(value: string): void;',
 		'export declare function acceptUnknown(value: unknown): void;',
 		'export interface Api { method(this: Api, value: "foo"): "member" }',
@@ -79,6 +80,7 @@ test('resolves complete TypeScript call usages with literal, generic, rest, and 
 		'export function collect(...values) { return values.length; }',
 		'export function acceptItem() {}',
 		'export function makeItem() { return item; }',
+		'export async function makeItemAsync() { return item; }',
 		'export function acceptString() {}',
 		'export function acceptUnknown() {}',
 		'export const api = { method() { return "member"; } };',
@@ -125,10 +127,20 @@ test('resolves complete TypeScript call usages with literal, generic, rest, and 
 	const makeItem = resolveNamed(provider, root, 'makeItem');
 	const madeItem = call(provider, makeItem, []);
 	assert.ok(madeItem);
-	assert.equal(call(provider, acceptItem, [{ kind: 'foreign', type: madeItem.result.ref }]), undefined, 'derived call results without a reconstructible usage projection must fail closed');
+	assert.ok(call(provider, acceptItem, [{ kind: 'foreign', type: madeItem.result.ref }]), 'whole-usage call results must rematerialize in a later fixed Program');
+	const madeItemValue = provider.getProperty(madeItem.result.ref, 'value');
+	assert.ok(madeItemValue);
+	const acceptString = resolveNamed(provider, root, 'acceptString');
+	assert.ok(call(provider, acceptString, [{ kind: 'foreign', type: madeItemValue.ref }]), 'properties of whole-usage call results must preserve their projection');
+
+	const makeItemAsync = resolveNamed(provider, root, 'makeItemAsync');
+	const pendingItem = call(provider, makeItemAsync, []);
+	assert.ok(pendingItem);
+	const awaitedItem = provider.getAwaitedType(pendingItem.result.ref);
+	assert.ok(awaitedItem);
+	assert.ok(call(provider, acceptItem, [{ kind: 'foreign', type: awaitedItem.ref }]), 'awaited whole-usage results must rematerialize in a later fixed Program');
 
 	const anyValue = resolveNamed(provider, root, 'anyValue');
-	const acceptString = resolveNamed(provider, root, 'acceptString');
 	const acceptUnknown = resolveNamed(provider, root, 'acceptUnknown');
 	assert.equal(call(provider, acceptString, [{ kind: 'foreign', type: anyValue.ref }]), undefined);
 	assert.ok(call(provider, acceptUnknown, [{ kind: 'foreign', type: anyValue.ref }]));
