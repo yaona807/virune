@@ -8,18 +8,26 @@ import { fixtureRoot } from './fixture.js';
 async function evidence(root: string) {
 	const provider = new TypeScriptInteropProvider({ projectRoot: root });
 	try {
+		const containingFile = join(root, 'src/main.virune');
 		const request = {
-			containingFile: join(root, 'src/main.virune'),
+			containingFile,
 			moduleSpecifier: './library.js',
 			kind: 'named' as const,
 			importedName: 'greet',
 			platform: 'node' as const,
 		};
 		const imported = provider.resolveImport(request);
+		const namespace = provider.resolveImport({
+			containingFile,
+			moduleSpecifier: './library.js',
+			kind: 'namespace',
+			platform: 'node',
+		});
 		assert.ok(imported.type);
+		assert.ok(namespace.type);
 		const result = compileSource({
 			id: 1,
-			path: request.containingFile,
+			path: containingFile,
 			text: 'import js { greet } from "./library.js"\n\nfn main() -> String uses JavaScript {\n\treturn greet("Virune")\n}\n',
 		}, { platform: 'node', jsInteropProvider: provider });
 		assert.deepEqual(result.diagnostics.filter(item => item.severity === 'error'), []);
@@ -27,6 +35,11 @@ async function evidence(root: string) {
 		return {
 			origin: imported.type.origin,
 			witness: imported.witness,
+			namespace: {
+				display: namespace.type.display,
+				origin: namespace.type.origin,
+				witness: namespace.witness,
+			},
 			usageIR: result.semantic.interop.usageIR,
 			moduleWitnesses: result.semantic.interop.moduleWitnesses,
 		};
@@ -46,6 +59,9 @@ test('provider evidence remains canonical across different checkout roots', asyn
 	assert.equal(first.origin?.declarationPath, 'src/library.d.ts');
 	assert.equal(first.witness.declarationEntry, 'src/library.d.ts');
 	assert.equal(first.witness.runtimeEntry, 'src/library.js');
+	assert.equal(first.namespace.origin?.declarationPath, 'src/library.d.ts');
+	assert.equal(first.namespace.witness.declarationEntry, 'src/library.d.ts');
+	assert.equal(first.namespace.witness.runtimeEntry, 'src/library.js');
 
 	const serialized = JSON.stringify(first);
 	assert.equal(serialized.includes(firstRoot), false);
