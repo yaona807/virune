@@ -12,6 +12,10 @@ function resolveNamed(provider: TypeScriptInteropProvider, root: string, importe
 	return imported.type;
 }
 
+function errorCodes(result: ReturnType<typeof compileSource>): string[] {
+	return result.diagnostics.filter(item => item.severity === 'error').map(item => item.code);
+}
+
 test('resolves Node standard module declarations in node projects', async () => {
 	const root = await fixtureRoot();
 	const provider = new TypeScriptInteropProvider({ projectRoot: root });
@@ -43,28 +47,28 @@ test('rejects native Unknown outbound while preserving known primitive arguments
 		path: join(root, 'src/rejected-unknown.virune'),
 		text: `import js { parseUnknown } from "./library.js"\n\nfn roundTrip(value: Unknown) -> Unknown uses JavaScript {\n\treturn parseUnknown(value)\n}\n`,
 	}, { platform: 'node', jsInteropProvider: provider });
-	assert.ok(rejectedUnknown.diagnostics.some(item => item.code === 'L4204'));
+	assert.deepEqual(errorCodes(rejectedUnknown), ['L4204']);
 
 	const rejectedAny = compileSource({
 		id: 2,
 		path: join(root, 'src/rejected-any.virune'),
 		text: `import js { parseAny } from "./library.js"\n\nfn roundTrip(value: Unknown) -> Unknown uses JavaScript {\n\treturn parseAny(value)\n}\n`,
 	}, { platform: 'node', jsInteropProvider: provider });
-	assert.ok(rejectedAny.diagnostics.some(item => item.code === 'L4204'));
+	assert.deepEqual(errorCodes(rejectedAny), ['L4204']);
 
 	const acceptedKnown = compileSource({
 		id: 3,
 		path: join(root, 'src/accepted-known.virune'),
 		text: `import js { parseUnknown } from "./library.js"\n\nfn parse(value: String) -> Unknown uses JavaScript {\n\treturn parseUnknown(value)\n}\n`,
 	}, { platform: 'node', jsInteropProvider: provider });
-	assert.deepEqual(acceptedKnown.diagnostics.filter(item => item.severity === 'error'), []);
+	assert.deepEqual(errorCodes(acceptedKnown), []);
 
 	const unsafe = compileSource({
 		id: 4,
 		path: join(root, 'src/unsafe.virune'),
 		text: `import js { unsafeValue } from "./library.js"\n`,
 	}, { emit: false, platform: 'node', jsInteropProvider: provider });
-	assert.ok(unsafe.diagnostics.some(item => item.code === 'L4212'));
+	assert.deepEqual(errorCodes(unsafe), ['L4212']);
 });
 
 test('does not treat broad native primitives as TypeScript literal values', async () => {
@@ -121,7 +125,7 @@ test('fails closed on cross-Program facts that are not representation-safe', asy
 	].join('\n'), 'utf8');
 	const provider = new TypeScriptInteropProvider({ projectRoot: root });
 
-	// Different target workspaces guarantee distinct TypeScript Program/checker identities.
+	// Separate platform workspaces use distinct TypeScript Program/checker identities.
 	const item = resolveNamed(provider, root, 'item', 'browser');
 	const maybeItem = resolveNamed(provider, root, 'maybeItem', 'browser');
 	const text = resolveNamed(provider, root, 'text', 'browser');
