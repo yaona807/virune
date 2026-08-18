@@ -117,6 +117,7 @@ test('fails closed on cross-Program facts that are not representation-safe', asy
 		'export declare const maybeItem: Item | string;',
 		'export declare const text: string;',
 		'export declare function acceptObject(value: object): void;',
+		'export declare function acceptItem(value: Item): void;',
 		'export declare function acceptUnknown(value: unknown): void;',
 		'export declare function acceptAny(value: any): void;',
 		'export declare function acceptString(value: string): void;',
@@ -130,12 +131,14 @@ test('fails closed on cross-Program facts that are not representation-safe', asy
 	const maybeItem = resolveNamed(provider, root, 'maybeItem', 'browser');
 	const text = resolveNamed(provider, root, 'text', 'browser');
 	const acceptObject = resolveNamed(provider, root, 'acceptObject', 'node');
+	const acceptItem = resolveNamed(provider, root, 'acceptItem', 'node');
 	const acceptUnknown = resolveNamed(provider, root, 'acceptUnknown', 'node');
 	const acceptAny = resolveNamed(provider, root, 'acceptAny', 'node');
 	const acceptString = resolveNamed(provider, root, 'acceptString', 'node');
 	const acceptLiteral = resolveNamed(provider, root, 'acceptLiteral', 'node');
 
 	assert.ok(provider.resolveCall(acceptObject.ref, [{ kind: 'foreign', type: item.ref }]));
+	assert.equal(provider.resolveCall(acceptItem.ref, [{ kind: 'foreign', type: item.ref }]), undefined);
 	assert.equal(provider.resolveCall(acceptObject.ref, [{ kind: 'foreign', type: maybeItem.ref }]), undefined);
 	assert.ok(provider.resolveCall(acceptUnknown.ref, [{ kind: 'foreign', type: item.ref }]));
 	assert.ok(provider.resolveCall(acceptAny.ref, [{ kind: 'foreign', type: item.ref }]));
