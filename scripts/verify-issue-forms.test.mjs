@@ -21,7 +21,7 @@ test('accepts the supported Issue Form/config subset', () => {
 	assert.deepEqual(validateIssueTemplateFile('config.yml', validConfig), []);
 });
 
-test('parses nested mappings, sequences, quoted scalars, booleans, and literal block scalars', () => {
+test('parses nested mappings, sequences, quoted scalars, core booleans/null, and literal block scalars', () => {
 	const parsed = parseYamlSubset(validBugForm);
 	assert.equal(parsed.name, 'Bug report');
 	assert.equal(parsed.title, 'bug: ');
@@ -31,6 +31,10 @@ test('parses nested mappings, sequences, quoted scalars, booleans, and literal b
 	assert.equal(contact.body[0].attributes.value, 'This issue is public.\nDo not include sensitive details.\n');
 	const quoted = parseYamlSubset("value: 'here''s to quotes'\n");
 	assert.equal(quoted.value, "here's to quotes");
+	const core = parseYamlSubset('enabled: TRUE\ndisabled: False\nmissing: NULL\n');
+	assert.equal(core.enabled, true);
+	assert.equal(core.disabled, false);
+	assert.equal(core.missing, null);
 });
 
 test('requires every canonical Issue Template/config file', async t => {
@@ -49,6 +53,15 @@ test('validates additional yaml files instead of silently ignoring them', async 
 	}));
 	assert.deepEqual(await verifyIssueForms(root), [
 		'extra.yaml: body[0].type must be one of markdown, input, textarea, dropdown, checkboxes',
+	]);
+});
+
+test('fails closed when a Markdown Issue Template is introduced outside the supported subset', async t => {
+	const root = await createTemplateRoot(t, canonicalFiles({
+		'legacy.md': '---\nname: Legacy template\n---\n',
+	}));
+	assert.deepEqual(await verifyIssueForms(root), [
+		'legacy.md: Markdown Issue Templates are outside the supported repository subset; extend the validator before adding one',
 	]);
 });
 
@@ -141,6 +154,11 @@ test('rejects markdown id and validations fields', () => {
 test('requires a non-empty dropdown option sequence', () => {
 	const errors = validateIssueTemplateFile('change_proposal.yml', `name: Change\ndescription: Test\nbody:\n  - type: dropdown\n    id: role\n    attributes:\n      label: Role\n      options:\n`);
 	assert.deepEqual(errors, ['change_proposal.yml: body[0].attributes.options must be a non-empty sequence of strings']);
+});
+
+test('requires dropdown option choices to be distinct', () => {
+	const errors = validateIssueTemplateFile('change_proposal.yml', `name: Change\ndescription: Test\nbody:\n  - type: dropdown\n    id: role\n    attributes:\n      label: Role\n      options:\n        - Implementation\n        - Implementation\n`);
+	assert.deepEqual(errors, ['change_proposal.yml: body[0].attributes.options choices must be distinct']);
 });
 
 test('validates checkbox option shape', () => {
