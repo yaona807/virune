@@ -17,11 +17,15 @@ const allowedBodyTypes = new Set(['markdown', 'input', 'textarea', 'dropdown', '
 
 export async function verifyIssueForms(root = repositoryRoot) {
 	const directory = resolve(root, issueTemplateDirectory);
-	const entries = (await readdir(directory, { withFileTypes: true }))
-		.filter(entry => entry.isFile() && /\.ya?ml$/u.test(entry.name))
+	const directoryEntries = (await readdir(directory, { withFileTypes: true }))
+		.filter(entry => entry.isFile())
 		.map(entry => entry.name)
 		.sort(compareCodePoint);
+	const entries = directoryEntries.filter(name => /\.ya?ml$/u.test(name));
 	const errors = [];
+	for (const name of directoryEntries.filter(name => name.endsWith('.md'))) {
+		errors.push(`${name}: Markdown Issue Templates are outside the supported repository subset; extend the validator before adding one`);
+	}
 	const present = new Set(entries);
 	const formNames = new Map();
 	for (const required of requiredTemplateFiles) {
@@ -175,6 +179,10 @@ function validateDropdown(path, attributes, errors) {
 	}
 	if (!Array.isArray(attributes.options) || attributes.options.length === 0 || attributes.options.some(option => typeof option !== 'string' || option.trim() === '')) {
 		errors.push(`${path}.attributes.options must be a non-empty sequence of strings`);
+		return;
+	}
+	if (new Set(attributes.options).size !== attributes.options.length) {
+		errors.push(`${path}.attributes.options choices must be distinct`);
 	}
 }
 
@@ -443,9 +451,9 @@ function parseScalar(text, lineNumber) {
 		}
 		return parsed;
 	}
-	if (text === 'true') return true;
-	if (text === 'false') return false;
-	if (text === 'null' || text === '~') return null;
+	if (/^(?:true|True|TRUE)$/u.test(text)) return true;
+	if (/^(?:false|False|FALSE)$/u.test(text)) return false;
+	if (/^(?:null|Null|NULL|~)$/u.test(text)) return null;
 	if (/^-?(?:0|[1-9][0-9]*)$/u.test(text)) return Number(text);
 	if (/^[+-]?(?:[0-9]+\.[0-9]*|\.[0-9]+|[0-9]+(?:\.[0-9]*)?[eE][+-]?[0-9]+)$/u.test(text)) {
 		throw yamlError(lineNumber, 'non-integer numeric scalars are not supported');
