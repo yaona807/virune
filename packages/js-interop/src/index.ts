@@ -185,8 +185,10 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 		const required = parameters.filter(parameter => (parameter.flags & ts.SymbolFlags.Optional) === 0 && !(parameter.valueDeclaration !== undefined && ts.isParameter(parameter.valueDeclaration) && (parameter.valueDeclaration.questionToken !== undefined || parameter.valueDeclaration.initializer !== undefined || parameter.valueDeclaration.dotDotDotToken !== undefined))).length;
 		const lastDeclaration = parameters.at(-1)?.valueDeclaration;
 		const hasRest = lastDeclaration !== undefined && ts.isParameter(lastDeclaration) && lastDeclaration.dotDotDotToken !== undefined;
-		const fixedParameterCount = hasRest ? parameters.length - 1 : parameters.length;
-		if (argumentsList.length < required || argumentsList.length > fixedParameterCount) return false;
+		// This approximate resolver cannot safely model rest-element types or tuple/variadic rest semantics.
+		// Leave every rest signature to the TypeScript adapter/whole-usage resolver instead of partially accepting it.
+		if (hasRest) return false;
+		if (argumentsList.length < required || argumentsList.length > parameters.length) return false;
 		for (let index = 0; index < argumentsList.length; index++) {
 			const parameter = parameters[index]!;
 			const location = parameter.valueDeclaration ?? parameter.declarations?.[0];
