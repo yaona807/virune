@@ -1,4 +1,4 @@
-import { readFile, readdir } from 'node:fs/promises';
+import { lstat, readFile, readdir } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -19,13 +19,17 @@ const githubBooleanFalse = new Set(['n', 'N', 'no', 'No', 'NO', 'false', 'False'
 
 export async function verifyIssueForms(root = repositoryRoot) {
 	const directory = resolve(root, issueTemplateDirectory);
-	let dirents;
+	let directoryStat;
 	try {
-		dirents = await readdir(directory, { withFileTypes: true });
+		directoryStat = await lstat(directory);
 	} catch (error) {
 		if (error?.code === 'ENOENT') return [`${issueTemplateDirectory}: required Issue Template directory is missing`];
 		throw error;
 	}
+	if (!directoryStat.isDirectory() || directoryStat.isSymbolicLink()) {
+		return [`${issueTemplateDirectory}: Issue Template path must be a real directory`];
+	}
+	const dirents = await readdir(directory, { withFileTypes: true });
 	const errors = [];
 	for (const entry of [...dirents].sort((left, right) => compareCodePoint(left.name, right.name))) {
 		if (/\.(?:ya?ml|md)$/u.test(entry.name) && !entry.isFile()) {
