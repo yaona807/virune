@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import test from 'node:test';
+import type { JsInteropProvider } from '@virune/compiler/experimental';
 import { TypeScriptInteropProvider } from '../src/index.js';
 import { fixtureRoot } from './fixture.js';
 
@@ -18,7 +19,9 @@ test('whole-usage member calls remain valid with noUnusedLocals enabled', async 
 	assert.ok(imported.type);
 	const method = provider.getProperty(imported.type.ref, 'method');
 	assert.ok(method);
-	const resolved = provider.resolveCallUsage(method.ref, {
+	const interopProvider: JsInteropProvider = provider;
+	assert.ok(interopProvider.resolveCallUsage);
+	const resolved = interopProvider.resolveCallUsage(method.ref, {
 		target: { kind: 'member', receiver: imported.type.ref, property: 'method' },
 		arguments: [{ kind: 'native-primitive', primitive: 'String', literal: { kind: 'String', value: 'foo' } }],
 	});
