@@ -120,6 +120,7 @@ test('fails closed on non-canonical, development-only, raw source, nested depend
     'dist/private.pem',
     'dist/trailing/',
     'dist/index.js/child.js',
+    'dist/INDEX.js/child.js',
     'dist/Index.js',
     'dist/trailing-dot.',
     'dist/trailing-space ',
