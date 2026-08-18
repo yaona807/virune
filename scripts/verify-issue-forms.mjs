@@ -416,7 +416,18 @@ function parseScalar(text, lineNumber) {
 	}
 	if (text.startsWith("'")) {
 		if (!text.endsWith("'") || text.length < 2) throw yamlError(lineNumber, 'invalid single-quoted string');
-		return text.slice(1, -1).replace(/''/gu, "'");
+		const inner = text.slice(1, -1);
+		let parsed = '';
+		for (let index = 0; index < inner.length; index += 1) {
+			if (inner[index] !== "'") {
+				parsed += inner[index];
+				continue;
+			}
+			if (inner[index + 1] !== "'") throw yamlError(lineNumber, 'invalid single-quoted string');
+			parsed += "'";
+			index += 1;
+		}
+		return parsed;
 	}
 	if (text === 'true') return true;
 	if (text === 'false') return false;
