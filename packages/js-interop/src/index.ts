@@ -100,6 +100,12 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 			...options.compilerOptions,
 		};
 		this.#createLanguageService = options.createLanguageService ?? (host => ts.createLanguageService(host));
+		Object.defineProperty(this, 'resolveCallUsage', {
+			value: (reference: ForeignTypeRef, usage: InteropCallUsage): ForeignCallResolution | undefined => this.resolveCallUsageInternal(reference, usage),
+			enumerable: false,
+			configurable: false,
+			writable: false,
+		});
 	}
 
 	public dispose(): void {
@@ -158,7 +164,7 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 		);
 	}
 
-	public resolveCallUsage(reference: ForeignTypeRef, usage: InteropCallUsage): ForeignCallResolution | undefined {
+	private resolveCallUsageInternal(reference: ForeignTypeRef, usage: InteropCallUsage): ForeignCallResolution | undefined {
 		const callee = this.lookupType(reference);
 		if (callee === undefined) return undefined;
 		const workspace = callee.workspace;
@@ -249,8 +255,8 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 		if (signature === undefined) return undefined;
 		const result = checker.getReturnTypeOfSignature(signature);
 		if ((result.getFlags() & ts.TypeFlags.Any) !== 0) return undefined;
-		const genericCandidate = callee.type.getCallSignatures().some(candidate => (candidate.getTypeParameters()?.length ?? 0) > 0);
-		if (genericCandidate && (result.getFlags() & ts.TypeFlags.Unknown) !== 0) return undefined;
+		const selectedGeneric = (signature.declaration?.typeParameters?.length ?? 0) > 0;
+		if (selectedGeneric && (result.getFlags() & ts.TypeFlags.Unknown) !== 0) return undefined;
 		const parameters = signature.getParameters();
 		const { minimum, optional, rest } = signatureArity(parameters);
 		const resultSnapshot = this.store(result, checker, call, callee.origin, workspace);
