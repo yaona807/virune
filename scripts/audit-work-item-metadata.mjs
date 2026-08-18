@@ -3,6 +3,8 @@ import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const repositoryRoot = resolve(fileURLToPath(new URL('..', import.meta.url)));
+const repositoryOwner = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$/u;
+const repositoryName = /^[A-Za-z0-9._-]{1,100}$/u;
 const typeLabels = new Set([
 	'type:bug', 'type:feature', 'type:refactor', 'type:test',
 	'type:ci', 'type:docs', 'type:security', 'type:chore',
@@ -16,18 +18,27 @@ const workflowLabels = new Set(['workflow:validation-only', 'workflow:superseded
 const roleHeading = 'Work item role';
 const validRoles = new Set(['Implementation', 'Tracking']);
 
-export async function collectGitHubWorkItems({ repository, token, fetchImpl = fetch }) {
-	if (typeof repository !== 'string' || !/^[^/\s]+\/[^/\s]+$/u.test(repository)) {
-		throw new Error('repository must use owner/name form');
+function requireRepository(value, path) {
+	if (typeof value !== 'string') throw new Error(`${path} must use owner/name form`);
+	const parts = value.split('/');
+	if (parts.length !== 2 || !repositoryOwner.test(parts[0]) || !repositoryName.test(parts[1])) {
+		throw new Error(`${path} must use owner/name form`);
 	}
+	return value;
+}
+
+export async function collectGitHubWorkItems({ repository, token, fetchImpl = fetch }) {
+	const validatedRepository = requireRepository(repository, 'repository');
 	if (typeof token !== 'string' || token === '') throw new Error('GitHub token is required');
 	const headers = {
 		accept: 'application/vnd.github+json',
 		authorization: `Bearer ${token}`,
 		'x-github-api-version': '2022-11-28',
 	};
-	const issuesRaw = await fetchAllPages(`https://api.github.com/repos/${repository}/issues?state=open&per_page=100`, headers, fetchImpl);
-	const pullsRaw = await fetchAllPages(`https://api.github.com/repos/${repository}/pulls?state=open&per_page=100`, headers, fetchImpl);
+	const [owner, name] = validatedRepository.split('/');
+	const apiRepository = `${encodeURIComponent(owner)}/${encodeURIComponent(name)}`;
+	const issuesRaw = await fetchAllPages(`https://api.github.com/repos/${apiRepository}/issues?state=open&per_page=100`, headers, fetchImpl);
+	const pullsRaw = await fetchAllPages(`https://api.github.com/repos/${apiRepository}/pulls?state=open&per_page=100`, headers, fetchImpl);
 	const issues = issuesRaw
 		.filter(issue => issue && typeof issue === 'object' && !('pull_request' in issue))
 		.map(normalizeIssue)
@@ -35,7 +46,7 @@ export async function collectGitHubWorkItems({ repository, token, fetchImpl = fe
 	const pullRequests = pullsRaw
 		.map(normalizePullRequest)
 		.sort((left, right) => left.number - right.number);
-	const snapshot = { schemaVersion: 1, repository, issues, pullRequests };
+	const snapshot = { schemaVersion: 1, repository: validatedRepository, issues, pullRequests };
 	validateSnapshot(snapshot);
 	return snapshot;
 }
@@ -290,9 +301,7 @@ function compareFindings(left, right) {
 function validateSnapshot(snapshot) {
 	if (!snapshot || typeof snapshot !== 'object' || Array.isArray(snapshot)) throw new Error('snapshot must be an object');
 	if (snapshot.schemaVersion !== 1) throw new Error('snapshot.schemaVersion must be 1');
-	if (typeof snapshot.repository !== 'string' || !/^[^/\s]+\/[^/\s]+$/u.test(snapshot.repository)) {
-		throw new Error('snapshot.repository must use owner/name form');
-	}
+	requireRepository(snapshot.repository, 'snapshot.repository');
 	if (!Array.isArray(snapshot.issues)) throw new Error('snapshot.issues must be an array');
 	if (!Array.isArray(snapshot.pullRequests)) throw new Error('snapshot.pullRequests must be an array');
 	const issueNumbers = new Set();
@@ -305,6 +314,7 @@ function validateSnapshot(snapshot) {
 	for (const [index, pullRequest] of snapshot.pullRequests.entries()) {
 		validateNormalizedPullRequest(pullRequest, `snapshot.pullRequests[${index}]`);
 		if (pullRequestNumbers.has(pullRequest.number)) throw new Error(`snapshot.pullRequests duplicates PR number ${pullRequest.number}`);
+		if (issueNumbers.has(pullRequest.number)) throw new Error(`snapshot Issue/PR number overlap ${pullRequest.number}`);
 		pullRequestNumbers.add(pullRequest.number);
 	}
 }
