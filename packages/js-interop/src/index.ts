@@ -10,6 +10,7 @@ import type {
 	ForeignTypeRef,
 	ForeignTypeSnapshot,
 	InteropArgumentType,
+	InteropCallUsage,
 	JsImportRequest,
 	JsImportResolution,
 	JsInteropProvider,
@@ -29,12 +30,14 @@ interface StoredType {
 	readonly checker: ts.TypeChecker;
 	readonly location: ts.Node;
 	readonly origin: ForeignTypeSnapshot['origin'];
+	readonly workspace: ProbeWorkspace;
 }
 
 interface Probe {
 	readonly program: ts.Program;
 	readonly checker: ts.TypeChecker;
 	readonly sourceFile: ts.SourceFile;
+	readonly workspace: ProbeWorkspace;
 	readonly valueNode?: ts.Node;
 	readonly typeNode?: ts.TypeNode;
 	readonly resolvedModule?: ts.ResolvedModuleFull;
@@ -47,6 +50,7 @@ interface VirtualProbeFile {
 }
 
 interface ProbeWorkspace {
+	readonly platform: JsImportRequest['platform'];
 	readonly compilerOptions: ts.CompilerOptions;
 	readonly virtualFiles: Map<string, VirtualProbeFile>;
 	readonly languageService: ts.LanguageService;
@@ -54,8 +58,9 @@ interface ProbeWorkspace {
 }
 
 /**
- * Conservative provider: complex overloads, callbacks, and contextual typing
- * deliberately return undefined so the compiler can request an interop adapter.
+ * Conservative provider. Whole call usages are resolved by TypeScript itself
+ * inside one fixed Program session; the legacy per-parameter resolver remains
+ * only for providers/callers that have not adopted the usage contract yet.
  */
 export class TypeScriptInteropProvider implements JsInteropProvider {
 	readonly id: string;
@@ -110,7 +115,7 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 		const node = probe.valueNode ?? probe.typeNode;
 		if (node === undefined) return { runtime, witness };
 		const type = probe.typeNode === undefined ? probe.checker.getTypeAtLocation(node) : probe.checker.getTypeFromTypeNode(probe.typeNode);
-		return { type: this.store(type, probe.checker, node, { moduleSpecifier: request.moduleSpecifier, ...(request.importedName === undefined ? {} : { exportName: request.importedName }), ...(probe.resolvedModule?.resolvedFileName === undefined ? {} : { declarationPath: probe.resolvedModule.resolvedFileName }) }), runtime, witness };
+		return { type: this.store(type, probe.checker, node, { moduleSpecifier: request.moduleSpecifier, ...(request.importedName === undefined ? {} : { exportName: request.importedName }), ...(probe.resolvedModule?.resolvedFileName === undefined ? {} : { declarationPath: probe.resolvedModule.resolvedFileName }) }, probe.workspace), runtime, witness };
 	}
 
 	public getProperty(reference: ForeignTypeRef, name: string): ForeignTypeSnapshot | undefined {
@@ -118,7 +123,99 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 		const property = stored.checker.getPropertyOfType(stored.type, name);
 		if (property === undefined) return undefined;
 		const declaration = property.valueDeclaration ?? property.declarations?.[0] ?? stored.location;
-		return this.store(stored.checker.getTypeOfSymbolAtLocation(property, declaration), stored.checker, declaration, stored.origin);
+		return this.store(stored.checker.getTypeOfSymbolAtLocation(property, declaration), stored.checker, declaration, stored.origin, stored.workspace);
+	}
+
+	public resolveCallUsage(reference: ForeignTypeRef, usage: InteropCallUsage): ForeignCallResolution | undefined {
+		const callee = this.lookupType(reference);
+		if (callee === undefined) return undefined;
+		const calleeFlags = callee.type.getFlags();
+		if ((calleeFlags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) !== 0 || callee.type.getCallSignatures().length === 0) return undefined;
+
+		const declarations: string[] = ['export {};'];
+		const calleeText = this.usageTypeText(callee);
+		let callTarget: string;
+		if (usage.target.kind === 'member') {
+			const receiver = this.lookupType(usage.target.receiver);
+			if (receiver === undefined || (receiver.type.getFlags() & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) !== 0) return undefined;
+			const property = JSON.stringify(usage.target.property);
+			declarations.push(`declare const __viruneReceiver: ${this.usageTypeText(receiver)};`);
+			declarations.push(`declare const __viruneCallee: ${calleeText};`);
+			declarations.push(`const __viruneCalleeCheck: ${calleeText} = __viruneReceiver[${property}];`);
+			callTarget = `__viruneReceiver[${property}]`;
+		} else {
+			declarations.push(`declare const __viruneCallee: ${calleeText};`);
+			callTarget = '__viruneCallee';
+		}
+
+		const argumentExpressions: string[] = [];
+		for (let index = 0; index < usage.arguments.length; index++) {
+			const argument = usage.arguments[index]!;
+			if (argument.kind === 'unknown') return undefined;
+			if (argument.kind === 'foreign') {
+				const source = this.lookupType(argument.type);
+				if (source === undefined) return undefined;
+				const sourceType = (source.type.getFlags() & ts.TypeFlags.Any) !== 0 ? 'unknown' : this.usageTypeText(source);
+				const name = `__viruneArg${index}`;
+				declarations.push(`declare const ${name}: ${sourceType};`);
+				argumentExpressions.push(name);
+				continue;
+			}
+			const literal = argument.literal === undefined ? undefined : renderInteropLiteral(argument.primitive, argument.literal);
+			if (argument.literal !== undefined && literal === undefined) return undefined;
+			if (literal !== undefined) {
+				argumentExpressions.push(literal);
+				continue;
+			}
+			if (argument.primitive === 'Unit') {
+				argumentExpressions.push('undefined');
+				continue;
+			}
+			const name = `__viruneArg${index}`;
+			declarations.push(`declare const ${name}: ${typescriptPrimitiveName(argument.primitive)};`);
+			argumentExpressions.push(name);
+		}
+
+		const sourceText = `${declarations.join('\n')}\n${callTarget}(${argumentExpressions.join(', ')});\n`;
+		const workspace = callee.workspace;
+		const virtualPath = join(this.#projectRoot, `.virune-interop-usage-${workspace.platform}.ts`);
+		const virtualKey = canonicalFilePath(virtualPath);
+		const existing = workspace.virtualFiles.get(virtualKey);
+		if (existing?.text !== sourceText) {
+			workspace.virtualFiles.set(virtualKey, { path: virtualPath, text: sourceText, version: (existing?.version ?? 0) + 1 });
+			workspace.projectVersion++;
+		}
+		const program = workspace.languageService.getProgram();
+		if (program === undefined) return undefined;
+		const diagnostics = [
+			...workspace.languageService.getCompilerOptionsDiagnostics(),
+			...workspace.languageService.getSyntacticDiagnostics(virtualPath),
+			...workspace.languageService.getSemanticDiagnostics(virtualPath),
+		];
+		if (diagnostics.some(item => item.category === ts.DiagnosticCategory.Error)) return undefined;
+		const sourceFile = program.getSourceFile(virtualPath)
+			?? program.getSourceFiles().find(item => canonicalFilePath(item.fileName) === virtualKey);
+		const call = sourceFile?.statements.find(ts.isExpressionStatement)?.expression;
+		if (call === undefined || !ts.isCallExpression(call)) return undefined;
+		const checker = program.getTypeChecker();
+		const signature = checker.getResolvedSignature(call);
+		if (signature === undefined) return undefined;
+		const result = checker.getReturnTypeOfSignature(signature);
+		if ((result.getFlags() & ts.TypeFlags.Any) !== 0) return undefined;
+		const genericCandidate = callee.type.getCallSignatures().some(candidate => (candidate.getTypeParameters()?.length ?? 0) > 0);
+		if (genericCandidate && (result.getFlags() & ts.TypeFlags.Unknown) !== 0) return undefined;
+		const parameters = signature.getParameters();
+		const { minimum, optional, rest } = signatureArity(parameters);
+		const resultSnapshot = this.store(result, checker, call, callee.origin, workspace);
+		return {
+			result: resultSnapshot,
+			parameterCount: parameters.length,
+			optionalParameterCount: optional,
+			minimumArgumentCount: minimum,
+			rest,
+			mayReject: resultSnapshot.category === 'promise',
+			receiverMode: usage.target.kind === 'member' ? 'preserve-this' : 'none',
+		};
 	}
 
 	public resolveCall(reference: ForeignTypeRef, argumentsList: readonly InteropArgumentType[]): ForeignCallResolution | undefined {
@@ -133,7 +230,7 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 		const stored = this.requireType(reference);
 		const awaited = stored.checker.getAwaitedType(stored.type);
 		if (awaited === undefined || awaited === stored.type) return undefined;
-		return this.store(awaited, stored.checker, stored.location, stored.origin);
+		return this.store(awaited, stored.checker, stored.location, stored.origin, stored.workspace);
 	}
 
 	public display(reference: ForeignTypeRef): string {
@@ -154,10 +251,9 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 		const optional = parameters.filter(parameter => (parameter.flags & ts.SymbolFlags.Optional) !== 0 || parameter.valueDeclaration !== undefined && ts.isParameter(parameter.valueDeclaration) && (parameter.valueDeclaration.questionToken !== undefined || parameter.valueDeclaration.initializer !== undefined)).length;
 		const lastDeclaration = parameters.at(-1)?.valueDeclaration;
 		const rest = lastDeclaration !== undefined && ts.isParameter(lastDeclaration) && lastDeclaration.dotDotDotToken !== undefined;
-		const resultSnapshot = this.store(result, stored.checker, signature.declaration ?? stored.location, stored.origin);
+		const resultSnapshot = this.store(result, stored.checker, signature.declaration ?? stored.location, stored.origin, stored.workspace);
 		return { result: resultSnapshot, parameterCount: parameters.length, optionalParameterCount: optional, rest, mayReject: resultSnapshot.category === 'promise', receiverMode: construct ? 'none' : 'preserve-this' };
 	}
-
 
 	private conservativeGenericResult(signature: ts.Signature, result: ts.Type, checker: ts.TypeChecker): ts.Type | undefined {
 		const parameters = signature.getTypeParameters() ?? [];
@@ -219,6 +315,15 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 		return nativePrimitiveCompatible(argument, parameter, checker);
 	}
 
+	private usageTypeText(stored: StoredType): string {
+		return stored.checker.typeToString(stored.type, undefined, ts.TypeFormatFlags.NoTruncation | ts.TypeFormatFlags.UseFullyQualifiedType);
+	}
+
+	private lookupType(reference: ForeignTypeRef): StoredType | undefined {
+		if (reference.providerId !== this.id || reference.generation !== this.generation) return undefined;
+		return this.#types.get(reference.id);
+	}
+
 	private createProbe(request: JsImportRequest): Probe {
 		const workspace = this.probeWorkspace(request.platform);
 		const virtualPath = join(dirname(request.containingFile), `.virune-interop-${hash(`${request.moduleSpecifier}:${request.kind}:${request.importedName ?? ''}`)}.ts`);
@@ -255,7 +360,7 @@ type __ViruneAlias = __ViruneType;`
 		const expression = sourceFile.statements.find(ts.isExpressionStatement)?.expression;
 		const alias = sourceFile.statements.find(ts.isTypeAliasDeclaration)?.type;
 		const resolved = ts.resolveModuleName(request.moduleSpecifier, virtualPath, workspace.compilerOptions, ts.sys).resolvedModule;
-		return { program, checker, sourceFile, ...(expression === undefined ? {} : { valueNode: expression }), ...(alias === undefined ? {} : { typeNode: alias }), ...(resolved === undefined ? {} : { resolvedModule: resolved }) };
+		return { program, checker, sourceFile, workspace, ...(expression === undefined ? {} : { valueNode: expression }), ...(alias === undefined ? {} : { typeNode: alias }), ...(resolved === undefined ? {} : { resolvedModule: resolved }) };
 	}
 
 	private probeWorkspace(platform: JsImportRequest['platform']): ProbeWorkspace {
@@ -290,15 +395,15 @@ type __ViruneAlias = __ViruneType;`
 			...(ts.sys.realpath === undefined ? {} : { realpath: ts.sys.realpath }),
 		};
 		const languageService = this.#createLanguageService(host);
-		workspace = { compilerOptions, virtualFiles, languageService, projectVersion: 0 };
+		workspace = { platform, compilerOptions, virtualFiles, languageService, projectVersion: 0 };
 		this.#workspaces.set(platform, workspace);
 		return workspace;
 	}
 
-	private store(type: ts.Type, checker: ts.TypeChecker, location: ts.Node, origin: ForeignTypeSnapshot['origin']): ForeignTypeSnapshot {
+	private store(type: ts.Type, checker: ts.TypeChecker, location: ts.Node, origin: ForeignTypeSnapshot['origin'], workspace: ProbeWorkspace): ForeignTypeSnapshot {
 		const id = String(this.#nextTypeId++);
 		const ref: ForeignTypeRef = { providerId: this.id, generation: this.generation, id };
-		this.#types.set(id, { type, checker, location, origin });
+		this.#types.set(id, { type, checker, location, origin, workspace });
 		const display = checker.typeToString(type, location, ts.TypeFormatFlags.NoTruncation | ts.TypeFormatFlags.UseAliasDefinedOutsideCurrentScope);
 		const primitive = primitiveKind(type);
 		const awaited = checker.getAwaitedType(type);
@@ -316,9 +421,8 @@ type __ViruneAlias = __ViruneType;`
 	}
 
 	private requireType(reference: ForeignTypeRef): StoredType {
-		if (reference.providerId !== this.id || reference.generation !== this.generation) throw new Error('Stale or foreign JavaScript type handle');
-		const type = this.#types.get(reference.id);
-		if (type === undefined) throw new Error('Unknown JavaScript type handle');
+		const type = this.lookupType(reference);
+		if (type === undefined) throw new Error(reference.providerId !== this.id || reference.generation !== this.generation ? 'Stale or foreign JavaScript type handle' : 'Unknown JavaScript type handle');
 		return type;
 	}
 
@@ -344,7 +448,6 @@ type __ViruneAlias = __ViruneType;`
 		};
 	}
 }
-
 
 function canonicalFilePath(fileName: string): string {
 	const normalized = resolve(fileName).replaceAll('\\', '/');
@@ -414,6 +517,39 @@ function isDefinitelyNonPrimitive(type: ts.Type, checker: ts.TypeChecker): boole
 		checker.getESSymbolType(),
 	];
 	return primitiveRuntimeTypes.every(primitive => !checker.isTypeAssignableTo(primitive, type));
+}
+
+function signatureArity(parameters: readonly ts.Symbol[]): { readonly minimum: number; readonly optional: number; readonly rest: boolean } {
+	let minimum = 0;
+	let optional = 0;
+	let rest = false;
+	for (let index = 0; index < parameters.length; index++) {
+		const parameter = parameters[index]!;
+		const declaration = parameter.valueDeclaration ?? parameter.declarations?.[0];
+		const isRest = declaration !== undefined && ts.isParameter(declaration) && declaration.dotDotDotToken !== undefined;
+		const isOptional = isRest || (parameter.flags & ts.SymbolFlags.Optional) !== 0 || declaration !== undefined && ts.isParameter(declaration) && (declaration.questionToken !== undefined || declaration.initializer !== undefined);
+		if (isRest) rest = true;
+		if (isOptional) optional++;
+		else minimum = index + 1;
+	}
+	return { minimum, optional, rest };
+}
+
+function typescriptPrimitiveName(primitive: Extract<InteropArgumentType, { readonly kind: 'native-primitive' }>['primitive']): string {
+	return primitive === 'Bool' ? 'boolean'
+		: primitive === 'String' ? 'string'
+			: primitive === 'BigInt' ? 'bigint'
+				: primitive === 'Unit' ? 'undefined'
+					: 'number';
+}
+
+function renderInteropLiteral(primitive: Extract<InteropArgumentType, { readonly kind: 'native-primitive' }>['primitive'], literal: NonNullable<Extract<InteropArgumentType, { readonly kind: 'native-primitive' }>['literal']>): string | undefined {
+	if (primitive !== literal.kind && !((primitive === 'Int' || primitive === 'Float') && (literal.kind === 'Int' || literal.kind === 'Float'))) return undefined;
+	if (literal.kind === 'String') return JSON.stringify(literal.value);
+	if (literal.kind === 'Bool') return literal.value ? 'true' : 'false';
+	if (literal.kind === 'BigInt') return /^-?\d+$/u.test(literal.value) ? `${literal.value}n` : undefined;
+	if (!Number.isFinite(literal.value)) return undefined;
+	return Object.is(literal.value, -0) ? '-0' : String(literal.value);
 }
 
 function safeTsName(value: string): string {
