@@ -88,6 +88,18 @@ test('requires the Issue Template root path to be a real directory', async t => 
 	]);
 });
 
+test('rejects a symlinked Issue Template directory before following it', async t => {
+	const root = await mkdtemp(join(tmpdir(), 'virune-issue-forms-template-symlink-'));
+	t.after(async () => rm(root, { recursive: true, force: true }));
+	await mkdir(join(root, '.github'));
+	const target = join(root, 'real-templates');
+	await mkdir(target);
+	await symlink(target, join(root, '.github', 'ISSUE_TEMPLATE'), process.platform === 'win32' ? 'junction' : 'dir');
+	assert.deepEqual(await verifyIssueForms(root), [
+		'.github/ISSUE_TEMPLATE: Issue Template path must be a real directory',
+	]);
+});
+
 test('requires every canonical Issue Template/config file', async t => {
 	const root = await createTemplateRoot(t, { 'config.yml': validConfig });
 	assert.deepEqual(await verifyIssueForms(root), [
