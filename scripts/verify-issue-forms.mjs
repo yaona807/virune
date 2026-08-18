@@ -19,12 +19,24 @@ const githubBooleanFalse = new Set(['n', 'N', 'no', 'No', 'NO', 'false', 'False'
 
 export async function verifyIssueForms(root = repositoryRoot) {
 	const directory = resolve(root, issueTemplateDirectory);
-	const directoryEntries = (await readdir(directory, { withFileTypes: true }))
+	let dirents;
+	try {
+		dirents = await readdir(directory, { withFileTypes: true });
+	} catch (error) {
+		if (error?.code === 'ENOENT') return [`${issueTemplateDirectory}: required Issue Template directory is missing`];
+		throw error;
+	}
+	const errors = [];
+	for (const entry of [...dirents].sort((left, right) => compareCodePoint(left.name, right.name))) {
+		if (/\.(?:ya?ml|md)$/u.test(entry.name) && !entry.isFile()) {
+			errors.push(`${entry.name}: Issue Template entry must be a regular file`);
+		}
+	}
+	const directoryEntries = dirents
 		.filter(entry => entry.isFile())
 		.map(entry => entry.name)
 		.sort(compareCodePoint);
 	const entries = directoryEntries.filter(name => /\.ya?ml$/u.test(name));
-	const errors = [];
 	for (const name of directoryEntries.filter(name => name.endsWith('.md'))) {
 		errors.push(`${name}: Markdown Issue Templates are outside the supported repository subset; extend the validator before adding one`);
 	}
@@ -273,6 +285,9 @@ export function parseYamlSubset(source) {
 	for (const line of lines) {
 		const prefix = line.raw.match(/^[\t ]*/u)?.[0] ?? '';
 		if (prefix.includes('\t')) throw yamlError(line.number, 'tabs are not supported for indentation');
+		if (/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/u.test(line.raw)) {
+			throw yamlError(line.number, 'unsupported control character');
+		}
 	}
 	return new StrictYamlSubsetParser(lines).parseDocument();
 }
