@@ -21,11 +21,13 @@ export function auditNpmPackageFileSet({ manifest, files, manifestPath, filesPat
 		.map((value, index) => packedFile(value, `${filesPath}[${index}]`));
 	assert(packedFiles.length > 0, filesPath, 'npm package must contain files');
 	assertUnique(packedFiles.map(file => file.path), filesPath, 'path');
+	assertPortableUnique(packedFiles.map(file => file.path), filesPath, 'path');
 
 	const rules = array(packageManifest.files, `${manifestPath}.files`)
 		.map((value, index) => manifestFileRule(value, `${manifestPath}.files[${index}]`));
 	assert(rules.length > 0, `${manifestPath}.files`, 'files allowlist is required');
 	assertUnique(rules, `${manifestPath}.files`, 'file rule');
+	assertPortableUnique(rules, `${manifestPath}.files`, 'file rule');
 
 	const paths = packedFiles.map(file => file.path).sort(compareText);
 	assertNoFileAncestorCollisions(paths, filesPath);
@@ -89,6 +91,9 @@ function canonicalRelativePath(value, path) {
 	const normalized = posix.normalize(text);
 	assert(normalized === text, path, 'package path must already be normalized');
 	assert(text !== '.' && text !== '..' && !text.startsWith('../'), path, 'package path traversal is forbidden');
+	for (const segment of text.split('/')) {
+		assert(!/[ .]$/u.test(segment), path, `package path segment must not end in space or dot: ${segment}`);
+	}
 	return text;
 }
 
@@ -163,6 +168,15 @@ function assertUnique(values, path, name) {
 	for (const value of values) {
 		assert(!seen.has(value), path, `duplicate ${name} ${value}`);
 		seen.add(value);
+	}
+}
+function assertPortableUnique(values, path, name) {
+	const seen = new Map();
+	for (const value of values) {
+		const key = value.normalize('NFC').toLowerCase();
+		const previous = seen.get(key);
+		assert(previous === undefined, path, `portable ${name} collision ${previous} conflicts with ${value}`);
+		seen.set(key, value);
 	}
 }
 function assert(condition, path, message) {
