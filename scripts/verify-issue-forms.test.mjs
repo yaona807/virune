@@ -41,6 +41,14 @@ test('parses nested mappings, sequences, quoted scalars, GitHub boolean/null for
 	assert.equal(githubScalars.g, null);
 });
 
+test('fails deterministically when the Issue Template directory is missing', async t => {
+	const root = await mkdtemp(join(tmpdir(), 'virune-issue-forms-missing-'));
+	t.after(async () => rm(root, { recursive: true, force: true }));
+	assert.deepEqual(await verifyIssueForms(root), [
+		'.github/ISSUE_TEMPLATE: required Issue Template directory is missing',
+	]);
+});
+
 test('requires every canonical Issue Template/config file', async t => {
 	const root = await createTemplateRoot(t, { 'config.yml': validConfig });
 	assert.deepEqual(await verifyIssueForms(root), [
@@ -48,6 +56,14 @@ test('requires every canonical Issue Template/config file', async t => {
 		'change_proposal.yml: required canonical Issue Template file is missing',
 		'conduct_contact.yml: required canonical Issue Template file is missing',
 		'security_contact.yml: required canonical Issue Template file is missing',
+	]);
+});
+
+test('rejects Issue Template paths that are not regular files', async t => {
+	const root = await createTemplateRoot(t, canonicalFiles());
+	await mkdir(join(root, '.github', 'ISSUE_TEMPLATE', 'extra.yml'));
+	assert.deepEqual(await verifyIssueForms(root), [
+		'extra.yml: Issue Template entry must be a regular file',
 	]);
 });
 
@@ -92,6 +108,13 @@ test('fails deterministically on malformed indentation', () => {
 	assert.deepEqual(
 		validateIssueTemplateFile('bug_report.yml', `name: Bug\ndescription: Broken\n body:\n  - type: markdown\n`),
 		['bug_report.yml: YAML subset error at line 3: unexpected indentation 1; expected 0'],
+	);
+});
+
+test('rejects unsupported control characters', () => {
+	assert.deepEqual(
+		validateIssueTemplateFile('bug_report.yml', `name: Bugs\ndescription: bad\u0001value\nbody:\n  - type: textarea\n    id: details\n    attributes:\n      label: Details\n`),
+		['bug_report.yml: YAML subset error at line 2: unsupported control character'],
 	);
 });
 
