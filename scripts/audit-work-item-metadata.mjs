@@ -105,24 +105,55 @@ function requireBoolean(value, path) {
 	return value;
 }
 
-function markdownLinesOutsideFences(body) {
+function stripHtmlComments(line, commentState) {
+	let visible = '';
+	let cursor = 0;
+	let touched = commentState.open;
+	while (cursor < line.length) {
+		if (commentState.open) {
+			const end = line.indexOf('-->', cursor);
+			if (end === -1) return { visible: '', touched: true };
+			commentState.open = false;
+			cursor = end + 3;
+			continue;
+		}
+		const start = line.indexOf('<!--', cursor);
+		if (start === -1) {
+			visible += line.slice(cursor);
+			break;
+		}
+		touched = true;
+		visible += line.slice(cursor, start);
+		const end = line.indexOf('-->', start + 4);
+		if (end === -1) {
+			commentState.open = true;
+			break;
+		}
+		cursor = end + 3;
+	}
+	return { visible, touched };
+}
+
+function markdownLinesOutsideHiddenRegions(body) {
 	const lines = body.replace(/\r\n?/gu, '\n').split('\n');
 	const output = [];
 	let fence = null;
-	for (const line of lines) {
+	const commentState = { open: false };
+	for (const rawLine of lines) {
 		if (fence !== null) {
-			const closing = line.match(/^ {0,3}(`+|~+)[ \t]*$/u);
+			const closing = rawLine.match(/^ {0,3}(`+|~+)[ \t]*$/u);
 			if (closing !== null && closing[1][0] === fence.character && closing[1].length >= fence.length) fence = null;
 			output.push(null);
 			continue;
 		}
-		const opening = line.match(/^ {0,3}(`{3,}|~{3,})(.*)$/u);
+		const comment = stripHtmlComments(rawLine, commentState);
+		const opening = comment.visible.match(/^ {0,3}(`{3,}|~{3,})(.*)$/u);
 		if (opening !== null) {
 			fence = { character: opening[1][0], length: opening[1].length };
 			output.push(null);
 			continue;
 		}
-		output.push(line);
+		output.push(comment.touched ? null : comment.visible);
 	}
 	return output;
 }
@@ -137,7 +168,7 @@ function parseAtxHeading(line) {
 
 export function parseWorkItemRole(body) {
 	if (typeof body !== 'string') throw new Error('body must be a string');
-	const lines = markdownLinesOutsideFences(body);
+	const lines = markdownLinesOutsideHiddenRegions(body);
 	const headings = [];
 	for (let index = 0; index < lines.length; index += 1) {
 		const heading = parseAtxHeading(lines[index]);
@@ -167,7 +198,7 @@ export function extractPlainIssueRefs(body) {
 	if (typeof body !== 'string') throw new Error('body must be a string');
 	const numbers = new Set();
 	const expression = /^ {0,3}(?:(?:[-+*]|[0-9]{1,9}[.)])[ \t]+)?Refs[ \t]+#([1-9][0-9]*)[ \t]*$/u;
-	for (const line of markdownLinesOutsideFences(body)) {
+	for (const line of markdownLinesOutsideHiddenRegions(body)) {
 		if (line === null) continue;
 		const match = line.match(expression);
 		if (match === null) continue;
