@@ -4,6 +4,7 @@ import type {
 	ForeignTypeRef,
 	ForeignTypeSnapshot,
 	InteropArgumentType,
+	InteropCallUsage,
 	JsImportRequest,
 	JsImportResolution,
 	JsInteropProvider,
@@ -35,6 +36,15 @@ export class CachedTypeScriptInteropProvider implements JsInteropProvider {
 		this.id = provider.id;
 		this.version = provider.version;
 		this.generation = provider.generation;
+		Object.defineProperty(this, 'resolveCallUsage', {
+			value: (type: ForeignTypeRef, usage: InteropCallUsage): ForeignCallResolution | undefined => {
+				const active = this.#requireProvider() as JsInteropProvider;
+				return active.resolveCallUsage?.(type, usage);
+			},
+			enumerable: false,
+			configurable: false,
+			writable: false,
+		});
 	}
 
 	public resolveImport(request: JsImportRequest): JsImportResolution {
