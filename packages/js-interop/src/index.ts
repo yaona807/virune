@@ -158,7 +158,6 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 		return { result: resultSnapshot, parameterCount: parameters.length, optionalParameterCount: optional, rest, mayReject: resultSnapshot.category === 'promise', receiverMode: construct ? 'none' : 'preserve-this' };
 	}
 
-
 	private conservativeGenericResult(signature: ts.Signature, result: ts.Type, checker: ts.TypeChecker): ts.Type | undefined {
 		const parameters = signature.getTypeParameters() ?? [];
 		if (parameters.length === 0) return result;
@@ -182,17 +181,24 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 
 	private signatureAccepts(signature: ts.Signature, argumentsList: readonly InteropArgumentType[], checker: ts.TypeChecker): boolean {
 		const parameters = signature.getParameters();
-		const required = parameters.filter(parameter => (parameter.flags & ts.SymbolFlags.Optional) === 0 && !(parameter.valueDeclaration !== undefined && ts.isParameter(parameter.valueDeclaration) && (parameter.valueDeclaration.questionToken !== undefined || parameter.valueDeclaration.initializer !== undefined || parameter.valueDeclaration.dotDotDotToken !== undefined))).length;
-		const lastDeclaration = parameters.at(-1)?.valueDeclaration;
+		const locations = parameters.map(parameter => parameter.valueDeclaration ?? parameter.declarations?.[0]);
+		if (locations.some(location => location === undefined)) return false;
+		const lastDeclaration = locations.at(-1)!;
 		const hasRest = lastDeclaration !== undefined && ts.isParameter(lastDeclaration) && lastDeclaration.dotDotDotToken !== undefined;
 		// This approximate resolver cannot safely model rest-element types or tuple/variadic rest semantics.
 		// Leave every rest signature to the TypeScript adapter/whole-usage resolver instead of partially accepting it.
 		if (hasRest) return false;
-		if (argumentsList.length < required || argumentsList.length > parameters.length) return false;
+		let minimum = 0;
+		for (let index = 0; index < parameters.length; index++) {
+			const parameter = parameters[index]!;
+			const location = locations[index]!;
+			const optional = (parameter.flags & ts.SymbolFlags.Optional) !== 0 || ts.isParameter(location) && (location.questionToken !== undefined || location.initializer !== undefined);
+			if (!optional) minimum = index + 1;
+		}
+		if (argumentsList.length < minimum || argumentsList.length > parameters.length) return false;
 		for (let index = 0; index < argumentsList.length; index++) {
 			const parameter = parameters[index]!;
-			const location = parameter.valueDeclaration ?? parameter.declarations?.[0];
-			if (location === undefined) return false;
+			const location = locations[index]!;
 			const parameterType = checker.getTypeOfSymbolAtLocation(parameter, location);
 			if (!this.argumentCompatible(argumentsList[index]!, parameterType, checker)) return false;
 		}
@@ -354,7 +360,6 @@ type __ViruneAlias = __ViruneType;`
 		};
 	}
 }
-
 
 function canonicalFilePath(fileName: string): string {
 	const normalized = resolve(fileName).replaceAll('\\', '/');
