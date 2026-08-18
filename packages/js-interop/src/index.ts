@@ -25,12 +25,18 @@ export interface TypeScriptInteropProviderOptions {
 	readonly createLanguageService?: (host: ts.LanguageServiceHost) => ts.LanguageService;
 }
 
+interface UsageProjection {
+	readonly typeExpression: string;
+	readonly directory: string;
+}
+
 interface StoredType {
 	readonly type: ts.Type;
 	readonly checker: ts.TypeChecker;
 	readonly location: ts.Node;
 	readonly origin: ForeignTypeSnapshot['origin'];
 	readonly workspace: ProbeWorkspace;
+	readonly usageProjection?: UsageProjection;
 }
 
 interface Probe {
@@ -115,7 +121,22 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 		const node = probe.valueNode ?? probe.typeNode;
 		if (node === undefined) return { runtime, witness };
 		const type = probe.typeNode === undefined ? probe.checker.getTypeAtLocation(node) : probe.checker.getTypeFromTypeNode(probe.typeNode);
-		return { type: this.store(type, probe.checker, node, { moduleSpecifier: request.moduleSpecifier, ...(request.importedName === undefined ? {} : { exportName: request.importedName }), ...(probe.resolvedModule?.resolvedFileName === undefined ? {} : { declarationPath: probe.resolvedModule.resolvedFileName }) }, probe.workspace), runtime, witness };
+		return {
+			type: this.store(
+				type,
+				probe.checker,
+				node,
+				{
+					moduleSpecifier: request.moduleSpecifier,
+					...(request.importedName === undefined ? {} : { exportName: request.importedName }),
+					...(probe.resolvedModule?.resolvedFileName === undefined ? {} : { declarationPath: probe.resolvedModule.resolvedFileName }),
+				},
+				probe.workspace,
+				usageProjectionForImport(request),
+			),
+			runtime,
+			witness,
+		};
 	}
 
 	public getProperty(reference: ForeignTypeRef, name: string): ForeignTypeSnapshot | undefined {
@@ -123,7 +144,18 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 		const property = stored.checker.getPropertyOfType(stored.type, name);
 		if (property === undefined) return undefined;
 		const declaration = property.valueDeclaration ?? property.declarations?.[0] ?? stored.location;
-		return this.store(stored.checker.getTypeOfSymbolAtLocation(property, declaration), stored.checker, declaration, stored.origin, stored.workspace);
+		const usageProjection = stored.usageProjection === undefined ? undefined : {
+			typeExpression: `(${stored.usageProjection.typeExpression})[${JSON.stringify(name)}]`,
+			directory: stored.usageProjection.directory,
+		};
+		return this.store(
+			stored.checker.getTypeOfSymbolAtLocation(property, declaration),
+			stored.checker,
+			declaration,
+			stored.origin,
+			stored.workspace,
+			usageProjection,
+		);
 	}
 
 	public resolveCallUsage(reference: ForeignTypeRef, usage: InteropCallUsage): ForeignCallResolution | undefined {
@@ -134,18 +166,28 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 		if ((calleeFlags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) !== 0 || callee.type.getCallSignatures().length === 0) return undefined;
 
 		const declarations: string[] = ['export {};'];
-		const calleeText = this.usageTypeText(callee);
+		let usageDirectory: string;
 		let callTarget: string;
 		if (usage.target.kind === 'member') {
 			const receiver = this.lookupType(usage.target.receiver);
-			if (receiver === undefined || receiver.workspace !== workspace || (receiver.type.getFlags() & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) !== 0) return undefined;
+			if (
+				receiver === undefined
+				|| receiver.workspace !== workspace
+				|| receiver.usageProjection === undefined
+				|| callee.usageProjection === undefined
+				|| receiver.usageProjection.directory !== callee.usageProjection.directory
+				|| (receiver.type.getFlags() & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) !== 0
+			) return undefined;
 			const property = JSON.stringify(usage.target.property);
-			declarations.push(`declare const __viruneReceiver: ${this.usageTypeText(receiver)};`);
-			declarations.push(`declare const __viruneCallee: ${calleeText};`);
-			declarations.push(`const __viruneCalleeCheck: ${calleeText} = __viruneReceiver[${property}];`);
+			const expectedCalleeProjection = `(${receiver.usageProjection.typeExpression})[${property}]`;
+			if (callee.usageProjection.typeExpression !== expectedCalleeProjection) return undefined;
+			usageDirectory = receiver.usageProjection.directory;
+			declarations.push(`declare const __viruneReceiver: ${receiver.usageProjection.typeExpression};`);
 			callTarget = `__viruneReceiver[${property}]`;
 		} else {
-			declarations.push(`declare const __viruneCallee: ${calleeText};`);
+			if (callee.usageProjection === undefined) return undefined;
+			usageDirectory = callee.usageProjection.directory;
+			declarations.push(`declare const __viruneCallee: ${callee.usageProjection.typeExpression};`);
 			callTarget = '__viruneCallee';
 		}
 
@@ -155,8 +197,13 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 			if (argument.kind === 'unknown') return undefined;
 			if (argument.kind === 'foreign') {
 				const source = this.lookupType(argument.type);
-				if (source === undefined || source.workspace !== workspace) return undefined;
-				const sourceType = (source.type.getFlags() & ts.TypeFlags.Any) !== 0 ? 'unknown' : this.usageTypeText(source);
+				if (
+					source === undefined
+					|| source.workspace !== workspace
+					|| source.usageProjection === undefined
+					|| source.usageProjection.directory !== usageDirectory
+				) return undefined;
+				const sourceType = (source.type.getFlags() & ts.TypeFlags.Any) !== 0 ? 'unknown' : source.usageProjection.typeExpression;
 				const name = `__viruneArg${index}`;
 				declarations.push(`declare const ${name}: ${sourceType};`);
 				argumentExpressions.push(name);
@@ -178,7 +225,7 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 		}
 
 		const sourceText = `${declarations.join('\n')}\n${callTarget}(${argumentExpressions.join(', ')});\n`;
-		const virtualPath = join(this.#projectRoot, `.virune-interop-usage-${workspace.platform}.ts`);
+		const virtualPath = join(usageDirectory, `.virune-interop-usage-${workspace.platform}.ts`);
 		const virtualKey = canonicalFilePath(virtualPath);
 		const existing = workspace.virtualFiles.get(virtualKey);
 		if (existing?.text !== sourceText) {
@@ -315,10 +362,6 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 		return nativePrimitiveCompatible(argument, parameter, checker);
 	}
 
-	private usageTypeText(stored: StoredType): string {
-		return stored.checker.typeToString(stored.type, undefined, ts.TypeFormatFlags.NoTruncation | ts.TypeFormatFlags.UseFullyQualifiedType);
-	}
-
 	private lookupType(reference: ForeignTypeRef): StoredType | undefined {
 		if (reference.providerId !== this.id || reference.generation !== this.generation) return undefined;
 		return this.#types.get(reference.id);
@@ -400,10 +443,17 @@ type __ViruneAlias = __ViruneType;`
 		return workspace;
 	}
 
-	private store(type: ts.Type, checker: ts.TypeChecker, location: ts.Node, origin: ForeignTypeSnapshot['origin'], workspace: ProbeWorkspace): ForeignTypeSnapshot {
+	private store(
+		type: ts.Type,
+		checker: ts.TypeChecker,
+		location: ts.Node,
+		origin: ForeignTypeSnapshot['origin'],
+		workspace: ProbeWorkspace,
+		usageProjection?: UsageProjection,
+	): ForeignTypeSnapshot {
 		const id = String(this.#nextTypeId++);
 		const ref: ForeignTypeRef = { providerId: this.id, generation: this.generation, id };
-		this.#types.set(id, { type, checker, location, origin, workspace });
+		this.#types.set(id, { type, checker, location, origin, workspace, ...(usageProjection === undefined ? {} : { usageProjection }) });
 		const display = checker.typeToString(type, location, ts.TypeFormatFlags.NoTruncation | ts.TypeFormatFlags.UseAliasDefinedOutsideCurrentScope);
 		const primitive = primitiveKind(type);
 		const awaited = checker.getAwaitedType(type);
@@ -533,6 +583,16 @@ function signatureArity(parameters: readonly ts.Symbol[]): { readonly minimum: n
 		else minimum = index + 1;
 	}
 	return { minimum, optional, rest };
+}
+
+function usageProjectionForImport(request: JsImportRequest): UsageProjection | undefined {
+	if (request.kind === 'side-effect' || request.kind === 'type-only') return undefined;
+	const moduleText = JSON.stringify(request.moduleSpecifier);
+	const typeExpression = request.kind === 'named'
+		? `(typeof import(${moduleText}))[${JSON.stringify(request.importedName ?? '')}]`
+		: request.kind === 'default' ? `(typeof import(${moduleText}))["default"]`
+			: `typeof import(${moduleText})`;
+	return { typeExpression, directory: dirname(request.containingFile) };
 }
 
 function typescriptPrimitiveName(primitive: Extract<InteropArgumentType, { readonly kind: 'native-primitive' }>['primitive']): string {
