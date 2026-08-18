@@ -121,6 +121,47 @@ function requireBoolean(value, path) {
 	return value;
 }
 
+function isEscaped(line, index) {
+	let slashCount = 0;
+	for (let cursor = index - 1; cursor >= 0 && line[cursor] === '\\'; cursor -= 1) slashCount += 1;
+	return slashCount % 2 === 1;
+}
+
+function backtickRunLength(line, index) {
+	let end = index;
+	while (end < line.length && line[end] === '`') end += 1;
+	return end - index;
+}
+
+function findClosingBacktickRun(line, start, expectedLength) {
+	for (let cursor = start; cursor < line.length;) {
+		const index = line.indexOf('`', cursor);
+		if (index === -1) return -1;
+		const length = backtickRunLength(line, index);
+		if (length === expectedLength) return index;
+		cursor = index + length;
+	}
+	return -1;
+}
+
+function findHtmlCommentStart(line, start) {
+	for (let cursor = start; cursor < line.length;) {
+		if (line.startsWith('<!--', cursor) && !isEscaped(line, cursor)) return cursor;
+		if (line[cursor] === '`' && !isEscaped(line, cursor)) {
+			const length = backtickRunLength(line, cursor);
+			const closing = findClosingBacktickRun(line, cursor + length, length);
+			if (closing !== -1) {
+				cursor = closing + length;
+				continue;
+			}
+			cursor += length;
+			continue;
+		}
+		cursor += 1;
+	}
+	return -1;
+}
+
 function stripHtmlComments(line, commentState) {
 	let visible = '';
 	let cursor = 0;
@@ -133,7 +174,7 @@ function stripHtmlComments(line, commentState) {
 			cursor = end + 3;
 			continue;
 		}
-		const start = line.indexOf('<!--', cursor);
+		const start = findHtmlCommentStart(line, cursor);
 		if (start === -1) {
 			visible += line.slice(cursor);
 			break;
