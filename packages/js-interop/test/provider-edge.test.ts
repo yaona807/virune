@@ -202,6 +202,10 @@ test('fails closed on cross-Program facts that are not representation-safe', asy
 		'export interface Item { value: string }',
 		'export declare const item: Item;',
 		'export declare const maybeItem: Item | string;',
+		'export declare const emptyShape: {};',
+		'export declare const objectWrapper: Object;',
+		'export declare const stringWrapper: String;',
+		'export declare const primitiveStructural: { toString(): string };',
 		'export declare const text: string;',
 		'export declare const flag: boolean;',
 		'export declare function acceptObject(value: object): void;',
@@ -219,6 +223,10 @@ test('fails closed on cross-Program facts that are not representation-safe', asy
 	// Separate platform workspaces use distinct TypeScript Program/checker identities.
 	const item = resolveNamed(provider, root, 'item', 'browser');
 	const maybeItem = resolveNamed(provider, root, 'maybeItem', 'browser');
+	const emptyShape = resolveNamed(provider, root, 'emptyShape', 'browser');
+	const objectWrapper = resolveNamed(provider, root, 'objectWrapper', 'browser');
+	const stringWrapper = resolveNamed(provider, root, 'stringWrapper', 'browser');
+	const primitiveStructural = resolveNamed(provider, root, 'primitiveStructural', 'browser');
 	const text = resolveNamed(provider, root, 'text', 'browser');
 	const flag = resolveNamed(provider, root, 'flag', 'browser');
 	const acceptObject = resolveNamed(provider, root, 'acceptObject', 'node');
@@ -233,6 +241,10 @@ test('fails closed on cross-Program facts that are not representation-safe', asy
 	assert.ok(provider.resolveCall(acceptObject.ref, [{ kind: 'foreign', type: item.ref }]));
 	assert.equal(provider.resolveCall(acceptItem.ref, [{ kind: 'foreign', type: item.ref }]), undefined);
 	assert.equal(provider.resolveCall(acceptObject.ref, [{ kind: 'foreign', type: maybeItem.ref }]), undefined);
+	assert.equal(provider.resolveCall(acceptObject.ref, [{ kind: 'foreign', type: emptyShape.ref }]), undefined);
+	assert.equal(provider.resolveCall(acceptObject.ref, [{ kind: 'foreign', type: objectWrapper.ref }]), undefined);
+	assert.equal(provider.resolveCall(acceptObject.ref, [{ kind: 'foreign', type: stringWrapper.ref }]), undefined);
+	assert.equal(provider.resolveCall(acceptObject.ref, [{ kind: 'foreign', type: primitiveStructural.ref }]), undefined);
 	assert.ok(provider.resolveCall(acceptUnknown.ref, [{ kind: 'foreign', type: item.ref }]));
 	assert.ok(provider.resolveCall(acceptAny.ref, [{ kind: 'foreign', type: item.ref }]));
 	assert.ok(provider.resolveCall(acceptString.ref, [{ kind: 'foreign', type: text.ref }]));
