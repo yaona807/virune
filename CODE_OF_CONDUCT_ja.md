@@ -22,6 +22,8 @@ Incidentの詳細、個人情報、機微情報を含むscreenshot、特定可�
 
 Viruneは現在、すべての人が利用できるconfidentialなProject reporting serviceを運営していません。Repositoryの **Conduct contact request** Issue Formは、あなたのGitHub profileにprivate communicationへ利用できるcontact methodが既に公開されており、Maintainerがその方法を使用することに同意できる場合だけ利用してください。Public Issue自体へcontact addressやincident detailsを追加しないでください。Maintainerはprofile上のcontact routeを利用してprivateな連絡へ移行できます。
 
+Request Issue、そのauthor、固定されたconduct-contact title自体はpublicです。Moderation contactを求めている事実自体をconfidentialにする必要がある場合、このformを使用しないでください。また、このformはsole maintainer自身に対する独立reviewを提供しません。そのようなchannelであるかのように使用しないでください。
+
 Profileに利用可能なprivate-capable contact routeがない場合、Viruneは現時点でconfidentialなProject-level intakeを保証できません。Responseを得るためにsensitive detailsをpublicに開示しないでください。GitHub上のconduct/contentがGitHub policyへ違反している場合は、GitHub自身の **Report content / Report abuse** mechanismを利用できます。
 
 Security vulnerabilityはconduct reportではありません。脆弱性の報告は[SECURITY_ja.md](SECURITY_ja.md)に従い、exploit-sensitiveな情報をconduct reporting pathへ記載しないでください。
