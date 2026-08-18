@@ -28,6 +28,8 @@ export interface TypeScriptInteropProviderOptions {
 interface UsageProjection {
 	readonly typeExpression: string;
 	readonly directory: string;
+	readonly declaration?: string;
+	readonly valueExpression?: string;
 }
 
 interface StoredType {
@@ -150,9 +152,12 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 		const property = stored.checker.getPropertyOfType(stored.type, name);
 		if (property === undefined) return undefined;
 		const declaration = property.valueDeclaration ?? property.declarations?.[0] ?? stored.location;
+		const propertyName = JSON.stringify(name);
 		const usageProjection = stored.usageProjection === undefined ? undefined : {
-			typeExpression: `(${stored.usageProjection.typeExpression})[${JSON.stringify(name)}]`,
+			typeExpression: `(${stored.usageProjection.typeExpression})[${propertyName}]`,
 			directory: stored.usageProjection.directory,
+			...(stored.usageProjection.declaration === undefined ? {} : { declaration: stored.usageProjection.declaration }),
+			...(stored.usageProjection.valueExpression === undefined ? {} : { valueExpression: `(${stored.usageProjection.valueExpression})[${propertyName}]` }),
 		};
 		return this.store(
 			stored.checker.getTypeOfSymbolAtLocation(property, declaration),
@@ -171,7 +176,11 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 		const calleeFlags = callee.type.getFlags();
 		if ((calleeFlags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) !== 0 || callee.type.getCallSignatures().length === 0) return undefined;
 
+		const imports = new Set<string>();
 		const declarations: string[] = ['export {};'];
+		const includeProjection = (projection: UsageProjection): void => {
+			if (projection.declaration !== undefined) imports.add(projection.declaration);
+		};
 		let usageDirectory: string;
 		let callTarget: string;
 		if (usage.target.kind === 'member') {
@@ -187,14 +196,25 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 			const property = JSON.stringify(usage.target.property);
 			const expectedCalleeProjection = `(${receiver.usageProjection.typeExpression})[${property}]`;
 			if (callee.usageProjection.typeExpression !== expectedCalleeProjection) return undefined;
+			const expectedCalleeValue = receiver.usageProjection.valueExpression === undefined ? undefined : `(${receiver.usageProjection.valueExpression})[${property}]`;
+			if (callee.usageProjection.valueExpression !== expectedCalleeValue) return undefined;
 			usageDirectory = receiver.usageProjection.directory;
-			declarations.push(`declare const __viruneReceiver: ${receiver.usageProjection.typeExpression};`);
-			callTarget = `__viruneReceiver[${property}]`;
+			includeProjection(receiver.usageProjection);
+			if (receiver.usageProjection.valueExpression !== undefined) {
+				callTarget = expectedCalleeValue!;
+			} else {
+				declarations.push(`declare const __viruneReceiver: ${receiver.usageProjection.typeExpression};`);
+				callTarget = `__viruneReceiver[${property}]`;
+			}
 		} else {
 			if (callee.usageProjection === undefined) return undefined;
 			usageDirectory = callee.usageProjection.directory;
-			declarations.push(`declare const __viruneCallee: ${callee.usageProjection.typeExpression};`);
-			callTarget = '__viruneCallee';
+			includeProjection(callee.usageProjection);
+			if (callee.usageProjection.valueExpression !== undefined) callTarget = callee.usageProjection.valueExpression;
+			else {
+				declarations.push(`declare const __viruneCallee: ${callee.usageProjection.typeExpression};`);
+				callTarget = '__viruneCallee';
+			}
 		}
 
 		const argumentExpressions: string[] = [];
@@ -209,7 +229,8 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 					|| source.usageProjection === undefined
 					|| source.usageProjection.directory !== usageDirectory
 				) return undefined;
-				const sourceType = typeContainsAny(source.type, source.checker, source.location, new Set()) ? 'unknown' : source.usageProjection.typeExpression;
+				includeProjection(source.usageProjection);
+				const sourceType = foreignTypeRequiresUnknownProjection(source.type, source.checker, source.location) ? 'unknown' : source.usageProjection.typeExpression;
 				const name = `__viruneArg${index}`;
 				declarations.push(`declare const ${name}: ${sourceType};`);
 				argumentExpressions.push(name);
@@ -231,7 +252,8 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 		}
 
 		const callText = `${callTarget}(${argumentExpressions.join(', ')})`;
-		const sourceText = `${declarations.join('\n')}\nexport const __viruneResult = ${callText};\n`;
+		const importText = [...imports].sort().join('\n');
+		const sourceText = `${importText.length === 0 ? '' : `${importText}\n`}${declarations.join('\n')}\nexport const __viruneResult = ${callText};\n`;
 		const virtualFileName = `.virune-interop-usage-${workspace.platform}-${hash(sourceText)}.ts`;
 		const virtualPath = join(usageDirectory, virtualFileName);
 		const virtualKey = canonicalFilePath(virtualPath);
@@ -298,6 +320,7 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 		const usageProjection = stored.usageProjection === undefined ? undefined : {
 			typeExpression: `Awaited<${stored.usageProjection.typeExpression}>`,
 			directory: stored.usageProjection.directory,
+			...(stored.usageProjection.declaration === undefined ? {} : { declaration: stored.usageProjection.declaration }),
 		};
 		return this.store(awaited, stored.checker, stored.location, stored.origin, stored.workspace, usageProjection);
 	}
@@ -582,43 +605,49 @@ function isDefinitelyNonPrimitive(type: ts.Type, checker: ts.TypeChecker): boole
 	return primitiveRuntimeTypes.every(primitive => !checker.isTypeAssignableTo(primitive, type));
 }
 
-function typeContainsAny(type: ts.Type, checker: ts.TypeChecker, location: ts.Node, seen: Set<ts.Type>): boolean {
-	const flags = type.getFlags();
-	if ((flags & ts.TypeFlags.Any) !== 0) return true;
-	if (primitiveKind(type) !== undefined || (flags & (ts.TypeFlags.ESSymbol | ts.TypeFlags.UniqueESSymbol)) !== 0) return false;
-	if (seen.has(type)) return false;
-	seen.add(type);
-	if (type.isUnionOrIntersection() && type.types.some(item => typeContainsAny(item, checker, location, seen))) return true;
-	if ((flags & ts.TypeFlags.TypeParameter) !== 0) {
-		const constraint = checker.getBaseConstraintOfType(type);
-		if (constraint !== undefined && constraint !== type && typeContainsAny(constraint, checker, location, seen)) return true;
-	}
-	if ((flags & ts.TypeFlags.Object) !== 0) {
+function foreignTypeRequiresUnknownProjection(
+	type: ts.Type,
+	checker: ts.TypeChecker,
+	location: ts.Node,
+	seen = new Set<ts.Type>(),
+	budget: { remaining: number } = { remaining: 64 },
+	depth = 0,
+): boolean {
+	try {
+		if (budget.remaining-- <= 0 || depth > 12) return true;
+		const flags = type.getFlags();
+		if ((flags & (ts.TypeFlags.Any | ts.TypeFlags.Never | ts.TypeFlags.TypeParameter)) !== 0) return true;
+		if ((flags & ts.TypeFlags.Unknown) !== 0) return false;
+		if (primitiveKind(type) !== undefined || (flags & (ts.TypeFlags.ESSymbol | ts.TypeFlags.UniqueESSymbol)) !== 0) return false;
+		if (seen.has(type)) return false;
+		seen.add(type);
+		if (type.isUnionOrIntersection()) return type.types.some(item => foreignTypeRequiresUnknownProjection(item, checker, location, seen, budget, depth + 1));
+		if ((flags & ts.TypeFlags.Object) === 0) return true;
+
+		if (checker.isArrayType(type) || checker.isTupleType(type)) {
+			const typeArguments = checker.getTypeArguments(type as ts.TypeReference);
+			if (typeArguments.length === 0) return true;
+			return typeArguments.some(item => foreignTypeRequiresUnknownProjection(item, checker, location, seen, budget, depth + 1));
+		}
+		if (checker.getSignaturesOfType(type, ts.SignatureKind.Call).length > 0 || checker.getSignaturesOfType(type, ts.SignatureKind.Construct).length > 0) return true;
+
 		const objectType = type as ts.ObjectType;
 		if ((objectType.objectFlags & ts.ObjectFlags.Reference) !== 0) {
 			const typeArguments = checker.getTypeArguments(type as ts.TypeReference);
-			if (typeArguments.some(item => typeContainsAny(item, checker, location, seen))) return true;
+			if (typeArguments.some(item => foreignTypeRequiresUnknownProjection(item, checker, location, seen, budget, depth + 1))) return true;
 		}
-	}
-	for (const indexInfo of checker.getIndexInfosOfType(type)) {
-		if (typeContainsAny(indexInfo.type, checker, location, seen)) return true;
-	}
-	for (const property of checker.getPropertiesOfType(type)) {
-		const declaration = property.valueDeclaration ?? property.declarations?.[0] ?? location;
-		const propertyType = checker.getTypeOfSymbolAtLocation(property, declaration);
-		if (typeContainsAny(propertyType, checker, declaration, seen)) return true;
-	}
-	for (const kind of [ts.SignatureKind.Call, ts.SignatureKind.Construct]) {
-		for (const signature of checker.getSignaturesOfType(type, kind)) {
-			for (const parameter of signature.getParameters()) {
-				const declaration = parameter.valueDeclaration ?? parameter.declarations?.[0] ?? location;
-				const parameterType = checker.getTypeOfSymbolAtLocation(parameter, declaration);
-				if (typeContainsAny(parameterType, checker, declaration, seen)) return true;
-			}
-			if (typeContainsAny(checker.getReturnTypeOfSignature(signature), checker, signature.declaration ?? location, seen)) return true;
+		for (const indexInfo of checker.getIndexInfosOfType(type)) {
+			if (foreignTypeRequiresUnknownProjection(indexInfo.type, checker, location, seen, budget, depth + 1)) return true;
 		}
+		for (const property of checker.getPropertiesOfType(type)) {
+			const declaration = property.valueDeclaration ?? property.declarations?.[0] ?? location;
+			const propertyType = checker.getTypeOfSymbolAtLocation(property, declaration);
+			if (foreignTypeRequiresUnknownProjection(propertyType, checker, declaration, seen, budget, depth + 1)) return true;
+		}
+		return false;
+	} catch {
+		return true;
 	}
-	return false;
 }
 
 function signatureArity(parameters: readonly ts.Symbol[]): { readonly minimum: number; readonly optional: number; readonly rest: boolean } {
@@ -643,10 +672,18 @@ function interopProbeFileName(request: JsImportRequest): string {
 
 function usageProjectionForImport(request: JsImportRequest): UsageProjection | undefined {
 	if (request.kind === 'side-effect' || request.kind === 'type-only') return undefined;
-	const fileName = interopProbeFileName(request);
+	const moduleText = JSON.stringify(request.moduleSpecifier);
+	const binding = `__viruneImport_${hash(`${request.moduleSpecifier}:${request.kind}:${request.importedName ?? ''}`).slice(0, 16)}`;
+	const declaration = request.kind === 'named'
+		? `import { ${safeTsName(request.importedName ?? '')} as ${binding} } from ${moduleText};`
+		: request.kind === 'default'
+			? `import ${binding} from ${moduleText};`
+			: `import * as ${binding} from ${moduleText};`;
 	return {
-		typeExpression: `(typeof import(${JSON.stringify(`./${fileName}`)}))["__viruneValue"]`,
+		typeExpression: `typeof ${binding}`,
 		directory: dirname(request.containingFile),
+		declaration,
+		valueExpression: binding,
 	};
 }
 
