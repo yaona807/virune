@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -41,11 +41,40 @@ test('parses nested mappings, sequences, quoted scalars, GitHub boolean/null for
 	assert.equal(githubScalars.g, null);
 });
 
-test('fails deterministically when the Issue Template directory is missing', async t => {
-	const root = await mkdtemp(join(tmpdir(), 'virune-issue-forms-missing-'));
+test('fails deterministically when the .github directory is missing', async t => {
+	const root = await mkdtemp(join(tmpdir(), 'virune-issue-forms-missing-github-'));
 	t.after(async () => rm(root, { recursive: true, force: true }));
 	assert.deepEqual(await verifyIssueForms(root), [
+		'.github: required repository metadata directory is missing',
+	]);
+});
+
+test('fails deterministically when the Issue Template directory is missing', async t => {
+	const root = await mkdtemp(join(tmpdir(), 'virune-issue-forms-missing-templates-'));
+	t.after(async () => rm(root, { recursive: true, force: true }));
+	await mkdir(join(root, '.github'));
+	assert.deepEqual(await verifyIssueForms(root), [
 		'.github/ISSUE_TEMPLATE: required Issue Template directory is missing',
+	]);
+});
+
+test('requires the .github path to be a real directory', async t => {
+	const root = await mkdtemp(join(tmpdir(), 'virune-issue-forms-github-root-'));
+	t.after(async () => rm(root, { recursive: true, force: true }));
+	await writeFile(join(root, '.github'), 'not a directory', 'utf8');
+	assert.deepEqual(await verifyIssueForms(root), [
+		'.github: repository metadata path must be a real directory',
+	]);
+});
+
+test('rejects a symlinked .github directory before following it', async t => {
+	const root = await mkdtemp(join(tmpdir(), 'virune-issue-forms-github-symlink-'));
+	t.after(async () => rm(root, { recursive: true, force: true }));
+	const target = join(root, 'real-github');
+	await mkdir(target);
+	await symlink(target, join(root, '.github'), process.platform === 'win32' ? 'junction' : 'dir');
+	assert.deepEqual(await verifyIssueForms(root), [
+		'.github: repository metadata path must be a real directory',
 	]);
 });
 
