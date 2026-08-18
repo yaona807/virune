@@ -726,8 +726,8 @@ export class TypeChecker {
 				const element = substitutions.get('T') ?? (expression.callee.field === 'from' ? this.listElementOf(argumentTypes[0]) : expression.callee.field === 'empty' ? undefined : this.setElementOf(argumentTypes[0]) ?? argumentTypes[1]);
 				if (element !== undefined && (!this.supportsEq(element) || !this.supportsHash(element))) this.diagnostics.error('L2110', `Set element type ${this.arena.display(element)} must support structural Eq and Hash`, expression.span);
 			}
-			if (namespace === 'List' && expression.callee.field === 'unique') { const element = this.listElementOf(argumentTypes[0]); if (element !== undefined && (!this.supportsEq(element) || !this.supportsHash(element))) this.diagnostics.error('L2111', `List.unique element type ${this.arena.display(element)} does not support structural Eq and Hash`, expression.span); }
-			if (namespace === 'List' && expression.callee.field === 'uniqueBy') { const key = substitutions.get('U'); if (key !== undefined && (!this.supportsEq(key) || !this.supportsHash(key))) this.diagnostics.error('L2111', `List.uniqueBy key type ${this.arena.display(key)} does not support structural Eq and Hash`, expression.span); }
+			if (namespace === 'List' && expression.callee.field === 'unique') { const element = this.listElementOf(argumentTypes[0]); if (element !== undefined && (!this.supportsEq(element) || !this.supportsHash(element))) this.diagnostics.error('L2111', `List.unique element type ${this.arena.display(element)} must support structural Eq and Hash`, expression.span); }
+				if (namespace === 'List' && expression.callee.field === 'uniqueBy') { const key = substitutions.get('U'); if (key !== undefined && (!this.supportsEq(key) || !this.supportsHash(key))) this.diagnostics.error('L2111', `List.uniqueBy key type ${this.arena.display(key)} must support structural Eq and Hash`, expression.span); }
 		}
 		return calleeType.async ? this.arena.future(result) : result;
 	}
@@ -1006,7 +1006,6 @@ export class TypeChecker {
 		}
 	}
 
-
 	private patternHasBinding(pattern: A.Pattern): boolean {
 		switch (pattern.kind) {
 			case 'BindingPattern': return true;
@@ -1132,7 +1131,6 @@ export class TypeChecker {
 		}
 	}
 
-
 	private containsOpenEffect(typeId: TypeId, seen = new Set<TypeId>()): boolean {
 		if (seen.has(typeId)) return false;
 		seen.add(typeId);
@@ -1179,7 +1177,6 @@ export class TypeChecker {
 
 	private invalidArity(reference: A.TypeReferenceNode, expected: number, actual: number): TypeId { this.diagnostics.error('L2041', `${reference.name} expects ${expected} type arguments, received ${actual}`, reference.span); return this.arena.error; }
 
-
 	private isAssignable(source: TypeId, target: TypeId): boolean { return this.#types.isAssignable(source, target); }
 	private listElementOf(typeId: TypeId | undefined): TypeId | undefined { return this.#types.listElementOf(typeId); }
 	private setElementOf(typeId: TypeId | undefined): TypeId | undefined { return this.#types.setElementOf(typeId); }
@@ -1192,7 +1189,6 @@ export class TypeChecker {
 	private supportsDerivedEq(typeId: TypeId, owner: TypeId, seen = new Set<TypeId>()): boolean { return this.#types.supportsDerivedEq(typeId, owner, seen); }
 	private supportsEq(typeId: TypeId, seen = new Set<TypeId>()): boolean { return this.#types.supportsEq(typeId, seen); }
 	private commonType(types: readonly TypeId[], span: SourceSpan): TypeId { return this.#types.commonType(types, span); }
-
 
 	private isConstantExpression(expression: A.Expression): boolean {
 		switch (expression.kind) {
@@ -1212,11 +1208,7 @@ export class TypeChecker {
 
 	private unify(pattern: TypeId, actual: TypeId, substitutions: Map<string, TypeId>): void { this.#types.unify(pattern, actual, substitutions); }
 	private substitute(typeId: TypeId, substitutions: ReadonlyMap<string, TypeId>): TypeId { return this.#types.substitute(typeId, substitutions); }
-
-
-
 }
-
 
 function stableForeignUsage(usage: import('../interop/types.js').ForeignUsage): import('../interop/types.js').ForeignUsageIR {
 	const { ref: _ref, ...foreignType } = usage.foreignType;
