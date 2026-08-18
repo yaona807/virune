@@ -197,28 +197,27 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 	}
 
 	private argumentCompatible(argument: InteropArgumentType, parameter: ts.Type, checker: ts.TypeChecker): boolean {
-		const parameterFlags = parameter.getFlags();
-		if ((parameterFlags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) !== 0) return true;
-		if (parameter.isUnion()) return parameter.types.some(item => this.argumentCompatible(argument, item, checker));
 		if (argument.kind === 'unknown') return false;
+		if (parameter.isUnion()) return parameter.types.some(item => this.argumentCompatible(argument, item, checker));
+		const parameterFlags = parameter.getFlags();
 		if (argument.kind === 'foreign') {
 			const source = this.requireType(argument.type);
 			if (source.checker === checker) return checker.isTypeAssignableTo(source.type, parameter);
-			// Different TypeScript Programs do not share type identity. Preserve safety by
-			// accepting only exact primitive views or broad JS boundary types.
+			// Type identities are scoped to one TypeScript Program. Across Programs,
+			// preserve only broad primitive representation compatibility and fail closed
+			// for object/any/unknown fallbacks until one usage is resolved in one Program.
 			const sourcePrimitive = primitiveKind(source.type);
 			const parameterPrimitive = primitiveKind(parameter);
-			if (sourcePrimitive !== undefined || parameterPrimitive !== undefined) return sourcePrimitive === parameterPrimitive;
-			const flags = parameter.getFlags();
-			return (flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown | ts.TypeFlags.NonPrimitive)) !== 0;
+			const parameterIsLiteral = (parameterFlags & (ts.TypeFlags.StringLiteral | ts.TypeFlags.BooleanLiteral | ts.TypeFlags.NumberLiteral | ts.TypeFlags.BigIntLiteral)) !== 0;
+			return sourcePrimitive !== undefined && parameterPrimitive !== undefined && !parameterIsLiteral && sourcePrimitive === parameterPrimitive;
 		}
-		const flags = parameter.getFlags();
+		if ((parameterFlags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) !== 0) return true;
 		switch (argument.primitive) {
-			case 'Bool': return (flags & (ts.TypeFlags.Boolean | ts.TypeFlags.BooleanLiteral)) !== 0;
-			case 'String': return (flags & (ts.TypeFlags.String | ts.TypeFlags.StringLiteral)) !== 0;
-			case 'Int': case 'Float': return (flags & (ts.TypeFlags.Number | ts.TypeFlags.NumberLiteral)) !== 0;
-			case 'BigInt': return (flags & (ts.TypeFlags.BigInt | ts.TypeFlags.BigIntLiteral)) !== 0;
-			case 'Unit': return (flags & (ts.TypeFlags.Void | ts.TypeFlags.Undefined)) !== 0;
+			case 'Bool': return (parameterFlags & ts.TypeFlags.Boolean) !== 0;
+			case 'String': return (parameterFlags & ts.TypeFlags.String) !== 0;
+			case 'Int': case 'Float': return (parameterFlags & ts.TypeFlags.Number) !== 0;
+			case 'BigInt': return (parameterFlags & ts.TypeFlags.BigInt) !== 0;
+			case 'Unit': return (parameterFlags & (ts.TypeFlags.Void | ts.TypeFlags.Undefined)) !== 0;
 		}
 	}
 
