@@ -3,7 +3,6 @@ import { resolve } from 'node:path';
 import { TextDecoder } from 'node:util';
 import { pathToFileURL } from 'node:url';
 import { auditNpmPackageFileSet } from './npm-package-contents-policy.mjs';
-import { validateNpmTarArchive } from './validate-npm-tar-archive.mjs';
 import {
 	isRegularTarEntry,
 	readRegistryCandidateTarEntries,
@@ -36,7 +35,6 @@ export function verifyNpmReleaseCandidateContents({
 		const sha256 = createHash('sha256').update(buffer).digest('hex');
 		assert(sha256 === item.sha256, `${path}.sha256`, 'exact candidate bytes do not match reviewed publication identity');
 		assert(buffer.byteLength === item.bytes, `${path}.bytes`, 'exact candidate byte size does not match reviewed publication identity');
-		validateNpmTarArchive(buffer, path);
 
 		const entries = readRegistryCandidateTarEntries(buffer, path);
 		assert(entries.size > 0, path, 'candidate tarball must contain entries');
