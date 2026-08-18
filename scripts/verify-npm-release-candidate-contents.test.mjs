@@ -199,6 +199,10 @@ test('exact candidate rejects malformed tar headers and archive termination', ()
 			},
 		},
 	);
+	const nonZeroPadding = buildTarGzip(
+		[['package/package.json', `${JSON.stringify(baseManifest)}\n`]],
+		{ paddingByte: 0x41 },
+	);
 	const missingSecondEndBlock = buildTarGzip(
 		[['package/package.json', `${JSON.stringify(baseManifest)}\n`]],
 		{ endBlocks: 1 },
@@ -218,6 +222,7 @@ test('exact candidate rejects malformed tar headers and archive termination', ()
 		[highBitChecksum, /invalid octal tar checksum/u],
 		[invalidUtf8Path, /invalid UTF-8 tar entry name/u],
 		[nonZeroAfterNulPath, /non-zero data after NUL in tar entry name/u],
+		[nonZeroPadding, /non-zero padding bytes/u],
 		[missingSecondEndBlock, /missing the canonical second end block/u],
 		[trailingData, /non-zero data after the canonical end marker/u],
 		[unalignedTrailingZero, /tar archive byte length must be aligned to 512-byte blocks/u],
@@ -316,7 +321,7 @@ function buildTarGzip(entries, options = {}) {
 		options.afterChecksum?.(header, name);
 		chunks.push(header, content);
 		const padding = (512 - content.byteLength % 512) % 512;
-		if (padding > 0) chunks.push(Buffer.alloc(padding));
+		if (padding > 0) chunks.push(Buffer.alloc(padding, options.paddingByte ?? 0));
 	}
 	for (let index = 0; index < (options.endBlocks ?? 2); index += 1) chunks.push(Buffer.alloc(512));
 	if (options.trailingBytes !== undefined) chunks.push(options.trailingBytes);
