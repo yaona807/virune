@@ -99,7 +99,7 @@ test('fails closed on foreign any evidence and unsupported rest arguments', asyn
 	assert.equal(provider.resolveCall(acceptString.ref, [{ kind: 'foreign', type: anyValue.ref }]), undefined);
 	assert.ok(provider.resolveCall(acceptUnknown.ref, [{ kind: 'foreign', type: anyValue.ref }]));
 	assert.ok(provider.resolveCall(acceptAny.ref, [{ kind: 'foreign', type: anyValue.ref }]));
-	assert.ok(provider.resolveCall(acceptRest.ref, []));
+	assert.equal(provider.resolveCall(acceptRest.ref, []), undefined);
 	assert.equal(provider.resolveCall(acceptRest.ref, [{ kind: 'foreign', type: strings.ref }]), undefined);
 	assert.equal(provider.resolveCall(acceptRest.ref, [{ kind: 'foreign', type: strings.ref }, { kind: 'unknown' }]), undefined);
 
