@@ -36,6 +36,15 @@ export class CachedTypeScriptInteropProvider implements JsInteropProvider {
 		this.id = provider.id;
 		this.version = provider.version;
 		this.generation = provider.generation;
+		Object.defineProperty(this, 'resolveCallUsage', {
+			value: (type: ForeignTypeRef, usage: InteropCallUsage): ForeignCallResolution | undefined => {
+				const active = this.#requireProvider() as JsInteropProvider;
+				return active.resolveCallUsage?.(type, usage);
+			},
+			enumerable: false,
+			configurable: false,
+			writable: false,
+		});
 	}
 
 	public resolveImport(request: JsImportRequest): JsImportResolution {
@@ -49,10 +58,6 @@ export class CachedTypeScriptInteropProvider implements JsInteropProvider {
 
 	public getProperty(type: ForeignTypeRef, name: string): ForeignTypeSnapshot | undefined {
 		return this.#requireProvider().getProperty(type, name);
-	}
-
-	public resolveCallUsage(type: ForeignTypeRef, usage: InteropCallUsage): ForeignCallResolution | undefined {
-		return this.#requireProvider().resolveCallUsage(type, usage);
 	}
 
 	public resolveCall(type: ForeignTypeRef, argumentsList: readonly InteropArgumentType[]): ForeignCallResolution | undefined {
