@@ -174,6 +174,7 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 		const workspace = callee.workspace;
 		const calleeFlags = callee.type.getFlags();
 		if ((calleeFlags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) !== 0 || callee.type.getCallSignatures().length === 0) return undefined;
+		if (usage.target.kind === 'value' && extractedCallRequiresReceiverBinding(callee.location)) return undefined;
 
 		const imports = new Set<string>();
 		const declarations: string[] = ['export {};'];
@@ -548,6 +549,12 @@ function primitiveKind(type: ts.Type): ForeignPrimitiveKind | undefined {
 	if ((flags & ts.TypeFlags.Undefined) !== 0) return 'undefined';
 	if ((flags & ts.TypeFlags.Null) !== 0) return 'null';
 	return undefined;
+}
+
+function extractedCallRequiresReceiverBinding(location: ts.Node): boolean {
+	if (ts.isMethodDeclaration(location) || ts.isMethodSignature(location)) return true;
+	if ((ts.isPropertyAssignment(location) || ts.isPropertyDeclaration(location)) && location.initializer !== undefined && ts.isFunctionExpression(location.initializer)) return true;
+	return false;
 }
 
 function nativePrimitiveCompatible(argument: Extract<InteropArgumentType, { readonly kind: 'native-primitive' }>, parameter: ts.Type, checker: ts.TypeChecker): boolean {
