@@ -41,9 +41,11 @@ export function validateNpmTarArchive(tgzBytes, path) {
 		const fullName = prefix.length > 0 ? `${prefix}/${name}` : name;
 		const size = parseOctalField(header, SIZE_OFFSET, SIZE_LENGTH, path, `size for ${fullName}`);
 		const dataStart = offset + BLOCK_SIZE;
+		const dataEnd = dataStart + size;
 		const paddedSize = Math.ceil(size / BLOCK_SIZE) * BLOCK_SIZE;
 		const nextOffset = dataStart + paddedSize;
 		assert(Number.isSafeInteger(nextOffset) && nextOffset <= tar.byteLength, path, `truncated tar entry ${fullName}`);
+		assert(tar.subarray(dataEnd, nextOffset).every(byte => byte === 0), path, `tar entry ${fullName} has non-zero padding bytes`);
 		offset = nextOffset;
 	}
 
