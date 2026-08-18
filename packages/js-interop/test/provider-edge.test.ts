@@ -118,6 +118,39 @@ test('fails closed on foreign any evidence and unsupported rest arguments', asyn
 	assert.deepEqual(errorCodes(rejectedRest), ['L4204']);
 });
 
+test('uses positional minimum arity when a default parameter precedes a required parameter', async () => {
+	const root = await fixtureRoot();
+	await writeFile(join(root, 'src/library.js'), [
+		'/**',
+		' * @param {string} first',
+		' * @param {string} second',
+		' */',
+		'export function withLeadingDefault(first = "default", second) { return first + second; }',
+		'',
+	].join('\n'), 'utf8');
+	const provider = new TypeScriptInteropProvider({ projectRoot: root });
+	const fn = resolveNamed(provider, root, 'withLeadingDefault');
+	assert.equal(provider.resolveCall(fn.ref, [{ kind: 'native-primitive', primitive: 'String' }]), undefined);
+	assert.ok(provider.resolveCall(fn.ref, [
+		{ kind: 'native-primitive', primitive: 'String' },
+		{ kind: 'native-primitive', primitive: 'String' },
+	]));
+
+	const rejected = compileSource({
+		id: 7,
+		path: join(root, 'src/rejected-leading-default.virune'),
+		text: `import js { withLeadingDefault } from "./library.js"\n\nfn use() -> Unit uses JavaScript {\n\twithLeadingDefault("only-first")\n}\n`,
+	}, { platform: 'node', jsInteropProvider: provider });
+	assert.deepEqual(errorCodes(rejected), ['L4204']);
+
+	const accepted = compileSource({
+		id: 8,
+		path: join(root, 'src/accepted-leading-default.virune'),
+		text: `import js { withLeadingDefault } from "./library.js"\n\nfn use() -> Unit uses JavaScript {\n\twithLeadingDefault("first", "second")\n}\n`,
+	}, { platform: 'node', jsInteropProvider: provider });
+	assert.deepEqual(errorCodes(accepted), []);
+});
+
 test('does not treat broad native primitives as TypeScript literal values', async () => {
 	const root = await fixtureRoot();
 	await writeFile(join(root, 'src/library.d.ts'), [
