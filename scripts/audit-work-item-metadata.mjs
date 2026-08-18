@@ -174,12 +174,26 @@ function markdownLinesOutsideHiddenRegions(body) {
 	return output;
 }
 
-function parseAtxHeading(line) {
-	if (line === null) return null;
-	const match = line.match(/^ {0,3}(#{1,6})(?:[ \t]+|$)(.*)$/u);
-	if (match === null) return null;
-	const text = match[2].replace(/[ \t]+#+[ \t]*$/u, '').trim();
-	return { level: match[1].length, text };
+function parseMarkdownHeading(lines, index) {
+	const line = lines[index];
+	if (line === null || line === undefined) return null;
+	const atx = line.match(/^ {0,3}(#{1,6})(?:[ \t]+|$)(.*)$/u);
+	if (atx !== null) {
+		return {
+			level: atx[1].length,
+			text: atx[2].replace(/[ \t]+#+[ \t]*$/u, '').trim(),
+			endIndex: index,
+		};
+	}
+	const underline = lines[index + 1];
+	if (line.trim() === '' || underline === null || underline === undefined) return null;
+	const setext = underline.match(/^ {0,3}(=+|-+)[ \t]*$/u);
+	if (setext === null) return null;
+	return {
+		level: setext[1][0] === '=' ? 1 : 2,
+		text: line.trim(),
+		endIndex: index + 1,
+	};
 }
 
 export function parseWorkItemRole(body) {
@@ -187,22 +201,26 @@ export function parseWorkItemRole(body) {
 	const lines = markdownLinesOutsideHiddenRegions(body);
 	const headings = [];
 	for (let index = 0; index < lines.length; index += 1) {
-		const heading = parseAtxHeading(lines[index]);
-		if (heading?.text === roleHeading) headings.push({ index, level: heading.level });
+		const heading = parseMarkdownHeading(lines, index);
+		if (heading === null) continue;
+		if (heading.text === roleHeading) headings.push({ index, ...heading });
+		index = heading.endIndex;
 	}
 	if (headings.length === 0) return { status: 'absent', role: null };
 	if (headings.length !== 1) return { status: 'invalid', role: null };
 	const role = headings[0];
+	const start = role.endIndex + 1;
 	let end = lines.length;
-	for (let index = role.index + 1; index < lines.length; index += 1) {
-		const heading = parseAtxHeading(lines[index]);
+	for (let index = start; index < lines.length; index += 1) {
+		const heading = parseMarkdownHeading(lines, index);
 		if (heading !== null && heading.level <= role.level) {
 			end = index;
 			break;
 		}
+		if (heading !== null) index = heading.endIndex;
 	}
 	const values = lines
-		.slice(role.index + 1, end)
+		.slice(start, end)
 		.filter(line => line !== null)
 		.map(line => line.trim())
 		.filter(Boolean);
