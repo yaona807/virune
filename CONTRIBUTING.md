@@ -50,7 +50,7 @@ Implementation changes should normally be linked to an issue. Distinguish Tracki
 
 Every development work-item Issue must contain a Markdown heading named `Work item role` followed by exactly one explicit role value:
 
-- `Implementation` — one concrete work item whose own Acceptance Criteria can determine whether that work is complete.
+- `Implementation` — one concrete work item whose explicit observable completion criteria can determine whether that work is complete. A Change proposal normally uses its Acceptance Criteria; a Bug report uses the required Expected behavior as the baseline criterion and may add further acceptance criteria.
 - `Tracking` — a parent or coordination item that groups or sequences separate implementation work and is not sufficient as the sole implementation reference for a normal implementation PR.
 
 The public Bug report and Change proposal Issue Forms provide these two values as a required selection. Manually authored project Issues use the same heading and value contract. GitHub Issue Forms and manually authored Issues may use different Markdown heading levels; the heading name and the single role value are the semantic contract.
@@ -62,13 +62,13 @@ Include the following when relevant:
 - Background / Problem
 - Goal
 - Scope
-- Acceptance Criteria
+- Acceptance Criteria or equivalent explicit observable completion criteria
 - Non-goals
 - Architecture / invariants
 - Dependencies
 - Compatibility / safety boundaries
 
-A merged PR does not by itself mean an issue is complete. For normal implementation work, use plain `Refs #...` references rather than `Closes`, `Fixes`, `Resolves`, or a GitHub closing relationship. Merge the reviewed PR, verify the Issue's Acceptance Criteria on current `main`, update the completion evidence when appropriate, and then close the Issue explicitly. If Nightly, release, observation-period, or other post-merge evidence is required, keep the Issue open until that evidence exists.
+A merged PR does not by itself mean an issue is complete. For normal implementation work, use plain `Refs #...` references rather than `Closes`, `Fixes`, `Resolves`, or a GitHub closing relationship. Merge the reviewed PR, verify the Issue's explicit observable completion criteria on current `main`, update the completion evidence when appropriate, and then close the Issue explicitly. If Nightly, release, observation-period, or other post-merge evidence is required, keep the Issue open until that evidence exists.
 
 A normal implementation PR must reference an `Implementation` Issue. It may also reference one or more `Tracking` parents separately; a Tracking Issue does not replace the implementation work item.
 
