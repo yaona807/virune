@@ -8,6 +8,16 @@ body:
         Before filing, search existing issues and reduce the problem to the smallest useful reproduction you can provide.
 
         Security vulnerabilities must not be disclosed in this public form. Follow the [security policy](https://github.com/yaona807/virune/blob/main/SECURITY.md) and use the private reporting path described there. If private reporting is unavailable, use the Security contact request form without including vulnerability details.
+  - type: dropdown
+    id: work_item_role
+    attributes:
+      label: Work item role
+      description: Choose Implementation for one concrete defect whose own Acceptance Criteria can determine completion. Choose Tracking only for a parent or coordination issue that will contain separate implementation work items.
+      options:
+        - Implementation
+        - Tracking
+    validations:
+      required: true
   - type: textarea
     id: problem
     attributes:
