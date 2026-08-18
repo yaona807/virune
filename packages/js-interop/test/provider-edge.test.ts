@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { writeFile } from 'node:fs/promises';
+import { rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import test from 'node:test';
 import { compileSource } from '@virune/compiler/experimental';
@@ -120,6 +120,7 @@ test('fails closed on foreign any evidence and unsupported rest arguments', asyn
 
 test('uses positional minimum arity when a default parameter precedes a required parameter', async () => {
 	const root = await fixtureRoot();
+	await rm(join(root, 'src/library.d.ts'), { force: true });
 	await writeFile(join(root, 'src/library.js'), [
 		'/**',
 		' * @param {string} first',
@@ -151,15 +152,18 @@ test('uses positional minimum arity when a default parameter precedes a required
 	assert.deepEqual(errorCodes(accepted), []);
 });
 
-test('does not treat broad native primitives as TypeScript literal values', async () => {
+test('distinguishes broad primitive domains from literal subsets', async () => {
 	const root = await fixtureRoot();
 	await writeFile(join(root, 'src/library.d.ts'), [
 		'export declare function acceptStringLiteral(value: "foo"): void;',
 		'export declare function acceptStringLiteralUnion(value: "foo" | "bar"): void;',
 		'export declare function acceptBoolLiteral(value: true): void;',
+		'export declare function acceptBoolDomain(value: true | false): void;',
+		'export declare function acceptOptionalBool(value: boolean | undefined): void;',
 		'export declare function acceptNumberLiteral(value: 1): void;',
 		'export declare function acceptBigIntLiteral(value: 1n): void;',
 		'export declare function acceptString(value: string): void;',
+		'export declare function acceptStringOrUndefined(value: string | undefined): void;',
 		'export declare function acceptBool(value: boolean): void;',
 		'export declare function acceptNumber(value: number): void;',
 		'export declare function acceptBigInt(value: bigint): void;',
@@ -183,7 +187,10 @@ test('does not treat broad native primitives as TypeScript literal values', asyn
 	rejects('acceptBigIntLiteral', 'BigInt');
 
 	accepts('acceptString', 'String');
+	accepts('acceptStringOrUndefined', 'String');
 	accepts('acceptBool', 'Bool');
+	accepts('acceptBoolDomain', 'Bool');
+	accepts('acceptOptionalBool', 'Bool');
 	accepts('acceptNumber', 'Int');
 	accepts('acceptNumber', 'Float');
 	accepts('acceptBigInt', 'BigInt');
@@ -196,12 +203,15 @@ test('fails closed on cross-Program facts that are not representation-safe', asy
 		'export declare const item: Item;',
 		'export declare const maybeItem: Item | string;',
 		'export declare const text: string;',
+		'export declare const flag: boolean;',
 		'export declare function acceptObject(value: object): void;',
 		'export declare function acceptItem(value: Item): void;',
 		'export declare function acceptUnknown(value: unknown): void;',
 		'export declare function acceptAny(value: any): void;',
 		'export declare function acceptString(value: string): void;',
+		'export declare function acceptBool(value: boolean): void;',
 		'export declare function acceptLiteral(value: "foo"): void;',
+		'export declare function acceptTrue(value: true): void;',
 		'',
 	].join('\n'), 'utf8');
 	const provider = new TypeScriptInteropProvider({ projectRoot: root });
@@ -210,12 +220,15 @@ test('fails closed on cross-Program facts that are not representation-safe', asy
 	const item = resolveNamed(provider, root, 'item', 'browser');
 	const maybeItem = resolveNamed(provider, root, 'maybeItem', 'browser');
 	const text = resolveNamed(provider, root, 'text', 'browser');
+	const flag = resolveNamed(provider, root, 'flag', 'browser');
 	const acceptObject = resolveNamed(provider, root, 'acceptObject', 'node');
 	const acceptItem = resolveNamed(provider, root, 'acceptItem', 'node');
 	const acceptUnknown = resolveNamed(provider, root, 'acceptUnknown', 'node');
 	const acceptAny = resolveNamed(provider, root, 'acceptAny', 'node');
 	const acceptString = resolveNamed(provider, root, 'acceptString', 'node');
+	const acceptBool = resolveNamed(provider, root, 'acceptBool', 'node');
 	const acceptLiteral = resolveNamed(provider, root, 'acceptLiteral', 'node');
+	const acceptTrue = resolveNamed(provider, root, 'acceptTrue', 'node');
 
 	assert.ok(provider.resolveCall(acceptObject.ref, [{ kind: 'foreign', type: item.ref }]));
 	assert.equal(provider.resolveCall(acceptItem.ref, [{ kind: 'foreign', type: item.ref }]), undefined);
@@ -224,4 +237,6 @@ test('fails closed on cross-Program facts that are not representation-safe', asy
 	assert.ok(provider.resolveCall(acceptAny.ref, [{ kind: 'foreign', type: item.ref }]));
 	assert.ok(provider.resolveCall(acceptString.ref, [{ kind: 'foreign', type: text.ref }]));
 	assert.equal(provider.resolveCall(acceptLiteral.ref, [{ kind: 'foreign', type: text.ref }]), undefined);
+	assert.ok(provider.resolveCall(acceptBool.ref, [{ kind: 'foreign', type: flag.ref }]));
+	assert.equal(provider.resolveCall(acceptTrue.ref, [{ kind: 'foreign', type: flag.ref }]), undefined);
 });
