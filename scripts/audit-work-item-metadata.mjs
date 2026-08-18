@@ -1,8 +1,7 @@
-import { readFile, writeFile } from 'node:fs/promises';
+import { writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const repositoryRoot = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const repositoryOwner = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$/u;
 const repositoryName = /^[A-Za-z0-9._-]{1,100}$/u;
 const typeLabels = new Set([
@@ -361,16 +360,10 @@ function requireArgumentValue(arguments_, index, name) {
 }
 
 function parseArguments(arguments_) {
-	const options = { input: null, output: null, repository: process.env.GITHUB_REPOSITORY ?? null };
+	const options = { repository: process.env.GITHUB_REPOSITORY ?? null };
 	for (let index = 0; index < arguments_.length; index += 1) {
 		const argument = arguments_[index];
-		if (argument === '--input') {
-			options.input = requireArgumentValue(arguments_, index, '--input');
-			index += 1;
-		} else if (argument === '--output') {
-			options.output = requireArgumentValue(arguments_, index, '--output');
-			index += 1;
-		} else if (argument === '--repository') {
+		if (argument === '--repository') {
 			options.repository = requireArgumentValue(arguments_, index, '--repository');
 			index += 1;
 		} else {
@@ -382,19 +375,12 @@ function parseArguments(arguments_) {
 
 async function runCli() {
 	const options = parseArguments(process.argv.slice(2));
-	let snapshot;
-	if (options.input !== null) {
-		const raw = await readFile(resolve(repositoryRoot, options.input), 'utf8');
-		snapshot = JSON.parse(raw);
-	} else {
-		snapshot = await collectGitHubWorkItems({
-			repository: options.repository,
-			token: process.env.GITHUB_TOKEN ?? '',
-		});
-	}
+	const snapshot = await collectGitHubWorkItems({
+		repository: options.repository,
+		token: process.env.GITHUB_TOKEN ?? '',
+	});
 	const report = auditWorkItemMetadata(snapshot);
 	const serialized = `${JSON.stringify(report, null, '\t')}\n`;
-	if (options.output !== null) await writeFile(resolve(repositoryRoot, options.output), serialized, 'utf8');
 	process.stdout.write(serialized);
 	if (process.env.GITHUB_STEP_SUMMARY) {
 		const lines = [
