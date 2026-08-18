@@ -208,32 +208,15 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 
 	private argumentCompatible(argument: InteropArgumentType, parameter: ts.Type, checker: ts.TypeChecker): boolean {
 		if (argument.kind === 'unknown') return false;
-		if (parameter.isUnion()) return parameter.types.some(item => this.argumentCompatible(argument, item, checker));
 		const parameterFlags = parameter.getFlags();
 		if (argument.kind === 'foreign') {
 			const source = this.requireType(argument.type);
 			const sourceFlags = source.type.getFlags();
 			if ((sourceFlags & ts.TypeFlags.Any) !== 0) return (parameterFlags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) !== 0;
 			if (source.checker === checker) return checker.isTypeAssignableTo(source.type, parameter);
-			// Type identities are scoped to one TypeScript Program. Across Programs,
-			// preserve only representation-level facts that do not require shared identity.
-			if ((parameterFlags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) !== 0) return true;
-			const parameterIsLiteral = (parameterFlags & (ts.TypeFlags.StringLiteral | ts.TypeFlags.BooleanLiteral | ts.TypeFlags.NumberLiteral | ts.TypeFlags.BigIntLiteral)) !== 0;
-			if (parameterIsLiteral) return false;
-			const sourcePrimitive = primitiveKind(source.type);
-			const parameterPrimitive = primitiveKind(parameter);
-			if (parameterPrimitive !== undefined) return sourcePrimitive === parameterPrimitive;
-			if ((parameterFlags & ts.TypeFlags.NonPrimitive) !== 0) return isDefinitelyNonPrimitive(source.type);
-			return false;
+			return crossProgramForeignCompatible(source.type, parameter, checker);
 		}
-		if ((parameterFlags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) !== 0) return true;
-		switch (argument.primitive) {
-			case 'Bool': return (parameterFlags & ts.TypeFlags.Boolean) !== 0;
-			case 'String': return (parameterFlags & ts.TypeFlags.String) !== 0;
-			case 'Int': case 'Float': return (parameterFlags & ts.TypeFlags.Number) !== 0;
-			case 'BigInt': return (parameterFlags & ts.TypeFlags.BigInt) !== 0;
-			case 'Unit': return (parameterFlags & (ts.TypeFlags.Void | ts.TypeFlags.Undefined)) !== 0;
-		}
+		return nativePrimitiveCompatible(argument, parameter, checker);
 	}
 
 	private createProbe(request: JsImportRequest): Probe {
@@ -378,6 +361,43 @@ function primitiveKind(type: ts.Type): ForeignPrimitiveKind | undefined {
 	if ((flags & ts.TypeFlags.Undefined) !== 0) return 'undefined';
 	if ((flags & ts.TypeFlags.Null) !== 0) return 'null';
 	return undefined;
+}
+
+function nativePrimitiveCompatible(argument: Extract<InteropArgumentType, { readonly kind: 'native-primitive' }>, parameter: ts.Type, checker: ts.TypeChecker): boolean {
+	const flags = parameter.getFlags();
+	if ((flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) !== 0) return true;
+	if (argument.primitive === 'Unit') {
+		if (parameter.isUnion()) return parameter.types.some(item => nativePrimitiveCompatible(argument, item, checker));
+		return (flags & (ts.TypeFlags.Void | ts.TypeFlags.Undefined)) !== 0;
+	}
+	const expected: ForeignPrimitiveKind = argument.primitive === 'Bool' ? 'boolean'
+		: argument.primitive === 'String' ? 'string'
+			: argument.primitive === 'BigInt' ? 'bigint'
+				: 'number';
+	const broadType = broadPrimitiveTypeFromParameter(parameter, expected, checker);
+	return broadType !== undefined && checker.isTypeAssignableTo(broadType, parameter);
+}
+
+function broadPrimitiveTypeFromParameter(parameter: ts.Type, expected: ForeignPrimitiveKind, checker: ts.TypeChecker): ts.Type | undefined {
+	const candidates = parameter.isUnion() ? parameter.types : [parameter];
+	for (const candidate of candidates) {
+		const broadType = checker.getBaseTypeOfLiteralType(candidate);
+		if (primitiveKind(broadType) === expected) return broadType;
+	}
+	return undefined;
+}
+
+function crossProgramForeignCompatible(source: ts.Type, parameter: ts.Type, checker: ts.TypeChecker): boolean {
+	const parameterFlags = parameter.getFlags();
+	if ((parameterFlags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) !== 0) return true;
+	const sourcePrimitive = primitiveKind(source);
+	if (sourcePrimitive !== undefined) {
+		const broadType = broadPrimitiveTypeFromParameter(parameter, sourcePrimitive, checker);
+		return broadType !== undefined && checker.isTypeAssignableTo(broadType, parameter);
+	}
+	if (parameter.isUnion()) return parameter.types.some(item => crossProgramForeignCompatible(source, item, checker));
+	if ((parameterFlags & ts.TypeFlags.NonPrimitive) !== 0) return isDefinitelyNonPrimitive(source);
+	return false;
 }
 
 function isDefinitelyNonPrimitive(type: ts.Type): boolean {
