@@ -92,7 +92,7 @@ Labels are organizational metadata only. They must not determine safety, require
 
 `workflow:validation-only`, `workflow:superseded`, `workflow:blocked`
 
-Backlog or otherwise unstarted Issues may remain unassigned. Once implementation work actually starts, assign the person who is currently accountable for carrying that work forward. Assignees are ownership metadata, not concurrency locks and not safety or merge-eligibility evidence.
+Backlog or otherwise unstarted Issues may remain unassigned. Once implementation work actually starts, the accountable owner must be visible. A contributor with sufficient repository permission may update the assignee directly; otherwise, the contributor should state their intent to take the work in the Issue or linked PR and a maintainer must apply or update the GitHub assignee metadata. Lack of permission to edit assignees is not a reason to grant broader repository access or bypass the ownership rule. Assignees are ownership metadata, not concurrency locks and not safety or merge-eligibility evidence.
 
 ## Branches
 
