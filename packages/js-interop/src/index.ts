@@ -214,7 +214,7 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 			const sourceFlags = source.type.getFlags();
 			if ((sourceFlags & ts.TypeFlags.Any) !== 0) return (parameterFlags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) !== 0;
 			if (source.checker === checker) return checker.isTypeAssignableTo(source.type, parameter);
-			return crossProgramForeignCompatible(source.type, parameter, checker);
+			return crossProgramForeignCompatible(source, parameter, checker);
 		}
 		return nativePrimitiveCompatible(argument, parameter, checker);
 	}
@@ -387,25 +387,33 @@ function broadPrimitiveTypeFromParameter(parameter: ts.Type, expected: ForeignPr
 	return undefined;
 }
 
-function crossProgramForeignCompatible(source: ts.Type, parameter: ts.Type, checker: ts.TypeChecker): boolean {
+function crossProgramForeignCompatible(source: StoredType, parameter: ts.Type, checker: ts.TypeChecker): boolean {
 	const parameterFlags = parameter.getFlags();
 	if ((parameterFlags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) !== 0) return true;
-	const sourcePrimitive = primitiveKind(source);
+	const sourcePrimitive = primitiveKind(source.type);
 	if (sourcePrimitive !== undefined) {
 		const broadType = broadPrimitiveTypeFromParameter(parameter, sourcePrimitive, checker);
 		return broadType !== undefined && checker.isTypeAssignableTo(broadType, parameter);
 	}
 	if (parameter.isUnion()) return parameter.types.some(item => crossProgramForeignCompatible(source, item, checker));
-	if ((parameterFlags & ts.TypeFlags.NonPrimitive) !== 0) return isDefinitelyNonPrimitive(source);
+	if ((parameterFlags & ts.TypeFlags.NonPrimitive) !== 0) return isDefinitelyNonPrimitive(source.type, source.checker);
 	return false;
 }
 
-function isDefinitelyNonPrimitive(type: ts.Type): boolean {
-	if (type.isUnionOrIntersection()) return type.types.every(item => isDefinitelyNonPrimitive(item));
+function isDefinitelyNonPrimitive(type: ts.Type, checker: ts.TypeChecker): boolean {
+	if (type.isUnionOrIntersection()) return type.types.every(item => isDefinitelyNonPrimitive(item, checker));
 	const flags = type.getFlags();
 	if ((flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown | ts.TypeFlags.TypeParameter)) !== 0) return false;
 	if (primitiveKind(type) !== undefined) return false;
-	return (flags & (ts.TypeFlags.Object | ts.TypeFlags.NonPrimitive)) !== 0;
+	if ((flags & (ts.TypeFlags.Object | ts.TypeFlags.NonPrimitive)) === 0) return false;
+	const primitiveRuntimeTypes = [
+		checker.getStringType(),
+		checker.getNumberType(),
+		checker.getBooleanType(),
+		checker.getBigIntType(),
+		checker.getESSymbolType(),
+	];
+	return primitiveRuntimeTypes.every(primitive => !checker.isTypeAssignableTo(primitive, type));
 }
 
 function safeTsName(value: string): string {
