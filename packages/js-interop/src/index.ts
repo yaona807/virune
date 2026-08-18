@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import { dirname, extname, join, resolve } from 'node:path';
+import { dirname, extname, join, relative, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import ts from 'typescript';
 import type {
@@ -137,7 +137,7 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 				{
 					moduleSpecifier: request.moduleSpecifier,
 					...(request.importedName === undefined ? {} : { exportName: request.importedName }),
-					...(probe.resolvedModule?.resolvedFileName === undefined ? {} : { declarationPath: probe.resolvedModule.resolvedFileName }),
+					...(witness.declarationEntry === undefined ? {} : { declarationPath: witness.declarationEntry }),
 				},
 				probe.workspace,
 				usageProjectionForImport(request),
@@ -514,14 +514,18 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 		const declarationInfo = findPackageInfo(resolved?.resolvedFileName);
 		const runtime = resolveRuntimeModule(request);
 		const runtimeInfo = runtime.path === undefined ? {} : findPackageInfo(runtime.path);
+		const declarationEntry = packageRelativeLocator(resolved?.resolvedFileName, declarationInfo.packageJsonPath);
+		const runtimeEntry = runtime.format === 'builtin'
+			? runtime.entry
+			: packageRelativeLocator(runtime.path, runtimeInfo.packageJsonPath);
 		return {
 			moduleSpecifier: request.moduleSpecifier,
 			...(runtimeInfo.name === undefined ? {} : { packageName: runtimeInfo.name }),
 			...(runtimeInfo.version === undefined ? {} : { packageVersion: runtimeInfo.version }),
 			...(declarationInfo.name === undefined ? {} : { declarationPackageName: declarationInfo.name }),
 			...(declarationInfo.version === undefined ? {} : { declarationPackageVersion: declarationInfo.version }),
-			...(resolved?.resolvedFileName === undefined ? {} : { declarationEntry: resolved.resolvedFileName }),
-			...(runtime.entry === undefined ? {} : { runtimeEntry: runtime.entry }),
+			...(declarationEntry === undefined ? {} : { declarationEntry }),
+			...(runtimeEntry === undefined ? {} : { runtimeEntry }),
 			...(runtime.format === undefined ? {} : { runtimeFormat: runtime.format }),
 			conditions: request.platform === 'browser' ? ['types', 'import', 'browser'] : ['types', 'import', 'node'],
 			platform: request.platform,
@@ -741,6 +745,15 @@ function findPackageInfo(resolvedFile: string | undefined): { readonly name?: st
 		current = parent;
 	}
 	return {};
+}
+
+function packageRelativeLocator(filePath: string | undefined, packageJsonPath: string | undefined): string | undefined {
+	if (filePath === undefined) return undefined;
+	if (filePath.startsWith('node:')) return filePath;
+	if (packageJsonPath === undefined) return undefined;
+	const locator = relative(dirname(packageJsonPath), filePath).replaceAll('\\', '/');
+	if (locator.length === 0 || locator === '..' || locator.startsWith('../') || locator.startsWith('/') || /^[A-Za-z]:\//u.test(locator)) return undefined;
+	return locator;
 }
 
 function resolveRuntimeModule(request: JsImportRequest): { readonly entry?: string; readonly path?: string; readonly format?: ModuleResolutionWitness['runtimeFormat'] } {
