@@ -23,12 +23,23 @@ export async function verifyIssueForms(root = repositoryRoot) {
 		.sort(compareCodePoint);
 	const errors = [];
 	const present = new Set(entries);
+	const formNames = new Map();
 	for (const required of requiredTemplateFiles) {
 		if (!present.has(required)) errors.push(`${required}: required canonical Issue Template file is missing`);
 	}
 	for (const name of entries) {
 		const source = await readFile(resolve(directory, name), 'utf8');
 		errors.push(...validateIssueTemplateFile(name, source));
+		if (name === 'config.yml') continue;
+		try {
+			const document = parseYamlSubset(source);
+			if (!isRecord(document) || typeof document.name !== 'string' || document.name.trim() === '') continue;
+			const previous = formNames.get(document.name);
+			if (previous === undefined) formNames.set(document.name, name);
+			else errors.push(`${name}: name duplicates ${previous}: ${document.name}`);
+		} catch {
+			// The primary validation already records the deterministic YAML diagnostic.
+		}
 	}
 	return errors.sort(compareCodePoint);
 }
@@ -79,6 +90,9 @@ function validateIssueForm(name, document, errors) {
 	}
 	allowOnlyKeys(name, document, allowedFormTopLevel, errors);
 	requireNonEmptyString(name, document, 'name', errors);
+	if (typeof document.name === 'string' && document.name.trim() !== '' && [...document.name].length <= 3) {
+		errors.push(`${name}: name must be longer than 3 characters`);
+	}
 	requireNonEmptyString(name, document, 'description', errors);
 	if ('title' in document && typeof document.title !== 'string') errors.push(`${name}: title must be a string`);
 	validateStringSequence(name, document, 'labels', errors);
