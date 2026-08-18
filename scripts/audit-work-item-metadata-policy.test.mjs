@@ -24,14 +24,12 @@ function extractTaxonomy(source) {
 	for (const match of section.matchAll(/`((type|area|priority|workflow):[A-Za-z0-9-]+)`/gu)) {
 		values[match[2]].add(match[1]);
 	}
-	const priorities = [...values.priority]
-		.map(label => /^priority:p([0-9]+)$/u.exec(label))
-		.filter(Boolean)
-		.map(match => Number(match[1]));
-	if (priorities.length >= 2) {
-		const minimum = Math.min(...priorities);
-		const maximum = Math.max(...priorities);
-		for (let value = minimum; value <= maximum; value += 1) values.priority.add(`priority:p${value}`);
+	const priorityRange = /`priority:p([0-9]+)`\s*(?:through|から)\s*`priority:p([0-9]+)`/u.exec(section);
+	if (priorityRange !== null) {
+		const start = Number(priorityRange[1]);
+		const end = Number(priorityRange[2]);
+		assert.ok(Number.isSafeInteger(start) && Number.isSafeInteger(end) && start <= end, 'Priority range must be ascending safe integers');
+		for (let value = start; value <= end; value += 1) values.priority.add(`priority:p${value}`);
 	}
 	return Object.fromEntries(
 		Object.entries(values).map(([key, set]) => [key, [...set].sort()]),
