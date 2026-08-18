@@ -50,7 +50,7 @@ Implementation変更は原則としてIssueへ紐付けてください。Trackin
 
 Development work itemとして扱うすべてのIssueには、`Work item role`という名前のMarkdown headingと、その直後に次のどちらか1つのrole valueを明示します。
 
-- `Implementation` — そのIssue自身のAcceptance Criteriaによって完了を判定できる、1つの具体的なwork item
+- `Implementation` — そのwork item自身の明示的かつobservableなcompletion criteriaによって完了を判定できる、1つの具体的なwork item。Change proposalでは通常Acceptance Criteriaを使い、Bug reportではrequiredなExpected behaviorをbaseline criterionとして必要に応じて追加のacceptance criteriaを指定します。
 - `Tracking` — 独立したimplementation workをまとめる、または順序付けるためのparent/coordination item。通常のimplementation PRにおける唯一の実装根拠としては不十分です。
 
 PublicなBug reportとChange proposalのIssue Formは、この2値をrequired selectionとして提供します。Project側で手動作成するIssueも同じheading/value contractを使用します。GitHub Issue Formsと手動作成IssueではMarkdown heading levelが異なる場合がありますが、heading名と単一のrole valueをsemantic contractとします。
@@ -62,13 +62,13 @@ Work item roleが欠落またはmalformedである場合、Issue title、label�
 - Background / Problem
 - Goal
 - Scope
-- Acceptance Criteria
+- Acceptance Criteriaまたは同等の明示的かつobservableなcompletion criteria
 - Non-goals
 - Architecture / invariants
 - Dependencies
 - Compatibility / safety boundaries
 
-PRがmergeされたことだけではIssue完了を意味しません。通常のimplementation workでは、`Closes`、`Fixes`、`Resolves`、GitHubのclosing relationshipではなくplainな`Refs #...`を使用します。Reviewed PRをmergeした後、current `main`上でIssueのAcceptance Criteriaを確認し、必要に応じてcompletion evidenceを更新してからIssueを明示的にcloseします。Nightly、release、observation period、その他のpost-merge evidenceが必要な場合は、そのevidenceが揃うまでIssueをopenのまま維持してください。
+PRがmergeされたことだけではIssue完了を意味しません。通常のimplementation workでは、`Closes`、`Fixes`、`Resolves`、GitHubのclosing relationshipではなくplainな`Refs #...`を使用します。Reviewed PRをmergeした後、current `main`上でIssueの明示的かつobservableなcompletion criteriaを確認し、必要に応じてcompletion evidenceを更新してからIssueを明示的にcloseします。Nightly、release、observation period、その他のpost-merge evidenceが必要な場合は、そのevidenceが揃うまでIssueをopenのまま維持してください。
 
 通常のimplementation PRは`Implementation` Issueを参照する必要があります。必要に応じて1つ以上の`Tracking` parentも別に参照できますが、Tracking Issueはimplementation work itemの代わりにはなりません。
 
