@@ -25,9 +25,11 @@ Security vulnerabilityの疑いをpublic Issue、Discussion、Pull Request、soc
 - 判明しているworkaroundまたはmitigation
 - Disclosure deadlineが設定されているか
 
-Private reporting formを利用できない場合は、private security contact channelを依頼する内容だけをpublic Issueとして作成してください。そのIssueへvulnerability detailsを含めてはいけません。
+GitHub private vulnerability reportingを利用できない場合、publicな **Security contact request** Issue Formは、あなたのGitHub profileにprivate communicationへ利用できるcontact methodが既に公開されており、Virune Maintainerがその方法を使用することに同意できる場合だけ利用してください。Request Issue、そのauthor、title、bodyはpublicかつeditableです。Titleとbodyの両方へvulnerability details、affected version、reproduction/exploit step、secret、contact address、その他のsensitive informationを記載しないでください。Maintainerはprofile上ですでに公開されているprivate-capable contact routeを利用してprivateな連絡へ移行できます。
 
-Maintainerは、必要な情報が揃ったreportについて3 business days以内のacknowledgement、7 business days以内のinitial severity/remediation assessmentを目標とします。Complexなreportでは追加調査が必要になる場合があります。
+Profileに利用可能なprivate-capable contact routeがない場合、Viruneは現時点でconfidentialなProject-level fallback intake pathを保証できません。Responseを得るためにvulnerability detailsをpublicへ開示しないでください。Unknownなprivate-delivery capabilityを利用可能として扱ってはいけません。
+
+Viruneがprivate channelを通じて実際に受領し、triage開始に十分な情報があるreportについて、Maintainerは3 business days以内のacknowledgement、7 business days以内のinitial severity/remediation assessmentを目標とします。Complexなreportでは追加調査が必要になる場合があります。
 
 ## Scopeとsecurity model
 
