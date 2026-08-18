@@ -248,7 +248,7 @@ test('collects GitHub provider pages, filters PR entries from Issues, and normal
 			assignees: [{ login: 'z' }, { login: 'a' }, { login: 'z' }],
 			labels: [{ name: 'type:feature' }, { name: 'area:dx' }, { name: 'area:dx' }],
 		})]],
-		['pulls:1', [{ number: 7, state: 'open', draft: true, body: 'Refs #1' }]],
+		['pulls:1', [{ number: 1007, state: 'open', draft: true, body: 'Refs #1' }]],
 	]);
 	const fetchImpl = async url => {
 		const resource = url.includes('/issues?') ? 'issues' : 'pulls';
@@ -262,7 +262,7 @@ test('collects GitHub provider pages, filters PR entries from Issues, and normal
 	assert.deepEqual(result.issues[0].assignees, ['a', 'z']);
 	assert.deepEqual(result.issues[0].labels, ['area:dx', 'type:feature']);
 	assert.equal(result.issues.some(value => value.number === 999), false);
-	assert.deepEqual(result.pullRequests, [{ number: 7, state: 'open', draft: true, body: 'Refs #1' }]);
+	assert.deepEqual(result.pullRequests, [{ number: 1007, state: 'open', draft: true, body: 'Refs #1' }]);
 });
 
 test('provider collection rejects duplicate normalized numbers and malformed provider state', async () => {
@@ -301,6 +301,10 @@ test('provider collection fails closed on HTTP, response-shape, token, or reposi
 	);
 	await assert.rejects(
 		collectGitHubWorkItems({ repository: 'yaona807/virune?state=closed', token: 'token', fetchImpl: async () => ({ ok: true, status: 200, json: async () => [] }) }),
+		/repository must use owner\/name form/u,
+	);
+	await assert.rejects(
+		collectGitHubWorkItems({ repository: 'yaona807/..', token: 'token', fetchImpl: async () => ({ ok: true, status: 200, json: async () => [] }) }),
 		/repository must use owner\/name form/u,
 	);
 	await assert.rejects(
