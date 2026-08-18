@@ -2,7 +2,13 @@ import assert from 'node:assert/strict';
 import { rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import test from 'node:test';
-import { compileSource, type ForeignTypeSnapshot, type InteropArgumentType } from '@virune/compiler/experimental';
+import {
+	compileSource,
+	type ForeignTypeSnapshot,
+	type InteropArgumentType,
+	type InteropCallUsage,
+	type JsInteropProvider,
+} from '@virune/compiler/experimental';
 import { CachedTypeScriptInteropProvider } from '../src/cached-provider.js';
 import { TypeScriptInteropProvider } from '../src/index.js';
 import { fixtureRoot } from './fixture.js';
@@ -13,8 +19,13 @@ function resolveNamed(provider: TypeScriptInteropProvider, root: string, importe
 	return imported.type;
 }
 
-function call(provider: TypeScriptInteropProvider, callee: ForeignTypeSnapshot, argumentsList: readonly InteropArgumentType[]) {
-	return provider.resolveCallUsage(callee.ref, { target: { kind: 'value' }, arguments: argumentsList });
+function resolveUsage(provider: JsInteropProvider, callee: ForeignTypeSnapshot, usage: InteropCallUsage) {
+	assert.ok(provider.resolveCallUsage, 'provider must expose the experimental whole-usage resolver at runtime');
+	return provider.resolveCallUsage(callee.ref, usage);
+}
+
+function call(provider: JsInteropProvider, callee: ForeignTypeSnapshot, argumentsList: readonly InteropArgumentType[]) {
+	return resolveUsage(provider, callee, { target: { kind: 'value' }, arguments: argumentsList });
 }
 
 function native(primitive: 'Bool' | 'Int' | 'Float' | 'BigInt' | 'String' | 'Unit'): InteropArgumentType {
@@ -41,8 +52,11 @@ test('resolves complete TypeScript call usages with literal, generic, rest, and 
 		'export declare function identity<T extends string>(value: T): T;',
 		'export declare function constrained<T extends string>(): T;',
 		'export declare function unresolved<T>(): T;',
+		'export declare function maybeUnknown(value: string): unknown;',
+		'export declare function maybeUnknown<T>(): T;',
 		'export declare function collect(...values: string[]): number;',
 		'export declare function acceptItem(value: Item): void;',
+		'export declare function makeItem(): Item;',
 		'export declare function acceptString(value: string): void;',
 		'export declare function acceptUnknown(value: unknown): void;',
 		'export interface Api { method(this: Api, value: "foo"): "member" }',
@@ -61,8 +75,10 @@ test('resolves complete TypeScript call usages with literal, generic, rest, and 
 		'export function identity(value) { return value; }',
 		'export function constrained() { return "value"; }',
 		'export function unresolved() { return undefined; }',
+		'export function maybeUnknown(value) { return value; }',
 		'export function collect(...values) { return values.length; }',
 		'export function acceptItem() {}',
+		'export function makeItem() { return item; }',
 		'export function acceptString() {}',
 		'export function acceptUnknown() {}',
 		'export const api = { method() { return "member"; } };',
@@ -87,6 +103,7 @@ test('resolves complete TypeScript call usages with literal, generic, rest, and 
 	assert.equal(call(provider, identity, [native('String')])?.result.display, 'string');
 	assert.equal(call(provider, resolveNamed(provider, root, 'constrained'), [])?.result.display, 'string');
 	assert.equal(call(provider, resolveNamed(provider, root, 'unresolved'), []), undefined);
+	assert.equal(call(provider, resolveNamed(provider, root, 'maybeUnknown'), [native('String')])?.result.category, 'unknown');
 
 	const collect = resolveNamed(provider, root, 'collect');
 	const emptyRest = call(provider, collect, []);
@@ -103,7 +120,12 @@ test('resolves complete TypeScript call usages with literal, generic, rest, and 
 	assert.ok(call(provider, acceptItem, [{ kind: 'foreign', type: nodeItem.ref }]));
 	const browserItem = resolveNamed(provider, root, 'item', 'browser');
 	assert.equal(call(provider, acceptItem, [{ kind: 'foreign', type: browserItem.ref }]), undefined);
-	assert.equal(provider.resolveCallUsage(acceptItem.ref, { target: { kind: 'value' }, arguments: [{ kind: 'foreign', type: { ...nodeItem.ref, generation: nodeItem.ref.generation + 1 } }] }), undefined);
+	assert.equal(resolveUsage(provider, acceptItem, { target: { kind: 'value' }, arguments: [{ kind: 'foreign', type: { ...nodeItem.ref, generation: nodeItem.ref.generation + 1 } }] }), undefined);
+
+	const makeItem = resolveNamed(provider, root, 'makeItem');
+	const madeItem = call(provider, makeItem, []);
+	assert.ok(madeItem);
+	assert.equal(call(provider, acceptItem, [{ kind: 'foreign', type: madeItem.result.ref }]), undefined, 'derived call results without a reconstructible usage projection must fail closed');
 
 	const anyValue = resolveNamed(provider, root, 'anyValue');
 	const acceptString = resolveNamed(provider, root, 'acceptString');
@@ -114,8 +136,9 @@ test('resolves complete TypeScript call usages with literal, generic, rest, and 
 	const api = resolveNamed(provider, root, 'api');
 	const method = provider.getProperty(api.ref, 'method');
 	assert.ok(method);
-	assert.equal(provider.resolveCallUsage(method.ref, { target: { kind: 'value' }, arguments: [{ kind: 'native-primitive', primitive: 'String', literal: { kind: 'String', value: 'foo' } }] }), undefined);
-	assert.equal(provider.resolveCallUsage(method.ref, { target: { kind: 'member', receiver: api.ref, property: 'method' }, arguments: [{ kind: 'native-primitive', primitive: 'String', literal: { kind: 'String', value: 'foo' } }] })?.result.display, '"member"');
+	const literalArgument: InteropArgumentType = { kind: 'native-primitive', primitive: 'String', literal: { kind: 'String', value: 'foo' } };
+	assert.equal(resolveUsage(provider, method, { target: { kind: 'value' }, arguments: [literalArgument] }), undefined);
+	assert.equal(resolveUsage(provider, method, { target: { kind: 'member', receiver: api.ref, property: 'method' }, arguments: [literalArgument] })?.result.display, '"member"');
 });
 
 test('uses TypeScript positional arity when a checked-JavaScript default precedes a required parameter', async () => {
@@ -143,8 +166,10 @@ test('cached provider forwards the whole-usage resolver instead of falling back 
 	const provider = new CachedTypeScriptInteropProvider({ projectRoot: root });
 	const imported = provider.resolveImport({ containingFile: join(root, 'src/main.virune'), moduleSpecifier: './library.js', kind: 'named', importedName: 'literalOnly', platform: 'node' });
 	assert.ok(imported.type);
-	assert.equal(provider.resolveCallUsage(imported.type.ref, { target: { kind: 'value' }, arguments: [native('String')] }), undefined);
-	assert.ok(provider.resolveCallUsage(imported.type.ref, { target: { kind: 'value' }, arguments: [{ kind: 'native-primitive', primitive: 'String', literal: { kind: 'String', value: 'foo' } }] }));
+	const interopProvider: JsInteropProvider = provider;
+	assert.ok(interopProvider.resolveCallUsage, 'cached provider must forward the experimental whole-usage hook at runtime');
+	assert.equal(interopProvider.resolveCallUsage(imported.type.ref, { target: { kind: 'value' }, arguments: [native('String')] }), undefined);
+	assert.ok(interopProvider.resolveCallUsage(imported.type.ref, { target: { kind: 'value' }, arguments: [{ kind: 'native-primitive', primitive: 'String', literal: { kind: 'String', value: 'foo' } }] }));
 });
 
 test('compiler routes JavaScript calls through whole-usage TypeScript resolution without expected-type backflow', async () => {
