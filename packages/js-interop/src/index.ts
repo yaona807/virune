@@ -240,7 +240,6 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 			workspace.virtualFiles.set(virtualKey, { path: virtualPath, text: sourceText, version: 1 });
 			workspace.projectVersion++;
 		} else if (existing.text !== sourceText) {
-			// Hash collision or external mutation of provider-owned virtual state.
 			return undefined;
 		}
 		const program = workspace.languageService.getProgram();
@@ -328,10 +327,6 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 	private conservativeGenericResult(signature: ts.Signature, result: ts.Type, checker: ts.TypeChecker): ts.Type | undefined {
 		const parameters = signature.getTypeParameters() ?? [];
 		if (parameters.length === 0) return result;
-		// Tier 1 only accepts generic calls whose result can be resolved without
-		// Virune's expected return type. This covers return-only generic brands
-		// such as nanoid's `<Type extends string>() => Type` while avoiding
-		// bidirectional inference with TypeScript.
 		if ((result.getFlags() & ts.TypeFlags.TypeParameter) === 0) return undefined;
 		const parameter = parameters.find(item => item === result);
 		if (parameter === undefined) return undefined;
@@ -352,8 +347,6 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 		if (locations.some(location => location === undefined)) return false;
 		const lastDeclaration = locations.at(-1)!;
 		const hasRest = lastDeclaration !== undefined && ts.isParameter(lastDeclaration) && lastDeclaration.dotDotDotToken !== undefined;
-		// This approximate resolver cannot safely model rest-element types or tuple/variadic rest semantics.
-		// Leave every rest signature to the TypeScript adapter/whole-usage resolver instead of partially accepting it.
 		if (hasRest) return false;
 		let minimum = 0;
 		for (let index = 0; index < parameters.length; index++) {
@@ -392,17 +385,14 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 
 	private createProbe(request: JsImportRequest): Probe {
 		const workspace = this.probeWorkspace(request.platform);
-		const virtualPath = join(dirname(request.containingFile), `.virune-interop-${hash(`${request.moduleSpecifier}:${request.kind}:${request.importedName ?? ''}`)}.ts`);
+		const virtualFileName = interopProbeFileName(request);
+		const virtualPath = join(dirname(request.containingFile), virtualFileName);
 		const moduleText = JSON.stringify(request.moduleSpecifier);
 		const sourceText = request.kind === 'named'
-			? `import { ${safeTsName(request.importedName ?? '')} as __viruneValue } from ${moduleText};
-__viruneValue;`
-			: request.kind === 'default' ? `import __viruneValue from ${moduleText};
-__viruneValue;`
-				: request.kind === 'namespace' ? `import * as __viruneValue from ${moduleText};
-__viruneValue;`
-					: request.kind === 'type-only' ? `import type { ${safeTsName(request.importedName ?? '')} as __ViruneType } from ${moduleText};
-type __ViruneAlias = __ViruneType;`
+			? `import { ${safeTsName(request.importedName ?? '')} as __viruneValue } from ${moduleText};\nexport { __viruneValue };\n__viruneValue;`
+			: request.kind === 'default' ? `import __viruneValue from ${moduleText};\nexport { __viruneValue };\n__viruneValue;`
+				: request.kind === 'namespace' ? `import * as __viruneValue from ${moduleText};\nexport { __viruneValue };\n__viruneValue;`
+					: request.kind === 'type-only' ? `import type { ${safeTsName(request.importedName ?? '')} as __ViruneType } from ${moduleText};\ntype __ViruneAlias = __ViruneType;`
 						: `import ${moduleText};`;
 		const virtualFileKey = canonicalFilePath(virtualPath);
 		const existing = workspace.virtualFiles.get(virtualFileKey);
@@ -608,14 +598,17 @@ function signatureArity(parameters: readonly ts.Symbol[]): { readonly minimum: n
 	return { minimum, optional, rest };
 }
 
+function interopProbeFileName(request: JsImportRequest): string {
+	return `.virune-interop-${hash(`${request.moduleSpecifier}:${request.kind}:${request.importedName ?? ''}`)}.ts`;
+}
+
 function usageProjectionForImport(request: JsImportRequest): UsageProjection | undefined {
 	if (request.kind === 'side-effect' || request.kind === 'type-only') return undefined;
-	const moduleText = JSON.stringify(request.moduleSpecifier);
-	const typeExpression = request.kind === 'named'
-		? `(typeof import(${moduleText}))[${JSON.stringify(request.importedName ?? '')}]`
-		: request.kind === 'default' ? `(typeof import(${moduleText}))["default"]`
-			: `typeof import(${moduleText})`;
-	return { typeExpression, directory: dirname(request.containingFile) };
+	const fileName = interopProbeFileName(request);
+	return {
+		typeExpression: `(typeof import(${JSON.stringify(`./${fileName}`)}))["__viruneValue"]`,
+		directory: dirname(request.containingFile),
+	};
 }
 
 function typescriptPrimitiveName(primitive: Extract<InteropArgumentType, { readonly kind: 'native-primitive' }>['primitive']): string {
