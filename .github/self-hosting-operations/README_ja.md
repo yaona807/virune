@@ -1,6 +1,6 @@
 # Self-hosting開発運用
 
-この文書は、ViruneのSelf-hosting Pull Requestに適用するRepository-ownedな運用規則を定義する。技術的な品質Gateを補完するものであり、Compiler、互換性、Security、再現性、Release要件を緩和しない。
+この文書は、ViruneのSelf-hosting Pull Requestに適用するRepository-ownedな運用規則を定義する。技術的な品質Gateと[CONTRIBUTING_ja.md](../../CONTRIBUTING_ja.md)のRepository-wideなContributor workflowを補完するものであり、Compiler、互換性、Security、再現性、Release、work-item、exact-head evidenceの要件を緩和しない。
 
 English: [README.md](README.md)
 
@@ -11,6 +11,7 @@ English: [README.md](README.md)
 3. 依存関係、検証経路、Temporary artifactをPull Requestへ正確に記録する。
 4. 不明瞭なFeature diffをHistory repairで隠さない。
 5. Required failureの原因が説明できない状態でMergeしない。
+6. Self-hosting専用Pull RequestはRepository-wideなImplementation/Tracking work-item contractを拡張できるが、置き換えたり弱めたりしてはならない。
 
 ## Stacked Pull Request
 
@@ -37,12 +38,14 @@ Historyを接続するためだけのZero-changeまたはAncestry-only Pull Requ
 次の順序で再構築する。
 
 1. Child Branchへの書込みを停止する。
-2. 新しい`main`を取得し、Commit SHAを記録する。
+2. 新しい`main`を取得し、そのCommit SHAをimmutableなreconstruction inputとして記録する。
 3. その`main` CommitからReplacement Branchを作成する。
 4. ChildのFeature CommitだけをCherry-pickまたは再適用する。
 5. Replacement diffを意図したChanged-path listと比較する。
 6. Repository-owned focused validationと通常のPull Request Gateを再実行する。
 7. Existing Pull RequestのHeadを安全に更新する。History-only Commitなしでは更新できない場合は、SupersededとしてCloseし、Replacement Pull Requestを1件だけ作成する。
+
+Mutableなcurrent Pull Request base/head identityについてはGitHubを正本とする。Immutableなreconstruction inputやcommit-specific evidenceを記録することは、手作業で維持する`current base`や`current head` fieldを作ることではない。
 
 Ancestry repairだけを目的とするMerge CommitはFeature evidenceではなく、`main`へ入れてはならない。
 
@@ -94,14 +97,17 @@ Test failure、Compiler diagnostic差分、Compatibility、Security、Reproducib
 
 すべてのSelf-hosting Pull Requestは、次を記載する。
 
+- [CONTRIBUTING_ja.md](../../CONTRIBUTING_ja.md)に従い、plainな`Refs #...`による`Implementation` Issueと、必要な`Tracking` parentを別々に記載する。
 - 変更分類と1文の目的。
-- Base Branchと正確な依存関係、または`none`。
-- Stack depthとStackが必要な理由、または`not stacked`。
+- 正確なdependency/Parent Pull Requestとstack topology、または`none` / `not stacked`。
 - 意図したChanged pathまたはBoundary。
 - 実行したRepository-owned commandと結果。
+- Formal CIやその他のcommit-specific evidenceにはimmutableなexact SHAを併記する。
 - CI failureがある場合、その分類。
 - Temporary artifact、削除Trigger、Merge disposition、または`none`。
 - Pull Requestから意図的に除外したRemaining work。
+
+Pull Request本文へmutableなcurrent-base/current-head fieldをコピーして維持しない。Current PR identityはGitHubを正本とし、exact SHAはそれが識別するimmutable evidenceとともにだけ使用する。
 
 `.github/PULL_REQUEST_TEMPLATE/self-hosting.md`のRepository templateを使用する。
 
@@ -118,8 +124,11 @@ Inventory生成とFeature実装は同じEngineを共有できるが、Generated 
 
 Self-hosting運用改善は、次をすべて満たした時点で完了する。
 
-- Permanent commandまたはPolicyが`main`へ入っている。
-- Merge対象HeadのすべてのRequired workflow familyが成功している。
+- Permanent commandまたはPolicyがcurrent `main`へ入っている。
+- Merge前にreview済みexact Pull Request headで、すべてのRequired workflow familyが成功している。
+- Merge後、work itemの明示的かつobservableなcompletion criteriaをcurrent `main`上で再確認している。
 - Supersededな診断専用Pull RequestがCloseされている。
 - Temporary workflow fileが残っていない。
-- Issue #269へ結果と残るPhase作業が記録されている。
+- 該当する場合、Issue #269へ結果と残るPhase作業が記録されている。
+
+古いPR headに対するsuccessful workflowはhead変更後にはstaleであり、squash merge commitはreview済みexact PR-head evidenceの代わりにならない。Implementation Issueはcurrent `main`上でcompletion criteriaを確認した後にだけ明示的にCloseする。
