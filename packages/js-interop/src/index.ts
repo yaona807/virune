@@ -185,11 +185,12 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 		const required = parameters.filter(parameter => (parameter.flags & ts.SymbolFlags.Optional) === 0 && !(parameter.valueDeclaration !== undefined && ts.isParameter(parameter.valueDeclaration) && (parameter.valueDeclaration.questionToken !== undefined || parameter.valueDeclaration.initializer !== undefined || parameter.valueDeclaration.dotDotDotToken !== undefined))).length;
 		const lastDeclaration = parameters.at(-1)?.valueDeclaration;
 		const hasRest = lastDeclaration !== undefined && ts.isParameter(lastDeclaration) && lastDeclaration.dotDotDotToken !== undefined;
-		if (argumentsList.length < required || (!hasRest && argumentsList.length > parameters.length)) return false;
-		for (let index = 0; index < Math.min(argumentsList.length, parameters.length); index++) {
-			const parameter = parameters[Math.min(index, parameters.length - 1)]!;
+		const fixedParameterCount = hasRest ? parameters.length - 1 : parameters.length;
+		if (argumentsList.length < required || argumentsList.length > fixedParameterCount) return false;
+		for (let index = 0; index < argumentsList.length; index++) {
+			const parameter = parameters[index]!;
 			const location = parameter.valueDeclaration ?? parameter.declarations?.[0];
-			if (location === undefined) continue;
+			if (location === undefined) return false;
 			const parameterType = checker.getTypeOfSymbolAtLocation(parameter, location);
 			if (!this.argumentCompatible(argumentsList[index]!, parameterType, checker)) return false;
 		}
