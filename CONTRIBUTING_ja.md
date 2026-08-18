@@ -12,9 +12,19 @@ Viruneへのコントリビューションありがとうございます。こ�
 
 formattingとvalidationについては、repository-ownedの設定、script、CIを正本とします。新しいvalidation pathを追加する前に、既存commandを確認してください。
 
+## Project policy
+
+Contributorは、repositoryで公開されている次のProject policyにも従ってください。
+
+- Communityでの行動と現在のmoderation boundaryは[Code of Conduct](CODE_OF_CONDUCT_ja.md)
+- Maintainer authorityとProject decision-makingは[Project Governance](GOVERNANCE_ja.md)
+- Vulnerability reportingとsecurity responseは[Security Policy](SECURITY_ja.md)
+
+これらの文書はそれぞれ異なる責務を持ちます。該当する要件がpublicなcanonical project artifactへ反映されていない限り、privateなMaintainer noteやautomation専用の作業状態をContributorへの要件として扱わないでください。
+
 ## Security report
 
-Security vulnerabilityの疑いを、public Issue、Discussion、Pull Request、その他のpublic channelへ公開しないでください。Private vulnerability reportingと、それが利用できない場合のfallback手順は[`SECURITY.md`](SECURITY.md)に従ってください。
+Security vulnerabilityの疑いを、public Issue、Discussion、Pull Request、その他のpublic channelへ公開しないでください。Private vulnerability reportingと、GitHub private vulnerability reportingを利用できない場合のfail-closedなfallback手順は[`SECURITY_ja.md`](SECURITY_ja.md)に従ってください。
 
 ## Contributorの権利とライセンス
 
@@ -34,7 +44,18 @@ Contributionの受理は、Projectが将来そのContributionを異なる条件�
 
 ## Issue
 
-Implementation変更は原則としてIssueへ紐付けてください。Tracking Issueとimplementation Issueを区別します。
+Implementation変更は原則としてIssueへ紐付けてください。Tracking IssueとImplementation Issueを明示的に区別します。
+
+### Work item role
+
+Development work itemとして扱うすべてのIssueには、`Work item role`という名前のMarkdown headingと、その直後に次のどちらか1つのrole valueを明示します。
+
+- `Implementation` — そのIssue自身のAcceptance Criteriaによって完了を判定できる、1つの具体的なwork item
+- `Tracking` — 独立したimplementation workをまとめる、または順序付けるためのparent/coordination item。通常のimplementation PRにおける唯一の実装根拠としては不十分です。
+
+PublicなBug reportとChange proposalのIssue Formは、この2値をrequired selectionとして提供します。Project側で手動作成するIssueも同じheading/value contractを使用します。GitHub Issue Formsと手動作成IssueではMarkdown heading levelが異なる場合がありますが、heading名と単一のrole valueをsemantic contractとします。
+
+Work item roleが欠落またはmalformedである場合、Issue title、label、author、path、branch名、recency、周辺のproseからroleを推測してはいけません。Triageで明示的に解決してください。
 
 必要に応じて次を含めます。
 
@@ -47,9 +68,9 @@ Implementation変更は原則としてIssueへ紐付けてください。Trackin
 - Dependencies
 - Compatibility / safety boundaries
 
-PRがmergeされたことだけではIssue完了を意味しません。current `main`上でAcceptance Criteriaを満たした時点でIssueをcloseします。Nightly、release、observation period、その他のpost-merge evidenceが必要な場合は、そのevidenceが揃うまでIssueをopenのまま維持してください。
+PRがmergeされたことだけではIssue完了を意味しません。通常のimplementation workでは、`Closes`、`Fixes`、`Resolves`、GitHubのclosing relationshipではなくplainな`Refs #...`を使用します。Reviewed PRをmergeした後、current `main`上でIssueのAcceptance Criteriaを確認し、必要に応じてcompletion evidenceを更新してからIssueを明示的にcloseします。Nightly、release、observation period、その他のpost-merge evidenceが必要な場合は、そのevidenceが揃うまでIssueをopenのまま維持してください。
 
-PRでは原則として`Refs #...`を使用します。PRのmerge自体ですべてのAcceptance Criteriaを満たす場合だけ`Closes #...`を使用してください。
+通常のimplementation PRは`Implementation` Issueを参照する必要があります。必要に応じて1つ以上の`Tracking` parentも別に参照できますが、Tracking Issueはimplementation work itemの代わりにはなりません。
 
 ### Label taxonomy
 
@@ -71,7 +92,7 @@ Labelは整理用metadataにすぎません。safety、required CI、merge eligi
 
 `workflow:validation-only`, `workflow:superseded`, `workflow:blocked`
 
-Backlog Issueはunassignedのままで構いません。現在その作業にaccountableな人をassignしてください。Assigneeはownership metadataであり、concurrency lockではありません。
+Backlogまたは未着手のIssueはunassignedのままで構いません。Implementation workを実際に開始したら、その作業を継続して完了へ運ぶaccountableな人をassignしてください。Assigneeはownership metadataであり、concurrency lockでも、safetyやmerge eligibilityのevidenceでもありません。
 
 ## Branch
 
@@ -94,13 +115,15 @@ Stacked PRは例外です。stack depthは1を推奨し、2を超えないでく
 必要に応じて次を記載してください。
 
 - Summary / Scope
-- Related issue
-- evidenceが依存する場合のExact base / current head
+- plainな`Refs #...`によるImplementation Issue
+- 必要な場合はTracking / parent Issueを別項目で記載
 - Changed boundaries
 - Non-goals / invariants
 - Validation
 - Compatibility / safety impact
 - Stackまたはsuperseded relationship
+
+Mutableなcurrent PR base/head identityについてはGitHubを正本とします。PR bodyへ手作業でコピーした`current base`や`current head` fieldをlive stateとして維持しないでください。Formal CI、artifact、その他のevidenceが1つのimmutable commitへ適用される場合は、そのevidenceとともにexact SHAを特定してください。PR headが変更された場合、以前のheadに対するevidenceはstaleであり、新しいheadのevidenceとして扱ってはいけません。
 
 Safety-sensitiveな変更では、変更したものと意図的に変更していないものの両方を明示してください。
 
