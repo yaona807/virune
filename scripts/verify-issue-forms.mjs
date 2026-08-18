@@ -14,6 +14,8 @@ const requiredTemplateFiles = [
 const contactOnlyForms = new Set(['conduct_contact.yml', 'security_contact.yml']);
 const allowedFormTopLevel = new Set(['name', 'description', 'title', 'labels', 'assignees', 'body']);
 const allowedBodyTypes = new Set(['markdown', 'input', 'textarea', 'dropdown', 'checkboxes']);
+const githubBooleanTrue = new Set(['y', 'Y', 'yes', 'Yes', 'YES', 'true', 'True', 'TRUE', 'on', 'On', 'ON']);
+const githubBooleanFalse = new Set(['n', 'N', 'no', 'No', 'NO', 'false', 'False', 'FALSE', 'off', 'Off', 'OFF']);
 
 export async function verifyIssueForms(root = repositoryRoot) {
 	const directory = resolve(root, issueTemplateDirectory);
@@ -105,6 +107,9 @@ function validateIssueForm(name, document, errors) {
 		errors.push(`${name}: body must be a non-empty sequence`);
 		return;
 	}
+	if (document.body.every(entry => isRecord(entry) && entry.type === 'markdown')) {
+		errors.push(`${name}: body must contain at least one non-markdown field`);
+	}
 	const ids = new Set();
 	for (const [index, entry] of document.body.entries()) validateBodyEntry(name, entry, index, ids, errors);
 	if (contactOnlyForms.has(name)) validateContactOnlyForm(name, document.body, errors);
@@ -184,6 +189,9 @@ function validateDropdown(path, attributes, errors) {
 	if (new Set(attributes.options).size !== attributes.options.length) {
 		errors.push(`${path}.attributes.options choices must be distinct`);
 	}
+	if (attributes.options.includes('None')) {
+		errors.push(`${path}.attributes.options must not include reserved choice None`);
+	}
 }
 
 function validateCheckboxes(path, attributes, errors) {
@@ -194,6 +202,7 @@ function validateCheckboxes(path, attributes, errors) {
 		errors.push(`${path}.attributes.options must be a non-empty sequence`);
 		return;
 	}
+	const labels = new Set();
 	for (const [index, option] of attributes.options.entries()) {
 		const optionPath = `${path}.attributes.options[${index}]`;
 		if (!isRecord(option)) {
@@ -202,6 +211,10 @@ function validateCheckboxes(path, attributes, errors) {
 		}
 		allowOnlyKeys(optionPath, option, new Set(['label', 'required']), errors);
 		requireNonEmptyString(optionPath, option, 'label', errors);
+		if (typeof option.label === 'string' && option.label.trim() !== '') {
+			if (labels.has(option.label)) errors.push(`${optionPath}.label duplicates ${option.label}`);
+			else labels.add(option.label);
+		}
 		if ('required' in option && typeof option.required !== 'boolean') {
 			errors.push(`${optionPath}.required must be a boolean`);
 		}
@@ -451,8 +464,8 @@ function parseScalar(text, lineNumber) {
 		}
 		return parsed;
 	}
-	if (/^(?:true|True|TRUE)$/u.test(text)) return true;
-	if (/^(?:false|False|FALSE)$/u.test(text)) return false;
+	if (githubBooleanTrue.has(text)) return true;
+	if (githubBooleanFalse.has(text)) return false;
 	if (/^(?:null|Null|NULL|~)$/u.test(text)) return null;
 	if (/^-?(?:0|[1-9][0-9]*)$/u.test(text)) return Number(text);
 	if (/^[+-]?(?:[0-9]+\.[0-9]*|\.[0-9]+|[0-9]+(?:\.[0-9]*)?[eE][+-]?[0-9]+)$/u.test(text)) {
