@@ -226,8 +226,10 @@ test('report does not persist Issue or PR bodies or wall-clock metadata', () => 
 
 test('rejects malformed normalized snapshots instead of auditing unknown state', () => {
 	assert.throws(() => auditWorkItemMetadata({ schemaVersion: 2, repository: 'yaona807/virune', issues: [], pullRequests: [] }), /schemaVersion must be 1/u);
+	assert.throws(() => auditWorkItemMetadata({ schemaVersion: 1, repository: 'yaona807/virune?state=closed', issues: [], pullRequests: [] }), /snapshot\.repository must use owner\/name form/u);
 	assert.throws(() => auditWorkItemMetadata(snapshot({ issues: [issue(10), issue(10)] })), /duplicates issue number 10/u);
 	assert.throws(() => auditWorkItemMetadata(snapshot({ pullRequests: [pullRequest(20), pullRequest(20)] })), /duplicates PR number 20/u);
+	assert.throws(() => auditWorkItemMetadata(snapshot({ issues: [issue(10)], pullRequests: [pullRequest(10)] })), /Issue\/PR number overlap 10/u);
 	const malformedLabels = snapshot({ issues: [issue(10)] });
 	malformedLabels.issues[0].labels = ['type:test', 'area:dx'];
 	assert.throws(() => auditWorkItemMetadata(malformedLabels), /labels must be sorted and unique/u);
@@ -284,7 +286,7 @@ test('provider collection rejects duplicate normalized numbers and malformed pro
 	);
 });
 
-test('provider collection fails closed on HTTP or response-shape errors', async () => {
+test('provider collection fails closed on HTTP, response-shape, token, or repository errors', async () => {
 	await assert.rejects(
 		collectGitHubWorkItems({ repository: 'yaona807/virune', token: 'token', fetchImpl: async () => ({ ok: false, status: 503, json: async () => [] }) }),
 		/HTTP 503/u,
@@ -295,6 +297,10 @@ test('provider collection fails closed on HTTP or response-shape errors', async 
 	);
 	await assert.rejects(
 		collectGitHubWorkItems({ repository: 'bad repository', token: 'token', fetchImpl: async () => ({ ok: true, status: 200, json: async () => [] }) }),
+		/repository must use owner\/name form/u,
+	);
+	await assert.rejects(
+		collectGitHubWorkItems({ repository: 'yaona807/virune?state=closed', token: 'token', fetchImpl: async () => ({ ok: true, status: 200, json: async () => [] }) }),
 		/repository must use owner\/name form/u,
 	);
 	await assert.rejects(
