@@ -3,6 +3,7 @@ import { rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import test from 'node:test';
 import { compileSource, type ForeignTypeSnapshot, type InteropArgumentType } from '@virune/compiler/experimental';
+import { CachedTypeScriptInteropProvider } from '../src/cached-provider.js';
 import { TypeScriptInteropProvider } from '../src/index.js';
 import { fixtureRoot } from './fixture.js';
 
@@ -97,10 +98,12 @@ test('resolves complete TypeScript call usages with literal, generic, rest, and 
 	assert.equal(twoRest.minimumArgumentCount, 0);
 	assert.equal(twoRest.rest, true);
 
-	const item = resolveNamed(provider, root, 'item', 'browser');
+	const nodeItem = resolveNamed(provider, root, 'item', 'node');
 	const acceptItem = resolveNamed(provider, root, 'acceptItem', 'node');
-	assert.ok(call(provider, acceptItem, [{ kind: 'foreign', type: item.ref }]));
-	assert.equal(provider.resolveCallUsage(acceptItem.ref, { target: { kind: 'value' }, arguments: [{ kind: 'foreign', type: { ...item.ref, generation: item.ref.generation + 1 } }] }), undefined);
+	assert.ok(call(provider, acceptItem, [{ kind: 'foreign', type: nodeItem.ref }]));
+	const browserItem = resolveNamed(provider, root, 'item', 'browser');
+	assert.equal(call(provider, acceptItem, [{ kind: 'foreign', type: browserItem.ref }]), undefined);
+	assert.equal(provider.resolveCallUsage(acceptItem.ref, { target: { kind: 'value' }, arguments: [{ kind: 'foreign', type: { ...nodeItem.ref, generation: nodeItem.ref.generation + 1 } }] }), undefined);
 
 	const anyValue = resolveNamed(provider, root, 'anyValue');
 	const acceptString = resolveNamed(provider, root, 'acceptString');
@@ -132,6 +135,16 @@ test('uses TypeScript positional arity when a checked-JavaScript default precede
 	const accepted = call(provider, fn, [native('String'), native('String')]);
 	assert.ok(accepted);
 	assert.equal(accepted.minimumArgumentCount, 2);
+});
+
+test('cached provider forwards the whole-usage resolver instead of falling back to the approximate call path', async () => {
+	const root = await fixtureRoot();
+	await writeFile(join(root, 'src/library.d.ts'), 'export declare function literalOnly(value: "foo"): string;\n', 'utf8');
+	const provider = new CachedTypeScriptInteropProvider({ projectRoot: root });
+	const imported = provider.resolveImport({ containingFile: join(root, 'src/main.virune'), moduleSpecifier: './library.js', kind: 'named', importedName: 'literalOnly', platform: 'node' });
+	assert.ok(imported.type);
+	assert.equal(provider.resolveCallUsage(imported.type.ref, { target: { kind: 'value' }, arguments: [native('String')] }), undefined);
+	assert.ok(provider.resolveCallUsage(imported.type.ref, { target: { kind: 'value' }, arguments: [{ kind: 'native-primitive', primitive: 'String', literal: { kind: 'String', value: 'foo' } }] }));
 });
 
 test('compiler routes JavaScript calls through whole-usage TypeScript resolution without expected-type backflow', async () => {
