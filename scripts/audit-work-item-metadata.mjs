@@ -165,11 +165,10 @@ function findHtmlCommentStart(line, start) {
 function stripHtmlComments(line, commentState) {
 	let visible = '';
 	let cursor = 0;
-	let touched = commentState.open;
 	while (cursor < line.length) {
 		if (commentState.open) {
 			const end = line.indexOf('-->', cursor);
-			if (end === -1) return { visible: '', touched: true };
+			if (end === -1) return visible;
 			commentState.open = false;
 			cursor = end + 3;
 			continue;
@@ -179,7 +178,6 @@ function stripHtmlComments(line, commentState) {
 			visible += line.slice(cursor);
 			break;
 		}
-		touched = true;
 		visible += line.slice(cursor, start);
 		const end = line.indexOf('-->', start + 4);
 		if (end === -1) {
@@ -188,7 +186,7 @@ function stripHtmlComments(line, commentState) {
 		}
 		cursor = end + 3;
 	}
-	return { visible, touched };
+	return visible;
 }
 
 function markdownLinesOutsideHiddenRegions(body) {
@@ -203,14 +201,14 @@ function markdownLinesOutsideHiddenRegions(body) {
 			output.push(null);
 			continue;
 		}
-		const comment = stripHtmlComments(rawLine, commentState);
-		const opening = comment.visible.match(/^ {0,3}(`{3,}|~{3,})(.*)$/u);
+		const visibleLine = stripHtmlComments(rawLine, commentState);
+		const opening = visibleLine.match(/^ {0,3}(`{3,}|~{3,})(.*)$/u);
 		if (opening !== null) {
 			fence = { character: opening[1][0], length: opening[1].length };
 			output.push(null);
 			continue;
 		}
-		output.push(comment.touched ? null : comment.visible);
+		output.push(visibleLine);
 	}
 	return output;
 }
