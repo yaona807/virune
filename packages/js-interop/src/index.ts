@@ -209,7 +209,7 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 					|| source.usageProjection === undefined
 					|| source.usageProjection.directory !== usageDirectory
 				) return undefined;
-				const sourceType = (source.type.getFlags() & ts.TypeFlags.Any) !== 0 ? 'unknown' : source.usageProjection.typeExpression;
+				const sourceType = typeContainsAny(source.type, source.checker, source.location, new Set()) ? 'unknown' : source.usageProjection.typeExpression;
 				const name = `__viruneArg${index}`;
 				declarations.push(`declare const ${name}: ${sourceType};`);
 				argumentExpressions.push(name);
@@ -580,6 +580,43 @@ function isDefinitelyNonPrimitive(type: ts.Type, checker: ts.TypeChecker): boole
 		checker.getESSymbolType(),
 	];
 	return primitiveRuntimeTypes.every(primitive => !checker.isTypeAssignableTo(primitive, type));
+}
+
+function typeContainsAny(type: ts.Type, checker: ts.TypeChecker, location: ts.Node, seen: Set<ts.Type>): boolean {
+	if ((type.getFlags() & ts.TypeFlags.Any) !== 0) return true;
+	if (seen.has(type)) return false;
+	seen.add(type);
+	if (type.isUnionOrIntersection() && type.types.some(item => typeContainsAny(item, checker, location, seen))) return true;
+	if ((type.getFlags() & ts.TypeFlags.TypeParameter) !== 0) {
+		const constraint = checker.getBaseConstraintOfType(type);
+		if (constraint !== undefined && constraint !== type && typeContainsAny(constraint, checker, location, seen)) return true;
+	}
+	if ((type.getFlags() & ts.TypeFlags.Object) !== 0) {
+		const objectType = type as ts.ObjectType;
+		if ((objectType.objectFlags & ts.ObjectFlags.Reference) !== 0) {
+			const typeArguments = checker.getTypeArguments(type as ts.TypeReference);
+			if (typeArguments.some(item => typeContainsAny(item, checker, location, seen))) return true;
+		}
+	}
+	for (const indexInfo of checker.getIndexInfosOfType(type)) {
+		if (typeContainsAny(indexInfo.type, checker, location, seen)) return true;
+	}
+	for (const property of checker.getPropertiesOfType(type)) {
+		const declaration = property.valueDeclaration ?? property.declarations?.[0] ?? location;
+		const propertyType = checker.getTypeOfSymbolAtLocation(property, declaration);
+		if (typeContainsAny(propertyType, checker, declaration, seen)) return true;
+	}
+	for (const kind of [ts.SignatureKind.Call, ts.SignatureKind.Construct]) {
+		for (const signature of checker.getSignaturesOfType(type, kind)) {
+			for (const parameter of signature.getParameters()) {
+				const declaration = parameter.valueDeclaration ?? parameter.declarations?.[0] ?? location;
+				const parameterType = checker.getTypeOfSymbolAtLocation(parameter, declaration);
+				if (typeContainsAny(parameterType, checker, declaration, seen)) return true;
+			}
+			if (typeContainsAny(checker.getReturnTypeOfSignature(signature), checker, signature.declaration ?? location, seen)) return true;
+		}
+	}
+	return false;
 }
 
 function signatureArity(parameters: readonly ts.Symbol[]): { readonly minimum: number; readonly optional: number; readonly rest: boolean } {
