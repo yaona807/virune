@@ -12,9 +12,19 @@ Do not weaken language semantics, safety boundaries, tests, quality/security/com
 
 Repository-owned configuration, scripts, and CI are canonical for formatting and validation. Check existing commands before adding a new validation path.
 
+## Project policies
+
+Contributors are also expected to follow the repository's public project policies:
+
+- [Code of Conduct](CODE_OF_CONDUCT.md) for community behavior and the current moderation boundary;
+- [Project Governance](GOVERNANCE.md) for maintainer authority and project decision-making;
+- [Security Policy](SECURITY.md) for vulnerability reporting and security response.
+
+These documents have distinct responsibilities. Do not treat private maintainer notes or automation-only working state as contributor requirements unless the applicable requirement is represented in a public canonical project artifact.
+
 ## Security reports
 
-Do not disclose suspected security vulnerabilities in public issues, discussions, pull requests, or other public channels. Follow [`SECURITY.md`](SECURITY.md) for private vulnerability reporting and the fallback procedure when private reporting is unavailable.
+Do not disclose suspected security vulnerabilities in public issues, discussions, pull requests, or other public channels. Follow [`SECURITY.md`](SECURITY.md) for private vulnerability reporting and the fail-closed fallback procedure when GitHub private vulnerability reporting is unavailable.
 
 ## Contributor rights and licensing
 
@@ -34,22 +44,33 @@ Acceptance of a Contribution does not represent or guarantee that the project wi
 
 ## Issues
 
-Implementation changes should normally be linked to an issue. Distinguish tracking issues from implementation issues.
+Implementation changes should normally be linked to an issue. Distinguish Tracking Issues from Implementation Issues explicitly.
+
+### Work item role
+
+Every development work-item Issue must contain a Markdown heading named `Work item role` followed by exactly one explicit role value:
+
+- `Implementation` — one concrete work item whose explicit observable completion criteria can determine whether that work is complete. A Change proposal normally uses its Acceptance Criteria; a Bug report uses the required Expected behavior as the baseline criterion and may add further acceptance criteria.
+- `Tracking` — a parent or coordination item that groups or sequences separate implementation work and is not sufficient as the sole implementation reference for a normal implementation PR.
+
+The public Bug report and Change proposal Issue Forms provide these two values as a required selection. Manually authored project Issues use the same heading and value contract. GitHub Issue Forms and manually authored Issues may use different Markdown heading levels; the heading name and the single role value are the semantic contract.
+
+Do not infer a missing or malformed work-item role from the Issue title, labels, author, paths, branch name, recency, or surrounding prose. Resolve the role explicitly during triage instead.
 
 Include the following when relevant:
 
 - Background / Problem
 - Goal
 - Scope
-- Acceptance Criteria
+- Acceptance Criteria or equivalent explicit observable completion criteria
 - Non-goals
 - Architecture / invariants
 - Dependencies
 - Compatibility / safety boundaries
 
-A merged PR does not by itself mean an issue is complete. Close an issue when its Acceptance Criteria are satisfied on current `main`. If Nightly, release, observation-period, or other post-merge evidence is required, keep the issue open until that evidence exists.
+A merged PR does not by itself mean an issue is complete. For normal implementation work, use plain `Refs #...` references rather than `Closes`, `Fixes`, `Resolves`, or a GitHub closing relationship. Merge the reviewed PR, verify the Issue's explicit observable completion criteria on current `main`, update the completion evidence when appropriate, and then close the Issue explicitly. If Nightly, release, observation-period, or other post-merge evidence is required, keep the Issue open until that evidence exists.
 
-Use `Refs #...` by default in PRs. Use `Closes #...` only when merging the PR itself satisfies all Acceptance Criteria.
+A normal implementation PR must reference an `Implementation` Issue. It may also reference one or more `Tracking` parents separately; a Tracking Issue does not replace the implementation work item.
 
 ### Label taxonomy
 
@@ -71,7 +92,7 @@ Labels are organizational metadata only. They must not determine safety, require
 
 `workflow:validation-only`, `workflow:superseded`, `workflow:blocked`
 
-Backlog issues may remain unassigned. Assign the person who is currently accountable for the work. Assignees are ownership metadata, not concurrency locks.
+Backlog or otherwise unstarted Issues may remain unassigned. Once implementation work actually starts, the accountable owner must be visible. A contributor with sufficient repository permission may update the assignee directly; otherwise, the contributor should state their intent to take the work in the Issue or linked PR and a maintainer must apply or update the GitHub assignee metadata. Lack of permission to edit assignees is not a reason to grant broader repository access or bypass the ownership rule. Assignees are ownership metadata, not concurrency locks and not safety or merge-eligibility evidence.
 
 ## Branches
 
@@ -94,13 +115,15 @@ Keep each PR to one logical, reviewable change. Prefer Conventional Commit-style
 Document, as relevant:
 
 - Summary / Scope
-- Related issue
-- Exact base / current head when evidence depends on them
+- Implementation Issue, using plain `Refs #...`
+- Tracking / parent Issues, separately when applicable
 - Changed boundaries
 - Non-goals / invariants
 - Validation
 - Compatibility / safety impact
 - Stack or superseded relationship
+
+GitHub is authoritative for the mutable current PR base and head identity. Do not maintain manually copied `current base` or `current head` fields in the PR body as if they were live state. When formal CI, an artifact, or another evidence item applies to one immutable commit, identify that exact SHA alongside the evidence. If the PR head changes, evidence from an older head is stale and must not be presented as evidence for the new head.
 
 For safety-sensitive changes, state both what changed and what intentionally did not change.
 

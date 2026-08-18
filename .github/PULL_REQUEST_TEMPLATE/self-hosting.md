@@ -2,6 +2,16 @@
 
 <!-- One sentence describing the single reviewable purpose of this PR. -->
 
+## Implementation issue
+
+Refs #
+
+<!-- Required for a normal Self-hosting implementation PR. Reference an Issue whose `Work item role` is `Implementation`. Use plain `Refs`; do not use `Closes`, `Fixes`, `Resolves`, or a GitHub closing relationship as the normal completion mechanism. -->
+
+## Tracking / parent issues
+
+<!-- Use plain `Refs #...` for any Tracking parent, or write `None`. A Tracking Issue is not a substitute for the Implementation Issue above. -->
+
 ## Change classification
 
 - [ ] Feature / correctness / evidence
@@ -11,7 +21,8 @@
 
 ## Dependency and branch topology
 
-- Base branch:
+<!-- GitHub is authoritative for the mutable current PR base/head. Do not maintain copied current base/head SHA or branch fields here. -->
+
 - Parent PR or dependency: `none`
 - Stack depth: `not stacked`
 - Why a stack is required: `not applicable`
@@ -27,7 +38,7 @@
 
 ## Validation
 
-<!-- Prefer repository-owned commands. Include exact commands and results. -->
+<!-- Prefer repository-owned commands. Include exact commands and results. When formal CI or another evidence item belongs to one immutable commit, identify that exact SHA with the evidence. -->
 
 ```bash
 # npm run selfhost:inventory
@@ -66,11 +77,13 @@ Evidence or run identifiers: `none`
 ## Review checklist
 
 - [ ] This PR has one reviewable intent.
+- [ ] The Implementation Issue and any Tracking/parent references use the repository-wide work-item contract.
 - [ ] The dependency and stack position are accurate.
 - [ ] The normal stack depth is at most two open levels, or the exception is justified.
 - [ ] No ancestry-only or zero-change repair PR is required.
 - [ ] Repository-owned diagnostics were used before introducing a temporary execution path.
 - [ ] Required quality, compatibility, security, and reproducibility gates are not weakened or bypassed.
+- [ ] Any cited formal CI evidence belongs to the actual current PR head.
 - [ ] Temporary artifacts have an explicit removal trigger and are excluded from merge.
 - [ ] English and Japanese operational documentation are synchronized when applicable.
 - [ ] The PR description identifies the evidence needed to close any superseded diagnostic-only PR.
