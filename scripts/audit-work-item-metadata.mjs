@@ -225,7 +225,7 @@ function parseMarkdownHeading(lines, index) {
 		};
 	}
 	const underline = lines[index + 1];
-	if (line.trim() === '' || underline === null || underline === undefined) return null;
+	if (line.trim() === '' || /^ {4}/u.test(line) || underline === null || underline === undefined) return null;
 	const setext = underline.match(/^ {0,3}(=+|-+)[ \t]*$/u);
 	if (setext === null) return null;
 	return {
