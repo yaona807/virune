@@ -52,6 +52,20 @@ test('validates additional yaml files instead of silently ignoring them', async 
 	]);
 });
 
+test('requires Issue Form names longer than three characters', () => {
+	const errors = validateIssueTemplateFile('bug_report.yml', `name: Bug\ndescription: Test\nbody:\n  - type: markdown\n    attributes:\n      value: Test\n`);
+	assert.deepEqual(errors, ['bug_report.yml: name must be longer than 3 characters']);
+});
+
+test('rejects duplicate Issue Form names deterministically', async t => {
+	const root = await createTemplateRoot(t, canonicalFiles({
+		'extra.yml': validBugForm,
+	}));
+	assert.deepEqual(await verifyIssueForms(root), [
+		'extra.yml: name duplicates bug_report.yml: Bug report',
+	]);
+});
+
 test('fails deterministically on malformed indentation', () => {
 	assert.deepEqual(
 		validateIssueTemplateFile('bug_report.yml', `name: Bug\ndescription: Broken\n body:\n  - type: markdown\n`),
@@ -98,13 +112,13 @@ test('does not guess ambiguous plain-scalar YAML semantics', () => {
 
 test('rejects missing required top-level form fields', () => {
 	assert.deepEqual(
-		validateIssueTemplateFile('bug_report.yml', `name: Bug\ndescription: Test\n`),
+		validateIssueTemplateFile('bug_report.yml', `name: Bugs\ndescription: Test\n`),
 		['bug_report.yml: body must be a non-empty sequence'],
 	);
 });
 
 test('rejects unsupported top-level and body-entry keys in deterministic order', () => {
-	const errors = validateIssueTemplateFile('bug_report.yml', `name: Bug\ndescription: Test\nunknown: value\nbody:\n  - type: markdown\n    extra: value\n    attributes:\n      value: Test\n`);
+	const errors = validateIssueTemplateFile('bug_report.yml', `name: Bugs\ndescription: Test\nunknown: value\nbody:\n  - type: markdown\n    extra: value\n    attributes:\n      value: Test\n`);
 	assert.deepEqual(errors, [
 		'bug_report.yml: body[0]: unsupported key extra',
 		'bug_report.yml: unsupported key unknown',
@@ -112,12 +126,12 @@ test('rejects unsupported top-level and body-entry keys in deterministic order',
 });
 
 test('rejects duplicate ids', () => {
-	const errors = validateIssueTemplateFile('bug_report.yml', `name: Bug\ndescription: Test\nbody:\n  - type: textarea\n    id: details\n    attributes:\n      label: Details\n  - type: input\n    id: details\n    attributes:\n      label: More details\n`);
+	const errors = validateIssueTemplateFile('bug_report.yml', `name: Bugs\ndescription: Test\nbody:\n  - type: textarea\n    id: details\n    attributes:\n      label: Details\n  - type: input\n    id: details\n    attributes:\n      label: More details\n`);
 	assert.deepEqual(errors, ['bug_report.yml: body[1].id duplicates details']);
 });
 
 test('rejects markdown id and validations fields', () => {
-	const errors = validateIssueTemplateFile('bug_report.yml', `name: Bug\ndescription: Test\nbody:\n  - type: markdown\n    id: notice\n    attributes:\n      value: Test\n    validations:\n      required: true\n`);
+	const errors = validateIssueTemplateFile('bug_report.yml', `name: Bugs\ndescription: Test\nbody:\n  - type: markdown\n    id: notice\n    attributes:\n      value: Test\n    validations:\n      required: true\n`);
 	assert.deepEqual(errors, [
 		'bug_report.yml: body[0]: markdown entries must not define id',
 		'bug_report.yml: body[0]: markdown entries must not define validations',
@@ -130,7 +144,7 @@ test('requires a non-empty dropdown option sequence', () => {
 });
 
 test('validates checkbox option shape', () => {
-	const errors = validateIssueTemplateFile('bug_report.yml', `name: Bug\ndescription: Test\nbody:\n  - type: checkboxes\n    id: checks\n    attributes:\n      label: Checks\n      options:\n        - label: First\n          required: yes\n        - wrong: Second\n`);
+	const errors = validateIssueTemplateFile('bug_report.yml', `name: Bugs\ndescription: Test\nbody:\n  - type: checkboxes\n    id: checks\n    attributes:\n      label: Checks\n      options:\n        - label: First\n          required: yes\n        - wrong: Second\n`);
 	assert.deepEqual(errors, [
 		'bug_report.yml: body[0].attributes.options[0].required must be a boolean',
 		'bug_report.yml: body[0].attributes.options[1].label must be a non-empty string',
