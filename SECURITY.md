@@ -25,9 +25,11 @@ Use [GitHub private vulnerability reporting](https://github.com/yaona807/virune/
 - any known workaround or mitigation;
 - whether the report is subject to a disclosure deadline.
 
-If the private reporting form is unavailable, open a public issue containing only a request for a private security contact channel. Do not include vulnerability details in that issue.
+If GitHub private vulnerability reporting is unavailable, the public **Security contact request** Issue Form may be used only when your GitHub profile already exposes a contact method that supports private communication and you are willing for the Virune maintainer to use it. The request Issue, its author, title, and body are public and editable. Keep both title and body free of vulnerability details, affected versions, reproduction or exploit steps, secrets, contact addresses, and other sensitive information. Do not use the public form if the fact that you are requesting security contact must itself remain confidential. The maintainer may use the private-capable contact route already published on your profile to continue privately.
 
-Maintainers aim to acknowledge a complete report within three business days and provide an initial severity and remediation assessment within seven business days. Complex reports may require additional investigation.
+If your profile has no usable private-capable contact route, Virune cannot currently promise a confidential project-level fallback intake path. Do not disclose vulnerability details publicly merely to obtain a response. Unknown private-delivery capability must not be treated as available.
+
+For a report that Virune actually receives through a private channel with sufficient information to begin triage, maintainers aim to acknowledge the report within three business days and provide an initial severity and remediation assessment within seven business days. Complex reports may require additional investigation.
 
 ## Scope and security model
 
