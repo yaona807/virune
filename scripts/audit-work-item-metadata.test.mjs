@@ -51,6 +51,9 @@ function providerIssue(number, overrides = {}) {
 test('parses exactly one explicit Markdown work-item role section', () => {
 	assert.deepEqual(parseWorkItemRole('## Work item role\n\nImplementation\n\n## Goal\nX\n'), { status: 'valid', role: 'Implementation' });
 	assert.deepEqual(parseWorkItemRole('   #### Work item role ####\nTracking\n'), { status: 'valid', role: 'Tracking' });
+	assert.deepEqual(parseWorkItemRole('Work item role\n================\nImplementation\n'), { status: 'valid', role: 'Implementation' });
+	assert.deepEqual(parseWorkItemRole('Work item role\n----------------\nTracking\n'), { status: 'valid', role: 'Tracking' });
+	assert.deepEqual(parseWorkItemRole('Work item role\n----------------\nImplementation\nGoal\n----\nX\n'), { status: 'valid', role: 'Implementation' });
 	assert.deepEqual(parseWorkItemRole('## Goal\nNo role\n'), { status: 'absent', role: null });
 	assert.deepEqual(parseWorkItemRole('## Work item role\nImplementation\nextra\n'), { status: 'invalid', role: null });
 	assert.deepEqual(parseWorkItemRole('## Work item role\nUnknown\n'), { status: 'invalid', role: null });
