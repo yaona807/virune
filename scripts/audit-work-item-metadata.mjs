@@ -15,6 +15,7 @@ const areaLabels = new Set([
 const priorityLabels = new Set(['priority:p0', 'priority:p1', 'priority:p2', 'priority:p3']);
 const workflowLabels = new Set(['workflow:validation-only', 'workflow:superseded', 'workflow:blocked']);
 const roleHeading = 'Work item role';
+const roleHeadingIdentity = roleHeading.toLowerCase();
 const validRoles = new Set(['Implementation', 'Tracking']);
 
 function requireRepository(value, path) {
@@ -182,6 +183,7 @@ function findHtmlCommentStart(line, start) {
 }
 
 function stripHtmlComments(line, commentState) {
+	if (!commentState.open && /^(?: {4}| {0,3}\t)/u.test(line)) return line;
 	let visible = '';
 	let cursor = 0;
 	while (cursor < line.length) {
@@ -266,11 +268,13 @@ export function parseWorkItemRole(body) {
 	for (let index = 0; index < lines.length; index += 1) {
 		const heading = parseMarkdownHeading(lines, index);
 		if (heading === null) continue;
-		if (heading.text === roleHeading) headings.push({ index, ...heading });
+		if (heading.text.toLowerCase() === roleHeadingIdentity) {
+			headings.push({ index, canonical: heading.text === roleHeading, ...heading });
+		}
 		index = heading.endIndex;
 	}
 	if (headings.length === 0) return { status: 'absent', role: null };
-	if (headings.length !== 1) return { status: 'invalid', role: null };
+	if (headings.length !== 1 || !headings[0].canonical) return { status: 'invalid', role: null };
 	const role = headings[0];
 	const start = role.endIndex + 1;
 	let end = lines.length;
