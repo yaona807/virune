@@ -90,6 +90,7 @@ function canonicalRelativePath(value, path) {
 	const text = nonEmptyString(value, path);
 	assert(!text.includes('\\'), path, 'backslashes are not canonical package paths');
 	assert(!/[\u0000-\u001f\u007f]/u.test(text), path, 'control characters are forbidden in package paths');
+	assert(text === text.normalize('NFC'), path, 'package path must use NFC Unicode normalization');
 	assert(!text.startsWith('/'), path, 'absolute package paths are forbidden');
 	const normalized = posix.normalize(text);
 	assert(normalized === text, path, 'package path must already be normalized');
