@@ -35,7 +35,9 @@ export async function collectGitHubWorkItems({ repository, token, fetchImpl = fe
 	const pullRequests = pullsRaw
 		.map(normalizePullRequest)
 		.sort((left, right) => left.number - right.number);
-	return { schemaVersion: 1, repository, issues, pullRequests };
+	const snapshot = { schemaVersion: 1, repository, issues, pullRequests };
+	validateSnapshot(snapshot);
+	return snapshot;
 }
 
 async function fetchAllPages(baseUrl, headers, fetchImpl) {
@@ -103,25 +105,60 @@ function requireBoolean(value, path) {
 	return value;
 }
 
+function markdownLinesOutsideFences(body) {
+	const lines = body.replace(/\r\n?/gu, '\n').split('\n');
+	const output = [];
+	let fence = null;
+	for (const line of lines) {
+		if (fence !== null) {
+			const closing = line.match(/^ {0,3}(`+|~+)[ \t]*$/u);
+			if (closing !== null && closing[1][0] === fence.character && closing[1].length >= fence.length) fence = null;
+			output.push(null);
+			continue;
+		}
+		const opening = line.match(/^ {0,3}(`{3,}|~{3,})(.*)$/u);
+		if (opening !== null) {
+			fence = { character: opening[1][0], length: opening[1].length };
+			output.push(null);
+			continue;
+		}
+		output.push(line);
+	}
+	return output;
+}
+
+function parseAtxHeading(line) {
+	if (line === null) return null;
+	const match = line.match(/^ {0,3}(#{1,6})(?:[ \t]+|$)(.*)$/u);
+	if (match === null) return null;
+	const text = match[2].replace(/[ \t]+#+[ \t]*$/u, '').trim();
+	return { level: match[1].length, text };
+}
+
 export function parseWorkItemRole(body) {
 	if (typeof body !== 'string') throw new Error('body must be a string');
-	const lines = body.replace(/\r\n?/gu, '\n').split('\n');
-	const headingIndexes = [];
+	const lines = markdownLinesOutsideFences(body);
+	const headings = [];
 	for (let index = 0; index < lines.length; index += 1) {
-		const match = lines[index].match(/^#{1,6}\s+(.+?)\s*$/u);
-		if (match?.[1] === roleHeading) headingIndexes.push(index);
+		const heading = parseAtxHeading(lines[index]);
+		if (heading?.text === roleHeading) headings.push({ index, level: heading.level });
 	}
-	if (headingIndexes.length === 0) return { status: 'absent', role: null };
-	if (headingIndexes.length !== 1) return { status: 'invalid', role: null };
-	const start = headingIndexes[0] + 1;
+	if (headings.length === 0) return { status: 'absent', role: null };
+	if (headings.length !== 1) return { status: 'invalid', role: null };
+	const role = headings[0];
 	let end = lines.length;
-	for (let index = start; index < lines.length; index += 1) {
-		if (/^#{1,6}\s+/u.test(lines[index])) {
+	for (let index = role.index + 1; index < lines.length; index += 1) {
+		const heading = parseAtxHeading(lines[index]);
+		if (heading !== null && heading.level <= role.level) {
 			end = index;
 			break;
 		}
 	}
-	const values = lines.slice(start, end).map(line => line.trim()).filter(Boolean);
+	const values = lines
+		.slice(role.index + 1, end)
+		.filter(line => line !== null)
+		.map(line => line.trim())
+		.filter(Boolean);
 	if (values.length !== 1 || !validRoles.has(values[0])) return { status: 'invalid', role: null };
 	return { status: 'valid', role: values[0] };
 }
@@ -129,8 +166,14 @@ export function parseWorkItemRole(body) {
 export function extractPlainIssueRefs(body) {
 	if (typeof body !== 'string') throw new Error('body must be a string');
 	const numbers = new Set();
-	const expression = /\bRefs\s+#([1-9][0-9]*)\b/gu;
-	for (const match of body.matchAll(expression)) numbers.add(Number(match[1]));
+	const expression = /^ {0,3}(?:(?:[-+*]|[0-9]{1,9}[.)])[ \t]+)?Refs[ \t]+#([1-9][0-9]*)[ \t]*$/u;
+	for (const line of markdownLinesOutsideFences(body)) {
+		if (line === null) continue;
+		const match = line.match(expression);
+		if (match === null) continue;
+		const number = Number(match[1]);
+		if (Number.isSafeInteger(number)) numbers.add(number);
+	}
 	return [...numbers].sort((left, right) => left - right);
 }
 
@@ -153,11 +196,11 @@ export function auditWorkItemMetadata(snapshot) {
 	for (const issue of issues) {
 		const role = parseWorkItemRole(issue.body);
 		if (role.status === 'absent') continue;
+		auditTaxonomy(issue, findings);
 		if (role.status === 'invalid') {
 			findings.push(issueFinding('WORK_ITEM_ROLE_INVALID', issue.number, 'Work item role section must contain exactly one value: Implementation or Tracking'));
 			continue;
 		}
-		auditTaxonomy(issue, findings);
 		if (role.role !== 'Implementation') continue;
 		const pullRequestNumbers = refsToPullRequests.get(issue.number) ?? [];
 		if (pullRequestNumbers.length === 0) continue;
@@ -264,14 +307,28 @@ function compareStableStrings(left, right) {
 	return left < right ? -1 : left > right ? 1 : 0;
 }
 
+function requireArgumentValue(arguments_, index, name) {
+	const value = arguments_[index + 1];
+	if (typeof value !== 'string' || value === '' || value.startsWith('--')) throw new Error(`${name} requires a value`);
+	return value;
+}
+
 function parseArguments(arguments_) {
 	const options = { input: null, output: null, repository: process.env.GITHUB_REPOSITORY ?? null };
 	for (let index = 0; index < arguments_.length; index += 1) {
 		const argument = arguments_[index];
-		if (argument === '--input') options.input = arguments_[++index] ?? null;
-		else if (argument === '--output') options.output = arguments_[++index] ?? null;
-		else if (argument === '--repository') options.repository = arguments_[++index] ?? null;
-		else throw new Error(`Unknown argument: ${argument}`);
+		if (argument === '--input') {
+			options.input = requireArgumentValue(arguments_, index, '--input');
+			index += 1;
+		} else if (argument === '--output') {
+			options.output = requireArgumentValue(arguments_, index, '--output');
+			index += 1;
+		} else if (argument === '--repository') {
+			options.repository = requireArgumentValue(arguments_, index, '--repository');
+			index += 1;
+		} else {
+			throw new Error(`Unknown argument: ${argument}`);
+		}
 	}
 	return options;
 }
