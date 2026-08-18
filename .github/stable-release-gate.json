@@ -19,6 +19,10 @@
 			"command": ["node", "scripts/verify-npm-publication-identity.mjs"]
 		},
 		{
+			"id": "npm-exact-candidate-contents",
+			"command": ["node", "scripts/verify-npm-release-candidate-contents.mjs"]
+		},
+		{
 			"id": "reproducible-release",
 			"command": ["npm", "run", "verify:reproducible-release"]
 		},
@@ -40,6 +44,7 @@
 		{"id": "clean-install", "evidence": ["release-artifacts"]},
 		{"id": "release-packages", "evidence": ["release-artifacts"]},
 		{"id": "npm-publication-identity", "evidence": ["npm-publication-identity"]},
+		{"id": "npm-exact-candidate-contents", "evidence": ["npm-exact-candidate-contents"]},
 		{"id": "reproducible-release", "evidence": ["reproducible-release"]},
 		{"id": "installed-vsix", "evidence": ["installed-vsix"]},
 		{"id": "nightly-evidence", "evidence": ["nightly"]}

@@ -106,8 +106,24 @@ test('fails closed on bundled dependencies', () => {
   });
 });
 
-test('fails closed on non-canonical, development-only, raw source, or credential-like paths', () => {
-  for (const badPath of ['dist/../secret.js', 'dist/test/helper.js', 'dist/index.test.js', 'dist/source.ts', 'dist/private.pem']) {
+test('fails closed on non-canonical, development-only, raw source, nested dependency, credential-like, or portable-collision paths', () => {
+  for (const badPath of [
+    'dist/../secret.js',
+    'dist/test/helper.js',
+    'dist/index.test.js',
+    'dist/helper.test.cjs.map',
+    'dist/schema.spec.json',
+    'dist/control\nname.js',
+    'dist/.env.production',
+    'dist/node_modules/dependency.js',
+    'dist/source.ts',
+    'dist/private.pem',
+    'dist/trailing/',
+    'dist/index.js/child.js',
+    'dist/Index.js',
+    'dist/trailing-dot.',
+    'dist/trailing-space ',
+  ]) {
     withFixture(({ root }) => {
       const pack = structuredClone(basePack);
       pack.files.push({ path: badPath, size: 1 });
