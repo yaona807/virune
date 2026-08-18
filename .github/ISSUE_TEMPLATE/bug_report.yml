@@ -12,7 +12,7 @@ body:
     id: work_item_role
     attributes:
       label: Work item role
-      description: Choose Implementation for one concrete defect whose own Acceptance Criteria can determine completion. Choose Tracking only for a parent or coordination issue that will contain separate implementation work items.
+      description: Choose Implementation for one concrete defect whose explicit observable completion criteria can determine completion. Choose Tracking only for a parent or coordination issue that will contain separate implementation work items.
       options:
         - Implementation
         - Tracking
@@ -29,7 +29,7 @@ body:
     id: expected
     attributes:
       label: Expected behavior
-      description: What should have happened instead?
+      description: What should have happened instead? For an Implementation bug, this required field is the baseline observable completion criterion.
     validations:
       required: true
   - type: textarea
@@ -49,8 +49,8 @@ body:
   - type: textarea
     id: acceptance
     attributes:
-      label: Acceptance criteria (optional)
-      description: If useful, describe additional observable conditions that would prove the defect is fixed. Maintainers may refine completion criteria during triage.
+      label: Additional acceptance criteria (optional)
+      description: If useful, describe observable completion conditions beyond the required Expected behavior. Maintainers may refine completion criteria during triage.
   - type: textarea
     id: boundaries
     attributes:
