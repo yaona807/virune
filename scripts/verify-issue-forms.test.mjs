@@ -29,6 +29,8 @@ test('parses nested mappings, sequences, quoted scalars, booleans, and literal b
 	assert.equal(parsed.body[0].validations.required, true);
 	const contact = parseYamlSubset(validContactForm);
 	assert.equal(contact.body[0].attributes.value, 'This issue is public.\nDo not include sensitive details.\n');
+	const quoted = parseYamlSubset("value: 'here''s to quotes'\n");
+	assert.equal(quoted.value, "here's to quotes");
 });
 
 test('requires every canonical Issue Template/config file', async t => {
@@ -76,6 +78,10 @@ test('fails closed on unsupported YAML constructs', () => {
 	assert.deepEqual(
 		validateIssueTemplateFile('bug_report.yml', `name: Bug\ndescription: >\n  Folded text\nbody:\n  - type: markdown\n    attributes:\n      value: Test\n`),
 		['bug_report.yml: YAML subset error at line 2: folded block scalars are not supported'],
+	);
+	assert.deepEqual(
+		validateIssueTemplateFile('bug_report.yml', `name: Bug\ndescription: 'broken'quote'\nbody:\n  - type: markdown\n    attributes:\n      value: Test\n`),
+		['bug_report.yml: YAML subset error at line 2: invalid single-quoted string'],
 	);
 });
 
