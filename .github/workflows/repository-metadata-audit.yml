@@ -25,7 +25,7 @@ jobs:
         with:
           node-version: 24
       - name: Run metadata audit regressions
-        run: node --test scripts/audit-work-item-metadata.test.mjs scripts/audit-work-item-metadata-workflow.test.mjs
+        run: node --test scripts/audit-work-item-metadata.test.mjs scripts/audit-work-item-metadata-policy.test.mjs scripts/audit-work-item-metadata-workflow.test.mjs
       - name: Audit current open Issues and PRs
         env:
           GITHUB_TOKEN: ${{ github.token }}
