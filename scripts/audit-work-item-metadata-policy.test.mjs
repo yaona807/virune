@@ -9,26 +9,31 @@ const expected = {
 	workflow: ['workflow:blocked', 'workflow:superseded', 'workflow:validation-only'],
 };
 
-function sectionBetween(source, startHeading, endHeading) {
+function sectionAtHeading(source, heading) {
 	const normalized = source.replace(/\r\n?/gu, '\n');
-	const start = normalized.indexOf(`${startHeading}\n`);
-	assert.notEqual(start, -1, `${startHeading} section is missing`);
-	const remainder = normalized.slice(start + `${startHeading}\n`.length);
-	const end = remainder.indexOf(`\n${endHeading}\n`);
-	assert.notEqual(end, -1, `${endHeading} boundary is missing`);
-	return remainder.slice(0, end);
-}
-
-function taxonomySection(source) {
-	return sectionBetween(source, '### Label taxonomy', '## Branch and Pull Request workflow');
-}
-
-function issuePolicySection(source) {
-	return sectionBetween(source, '## Issue', '## Branch and Pull Request workflow');
+	const headingExpression = /^(#{1,6})[ \t]+(.+?)[ \t]*#*[ \t]*$/gmu;
+	let start = null;
+	let level = null;
+	for (const match of normalized.matchAll(headingExpression)) {
+		if (match[2] !== heading) continue;
+		assert.equal(start, null, `${heading} heading must be unique`);
+		start = match.index + match[0].length;
+		level = match[1].length;
+	}
+	assert.notEqual(start, null, `${heading} section is missing`);
+	let end = normalized.length;
+	headingExpression.lastIndex = start;
+	for (const match of normalized.matchAll(headingExpression)) {
+		if (match[1].length <= level) {
+			end = match.index;
+			break;
+		}
+	}
+	return normalized.slice(start, end);
 }
 
 function extractTaxonomy(source) {
-	const section = taxonomySection(source);
+	const section = sectionAtHeading(source, 'Label taxonomy');
 	const values = { type: new Set(), area: new Set(), priority: new Set(), workflow: new Set() };
 	for (const match of section.matchAll(/`((type|area|priority|workflow):[A-Za-z0-9-]+)`/gu)) {
 		values[match[2]].add(match[1]);
@@ -45,10 +50,8 @@ function extractTaxonomy(source) {
 	);
 }
 
-function extractRoleContract(section) {
-	const line = section.split('\n').find(value => value.includes('`Work item role`'));
-	assert.ok(line, 'Work item role contract line is missing');
-	return [...line.matchAll(/`([^`]+)`/gu)].map(match => match[1]);
+function extractRoleValues(section) {
+	return [...section.matchAll(/^- `([^`]+)`\s+—/gmu)].map(match => match[1]);
 }
 
 for (const file of ['CONTRIBUTING.md', 'CONTRIBUTING_ja.md']) {
@@ -59,8 +62,9 @@ for (const file of ['CONTRIBUTING.md', 'CONTRIBUTING_ja.md']) {
 
 	test(`${file} work-item role and linkage policy matches the metadata audit contract`, async () => {
 		const source = await readFile(new URL(`../${file}`, import.meta.url), 'utf8');
-		const section = issuePolicySection(source);
-		assert.deepEqual(extractRoleContract(section), ['Work item role', 'Implementation', 'Tracking']);
-		assert.match(section, /`Refs #<issue-number>`/u);
+		const section = sectionAtHeading(source, 'Work item role');
+		assert.match(section, /`Work item role`/u);
+		assert.deepEqual(extractRoleValues(section), ['Implementation', 'Tracking']);
+		assert.match(section, /`Refs #\.\.\.`/u);
 	});
 }
