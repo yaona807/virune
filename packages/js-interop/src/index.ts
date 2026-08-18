@@ -182,14 +182,24 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 
 	private signatureAccepts(signature: ts.Signature, argumentsList: readonly InteropArgumentType[], checker: ts.TypeChecker): boolean {
 		const parameters = signature.getParameters();
-		const required = parameters.filter(parameter => (parameter.flags & ts.SymbolFlags.Optional) === 0 && !(parameter.valueDeclaration !== undefined && ts.isParameter(parameter.valueDeclaration) && (parameter.valueDeclaration.questionToken !== undefined || parameter.valueDeclaration.initializer !== undefined || parameter.valueDeclaration.dotDotDotToken !== undefined))).length;
-		const lastDeclaration = parameters.at(-1)?.valueDeclaration;
+		const locations = parameters.map(parameter => parameter.valueDeclaration ?? parameter.declarations?.[0]);
+		if (locations.some(location => location === undefined)) return false;
+		const lastDeclaration = locations.at(-1)!;
 		const hasRest = lastDeclaration !== undefined && ts.isParameter(lastDeclaration) && lastDeclaration.dotDotDotToken !== undefined;
-		if (argumentsList.length < required || (!hasRest && argumentsList.length > parameters.length)) return false;
-		for (let index = 0; index < Math.min(argumentsList.length, parameters.length); index++) {
-			const parameter = parameters[Math.min(index, parameters.length - 1)]!;
-			const location = parameter.valueDeclaration ?? parameter.declarations?.[0];
-			if (location === undefined) continue;
+		// This approximate resolver cannot safely model rest-element types or tuple/variadic rest semantics.
+		// Leave every rest signature to the TypeScript adapter/whole-usage resolver instead of partially accepting it.
+		if (hasRest) return false;
+		let minimum = 0;
+		for (let index = 0; index < parameters.length; index++) {
+			const parameter = parameters[index]!;
+			const location = locations[index]!;
+			const optional = (parameter.flags & ts.SymbolFlags.Optional) !== 0 || ts.isParameter(location) && (location.questionToken !== undefined || location.initializer !== undefined);
+			if (!optional) minimum = index + 1;
+		}
+		if (argumentsList.length < minimum || argumentsList.length > parameters.length) return false;
+		for (let index = 0; index < argumentsList.length; index++) {
+			const parameter = parameters[index]!;
+			const location = locations[index]!;
 			const parameterType = checker.getTypeOfSymbolAtLocation(parameter, location);
 			if (!this.argumentCompatible(argumentsList[index]!, parameterType, checker)) return false;
 		}
@@ -197,29 +207,16 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 	}
 
 	private argumentCompatible(argument: InteropArgumentType, parameter: ts.Type, checker: ts.TypeChecker): boolean {
-		const parameterFlags = parameter.getFlags();
-		if ((parameterFlags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) !== 0) return true;
-		if (parameter.isUnion()) return parameter.types.some(item => this.argumentCompatible(argument, item, checker));
 		if (argument.kind === 'unknown') return false;
+		const parameterFlags = parameter.getFlags();
 		if (argument.kind === 'foreign') {
 			const source = this.requireType(argument.type);
+			const sourceFlags = source.type.getFlags();
+			if ((sourceFlags & ts.TypeFlags.Any) !== 0) return (parameterFlags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) !== 0;
 			if (source.checker === checker) return checker.isTypeAssignableTo(source.type, parameter);
-			// Different TypeScript Programs do not share type identity. Preserve safety by
-			// accepting only exact primitive views or broad JS boundary types.
-			const sourcePrimitive = primitiveKind(source.type);
-			const parameterPrimitive = primitiveKind(parameter);
-			if (sourcePrimitive !== undefined || parameterPrimitive !== undefined) return sourcePrimitive === parameterPrimitive;
-			const flags = parameter.getFlags();
-			return (flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown | ts.TypeFlags.NonPrimitive)) !== 0;
+			return crossProgramForeignCompatible(source, parameter, checker);
 		}
-		const flags = parameter.getFlags();
-		switch (argument.primitive) {
-			case 'Bool': return (flags & (ts.TypeFlags.Boolean | ts.TypeFlags.BooleanLiteral)) !== 0;
-			case 'String': return (flags & (ts.TypeFlags.String | ts.TypeFlags.StringLiteral)) !== 0;
-			case 'Int': case 'Float': return (flags & (ts.TypeFlags.Number | ts.TypeFlags.NumberLiteral)) !== 0;
-			case 'BigInt': return (flags & (ts.TypeFlags.BigInt | ts.TypeFlags.BigIntLiteral)) !== 0;
-			case 'Unit': return (flags & (ts.TypeFlags.Void | ts.TypeFlags.Undefined)) !== 0;
-		}
+		return nativePrimitiveCompatible(argument, parameter, checker);
 	}
 
 	private createProbe(request: JsImportRequest): Probe {
@@ -364,6 +361,59 @@ function primitiveKind(type: ts.Type): ForeignPrimitiveKind | undefined {
 	if ((flags & ts.TypeFlags.Undefined) !== 0) return 'undefined';
 	if ((flags & ts.TypeFlags.Null) !== 0) return 'null';
 	return undefined;
+}
+
+function nativePrimitiveCompatible(argument: Extract<InteropArgumentType, { readonly kind: 'native-primitive' }>, parameter: ts.Type, checker: ts.TypeChecker): boolean {
+	const flags = parameter.getFlags();
+	if ((flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) !== 0) return true;
+	if (argument.primitive === 'Unit') {
+		if (parameter.isUnion()) return parameter.types.some(item => nativePrimitiveCompatible(argument, item, checker));
+		return (flags & (ts.TypeFlags.Void | ts.TypeFlags.Undefined)) !== 0;
+	}
+	const expected: ForeignPrimitiveKind = argument.primitive === 'Bool' ? 'boolean'
+		: argument.primitive === 'String' ? 'string'
+			: argument.primitive === 'BigInt' ? 'bigint'
+				: 'number';
+	const broadType = broadPrimitiveTypeFromParameter(parameter, expected, checker);
+	return broadType !== undefined && checker.isTypeAssignableTo(broadType, parameter);
+}
+
+function broadPrimitiveTypeFromParameter(parameter: ts.Type, expected: ForeignPrimitiveKind, checker: ts.TypeChecker): ts.Type | undefined {
+	const candidates = parameter.isUnion() ? parameter.types : [parameter];
+	for (const candidate of candidates) {
+		const broadType = checker.getBaseTypeOfLiteralType(candidate);
+		if (primitiveKind(broadType) === expected) return broadType;
+	}
+	return undefined;
+}
+
+function crossProgramForeignCompatible(source: StoredType, parameter: ts.Type, checker: ts.TypeChecker): boolean {
+	const parameterFlags = parameter.getFlags();
+	if ((parameterFlags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) !== 0) return true;
+	const sourcePrimitive = primitiveKind(source.type);
+	if (sourcePrimitive !== undefined) {
+		const broadType = broadPrimitiveTypeFromParameter(parameter, sourcePrimitive, checker);
+		return broadType !== undefined && checker.isTypeAssignableTo(broadType, parameter);
+	}
+	if (parameter.isUnion()) return parameter.types.some(item => crossProgramForeignCompatible(source, item, checker));
+	if ((parameterFlags & ts.TypeFlags.NonPrimitive) !== 0) return isDefinitelyNonPrimitive(source.type, source.checker);
+	return false;
+}
+
+function isDefinitelyNonPrimitive(type: ts.Type, checker: ts.TypeChecker): boolean {
+	if (type.isUnionOrIntersection()) return type.types.every(item => isDefinitelyNonPrimitive(item, checker));
+	const flags = type.getFlags();
+	if ((flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown | ts.TypeFlags.TypeParameter)) !== 0) return false;
+	if (primitiveKind(type) !== undefined) return false;
+	if ((flags & (ts.TypeFlags.Object | ts.TypeFlags.NonPrimitive)) === 0) return false;
+	const primitiveRuntimeTypes = [
+		checker.getStringType(),
+		checker.getNumberType(),
+		checker.getBooleanType(),
+		checker.getBigIntType(),
+		checker.getESSymbolType(),
+	];
+	return primitiveRuntimeTypes.every(primitive => !checker.isTypeAssignableTo(primitive, type));
 }
 
 function safeTsName(value: string): string {

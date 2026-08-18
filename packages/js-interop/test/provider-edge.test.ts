@@ -1,10 +1,20 @@
 import assert from 'node:assert/strict';
-import { writeFile } from 'node:fs/promises';
+import { rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import test from 'node:test';
 import { compileSource } from '@virune/compiler/experimental';
 import { TypeScriptInteropProvider } from '../src/index.js';
 import { fixtureRoot } from './fixture.js';
+
+function resolveNamed(provider: TypeScriptInteropProvider, root: string, importedName: string, platform: 'node' | 'browser' | 'neutral' = 'node') {
+	const imported = provider.resolveImport({ containingFile: join(root, 'src/main.virune'), moduleSpecifier: './library.js', kind: 'named', importedName, platform });
+	assert.ok(imported.type);
+	return imported.type;
+}
+
+function errorCodes(result: ReturnType<typeof compileSource>): string[] {
+	return result.diagnostics.filter(item => item.severity === 'error').map(item => item.code);
+}
 
 test('resolves Node standard module declarations in node projects', async () => {
 	const root = await fixtureRoot();
@@ -13,21 +23,232 @@ test('resolves Node standard module declarations in node projects', async () => 
 	assert.equal(imported.type?.category, 'function');
 });
 
-test('bridges TypeScript unknown to Virune Unknown without trusting any', async () => {
+test('rejects native Unknown outbound while preserving known primitive arguments to TypeScript unknown and any', async () => {
 	const root = await fixtureRoot();
-	await writeFile(join(root, 'src/library.d.ts'), 'export declare function parse(value: unknown): unknown;\nexport declare const unsafeValue: any;\n', 'utf8');
-	await writeFile(join(root, 'src/library.js'), 'export function parse(value) { return value; }\nexport const unsafeValue = 1;\n', 'utf8');
+	await writeFile(join(root, 'src/library.d.ts'), [
+		'export declare function parseUnknown(value: unknown): unknown;',
+		'export declare function parseAny(value: any): unknown;',
+		'export declare const unsafeValue: any;',
+		'',
+	].join('\n'), 'utf8');
+	await writeFile(join(root, 'src/library.js'), 'export function parseUnknown(value) { return value; }\nexport function parseAny(value) { return value; }\nexport const unsafeValue = 1;\n', 'utf8');
 	const provider = new TypeScriptInteropProvider({ projectRoot: root });
-	const safe = compileSource({
+
+	const parseUnknown = resolveNamed(provider, root, 'parseUnknown');
+	assert.equal(provider.resolveCall(parseUnknown.ref, [{ kind: 'unknown' }]), undefined);
+	assert.ok(provider.resolveCall(parseUnknown.ref, [{ kind: 'native-primitive', primitive: 'String' }]));
+
+	const parseAny = resolveNamed(provider, root, 'parseAny');
+	assert.equal(provider.resolveCall(parseAny.ref, [{ kind: 'unknown' }]), undefined);
+	assert.ok(provider.resolveCall(parseAny.ref, [{ kind: 'native-primitive', primitive: 'String' }]));
+
+	const rejectedUnknown = compileSource({
 		id: 1,
-		path: join(root, 'src/main.virune'),
-		text: `import js { parse } from "./library.js"\n\nfn roundTrip(value: Unknown) -> Unknown uses JavaScript {\n\treturn parse(value)\n}\n`,
+		path: join(root, 'src/rejected-unknown.virune'),
+		text: `import js { parseUnknown } from "./library.js"\n\nfn roundTrip(value: Unknown) -> Unknown uses JavaScript {\n\treturn parseUnknown(value)\n}\n`,
 	}, { platform: 'node', jsInteropProvider: provider });
-	assert.deepEqual(safe.diagnostics.filter(item => item.severity === 'error'), []);
-	const unsafe = compileSource({
+	assert.deepEqual(errorCodes(rejectedUnknown), ['L4204']);
+
+	const rejectedAny = compileSource({
 		id: 2,
+		path: join(root, 'src/rejected-any.virune'),
+		text: `import js { parseAny } from "./library.js"\n\nfn roundTrip(value: Unknown) -> Unknown uses JavaScript {\n\treturn parseAny(value)\n}\n`,
+	}, { platform: 'node', jsInteropProvider: provider });
+	assert.deepEqual(errorCodes(rejectedAny), ['L4204']);
+
+	const acceptedKnown = compileSource({
+		id: 3,
+		path: join(root, 'src/accepted-known.virune'),
+		text: `import js { parseUnknown } from "./library.js"\n\nfn parse(value: String) -> Unknown uses JavaScript {\n\treturn parseUnknown(value)\n}\n`,
+	}, { platform: 'node', jsInteropProvider: provider });
+	assert.deepEqual(errorCodes(acceptedKnown), []);
+
+	const unsafe = compileSource({
+		id: 4,
 		path: join(root, 'src/unsafe.virune'),
 		text: `import js { unsafeValue } from "./library.js"\n`,
 	}, { emit: false, platform: 'node', jsInteropProvider: provider });
-	assert.ok(unsafe.diagnostics.some(item => item.code === 'L4212'));
+	assert.deepEqual(errorCodes(unsafe), ['L4212']);
+});
+
+test('fails closed on foreign any evidence and unsupported rest arguments', async () => {
+	const root = await fixtureRoot();
+	await writeFile(join(root, 'src/library.d.ts'), [
+		'export interface Api {',
+		'  anyValue: any;',
+		'  strings: string[];',
+		'  acceptString(value: string): void;',
+		'  acceptUnknown(value: unknown): void;',
+		'  acceptAny(value: any): void;',
+		'  acceptRest(...values: string[]): void;',
+		'}',
+		'export declare const api: Api;',
+		'',
+	].join('\n'), 'utf8');
+	await writeFile(join(root, 'src/library.js'), 'export const api = { anyValue: "value", strings: ["value"], acceptString() {}, acceptUnknown() {}, acceptAny() {}, acceptRest() {} };\n', 'utf8');
+	const provider = new TypeScriptInteropProvider({ projectRoot: root });
+	const api = resolveNamed(provider, root, 'api');
+	const anyValue = provider.getProperty(api.ref, 'anyValue');
+	const strings = provider.getProperty(api.ref, 'strings');
+	const acceptString = provider.getProperty(api.ref, 'acceptString');
+	const acceptUnknown = provider.getProperty(api.ref, 'acceptUnknown');
+	const acceptAny = provider.getProperty(api.ref, 'acceptAny');
+	const acceptRest = provider.getProperty(api.ref, 'acceptRest');
+	assert.ok(anyValue && strings && acceptString && acceptUnknown && acceptAny && acceptRest);
+	assert.equal(anyValue.category, 'any');
+	assert.equal(provider.resolveCall(acceptString.ref, [{ kind: 'foreign', type: anyValue.ref }]), undefined);
+	assert.ok(provider.resolveCall(acceptUnknown.ref, [{ kind: 'foreign', type: anyValue.ref }]));
+	assert.ok(provider.resolveCall(acceptAny.ref, [{ kind: 'foreign', type: anyValue.ref }]));
+	assert.equal(provider.resolveCall(acceptRest.ref, []), undefined);
+	assert.equal(provider.resolveCall(acceptRest.ref, [{ kind: 'foreign', type: strings.ref }]), undefined);
+	assert.equal(provider.resolveCall(acceptRest.ref, [{ kind: 'foreign', type: strings.ref }, { kind: 'unknown' }]), undefined);
+
+	const rejectedSpecific = compileSource({
+		id: 5,
+		path: join(root, 'src/rejected-foreign-any.virune'),
+		text: `import js { api } from "./library.js"\n\nfn use() -> Unit uses JavaScript {\n\tapi.acceptString(api.anyValue)\n}\n`,
+	}, { platform: 'node', jsInteropProvider: provider });
+	assert.deepEqual(errorCodes(rejectedSpecific), ['L4204']);
+
+	const rejectedRest = compileSource({
+		id: 6,
+		path: join(root, 'src/rejected-rest.virune'),
+		text: `import js { api } from "./library.js"\n\nfn use(value: Unknown) -> Unit uses JavaScript {\n\tapi.acceptRest(api.strings, value)\n}\n`,
+	}, { platform: 'node', jsInteropProvider: provider });
+	assert.deepEqual(errorCodes(rejectedRest), ['L4204']);
+});
+
+test('uses positional minimum arity when a default parameter precedes a required parameter', async () => {
+	const root = await fixtureRoot();
+	await rm(join(root, 'src/library.d.ts'), { force: true });
+	await writeFile(join(root, 'src/library.js'), [
+		'/**',
+		' * @param {string} first',
+		' * @param {string} second',
+		' */',
+		'export function withLeadingDefault(first = "default", second) { return first + second; }',
+		'',
+	].join('\n'), 'utf8');
+	const provider = new TypeScriptInteropProvider({ projectRoot: root });
+	const fn = resolveNamed(provider, root, 'withLeadingDefault');
+	assert.equal(provider.resolveCall(fn.ref, [{ kind: 'native-primitive', primitive: 'String' }]), undefined);
+	assert.ok(provider.resolveCall(fn.ref, [
+		{ kind: 'native-primitive', primitive: 'String' },
+		{ kind: 'native-primitive', primitive: 'String' },
+	]));
+
+	const rejected = compileSource({
+		id: 7,
+		path: join(root, 'src/rejected-leading-default.virune'),
+		text: `import js { withLeadingDefault } from "./library.js"\n\nfn use() -> Unit uses JavaScript {\n\twithLeadingDefault("only-first")\n}\n`,
+	}, { platform: 'node', jsInteropProvider: provider });
+	assert.deepEqual(errorCodes(rejected), ['L4204']);
+
+	const accepted = compileSource({
+		id: 8,
+		path: join(root, 'src/accepted-leading-default.virune'),
+		text: `import js { withLeadingDefault } from "./library.js"\n\nfn use() -> Unit uses JavaScript {\n\twithLeadingDefault("first", "second")\n}\n`,
+	}, { platform: 'node', jsInteropProvider: provider });
+	assert.deepEqual(errorCodes(accepted), []);
+});
+
+test('distinguishes broad primitive domains from literal subsets', async () => {
+	const root = await fixtureRoot();
+	await writeFile(join(root, 'src/library.d.ts'), [
+		'export declare function acceptStringLiteral(value: "foo"): void;',
+		'export declare function acceptStringLiteralUnion(value: "foo" | "bar"): void;',
+		'export declare function acceptBoolLiteral(value: true): void;',
+		'export declare function acceptBoolDomain(value: true | false): void;',
+		'export declare function acceptOptionalBool(value: boolean | undefined): void;',
+		'export declare function acceptNumberLiteral(value: 1): void;',
+		'export declare function acceptBigIntLiteral(value: 1n): void;',
+		'export declare function acceptString(value: string): void;',
+		'export declare function acceptStringOrUndefined(value: string | undefined): void;',
+		'export declare function acceptBool(value: boolean): void;',
+		'export declare function acceptNumber(value: number): void;',
+		'export declare function acceptBigInt(value: bigint): void;',
+		'',
+	].join('\n'), 'utf8');
+	const provider = new TypeScriptInteropProvider({ projectRoot: root });
+	const rejects = (name: string, primitive: 'Bool' | 'Int' | 'Float' | 'BigInt' | 'String' | 'Unit') => {
+		const fn = resolveNamed(provider, root, name);
+		assert.equal(provider.resolveCall(fn.ref, [{ kind: 'native-primitive', primitive }]), undefined, name);
+	};
+	const accepts = (name: string, primitive: 'Bool' | 'Int' | 'Float' | 'BigInt' | 'String' | 'Unit') => {
+		const fn = resolveNamed(provider, root, name);
+		assert.ok(provider.resolveCall(fn.ref, [{ kind: 'native-primitive', primitive }]), name);
+	};
+
+	rejects('acceptStringLiteral', 'String');
+	rejects('acceptStringLiteralUnion', 'String');
+	rejects('acceptBoolLiteral', 'Bool');
+	rejects('acceptNumberLiteral', 'Int');
+	rejects('acceptNumberLiteral', 'Float');
+	rejects('acceptBigIntLiteral', 'BigInt');
+
+	accepts('acceptString', 'String');
+	accepts('acceptStringOrUndefined', 'String');
+	accepts('acceptBool', 'Bool');
+	accepts('acceptBoolDomain', 'Bool');
+	accepts('acceptOptionalBool', 'Bool');
+	accepts('acceptNumber', 'Int');
+	accepts('acceptNumber', 'Float');
+	accepts('acceptBigInt', 'BigInt');
+});
+
+test('fails closed on cross-Program facts that are not representation-safe', async () => {
+	const root = await fixtureRoot();
+	await writeFile(join(root, 'src/library.d.ts'), [
+		'export interface Item { value: string }',
+		'export declare const item: Item;',
+		'export declare const maybeItem: Item | string;',
+		'export declare const emptyShape: {};',
+		'export declare const objectWrapper: Object;',
+		'export declare const stringWrapper: String;',
+		'export declare const primitiveStructural: { toString(): string };',
+		'export declare const text: string;',
+		'export declare const flag: boolean;',
+		'export declare function acceptObject(value: object): void;',
+		'export declare function acceptItem(value: Item): void;',
+		'export declare function acceptUnknown(value: unknown): void;',
+		'export declare function acceptAny(value: any): void;',
+		'export declare function acceptString(value: string): void;',
+		'export declare function acceptBool(value: boolean): void;',
+		'export declare function acceptLiteral(value: "foo"): void;',
+		'export declare function acceptTrue(value: true): void;',
+		'',
+	].join('\n'), 'utf8');
+	const provider = new TypeScriptInteropProvider({ projectRoot: root });
+
+	// Separate platform workspaces use distinct TypeScript Program/checker identities.
+	const item = resolveNamed(provider, root, 'item', 'browser');
+	const maybeItem = resolveNamed(provider, root, 'maybeItem', 'browser');
+	const emptyShape = resolveNamed(provider, root, 'emptyShape', 'browser');
+	const objectWrapper = resolveNamed(provider, root, 'objectWrapper', 'browser');
+	const stringWrapper = resolveNamed(provider, root, 'stringWrapper', 'browser');
+	const primitiveStructural = resolveNamed(provider, root, 'primitiveStructural', 'browser');
+	const text = resolveNamed(provider, root, 'text', 'browser');
+	const flag = resolveNamed(provider, root, 'flag', 'browser');
+	const acceptObject = resolveNamed(provider, root, 'acceptObject', 'node');
+	const acceptItem = resolveNamed(provider, root, 'acceptItem', 'node');
+	const acceptUnknown = resolveNamed(provider, root, 'acceptUnknown', 'node');
+	const acceptAny = resolveNamed(provider, root, 'acceptAny', 'node');
+	const acceptString = resolveNamed(provider, root, 'acceptString', 'node');
+	const acceptBool = resolveNamed(provider, root, 'acceptBool', 'node');
+	const acceptLiteral = resolveNamed(provider, root, 'acceptLiteral', 'node');
+	const acceptTrue = resolveNamed(provider, root, 'acceptTrue', 'node');
+
+	assert.ok(provider.resolveCall(acceptObject.ref, [{ kind: 'foreign', type: item.ref }]));
+	assert.equal(provider.resolveCall(acceptItem.ref, [{ kind: 'foreign', type: item.ref }]), undefined);
+	assert.equal(provider.resolveCall(acceptObject.ref, [{ kind: 'foreign', type: maybeItem.ref }]), undefined);
+	assert.equal(provider.resolveCall(acceptObject.ref, [{ kind: 'foreign', type: emptyShape.ref }]), undefined);
+	assert.equal(provider.resolveCall(acceptObject.ref, [{ kind: 'foreign', type: objectWrapper.ref }]), undefined);
+	assert.equal(provider.resolveCall(acceptObject.ref, [{ kind: 'foreign', type: stringWrapper.ref }]), undefined);
+	assert.equal(provider.resolveCall(acceptObject.ref, [{ kind: 'foreign', type: primitiveStructural.ref }]), undefined);
+	assert.ok(provider.resolveCall(acceptUnknown.ref, [{ kind: 'foreign', type: item.ref }]));
+	assert.ok(provider.resolveCall(acceptAny.ref, [{ kind: 'foreign', type: item.ref }]));
+	assert.ok(provider.resolveCall(acceptString.ref, [{ kind: 'foreign', type: text.ref }]));
+	assert.equal(provider.resolveCall(acceptLiteral.ref, [{ kind: 'foreign', type: text.ref }]), undefined);
+	assert.ok(provider.resolveCall(acceptBool.ref, [{ kind: 'foreign', type: flag.ref }]));
+	assert.equal(provider.resolveCall(acceptTrue.ref, [{ kind: 'foreign', type: flag.ref }]), undefined);
 });
