@@ -45,7 +45,7 @@ export async function collectGitHubWorkItems({ repository, token, fetchImpl = fe
 	const issuesRaw = await fetchAllPages(`https://api.github.com/repos/${apiRepository}/issues?state=open&per_page=100`, headers, fetchImpl);
 	const pullsRaw = await fetchAllPages(`https://api.github.com/repos/${apiRepository}/pulls?state=open&per_page=100`, headers, fetchImpl);
 	const issues = issuesRaw
-		.filter(issue => issue && typeof issue === 'object' && !('pull_request' in issue))
+		.filter((issue, index) => !isIssuesEndpointPullRequest(issue, index))
 		.map(normalizeIssue)
 		.sort((left, right) => left.number - right.number);
 	const pullRequests = pullsRaw
@@ -68,6 +68,18 @@ async function fetchAllPages(baseUrl, headers, fetchImpl) {
 		output.push(...items);
 		if (items.length < 100) return output;
 	}
+}
+
+function isIssuesEndpointPullRequest(issue, index) {
+	const path = `GitHub Issues response[${index}]`;
+	if (!issue || typeof issue !== 'object' || Array.isArray(issue)) throw new Error(`${path} must be an object`);
+	if (!Object.hasOwn(issue, 'pull_request')) return false;
+	requirePositiveInteger(issue.number, `${path}.number`);
+	requireOpenState(issue.state, `${path}.state`);
+	if (!issue.pull_request || typeof issue.pull_request !== 'object' || Array.isArray(issue.pull_request)) {
+		throw new Error(`${path}.pull_request must be an object`);
+	}
+	return true;
 }
 
 function normalizeIssue(issue) {
