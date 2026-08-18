@@ -21,7 +21,13 @@ const validRoles = new Set(['Implementation', 'Tracking']);
 function requireRepository(value, path) {
 	if (typeof value !== 'string') throw new Error(`${path} must use owner/name form`);
 	const parts = value.split('/');
-	if (parts.length !== 2 || !repositoryOwner.test(parts[0]) || !repositoryName.test(parts[1])) {
+	if (
+		parts.length !== 2
+		|| !repositoryOwner.test(parts[0])
+		|| !repositoryName.test(parts[1])
+		|| parts[1] === '.'
+		|| parts[1] === '..'
+	) {
 		throw new Error(`${path} must use owner/name form`);
 	}
 	return value;
