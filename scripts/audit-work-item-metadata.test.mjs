@@ -66,7 +66,7 @@ test('does not treat fenced examples as role headings and rejects nested role-se
 	assert.deepEqual(parseWorkItemRole('## Work item role\nImplementation\n### Notes\nextra\n## Goal\nX\n'), { status: 'invalid', role: null });
 });
 
-test('ignores HTML-commented role and linkage examples', () => {
+test('ignores HTML-commented role and linkage examples without hiding inline-code literals', () => {
 	assert.deepEqual(
 		parseWorkItemRole('<!--\n## Work item role\nTracking\n-->\n## Work item role\nImplementation\n'),
 		{ status: 'valid', role: 'Implementation' },
@@ -75,6 +75,12 @@ test('ignores HTML-commented role and linkage examples', () => {
 		extractPlainIssueRefs('<!-- Refs #1 -->\n<!--\nRefs #2\n-->\nRefs #3\n'),
 		[3],
 	);
+	assert.deepEqual(
+		parseWorkItemRole('`<!--` is literal code\n## Work item role\nImplementation\n'),
+		{ status: 'valid', role: 'Implementation' },
+	);
+	assert.deepEqual(extractPlainIssueRefs('`<!--` is literal code\nRefs #4\n'), [4]);
+	assert.deepEqual(parseWorkItemRole('\\<!-- escaped\n## Work item role\nTracking\n'), { status: 'valid', role: 'Tracking' });
 });
 
 test('extracts only whole-line plain Refs links and supported Markdown list markers', () => {
