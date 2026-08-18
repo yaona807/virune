@@ -2,6 +2,16 @@ name: Change proposal
 description: Propose a feature, refactor, CI, documentation, or governance change
 title: "change: "
 body:
+  - type: dropdown
+    id: work_item_role
+    attributes:
+      label: Work item role
+      description: Choose Implementation for one concrete change whose own Acceptance Criteria can determine completion. Choose Tracking only for a parent or coordination issue that will contain separate implementation work items.
+      options:
+        - Implementation
+        - Tracking
+    validations:
+      required: true
   - type: textarea
     id: background
     attributes:
