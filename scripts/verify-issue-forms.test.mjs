@@ -21,7 +21,7 @@ test('accepts the supported Issue Form/config subset', () => {
 	assert.deepEqual(validateIssueTemplateFile('config.yml', validConfig), []);
 });
 
-test('parses nested mappings, sequences, quoted scalars, core booleans/null, and literal block scalars', () => {
+test('parses nested mappings, sequences, quoted scalars, GitHub boolean/null forms, and literal block scalars', () => {
 	const parsed = parseYamlSubset(validBugForm);
 	assert.equal(parsed.name, 'Bug report');
 	assert.equal(parsed.title, 'bug: ');
@@ -31,10 +31,14 @@ test('parses nested mappings, sequences, quoted scalars, core booleans/null, and
 	assert.equal(contact.body[0].attributes.value, 'This issue is public.\nDo not include sensitive details.\n');
 	const quoted = parseYamlSubset("value: 'here''s to quotes'\n");
 	assert.equal(quoted.value, "here's to quotes");
-	const core = parseYamlSubset('enabled: TRUE\ndisabled: False\nmissing: NULL\n');
-	assert.equal(core.enabled, true);
-	assert.equal(core.disabled, false);
-	assert.equal(core.missing, null);
+	const githubScalars = parseYamlSubset('a: yes\nb: Y\nc: On\nd: No\ne: OFF\nf: TRUE\ng: NULL\n');
+	assert.equal(githubScalars.a, true);
+	assert.equal(githubScalars.b, true);
+	assert.equal(githubScalars.c, true);
+	assert.equal(githubScalars.d, false);
+	assert.equal(githubScalars.e, false);
+	assert.equal(githubScalars.f, true);
+	assert.equal(githubScalars.g, null);
 });
 
 test('requires every canonical Issue Template/config file', async t => {
@@ -66,7 +70,7 @@ test('fails closed when a Markdown Issue Template is introduced outside the supp
 });
 
 test('requires Issue Form names longer than three characters', () => {
-	const errors = validateIssueTemplateFile('bug_report.yml', `name: Bug\ndescription: Test\nbody:\n  - type: markdown\n    attributes:\n      value: Test\n`);
+	const errors = validateIssueTemplateFile('bug_report.yml', `name: Bug\ndescription: Test\nbody:\n  - type: textarea\n    id: details\n    attributes:\n      label: Details\n`);
 	assert.deepEqual(errors, ['bug_report.yml: name must be longer than 3 characters']);
 });
 
@@ -77,6 +81,11 @@ test('rejects duplicate Issue Form names deterministically', async t => {
 	assert.deepEqual(await verifyIssueForms(root), [
 		'extra.yml: name duplicates bug_report.yml: Bug report',
 	]);
+});
+
+test('rejects a markdown-only body', () => {
+	const errors = validateIssueTemplateFile('bug_report.yml', `name: Bugs\ndescription: Test\nbody:\n  - type: markdown\n    attributes:\n      value: Static only\n`);
+	assert.deepEqual(errors, ['bug_report.yml: body must contain at least one non-markdown field']);
 });
 
 test('fails deterministically on malformed indentation', () => {
@@ -131,7 +140,7 @@ test('rejects missing required top-level form fields', () => {
 });
 
 test('rejects unsupported top-level and body-entry keys in deterministic order', () => {
-	const errors = validateIssueTemplateFile('bug_report.yml', `name: Bugs\ndescription: Test\nunknown: value\nbody:\n  - type: markdown\n    extra: value\n    attributes:\n      value: Test\n`);
+	const errors = validateIssueTemplateFile('bug_report.yml', `name: Bugs\ndescription: Test\nunknown: value\nbody:\n  - type: textarea\n    id: details\n    extra: value\n    attributes:\n      label: Details\n`);
 	assert.deepEqual(errors, [
 		'bug_report.yml: body[0]: unsupported key extra',
 		'bug_report.yml: unsupported key unknown',
@@ -144,7 +153,7 @@ test('rejects duplicate ids', () => {
 });
 
 test('rejects markdown id and validations fields', () => {
-	const errors = validateIssueTemplateFile('bug_report.yml', `name: Bugs\ndescription: Test\nbody:\n  - type: markdown\n    id: notice\n    attributes:\n      value: Test\n    validations:\n      required: true\n`);
+	const errors = validateIssueTemplateFile('bug_report.yml', `name: Bugs\ndescription: Test\nbody:\n  - type: markdown\n    id: notice\n    attributes:\n      value: Test\n    validations:\n      required: true\n  - type: input\n    id: details\n    attributes:\n      label: Details\n`);
 	assert.deepEqual(errors, [
 		'bug_report.yml: body[0]: markdown entries must not define id',
 		'bug_report.yml: body[0]: markdown entries must not define validations',
@@ -161,13 +170,30 @@ test('requires dropdown option choices to be distinct', () => {
 	assert.deepEqual(errors, ['change_proposal.yml: body[0].attributes.options choices must be distinct']);
 });
 
+test('rejects the reserved dropdown choice None', () => {
+	const errors = validateIssueTemplateFile('change_proposal.yml', `name: Change\ndescription: Test\nbody:\n  - type: dropdown\n    id: role\n    attributes:\n      label: Role\n      options:\n        - Implementation\n        - None\n`);
+	assert.deepEqual(errors, ['change_proposal.yml: body[0].attributes.options must not include reserved choice None']);
+});
+
+test('rejects unquoted GitHub boolean words as dropdown options while quoted strings remain valid', () => {
+	const invalid = validateIssueTemplateFile('change_proposal.yml', `name: Change\ndescription: Test\nbody:\n  - type: dropdown\n    id: answer\n    attributes:\n      label: Answer\n      options:\n        - Yes\n        - Maybe\n`);
+	assert.deepEqual(invalid, ['change_proposal.yml: body[0].attributes.options must be a non-empty sequence of strings']);
+	const valid = validateIssueTemplateFile('change_proposal.yml', `name: Change\ndescription: Test\nbody:\n  - type: dropdown\n    id: answer\n    attributes:\n      label: Answer\n      options:\n        - "Yes"\n        - Maybe\n`);
+	assert.deepEqual(valid, []);
+});
+
 test('validates checkbox option shape', () => {
-	const errors = validateIssueTemplateFile('bug_report.yml', `name: Bugs\ndescription: Test\nbody:\n  - type: checkboxes\n    id: checks\n    attributes:\n      label: Checks\n      options:\n        - label: First\n          required: yes\n        - wrong: Second\n`);
+	const errors = validateIssueTemplateFile('bug_report.yml', `name: Bugs\ndescription: Test\nbody:\n  - type: checkboxes\n    id: checks\n    attributes:\n      label: Checks\n      options:\n        - label: First\n          required: maybe\n        - wrong: Second\n`);
 	assert.deepEqual(errors, [
 		'bug_report.yml: body[0].attributes.options[0].required must be a boolean',
 		'bug_report.yml: body[0].attributes.options[1].label must be a non-empty string',
 		'bug_report.yml: body[0].attributes.options[1]: unsupported key wrong',
 	]);
+});
+
+test('requires checkbox option labels to be distinct', () => {
+	const errors = validateIssueTemplateFile('bug_report.yml', `name: Bugs\ndescription: Test\nbody:\n  - type: checkboxes\n    id: checks\n    attributes:\n      label: Checks\n      options:\n        - label: Same\n        - label: Same\n`);
+	assert.deepEqual(errors, ['bug_report.yml: body[0].attributes.options[1].label duplicates Same']);
 });
 
 test('forbids free-text input and selection fields in public contact-only forms', () => {
