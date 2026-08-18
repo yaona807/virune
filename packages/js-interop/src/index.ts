@@ -204,12 +204,15 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 			const source = this.requireType(argument.type);
 			if (source.checker === checker) return checker.isTypeAssignableTo(source.type, parameter);
 			// Type identities are scoped to one TypeScript Program. Across Programs,
-			// preserve only broad primitive representation compatibility and fail closed
-			// for object/any/unknown fallbacks until one usage is resolved in one Program.
+			// preserve only representation-level facts that do not require shared identity.
+			if ((parameterFlags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) !== 0) return true;
+			const parameterIsLiteral = (parameterFlags & (ts.TypeFlags.StringLiteral | ts.TypeFlags.BooleanLiteral | ts.TypeFlags.NumberLiteral | ts.TypeFlags.BigIntLiteral)) !== 0;
+			if (parameterIsLiteral) return false;
 			const sourcePrimitive = primitiveKind(source.type);
 			const parameterPrimitive = primitiveKind(parameter);
-			const parameterIsLiteral = (parameterFlags & (ts.TypeFlags.StringLiteral | ts.TypeFlags.BooleanLiteral | ts.TypeFlags.NumberLiteral | ts.TypeFlags.BigIntLiteral)) !== 0;
-			return sourcePrimitive !== undefined && parameterPrimitive !== undefined && !parameterIsLiteral && sourcePrimitive === parameterPrimitive;
+			if (parameterPrimitive !== undefined) return sourcePrimitive === parameterPrimitive;
+			if ((parameterFlags & ts.TypeFlags.NonPrimitive) !== 0) return isDefinitelyNonPrimitive(source.type);
+			return false;
 		}
 		if ((parameterFlags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) !== 0) return true;
 		switch (argument.primitive) {
@@ -363,6 +366,14 @@ function primitiveKind(type: ts.Type): ForeignPrimitiveKind | undefined {
 	if ((flags & ts.TypeFlags.Undefined) !== 0) return 'undefined';
 	if ((flags & ts.TypeFlags.Null) !== 0) return 'null';
 	return undefined;
+}
+
+function isDefinitelyNonPrimitive(type: ts.Type): boolean {
+	if (type.isUnionOrIntersection()) return type.types.every(item => isDefinitelyNonPrimitive(item));
+	const flags = type.getFlags();
+	if ((flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown | ts.TypeFlags.TypeParameter)) !== 0) return false;
+	if (primitiveKind(type) !== undefined) return false;
+	return (flags & (ts.TypeFlags.Object | ts.TypeFlags.NonPrimitive)) !== 0;
 }
 
 function safeTsName(value: string): string {
