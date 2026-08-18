@@ -38,6 +38,7 @@ interface StoredType {
 	readonly location: ts.Node;
 	readonly origin: ForeignTypeSnapshot['origin'];
 	readonly workspace: ProbeWorkspace;
+	readonly display: string;
 	readonly usageProjection?: UsageProjection;
 }
 
@@ -324,8 +325,7 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 	}
 
 	public display(reference: ForeignTypeRef): string {
-		const stored = this.requireType(reference);
-		return stored.checker.typeToString(stored.type, stored.location, ts.TypeFormatFlags.NoTruncation | ts.TypeFormatFlags.UseAliasDefinedOutsideCurrentScope);
+		return this.requireType(reference).display;
 	}
 
 	private resolveSignature(reference: ForeignTypeRef, argumentsList: readonly InteropArgumentType[], construct: boolean): ForeignCallResolution | undefined {
@@ -487,8 +487,9 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 	): ForeignTypeSnapshot {
 		const id = String(this.#nextTypeId++);
 		const ref: ForeignTypeRef = { providerId: this.id, generation: this.generation, id };
-		this.#types.set(id, { type, checker, location, origin, workspace, ...(usageProjection === undefined ? {} : { usageProjection }) });
-		const display = checker.typeToString(type, location, ts.TypeFormatFlags.NoTruncation | ts.TypeFormatFlags.UseAliasDefinedOutsideCurrentScope);
+		const rawDisplay = checker.typeToString(type, location, ts.TypeFormatFlags.NoTruncation | ts.TypeFormatFlags.UseAliasDefinedOutsideCurrentScope);
+		const display = stableTypeDisplay(rawDisplay, origin, this.#projectRoot);
+		this.#types.set(id, { type, checker, location, origin, workspace, display, ...(usageProjection === undefined ? {} : { usageProjection }) });
 		const primitive = primitiveKind(type);
 		const awaited = checker.getAwaitedType(type);
 		const category = primitive !== undefined ? 'primitive'
@@ -754,6 +755,23 @@ function packageRelativeLocator(filePath: string | undefined, packageJsonPath: s
 	const locator = relative(dirname(packageJsonPath), filePath).replaceAll('\\', '/');
 	if (locator.length === 0 || locator === '..' || locator.startsWith('../') || locator.startsWith('/') || /^[A-Za-z]:\//u.test(locator)) return undefined;
 	return locator;
+}
+
+function stableTypeDisplay(value: string, origin: ForeignTypeSnapshot['origin'], projectRoot: string): string {
+	const normalized = value.replaceAll('\\', '/');
+	const normalizedRoot = resolve(projectRoot).replaceAll('\\', '/');
+	const leaksProviderState = normalized.includes(normalizedRoot)
+		|| normalized.includes('.virune-interop-')
+		|| normalized.includes('__virune')
+		|| /import\(["'](?:\/|[A-Za-z]:\/|\/\/)/u.test(normalized)
+		|| normalized.includes('file://');
+	if (!leaksProviderState) return value;
+	if (origin?.moduleSpecifier !== undefined) {
+		return origin.exportName === undefined
+			? `typeof import(${JSON.stringify(origin.moduleSpecifier)})`
+			: `${origin.moduleSpecifier}#${origin.exportName}`;
+	}
+	return '<external>';
 }
 
 function resolveRuntimeModule(request: JsImportRequest): { readonly entry?: string; readonly path?: string; readonly format?: ModuleResolutionWitness['runtimeFormat'] } {
