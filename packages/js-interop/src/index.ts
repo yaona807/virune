@@ -158,6 +158,7 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 		return { result: resultSnapshot, parameterCount: parameters.length, optionalParameterCount: optional, rest, mayReject: resultSnapshot.category === 'promise', receiverMode: construct ? 'none' : 'preserve-this' };
 	}
 
+
 	private conservativeGenericResult(signature: ts.Signature, result: ts.Type, checker: ts.TypeChecker): ts.Type | undefined {
 		const parameters = signature.getTypeParameters() ?? [];
 		if (parameters.length === 0) return result;
@@ -360,6 +361,7 @@ type __ViruneAlias = __ViruneType;`
 		};
 	}
 }
+
 
 function canonicalFilePath(fileName: string): string {
 	const normalized = resolve(fileName).replaceAll('\\', '/');
