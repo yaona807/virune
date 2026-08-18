@@ -157,7 +157,6 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 			typeExpression: `(${stored.usageProjection.typeExpression})[${propertyName}]`,
 			directory: stored.usageProjection.directory,
 			...(stored.usageProjection.declaration === undefined ? {} : { declaration: stored.usageProjection.declaration }),
-			...(stored.usageProjection.valueExpression === undefined ? {} : { valueExpression: `(${stored.usageProjection.valueExpression})[${propertyName}]` }),
 		};
 		return this.store(
 			stored.checker.getTypeOfSymbolAtLocation(property, declaration),
@@ -197,7 +196,6 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 			const expectedCalleeProjection = `(${receiver.usageProjection.typeExpression})[${property}]`;
 			if (callee.usageProjection.typeExpression !== expectedCalleeProjection) return undefined;
 			const expectedCalleeValue = receiver.usageProjection.valueExpression === undefined ? undefined : `(${receiver.usageProjection.valueExpression})[${property}]`;
-			if (callee.usageProjection.valueExpression !== expectedCalleeValue) return undefined;
 			usageDirectory = receiver.usageProjection.directory;
 			includeProjection(receiver.usageProjection);
 			if (receiver.usageProjection.valueExpression !== undefined) {
