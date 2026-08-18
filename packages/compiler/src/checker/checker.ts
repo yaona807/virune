@@ -2,7 +2,7 @@ import type * as A from '../ast/nodes.js';
 import { analyzeControlFlow } from '../analysis/control-flow.js';
 import { DiagnosticBag } from '../diagnostics/diagnostic.js';
 import { Scope, SymbolFactory, type SymbolInfo } from '../binder/symbols.js';
-import type { ForeignTypeSnapshot, InteropArgumentType, InteropSemanticModel, JsImportKind, JsInteropProvider, PrimitiveBridgeKind } from '../interop/types.js';
+import type { ForeignTypeSnapshot, InteropArgumentType, InteropCallTarget, InteropLiteralValue, InteropSemanticModel, JsImportKind, JsInteropProvider, PrimitiveBridgeKind } from '../interop/types.js';
 import type { SourceSpan, SymbolId, TypeId } from '../source.js';
 import { TypeArena, type Type } from '../types/types.js';
 import { builtinMember } from './builtin-members.js';
@@ -590,27 +590,59 @@ export class TypeChecker {
 		this.requireEffects(['JavaScript'], expression.span);
 		if (expression.typeArguments.length > 0) this.diagnostics.error('L4203', 'Explicit Virune type arguments are not supported for JavaScript calls; use a TypeScript interop adapter', expression.span);
 		const argumentTypes = expression.arguments.map(argument => this.checkExpression(argument, scope));
-		const interopArguments = argumentTypes.map((typeId, index) => this.interopArgumentType(typeId, expression.arguments[index]!.span));
-		const resolution = this.#jsInteropProvider?.resolveCall(callee.ref, interopArguments);
+		const interopArguments = argumentTypes.map((typeId, index) => this.interopArgumentType(typeId, expression.arguments[index]!, expression.arguments[index]!.span));
+		let target: InteropCallTarget = { kind: 'value' };
+		if (expression.callee.kind === 'FieldExpression') {
+			const receiverTypeId = expression.callee.target.inferredTypeId;
+			const receiver = receiverTypeId === undefined ? undefined : this.arena.get(receiverTypeId);
+			if (receiver?.kind === 'foreign') target = { kind: 'member', receiver: receiver.ref, property: expression.callee.field };
+		}
+		const provider = this.#jsInteropProvider;
+		const resolution = provider?.resolveCallUsage !== undefined
+			? provider.resolveCallUsage(callee.ref, { target, arguments: interopArguments })
+			: provider?.resolveCall(callee.ref, interopArguments);
 		if (resolution === undefined) {
 			this.diagnostics.error('L4204', `Cannot resolve JavaScript call for ${callee.display}; use a TypeScript interop adapter`, expression.span);
 			return this.arena.error;
 		}
-		const minimum = Math.max(0, resolution.parameterCount - resolution.optionalParameterCount);
+		const minimum = resolution.minimumArgumentCount ?? Math.max(0, resolution.parameterCount - resolution.optionalParameterCount);
 		if (expression.arguments.length < minimum || (!resolution.rest && expression.arguments.length > resolution.parameterCount)) this.diagnostics.error('L4205', `JavaScript call expects ${minimum}${resolution.rest ? '+' : `..${resolution.parameterCount}`} arguments, received ${expression.arguments.length}`, expression.span);
 		this.#interopUsages.push({ kind: 'call', nodeId: expression.id, span: expression.span, foreignType: resolution.result, receiverMode: resolution.receiverMode, mayReject: resolution.mayReject });
 		return this.arena.foreign(resolution.result);
 	}
 
-	private interopArgumentType(typeId: TypeId, span: SourceSpan): InteropArgumentType {
+	private interopArgumentType(typeId: TypeId, expression: A.Expression, span: SourceSpan): InteropArgumentType {
 		const type = this.arena.get(typeId);
 		if (type.kind === 'foreign') return { kind: 'foreign', type: type.ref };
 		if (type.kind === 'primitive') {
 			if (type.name === 'Unknown' || type.name === 'Never' || type.name === 'InvalidType') return { kind: 'unknown' };
-			return { kind: 'native-primitive', primitive: type.name };
+			const literal = this.interopLiteralValue(expression);
+			return literal === undefined ? { kind: 'native-primitive', primitive: type.name } : { kind: 'native-primitive', primitive: type.name, literal };
 		}
 		this.diagnostics.error('L4206', `Native value of type ${this.arena.display(typeId)} must be explicitly encoded before passing it to JavaScript`, span);
 		return { kind: 'unknown' };
+	}
+
+	private interopLiteralValue(expression: A.Expression): InteropLiteralValue | undefined {
+		let literal: A.LiteralExpression | undefined;
+		let negative = false;
+		if (expression.kind === 'LiteralExpression') literal = expression;
+		else if (expression.kind === 'UnaryExpression' && expression.operator === '-' && expression.operand.kind === 'LiteralExpression' && ['Int', 'Float', 'BigInt'].includes(expression.operand.literalKind)) {
+			literal = expression.operand;
+			negative = true;
+		}
+		if (literal === undefined) return undefined;
+		if (literal.literalKind === 'String' && typeof literal.value === 'string') return { kind: 'String', value: literal.value };
+		if (literal.literalKind === 'Bool' && typeof literal.value === 'boolean') return { kind: 'Bool', value: literal.value };
+		if ((literal.literalKind === 'Int' || literal.literalKind === 'Float') && typeof literal.value === 'number') {
+			const value = negative ? -literal.value : literal.value;
+			return Number.isFinite(value) ? { kind: literal.literalKind, value } : undefined;
+		}
+		if (literal.literalKind === 'BigInt' && typeof literal.value === 'bigint') {
+			const value = negative ? -literal.value : literal.value;
+			return { kind: 'BigInt', value: value.toString(10) };
+		}
+		return undefined;
 	}
 
 	private applyExpectedForeignBridge(expression: A.Expression, actual: TypeId, expected: TypeId | undefined): TypeId {
@@ -694,8 +726,8 @@ export class TypeChecker {
 				const element = substitutions.get('T') ?? (expression.callee.field === 'from' ? this.listElementOf(argumentTypes[0]) : expression.callee.field === 'empty' ? undefined : this.setElementOf(argumentTypes[0]) ?? argumentTypes[1]);
 				if (element !== undefined && (!this.supportsEq(element) || !this.supportsHash(element))) this.diagnostics.error('L2110', `Set element type ${this.arena.display(element)} must support structural Eq and Hash`, expression.span);
 			}
-			if (namespace === 'List' && expression.callee.field === 'unique') { const element = this.listElementOf(argumentTypes[0]); if (element !== undefined && (!this.supportsEq(element) || !this.supportsHash(element))) this.diagnostics.error('L2111', `List.unique element type ${this.arena.display(element)} must support structural Eq and Hash`, expression.span); }
-				if (namespace === 'List' && expression.callee.field === 'uniqueBy') { const key = substitutions.get('U'); if (key !== undefined && (!this.supportsEq(key) || !this.supportsHash(key))) this.diagnostics.error('L2111', `List.uniqueBy key type ${this.arena.display(key)} must support structural Eq and Hash`, expression.span); }
+			if (namespace === 'List' && expression.callee.field === 'unique') { const element = this.listElementOf(argumentTypes[0]); if (element !== undefined && (!this.supportsEq(element) || !this.supportsHash(element))) this.diagnostics.error('L2111', `List.unique element type ${this.arena.display(element)} does not support structural Eq and Hash`, expression.span); }
+			if (namespace === 'List' && expression.callee.field === 'uniqueBy') { const key = substitutions.get('U'); if (key !== undefined && (!this.supportsEq(key) || !this.supportsHash(key))) this.diagnostics.error('L2111', `List.uniqueBy key type ${this.arena.display(key)} does not support structural Eq and Hash`, expression.span); }
 		}
 		return calleeType.async ? this.arena.future(result) : result;
 	}
