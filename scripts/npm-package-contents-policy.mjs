@@ -80,8 +80,9 @@ function packedFile(value, path) {
 }
 
 function manifestFileRule(value, path) {
-	const rule = canonicalRelativePath(value, path);
-	assert(!/[?*[\]]/u.test(rule), path, 'globbed files entries are not supported by the current audit contract');
+	const text = nonEmptyString(value, path);
+	assert(!/[?*[\]]/u.test(text), path, 'globbed files entries are not supported by the current audit contract');
+	const rule = canonicalRelativePath(text, path);
 	return rule.replace(/\/$/u, '');
 }
 
@@ -106,12 +107,13 @@ function matchesRule(path, rule) {
 }
 
 function assertNoFileAncestorCollisions(paths, filesPath) {
-	const filePaths = new Set(paths);
+	const filePaths = new Map(paths.map(path => [portablePathKey(path), path]));
 	for (const path of paths) {
 		const segments = path.split('/');
 		for (let index = 1; index < segments.length; index += 1) {
 			const ancestor = segments.slice(0, index).join('/');
-			assert(!filePaths.has(ancestor), filesPath, `file path cannot also be an ancestor directory: ${ancestor} conflicts with ${path}`);
+			const conflictingFile = filePaths.get(portablePathKey(ancestor));
+			assert(conflictingFile === undefined, filesPath, `file path cannot also be an ancestor directory: ${conflictingFile ?? ancestor} conflicts with ${path}`);
 		}
 	}
 }
@@ -177,11 +179,14 @@ function assertUnique(values, path, name) {
 function assertPortableUnique(values, path, name) {
 	const seen = new Map();
 	for (const value of values) {
-		const key = value.normalize('NFC').toLowerCase();
+		const key = portablePathKey(value);
 		const previous = seen.get(key);
 		assert(previous === undefined, path, `portable ${name} collision ${previous} conflicts with ${value}`);
 		seen.set(key, value);
 	}
+}
+function portablePathKey(value) {
+	return value.normalize('NFC').toLowerCase();
 }
 function assert(condition, path, message) {
 	if (!condition) throw new Error(`${path}: ${message}`);
