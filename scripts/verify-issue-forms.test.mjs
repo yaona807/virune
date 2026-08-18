@@ -77,12 +77,21 @@ test('rejects Issue Template paths that are not regular files', async t => {
 	]);
 });
 
-test('validates additional yaml files instead of silently ignoring them', async t => {
+test('rejects unsupported .yaml Issue Form filenames', async t => {
 	const root = await createTemplateRoot(t, canonicalFiles({
-		'extra.yaml': `name: Extra\ndescription: Extra form\nbody:\n  - type: upload\n    id: evidence\n    attributes:\n      label: Evidence\n`,
+		'extra.yaml': `name: Extra\ndescription: Extra form\nbody:\n  - type: input\n    id: evidence\n    attributes:\n      label: Evidence\n`,
 	}));
 	assert.deepEqual(await verifyIssueForms(root), [
-		'extra.yaml: body[0].type must be one of markdown, input, textarea, dropdown, checkboxes',
+		'extra.yaml: GitHub Issue Forms require the .yml extension; .yaml is unsupported',
+	]);
+});
+
+test('validates case-insensitive .YML Issue Form filenames instead of ignoring them', async t => {
+	const root = await createTemplateRoot(t, canonicalFiles({
+		'extra.YML': `name: Extra\ndescription: Extra form\nbody:\n  - type: upload\n    id: evidence\n    attributes:\n      label: Evidence\n`,
+	}));
+	assert.deepEqual(await verifyIssueForms(root), [
+		'extra.YML: body[0].type must be one of markdown, input, textarea, dropdown, checkboxes',
 	]);
 });
 
