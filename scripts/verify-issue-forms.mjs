@@ -32,7 +32,7 @@ export async function verifyIssueForms(root = repositoryRoot) {
 	const dirents = await readdir(directory, { withFileTypes: true });
 	const errors = [];
 	for (const entry of [...dirents].sort((left, right) => compareCodePoint(left.name, right.name))) {
-		if (/\.(?:ya?ml|md)$/u.test(entry.name) && !entry.isFile()) {
+		if (/\.(?:ya?ml|md)$/iu.test(entry.name) && !entry.isFile()) {
 			errors.push(`${entry.name}: Issue Template entry must be a regular file`);
 		}
 	}
@@ -40,8 +40,11 @@ export async function verifyIssueForms(root = repositoryRoot) {
 		.filter(entry => entry.isFile())
 		.map(entry => entry.name)
 		.sort(compareCodePoint);
-	const entries = directoryEntries.filter(name => /\.ya?ml$/u.test(name));
-	for (const name of directoryEntries.filter(name => name.endsWith('.md'))) {
+	const entries = directoryEntries.filter(name => /\.yml$/iu.test(name));
+	for (const name of directoryEntries.filter(name => /\.yaml$/iu.test(name))) {
+		errors.push(`${name}: GitHub Issue Forms require the .yml extension; .yaml is unsupported`);
+	}
+	for (const name of directoryEntries.filter(name => /\.md$/iu.test(name))) {
 		errors.push(`${name}: Markdown Issue Templates are outside the supported repository subset; extend the validator before adding one`);
 	}
 	const present = new Set(entries);
