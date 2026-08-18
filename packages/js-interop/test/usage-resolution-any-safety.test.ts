@@ -62,3 +62,26 @@ test('nested TypeScript any cannot become proof of a specific foreign argument t
 	assert.equal(call(interopProvider, resolveNamed(provider, root, 'acceptStringArray'), looseArray), undefined);
 	assert.ok(call(interopProvider, resolveNamed(provider, root, 'acceptUnknown'), looseItem), 'nested-any evidence may only flow through an unknown boundary');
 });
+
+test('recursive concrete foreign evidence terminates without being erased to unknown', async () => {
+	const root = await fixtureRoot();
+	await writeFile(join(root, 'src/library.d.ts'), [
+		'export interface RecursiveBox<T> { value: T; next?: RecursiveBox<T> }',
+		'export declare const recursiveStringBox: RecursiveBox<string>;',
+		'export declare function acceptRecursiveStringBox(value: RecursiveBox<string>): void;',
+		'',
+	].join('\n'), 'utf8');
+	await writeFile(join(root, 'src/library.js'), [
+		'export const recursiveStringBox = { value: "value" };',
+		'export function acceptRecursiveStringBox() {}',
+		'',
+	].join('\n'), 'utf8');
+
+	const provider = new TypeScriptInteropProvider({ projectRoot: root });
+	const interopProvider: JsInteropProvider = provider;
+	assert.ok(call(
+		interopProvider,
+		resolveNamed(provider, root, 'acceptRecursiveStringBox'),
+		resolveNamed(provider, root, 'recursiveStringBox'),
+	), 'recursive concrete evidence must remain usable when the graph is finite by identity');
+});
