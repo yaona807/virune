@@ -95,6 +95,15 @@ test('validates case-insensitive .YML Issue Form filenames instead of ignoring t
 	]);
 });
 
+test('rejects case-insensitive Issue Template filename collisions', async t => {
+	const root = await createTemplateRoot(t, canonicalFiles({
+		'BUG_REPORT.YML': `name: Upper bug\ndescription: Extra form\nbody:\n  - type: input\n    id: evidence\n    attributes:\n      label: Evidence\n`,
+	}));
+	assert.deepEqual(await verifyIssueForms(root), [
+		'bug_report.yml: template filename collides case-insensitively with BUG_REPORT.YML',
+	]);
+});
+
 test('fails closed when a Markdown Issue Template is introduced outside the supported subset', async t => {
 	const root = await createTemplateRoot(t, canonicalFiles({
 		'legacy.md': '---\nname: Legacy template\n---\n',
