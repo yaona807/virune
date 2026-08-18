@@ -12,6 +12,6 @@ test('repository metadata audit runs only from read-only daily/manual workflow t
 	assert.match(source, /^permissions:\n  contents: read\n  issues: read\n  pull-requests: read$/mu);
 	assert.doesNotMatch(source, /^  [a-z][a-z0-9-]*: write$/mu);
 	assert.match(source, /^          node-version: 24$/mu);
-	assert.match(source, /^        run: node --test scripts\/audit-work-item-metadata\.test\.mjs scripts\/audit-work-item-metadata-workflow\.test\.mjs$/mu);
+	assert.match(source, /^        run: node --test scripts\/audit-work-item-metadata\.test\.mjs scripts\/audit-work-item-metadata-policy\.test\.mjs scripts\/audit-work-item-metadata-workflow\.test\.mjs$/mu);
 	assert.match(source, /^        run: node scripts\/audit-work-item-metadata\.mjs --repository=\$\{\{ github\.repository \}\}$/mu);
 });
