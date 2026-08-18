@@ -31,10 +31,14 @@ export async function verifyIssueForms(root = repositoryRoot) {
 	}
 	const dirents = await readdir(directory, { withFileTypes: true });
 	const errors = [];
+	const filenameIdentities = new Map();
 	for (const entry of [...dirents].sort((left, right) => compareCodePoint(left.name, right.name))) {
-		if (/\.(?:ya?ml|md)$/iu.test(entry.name) && !entry.isFile()) {
-			errors.push(`${entry.name}: Issue Template entry must be a regular file`);
-		}
+		if (!/\.(?:ya?ml|md)$/iu.test(entry.name)) continue;
+		const identity = entry.name.toLowerCase();
+		const previous = filenameIdentities.get(identity);
+		if (previous === undefined) filenameIdentities.set(identity, entry.name);
+		else errors.push(`${entry.name}: template filename collides case-insensitively with ${previous}`);
+		if (!entry.isFile()) errors.push(`${entry.name}: Issue Template entry must be a regular file`);
 	}
 	const directoryEntries = dirents
 		.filter(entry => entry.isFile())
