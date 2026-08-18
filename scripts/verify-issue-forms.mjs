@@ -3,6 +3,7 @@ import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const repositoryRoot = resolve(fileURLToPath(new URL('..', import.meta.url)));
+const githubDirectory = '.github';
 const issueTemplateDirectory = '.github/ISSUE_TEMPLATE';
 const requiredTemplateFiles = [
 	'bug_report.yml',
@@ -18,6 +19,18 @@ const githubBooleanTrue = new Set(['y', 'Y', 'yes', 'Yes', 'YES', 'true', 'True'
 const githubBooleanFalse = new Set(['n', 'N', 'no', 'No', 'NO', 'false', 'False', 'FALSE', 'off', 'Off', 'OFF']);
 
 export async function verifyIssueForms(root = repositoryRoot) {
+	const githubPath = resolve(root, githubDirectory);
+	let githubStat;
+	try {
+		githubStat = await lstat(githubPath);
+	} catch (error) {
+		if (error?.code === 'ENOENT') return [`${githubDirectory}: required repository metadata directory is missing`];
+		throw error;
+	}
+	if (!githubStat.isDirectory() || githubStat.isSymbolicLink()) {
+		return [`${githubDirectory}: repository metadata path must be a real directory`];
+	}
+
 	const directory = resolve(root, issueTemplateDirectory);
 	let directoryStat;
 	try {
