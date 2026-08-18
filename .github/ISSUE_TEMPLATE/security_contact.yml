@@ -1,17 +1,27 @@
 name: Security contact request
-description: Request a private contact channel when private vulnerability reporting is unavailable
+description: Request private security contact only when private vulnerability reporting is unavailable and your GitHub profile exposes a usable private-capable contact route
 title: "security: request private contact"
 body:
   - type: markdown
     attributes:
       value: |
-        Use this public form only when the private vulnerability reporting path in the [security policy](https://github.com/yaona807/virune/blob/main/SECURITY.md) is unavailable.
+        Use this public form only when the private vulnerability reporting path in the [security policy](https://github.com/yaona807/virune/blob/main/SECURITY.md) is unavailable, your GitHub profile already exposes a contact method that supports private communication, and you are willing for the Virune maintainer to use it.
 
-        Do not include vulnerability details, reproduction steps, exploit information, affected versions, secrets, or other sensitive information. Maintainers will arrange a private contact channel.
+        This request Issue, your GitHub identity, title, and body are public. GitHub lets you edit the pre-populated title and the Issue after submission. Do not use this form if the fact that you are requesting security contact must remain confidential.
+
+        Do not put vulnerability details or sensitive information in the Issue title or body. Do not include affected versions, reproduction or exploit steps, secrets, contact addresses, screenshots, private messages, or other sensitive information. The maintainer may use the private-capable contact route already published on your profile to continue privately.
+
+        If your profile has no usable private-capable contact route, Virune cannot currently promise a confidential project-level fallback intake path. Do not disclose vulnerability details publicly merely to obtain a response.
   - type: checkboxes
     id: confirmation
     attributes:
       label: Public-content confirmation
       options:
-        - label: I have not included vulnerability details in this public issue and only need a private contact channel.
+        - label: I understand that this request Issue, my GitHub identity, its title, and its body will be public and editable.
+          required: true
+        - label: I will not add vulnerability details, affected versions, reproduction or exploit steps, secrets, contact details, or other sensitive information to the Issue title or body.
+          required: true
+        - label: My GitHub profile already exposes a contact method that supports private communication and I am willing for the Virune maintainer to use it.
+          required: true
+        - label: GitHub private vulnerability reporting is currently unavailable to me for this report.
           required: true
