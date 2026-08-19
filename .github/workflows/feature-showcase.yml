@@ -2,18 +2,6 @@ name: Feature showcase
 
 on:
   pull_request:
-    paths:
-      - '.github/workflows/feature-showcase.yml'
-      - 'examples/feature-showcase/**'
-      - 'integration/browser.test.ts'
-      - 'scripts/verify-feature-showcase.mjs'
-      - 'packages/cli/**'
-      - 'packages/compiler/**'
-      - 'packages/js-interop/**'
-      - 'packages/runtime/**'
-      - 'packages/stdlib/**'
-      - 'package.json'
-      - 'package-lock.json'
   schedule:
     - cron: '13 19 * * *'
   workflow_dispatch:
