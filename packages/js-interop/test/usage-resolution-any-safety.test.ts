@@ -63,6 +63,49 @@ test('nested TypeScript any cannot become proof of a specific foreign argument t
 	assert.ok(call(interopProvider, resolveNamed(provider, root, 'acceptUnknown'), looseItem), 'nested-any evidence may only flow through an unknown boundary');
 });
 
+test('concrete external callables and methods remain usable while callable any stays fail closed', async () => {
+	const root = await fixtureRoot();
+	await writeFile(join(root, 'src/library.d.ts'), [
+		'export interface ConcreteApi { method(value: string): string }',
+		'export interface LooseApi { method(value: any): string }',
+		'export declare const concreteCallback: (value: string) => string;',
+		'export declare const looseCallback: (value: any) => string;',
+		'export declare const concreteApi: ConcreteApi;',
+		'export declare const looseApi: LooseApi;',
+		'export declare function acceptConcreteCallback(value: (value: string) => string): void;',
+		'export declare function acceptConcreteApi(value: ConcreteApi): void;',
+		'export declare function acceptStrictCallback(value: (value: string) => string): void;',
+		'export declare function acceptStrictApi(value: { method(value: string): string }): void;',
+		'export declare function acceptUnknown(value: unknown): void;',
+		'',
+	].join('\n'), 'utf8');
+	await writeFile(join(root, 'src/library.js'), [
+		'export const concreteCallback = value => value;',
+		'export const looseCallback = value => value;',
+		'export const concreteApi = { method(value) { return value; } };',
+		'export const looseApi = { method(value) { return value; } };',
+		'export function acceptConcreteCallback() {}',
+		'export function acceptConcreteApi() {}',
+		'export function acceptStrictCallback() {}',
+		'export function acceptStrictApi() {}',
+		'export function acceptUnknown() {}',
+		'',
+	].join('\n'), 'utf8');
+
+	const provider = new TypeScriptInteropProvider({ projectRoot: root });
+	const interopProvider: JsInteropProvider = provider;
+	const concreteCallback = resolveNamed(provider, root, 'concreteCallback');
+	const looseCallback = resolveNamed(provider, root, 'looseCallback');
+	const concreteApi = resolveNamed(provider, root, 'concreteApi');
+	const looseApi = resolveNamed(provider, root, 'looseApi');
+
+	assert.ok(call(interopProvider, resolveNamed(provider, root, 'acceptConcreteCallback'), concreteCallback), 'provider-owned concrete callable must remain External-to-External evidence');
+	assert.ok(call(interopProvider, resolveNamed(provider, root, 'acceptConcreteApi'), concreteApi), 'provider-owned object methods must not erase an otherwise concrete External value');
+	assert.equal(call(interopProvider, resolveNamed(provider, root, 'acceptStrictCallback'), looseCallback), undefined, 'any inside a callable parameter cannot prove a stricter callback type');
+	assert.equal(call(interopProvider, resolveNamed(provider, root, 'acceptStrictApi'), looseApi), undefined, 'any inside an object method cannot prove a stricter object type');
+	assert.ok(call(interopProvider, resolveNamed(provider, root, 'acceptUnknown'), looseCallback), 'callable any evidence may flow only through an unknown boundary');
+});
+
 test('recursive concrete foreign evidence terminates without being erased to unknown', async () => {
 	const root = await fixtureRoot();
 	await writeFile(join(root, 'src/library.d.ts'), [
