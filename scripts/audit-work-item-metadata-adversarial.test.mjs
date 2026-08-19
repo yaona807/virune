@@ -78,6 +78,15 @@ test('type-7 HTML blocks only start at block boundaries', () => {
 	assert.deepEqual(extractPlainIssueRefs('</widget>\nRefs #74\n\nRefs #75\n'), [75]);
 });
 
+test('short HTML comments close without hiding later metadata', () => {
+	assert.deepEqual(extractPlainIssueRefs('<!-->\nRefs #76\n'), [76]);
+	assert.deepEqual(extractPlainIssueRefs('<!--->\nRefs #77\n'), [77]);
+	assert.deepEqual(
+		parseWorkItemRole('<!-->\n## Work item role\nImplementation\n'),
+		{ status: 'valid', role: 'Implementation' },
+	);
+});
+
 test('fenced code takes precedence over raw HTML block markers', () => {
 	assert.deepEqual(extractPlainIssueRefs('```html\n<div>\n```\nRefs #64\n'), [64]);
 	assert.deepEqual(
