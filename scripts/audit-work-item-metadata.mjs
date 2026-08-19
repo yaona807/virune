@@ -17,8 +17,15 @@ const workflowLabels = new Set(['workflow:validation-only', 'workflow:superseded
 const roleHeading = 'Work item role';
 const roleHeadingIdentity = roleHeading.toLowerCase();
 const validRoles = new Set(['Implementation', 'Tracking']);
-const interruptingHtmlBlockNames = '(?:address|article|aside|base|basefont|blockquote|body|caption|center|col|colgroup|dd|details|dialog|dir|div|dl|dt|fieldset|figcaption|figure|footer|form|frame|frameset|h[1-6]|head|header|hr|html|iframe|legend|li|link|main|menu|menuitem|nav|noframes|ol|optgroup|option|p|param|search|section|source|summary|table|tbody|td|tfoot|th|thead|title|tr|track|ul)';
+const interruptingHtmlBlockNames = '(?:address|article|aside|base|basefont|blockquote|body|caption|center|col|colgroup|dd|details|dialog|dir|div|dl|dt|fieldset|figcaption|figure|footer|form|frame|frameset|h[1-6]|head|header|hr|html|iframe|legend|li|link|main|menu|menuitem|nav|noframes|ol|optgroup|option|p|param|search|section|summary|table|tbody|td|tfoot|th|thead|title|tr|track|ul)';
 const interruptingHtmlBlockTypeSix = new RegExp(`^</?${interruptingHtmlBlockNames}(?:[ \\t]|/?>|$)`, 'iu');
+const htmlTagNamePattern = '[A-Za-z][A-Za-z0-9-]*';
+const htmlAttributeNamePattern = '[A-Za-z_:][A-Za-z0-9_.:-]*';
+const htmlAttributeValuePattern = "(?:[^\\s\"'=<>`]+|'[^']*'|\"[^\"]*\")";
+const htmlAttributePattern = `[ \\t]+${htmlAttributeNamePattern}(?:[ \\t]*=[ \\t]*${htmlAttributeValuePattern})?`;
+const completeHtmlOpenTag = new RegExp(`^ {0,3}<(${htmlTagNamePattern})(?:${htmlAttributePattern})*[ \\t]*/?>[ \\t]*$`, 'u');
+const completeHtmlClosingTag = new RegExp(`^ {0,3}</${htmlTagNamePattern}[ \\t]*>[ \\t]*$`, 'u');
+const typeSevenOpenTagExclusions = new Set(['pre', 'script', 'style', 'textarea']);
 
 function requireRepository(value, path) {
 	if (typeof value !== 'string') throw new Error(`${path} must use owner/name form`);
@@ -200,6 +207,16 @@ function beginInterruptingRawHtmlBlock(line) {
 	return null;
 }
 
+function beginTypeSevenRawHtmlBlock(line, paragraphOpen) {
+	if (paragraphOpen) return null;
+	const open = completeHtmlOpenTag.exec(line);
+	if (open !== null && !typeSevenOpenTagExclusions.has(open[1].toLowerCase())) {
+		return { endExpression: null, endsOnBlank: true };
+	}
+	if (completeHtmlClosingTag.test(line)) return { endExpression: null, endsOnBlank: true };
+	return null;
+}
+
 function rawHtmlBlockEnds(block, line) {
 	if (block.endsOnBlank) return /^[ \t]*$/u.test(line);
 	return block.endExpression.test(line);
@@ -210,6 +227,28 @@ function startsInterruptingHtmlBlock(line) {
 	return /^<!--/u.test(source) || beginInterruptingRawHtmlBlock(line) !== null;
 }
 
+function isThematicBreak(line) {
+	return /^ {0,3}(?:(?:\*[ \t]*){3,}|(?:-[ \t]*){3,}|(?:_[ \t]*){3,})$/u.test(line);
+}
+
+function updateParagraphOpen(paragraphOpen, line) {
+	if (/^[ \t]*$/u.test(line)) return false;
+	if (isIndentedCodeLine(line)) return paragraphOpen;
+	if (/^ {0,3}#{1,6}(?:[ \t]+|$)/u.test(line)) return false;
+	if (/^ {0,3}>/u.test(line)) return false;
+	if (/^ {0,3}[-+*][ \t]+/u.test(line)) return false;
+	const ordered = line.match(/^ {0,3}([0-9]{1,9})[.)][ \t]+/u);
+	if (ordered !== null) {
+		if (!paragraphOpen || ordered[1] === '1') return false;
+		return true;
+	}
+	if (/^ {0,3}(?:`{3,}|~{3,})/u.test(line)) return false;
+	if (/^ {0,3}(?:=+|-+)[ \t]*$/u.test(line) && paragraphOpen) return false;
+	if (isThematicBreak(line)) return false;
+	if (startsInterruptingHtmlBlock(line)) return false;
+	return true;
+}
+
 function interruptsInlineCodeContinuation(line) {
 	if (/^[ \t]*$/u.test(line)) return true;
 	if (/^ {0,3}#{1,6}(?:[ \t]+|$)/u.test(line)) return true;
@@ -218,7 +257,7 @@ function interruptsInlineCodeContinuation(line) {
 	if (/^ {0,3}1[.)][ \t]+/u.test(line)) return true;
 	if (/^ {0,3}(?:`{3,}|~{3,})/u.test(line)) return true;
 	if (/^ {0,3}(?:=+|-+)[ \t]*$/u.test(line)) return true;
-	if (/^ {0,3}(?:(?:\*[ \t]*){3,}|(?:-[ \t]*){3,}|(?:_[ \t]*){3,})$/u.test(line)) return true;
+	if (isThematicBreak(line)) return true;
 	if (startsInterruptingHtmlBlock(line)) return true;
 	return false;
 }
@@ -242,27 +281,32 @@ function findFirstMultilineBacktickSpan(lines) {
 	let fence = null;
 	let commentOpen = false;
 	let rawHtmlBlock = null;
+	let paragraphOpen = false;
 	for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
 		const line = lines[lineIndex];
 		if (fence !== null) {
 			const closing = line.match(/^ {0,3}(`+|~+)[ \t]*$/u);
 			if (closing !== null && closing[1][0] === fence.character && closing[1].length >= fence.length) fence = null;
+			paragraphOpen = false;
 			continue;
 		}
 		if (rawHtmlBlock !== null) {
 			if (rawHtmlBlockEnds(rawHtmlBlock, line)) rawHtmlBlock = null;
+			paragraphOpen = false;
 			continue;
 		}
-		if (!commentOpen && isIndentedCodeLine(line)) continue;
+		if (!commentOpen && isIndentedCodeLine(line) && !paragraphOpen) continue;
 		if (!commentOpen) {
-			const rawHtmlStart = beginInterruptingRawHtmlBlock(line);
+			const rawHtmlStart = beginInterruptingRawHtmlBlock(line) ?? beginTypeSevenRawHtmlBlock(line, paragraphOpen);
 			if (rawHtmlStart !== null) {
 				if (!rawHtmlBlockEnds(rawHtmlStart, line)) rawHtmlBlock = rawHtmlStart;
+				paragraphOpen = false;
 				continue;
 			}
 			const opening = line.match(/^ {0,3}(`{3,}|~{3,})(.*)$/u);
 			if (opening !== null && !(opening[1][0] === '`' && opening[2].includes('`'))) {
 				fence = { character: opening[1][0], length: opening[1].length };
+				paragraphOpen = false;
 				continue;
 			}
 		}
@@ -305,6 +349,7 @@ function findFirstMultilineBacktickSpan(lines) {
 			}
 			cursor += 1;
 		}
+		paragraphOpen = updateParagraphOpen(paragraphOpen, line);
 	}
 	return null;
 }
@@ -353,23 +398,27 @@ function markdownLinesOutsideHiddenRegions(body) {
 	const output = [];
 	let fence = null;
 	let rawHtmlBlock = null;
+	let paragraphOpen = false;
 	const commentState = { open: false };
 	for (const rawLine of lines) {
 		if (fence !== null) {
 			const closing = rawLine.match(/^ {0,3}(`+|~+)[ \t]*$/u);
 			if (closing !== null && closing[1][0] === fence.character && closing[1].length >= fence.length) fence = null;
+			paragraphOpen = false;
 			output.push(null);
 			continue;
 		}
 		if (rawHtmlBlock !== null) {
 			if (rawHtmlBlockEnds(rawHtmlBlock, rawLine)) rawHtmlBlock = null;
+			paragraphOpen = false;
 			output.push(null);
 			continue;
 		}
 		if (!commentState.open) {
-			const rawHtmlStart = beginInterruptingRawHtmlBlock(rawLine);
+			const rawHtmlStart = beginInterruptingRawHtmlBlock(rawLine) ?? beginTypeSevenRawHtmlBlock(rawLine, paragraphOpen);
 			if (rawHtmlStart !== null) {
 				if (!rawHtmlBlockEnds(rawHtmlStart, rawLine)) rawHtmlBlock = rawHtmlStart;
+				paragraphOpen = false;
 				output.push(null);
 				continue;
 			}
@@ -378,10 +427,12 @@ function markdownLinesOutsideHiddenRegions(body) {
 		const opening = visibleLine.match(/^ {0,3}(`{3,}|~{3,})(.*)$/u);
 		if (opening !== null && !(opening[1][0] === '`' && opening[2].includes('`'))) {
 			fence = { character: opening[1][0], length: opening[1].length };
+			paragraphOpen = false;
 			output.push(null);
 			continue;
 		}
 		output.push(visibleLine);
+		paragraphOpen = updateParagraphOpen(paragraphOpen, visibleLine);
 	}
 	return output;
 }
