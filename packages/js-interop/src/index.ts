@@ -139,22 +139,27 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 		const node = probe.valueNode ?? probe.typeNode;
 		if (node === undefined) return { runtime, witness };
 		const type = probe.typeNode === undefined ? probe.checker.getTypeAtLocation(node) : probe.checker.getTypeFromTypeNode(probe.typeNode);
-		return {
-			type: this.store(
-				type,
-				probe.checker,
-				node,
-				{
-					moduleSpecifier: request.moduleSpecifier,
-					...(request.importedName === undefined ? {} : { exportName: request.importedName }),
-					...(witness.declarationEntry === undefined ? {} : { declarationPath: witness.declarationEntry }),
-				},
-				probe.workspace,
-				usageProjectionForImport(request),
-			),
-			runtime,
-			witness,
-		};
+		const snapshot = this.store(
+			type,
+			probe.checker,
+			node,
+			{
+				moduleSpecifier: request.moduleSpecifier,
+				...(request.importedName === undefined ? {} : { exportName: request.importedName }),
+				...(witness.declarationEntry === undefined ? {} : { declarationPath: witness.declarationEntry }),
+			},
+			probe.workspace,
+			usageProjectionForImport(request),
+		);
+		if (probe.resolvedModule?.resolvedFileName !== undefined) {
+			Object.defineProperty(snapshot, 'navigation', {
+				value: { declarationPath: probe.resolvedModule.resolvedFileName },
+				enumerable: false,
+				configurable: false,
+				writable: false,
+			});
+		}
+		return { type: snapshot, runtime, witness };
 	}
 
 	public getProperty(reference: ForeignTypeRef, name: string): ForeignTypeSnapshot | undefined {
