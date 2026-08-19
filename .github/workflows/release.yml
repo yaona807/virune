@@ -19,7 +19,11 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  feature-showcase:
+    uses: ./.github/workflows/feature-showcase.yml
+
   release:
+    needs: feature-showcase
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
