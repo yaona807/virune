@@ -239,28 +239,11 @@ function isThematicBreak(line) {
 	return /^ {0,3}(?:(?:\*[ \t]*){3,}|(?:-[ \t]*){3,}|(?:_[ \t]*){3,})$/u.test(line);
 }
 
-function leadingIndentColumns(line) {
-	let column = 0;
-	for (const character of line) {
-		if (character === ' ') {
-			column += 1;
-			continue;
-		}
-		if (character === '\t') {
-			column += 4 - (column % 4);
-			continue;
-		}
-		break;
-	}
-	return column;
-}
-
 function parseListMarker(line) {
 	if (isThematicBreak(line)) return null;
 	const match = line.match(/^ {0,3}([-+*]|([0-9]{1,9})[.)])(?:(?:[ \t]+)(.*))?$/u);
 	if (match === null) return null;
 	return {
-		indent: leadingIndentColumns(line),
 		ordered: match[2] !== undefined,
 		startNumber: match[2] === undefined ? null : Number(match[2]),
 		hasContent: (match[3] ?? '').trim() !== '',
@@ -271,55 +254,10 @@ function listMarkerInterruptsParagraph(marker) {
 	return marker !== null && marker.hasContent && (!marker.ordered || marker.startNumber === 1);
 }
 
-function startsBlockThatEndsList(line) {
-	if (/^ {0,3}#{1,6}(?:[ \t]+|$)/u.test(line)) return true;
-	if (/^ {0,3}>/u.test(line)) return true;
-	const fence = line.match(/^ {0,3}(`{3,}|~{3,})(.*)$/u);
-	if (fence !== null && !(fence[1][0] === '`' && fence[2].includes('`'))) return true;
-	if (isThematicBreak(line)) return true;
-	if (startsInterruptingHtmlBlock(line)) return true;
-	return false;
-}
-
-function maskTopLevelListContinuations(lines) {
-	const output = [];
-	let listIndent = null;
-	let afterBlank = false;
-	let paragraphOpen = false;
-	for (const line of lines) {
-		let marker = parseListMarker(line);
-		if (listIndent !== null) {
-			if (/^[ \t]*$/u.test(line)) {
-				output.push(line);
-				afterBlank = true;
-				continue;
-			}
-			if (marker !== null && marker.indent === listIndent) {
-				output.push(line);
-				afterBlank = false;
-				continue;
-			}
-			const indent = leadingIndentColumns(line);
-			if (indent > listIndent || (!afterBlank && !startsBlockThatEndsList(line))) {
-				output.push('[list-content]');
-				afterBlank = false;
-				continue;
-			}
-			listIndent = null;
-			afterBlank = false;
-			paragraphOpen = false;
-			marker = parseListMarker(line);
-		}
-		if (marker !== null && (!paragraphOpen || listMarkerInterruptsParagraph(marker))) {
-			listIndent = marker.indent;
-			output.push(line);
-			paragraphOpen = false;
-			continue;
-		}
-		output.push(line);
-		paragraphOpen = updateParagraphOpen(paragraphOpen, line);
-	}
-	return output;
+function listItemBlockContent(line) {
+	if (isThematicBreak(line)) return null;
+	const match = line.match(/^ {0,3}(?:[-+*]|[0-9]{1,9}[.)])[ \t]+(.*)$/u);
+	return match === null ? null : match[1];
 }
 
 function updateParagraphOpen(paragraphOpen, line) {
@@ -485,13 +423,42 @@ function stripHtmlComments(line, commentState, paragraphOpen) {
 
 function markdownLinesOutsideHiddenRegions(body) {
 	const sourceLines = body.replace(/\r\n?/gu, '\n').split('\n');
-	const lines = maskMultilineBacktickCodeSpans(maskTopLevelListContinuations(sourceLines));
+	const lines = maskMultilineBacktickCodeSpans(sourceLines);
 	const output = [];
 	let fence = null;
 	let rawHtmlBlock = null;
+	let listFence = null;
+	let listRawHtmlBlock = null;
 	let paragraphOpen = false;
 	const commentState = { open: false };
 	for (const rawLine of lines) {
+		if (listFence !== null) {
+			if (/^[ \t]*$/u.test(rawLine) || /^[ \t]/u.test(rawLine)) {
+				const closing = rawLine.trimStart().match(/^(`+|~+)[ \t]*$/u);
+				if (closing !== null && closing[1][0] === listFence.character && closing[1].length >= listFence.length) listFence = null;
+				paragraphOpen = false;
+				output.push(null);
+				continue;
+			}
+			listFence = null;
+			paragraphOpen = false;
+		}
+		if (listRawHtmlBlock !== null) {
+			if (/^[ \t]*$/u.test(rawLine)) {
+				if (rawHtmlBlockEnds(listRawHtmlBlock, rawLine)) listRawHtmlBlock = null;
+				paragraphOpen = false;
+				output.push(null);
+				continue;
+			}
+			if (/^[ \t]/u.test(rawLine)) {
+				if (rawHtmlBlockEnds(listRawHtmlBlock, rawLine.trimStart())) listRawHtmlBlock = null;
+				paragraphOpen = false;
+				output.push(null);
+				continue;
+			}
+			listRawHtmlBlock = null;
+			paragraphOpen = false;
+		}
 		if (fence !== null) {
 			const closing = rawLine.match(/^ {0,3}(`+|~+)[ \t]*$/u);
 			if (closing !== null && closing[1][0] === fence.character && closing[1].length >= fence.length) fence = null;
@@ -507,6 +474,23 @@ function markdownLinesOutsideHiddenRegions(body) {
 		}
 		if (commentState.open && interruptsInlineCodeContinuation(rawLine)) commentState.open = false;
 		if (!commentState.open) {
+			const listContent = listItemBlockContent(rawLine);
+			if (listContent !== null) {
+				const listRawStart = beginInterruptingRawHtmlBlock(listContent) ?? beginTypeSevenRawHtmlBlock(listContent, false);
+				if (listRawStart !== null) {
+					if (!rawHtmlBlockEnds(listRawStart, listContent)) listRawHtmlBlock = listRawStart;
+					paragraphOpen = false;
+					output.push(null);
+					continue;
+				}
+				const listOpening = listContent.match(/^ {0,3}(`{3,}|~{3,})(.*)$/u);
+				if (listOpening !== null && !(listOpening[1][0] === '`' && listOpening[2].includes('`'))) {
+					listFence = { character: listOpening[1][0], length: listOpening[1].length };
+					paragraphOpen = false;
+					output.push(null);
+					continue;
+				}
+			}
 			const rawHtmlStart = beginInterruptingRawHtmlBlock(rawLine) ?? beginTypeSevenRawHtmlBlock(rawLine, paragraphOpen);
 			if (rawHtmlStart !== null) {
 				if (!rawHtmlBlockEnds(rawHtmlStart, rawLine)) rawHtmlBlock = rawHtmlStart;
@@ -603,7 +587,7 @@ export function parseWorkItemRole(body) {
 export function extractPlainIssueRefs(body) {
 	if (typeof body !== 'string') throw new Error('body must be a string');
 	const numbers = new Set();
-	const expression = /^ {0,3}(?:(?:[-+*]|[0-9]{1,9}[.)])[ \t]+)?Refs[ \t]+#([1-9][0-9]*)[ \t]*$/u;
+	const expression = /^(?: {0,3}(?:[-+*]|[0-9]{1,9}[.)])[ \t]+)?Refs[ \t]+#([1-9][0-9]*)[ \t]*$/u;
 	for (const line of markdownLinesOutsideHiddenRegions(body)) {
 		if (line === null) continue;
 		const match = line.match(expression);
