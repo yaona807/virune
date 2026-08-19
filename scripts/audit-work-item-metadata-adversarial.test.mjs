@@ -69,6 +69,20 @@ test('list-contained code examples cannot supply role headings or linkage', () =
 	);
 });
 
+test('list-contained fences obey actual list interruption and relative closing indent', () => {
+	assert.deepEqual(extractPlainIssueRefs('paragraph\n2. ```md\nRefs #100\n'), [100]);
+	assert.deepEqual(extractPlainIssueRefs('- ```md\n      ```\n  - Refs #101\n'), []);
+	assert.deepEqual(
+		parseWorkItemRole('- ```md\n      ```\n  ## Work item role\n  Implementation\n'),
+		{ status: 'absent', role: null },
+	);
+	assert.deepEqual(extractPlainIssueRefs('- ```md\n     ```\nRefs #102\n'), [102]);
+});
+
+test('Setext completion reopens type-7 HTML block eligibility', () => {
+	assert.deepEqual(extractPlainIssueRefs('paragraph\n-\n<span>\nRefs #103\n\nRefs #104\n'), [104]);
+});
+
 test('plain linkage remains a source-line contract outside code', () => {
 	assert.deepEqual(extractPlainIssueRefs('- prose\nRefs #96\n\nRefs #97\n'), [96, 97]);
 	assert.deepEqual(extractPlainIssueRefs('  Refs #98\n'), []);
