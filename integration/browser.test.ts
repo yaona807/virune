@@ -117,7 +117,8 @@ test('feature showcase browser target executes the checked build in a real brows
 		try {
 			await page.goto(started.url, { waitUntil: 'load' });
 			const browserResult = await page.evaluate(async () => {
-				const module = await import('virune_app_main');
+				const applicationSpecifier = 'virune_app_main';
+				const module = await import(applicationSpecifier);
 				return module.verify();
 			});
 			assert.equal(browserResult, Buffer.from('Virune feature showcase').toString('hex'));
