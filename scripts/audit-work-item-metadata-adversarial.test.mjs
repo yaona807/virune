@@ -39,6 +39,14 @@ test('indented code cannot seed multiline inline-code or comment state', () => {
 	assert.deepEqual(extractPlainIssueRefs('    `literal\nRefs #67\n`\n'), [67]);
 });
 
+test('indented paragraph continuations preserve inline HTML comment state', () => {
+	assert.deepEqual(extractPlainIssueRefs('paragraph\n    <!--\nRefs #84\n-->\nRefs #85\n'), [85]);
+	assert.deepEqual(
+		parseWorkItemRole('paragraph\n    <!--\n## Work item role\nImplementation\n-->\n'),
+		{ status: 'absent', role: null },
+	);
+});
+
 test('multiline inline-code spans cannot activate or hide plain linkage', () => {
 	assert.deepEqual(extractPlainIssueRefs('`example\nRefs #42\n`\nRefs #43\n'), [43]);
 	assert.deepEqual(extractPlainIssueRefs('`example\nfoo <!--\n`\nRefs #44\n'), [44]);
