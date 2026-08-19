@@ -17,7 +17,7 @@ const workflowLabels = new Set(['workflow:validation-only', 'workflow:superseded
 const roleHeading = 'Work item role';
 const roleHeadingIdentity = roleHeading.toLowerCase();
 const validRoles = new Set(['Implementation', 'Tracking']);
-const interruptingHtmlBlockNames = '(?:address|article|aside|base|basefont|blockquote|body|caption|center|col|colgroup|dd|details|dialog|dir|div|dl|dt|fieldset|figcaption|figure|footer|form|frame|frameset|h[1-6]|head|header|hr|html|iframe|legend|li|link|main|menu|menuitem|nav|noframes|ol|optgroup|option|p|param|search|section|summary|table|tbody|td|tfoot|th|thead|title|tr|track|ul)';
+const interruptingHtmlBlockNames = '(?:address|article|aside|base|basefont|blockquote|body|caption|center|col|colgroup|dd|details|dialog|dir|div|dl|dt|fieldset|figcaption|figure|footer|form|frame|frameset|h[1-6]|head|header|hr|html|iframe|legend|li|link|main|menu|menuitem|nav|noframes|ol|optgroup|option|p|param|search|section|source|summary|table|tbody|td|tfoot|th|thead|title|tr|track|ul)';
 const interruptingHtmlBlockTypeSix = new RegExp(`^</?${interruptingHtmlBlockNames}(?:[ \\t]|/?>|$)`, 'iu');
 
 function requireRepository(value, path) {
@@ -201,6 +201,24 @@ function rawHtmlBlockEnds(block, line) {
 	return block.endExpression.test(line);
 }
 
+function maskInterruptingRawHtmlBlocks(lines) {
+	const masked = [...lines];
+	let block = null;
+	for (let index = 0; index < lines.length; index += 1) {
+		const line = lines[index];
+		if (block !== null) {
+			masked[index] = '[raw-html]';
+			if (rawHtmlBlockEnds(block, line)) block = null;
+			continue;
+		}
+		const opening = beginInterruptingRawHtmlBlock(line);
+		if (opening === null) continue;
+		masked[index] = '[raw-html]';
+		if (!rawHtmlBlockEnds(opening, line)) block = opening;
+	}
+	return masked;
+}
+
 function startsInterruptingHtmlBlock(line) {
 	const source = line.replace(/^ {0,3}/u, '');
 	return /^<!--/u.test(source) || beginInterruptingRawHtmlBlock(line) !== null;
@@ -344,7 +362,8 @@ function stripHtmlComments(line, commentState) {
 }
 
 function markdownLinesOutsideHiddenRegions(body) {
-	const lines = maskMultilineBacktickCodeSpans(body.replace(/\r\n?/gu, '\n').split('\n'));
+	const rawLines = body.replace(/\r\n?/gu, '\n').split('\n');
+	const lines = maskMultilineBacktickCodeSpans(maskInterruptingRawHtmlBlocks(rawLines));
 	const output = [];
 	let fence = null;
 	const commentState = { open: false };
