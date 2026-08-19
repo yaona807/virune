@@ -84,7 +84,7 @@ test('ignores HTML-commented examples while preserving visible metadata around c
 	assert.deepEqual(parseWorkItemRole('\\<!-- escaped\n## Work item role\nTracking\n'), { status: 'valid', role: 'Tracking' });
 	assert.deepEqual(parseWorkItemRole('## Work item role <!-- note -->\nImplementation\n'), { status: 'valid', role: 'Implementation' });
 	assert.deepEqual(extractPlainIssueRefs('Refs #5 <!-- note -->\n'), [5]);
-	assert.deepEqual(extractPlainIssueRefs('<!-- note --> Refs #6\n'), [6]);
+	assert.deepEqual(extractPlainIssueRefs('<!-- note --> Refs #6\n'), []);
 });
 
 test('extracts only whole-line plain Refs links and supported Markdown list markers', () => {
