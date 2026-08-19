@@ -184,11 +184,26 @@ function findHtmlCommentStart(line, start) {
 	return -1;
 }
 
+function beginInterruptingRawHtmlBlock(line) {
+	const source = line.replace(/^ {0,3}/u, '');
+	if (/^<(?:pre|script|style|textarea)(?:[ \t>]|$)/iu.test(source)) {
+		return { endExpression: /<\/(?:pre|script|style|textarea)>/iu, endsOnBlank: false };
+	}
+	if (/^<\?/u.test(source)) return { endExpression: /\?>/u, endsOnBlank: false };
+	if (/^<![A-Za-z]/u.test(source)) return { endExpression: />/u, endsOnBlank: false };
+	if (/^<!\[CDATA\[/u.test(source)) return { endExpression: /\]\]>/u, endsOnBlank: false };
+	if (interruptingHtmlBlockTypeSix.test(source)) return { endExpression: null, endsOnBlank: true };
+	return null;
+}
+
+function rawHtmlBlockEnds(block, line) {
+	if (block.endsOnBlank) return /^[ \t]*$/u.test(line);
+	return block.endExpression.test(line);
+}
+
 function startsInterruptingHtmlBlock(line) {
 	const source = line.replace(/^ {0,3}/u, '');
-	if (/^<(?:pre|script|style|textarea)(?:[ \t>]|$)/iu.test(source)) return true;
-	if (/^<!--/u.test(source) || /^<\?/u.test(source) || /^<![A-Za-z]/u.test(source) || /^<!\[CDATA\[/u.test(source)) return true;
-	return interruptingHtmlBlockTypeSix.test(source);
+	return /^<!--/u.test(source) || beginInterruptingRawHtmlBlock(line) !== null;
 }
 
 function interruptsInlineCodeContinuation(line) {
@@ -222,6 +237,7 @@ function findMultilineBacktickClose(lines, startLine, expectedLength) {
 function findFirstMultilineBacktickSpan(lines) {
 	let fence = null;
 	let commentOpen = false;
+	let rawHtmlBlock = null;
 	for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
 		const line = lines[lineIndex];
 		if (fence !== null) {
@@ -229,7 +245,16 @@ function findFirstMultilineBacktickSpan(lines) {
 			if (closing !== null && closing[1][0] === fence.character && closing[1].length >= fence.length) fence = null;
 			continue;
 		}
+		if (rawHtmlBlock !== null) {
+			if (rawHtmlBlockEnds(rawHtmlBlock, line)) rawHtmlBlock = null;
+			continue;
+		}
 		if (!commentOpen) {
+			const rawHtmlStart = beginInterruptingRawHtmlBlock(line);
+			if (rawHtmlStart !== null) {
+				if (!rawHtmlBlockEnds(rawHtmlStart, line)) rawHtmlBlock = rawHtmlStart;
+				continue;
+			}
 			const opening = line.match(/^ {0,3}(`{3,}|~{3,})(.*)$/u);
 			if (opening !== null && !(opening[1][0] === '`' && opening[2].includes('`'))) {
 				fence = { character: opening[1][0], length: opening[1].length };
