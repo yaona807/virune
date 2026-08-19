@@ -1,0 +1,92 @@
+name: Feature showcase
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/feature-showcase.yml'
+      - 'examples/feature-showcase/**'
+      - 'integration/browser.test.ts'
+      - 'scripts/verify-feature-showcase.mjs'
+      - 'packages/cli/**'
+      - 'packages/compiler/**'
+      - 'packages/js-interop/**'
+      - 'packages/runtime/**'
+      - 'packages/stdlib/**'
+      - 'package.json'
+      - 'package-lock.json'
+  schedule:
+    - cron: '13 19 * * *'
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: feature-showcase-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  core:
+    name: Node, API, bindings and browser build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Build repository toolchain
+        run: npm run check
+      - name: Verify feature showcase contracts
+        run: node scripts/verify-feature-showcase.mjs
+      - name: Package browser execution inputs
+        run: tar -czf .cache/feature-showcase-compiled.tgz packages/*/dist integration/dist examples/feature-showcase/browser/dist
+      - name: Upload browser execution inputs
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: feature-showcase-compiled-${{ github.sha }}
+          path: .cache/feature-showcase-compiled.tgz
+          if-no-files-found: error
+          retention-days: 2
+
+  browser:
+    name: Chromium execution
+    needs: core
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Download browser execution inputs
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: feature-showcase-compiled-${{ github.sha }}
+          path: .cache
+      - name: Restore browser execution inputs
+        run: tar -xzf .cache/feature-showcase-compiled.tgz -C .
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Execute feature showcase in Chromium
+        run: npm run test:browser-conformance:built
+        env:
+          VIRUNE_BROWSER_CASE: feature-showcase
+          VIRUNE_BROWSER_ENGINE: chromium
+          VIRUNE_PLAYWRIGHT_MANAGED: 'true'
+          VIRUNE_BROWSER_ARTIFACT_DIR: .cache/feature-showcase-browser
+      - name: Upload browser diagnostics
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: feature-showcase-browser-${{ github.sha }}
+          path: .cache/feature-showcase-browser
+          if-no-files-found: warn
+          retention-days: 30
