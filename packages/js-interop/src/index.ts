@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
-import { createRequire } from 'node:module';
+import { builtinModules, createRequire } from 'node:module';
 import { dirname, extname, join, relative, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import ts from 'typescript';
@@ -65,6 +65,15 @@ interface ProbeWorkspace {
 	readonly languageService: ts.LanguageService;
 	projectVersion: number;
 }
+
+interface RuntimePackageJson {
+	readonly name?: string;
+	readonly type?: string;
+	readonly main?: string;
+	readonly exports?: unknown;
+}
+
+type PackageTargetResolution = string | null | undefined;
 
 /**
  * Conservative provider. Whole call usages are resolved by TypeScript itself
@@ -774,25 +783,220 @@ function stableTypeDisplay(value: string, origin: ForeignTypeSnapshot['origin'],
 	return '<external>';
 }
 
+const nodeBuiltinNames = new Set(builtinModules.map(name => name.startsWith('node:') ? name.slice('node:'.length) : name));
+const nodeImportConditions = new Set(['node', 'import']);
+
 function resolveRuntimeModule(request: JsImportRequest): { readonly entry?: string; readonly path?: string; readonly format?: ModuleResolutionWitness['runtimeFormat'] } {
-	if (request.moduleSpecifier.startsWith('node:')) return { entry: request.moduleSpecifier, format: 'builtin' };
+	const specifier = request.moduleSpecifier;
+	const builtinName = specifier.startsWith('node:') ? specifier.slice('node:'.length) : specifier;
+	if (nodeBuiltinNames.has(builtinName)) return { entry: `node:${builtinName}`, format: 'builtin' };
 	if (request.platform === 'browser') return { format: 'bundler' };
 	if (request.platform !== 'node') return { format: 'unknown' };
-	let entry: string | undefined;
-	try {
-		const resolveImport = import.meta.resolve as (specifier: string, parent?: string) => string;
-		entry = resolveImport(request.moduleSpecifier, pathToFileURL(request.containingFile).href);
-	} catch {
-		try { entry = pathToFileURL(createRequire(request.containingFile).resolve(request.moduleSpecifier)).href; } catch { return { format: 'unknown' }; }
+
+	const runtimePath = resolveNodeRuntimePath(specifier, request.containingFile);
+	if (runtimePath === undefined) return { format: 'unknown' };
+	return runtimeModuleFromPath(runtimePath);
+}
+
+function resolveNodeRuntimePath(specifier: string, containingFile: string): string | undefined {
+	if (specifier.startsWith('./') || specifier.startsWith('../') || specifier.startsWith('/') || specifier.startsWith('file:')) {
+		try {
+			const url = specifier.startsWith('file:') ? new URL(specifier) : new URL(specifier, pathToFileURL(containingFile));
+			if (url.protocol !== 'file:' || url.search.length > 0 || url.hash.length > 0) return undefined;
+			const candidate = fileURLToPath(url);
+			return existsSync(candidate) ? candidate : undefined;
+		} catch {
+			return undefined;
+		}
 	}
-	if (entry.startsWith('node:')) return { entry, format: 'builtin' };
-	if (!entry.startsWith('file:')) return { entry, format: 'unknown' };
-	const path = fileURLToPath(entry);
+	if (specifier.startsWith('#')) return undefined;
+
+	const parsed = parsePackageSpecifier(specifier);
+	if (parsed === undefined) return undefined;
+	const packageRoot = findNodePackageRoot(parsed.packageName, containingFile);
+	if (packageRoot === undefined) return undefined;
+	const packageJson = readRuntimePackageJson(join(packageRoot, 'package.json'));
+	if (packageJson === undefined) return undefined;
+	if (packageJson.exports !== undefined) {
+		const target = resolvePackageExports(packageJson.exports, parsed.subpath, packageRoot);
+		return target === null || target === undefined || !existsSync(target) ? undefined : target;
+	}
+	try {
+		return createRequire(containingFile).resolve(specifier);
+	} catch {
+		return undefined;
+	}
+}
+
+function runtimeModuleFromPath(path: string): { readonly entry: string; readonly path: string; readonly format: ModuleResolutionWitness['runtimeFormat'] } {
 	const extension = extname(path);
 	if (extension === '.mjs' || extension === '.mts') return { entry: path, path, format: 'esm' };
 	if (extension === '.cjs' || extension === '.cts') return { entry: path, path, format: 'commonjs' };
+	if (extension === '.json' || extension === '.wasm') return { entry: path, path, format: 'unknown' };
 	const packageInfo = findPackageInfo(path);
 	return { entry: path, path, format: packageInfo.type === 'module' ? 'esm' : 'commonjs' };
+}
+
+function parsePackageSpecifier(specifier: string): { readonly packageName: string; readonly subpath: string } | undefined {
+	if (specifier.length === 0 || specifier.includes('\\') || specifier.includes('%')) return undefined;
+	const parts = specifier.split('/');
+	let packageName: string;
+	let rest: string[];
+	if (specifier.startsWith('@')) {
+		if (parts.length < 2 || parts[0]!.length <= 1 || parts[1]!.length === 0) return undefined;
+		packageName = `${parts[0]}/${parts[1]}`;
+		rest = parts.slice(2);
+	} else {
+		if (parts[0]!.length === 0 || parts[0]!.startsWith('.')) return undefined;
+		packageName = parts[0]!;
+		rest = parts.slice(1);
+	}
+	if (rest.some(part => part.length === 0 || part === '.' || part === '..')) return undefined;
+	return { packageName, subpath: rest.length === 0 ? '.' : `./${rest.join('/')}` };
+}
+
+function findNodePackageRoot(packageName: string, containingFile: string): string | undefined {
+	const selfPackageJson = findNearestPackageJson(containingFile);
+	if (selfPackageJson !== undefined) {
+		const selfPackage = readRuntimePackageJson(selfPackageJson);
+		if (selfPackage?.name === packageName && selfPackage.exports !== undefined) return dirname(selfPackageJson);
+	}
+
+	let current = dirname(resolve(containingFile));
+	const packageSegments = packageName.split('/');
+	while (true) {
+		const packageJsonPath = join(current, 'node_modules', ...packageSegments, 'package.json');
+		if (existsSync(packageJsonPath)) return dirname(packageJsonPath);
+		const parent = dirname(current);
+		if (parent === current) return undefined;
+		current = parent;
+	}
+}
+
+function findNearestPackageJson(filePath: string): string | undefined {
+	let current = dirname(resolve(filePath));
+	while (true) {
+		if (current.split(/[\\/]/u).includes('node_modules')) return undefined;
+		const packageJsonPath = join(current, 'package.json');
+		if (existsSync(packageJsonPath)) return packageJsonPath;
+		const parent = dirname(current);
+		if (parent === current) return undefined;
+		current = parent;
+	}
+}
+
+function readRuntimePackageJson(packageJsonPath: string): RuntimePackageJson | undefined {
+	try {
+		const value = JSON.parse(readFileSync(packageJsonPath, 'utf8')) as Record<string, unknown>;
+		return {
+			...(typeof value.name === 'string' ? { name: value.name } : {}),
+			...(typeof value.type === 'string' ? { type: value.type } : {}),
+			...(typeof value.main === 'string' ? { main: value.main } : {}),
+			...(Object.hasOwn(value, 'exports') ? { exports: value.exports } : {}),
+		};
+	} catch {
+		return undefined;
+	}
+}
+
+function resolvePackageExports(exportsValue: unknown, subpath: string, packageRoot: string): PackageTargetResolution {
+	if (subpath.endsWith('/')) return undefined;
+	if (isRecord(exportsValue)) {
+		const keys = Object.keys(exportsValue);
+		const dotKeys = keys.filter(key => key.startsWith('.'));
+		if (dotKeys.length > 0 && dotKeys.length !== keys.length) return undefined;
+		if (dotKeys.length === keys.length && keys.length > 0) {
+			if (Object.hasOwn(exportsValue, subpath) && !subpath.includes('*')) {
+				return resolvePackageTarget(exportsValue[subpath], packageRoot, undefined);
+			}
+			const patterns = keys.filter(key => key.includes('*') && key.split('*').length === 2).sort(comparePackagePatternKeys);
+			for (const pattern of patterns) {
+				const match = packagePatternMatch(pattern, subpath);
+				if (match === undefined) continue;
+				const resolved = resolvePackageTarget(exportsValue[pattern], packageRoot, match);
+				if (resolved !== undefined) return resolved;
+			}
+			return undefined;
+		}
+	}
+	if (subpath !== '.') return undefined;
+	return resolvePackageTarget(exportsValue, packageRoot, undefined);
+}
+
+function resolvePackageTarget(target: unknown, packageRoot: string, patternMatch: string | undefined): PackageTargetResolution {
+	if (target === null) return null;
+	if (typeof target === 'string') return resolvePackageTargetString(target, packageRoot, patternMatch);
+	if (Array.isArray(target)) {
+		for (const item of target) {
+			const resolved = resolvePackageTarget(item, packageRoot, patternMatch);
+			if (resolved !== undefined) return resolved;
+		}
+		return undefined;
+	}
+	if (!isRecord(target)) return undefined;
+	for (const key of Object.keys(target)) {
+		if (/^(0|[1-9]\d*)$/u.test(key)) return undefined;
+	}
+	for (const [condition, value] of Object.entries(target)) {
+		if (condition !== 'default' && !nodeImportConditions.has(condition)) continue;
+		const resolved = resolvePackageTarget(value, packageRoot, patternMatch);
+		if (resolved !== undefined) return resolved;
+	}
+	return undefined;
+}
+
+function resolvePackageTargetString(target: string, packageRoot: string, patternMatch: string | undefined): string | undefined {
+	if (!target.startsWith('./') || target.includes('?') || target.includes('#')) return undefined;
+	if (patternMatch === undefined && target.includes('*')) return undefined;
+	if (patternMatch !== undefined && !validPackagePathSegments(patternMatch, false)) return undefined;
+	const expanded = patternMatch === undefined ? target : target.replaceAll('*', patternMatch);
+	if (!validPackagePathSegments(expanded, true)) return undefined;
+	try {
+		const packageUrl = pathToFileURL(`${resolve(packageRoot)}/`);
+		const targetUrl = new URL(expanded, packageUrl);
+		if (targetUrl.protocol !== 'file:' || targetUrl.search.length > 0 || targetUrl.hash.length > 0) return undefined;
+		const candidate = fileURLToPath(targetUrl);
+		const locator = relative(resolve(packageRoot), candidate).replaceAll('\\', '/');
+		if (locator.length === 0 || locator === '..' || locator.startsWith('../') || locator.startsWith('/')) return undefined;
+		return candidate;
+	} catch {
+		return undefined;
+	}
+}
+
+function validPackagePathSegments(value: string, allowLeadingDot: boolean): boolean {
+	const segments = value.split(/[\\/]/u);
+	const start = allowLeadingDot && segments[0] === '.' ? 1 : 0;
+	if (allowLeadingDot && start === 0) return false;
+	for (const rawSegment of segments.slice(start)) {
+		if (rawSegment.length === 0) return false;
+		let decoded: string;
+		try { decoded = decodeURIComponent(rawSegment); } catch { return false; }
+		const lowered = decoded.toLowerCase();
+		if (decoded.includes('/') || decoded.includes('\\') || lowered === '.' || lowered === '..' || lowered === 'node_modules') return false;
+	}
+	return true;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function comparePackagePatternKeys(left: string, right: string): number {
+	const leftBase = left.indexOf('*');
+	const rightBase = right.indexOf('*');
+	if (leftBase !== rightBase) return rightBase - leftBase;
+	return right.length - left.length;
+}
+
+function packagePatternMatch(pattern: string, subpath: string): string | undefined {
+	const star = pattern.indexOf('*');
+	if (star < 0 || pattern.indexOf('*', star + 1) >= 0) return undefined;
+	const prefix = pattern.slice(0, star);
+	const suffix = pattern.slice(star + 1);
+	if (!subpath.startsWith(prefix) || !subpath.endsWith(suffix) || subpath.length < prefix.length + suffix.length) return undefined;
+	const match = subpath.slice(prefix.length, subpath.length - suffix.length);
+	return match.length === 0 ? undefined : match;
 }
 
 function typeContainsTypeParameter(type: ts.Type, target: ts.Type, seen: Set<ts.Type>): boolean {
