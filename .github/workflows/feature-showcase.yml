@@ -29,8 +29,20 @@ jobs:
         run: npm ci
       - name: Build repository toolchain
         run: npm run check
-      - name: Verify feature showcase contracts
-        run: node scripts/verify-feature-showcase.mjs
+      - name: Verify Node format and check
+        run: node scripts/verify-feature-showcase.mjs --phase=node-static
+      - name: Verify Node tests and API snapshot
+        run: node scripts/verify-feature-showcase.mjs --phase=node-test-api
+      - name: Verify Node build and run
+        run: node scripts/verify-feature-showcase.mjs --phase=node-execution
+      - name: Verify generated JavaScript binding
+        run: node scripts/verify-feature-showcase.mjs --phase=binding
+      - name: Verify TypeScript adapter
+        run: node scripts/verify-feature-showcase.mjs --phase=adapter
+      - name: Verify unsafe FFI project boundary
+        run: node scripts/verify-feature-showcase.mjs --phase=unsafe
+      - name: Verify browser format, check and build
+        run: node scripts/verify-feature-showcase.mjs --phase=browser-build
       - name: Package browser execution inputs
         run: tar -czf .cache/feature-showcase-compiled.tgz packages/*/dist integration/dist examples/feature-showcase/browser/dist
       - name: Upload browser execution inputs
