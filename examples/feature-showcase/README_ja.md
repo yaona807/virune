@@ -18,7 +18,7 @@ Node projectでは、小さなdirectory applicationを通して次を組み合�
 - checked-inされた決定的public API snapshot
 - generated safe binding、compiled TypeScript adapter、隔離されたaudited unsafe FFI source fixtureという3段階のJavaScript interop
 
-Browser projectでは公開browser targetを使用し、repository-wide source checkとの互換性を維持した`@jsExport` JavaScript境界を提供します。生成物をChromiumで継続実行する検証は、専用quality gateであるIssue #81の責務です。
+Browser projectでは公開browser targetを使用し、repository-wide source checkとの互換性を維持した`@jsExport` JavaScript境界を提供します。feature-showcase quality gateはこのprojectをbuildし、checked artifactをChromiumで実行します。同じgateを関連PR、Nightly schedule、再利用可能なstable-release preflightで使用します。
 
 ## 構成
 
@@ -63,6 +63,14 @@ npm run virune -- check examples/feature-showcase/browser
 npm run virune -- build examples/feature-showcase/browser
 ```
 
+repository toolchainをbuildした後は、repository-owned gate runnerでplatform-independentなshowcase検証一式を1 processから実行できます。
+
+```bash
+node scripts/verify-feature-showcase.mjs
+```
+
+このrunnerはNode/browserのformat/check/build、Node test/API/run、safe-binding drift、TypeScript adapter、project-scoped unsafe FFI fixtureを検証します。実Chromium実行はbrowser install/executionをplatform-independent処理と重複させないため、別workflow jobとして実行します。
+
 checked-in safe bindingはローカルのdeclaration fixtureから公開CLIで再生成できます。
 
 ```bash
@@ -84,7 +92,7 @@ npm run virune -- interop check examples/feature-showcase/node
 
 `src/interop/read-file.interop.ts`は**TypeScript adapter**の例です。Nodeのcallback形式`readFile`はTypeScript内部に閉じ、adapterがInterop ABIで検証可能なmonomorphicかつcallback-freeの`Promise<string>` surfaceだけを公開します。
 
-`src/ffi/unsafe-hostname.virune.example`は**unsafe FFI source fixture**です。Viruneのunsafe境界として正しい構文を保持し、rawな`unsafe extern`を`unsafe module`内に閉じ、呼び出し側には監査済みnative-shaped facadeだけを見せます。`.example` suffixは意図的です。repository-wide root checkは検出したすべての`.virune`をrepository source root基準で判定するため、nested projectの`src/ffi/`はroot-level unsafe path規則を同時には満たせません。このfixtureを非discoverableにすることで安全規則を緩和せず維持します。Issue #81では、このfixtureをshowcase project自身の`src/ffi/` contextへstageして検証する責務を持ちます。
+`src/ffi/unsafe-hostname.virune.example`は**unsafe FFI source fixture**です。Viruneのunsafe境界として正しい構文を保持し、rawな`unsafe extern`を`unsafe module`内に閉じ、呼び出し側には監査済みnative-shaped facadeだけを見せます。`.example` suffixは意図的です。repository-wide root checkは検出したすべての`.virune`をrepository source root基準で判定するため、nested projectの`src/ffi/`はroot-level unsafe path規則を同時には満たせません。このfixtureを非discoverableにすることで安全規則を緩和せず維持します。showcase gateはNode projectをtemporary project rootへcopyし、このfixtureを`src/ffi/unsafe-hostname.virune`としてstageして、通常の公開`virune check`経路で検証します。
 
 ## Public API snapshot
 
@@ -92,8 +100,8 @@ npm run virune -- interop check examples/feature-showcase/node
 
 ## Scope boundary
 
-Showcase全体は公開済みVirune 1.0 surfaceだけを使用します。Compiler/Runtime semantics、JavaScript Interop ABI、root package script、CI workflowは変更しません。
+Showcase全体は公開済みVirune 1.0 surfaceだけを使用します。quality gateはvalidation automationだけを追加し、Compiler/Runtime semantics、JavaScript Interop ABI、Language Specification、public stdlib behaviorは変更しません。
 
 Virune 1.0ではnominal constructionは宣言module内に閉じ、exported signatureからimport済みnominal typeを再公開しません。Showcase都合でこの境界を緩めず、公開契約として見える形を維持します。
 
-Node/browser/binding/API driftの継続的な強制と、unsafe FFI fixtureのproject-scoped実行はIssue #81で扱います。このdirectoryが、そのquality gateで実行するcanonical sourceです。
+`.github/workflows/feature-showcase.yml`をNode/browser/binding/API/unsafe-FFI driftのcanonical continuous gateとします。再利用可能な`workflow_call` entry pointもstable-release preflight境界として使い、release時にも別実装ではなく同じshowcase contractを検証します。
