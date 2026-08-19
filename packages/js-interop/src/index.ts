@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
 import { builtinModules, createRequire } from 'node:module';
 import { dirname, extname, join, relative, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -803,8 +803,7 @@ function resolveNodeRuntimePath(specifier: string, containingFile: string): stri
 		try {
 			const url = specifier.startsWith('file:') ? new URL(specifier) : new URL(specifier, pathToFileURL(containingFile));
 			if (url.protocol !== 'file:' || url.search.length > 0 || url.hash.length > 0) return undefined;
-			const candidate = fileURLToPath(url);
-			return existsSync(candidate) ? candidate : undefined;
+			return existingRuntimeFile(fileURLToPath(url));
 		} catch {
 			return undefined;
 		}
@@ -819,10 +818,27 @@ function resolveNodeRuntimePath(specifier: string, containingFile: string): stri
 	if (packageJson === undefined) return undefined;
 	if (packageJson.exports !== undefined) {
 		const target = resolvePackageExports(packageJson.exports, parsed.subpath, packageRoot);
-		return target === null || target === undefined || !existsSync(target) ? undefined : target;
+		return target === null || target === undefined ? undefined : existingRuntimeFile(target);
 	}
+	return resolveLegacyPackageRuntimePath(packageRoot, packageJson, parsed.subpath);
+}
+
+function resolveLegacyPackageRuntimePath(packageRoot: string, packageJson: RuntimePackageJson, subpath: string): string | undefined {
+	const target = subpath === '.' ? packageJson.main ?? '.' : subpath;
+	if (typeof target !== 'string' || target.length === 0) return undefined;
 	try {
-		return createRequire(containingFile).resolve(specifier);
+		const packageUrl = pathToFileURL(`${resolve(packageRoot)}/`);
+		const url = new URL(target, packageUrl);
+		if (url.protocol !== 'file:' || url.search.length > 0 || url.hash.length > 0) return undefined;
+		return existingRuntimeFile(fileURLToPath(url));
+	} catch {
+		return undefined;
+	}
+}
+
+function existingRuntimeFile(path: string): string | undefined {
+	try {
+		return existsSync(path) && statSync(path).isFile() ? path : undefined;
 	} catch {
 		return undefined;
 	}
@@ -834,7 +850,9 @@ function runtimeModuleFromPath(path: string): { readonly entry: string; readonly
 	if (extension === '.cjs' || extension === '.cts') return { entry: path, path, format: 'commonjs' };
 	if (extension === '.json' || extension === '.wasm') return { entry: path, path, format: 'unknown' };
 	const packageInfo = findPackageInfo(path);
-	return { entry: path, path, format: packageInfo.type === 'module' ? 'esm' : 'commonjs' };
+	if (packageInfo.type === 'module') return { entry: path, path, format: 'esm' };
+	if (packageInfo.type === 'commonjs') return { entry: path, path, format: 'commonjs' };
+	return { entry: path, path, format: extension === '.js' || extension.length === 0 ? 'commonjs' : 'unknown' };
 }
 
 function parsePackageSpecifier(specifier: string): { readonly packageName: string; readonly subpath: string } | undefined {
@@ -843,7 +861,7 @@ function parsePackageSpecifier(specifier: string): { readonly packageName: strin
 	let packageName: string;
 	let rest: string[];
 	if (specifier.startsWith('@')) {
-		if (parts.length < 2 || parts[0]!.length <= 1 || parts[1]!.length === 0) return undefined;
+		if (parts.length < 2 || parts[0]!.length <= 1 || parts[1]!.length === 0 || parts[1] === '.' || parts[1] === '..') return undefined;
 		packageName = `${parts[0]}/${parts[1]}`;
 		rest = parts.slice(2);
 	} else {
@@ -913,8 +931,7 @@ function resolvePackageExports(exportsValue: unknown, subpath: string, packageRo
 			for (const pattern of patterns) {
 				const match = packagePatternMatch(pattern, subpath);
 				if (match === undefined) continue;
-				const resolved = resolvePackageTarget(exportsValue[pattern], packageRoot, match);
-				if (resolved !== undefined) return resolved;
+				return resolvePackageTarget(exportsValue[pattern], packageRoot, match);
 			}
 			return undefined;
 		}
@@ -994,7 +1011,8 @@ function packagePatternMatch(pattern: string, subpath: string): string | undefin
 	if (star < 0 || pattern.indexOf('*', star + 1) >= 0) return undefined;
 	const prefix = pattern.slice(0, star);
 	const suffix = pattern.slice(star + 1);
-	if (!subpath.startsWith(prefix) || !subpath.endsWith(suffix) || subpath.length < prefix.length + suffix.length) return undefined;
+	if (!subpath.startsWith(prefix) || subpath === prefix) return undefined;
+	if (suffix.length > 0 && (!subpath.endsWith(suffix) || subpath.length < pattern.length)) return undefined;
 	const match = subpath.slice(prefix.length, subpath.length - suffix.length);
 	return match.length === 0 ? undefined : match;
 }
