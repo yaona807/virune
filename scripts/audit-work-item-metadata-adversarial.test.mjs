@@ -49,20 +49,30 @@ test('indented paragraph continuations preserve inline HTML comment state', () =
 	);
 });
 
-test('empty list markers do not interrupt paragraph inline state', () => {
-	assert.deepEqual(extractPlainIssueRefs('`example\n- \nRefs #88\n`\n'), []);
+test('empty list markers follow block interruption rules', () => {
+	assert.deepEqual(extractPlainIssueRefs('`example\n+ \nRefs #88\n`\n'), []);
 	assert.deepEqual(extractPlainIssueRefs('`example\n1. \nRefs #89\n`\n'), []);
-	assert.deepEqual(extractPlainIssueRefs('paragraph <!--\n- \nRefs #90\n-->\n'), []);
+	assert.deepEqual(extractPlainIssueRefs('paragraph <!--\n+ \nRefs #90\n-->\n'), []);
+	assert.deepEqual(extractPlainIssueRefs('`example\n- \nRefs #91\n`\n'), [91]);
 });
 
-test('list-contained examples cannot supply role headings or linkage', () => {
-	assert.deepEqual(extractPlainIssueRefs('- ```md\n  Refs #91\n  ```\nRefs #92\n'), [92]);
+test('list-contained code examples cannot supply role headings or linkage', () => {
+	assert.deepEqual(extractPlainIssueRefs('- ```md\n  Refs #92\n  ```\nRefs #93\n'), [93]);
 	assert.deepEqual(
 		parseWorkItemRole('- ```md\n  ## Work item role\n  Implementation\n  ```\n## Work item role\nImplementation\n'),
 		{ status: 'valid', role: 'Implementation' },
 	);
-	assert.deepEqual(extractPlainIssueRefs('- <div>\n  Refs #93\n  </div>\n\nRefs #94\n'), [94]);
-	assert.deepEqual(extractPlainIssueRefs('- prose\nRefs #95\n\nRefs #96\n'), [96]);
+	assert.deepEqual(extractPlainIssueRefs('- <div>\n  Refs #94\n  </div>\n\nRefs #95\n'), [95]);
+	assert.deepEqual(
+		parseWorkItemRole('- <div>\n  ## Work item role\n  Implementation\n  </div>\n\n## Work item role\nTracking\n'),
+		{ status: 'valid', role: 'Tracking' },
+	);
+});
+
+test('plain linkage remains a source-line contract outside code', () => {
+	assert.deepEqual(extractPlainIssueRefs('- prose\nRefs #96\n\nRefs #97\n'), [96, 97]);
+	assert.deepEqual(extractPlainIssueRefs('  Refs #98\n'), []);
+	assert.deepEqual(extractPlainIssueRefs('  - Refs #99\n'), [99]);
 });
 
 test('multiline inline-code spans cannot activate or hide plain linkage', () => {
@@ -156,6 +166,7 @@ test('invalid backtick-fence info does not hide real role metadata or linkage', 
 		{ status: 'valid', role: 'Implementation' },
 	);
 	assert.deepEqual(extractPlainIssueRefs('```bad`info\nRefs #42\n'), [42]);
+	assert.deepEqual(extractPlainIssueRefs('- ```bad`info\nRefs #43\n'), [43]);
 });
 
 test('provider collection rejects malformed Pulls API items explicitly', async () => {
