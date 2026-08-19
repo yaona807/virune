@@ -239,6 +239,27 @@ function isThematicBreak(line) {
 	return /^ {0,3}(?:(?:\*[ \t]*){3,}|(?:-[ \t]*){3,}|(?:_[ \t]*){3,})$/u.test(line);
 }
 
+function displayColumns(text) {
+	let column = 0;
+	for (const character of text) {
+		if (character === '\t') column += 4 - (column % 4);
+		else column += 1;
+	}
+	return column;
+}
+
+function stripIndentColumns(line, requiredColumns) {
+	let column = 0;
+	let index = 0;
+	while (index < line.length && column < requiredColumns) {
+		if (line[index] === ' ') column += 1;
+		else if (line[index] === '\t') column += 4 - (column % 4);
+		else return null;
+		index += 1;
+	}
+	return column >= requiredColumns ? line.slice(index) : null;
+}
+
 function parseListMarker(line) {
 	if (isThematicBreak(line)) return null;
 	const match = line.match(/^ {0,3}([-+*]|([0-9]{1,9})[.)])(?:(?:[ \t]+)(.*))?$/u);
@@ -256,8 +277,16 @@ function listMarkerInterruptsParagraph(marker) {
 
 function listItemBlockContent(line) {
 	if (isThematicBreak(line)) return null;
-	const match = line.match(/^ {0,3}(?:[-+*]|[0-9]{1,9}[.)])[ \t]+(.*)$/u);
-	return match === null ? null : match[1];
+	const match = line.match(/^( {0,3})([-+*]|[0-9]{1,9}[.)])([ \t]+)(.*)$/u);
+	if (match === null) return null;
+	const markerPrefix = `${match[1]}${match[2]}`;
+	const spacingColumns = displayColumns(`${markerPrefix}${match[3]}`) - displayColumns(markerPrefix);
+	const padding = spacingColumns <= 4 ? match[3] : match[3].slice(0, 1);
+	const content = spacingColumns <= 4 ? match[4] : `${match[3].slice(1)}${match[4]}`;
+	return {
+		content,
+		contentIndent: displayColumns(`${markerPrefix}${padding}`),
+	};
 }
 
 function updateParagraphOpen(paragraphOpen, line) {
@@ -265,13 +294,13 @@ function updateParagraphOpen(paragraphOpen, line) {
 	if (isIndentedCodeLine(line)) return paragraphOpen;
 	if (/^ {0,3}#{1,6}(?:[ \t]+|$)/u.test(line)) return false;
 	if (/^ {0,3}>/u.test(line)) return false;
+	if (/^ {0,3}(?:=+|-+)[ \t]*$/u.test(line) && paragraphOpen) return false;
 	const listMarker = parseListMarker(line);
 	if (listMarker !== null) {
 		if (!paragraphOpen || listMarkerInterruptsParagraph(listMarker)) return false;
 		return true;
 	}
 	if (/^ {0,3}(?:`{3,}|~{3,})/u.test(line)) return false;
-	if (/^ {0,3}(?:=+|-+)[ \t]*$/u.test(line) && paragraphOpen) return false;
 	if (isThematicBreak(line)) return false;
 	if (startsInterruptingHtmlBlock(line)) return false;
 	return true;
@@ -433,8 +462,14 @@ function markdownLinesOutsideHiddenRegions(body) {
 	const commentState = { open: false };
 	for (const rawLine of lines) {
 		if (listFence !== null) {
-			if (/^[ \t]*$/u.test(rawLine) || /^[ \t]/u.test(rawLine)) {
-				const closing = rawLine.trimStart().match(/^(`+|~+)[ \t]*$/u);
+			if (/^[ \t]*$/u.test(rawLine)) {
+				paragraphOpen = false;
+				output.push(null);
+				continue;
+			}
+			const listLine = stripIndentColumns(rawLine, listFence.contentIndent);
+			if (listLine !== null) {
+				const closing = listLine.match(/^ {0,3}(`+|~+)[ \t]*$/u);
 				if (closing !== null && closing[1][0] === listFence.character && closing[1].length >= listFence.length) listFence = null;
 				paragraphOpen = false;
 				output.push(null);
@@ -445,13 +480,14 @@ function markdownLinesOutsideHiddenRegions(body) {
 		}
 		if (listRawHtmlBlock !== null) {
 			if (/^[ \t]*$/u.test(rawLine)) {
-				if (rawHtmlBlockEnds(listRawHtmlBlock, rawLine)) listRawHtmlBlock = null;
+				if (rawHtmlBlockEnds(listRawHtmlBlock.block, rawLine)) listRawHtmlBlock = null;
 				paragraphOpen = false;
 				output.push(null);
 				continue;
 			}
-			if (/^[ \t]/u.test(rawLine)) {
-				if (rawHtmlBlockEnds(listRawHtmlBlock, rawLine.trimStart())) listRawHtmlBlock = null;
+			const listLine = stripIndentColumns(rawLine, listRawHtmlBlock.contentIndent);
+			if (listLine !== null) {
+				if (rawHtmlBlockEnds(listRawHtmlBlock.block, listLine)) listRawHtmlBlock = null;
 				paragraphOpen = false;
 				output.push(null);
 				continue;
@@ -474,18 +510,25 @@ function markdownLinesOutsideHiddenRegions(body) {
 		}
 		if (commentState.open && interruptsInlineCodeContinuation(rawLine)) commentState.open = false;
 		if (!commentState.open) {
-			const listContent = listItemBlockContent(rawLine);
-			if (listContent !== null) {
-				const listRawStart = beginInterruptingRawHtmlBlock(listContent) ?? beginTypeSevenRawHtmlBlock(listContent, false);
+			const listMarker = parseListMarker(rawLine);
+			const listItem = listItemBlockContent(rawLine);
+			if (listItem !== null && (!paragraphOpen || listMarkerInterruptsParagraph(listMarker))) {
+				const listRawStart = beginInterruptingRawHtmlBlock(listItem.content) ?? beginTypeSevenRawHtmlBlock(listItem.content, false);
 				if (listRawStart !== null) {
-					if (!rawHtmlBlockEnds(listRawStart, listContent)) listRawHtmlBlock = listRawStart;
+					if (!rawHtmlBlockEnds(listRawStart, listItem.content)) {
+						listRawHtmlBlock = { block: listRawStart, contentIndent: listItem.contentIndent };
+					}
 					paragraphOpen = false;
 					output.push(null);
 					continue;
 				}
-				const listOpening = listContent.match(/^ {0,3}(`{3,}|~{3,})(.*)$/u);
+				const listOpening = listItem.content.match(/^ {0,3}(`{3,}|~{3,})(.*)$/u);
 				if (listOpening !== null && !(listOpening[1][0] === '`' && listOpening[2].includes('`'))) {
-					listFence = { character: listOpening[1][0], length: listOpening[1].length };
+					listFence = {
+						character: listOpening[1][0],
+						length: listOpening[1].length,
+						contentIndent: listItem.contentIndent,
+					};
 					paragraphOpen = false;
 					output.push(null);
 					continue;
