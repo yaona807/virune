@@ -542,7 +542,7 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 			...(declarationEntry === undefined ? {} : { declarationEntry }),
 			...(runtimeEntry === undefined ? {} : { runtimeEntry }),
 			...(runtime.format === undefined ? {} : { runtimeFormat: runtime.format }),
-			conditions: request.platform === 'browser' ? ['types', 'import', 'browser'] : ['types', 'import', 'node'],
+			conditions: request.platform === 'browser' ? ['types', 'import', 'browser'] : ['types', 'node-addons', 'node', 'import', 'module-sync'],
 			platform: request.platform,
 			providerVersion: this.version,
 			...(resolved?.resolvedFileName === undefined || !existsSync(resolved.resolvedFileName) ? {} : { declarationGraphHash: hash(readFileSync(resolved.resolvedFileName)) }),
@@ -808,7 +808,7 @@ function stableTypeDisplay(value: string, origin: ForeignTypeSnapshot['origin'],
 }
 
 const nodeBuiltinNames = new Set(builtinModules.map(name => name.startsWith('node:') ? name.slice('node:'.length) : name));
-const nodeImportConditions = new Set(['node', 'import']);
+const nodeImportConditions = new Set(['node-addons', 'node', 'import', 'module-sync']);
 
 function resolveRuntimeModule(request: JsImportRequest): { readonly entry?: string; readonly path?: string; readonly format?: ModuleResolutionWitness['runtimeFormat'] } {
 	const specifier = request.moduleSpecifier;
