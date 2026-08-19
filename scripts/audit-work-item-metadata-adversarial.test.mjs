@@ -93,6 +93,14 @@ test('list-marker linkage rejects indented-code content while preserving ordinar
 	assert.deepEqual(extractPlainIssueRefs('-\t\tRefs #113\n'), []);
 });
 
+test('list-marker linkage obeys paragraph interruption and source-line position', () => {
+	assert.deepEqual(extractPlainIssueRefs('paragraph\n2. Refs #114\n'), []);
+	assert.deepEqual(extractPlainIssueRefs('paragraph\n1. Refs #115\n'), [115]);
+	assert.deepEqual(extractPlainIssueRefs('paragraph\n- Refs #116\n'), [116]);
+	assert.deepEqual(extractPlainIssueRefs('paragraph\n\n2. Refs #117\n'), [117]);
+	assert.deepEqual(extractPlainIssueRefs('<!-- note --> - Refs #118\n'), []);
+});
+
 test('multiline inline-code spans cannot activate or hide plain linkage', () => {
 	assert.deepEqual(extractPlainIssueRefs('`example\nRefs #42\n`\nRefs #43\n'), [43]);
 	assert.deepEqual(extractPlainIssueRefs('`example\nfoo <!--\n`\nRefs #44\n'), [44]);

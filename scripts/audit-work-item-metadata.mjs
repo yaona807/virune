@@ -504,7 +504,7 @@ function stripHtmlComments(line, commentState, paragraphOpen) {
 	return { line: visible, multiline: false };
 }
 
-function markdownLinesOutsideHiddenRegions(body) {
+function markdownLinesOutsideHiddenRegions(body, { normalizeActiveListItems = false } = {}) {
 	const sourceLines = body.replace(/\r\n?/gu, '\n').split('\n');
 	const lines = maskMultilineBacktickCodeSpans(sourceLines);
 	const output = [];
@@ -563,10 +563,12 @@ function markdownLinesOutsideHiddenRegions(body) {
 			continue;
 		}
 		if (commentState.open && interruptsInlineCodeContinuation(rawLine)) commentState.open = false;
+		let activeListItem = null;
 		if (!commentState.open) {
 			const listMarker = parseListMarker(rawLine);
 			const listItem = listItemBlockContent(rawLine);
 			if (listItem !== null && (!paragraphOpen || listMarkerInterruptsParagraph(listMarker))) {
+				activeListItem = listItem;
 				const listRawStart = beginInterruptingRawHtmlBlock(listItem.content) ?? beginTypeSevenRawHtmlBlock(listItem.content, false);
 				if (listRawStart !== null) {
 					if (!rawHtmlBlockEnds(listRawStart, listItem.content)) {
@@ -611,7 +613,10 @@ function markdownLinesOutsideHiddenRegions(body) {
 			output.push(null);
 			continue;
 		}
-		output.push(visibleLine);
+		const normalizedListItem = normalizeActiveListItems && activeListItem !== null
+			? listItemBlockContent(visibleLine)
+			: null;
+		output.push(normalizedListItem?.content ?? visibleLine);
 		paragraphOpen = updateParagraphOpen(paragraphOpen, visibleLine);
 	}
 	return output;
@@ -685,7 +690,7 @@ export function extractPlainIssueRefs(body) {
 	if (typeof body !== 'string') throw new Error('body must be a string');
 	const numbers = new Set();
 	const expression = /^Refs[ \t]+#([1-9][0-9]*)[ \t]*$/u;
-	const lines = markdownLinesOutsideHiddenRegions(body);
+	const lines = markdownLinesOutsideHiddenRegions(body, { normalizeActiveListItems: true });
 	for (let index = 0; index < lines.length; index += 1) {
 		const heading = parseMarkdownHeading(lines, index);
 		if (heading !== null) {
@@ -694,11 +699,7 @@ export function extractPlainIssueRefs(body) {
 		}
 		const line = lines[index];
 		if (line === null) continue;
-		let match = line.match(expression);
-		if (match === null) {
-			const listItem = listItemBlockContent(line);
-			match = listItem === null ? null : listItem.content.match(expression);
-		}
+		const match = line.match(expression);
 		if (match === null) continue;
 		const number = Number(match[1]);
 		if (Number.isSafeInteger(number)) numbers.add(number);
