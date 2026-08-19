@@ -50,7 +50,7 @@ test('multiline inline-code spans cannot activate or hide plain linkage', () => 
 	assert.deepEqual(extractPlainIssueRefs('`unclosed\n1. list\nRefs #50\n`\n'), [50]);
 	assert.deepEqual(extractPlainIssueRefs('`unclosed\n===\nRefs #51\n`\n'), [51]);
 	assert.deepEqual(extractPlainIssueRefs('`unclosed\n<div>\nRefs #52\n`\n'), []);
-	assert.deepEqual(extractPlainIssueRefs('`unclosed\n<?processing\nRefs #53\n`\n'), [53]);
+	assert.deepEqual(extractPlainIssueRefs('`unclosed\n<?processing\nRefs #53\n`\n'), []);
 	assert.deepEqual(extractPlainIssueRefs('`example\n<span>\nRefs #54\n`\nRefs #55\n'), [55]);
 	assert.deepEqual(extractPlainIssueRefs('<script>\nconst template = `\n</script>\nRefs #56\n`\n'), [56]);
 	assert.deepEqual(extractPlainIssueRefs('<div>\n`raw html\n</div>\n\nRefs #57\n`\n'), [57]);
@@ -64,7 +64,7 @@ test('raw HTML blocks do not supply role headings or plain linkage', () => {
 	assert.deepEqual(extractPlainIssueRefs('<div>\nRefs #58\n</div>\n\nRefs #59\n'), [59]);
 	assert.deepEqual(extractPlainIssueRefs('<source>\nRefs #60\n\nRefs #61\n'), [61]);
 	assert.deepEqual(extractPlainIssueRefs('<?processing\nRefs #62\n?>\nRefs #63\n'), [63]);
-	assert.deepEqual(extractPlainIssueRefs('<script>\n</style>\nRefs #78\n</script>\nRefs #79\n'), [79]);
+	assert.deepEqual(extractPlainIssueRefs('<script>\n</style>\nRefs #78\n</script>\nRefs #79\n'), [78, 79]);
 });
 
 test('type-7 HTML blocks only start at block boundaries', () => {
@@ -84,6 +84,26 @@ test('short HTML comments close without hiding later metadata', () => {
 	assert.deepEqual(extractPlainIssueRefs('<!--->\nRefs #77\n'), [77]);
 	assert.deepEqual(
 		parseWorkItemRole('<!-->\n## Work item role\nImplementation\n'),
+		{ status: 'valid', role: 'Implementation' },
+	);
+});
+
+test('line-start HTML comment blocks hide their entire closing line', () => {
+	assert.deepEqual(extractPlainIssueRefs('<!-- hidden --> Refs #80\nRefs #81\n'), [81]);
+	assert.deepEqual(extractPlainIssueRefs('<!--\nhidden\n--> Refs #82\nRefs #83\n'), [83]);
+	assert.deepEqual(
+		parseWorkItemRole('<!-- hidden --> ## Work item role\nImplementation\n'),
+		{ status: 'absent', role: null },
+	);
+});
+
+test('multiline Setext headings cannot masquerade as exact role headings', () => {
+	assert.deepEqual(
+		parseWorkItemRole('intro\nWork item role\n---\nImplementation\n'),
+		{ status: 'absent', role: null },
+	);
+	assert.deepEqual(
+		parseWorkItemRole('## Work item role\nImplementation\nOther\ncontext\n---\nbody\n'),
 		{ status: 'valid', role: 'Implementation' },
 	);
 });
