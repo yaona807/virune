@@ -12,8 +12,9 @@ const engine = browserEngine(process.env.VIRUNE_BROWSER_ENGINE ?? 'chromium');
 const artifactDirectory = process.env.VIRUNE_BROWSER_ARTIFACT_DIR === undefined
 	? undefined
 	: resolve(process.env.VIRUNE_BROWSER_ARTIFACT_DIR);
+const featureShowcaseOnly = process.env.VIRUNE_BROWSER_CASE === 'feature-showcase';
 
-test('browser target executes emitted ESM in Chromium', { timeout: 120_000 }, async () => {
+test('browser target executes emitted ESM in Chromium', { timeout: 120_000, skip: featureShowcaseOnly }, async () => {
 	const root = await mkdtemp(join(tmpdir(), `virune-${engine.name()}-`));
 	const browserLogs: string[] = [];
 	let server: Server | undefined;
@@ -90,6 +91,47 @@ pub fn verify() -> Result<String, JsError> uses Dom {
 	} finally {
 		await new Promise<void>(resolveClose => server?.close(() => resolveClose()) ?? resolveClose());
 		await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 250 });
+	}
+});
+
+test('feature showcase browser target executes the checked build in a real browser', { timeout: 120_000, skip: !featureShowcaseOnly }, async () => {
+	const root = join(repositoryRoot, 'examples/feature-showcase/browser');
+	const browserLogs: string[] = [];
+	let server: Server | undefined;
+	try {
+		await access(join(root, 'dist/main.js'));
+		const imports = await browserImportMap(root);
+		const html = `<!doctype html><html><head><meta charset="utf-8"><script type="importmap">${JSON.stringify({ imports })}</script></head><body></body></html>`;
+		const started = await serveHtml(html);
+		server = started.server;
+		const launchOptions = await browserLaunchOptions(engine.name());
+		const browser = await engine.launch(launchOptions);
+		const context = await browser.newContext();
+		if (artifactDirectory !== undefined) {
+			await mkdir(artifactDirectory, { recursive: true });
+			await context.tracing.start({ screenshots: true, snapshots: true, sources: true });
+		}
+		const page = await context.newPage();
+		page.on('console', message => browserLogs.push(`[console:${message.type()}] ${message.text()}`));
+		page.on('pageerror', error => browserLogs.push(`[pageerror] ${error.stack ?? error.message}`));
+		try {
+			await page.goto(started.url, { waitUntil: 'load' });
+			const browserResult = await page.evaluate(async () => {
+				const module = await import('virune_app_main');
+				return module.verify();
+			});
+			assert.equal(browserResult, Buffer.from('Virune feature showcase').toString('hex'));
+			await persistBrowserReport(engine.name(), { browserResult, logs: browserLogs, version: browser.version(), case: 'feature-showcase' });
+		} finally {
+			if (artifactDirectory !== undefined) await context.tracing.stop({ path: join(artifactDirectory, `${engine.name()}-trace.zip`) });
+			await context.close();
+			await browser.close();
+		}
+	} catch (error) {
+		await persistBrowserReport(engine.name(), { case: 'feature-showcase', error: error instanceof Error ? { name: error.name, message: error.message, stack: error.stack } : String(error), logs: browserLogs });
+		throw error;
+	} finally {
+		await new Promise<void>(resolveClose => server?.close(() => resolveClose()) ?? resolveClose());
 	}
 });
 
