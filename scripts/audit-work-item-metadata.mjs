@@ -201,24 +201,6 @@ function rawHtmlBlockEnds(block, line) {
 	return block.endExpression.test(line);
 }
 
-function maskInterruptingRawHtmlBlocks(lines) {
-	const masked = [...lines];
-	let block = null;
-	for (let index = 0; index < lines.length; index += 1) {
-		const line = lines[index];
-		if (block !== null) {
-			masked[index] = '[raw-html]';
-			if (rawHtmlBlockEnds(block, line)) block = null;
-			continue;
-		}
-		const opening = beginInterruptingRawHtmlBlock(line);
-		if (opening === null) continue;
-		masked[index] = '[raw-html]';
-		if (!rawHtmlBlockEnds(opening, line)) block = opening;
-	}
-	return masked;
-}
-
 function startsInterruptingHtmlBlock(line) {
 	const source = line.replace(/^ {0,3}/u, '');
 	return /^<!--/u.test(source) || beginInterruptingRawHtmlBlock(line) !== null;
@@ -362,15 +344,26 @@ function stripHtmlComments(line, commentState) {
 }
 
 function markdownLinesOutsideHiddenRegions(body) {
-	const rawLines = body.replace(/\r\n?/gu, '\n').split('\n');
-	const lines = maskMultilineBacktickCodeSpans(maskInterruptingRawHtmlBlocks(rawLines));
+	const lines = maskMultilineBacktickCodeSpans(body.replace(/\r\n?/gu, '\n').split('\n'));
 	const output = [];
 	let fence = null;
+	let rawHtmlBlock = null;
 	const commentState = { open: false };
 	for (const rawLine of lines) {
 		if (fence !== null) {
 			const closing = rawLine.match(/^ {0,3}(`+|~+)[ \t]*$/u);
 			if (closing !== null && closing[1][0] === fence.character && closing[1].length >= fence.length) fence = null;
+			output.push(null);
+			continue;
+		}
+		if (rawHtmlBlock !== null) {
+			if (rawHtmlBlockEnds(rawHtmlBlock, rawLine)) rawHtmlBlock = null;
+			output.push(null);
+			continue;
+		}
+		const rawHtmlStart = beginInterruptingRawHtmlBlock(rawLine);
+		if (rawHtmlStart !== null) {
+			if (!rawHtmlBlockEnds(rawHtmlStart, rawLine)) rawHtmlBlock = rawHtmlStart;
 			output.push(null);
 			continue;
 		}
