@@ -29,7 +29,7 @@ test('case-drifted role headings are invalid instead of escaping the audit', () 
 test('indented-code HTML comment markers do not hide later visible metadata', () => {
 	assert.deepEqual(
 		parseWorkItemRole('    <!--\n## Work item role\n\nImplementation\n'),
-			{ status: 'valid', role: 'Implementation' },
+		{ status: 'valid', role: 'Implementation' },
 	);
 	assert.deepEqual(extractPlainIssueRefs('    <!--\nRefs #42\n'), [42]);
 });
@@ -47,6 +47,22 @@ test('indented paragraph continuations preserve inline HTML comment state', () =
 		parseWorkItemRole('paragraph\n    <!--\n## Work item role\nImplementation\n'),
 		{ status: 'valid', role: 'Implementation' },
 	);
+});
+
+test('empty list markers do not interrupt paragraph inline state', () => {
+	assert.deepEqual(extractPlainIssueRefs('`example\n- \nRefs #88\n`\n'), []);
+	assert.deepEqual(extractPlainIssueRefs('`example\n1. \nRefs #89\n`\n'), []);
+	assert.deepEqual(extractPlainIssueRefs('paragraph <!--\n- \nRefs #90\n-->\n'), []);
+});
+
+test('list-contained examples cannot supply role headings or linkage', () => {
+	assert.deepEqual(extractPlainIssueRefs('- ```md\n  Refs #91\n  ```\nRefs #92\n'), [92]);
+	assert.deepEqual(
+		parseWorkItemRole('- ```md\n  ## Work item role\n  Implementation\n  ```\n## Work item role\nImplementation\n'),
+		{ status: 'valid', role: 'Implementation' },
+	);
+	assert.deepEqual(extractPlainIssueRefs('- <div>\n  Refs #93\n  </div>\n\nRefs #94\n'), [94]);
+	assert.deepEqual(extractPlainIssueRefs('- prose\nRefs #95\n\nRefs #96\n'), [96]);
 });
 
 test('multiline inline-code spans cannot activate or hide plain linkage', () => {
