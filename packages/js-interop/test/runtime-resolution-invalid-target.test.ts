@@ -23,17 +23,20 @@ async function writeInvalidTargetPackage(root: string, target: unknown): Promise
 	await writeFile(join(packageRoot, 'fallback.mjs'), 'export default "fallback";\n', 'utf8');
 }
 
-test('an invalid active Node export target cannot fall through to a later condition', async () => {
-	const root = await fixtureRoot();
-	await writeInvalidTargetPackage(root, '../outside.mjs');
-
+async function resolvePackage(root: string) {
 	const provider = new TypeScriptInteropProvider({ projectRoot: root });
-	const imported = provider.resolveImport({
+	return provider.resolveImport({
 		containingFile: join(root, 'src/main.virune'),
 		moduleSpecifier: 'invalid-target-runtime',
 		kind: 'default',
 		platform: 'node',
 	});
+}
+
+test('an invalid active Node export target cannot fall through to a later condition', async () => {
+	const root = await fixtureRoot();
+	await writeInvalidTargetPackage(root, '../outside.mjs');
+	const imported = await resolvePackage(root);
 	assert.ok(imported.type, 'the declaration branch remains independently resolvable');
 	assert.equal(imported.witness.runtimeEntry, undefined);
 	assert.equal(imported.witness.runtimeFormat, 'unknown');
@@ -42,15 +45,17 @@ test('an invalid active Node export target cannot fall through to a later condit
 test('an invalid target inside an export target array may fall through to a valid fallback', async () => {
 	const root = await fixtureRoot();
 	await writeInvalidTargetPackage(root, ['../outside.mjs', './fallback.mjs']);
-
-	const provider = new TypeScriptInteropProvider({ projectRoot: root });
-	const imported = provider.resolveImport({
-		containingFile: join(root, 'src/main.virune'),
-		moduleSpecifier: 'invalid-target-runtime',
-		kind: 'default',
-		platform: 'node',
-	});
+	const imported = await resolvePackage(root);
 	assert.ok(imported.type);
 	assert.equal(imported.witness.runtimeEntry, 'fallback.mjs');
 	assert.equal(imported.witness.runtimeFormat, 'esm');
+});
+
+test('an active export target array with no matching branch cannot fall through to a later condition', async () => {
+	const root = await fixtureRoot();
+	await writeInvalidTargetPackage(root, [{ browser: './fallback.mjs' }]);
+	const imported = await resolvePackage(root);
+	assert.ok(imported.type);
+	assert.equal(imported.witness.runtimeEntry, undefined);
+	assert.equal(imported.witness.runtimeFormat, 'unknown');
 });
