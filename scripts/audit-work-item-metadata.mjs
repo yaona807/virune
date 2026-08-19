@@ -143,6 +143,10 @@ function requireBoolean(value, path) {
 	return value;
 }
 
+function isIndentedCodeLine(line) {
+	return /^(?: {4}| {0,3}\t)/u.test(line);
+}
+
 function isEscaped(line, index) {
 	let slashCount = 0;
 	for (let cursor = index - 1; cursor >= 0 && line[cursor] === '\\'; cursor -= 1) slashCount += 1;
@@ -249,6 +253,7 @@ function findFirstMultilineBacktickSpan(lines) {
 			if (rawHtmlBlockEnds(rawHtmlBlock, line)) rawHtmlBlock = null;
 			continue;
 		}
+		if (!commentOpen && isIndentedCodeLine(line)) continue;
 		if (!commentOpen) {
 			const rawHtmlStart = beginInterruptingRawHtmlBlock(line);
 			if (rawHtmlStart !== null) {
@@ -316,7 +321,7 @@ function maskMultilineBacktickCodeSpans(lines) {
 }
 
 function stripHtmlComments(line, commentState) {
-	if (!commentState.open && /^(?: {4}| {0,3}\t)/u.test(line)) return line;
+	if (!commentState.open && isIndentedCodeLine(line)) return line;
 	let visible = '';
 	let cursor = 0;
 	while (cursor < line.length) {
@@ -395,7 +400,7 @@ function parseMarkdownHeading(lines, index) {
 	const underline = lines[index + 1];
 	if (
 		line.trim() === ''
-		|| /^(?: {4}| {0,3}\t)/u.test(line)
+		|| isIndentedCodeLine(line)
 		|| underline === null
 		|| underline === undefined
 	) return null;
