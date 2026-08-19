@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { test } from 'node:test';
+import { auditWorkItemMetadata } from './audit-work-item-metadata.mjs';
 
 const expected = {
 	type: ['type:bug', 'type:chore', 'type:ci', 'type:docs', 'type:feature', 'type:refactor', 'type:security', 'type:test'],
@@ -53,6 +54,32 @@ function extractTaxonomy(source) {
 function extractRoleValues(section) {
 	return [...section.matchAll(/^- `([^`]+)`\s+—/gmu)].map(match => match[1]);
 }
+
+function trackingIssue(number, labels) {
+	return {
+		number,
+		state: 'open',
+		body: '## Work item role\n\nTracking\n',
+		assignees: [],
+		labels: [...labels].sort(),
+	};
+}
+
+test('every canonical taxonomy label is accepted by the audit implementation', () => {
+	let number = 1;
+	const issues = [];
+	for (const label of expected.type) issues.push(trackingIssue(number++, [label]));
+	for (const label of expected.area) issues.push(trackingIssue(number++, ['type:chore', label]));
+	for (const label of expected.priority) issues.push(trackingIssue(number++, ['type:chore', label]));
+	for (const label of expected.workflow) issues.push(trackingIssue(number++, ['type:chore', label]));
+	const report = auditWorkItemMetadata({
+		schemaVersion: 1,
+		repository: 'yaona807/virune',
+		issues,
+		pullRequests: [],
+	});
+	assert.deepEqual(report.findings, []);
+});
 
 for (const file of ['CONTRIBUTING.md', 'CONTRIBUTING_ja.md']) {
 	test(`${file} label taxonomy matches the repository metadata audit contract`, async () => {
