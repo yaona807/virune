@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import test from 'node:test';
+import ts from 'typescript';
 import { TypeScriptInteropProvider } from '../src/index.js';
 import { fixtureRoot } from './fixture.js';
 
@@ -90,14 +91,20 @@ test('legacy ESM package resolution does not apply CommonJS extension searching'
 		'subpath.js': 'export default "runtime";\n',
 	});
 
-	const provider = new TypeScriptInteropProvider({ projectRoot: root });
+	const provider = new TypeScriptInteropProvider({
+		projectRoot: root,
+		compilerOptions: {
+			module: ts.ModuleKind.ESNext,
+			moduleResolution: ts.ModuleResolutionKind.Bundler,
+		},
+	});
 	const imported = provider.resolveImport({
 		containingFile: join(root, 'src/main.virune'),
 		moduleSpecifier: 'legacy-runtime/subpath',
 		kind: 'default',
 		platform: 'node',
 	});
-	assert.ok(imported.type, 'TypeScript declarations may exist even when Node ESM cannot load the extensionless runtime subpath');
+	assert.ok(imported.type, 'the type oracle is deliberately allowed to resolve the extensionless declaration in this regression');
 	assert.equal(imported.witness.runtimeEntry, undefined);
 	assert.equal(imported.witness.runtimeFormat, 'unknown');
 });
