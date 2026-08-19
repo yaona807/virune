@@ -73,7 +73,8 @@ interface RuntimePackageJson {
 	readonly exports?: unknown;
 }
 
-type PackageTargetResolution = string | null | undefined;
+const invalidPackageTarget = Symbol('invalid-package-target');
+type PackageTargetResolution = string | null | undefined | typeof invalidPackageTarget;
 
 /**
  * Conservative provider. Whole call usages are resolved by TypeScript itself
@@ -891,7 +892,7 @@ function resolveNodeRuntimePath(specifier: string, containingFile: string, nodeI
 	if (packageJson === undefined) return undefined;
 	if (packageJson.exports !== undefined) {
 		const target = resolvePackageExports(packageJson.exports, parsed.subpath, packageRoot, nodeImportConditions);
-		return target === null || target === undefined ? undefined : existingRuntimeFile(target);
+		return typeof target === 'string' ? existingRuntimeFile(target) : undefined;
 	}
 	return resolveLegacyPackageRuntimePath(packageRoot, packageJson, parsed.subpath);
 }
@@ -995,7 +996,7 @@ function resolvePackageExports(exportsValue: unknown, subpath: string, packageRo
 	if (isRecord(exportsValue)) {
 		const keys = Object.keys(exportsValue);
 		const dotKeys = keys.filter(key => key.startsWith('.'));
-		if (dotKeys.length > 0 && dotKeys.length !== keys.length) return undefined;
+		if (dotKeys.length > 0 && dotKeys.length !== keys.length) return invalidPackageTarget;
 		if (dotKeys.length === keys.length && keys.length > 0) {
 			if (Object.hasOwn(exportsValue, subpath) && !subpath.includes('*')) {
 				return resolvePackageTarget(exportsValue[subpath], packageRoot, undefined, nodeImportConditions);
@@ -1017,15 +1018,20 @@ function resolvePackageTarget(target: unknown, packageRoot: string, patternMatch
 	if (target === null) return null;
 	if (typeof target === 'string') return resolvePackageTargetString(target, packageRoot, patternMatch);
 	if (Array.isArray(target)) {
+		let invalidFallback = false;
 		for (const item of target) {
 			const resolved = resolvePackageTarget(item, packageRoot, patternMatch, nodeImportConditions);
+			if (resolved === invalidPackageTarget) {
+				invalidFallback = true;
+				continue;
+			}
 			if (resolved !== undefined) return resolved;
 		}
-		return undefined;
+		return invalidFallback ? invalidPackageTarget : null;
 	}
-	if (!isRecord(target)) return undefined;
+	if (!isRecord(target)) return invalidPackageTarget;
 	for (const key of Object.keys(target)) {
-		if (/^(0|[1-9]\d*)$/u.test(key)) return undefined;
+		if (/^(0|[1-9]\d*)$/u.test(key)) return invalidPackageTarget;
 	}
 	for (const [condition, value] of Object.entries(target)) {
 		if (condition !== 'default' && !nodeImportConditions.has(condition)) continue;
@@ -1035,22 +1041,24 @@ function resolvePackageTarget(target: unknown, packageRoot: string, patternMatch
 	return undefined;
 }
 
-function resolvePackageTargetString(target: string, packageRoot: string, patternMatch: string | undefined): string | undefined {
-	if (!target.startsWith('./') || target.includes('?') || target.includes('#')) return undefined;
-	if (patternMatch === undefined && target.includes('*')) return undefined;
-	if (patternMatch !== undefined && !validPackagePathSegments(patternMatch, false)) return undefined;
+function resolvePackageTargetString(target: string, packageRoot: string, patternMatch: string | undefined): PackageTargetResolution {
+	if (!target.startsWith('./')) return invalidPackageTarget;
+	if (target.includes('?') || target.includes('#')) return null;
+	if (patternMatch === undefined && target.includes('*')) return null;
+	if (patternMatch !== undefined && !validPackagePathSegments(patternMatch, false)) return invalidPackageTarget;
 	const expanded = patternMatch === undefined ? target : target.replaceAll('*', patternMatch);
-	if (!validPackagePathSegments(expanded, true)) return undefined;
+	if (!validPackagePathSegments(expanded, true)) return invalidPackageTarget;
 	try {
 		const packageUrl = pathToFileURL(`${resolve(packageRoot)}/`);
 		const targetUrl = new URL(expanded, packageUrl);
-		if (targetUrl.protocol !== 'file:' || targetUrl.search.length > 0 || targetUrl.hash.length > 0) return undefined;
+		if (targetUrl.protocol !== 'file:') return invalidPackageTarget;
+		if (targetUrl.search.length > 0 || targetUrl.hash.length > 0) return null;
 		const candidate = fileURLToPath(targetUrl);
 		const locator = relative(resolve(packageRoot), candidate).replaceAll('\\', '/');
-		if (locator.length === 0 || locator === '..' || locator.startsWith('../') || locator.startsWith('/')) return undefined;
+		if (locator.length === 0 || locator === '..' || locator.startsWith('../') || locator.startsWith('/')) return invalidPackageTarget;
 		return candidate;
 	} catch {
-		return undefined;
+		return invalidPackageTarget;
 	}
 }
 
