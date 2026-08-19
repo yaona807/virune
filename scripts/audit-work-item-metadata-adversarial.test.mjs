@@ -40,6 +40,9 @@ test('multiline inline-code spans cannot activate or hide plain linkage', () => 
 	assert.deepEqual(extractPlainIssueRefs('`unclosed\nRefs #45\n'), [45]);
 	assert.deepEqual(extractPlainIssueRefs('`unclosed\n- Refs #46\n`\n'), [46]);
 	assert.deepEqual(extractPlainIssueRefs('`example\nfoo` <!--\nRefs #47\n'), []);
+	assert.deepEqual(extractPlainIssueRefs('`unclosed\n# heading\nRefs #48\n`\n'), [48]);
+	assert.deepEqual(extractPlainIssueRefs('`unclosed\n>quote\nRefs #49\n`\n'), [49]);
+	assert.deepEqual(extractPlainIssueRefs('`unclosed\n1. list\nRefs #50\n`\n'), [50]);
 });
 
 test('invalid backtick-fence info does not hide real role metadata or linkage', () => {
