@@ -110,6 +110,8 @@ test('fails closed on non-canonical, development-only, raw source, nested depend
   for (const badPath of [
     'dist/../secret.js',
     'dist/test/helper.js',
+    'dist/fixture/helper.js',
+    'dist/__fixtures__/helper.js',
     'dist/index.test.js',
     'dist/helper.test.cjs.map',
     'dist/schema.spec.json',
