@@ -61,6 +61,14 @@ test('raw HTML blocks do not supply role headings or plain linkage', () => {
 	assert.deepEqual(extractPlainIssueRefs('<?processing\nRefs #62\n?>\nRefs #63\n'), [63]);
 });
 
+test('fenced code takes precedence over raw HTML block markers', () => {
+	assert.deepEqual(extractPlainIssueRefs('```html\n<div>\n```\nRefs #64\n'), [64]);
+	assert.deepEqual(
+		parseWorkItemRole('```html\n<script>\n```\n## Work item role\nImplementation\n'),
+		{ status: 'valid', role: 'Implementation' },
+	);
+});
+
 test('invalid backtick-fence info does not hide real role metadata or linkage', () => {
 	assert.deepEqual(
 		parseWorkItemRole('```bad`info\n## Work item role\nImplementation\n'),
