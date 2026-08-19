@@ -69,6 +69,14 @@ test('fenced code takes precedence over raw HTML block markers', () => {
 	);
 });
 
+test('HTML comments take precedence over raw HTML block markers', () => {
+	assert.deepEqual(extractPlainIssueRefs('<!--\n<div>\n-->\nRefs #65\n'), [65]);
+	assert.deepEqual(
+		parseWorkItemRole('<!--\n<script>\n-->\n## Work item role\nTracking\n'),
+		{ status: 'valid', role: 'Tracking' },
+	);
+});
+
 test('invalid backtick-fence info does not hide real role metadata or linkage', () => {
 	assert.deepEqual(
 		parseWorkItemRole('```bad`info\n## Work item role\nImplementation\n'),
