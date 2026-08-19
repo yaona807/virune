@@ -458,8 +458,19 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 		const existing = this.#workspaces.get(platform);
 		if (existing !== undefined) return existing;
 		const typeRoots = platform === 'node' ? nodeTypeRoots(this.#compilerOptions.typeRoots) : this.#compilerOptions.typeRoots;
+		const configuredCustomConditions = normalizedCustomConditions(this.#compilerOptions.customConditions);
+		const targetCompilerOptions: ts.CompilerOptions = platform === 'node'
+			? { customConditions: configuredCustomConditions }
+			: {
+				module: ts.ModuleKind.ESNext,
+				moduleResolution: ts.ModuleResolutionKind.Bundler,
+				customConditions: platform === 'browser'
+					? normalizedCustomConditions([...configuredCustomConditions, 'browser'])
+					: configuredCustomConditions,
+			};
 		const compilerOptions: ts.CompilerOptions = {
 			...this.#compilerOptions,
+			...targetCompilerOptions,
 			types: platform === 'node' ? ['node'] : [],
 			...(typeRoots === undefined ? {} : { typeRoots }),
 		};
@@ -527,7 +538,9 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 
 	private moduleWitness(request: JsImportRequest, resolved: ts.ResolvedModuleFull | undefined): ModuleResolutionWitness {
 		const declarationInfo = findPackageInfo(resolved?.resolvedFileName);
-		const runtime = resolveRuntimeModule(request);
+		const customConditions = normalizedCustomConditions(this.#compilerOptions.customConditions);
+		const runtimeConditions = new Set<string>([...nodeDefaultImportConditions, ...customConditions]);
+		const runtime = resolveRuntimeModule(request, runtimeConditions);
 		const runtimeInfo = runtime.path === undefined ? {} : findRuntimePackageInfo(request, runtime.path);
 		const declarationEntry = packageRelativeLocator(resolved?.resolvedFileName, declarationInfo.packageJsonPath);
 		const runtimeEntry = runtime.format === 'builtin'
@@ -542,7 +555,7 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 			...(declarationEntry === undefined ? {} : { declarationEntry }),
 			...(runtimeEntry === undefined ? {} : { runtimeEntry }),
 			...(runtime.format === undefined ? {} : { runtimeFormat: runtime.format }),
-			conditions: request.platform === 'browser' ? ['types', 'import', 'browser'] : ['types', 'node-addons', 'node', 'import', 'module-sync'],
+			conditions: witnessConditionsForPlatform(request.platform, customConditions),
 			platform: request.platform,
 			providerVersion: this.version,
 			...(resolved?.resolvedFileName === undefined || !existsSync(resolved.resolvedFileName) ? {} : { declarationGraphHash: hash(readFileSync(resolved.resolvedFileName)) }),
@@ -758,6 +771,20 @@ function nodeTypeRoots(configured: readonly string[] | undefined): string[] | un
 	return roots.size === 0 ? undefined : [...roots];
 }
 
+function normalizedCustomConditions(configured: readonly string[] | undefined): string[] {
+	return [...new Set(configured ?? [])].sort();
+}
+
+function witnessConditionsForPlatform(platform: JsImportRequest['platform'], customConditions: readonly string[]): string[] {
+	const base = platform === 'node'
+		? ['types', ...nodeDefaultImportConditions]
+		: platform === 'browser'
+			? ['types', 'import', 'browser']
+			: ['types', 'import'];
+	const existing = new Set(base);
+	return [...base, ...customConditions.filter(condition => !existing.has(condition))];
+}
+
 function findPackageInfo(resolvedFile: string | undefined): { readonly name?: string; readonly version?: string; readonly packageJsonPath?: string; readonly type?: string } {
 	if (resolvedFile === undefined || resolvedFile.startsWith('node:')) return {};
 	let current = dirname(resolvedFile);
@@ -819,7 +846,7 @@ function stableTypeDisplay(value: string, origin: ForeignTypeSnapshot['origin'],
 }
 
 const nodeBuiltinSpecifiers = new Set(builtinModules);
-const nodeImportConditions = new Set(['node-addons', 'node', 'import', 'module-sync']);
+const nodeDefaultImportConditions = ['node-addons', 'node', 'import', 'module-sync'] as const;
 
 function isNodeBuiltinSpecifier(specifier: string): boolean {
 	if (specifier.startsWith('node:')) {
@@ -829,7 +856,7 @@ function isNodeBuiltinSpecifier(specifier: string): boolean {
 	return nodeBuiltinSpecifiers.has(specifier);
 }
 
-function resolveRuntimeModule(request: JsImportRequest): { readonly entry?: string; readonly path?: string; readonly format?: ModuleResolutionWitness['runtimeFormat'] } {
+function resolveRuntimeModule(request: JsImportRequest, nodeImportConditions: ReadonlySet<string>): { readonly entry?: string; readonly path?: string; readonly format?: ModuleResolutionWitness['runtimeFormat'] } {
 	const specifier = request.moduleSpecifier;
 	if (isNodeBuiltinSpecifier(specifier)) {
 		const builtinName = specifier.startsWith('node:') ? specifier.slice('node:'.length) : specifier;
@@ -839,12 +866,12 @@ function resolveRuntimeModule(request: JsImportRequest): { readonly entry?: stri
 	if (request.platform === 'browser') return { format: 'bundler' };
 	if (request.platform !== 'node') return { format: 'unknown' };
 
-	const runtimePath = resolveNodeRuntimePath(specifier, request.containingFile);
+	const runtimePath = resolveNodeRuntimePath(specifier, request.containingFile, nodeImportConditions);
 	if (runtimePath === undefined) return { format: 'unknown' };
 	return runtimeModuleFromPath(runtimePath);
 }
 
-function resolveNodeRuntimePath(specifier: string, containingFile: string): string | undefined {
+function resolveNodeRuntimePath(specifier: string, containingFile: string, nodeImportConditions: ReadonlySet<string>): string | undefined {
 	if (specifier.startsWith('./') || specifier.startsWith('../') || specifier.startsWith('/') || specifier.startsWith('file:')) {
 		try {
 			const url = specifier.startsWith('file:') ? new URL(specifier) : new URL(specifier, pathToFileURL(containingFile));
@@ -863,7 +890,7 @@ function resolveNodeRuntimePath(specifier: string, containingFile: string): stri
 	const packageJson = readRuntimePackageJson(join(packageRoot, 'package.json'));
 	if (packageJson === undefined) return undefined;
 	if (packageJson.exports !== undefined) {
-		const target = resolvePackageExports(packageJson.exports, parsed.subpath, packageRoot);
+		const target = resolvePackageExports(packageJson.exports, parsed.subpath, packageRoot, nodeImportConditions);
 		return target === null || target === undefined ? undefined : existingRuntimeFile(target);
 	}
 	return resolveLegacyPackageRuntimePath(packageRoot, packageJson, parsed.subpath);
@@ -963,7 +990,7 @@ function readRuntimePackageJson(packageJsonPath: string): RuntimePackageJson | u
 	}
 }
 
-function resolvePackageExports(exportsValue: unknown, subpath: string, packageRoot: string): PackageTargetResolution {
+function resolvePackageExports(exportsValue: unknown, subpath: string, packageRoot: string, nodeImportConditions: ReadonlySet<string>): PackageTargetResolution {
 	if (subpath.endsWith('/')) return undefined;
 	if (isRecord(exportsValue)) {
 		const keys = Object.keys(exportsValue);
@@ -971,27 +998,27 @@ function resolvePackageExports(exportsValue: unknown, subpath: string, packageRo
 		if (dotKeys.length > 0 && dotKeys.length !== keys.length) return undefined;
 		if (dotKeys.length === keys.length && keys.length > 0) {
 			if (Object.hasOwn(exportsValue, subpath) && !subpath.includes('*')) {
-				return resolvePackageTarget(exportsValue[subpath], packageRoot, undefined);
+				return resolvePackageTarget(exportsValue[subpath], packageRoot, undefined, nodeImportConditions);
 			}
 			const patterns = keys.filter(key => key.includes('*') && key.split('*').length === 2).sort(comparePackagePatternKeys);
 			for (const pattern of patterns) {
 				const match = packagePatternMatch(pattern, subpath);
 				if (match === undefined) continue;
-				return resolvePackageTarget(exportsValue[pattern], packageRoot, match);
+				return resolvePackageTarget(exportsValue[pattern], packageRoot, match, nodeImportConditions);
 			}
 			return undefined;
 		}
 	}
 	if (subpath !== '.') return undefined;
-	return resolvePackageTarget(exportsValue, packageRoot, undefined);
+	return resolvePackageTarget(exportsValue, packageRoot, undefined, nodeImportConditions);
 }
 
-function resolvePackageTarget(target: unknown, packageRoot: string, patternMatch: string | undefined): PackageTargetResolution {
+function resolvePackageTarget(target: unknown, packageRoot: string, patternMatch: string | undefined, nodeImportConditions: ReadonlySet<string>): PackageTargetResolution {
 	if (target === null) return null;
 	if (typeof target === 'string') return resolvePackageTargetString(target, packageRoot, patternMatch);
 	if (Array.isArray(target)) {
 		for (const item of target) {
-			const resolved = resolvePackageTarget(item, packageRoot, patternMatch);
+			const resolved = resolvePackageTarget(item, packageRoot, patternMatch, nodeImportConditions);
 			if (resolved !== undefined) return resolved;
 		}
 		return undefined;
@@ -1002,7 +1029,7 @@ function resolvePackageTarget(target: unknown, packageRoot: string, patternMatch
 	}
 	for (const [condition, value] of Object.entries(target)) {
 		if (condition !== 'default' && !nodeImportConditions.has(condition)) continue;
-		const resolved = resolvePackageTarget(value, packageRoot, patternMatch);
+		const resolved = resolvePackageTarget(value, packageRoot, patternMatch, nodeImportConditions);
 		if (resolved !== undefined) return resolved;
 	}
 	return undefined;
