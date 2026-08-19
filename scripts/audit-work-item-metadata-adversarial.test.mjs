@@ -7,10 +7,10 @@ import {
 } from './audit-work-item-metadata.mjs';
 
 test('tab-indented Setext-looking text is treated as code, not a role heading', () => {
-	for (const prefix of ['\t', ' \t', '  \t', ' ']) {
+	for (const prefix of ['\t', ' \t', '  \t', '   \t']) {
 		assert.deepEqual(
 			parseWorkItemRole(`${prefix}Work item role\n----------------\nImplementation\n`),
-			prefix === ' ' ? { status: 'valid', role: 'Implementation' } : { status: 'absent', role: null },
+			{ status: 'absent', role: null },
 		);
 	}
 });
