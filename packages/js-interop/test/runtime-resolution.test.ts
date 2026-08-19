@@ -47,6 +47,71 @@ test('Node runtime witness uses the import condition from the consumer context',
 	assert.equal(imported.witness.runtimeFormat, 'commonjs');
 });
 
+test('Node runtime witness honors node-addons before a later import fallback', async () => {
+	const root = await fixtureRoot();
+	await writePackage(root, 'node-addons-runtime', {
+		name: 'node-addons-runtime',
+		type: 'module',
+		exports: {
+			'.': {
+				types: './index.d.ts',
+				'node-addons': './addon.cjs',
+				import: './import.mjs',
+				default: './default.mjs',
+			},
+		},
+	}, {
+		'index.d.ts': 'declare const value: (input: string) => string;\nexport default value;\n',
+		'addon.cjs': 'module.exports = value => value;\n',
+		'import.mjs': 'export default value => value;\n',
+		'default.mjs': 'export default value => value;\n',
+	});
+
+	const provider = new TypeScriptInteropProvider({ projectRoot: root });
+	const imported = provider.resolveImport({
+		containingFile: join(root, 'src/main.virune'),
+		moduleSpecifier: 'node-addons-runtime',
+		kind: 'default',
+		platform: 'node',
+	});
+	assert.ok(imported.type);
+	assert.equal(imported.witness.runtimeEntry, 'addon.cjs');
+	assert.equal(imported.witness.runtimeFormat, 'commonjs');
+	assert.deepEqual(imported.witness.conditions, ['types', 'node-addons', 'node', 'import', 'module-sync']);
+});
+
+test('Node runtime witness honors module-sync before a later import fallback', async () => {
+	const root = await fixtureRoot();
+	await writePackage(root, 'module-sync-runtime', {
+		name: 'module-sync-runtime',
+		type: 'module',
+		exports: {
+			'.': {
+				types: './index.d.ts',
+				'module-sync': './sync.mjs',
+				import: './import.mjs',
+				default: './default.mjs',
+			},
+		},
+	}, {
+		'index.d.ts': 'declare const value: (input: string) => string;\nexport default value;\n',
+		'sync.mjs': 'export default value => value;\n',
+		'import.mjs': 'export default value => value;\n',
+		'default.mjs': 'export default value => value;\n',
+	});
+
+	const provider = new TypeScriptInteropProvider({ projectRoot: root });
+	const imported = provider.resolveImport({
+		containingFile: join(root, 'src/main.virune'),
+		moduleSpecifier: 'module-sync-runtime',
+		kind: 'default',
+		platform: 'node',
+	});
+	assert.ok(imported.type);
+	assert.equal(imported.witness.runtimeEntry, 'sync.mjs');
+	assert.equal(imported.witness.runtimeFormat, 'esm');
+});
+
 test('a more-specific exports pattern cannot fall through after its conditions do not resolve', async () => {
 	const root = await fixtureRoot();
 	await writePackage(root, 'pattern-runtime', {
