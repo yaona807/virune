@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { posix } from 'node:path';
 
-const FORBIDDEN_SEGMENTS = new Set(['.git', '.github', '.cache', '__tests__', 'coverage', 'fixtures', 'node_modules', 'test', 'tests']);
+const FORBIDDEN_SEGMENTS = new Set(['.git', '.github', '.cache', '__fixtures__', '__tests__', 'coverage', 'fixture', 'fixtures', 'node_modules', 'test', 'tests']);
 const FORBIDDEN_BASENAMES = new Set([
 	'.env',
 	'.npmrc',
