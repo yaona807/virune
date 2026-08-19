@@ -204,8 +204,9 @@ function findHtmlCommentEnd(line, start) {
 
 function beginInterruptingRawHtmlBlock(line) {
 	const source = line.replace(/^ {0,3}/u, '');
-	if (/^<(?:pre|script|style|textarea)(?:[ \t>]|$)/iu.test(source)) {
-		return { endExpression: /<\/(?:pre|script|style|textarea)>/iu, endsOnBlank: false };
+	const typeOne = source.match(/^<(pre|script|style|textarea)(?:[ \t>]|$)/iu);
+	if (typeOne !== null) {
+		return { endExpression: new RegExp(`</${typeOne[1]}>`, 'iu'), endsOnBlank: false };
 	}
 	if (/^<\?/u.test(source)) return { endExpression: /\?>/u, endsOnBlank: false };
 	if (/^<![A-Za-z]/u.test(source)) return { endExpression: />/u, endsOnBlank: false };
