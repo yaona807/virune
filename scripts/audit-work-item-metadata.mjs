@@ -184,7 +184,10 @@ function findHtmlCommentStart(line, start) {
 
 function interruptsInlineCodeContinuation(line) {
 	if (/^[ \t]*$/u.test(line)) return true;
-	if (/^ {0,3}(?:#{1,6}(?:[ \t]+|$)|>|(?:[-+*]|1[.)])[ \t]+)/u.test(line)) return true;
+	if (/^ {0,3}#{1,6}(?:[ \t]+|$)/u.test(line)) return true;
+	if (/^ {0,3}>/u.test(line)) return true;
+	if (/^ {0,3}[-+*][ \t]+/u.test(line)) return true;
+	if (/^ {0,3}1[.)][ \t]+/u.test(line)) return true;
 	if (/^ {0,3}(?:`{3,}|~{3,})/u.test(line)) return true;
 	if (/^ {0,3}(?:(?:\*[ \t]*){3,}|(?:-[ \t]*){3,}|(?:_[ \t]*){3,})$/u.test(line)) return true;
 	if (/^ {0,3}<!--/u.test(line)) return true;
