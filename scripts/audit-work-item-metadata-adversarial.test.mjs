@@ -34,6 +34,11 @@ test('indented-code HTML comment markers do not hide later visible metadata', ()
 	assert.deepEqual(extractPlainIssueRefs('    <!--\nRefs #42\n'), [42]);
 });
 
+test('indented code cannot seed multiline inline-code or comment state', () => {
+	assert.deepEqual(extractPlainIssueRefs('    <!--\n`example\nRefs #66\n`\n'), []);
+	assert.deepEqual(extractPlainIssueRefs('    `literal\nRefs #67\n`\n'), [67]);
+});
+
 test('multiline inline-code spans cannot activate or hide plain linkage', () => {
 	assert.deepEqual(extractPlainIssueRefs('`example\nRefs #42\n`\nRefs #43\n'), [43]);
 	assert.deepEqual(extractPlainIssueRefs('`example\nfoo <!--\n`\nRefs #44\n'), [44]);
