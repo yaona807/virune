@@ -66,6 +66,18 @@ test('raw HTML blocks do not supply role headings or plain linkage', () => {
 	assert.deepEqual(extractPlainIssueRefs('<?processing\nRefs #62\n?>\nRefs #63\n'), [63]);
 });
 
+test('type-7 HTML blocks only start at block boundaries', () => {
+	assert.deepEqual(
+		parseWorkItemRole('<widget data-kind="example">\n## Work item role\nImplementation\n\n'),
+		{ status: 'absent', role: null },
+	);
+	assert.deepEqual(extractPlainIssueRefs('intro\n<source>\nRefs #68\n\n'), [68]);
+	assert.deepEqual(extractPlainIssueRefs('# heading\n<source>\nRefs #69\n\nRefs #70\n'), [70]);
+	assert.deepEqual(extractPlainIssueRefs('<widget data-kind=example>\n`raw\nRefs #71\n\nRefs #72\n`\n'), [72]);
+	assert.deepEqual(extractPlainIssueRefs('<widget data-kind=>\nRefs #73\n'), [73]);
+	assert.deepEqual(extractPlainIssueRefs('</widget>\nRefs #74\n\nRefs #75\n'), [75]);
+});
+
 test('fenced code takes precedence over raw HTML block markers', () => {
 	assert.deepEqual(extractPlainIssueRefs('```html\n<div>\n```\nRefs #64\n'), [64]);
 	assert.deepEqual(
