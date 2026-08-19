@@ -528,7 +528,7 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 	private moduleWitness(request: JsImportRequest, resolved: ts.ResolvedModuleFull | undefined): ModuleResolutionWitness {
 		const declarationInfo = findPackageInfo(resolved?.resolvedFileName);
 		const runtime = resolveRuntimeModule(request);
-		const runtimeInfo = runtime.path === undefined ? {} : findPackageInfo(runtime.path);
+		const runtimeInfo = runtime.path === undefined ? {} : findRuntimePackageInfo(request, runtime.path);
 		const declarationEntry = packageRelativeLocator(resolved?.resolvedFileName, declarationInfo.packageJsonPath);
 		const runtimeEntry = runtime.format === 'builtin'
 			? runtime.entry
@@ -781,6 +781,17 @@ function findPackageInfo(resolvedFile: string | undefined): { readonly name?: st
 	return {};
 }
 
+function findRuntimePackageInfo(request: JsImportRequest, runtimePath: string): ReturnType<typeof findPackageInfo> {
+	if (request.platform === 'node') {
+		const parsed = parsePackageSpecifier(request.moduleSpecifier);
+		if (parsed !== undefined) {
+			const packageRoot = findNodePackageRoot(parsed.packageName, request.containingFile);
+			if (packageRoot !== undefined) return findPackageInfo(join(packageRoot, '__virune_runtime__'));
+		}
+	}
+	return findPackageInfo(runtimePath);
+}
+
 function packageRelativeLocator(filePath: string | undefined, packageJsonPath: string | undefined): string | undefined {
 	if (filePath === undefined) return undefined;
 	if (filePath.startsWith('node:')) return filePath;
@@ -807,13 +818,24 @@ function stableTypeDisplay(value: string, origin: ForeignTypeSnapshot['origin'],
 	return '<external>';
 }
 
-const nodeBuiltinNames = new Set(builtinModules.map(name => name.startsWith('node:') ? name.slice('node:'.length) : name));
+const nodeBuiltinSpecifiers = new Set(builtinModules);
 const nodeImportConditions = new Set(['node-addons', 'node', 'import', 'module-sync']);
+
+function isNodeBuiltinSpecifier(specifier: string): boolean {
+	if (specifier.startsWith('node:')) {
+		const bare = specifier.slice('node:'.length);
+		return bare.length > 0 && (nodeBuiltinSpecifiers.has(specifier) || nodeBuiltinSpecifiers.has(bare));
+	}
+	return nodeBuiltinSpecifiers.has(specifier);
+}
 
 function resolveRuntimeModule(request: JsImportRequest): { readonly entry?: string; readonly path?: string; readonly format?: ModuleResolutionWitness['runtimeFormat'] } {
 	const specifier = request.moduleSpecifier;
-	const builtinName = specifier.startsWith('node:') ? specifier.slice('node:'.length) : specifier;
-	if (nodeBuiltinNames.has(builtinName)) return { entry: `node:${builtinName}`, format: 'builtin' };
+	if (isNodeBuiltinSpecifier(specifier)) {
+		const builtinName = specifier.startsWith('node:') ? specifier.slice('node:'.length) : specifier;
+		return { entry: `node:${builtinName}`, format: 'builtin' };
+	}
+	if (specifier.startsWith('node:')) return { format: 'unknown' };
 	if (request.platform === 'browser') return { format: 'bundler' };
 	if (request.platform !== 'node') return { format: 'unknown' };
 
