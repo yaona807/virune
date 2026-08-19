@@ -460,7 +460,7 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 		const typeRoots = platform === 'node' ? nodeTypeRoots(this.#compilerOptions.typeRoots) : this.#compilerOptions.typeRoots;
 		const configuredCustomConditions = normalizedCustomConditions(this.#compilerOptions.customConditions);
 		const targetCompilerOptions: ts.CompilerOptions = platform === 'node'
-			? { customConditions: configuredCustomConditions }
+			? { customConditions: normalizedCustomConditions([...configuredCustomConditions, 'node-addons', 'module-sync']) }
 			: {
 				module: ts.ModuleKind.ESNext,
 				moduleResolution: ts.ModuleResolutionKind.Bundler,
