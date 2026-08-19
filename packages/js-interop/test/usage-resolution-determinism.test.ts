@@ -25,6 +25,14 @@ async function evidence(root: string) {
 		});
 		assert.ok(imported.type);
 		assert.ok(namespace.type);
+		assert.equal(imported.type.navigation?.declarationPath, join(root, 'src/library.d.ts'));
+		assert.equal(namespace.type.navigation?.declarationPath, join(root, 'src/library.d.ts'));
+		assert.equal(Object.prototype.propertyIsEnumerable.call(imported.type, 'navigation'), false);
+		assert.equal(Object.prototype.propertyIsEnumerable.call(namespace.type, 'navigation'), false);
+		const serializedImported = JSON.stringify(imported.type);
+		assert.equal(serializedImported.includes(root), false);
+		assert.equal(serializedImported.includes('navigation'), false);
+
 		const result = compileSource({
 			id: 1,
 			path: containingFile,
@@ -32,6 +40,9 @@ async function evidence(root: string) {
 		}, { platform: 'node', jsInteropProvider: provider });
 		assert.deepEqual(result.diagnostics.filter(item => item.severity === 'error'), []);
 		assert.ok(result.semantic);
+		const serializedUsageIR = JSON.stringify(result.semantic.interop.usageIR);
+		assert.equal(serializedUsageIR.includes(root), false);
+		assert.equal(serializedUsageIR.includes('navigation'), false);
 		return {
 			origin: imported.type.origin,
 			witness: imported.witness,
