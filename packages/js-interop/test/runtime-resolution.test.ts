@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { mkdir, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import test from 'node:test';
 import { TypeScriptInteropProvider } from '../src/index.js';
 import { fixtureRoot } from './fixture.js';
@@ -11,7 +11,7 @@ async function writePackage(root: string, name: string, packageJson: unknown, fi
 	await writeFile(join(packageRoot, 'package.json'), `${JSON.stringify(packageJson, null, 2)}\n`, 'utf8');
 	for (const [path, content] of Object.entries(files)) {
 		const filePath = join(packageRoot, path);
-		await mkdir(join(filePath, '..'), { recursive: true });
+		await mkdir(dirname(filePath), { recursive: true });
 		await writeFile(filePath, content, 'utf8');
 	}
 }
