@@ -64,6 +64,7 @@ test('raw HTML blocks do not supply role headings or plain linkage', () => {
 	assert.deepEqual(extractPlainIssueRefs('<div>\nRefs #58\n</div>\n\nRefs #59\n'), [59]);
 	assert.deepEqual(extractPlainIssueRefs('<source>\nRefs #60\n\nRefs #61\n'), [61]);
 	assert.deepEqual(extractPlainIssueRefs('<?processing\nRefs #62\n?>\nRefs #63\n'), [63]);
+	assert.deepEqual(extractPlainIssueRefs('<script>\n</style>\nRefs #78\n</script>\nRefs #79\n'), [79]);
 });
 
 test('type-7 HTML blocks only start at block boundaries', () => {
