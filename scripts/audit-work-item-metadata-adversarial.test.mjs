@@ -29,7 +29,7 @@ test('case-drifted role headings are invalid instead of escaping the audit', () 
 test('indented-code HTML comment markers do not hide later visible metadata', () => {
 	assert.deepEqual(
 		parseWorkItemRole('    <!--\n## Work item role\n\nImplementation\n'),
-		{ status: 'valid', role: 'Implementation' },
+			{ status: 'valid', role: 'Implementation' },
 	);
 	assert.deepEqual(extractPlainIssueRefs('    <!--\nRefs #42\n'), [42]);
 });
@@ -41,9 +41,11 @@ test('indented code cannot seed multiline inline-code or comment state', () => {
 
 test('indented paragraph continuations preserve inline HTML comment state', () => {
 	assert.deepEqual(extractPlainIssueRefs('paragraph\n    <!--\nRefs #84\n-->\nRefs #85\n'), [85]);
+	assert.deepEqual(extractPlainIssueRefs('Refs #86 <!--\n'), []);
+	assert.deepEqual(extractPlainIssueRefs('Refs #86 <!--\n# heading\nRefs #87\n'), [87]);
 	assert.deepEqual(
-		parseWorkItemRole('paragraph\n    <!--\n## Work item role\nImplementation\n-->\n'),
-		{ status: 'absent', role: null },
+		parseWorkItemRole('paragraph\n    <!--\n## Work item role\nImplementation\n'),
+		{ status: 'valid', role: 'Implementation' },
 	);
 });
 
