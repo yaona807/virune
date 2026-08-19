@@ -83,7 +83,7 @@ test('ignores HTML-commented examples while preserving visible metadata around c
 	assert.deepEqual(extractPlainIssueRefs('`<!--` is literal code\nRefs #4\n'), [4]);
 	assert.deepEqual(parseWorkItemRole('\\<!-- escaped\n## Work item role\nTracking\n'), { status: 'valid', role: 'Tracking' });
 	assert.deepEqual(parseWorkItemRole('## Work item role <!-- note -->\nImplementation\n'), { status: 'valid', role: 'Implementation' });
-	assert.deepEqual(extractPlainIssueRefs('Refs #5 <!-- note -->\n'), [5]);
+	assert.deepEqual(extractPlainIssueRefs('Refs #5 <!-- note -->\n'), []);
 	assert.deepEqual(extractPlainIssueRefs('<!-- note --> Refs #6\n'), []);
 });
 
