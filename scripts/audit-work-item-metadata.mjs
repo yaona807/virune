@@ -303,6 +303,7 @@ function findFirstMultilineBacktickSpan(lines) {
 			paragraphOpen = false;
 			continue;
 		}
+		if (commentOpen && interruptsInlineCodeContinuation(line)) commentOpen = false;
 		if (!commentOpen && isIndentedCodeLine(line) && !paragraphOpen) continue;
 		if (!commentOpen) {
 			const rawHtmlStart = beginInterruptingRawHtmlBlock(line) ?? beginTypeSevenRawHtmlBlock(line, paragraphOpen);
@@ -373,14 +374,14 @@ function maskMultilineBacktickCodeSpans(lines) {
 	}
 }
 
-function stripHtmlComments(line, commentState) {
-	if (!commentState.open && isIndentedCodeLine(line)) return line;
+function stripHtmlComments(line, commentState, paragraphOpen) {
+	if (!commentState.open && isIndentedCodeLine(line) && !paragraphOpen) return { line, multiline: false };
 	let visible = '';
 	let cursor = 0;
 	while (cursor < line.length) {
 		if (commentState.open) {
 			const end = line.indexOf('-->', cursor);
-			if (end === -1) return visible;
+			if (end === -1) return { line: visible, multiline: true };
 			commentState.open = false;
 			cursor = end + 3;
 			continue;
@@ -394,11 +395,11 @@ function stripHtmlComments(line, commentState) {
 		const end = findHtmlCommentEnd(line, start);
 		if (end === -1) {
 			commentState.open = true;
-			break;
+			return { line: visible, multiline: true };
 		}
 		cursor = end;
 	}
-	return visible;
+	return { line: visible, multiline: false };
 }
 
 function markdownLinesOutsideHiddenRegions(body) {
@@ -422,6 +423,7 @@ function markdownLinesOutsideHiddenRegions(body) {
 			output.push(null);
 			continue;
 		}
+		if (commentState.open && interruptsInlineCodeContinuation(rawLine)) commentState.open = false;
 		if (!commentState.open) {
 			const rawHtmlStart = beginInterruptingRawHtmlBlock(rawLine) ?? beginTypeSevenRawHtmlBlock(rawLine, paragraphOpen);
 			if (rawHtmlStart !== null) {
@@ -431,7 +433,14 @@ function markdownLinesOutsideHiddenRegions(body) {
 				continue;
 			}
 		}
-		const visibleLine = stripHtmlComments(rawLine, commentState);
+		const wasCommentOpen = commentState.open;
+		const stripped = stripHtmlComments(rawLine, commentState, paragraphOpen);
+		if (wasCommentOpen || stripped.multiline) {
+			output.push(null);
+			paragraphOpen = true;
+			continue;
+		}
+		const visibleLine = stripped.line;
 		const opening = visibleLine.match(/^ {0,3}(`{3,}|~{3,})(.*)$/u);
 		if (opening !== null && !(opening[1][0] === '`' && opening[2].includes('`'))) {
 			fence = { character: opening[1][0], length: opening[1].length };
