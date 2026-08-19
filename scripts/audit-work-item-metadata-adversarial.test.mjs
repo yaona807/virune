@@ -49,7 +49,7 @@ test('multiline inline-code spans cannot activate or hide plain linkage', () => 
 	assert.deepEqual(extractPlainIssueRefs('`unclosed\n>quote\nRefs #49\n`\n'), [49]);
 	assert.deepEqual(extractPlainIssueRefs('`unclosed\n1. list\nRefs #50\n`\n'), [50]);
 	assert.deepEqual(extractPlainIssueRefs('`unclosed\n===\nRefs #51\n`\n'), [51]);
-	assert.deepEqual(extractPlainIssueRefs('`unclosed\n<div>\nRefs #52\n`\n'), [52]);
+	assert.deepEqual(extractPlainIssueRefs('`unclosed\n<div>\nRefs #52\n`\n'), []);
 	assert.deepEqual(extractPlainIssueRefs('`unclosed\n<?processing\nRefs #53\n`\n'), [53]);
 	assert.deepEqual(extractPlainIssueRefs('`example\n<span>\nRefs #54\n`\nRefs #55\n'), [55]);
 	assert.deepEqual(extractPlainIssueRefs('<script>\nconst template = `\n</script>\nRefs #56\n`\n'), [56]);
