@@ -18,7 +18,7 @@ The Node project composes several language features in one small directory appli
 - a checked-in deterministic public API snapshot;
 - all three JavaScript interop tiers: generated safe binding, compiled TypeScript adapter, and isolated audited unsafe FFI source fixture.
 
-The browser project uses the public browser target and exposes an `@jsExport` JavaScript boundary while staying compatible with the repository-wide source check. Running that browser artifact continuously in Chromium is the dedicated quality-gate work tracked by Issue #81.
+The browser project uses the public browser target and exposes an `@jsExport` JavaScript boundary while staying compatible with the repository-wide source check. The feature-showcase quality gate builds this project and executes the checked artifact in Chromium. The same gate runs for relevant pull requests, on a nightly schedule, and as a reusable stable-release preflight.
 
 ## Layout
 
@@ -63,6 +63,14 @@ npm run virune -- check examples/feature-showcase/browser
 npm run virune -- build examples/feature-showcase/browser
 ```
 
+After the repository toolchain is built, the repository-owned gate runner performs the complete platform-independent showcase verification in one process:
+
+```bash
+node scripts/verify-feature-showcase.mjs
+```
+
+It executes the Node and browser format/check/build paths, Node tests/API/run, safe-binding drift check, TypeScript adapter validation, and project-scoped unsafe-FFI fixture validation. Real Chromium execution remains a separate workflow job so browser installation and execution are not duplicated across the platform-independent checks.
+
 The checked-in safe binding can be regenerated from the local declaration fixture with the public CLI:
 
 ```bash
@@ -84,7 +92,7 @@ npm run virune -- interop check examples/feature-showcase/node
 
 `src/interop/read-file.interop.ts` is the **TypeScript adapter** example. Node's callback-style `readFile` API stays inside TypeScript; the adapter exports one monomorphic callback-free `Promise<string>` surface suitable for Interop ABI validation.
 
-`src/ffi/unsafe-hostname.virune.example` is the **unsafe FFI source fixture**. It contains valid Virune unsafe-boundary syntax: the raw `unsafe extern` is inside an `unsafe module`, and callers would see only the audited native-shaped facade. The `.example` suffix is deliberate. The repository-wide root check treats every discovered `.virune` file relative to the repository source root, so a nested project's `src/ffi/` cannot simultaneously satisfy that root-level unsafe-path rule. Keeping the fixture non-discoverable preserves the safety rule instead of weakening it. Issue #81 owns staging and validating this fixture in the showcase project's own `src/ffi/` context.
+`src/ffi/unsafe-hostname.virune.example` is the **unsafe FFI source fixture**. It contains valid Virune unsafe-boundary syntax: the raw `unsafe extern` is inside an `unsafe module`, and callers would see only the audited native-shaped facade. The `.example` suffix is deliberate. The repository-wide root check treats every discovered `.virune` file relative to the repository source root, so a nested project's `src/ffi/` cannot simultaneously satisfy that root-level unsafe-path rule. Keeping the fixture non-discoverable preserves the safety rule instead of weakening it. The showcase gate copies the Node project to a temporary project root, stages this fixture as `src/ffi/unsafe-hostname.virune`, and validates it through the normal public `virune check` path.
 
 ## Public API snapshot
 
@@ -92,8 +100,8 @@ npm run virune -- interop check examples/feature-showcase/node
 
 ## Scope boundary
 
-Everything in this showcase uses the published Virune 1.0 surface. The example does not change compiler/runtime semantics, the JavaScript Interop ABI, root package scripts, or CI workflows.
+Everything in this showcase uses the published Virune 1.0 surface. The quality gate adds validation automation only; it does not change compiler/runtime semantics, the JavaScript Interop ABI, the Language Specification, or public stdlib behavior.
 
 Virune 1.0 keeps nominal construction private to the declaring module and does not allow exported signatures to re-export imported nominal types. The showcase keeps those boundaries visible instead of weakening them for example code.
 
-Continuous Node/browser/binding/API drift enforcement, including project-scoped execution of the unsafe FFI fixture, belongs to Issue #81; this directory is the canonical source material that gate will execute.
+`.github/workflows/feature-showcase.yml` is the canonical continuous gate for Node/browser/binding/API/unsafe-FFI drift. Its reusable `workflow_call` entry point is also the stable-release preflight boundary, so release validation exercises the same showcase contract rather than a separate approximation.
