@@ -337,9 +337,41 @@ function findFirstMultilineBacktickSpan(lines) {
 	let fence = null;
 	let commentOpen = false;
 	let rawHtmlBlock = null;
+	let listFence = null;
+	let listRawHtmlBlock = null;
 	let paragraphOpen = false;
 	for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
 		const line = lines[lineIndex];
+		if (listFence !== null) {
+			if (/^[ \t]*$/u.test(line)) {
+				paragraphOpen = false;
+				continue;
+			}
+			const listLine = stripIndentColumns(line, listFence.contentIndent);
+			if (listLine !== null) {
+				const closing = listLine.match(/^ {0,3}(`+|~+)[ \t]*$/u);
+				if (closing !== null && closing[1][0] === listFence.character && closing[1].length >= listFence.length) listFence = null;
+				paragraphOpen = false;
+				continue;
+			}
+			listFence = null;
+			paragraphOpen = false;
+		}
+		if (listRawHtmlBlock !== null) {
+			if (/^[ \t]*$/u.test(line)) {
+				if (rawHtmlBlockEnds(listRawHtmlBlock.block, line)) listRawHtmlBlock = null;
+				paragraphOpen = false;
+				continue;
+			}
+			const listLine = stripIndentColumns(line, listRawHtmlBlock.contentIndent);
+			if (listLine !== null) {
+				if (rawHtmlBlockEnds(listRawHtmlBlock.block, listLine)) listRawHtmlBlock = null;
+				paragraphOpen = false;
+				continue;
+			}
+			listRawHtmlBlock = null;
+			paragraphOpen = false;
+		}
 		if (fence !== null) {
 			const closing = line.match(/^ {0,3}(`+|~+)[ \t]*$/u);
 			if (closing !== null && closing[1][0] === fence.character && closing[1].length >= fence.length) fence = null;
@@ -354,6 +386,28 @@ function findFirstMultilineBacktickSpan(lines) {
 		if (commentOpen && interruptsInlineCodeContinuation(line)) commentOpen = false;
 		if (!commentOpen && isIndentedCodeLine(line) && !paragraphOpen) continue;
 		if (!commentOpen) {
+			const listMarker = parseListMarker(line);
+			const listItem = listItemBlockContent(line);
+			if (listItem !== null && (!paragraphOpen || listMarkerInterruptsParagraph(listMarker))) {
+				const listRawStart = beginInterruptingRawHtmlBlock(listItem.content) ?? beginTypeSevenRawHtmlBlock(listItem.content, false);
+				if (listRawStart !== null) {
+					if (!rawHtmlBlockEnds(listRawStart, listItem.content)) {
+						listRawHtmlBlock = { block: listRawStart, contentIndent: listItem.contentIndent };
+					}
+					paragraphOpen = false;
+					continue;
+				}
+				const listOpening = listItem.content.match(/^ {0,3}(`{3,}|~{3,})(.*)$/u);
+				if (listOpening !== null && !(listOpening[1][0] === '`' && listOpening[2].includes('`'))) {
+					listFence = {
+						character: listOpening[1][0],
+						length: listOpening[1].length,
+						contentIndent: listItem.contentIndent,
+					};
+					paragraphOpen = false;
+					continue;
+				}
+			}
 			const rawHtmlStart = beginInterruptingRawHtmlBlock(line) ?? beginTypeSevenRawHtmlBlock(line, paragraphOpen);
 			if (rawHtmlStart !== null) {
 				if (!rawHtmlBlockEnds(rawHtmlStart, line)) rawHtmlBlock = rawHtmlStart;
@@ -631,7 +685,14 @@ export function extractPlainIssueRefs(body) {
 	if (typeof body !== 'string') throw new Error('body must be a string');
 	const numbers = new Set();
 	const expression = /^(?: {0,3}(?:[-+*]|[0-9]{1,9}[.)])[ \t]+)?Refs[ \t]+#([1-9][0-9]*)[ \t]*$/u;
-	for (const line of markdownLinesOutsideHiddenRegions(body)) {
+	const lines = markdownLinesOutsideHiddenRegions(body);
+	for (let index = 0; index < lines.length; index += 1) {
+		const heading = parseMarkdownHeading(lines, index);
+		if (heading !== null) {
+			index = heading.endIndex;
+			continue;
+		}
+		const line = lines[index];
 		if (line === null) continue;
 		const match = line.match(expression);
 		if (match === null) continue;
