@@ -102,6 +102,13 @@ test('list-marker linkage obeys paragraph interruption and source-line position'
 	assert.deepEqual(extractPlainIssueRefs('- Refs #119\n---\n'), [119]);
 });
 
+test('HTML comments cannot transform source lines into plain linkage', () => {
+	assert.deepEqual(extractPlainIssueRefs('- <!-- note --> Refs #120\n'), []);
+	assert.deepEqual(extractPlainIssueRefs('Refs #121 <!-- note -->\n'), []);
+	assert.deepEqual(extractPlainIssueRefs('- Refs #122 <!-- note -->\n'), []);
+	assert.deepEqual(extractPlainIssueRefs('- Refs #123\n'), [123]);
+});
+
 test('multiline inline-code spans cannot activate or hide plain linkage', () => {
 	assert.deepEqual(extractPlainIssueRefs('`example\nRefs #42\n`\nRefs #43\n'), [43]);
 	assert.deepEqual(extractPlainIssueRefs('`example\nfoo <!--\n`\nRefs #44\n'), [44]);
