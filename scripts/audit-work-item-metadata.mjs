@@ -690,6 +690,8 @@ export function extractPlainIssueRefs(body) {
 	if (typeof body !== 'string') throw new Error('body must be a string');
 	const numbers = new Set();
 	const expression = /^Refs[ \t]+#([1-9][0-9]*)[ \t]*$/u;
+	const sourceExpression = /^(?: {0,3}(?:[-+*]|[0-9]{1,9}[.)])[ \t]+)?Refs[ \t]+#[1-9][0-9]*[ \t]*$/u;
+	const sourceLines = body.replace(/\r\n?/gu, '\n').split('\n');
 	const lines = markdownLinesOutsideHiddenRegions(body);
 	const linkageLines = markdownLinesOutsideHiddenRegions(body, { normalizeActiveListItems: true });
 	for (let index = 0; index < lines.length; index += 1) {
@@ -699,7 +701,7 @@ export function extractPlainIssueRefs(body) {
 			continue;
 		}
 		const line = linkageLines[index];
-		if (line === null) continue;
+		if (line === null || !sourceExpression.test(sourceLines[index] ?? '')) continue;
 		const match = line.match(expression);
 		if (match === null) continue;
 		const number = Number(match[1]);
