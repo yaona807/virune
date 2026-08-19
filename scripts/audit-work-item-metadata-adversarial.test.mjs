@@ -51,6 +51,16 @@ test('multiline inline-code spans cannot activate or hide plain linkage', () => 
 	assert.deepEqual(extractPlainIssueRefs('<div>\n`raw html\n</div>\n\nRefs #57\n`\n'), [57]);
 });
 
+test('raw HTML blocks do not supply role headings or plain linkage', () => {
+	assert.deepEqual(
+		parseWorkItemRole('<script>\n## Work item role\nImplementation\n</script>\n'),
+		{ status: 'absent', role: null },
+	);
+	assert.deepEqual(extractPlainIssueRefs('<div>\nRefs #58\n</div>\n\nRefs #59\n'), [59]);
+	assert.deepEqual(extractPlainIssueRefs('<source>\nRefs #60\n\nRefs #61\n'), [61]);
+	assert.deepEqual(extractPlainIssueRefs('<?processing\nRefs #62\n?>\nRefs #63\n'), [63]);
+});
+
 test('invalid backtick-fence info does not hide real role metadata or linkage', () => {
 	assert.deepEqual(
 		parseWorkItemRole('```bad`info\n## Work item role\nImplementation\n'),
