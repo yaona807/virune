@@ -103,7 +103,7 @@ test('multiline Setext headings cannot masquerade as exact role headings', () =>
 		{ status: 'absent', role: null },
 	);
 	assert.deepEqual(
-		parseWorkItemRole('## Work item role\nImplementation\nOther\ncontext\n---\nbody\n'),
+		parseWorkItemRole('## Work item role\nImplementation\n\nOther\ncontext\n---\nbody\n'),
 		{ status: 'valid', role: 'Implementation' },
 	);
 });
