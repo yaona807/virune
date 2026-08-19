@@ -85,6 +85,14 @@ test('plain linkage remains a source-line contract outside code', () => {
 	assert.deepEqual(extractPlainIssueRefs('  - Refs #99\n'), [99]);
 });
 
+test('list-marker linkage rejects indented-code content while preserving ordinary list content', () => {
+	assert.deepEqual(extractPlainIssueRefs('-    Refs #109\n'), [109]);
+	assert.deepEqual(extractPlainIssueRefs('-     Refs #110\n'), []);
+	assert.deepEqual(extractPlainIssueRefs('1.     Refs #111\n'), []);
+	assert.deepEqual(extractPlainIssueRefs('-\tRefs #112\n'), [112]);
+	assert.deepEqual(extractPlainIssueRefs('-\t\tRefs #113\n'), []);
+});
+
 test('multiline inline-code spans cannot activate or hide plain linkage', () => {
 	assert.deepEqual(extractPlainIssueRefs('`example\nRefs #42\n`\nRefs #43\n'), [43]);
 	assert.deepEqual(extractPlainIssueRefs('`example\nfoo <!--\n`\nRefs #44\n'), [44]);
