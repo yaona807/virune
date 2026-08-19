@@ -195,6 +195,13 @@ function findHtmlCommentStart(line, start) {
 	return -1;
 }
 
+function findHtmlCommentEnd(line, start) {
+	if (line.startsWith('<!-->', start)) return start + 5;
+	if (line.startsWith('<!--->', start)) return start + 6;
+	const end = line.indexOf('-->', start + 4);
+	return end === -1 ? -1 : end + 3;
+}
+
 function beginInterruptingRawHtmlBlock(line) {
 	const source = line.replace(/^ {0,3}/u, '');
 	if (/^<(?:pre|script|style|textarea)(?:[ \t>]|$)/iu.test(source)) {
@@ -319,12 +326,12 @@ function findFirstMultilineBacktickSpan(lines) {
 				continue;
 			}
 			if (line.startsWith('<!--', cursor) && !isEscaped(line, cursor)) {
-				const end = line.indexOf('-->', cursor + 4);
+				const end = findHtmlCommentEnd(line, cursor);
 				if (end === -1) {
 					commentOpen = true;
 					break;
 				}
-				cursor = end + 3;
+				cursor = end;
 				continue;
 			}
 			if (line[cursor] === '`' && !isEscaped(line, cursor)) {
@@ -383,12 +390,12 @@ function stripHtmlComments(line, commentState) {
 			break;
 		}
 		visible += line.slice(cursor, start);
-		const end = line.indexOf('-->', start + 4);
+		const end = findHtmlCommentEnd(line, start);
 		if (end === -1) {
 			commentState.open = true;
 			break;
 		}
-		cursor = end + 3;
+		cursor = end;
 	}
 	return visible;
 }
