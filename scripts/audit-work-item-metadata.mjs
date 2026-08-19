@@ -17,6 +17,8 @@ const workflowLabels = new Set(['workflow:validation-only', 'workflow:superseded
 const roleHeading = 'Work item role';
 const roleHeadingIdentity = roleHeading.toLowerCase();
 const validRoles = new Set(['Implementation', 'Tracking']);
+const interruptingHtmlBlockNames = '(?:address|article|aside|base|basefont|blockquote|body|caption|center|col|colgroup|dd|details|dialog|dir|div|dl|dt|fieldset|figcaption|figure|footer|form|frame|frameset|h[1-6]|head|header|hr|html|iframe|legend|li|link|main|menu|menuitem|nav|noframes|ol|optgroup|option|p|param|search|section|summary|table|tbody|td|tfoot|th|thead|title|tr|track|ul)';
+const interruptingHtmlBlockTypeSix = new RegExp(`^</?${interruptingHtmlBlockNames}(?:[ \\t]|/?>|$)`, 'iu');
 
 function requireRepository(value, path) {
 	if (typeof value !== 'string') throw new Error(`${path} must use owner/name form`);
@@ -182,6 +184,13 @@ function findHtmlCommentStart(line, start) {
 	return -1;
 }
 
+function startsInterruptingHtmlBlock(line) {
+	const source = line.replace(/^ {0,3}/u, '');
+	if (/^<(?:pre|script|style|textarea)(?:[ \t>]|$)/iu.test(source)) return true;
+	if (/^<!--/u.test(source) || /^<\?/u.test(source) || /^<![A-Za-z]/u.test(source) || /^<!\[CDATA\[/u.test(source)) return true;
+	return interruptingHtmlBlockTypeSix.test(source);
+}
+
 function interruptsInlineCodeContinuation(line) {
 	if (/^[ \t]*$/u.test(line)) return true;
 	if (/^ {0,3}#{1,6}(?:[ \t]+|$)/u.test(line)) return true;
@@ -189,8 +198,9 @@ function interruptsInlineCodeContinuation(line) {
 	if (/^ {0,3}[-+*][ \t]+/u.test(line)) return true;
 	if (/^ {0,3}1[.)][ \t]+/u.test(line)) return true;
 	if (/^ {0,3}(?:`{3,}|~{3,})/u.test(line)) return true;
+	if (/^ {0,3}(?:=+|-+)[ \t]*$/u.test(line)) return true;
 	if (/^ {0,3}(?:(?:\*[ \t]*){3,}|(?:-[ \t]*){3,}|(?:_[ \t]*){3,})$/u.test(line)) return true;
-	if (/^ {0,3}<!--/u.test(line)) return true;
+	if (startsInterruptingHtmlBlock(line)) return true;
 	return false;
 }
 
