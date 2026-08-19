@@ -690,14 +690,15 @@ export function extractPlainIssueRefs(body) {
 	if (typeof body !== 'string') throw new Error('body must be a string');
 	const numbers = new Set();
 	const expression = /^Refs[ \t]+#([1-9][0-9]*)[ \t]*$/u;
-	const lines = markdownLinesOutsideHiddenRegions(body, { normalizeActiveListItems: true });
+	const lines = markdownLinesOutsideHiddenRegions(body);
+	const linkageLines = markdownLinesOutsideHiddenRegions(body, { normalizeActiveListItems: true });
 	for (let index = 0; index < lines.length; index += 1) {
 		const heading = parseMarkdownHeading(lines, index);
 		if (heading !== null) {
 			index = heading.endIndex;
 			continue;
 		}
-		const line = lines[index];
+		const line = linkageLines[index];
 		if (line === null) continue;
 		const match = line.match(expression);
 		if (match === null) continue;

@@ -99,6 +99,7 @@ test('list-marker linkage obeys paragraph interruption and source-line position'
 	assert.deepEqual(extractPlainIssueRefs('paragraph\n- Refs #116\n'), [116]);
 	assert.deepEqual(extractPlainIssueRefs('paragraph\n\n2. Refs #117\n'), [117]);
 	assert.deepEqual(extractPlainIssueRefs('<!-- note --> - Refs #118\n'), []);
+	assert.deepEqual(extractPlainIssueRefs('- Refs #119\n---\n'), [119]);
 });
 
 test('multiline inline-code spans cannot activate or hide plain linkage', () => {
