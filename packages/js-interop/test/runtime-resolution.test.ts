@@ -112,6 +112,82 @@ test('Node runtime witness honors module-sync before a later import fallback', a
 	assert.equal(imported.witness.runtimeFormat, 'esm');
 });
 
+test('prefix-only Node builtins do not shadow a bare package with the same name', async () => {
+	const root = await fixtureRoot();
+	await writePackage(root, 'test', {
+		name: 'test',
+		version: '1.2.3',
+		type: 'module',
+		exports: {
+			'.': {
+				types: './index.d.ts',
+				import: './index.mjs',
+			},
+		},
+	}, {
+		'index.d.ts': 'declare const value: string;\nexport default value;\n',
+		'index.mjs': 'export default "package";\n',
+	});
+
+	const provider = new TypeScriptInteropProvider({ projectRoot: root });
+	const imported = provider.resolveImport({
+		containingFile: join(root, 'src/main.virune'),
+		moduleSpecifier: 'test',
+		kind: 'default',
+		platform: 'node',
+	});
+	assert.ok(imported.type);
+	assert.equal(imported.witness.packageName, 'test');
+	assert.equal(imported.witness.packageVersion, '1.2.3');
+	assert.equal(imported.witness.runtimeEntry, 'index.mjs');
+	assert.equal(imported.witness.runtimeFormat, 'esm');
+});
+
+test('node-prefixed prefix-only builtins remain builtin resolutions', async () => {
+	const root = await fixtureRoot();
+	const provider = new TypeScriptInteropProvider({ projectRoot: root });
+	const imported = provider.resolveImport({
+		containingFile: join(root, 'src/main.virune'),
+		moduleSpecifier: 'node:test',
+		kind: 'namespace',
+		platform: 'node',
+	});
+	assert.ok(imported.type);
+	assert.equal(imported.witness.runtimeEntry, 'node:test');
+	assert.equal(imported.witness.runtimeFormat, 'builtin');
+});
+
+test('runtime witness keeps bare package identity across a nested module type scope', async () => {
+	const root = await fixtureRoot();
+	await writePackage(root, 'nested-scope-runtime', {
+		name: 'nested-scope-runtime',
+		version: '4.5.6',
+		exports: {
+			'.': {
+				types: './index.d.ts',
+				import: './sub/runtime.js',
+			},
+		},
+	}, {
+		'index.d.ts': 'declare const value: string;\nexport default value;\n',
+		'sub/package.json': '{"type":"module"}\n',
+		'sub/runtime.js': 'export default "runtime";\n',
+	});
+
+	const provider = new TypeScriptInteropProvider({ projectRoot: root });
+	const imported = provider.resolveImport({
+		containingFile: join(root, 'src/main.virune'),
+		moduleSpecifier: 'nested-scope-runtime',
+		kind: 'default',
+		platform: 'node',
+	});
+	assert.ok(imported.type);
+	assert.equal(imported.witness.packageName, 'nested-scope-runtime');
+	assert.equal(imported.witness.packageVersion, '4.5.6');
+	assert.equal(imported.witness.runtimeEntry, 'sub/runtime.js');
+	assert.equal(imported.witness.runtimeFormat, 'esm');
+});
+
 test('a more-specific exports pattern cannot fall through after its conditions do not resolve', async () => {
 	const root = await fixtureRoot();
 	await writePackage(root, 'pattern-runtime', {
