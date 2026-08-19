@@ -361,11 +361,13 @@ function markdownLinesOutsideHiddenRegions(body) {
 			output.push(null);
 			continue;
 		}
-		const rawHtmlStart = beginInterruptingRawHtmlBlock(rawLine);
-		if (rawHtmlStart !== null) {
-			if (!rawHtmlBlockEnds(rawHtmlStart, rawLine)) rawHtmlBlock = rawHtmlStart;
-			output.push(null);
-			continue;
+		if (!commentState.open) {
+			const rawHtmlStart = beginInterruptingRawHtmlBlock(rawLine);
+			if (rawHtmlStart !== null) {
+				if (!rawHtmlBlockEnds(rawHtmlStart, rawLine)) rawHtmlBlock = rawHtmlStart;
+				output.push(null);
+				continue;
+			}
 		}
 		const visibleLine = stripHtmlComments(rawLine, commentState);
 		const opening = visibleLine.match(/^ {0,3}(`{3,}|~{3,})(.*)$/u);
