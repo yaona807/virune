@@ -59,3 +59,34 @@ test('an active export target array with no matching branch cannot fall through 
 	assert.equal(imported.witness.runtimeEntry, undefined);
 	assert.equal(imported.witness.runtimeFormat, 'unknown');
 });
+
+test('a malformed nearest runtime package scope cannot be classified as CommonJS', async () => {
+	const root = await fixtureRoot();
+	const packageRoot = join(root, 'node_modules', 'malformed-scope-runtime');
+	await mkdir(join(packageRoot, 'sub'), { recursive: true });
+	await writeFile(join(packageRoot, 'package.json'), `${JSON.stringify({
+		name: 'malformed-scope-runtime',
+		version: '1.0.0',
+		exports: {
+			'.': {
+				types: './index.d.ts',
+				import: './sub/runtime.js',
+			},
+		},
+	}, null, 2)}\n`, 'utf8');
+	await writeFile(join(packageRoot, 'index.d.ts'), 'declare const value: string;\nexport default value;\n', 'utf8');
+	await writeFile(join(packageRoot, 'sub/package.json'), '{"type":"module"', 'utf8');
+	await writeFile(join(packageRoot, 'sub/runtime.js'), 'export default "runtime";\n', 'utf8');
+
+	const provider = new TypeScriptInteropProvider({ projectRoot: root });
+	const imported = provider.resolveImport({
+		containingFile: join(root, 'src/main.virune'),
+		moduleSpecifier: 'malformed-scope-runtime',
+		kind: 'default',
+		platform: 'node',
+	});
+	assert.ok(imported.type);
+	assert.equal(imported.witness.packageName, 'malformed-scope-runtime');
+	assert.equal(imported.witness.runtimeEntry, 'sub/runtime.js');
+	assert.equal(imported.witness.runtimeFormat, 'unknown');
+});
