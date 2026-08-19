@@ -34,6 +34,14 @@ test('indented-code HTML comment markers do not hide later visible metadata', ()
 	assert.deepEqual(extractPlainIssueRefs('    <!--\nRefs #42\n'), [42]);
 });
 
+test('multiline inline-code spans cannot activate or hide plain linkage', () => {
+	assert.deepEqual(extractPlainIssueRefs('`example\nRefs #42\n`\nRefs #43\n'), [43]);
+	assert.deepEqual(extractPlainIssueRefs('`example\nfoo <!--\n`\nRefs #44\n'), [44]);
+	assert.deepEqual(extractPlainIssueRefs('`unclosed\nRefs #45\n'), [45]);
+	assert.deepEqual(extractPlainIssueRefs('`unclosed\n- Refs #46\n`\n'), [46]);
+	assert.deepEqual(extractPlainIssueRefs('`example\nfoo` <!--\nRefs #47\n'), []);
+});
+
 test('invalid backtick-fence info does not hide real role metadata or linkage', () => {
 	assert.deepEqual(
 		parseWorkItemRole('```bad`info\n## Work item role\nImplementation\n'),
