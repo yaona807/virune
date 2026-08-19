@@ -684,7 +684,7 @@ export function parseWorkItemRole(body) {
 export function extractPlainIssueRefs(body) {
 	if (typeof body !== 'string') throw new Error('body must be a string');
 	const numbers = new Set();
-	const expression = /^(?: {0,3}(?:[-+*]|[0-9]{1,9}[.)])[ \t]+)?Refs[ \t]+#([1-9][0-9]*)[ \t]*$/u;
+	const expression = /^Refs[ \t]+#([1-9][0-9]*)[ \t]*$/u;
 	const lines = markdownLinesOutsideHiddenRegions(body);
 	for (let index = 0; index < lines.length; index += 1) {
 		const heading = parseMarkdownHeading(lines, index);
@@ -694,7 +694,11 @@ export function extractPlainIssueRefs(body) {
 		}
 		const line = lines[index];
 		if (line === null) continue;
-		const match = line.match(expression);
+		let match = line.match(expression);
+		if (match === null) {
+			const listItem = listItemBlockContent(line);
+			match = listItem === null ? null : listItem.content.match(expression);
+		}
 		if (match === null) continue;
 		const number = Number(match[1]);
 		if (Number.isSafeInteger(number)) numbers.add(number);
