@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import test from 'node:test';
-import { compileSource } from '@virune/compiler/experimental';
+import { compileSource, type JsInteropProvider } from '@virune/compiler/experimental';
 import { TypeScriptInteropProvider } from '../src/index.js';
 import { fixtureRoot } from './fixture.js';
 
@@ -77,4 +77,55 @@ test('provider evidence remains canonical across different checkout roots', asyn
 	const serialized = JSON.stringify(first);
 	assert.equal(serialized.includes(firstRoot), false);
 	assert.equal(serialized.includes(secondRoot), false);
+});
+
+test('compiler stable usage IR strips enumerable provider navigation metadata', () => {
+	const navigationLeak = '/provider-private/absolute/declaration.d.ts';
+	const provider: JsInteropProvider = {
+		id: 'enumerable-navigation-provider',
+		version: '1',
+		generation: 1,
+		resolveImport(request) {
+			const importedName = request.importedName ?? 'value';
+			return {
+				type: {
+					ref: { providerId: this.id, generation: this.generation, id: importedName },
+					display: 'string',
+					category: 'primitive',
+					primitive: 'string',
+					origin: { moduleSpecifier: request.moduleSpecifier, exportName: importedName, declarationPath: 'types.d.ts' },
+					navigation: { declarationPath: navigationLeak },
+				},
+				runtime: { kind: 'named', importedName },
+				witness: {
+					moduleSpecifier: request.moduleSpecifier,
+					declarationEntry: 'types.d.ts',
+					runtimeEntry: 'runtime.js',
+					runtimeFormat: 'esm',
+					conditions: ['types', 'import', 'node'],
+					platform: request.platform,
+					providerVersion: this.version,
+				},
+			};
+		},
+		getProperty() { return undefined; },
+		resolveCall() { return undefined; },
+		resolveConstruct() { return undefined; },
+		getAwaitedType() { return undefined; },
+		display() { return 'string'; },
+	};
+
+	const result = compileSource({
+		id: 1,
+		path: '/project/main.virune',
+		text: 'import js { value } from "./external.js"\n\nfn main() -> Unit {\n\treturn Unit\n}\n',
+	}, { platform: 'node', jsInteropProvider: provider });
+	assert.deepEqual(result.diagnostics.filter(item => item.severity === 'error'), []);
+	assert.ok(result.semantic);
+	const foreignType = result.semantic.interop.usageIR[0]?.foreignType;
+	assert.ok(foreignType);
+	assert.equal(Object.prototype.hasOwnProperty.call(foreignType, 'navigation'), false);
+	const serialized = JSON.stringify(result.semantic.interop.usageIR);
+	assert.equal(serialized.includes('navigation'), false);
+	assert.equal(serialized.includes(navigationLeak), false);
 });
