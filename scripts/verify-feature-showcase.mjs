@@ -1,7 +1,6 @@
 import { spawn } from 'node:child_process';
 import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { basename, join, resolve } from 'node:path';
+import { basename, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const repositoryRoot = resolve(fileURLToPath(new URL('..', import.meta.url)));
@@ -87,5 +86,6 @@ async function run(command, args) {
 }
 
 function relativeDisplay(path) {
-	return path.startsWith(`${repositoryRoot}/`) ? path.slice(repositoryRoot.length + 1) : path;
+	const value = relative(repositoryRoot, path);
+	return value.length === 0 || value === '..' || value.startsWith(`..${process.platform === 'win32' ? '\\' : '/'}`) ? path : value;
 }
