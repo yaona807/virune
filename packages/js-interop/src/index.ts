@@ -646,7 +646,26 @@ function foreignTypeRequiresUnknownProjection(
 			if (typeArguments.length === 0) return true;
 			return typeArguments.some(item => foreignTypeRequiresUnknownProjection(item, checker, location, seen, budget, depth + 1));
 		}
-		if (checker.getSignaturesOfType(type, ts.SignatureKind.Call).length > 0 || checker.getSignaturesOfType(type, ts.SignatureKind.Construct).length > 0) return true;
+		for (const signature of [
+			...checker.getSignaturesOfType(type, ts.SignatureKind.Call),
+			...checker.getSignaturesOfType(type, ts.SignatureKind.Construct),
+		]) {
+			const signatureLocation = signature.declaration ?? location;
+			const thisParameter = signature.thisParameter;
+			if (thisParameter !== undefined) {
+				const declaration = thisParameter.valueDeclaration ?? thisParameter.declarations?.[0] ?? signatureLocation;
+				const thisType = checker.getTypeOfSymbolAtLocation(thisParameter, declaration);
+				if (foreignTypeRequiresUnknownProjection(thisType, checker, declaration, seen, budget, depth + 1)) return true;
+			}
+			for (const parameter of signature.getParameters()) {
+				const declaration = parameter.valueDeclaration ?? parameter.declarations?.[0];
+				if (declaration === undefined) return true;
+				const parameterType = checker.getTypeOfSymbolAtLocation(parameter, declaration);
+				if (foreignTypeRequiresUnknownProjection(parameterType, checker, declaration, seen, budget, depth + 1)) return true;
+			}
+			const returnType = checker.getReturnTypeOfSignature(signature);
+			if (foreignTypeRequiresUnknownProjection(returnType, checker, signatureLocation, seen, budget, depth + 1)) return true;
+		}
 
 		const objectType = type as ts.ObjectType;
 		if ((objectType.objectFlags & ts.ObjectFlags.Reference) !== 0) {
