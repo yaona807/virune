@@ -204,6 +204,7 @@ function findHtmlCommentEnd(line, start) {
 
 function beginInterruptingRawHtmlBlock(line) {
 	const source = line.replace(/^ {0,3}/u, '');
+	if (/^<!--/u.test(source)) return { endExpression: /-->/u, endsOnBlank: false };
 	if (/^<(?:pre|script|style|textarea)(?:[ \t>]|$)/iu.test(source)) {
 		return { endExpression: /<\/(?:pre|script|style|textarea)>/iu, endsOnBlank: false };
 	}
@@ -455,20 +456,23 @@ function parseMarkdownHeading(lines, index) {
 			endIndex: index,
 		};
 	}
-	const underline = lines[index + 1];
-	if (
-		line.trim() === ''
-		|| isIndentedCodeLine(line)
-		|| underline === null
-		|| underline === undefined
-	) return null;
-	const setext = underline.match(/^ {0,3}(=+|-+)[ \t]*$/u);
-	if (setext === null) return null;
-	return {
-		level: setext[1][0] === '=' ? 1 : 2,
-		text: line.trim(),
-		endIndex: index + 1,
-	};
+	if (!updateParagraphOpen(false, line)) return null;
+	const textLines = [line];
+	for (let cursor = index + 1; cursor < lines.length; cursor += 1) {
+		const candidate = lines[cursor];
+		if (candidate === null || candidate === undefined) return null;
+		const setext = candidate.match(/^ {0,3}(=+|-+)[ \t]*$/u);
+		if (setext !== null) {
+			return {
+				level: setext[1][0] === '=' ? 1 : 2,
+				text: textLines.map(textLine => textLine.trim()).join('\n'),
+				endIndex: cursor,
+			};
+		}
+		if (!updateParagraphOpen(true, candidate)) return null;
+		textLines.push(candidate);
+	}
+	return null;
 }
 
 export function parseWorkItemRole(body) {
