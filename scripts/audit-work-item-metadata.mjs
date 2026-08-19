@@ -239,15 +239,97 @@ function isThematicBreak(line) {
 	return /^ {0,3}(?:(?:\*[ \t]*){3,}|(?:-[ \t]*){3,}|(?:_[ \t]*){3,})$/u.test(line);
 }
 
+function leadingIndentColumns(line) {
+	let column = 0;
+	for (const character of line) {
+		if (character === ' ') {
+			column += 1;
+			continue;
+		}
+		if (character === '\t') {
+			column += 4 - (column % 4);
+			continue;
+		}
+		break;
+	}
+	return column;
+}
+
+function parseListMarker(line) {
+	if (isThematicBreak(line)) return null;
+	const match = line.match(/^ {0,3}([-+*]|([0-9]{1,9})[.)])(?:(?:[ \t]+)(.*))?$/u);
+	if (match === null) return null;
+	return {
+		indent: leadingIndentColumns(line),
+		ordered: match[2] !== undefined,
+		startNumber: match[2] === undefined ? null : Number(match[2]),
+		hasContent: (match[3] ?? '').trim() !== '',
+	};
+}
+
+function listMarkerInterruptsParagraph(marker) {
+	return marker !== null && marker.hasContent && (!marker.ordered || marker.startNumber === 1);
+}
+
+function startsBlockThatEndsList(line) {
+	if (/^ {0,3}#{1,6}(?:[ \t]+|$)/u.test(line)) return true;
+	if (/^ {0,3}>/u.test(line)) return true;
+	const fence = line.match(/^ {0,3}(`{3,}|~{3,})(.*)$/u);
+	if (fence !== null && !(fence[1][0] === '`' && fence[2].includes('`'))) return true;
+	if (isThematicBreak(line)) return true;
+	if (startsInterruptingHtmlBlock(line)) return true;
+	return false;
+}
+
+function maskTopLevelListContinuations(lines) {
+	const output = [];
+	let listIndent = null;
+	let afterBlank = false;
+	let paragraphOpen = false;
+	for (const line of lines) {
+		let marker = parseListMarker(line);
+		if (listIndent !== null) {
+			if (/^[ \t]*$/u.test(line)) {
+				output.push(line);
+				afterBlank = true;
+				continue;
+			}
+			if (marker !== null && marker.indent === listIndent) {
+				output.push(line);
+				afterBlank = false;
+				continue;
+			}
+			const indent = leadingIndentColumns(line);
+			if (indent > listIndent || (!afterBlank && !startsBlockThatEndsList(line))) {
+				output.push('[list-content]');
+				afterBlank = false;
+				continue;
+			}
+			listIndent = null;
+			afterBlank = false;
+			paragraphOpen = false;
+			marker = parseListMarker(line);
+		}
+		if (marker !== null && (!paragraphOpen || listMarkerInterruptsParagraph(marker))) {
+			listIndent = marker.indent;
+			output.push(line);
+			paragraphOpen = false;
+			continue;
+		}
+		output.push(line);
+		paragraphOpen = updateParagraphOpen(paragraphOpen, line);
+	}
+	return output;
+}
+
 function updateParagraphOpen(paragraphOpen, line) {
 	if (/^[ \t]*$/u.test(line)) return false;
 	if (isIndentedCodeLine(line)) return paragraphOpen;
 	if (/^ {0,3}#{1,6}(?:[ \t]+|$)/u.test(line)) return false;
 	if (/^ {0,3}>/u.test(line)) return false;
-	if (/^ {0,3}[-+*][ \t]+/u.test(line)) return false;
-	const ordered = line.match(/^ {0,3}([0-9]{1,9})[.)][ \t]+/u);
-	if (ordered !== null) {
-		if (!paragraphOpen || ordered[1] === '1') return false;
+	const listMarker = parseListMarker(line);
+	if (listMarker !== null) {
+		if (!paragraphOpen || listMarkerInterruptsParagraph(listMarker)) return false;
 		return true;
 	}
 	if (/^ {0,3}(?:`{3,}|~{3,})/u.test(line)) return false;
@@ -261,8 +343,7 @@ function interruptsInlineCodeContinuation(line) {
 	if (/^[ \t]*$/u.test(line)) return true;
 	if (/^ {0,3}#{1,6}(?:[ \t]+|$)/u.test(line)) return true;
 	if (/^ {0,3}>/u.test(line)) return true;
-	if (/^ {0,3}[-+*][ \t]+/u.test(line)) return true;
-	if (/^ {0,3}1[.)][ \t]+/u.test(line)) return true;
+	if (listMarkerInterruptsParagraph(parseListMarker(line))) return true;
 	if (/^ {0,3}(?:`{3,}|~{3,})/u.test(line)) return true;
 	if (/^ {0,3}(?:=+|-+)[ \t]*$/u.test(line)) return true;
 	if (isThematicBreak(line)) return true;
@@ -403,7 +484,8 @@ function stripHtmlComments(line, commentState, paragraphOpen) {
 }
 
 function markdownLinesOutsideHiddenRegions(body) {
-	const lines = maskMultilineBacktickCodeSpans(body.replace(/\r\n?/gu, '\n').split('\n'));
+	const sourceLines = body.replace(/\r\n?/gu, '\n').split('\n');
+	const lines = maskMultilineBacktickCodeSpans(maskTopLevelListContinuations(sourceLines));
 	const output = [];
 	let fence = null;
 	let rawHtmlBlock = null;
