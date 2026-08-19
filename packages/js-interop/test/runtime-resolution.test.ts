@@ -80,6 +80,39 @@ test('Node runtime witness honors node-addons before a later import fallback', a
 	assert.deepEqual(imported.witness.conditions, ['types', 'node-addons', 'node', 'import', 'module-sync']);
 });
 
+test('Node type oracle honors node-addons before a later node declaration branch', async () => {
+	const root = await fixtureRoot();
+	await writePackage(root, 'node-addons-types', {
+		name: 'node-addons-types',
+		type: 'module',
+		exports: {
+			'.': {
+				'node-addons': { types: './addon.d.ts', default: './addon.cjs' },
+				node: { types: './node.d.ts', default: './node.mjs' },
+				default: { types: './default.d.ts', default: './default.mjs' },
+			},
+		},
+	}, {
+		'addon.d.ts': 'declare const value: "addon";\nexport default value;\n',
+		'node.d.ts': 'declare const value: "node";\nexport default value;\n',
+		'default.d.ts': 'declare const value: "default";\nexport default value;\n',
+		'addon.cjs': 'module.exports = "addon";\n',
+		'node.mjs': 'export default "node";\n',
+		'default.mjs': 'export default "default";\n',
+	});
+
+	const provider = new TypeScriptInteropProvider({ projectRoot: root });
+	const imported = provider.resolveImport({
+		containingFile: join(root, 'src/main.virune'),
+		moduleSpecifier: 'node-addons-types',
+		kind: 'default',
+		platform: 'node',
+	});
+	assert.ok(imported.type);
+	assert.equal(imported.witness.declarationEntry, 'addon.d.ts');
+	assert.equal(imported.witness.runtimeEntry, 'addon.cjs');
+});
+
 test('Node runtime witness honors module-sync before a later import fallback', async () => {
 	const root = await fixtureRoot();
 	await writePackage(root, 'module-sync-runtime', {
@@ -110,6 +143,39 @@ test('Node runtime witness honors module-sync before a later import fallback', a
 	assert.ok(imported.type);
 	assert.equal(imported.witness.runtimeEntry, 'sync.mjs');
 	assert.equal(imported.witness.runtimeFormat, 'esm');
+});
+
+test('Node type oracle honors module-sync before a later import declaration branch', async () => {
+	const root = await fixtureRoot();
+	await writePackage(root, 'module-sync-types', {
+		name: 'module-sync-types',
+		type: 'module',
+		exports: {
+			'.': {
+				'module-sync': { types: './sync.d.ts', default: './sync.mjs' },
+				import: { types: './import.d.ts', default: './import.mjs' },
+				default: { types: './default.d.ts', default: './default.mjs' },
+			},
+		},
+	}, {
+		'sync.d.ts': 'declare const value: "sync";\nexport default value;\n',
+		'import.d.ts': 'declare const value: "import";\nexport default value;\n',
+		'default.d.ts': 'declare const value: "default";\nexport default value;\n',
+		'sync.mjs': 'export default "sync";\n',
+		'import.mjs': 'export default "import";\n',
+		'default.mjs': 'export default "default";\n',
+	});
+
+	const provider = new TypeScriptInteropProvider({ projectRoot: root });
+	const imported = provider.resolveImport({
+		containingFile: join(root, 'src/main.virune'),
+		moduleSpecifier: 'module-sync-types',
+		kind: 'default',
+		platform: 'node',
+	});
+	assert.ok(imported.type);
+	assert.equal(imported.witness.declarationEntry, 'sync.d.ts');
+	assert.equal(imported.witness.runtimeEntry, 'sync.mjs');
 });
 
 test('browser package conditions drive the TypeScript declaration oracle', async () => {
