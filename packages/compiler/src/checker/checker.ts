@@ -535,12 +535,12 @@ export class TypeChecker {
 				break;
 			}
 			case 'DeferStatement': {
-				if (this.#currentFunction === undefined) this.diagnostics.error('L2070', 'defer can be used only inside a function or test', statement.span);
-				const deferredType = this.checkExpression(statement.expression, scope);
-				if (!this.arena.equals(deferredType, this.arena.unit) && !this.arena.equals(deferredType, this.arena.never)) this.diagnostics.error('L2071', `defer expression must produce Unit, received ${this.arena.display(deferredType)}`, statement.expression.span);
-				break;
-			}
-			case 'ExpressionStatement': { const result = this.checkExpression(statement.expression, scope); if (this.isMustUse(result)) this.diagnostics.error('L2097', `Value of type ${this.arena.display(result)} must be used; bind it, return it, await it, handle it, or write discard`, statement.span); break; }
+					if (this.#currentFunction === undefined) this.diagnostics.error('L2070', 'defer can be used only inside a function or test', statement.span);
+					const deferredType = this.checkExpression(statement.expression, scope);
+					if (!this.arena.equals(deferredType, this.arena.unit) && !this.arena.equals(deferredType, this.arena.never)) this.diagnostics.error('L2071', `defer expression must produce Unit, received ${this.arena.display(deferredType)}`, statement.expression.span);
+					break;
+				}
+				case 'ExpressionStatement': { const result = this.checkExpression(statement.expression, scope); if (this.isMustUse(result)) this.diagnostics.error('L2097', `Value of type ${this.arena.display(result)} must be used; bind it, return it, await it, handle it, or write discard`, statement.span); break; }
 		}
 	}
 
@@ -727,7 +727,7 @@ export class TypeChecker {
 				if (element !== undefined && (!this.supportsEq(element) || !this.supportsHash(element))) this.diagnostics.error('L2110', `Set element type ${this.arena.display(element)} must support structural Eq and Hash`, expression.span);
 			}
 			if (namespace === 'List' && expression.callee.field === 'unique') { const element = this.listElementOf(argumentTypes[0]); if (element !== undefined && (!this.supportsEq(element) || !this.supportsHash(element))) this.diagnostics.error('L2111', `List.unique element type ${this.arena.display(element)} must support structural Eq and Hash`, expression.span); }
-			if (namespace === 'List' && expression.callee.field === 'uniqueBy') { const key = substitutions.get('U'); if (key !== undefined && (!this.supportsEq(key) || !this.supportsHash(key))) this.diagnostics.error('L2111', `List.uniqueBy key type ${this.arena.display(key)} must support structural Eq and Hash`, expression.span); }
+				if (namespace === 'List' && expression.callee.field === 'uniqueBy') { const key = substitutions.get('U'); if (key !== undefined && (!this.supportsEq(key) || !this.supportsHash(key))) this.diagnostics.error('L2111', `List.uniqueBy key type ${this.arena.display(key)} must support structural Eq and Hash`, expression.span); }
 		}
 		return calleeType.async ? this.arena.future(result) : result;
 	}
