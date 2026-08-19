@@ -9,6 +9,11 @@ export interface ForeignTypeRef {
 	readonly id: string;
 }
 
+/** Ephemeral editor metadata. Providers must not serialize this into stable semantic evidence. */
+export interface ForeignTypeNavigation {
+	readonly declarationPath: string;
+}
+
 export interface ForeignTypeSnapshot {
 	readonly ref: ForeignTypeRef;
 	readonly display: string;
@@ -16,6 +21,7 @@ export interface ForeignTypeSnapshot {
 	readonly primitive?: ForeignPrimitiveKind;
 	readonly mustUse?: boolean;
 	readonly origin?: ForeignOrigin;
+	readonly navigation?: ForeignTypeNavigation;
 }
 
 export interface ForeignOrigin {
