@@ -112,6 +112,105 @@ test('Node runtime witness honors module-sync before a later import fallback', a
 	assert.equal(imported.witness.runtimeFormat, 'esm');
 });
 
+test('browser package conditions drive the TypeScript declaration oracle', async () => {
+	const root = await fixtureRoot();
+	await writePackage(root, 'platform-runtime', {
+		name: 'platform-runtime',
+		type: 'module',
+		exports: {
+			'.': {
+				browser: { types: './browser.d.ts', default: './browser.mjs' },
+				node: { types: './node.d.ts', default: './node.mjs' },
+				default: { types: './default.d.ts', default: './default.mjs' },
+			},
+		},
+	}, {
+		'browser.d.ts': 'declare const value: (input: "browser") => "browser";\nexport default value;\n',
+		'node.d.ts': 'declare const value: (input: "node") => "node";\nexport default value;\n',
+		'default.d.ts': 'declare const value: (input: "default") => "default";\nexport default value;\n',
+		'browser.mjs': 'export default value => value;\n',
+		'node.mjs': 'export default value => value;\n',
+		'default.mjs': 'export default value => value;\n',
+	});
+
+	const provider = new TypeScriptInteropProvider({ projectRoot: root });
+	const imported = provider.resolveImport({
+		containingFile: join(root, 'src/main.virune'),
+		moduleSpecifier: 'platform-runtime',
+		kind: 'default',
+		platform: 'browser',
+	});
+	assert.ok(imported.type);
+	assert.equal(imported.witness.declarationEntry, 'browser.d.ts');
+	assert.equal(imported.witness.runtimeFormat, 'bundler');
+	assert.deepEqual(imported.witness.conditions, ['types', 'import', 'browser']);
+});
+
+test('neutral package resolution does not activate Node-specific conditions', async () => {
+	const root = await fixtureRoot();
+	await writePackage(root, 'neutral-runtime', {
+		name: 'neutral-runtime',
+		type: 'module',
+		exports: {
+			'.': {
+				node: { types: './node.d.ts', default: './node.mjs' },
+				default: { types: './default.d.ts', default: './default.mjs' },
+			},
+		},
+	}, {
+		'node.d.ts': 'declare const value: "node";\nexport default value;\n',
+		'default.d.ts': 'declare const value: "default";\nexport default value;\n',
+		'node.mjs': 'export default "node";\n',
+		'default.mjs': 'export default "default";\n',
+	});
+
+	const provider = new TypeScriptInteropProvider({ projectRoot: root });
+	const imported = provider.resolveImport({
+		containingFile: join(root, 'src/main.virune'),
+		moduleSpecifier: 'neutral-runtime',
+		kind: 'default',
+		platform: 'neutral',
+	});
+	assert.ok(imported.type);
+	assert.equal(imported.witness.declarationEntry, 'default.d.ts');
+	assert.equal(imported.witness.runtimeFormat, 'unknown');
+	assert.deepEqual(imported.witness.conditions, ['types', 'import']);
+});
+
+test('custom conditions stay aligned between TypeScript and the Node runtime witness', async () => {
+	const root = await fixtureRoot();
+	await writePackage(root, 'custom-runtime', {
+		name: 'custom-runtime',
+		type: 'module',
+		exports: {
+			'.': {
+				development: { types: './development.d.ts', default: './development.mjs' },
+				node: { types: './node.d.ts', default: './node.mjs' },
+				default: { types: './default.d.ts', default: './default.mjs' },
+			},
+		},
+	}, {
+		'development.d.ts': 'declare const value: "development";\nexport default value;\n',
+		'node.d.ts': 'declare const value: "node";\nexport default value;\n',
+		'default.d.ts': 'declare const value: "default";\nexport default value;\n',
+		'development.mjs': 'export default "development";\n',
+		'node.mjs': 'export default "node";\n',
+		'default.mjs': 'export default "default";\n',
+	});
+
+	const provider = new TypeScriptInteropProvider({ projectRoot: root, compilerOptions: { customConditions: ['development'] } });
+	const imported = provider.resolveImport({
+		containingFile: join(root, 'src/main.virune'),
+		moduleSpecifier: 'custom-runtime',
+		kind: 'default',
+		platform: 'node',
+	});
+	assert.ok(imported.type);
+	assert.equal(imported.witness.declarationEntry, 'development.d.ts');
+	assert.equal(imported.witness.runtimeEntry, 'development.mjs');
+	assert.deepEqual(imported.witness.conditions, ['types', 'node-addons', 'node', 'import', 'module-sync', 'development']);
+});
+
 test('prefix-only Node builtins do not shadow a bare package with the same name', async () => {
 	const root = await fixtureRoot();
 	await writePackage(root, 'test', {
