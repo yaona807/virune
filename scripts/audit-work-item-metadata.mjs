@@ -182,6 +182,101 @@ function findHtmlCommentStart(line, start) {
 	return -1;
 }
 
+function interruptsInlineCodeContinuation(line) {
+	if (/^[ \t]*$/u.test(line)) return true;
+	if (/^ {0,3}(?:#{1,6}(?:[ \t]+|$)|>|(?:[-+*]|1[.)])[ \t]+)/u.test(line)) return true;
+	if (/^ {0,3}(?:`{3,}|~{3,})/u.test(line)) return true;
+	if (/^ {0,3}(?:(?:\*[ \t]*){3,}|(?:-[ \t]*){3,}|(?:_[ \t]*){3,})$/u.test(line)) return true;
+	if (/^ {0,3}<!--/u.test(line)) return true;
+	return false;
+}
+
+function findMultilineBacktickClose(lines, startLine, expectedLength) {
+	for (let lineIndex = startLine; lineIndex < lines.length; lineIndex += 1) {
+		const line = lines[lineIndex];
+		if (interruptsInlineCodeContinuation(line)) return null;
+		for (let cursor = 0; cursor < line.length;) {
+			const index = line.indexOf('`', cursor);
+			if (index === -1) break;
+			const length = backtickRunLength(line, index);
+			if (length === expectedLength) return { lineIndex, index };
+			cursor = index + length;
+		}
+	}
+	return null;
+}
+
+function findFirstMultilineBacktickSpan(lines) {
+	let fence = null;
+	let commentOpen = false;
+	for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
+		const line = lines[lineIndex];
+		if (fence !== null) {
+			const closing = line.match(/^ {0,3}(`+|~+)[ \t]*$/u);
+			if (closing !== null && closing[1][0] === fence.character && closing[1].length >= fence.length) fence = null;
+			continue;
+		}
+		if (!commentOpen) {
+			const opening = line.match(/^ {0,3}(`{3,}|~{3,})(.*)$/u);
+			if (opening !== null && !(opening[1][0] === '`' && opening[2].includes('`'))) {
+				fence = { character: opening[1][0], length: opening[1].length };
+				continue;
+			}
+		}
+		for (let cursor = 0; cursor < line.length;) {
+			if (commentOpen) {
+				const end = line.indexOf('-->', cursor);
+				if (end === -1) break;
+				commentOpen = false;
+				cursor = end + 3;
+				continue;
+			}
+			if (line.startsWith('<!--', cursor) && !isEscaped(line, cursor)) {
+				const end = line.indexOf('-->', cursor + 4);
+				if (end === -1) {
+					commentOpen = true;
+					break;
+				}
+				cursor = end + 3;
+				continue;
+			}
+			if (line[cursor] === '`' && !isEscaped(line, cursor)) {
+				const length = backtickRunLength(line, cursor);
+				const sameLineClosing = findClosingBacktickRun(line, cursor + length, length);
+				if (sameLineClosing !== -1) {
+					cursor = sameLineClosing + length;
+					continue;
+				}
+				const closing = findMultilineBacktickClose(lines, lineIndex + 1, length);
+				if (closing !== null) {
+					return {
+						startLine: lineIndex,
+						startIndex: cursor,
+						endLine: closing.lineIndex,
+						endIndex: closing.index,
+						length,
+					};
+				}
+				cursor += length;
+				continue;
+			}
+			cursor += 1;
+		}
+	}
+	return null;
+}
+
+function maskMultilineBacktickCodeSpans(lines) {
+	const masked = [...lines];
+	for (;;) {
+		const span = findFirstMultilineBacktickSpan(masked);
+		if (span === null) return masked;
+		masked[span.startLine] = `${masked[span.startLine].slice(0, span.startIndex)}[inline-code]`;
+		for (let lineIndex = span.startLine + 1; lineIndex < span.endLine; lineIndex += 1) masked[lineIndex] = '[inline-code]';
+		masked[span.endLine] = `[inline-code]${masked[span.endLine].slice(span.endIndex + span.length)}`;
+	}
+}
+
 function stripHtmlComments(line, commentState) {
 	if (!commentState.open && /^(?: {4}| {0,3}\t)/u.test(line)) return line;
 	let visible = '';
@@ -211,7 +306,7 @@ function stripHtmlComments(line, commentState) {
 }
 
 function markdownLinesOutsideHiddenRegions(body) {
-	const lines = body.replace(/\r\n?/gu, '\n').split('\n');
+	const lines = maskMultilineBacktickCodeSpans(body.replace(/\r\n?/gu, '\n').split('\n'));
 	const output = [];
 	let fence = null;
 	const commentState = { open: false };
