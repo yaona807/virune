@@ -2,7 +2,7 @@
 
 [English](compiler-api.md) | [日本語](compiler-api_ja.md)
 
-`@virune/compiler`は、意図的に小さくしたstable APIだけをroot entry pointから公開します。Virune 1.0.0以降、このentry pointをSemantic Versioningの対象とします。
+`@virune/compiler`は、公開範囲を意図的に限定したstable APIだけをroot entry pointから公開します。Virune 1.0.0以降、このentry pointをSemantic Versioningの対象とします。
 
 ## Stable entry point
 
