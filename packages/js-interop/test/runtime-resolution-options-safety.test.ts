@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { mkdir, writeFile } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
+import { join } from 'node:path';
 import test from 'node:test';
+import ts from 'typescript';
 import { TypeScriptInteropProvider } from '../src/index.js';
 import { fixtureRoot } from './fixture.js';
 
@@ -101,4 +102,47 @@ test('package exports encapsulation cannot be disabled for a Node interop worksp
 
 	const provider = new TypeScriptInteropProvider({ projectRoot: root, compilerOptions: { resolvePackageJsonExports: false } });
 	assert.throws(() => resolveDefault(provider, root, 'exports-runtime/private.js'));
+});
+
+test('allowArbitraryExtensions cannot create type evidence for a runtime loader Virune did not bind', async () => {
+	const root = await fixtureRoot();
+	await writeFile(join(root, 'src/theme.css'), 'body {}\n', 'utf8');
+	await writeFile(join(root, 'src/theme.d.css.ts'), 'declare const value: { readonly className: string };\nexport default value;\n', 'utf8');
+
+	const provider = new TypeScriptInteropProvider({ projectRoot: root, compilerOptions: { allowArbitraryExtensions: true } });
+	assert.throws(() => resolveDefault(provider, root, './theme.css'));
+});
+
+test('resolveJsonModule cannot create Node import evidence without a bound JSON runtime contract', async () => {
+	const root = await fixtureRoot();
+	await writeFile(join(root, 'src/data.json'), '{"answer":42}\n', 'utf8');
+
+	const provider = new TypeScriptInteropProvider({ projectRoot: root, compilerOptions: { resolveJsonModule: true } });
+	assert.throws(() => resolveDefault(provider, root, './data.json'));
+});
+
+test('runtime-sensitive TypeScript resolver switches are normalized by the fixed Node session', async () => {
+	const root = await fixtureRoot();
+	let observed: ts.CompilerOptions | undefined;
+	const provider = new TypeScriptInteropProvider({
+		projectRoot: root,
+		compilerOptions: {
+			preserveSymlinks: true,
+			allowArbitraryExtensions: true,
+			resolveJsonModule: true,
+		},
+		createLanguageService: host => {
+			observed = host.getCompilationSettings();
+			return ts.createLanguageService(host);
+		},
+	});
+	provider.resolveImport({
+		containingFile: join(root, 'src/main.virune'),
+		moduleSpecifier: 'node:path',
+		kind: 'namespace',
+		platform: 'node',
+	});
+	assert.equal(observed?.preserveSymlinks, false);
+	assert.equal(observed?.allowArbitraryExtensions, false);
+	assert.equal(observed?.resolveJsonModule, false);
 });
