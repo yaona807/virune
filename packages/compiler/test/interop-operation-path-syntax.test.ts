@@ -20,7 +20,7 @@ function witness(runtimeEntry: string): ModuleResolutionWitness {
 	};
 }
 
-test('file URIs and Windows drive-relative runtime locators cannot enter stable evidence', () => {
+test('file URIs and Windows drive-relative provider runtime locators cannot enter stable evidence', () => {
 	for (const runtimeEntry of ['file:/checkout/private.js', 'file:C:/checkout/private.js', 'C:private/library.js']) {
 		assert.throws(
 			() => externalModuleLoadOperation({
@@ -34,16 +34,19 @@ test('file URIs and Windows drive-relative runtime locators cannot enter stable 
 	}
 });
 
-test('drive-relative module and provider semantic fields fail closed', () => {
-	assert.throws(
-		() => externalModuleLoadOperation({
+test('source-authored module specifiers remain exact while provider semantic paths fail closed', () => {
+	for (const moduleSpecifier of ['/explicit/library.js', 'file:///explicit/library.js', 'C:explicit/library.js']) {
+		const operation = externalModuleLoadOperation({
 			nodeId: 1,
 			span,
-			moduleSpecifier: 'C:private/library.js',
-			witnesses: [{ ...witness('dist/library.js'), moduleSpecifier: 'C:private/library.js' }],
-		}),
-		/not be absolute or drive-relative/u,
-	);
+			moduleSpecifier,
+			witnesses: [{ ...witness('dist/library.js'), moduleSpecifier }],
+		});
+		assert.equal(operation.moduleSpecifier, moduleSpecifier);
+		assert.equal(operation.runtimeWitness?.moduleSpecifier, moduleSpecifier);
+		assert.equal(operation.decision.status, 'resolved');
+	}
+
 	const usage: ForeignUsageIR = {
 		kind: 'property',
 		nodeId: 1,
