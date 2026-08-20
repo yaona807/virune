@@ -134,6 +134,14 @@ test('GitHub cmark-gfm block tags distinguish source from search', () => {
 	assert.deepEqual(extractPlainIssueRefs('intro\n<search>\nRefs #131\n\nRefs #132\n'), [131, 132]);
 });
 
+test('GitHub cmark-gfm block tag matching is case-sensitive', () => {
+	assert.deepEqual(extractPlainIssueRefs('intro\n<div>\nRefs #154\n\nRefs #155\n'), [155]);
+	assert.deepEqual(extractPlainIssueRefs('intro\n<DIV>\nRefs #156\n\nRefs #157\n'), [156, 157]);
+	assert.deepEqual(extractPlainIssueRefs('<script>\nRefs #158\n</SCRIPT>\nRefs #159\n</script>\nRefs #160\n'), [160]);
+	assert.deepEqual(extractPlainIssueRefs('intro\n<SCRIPT>\nRefs #161\n\nRefs #162\n'), [161, 162]);
+	assert.deepEqual(extractPlainIssueRefs('<SCRIPT>\nRefs #163\n\nRefs #164\n'), [164]);
+});
+
 test('GitHub cmark-gfm short comment forms are block-only at line start unless a later inline terminator completes them', () => {
 	assert.deepEqual(extractPlainIssueRefs('<!-->\nRefs #133\n'), [133]);
 	assert.deepEqual(extractPlainIssueRefs('<!--->\nRefs #134\n'), [134]);
