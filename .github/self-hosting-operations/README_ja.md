@@ -1,6 +1,6 @@
 # Self-hosting開発運用
 
-この文書は、ViruneのSelf-hosting Pull Requestに適用するRepository-ownedな運用規則を定義する。技術的な品質Gateと[CONTRIBUTING_ja.md](../../CONTRIBUTING_ja.md)のRepository-wideなContributor workflowを補完するものであり、Compiler、互換性、Security、再現性、Release、work-item、exact-head evidenceの要件を緩和しない。
+この文書は、ViruneのSelf-hosting Pull Requestに適用する、リポジトリ管理下の運用規則を定めます。技術的な品質Gateと[CONTRIBUTING_ja.md](../../CONTRIBUTING_ja.md)のリポジトリ全体に適用されるContributor workflowを補完するものであり、Compiler、互換性、Security、再現性、Release、work-item、exact-head evidenceの要件を緩和しません。
 
 English: [README.md](README.md)
 
