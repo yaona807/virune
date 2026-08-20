@@ -53,3 +53,10 @@ test('rejects Windows device basenames normalized before an extension', () => {
 		);
 	}
 });
+
+test('accepts valid path names adjacent to Windows device-name boundaries', () => {
+	for (const path of ['dist/COM10.txt', 'dist/LPT10', 'dist/CONSOLE.js', 'dist/AUXILIARY.js', 'dist/NULSAFE.txt']) {
+		const result = auditWith(path);
+		assert.equal(result.fileCount, 3);
+	}
+});
