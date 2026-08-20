@@ -18,7 +18,7 @@ const roleHeading = 'Work item role';
 const roleHeadingIdentity = roleHeading.toLowerCase();
 const validRoles = new Set(['Implementation', 'Tracking']);
 const interruptingHtmlBlockNames = '(?:address|article|aside|base|basefont|blockquote|body|caption|center|col|colgroup|dd|details|dialog|dir|div|dl|dt|fieldset|figcaption|figure|footer|form|frame|frameset|h[1-6]|head|header|hr|html|iframe|legend|li|link|main|menu|menuitem|nav|noframes|ol|optgroup|option|p|param|section|source|summary|table|tbody|td|tfoot|th|thead|title|tr|track|ul)';
-const interruptingHtmlBlockTypeSix = new RegExp(`^</?${interruptingHtmlBlockNames}(?:[ \\t\\v\\f]|/?>|$)`, 'iu');
+const interruptingHtmlBlockTypeSix = new RegExp(`^</?${interruptingHtmlBlockNames}(?:[ \\t\\v\\f]|/?>|$)`, 'u');
 const htmlTagNamePattern = '[A-Za-z][A-Za-z0-9-]*';
 const htmlAttributeNamePattern = '[A-Za-z_:][A-Za-z0-9_.:-]*';
 const htmlAttributeValuePattern = "(?:[^ \\t\\v\\f\\r\\n\"'=<>`\\x00]+|'[^'\\x00]*'|\"[^\"\\x00]*\")";
@@ -222,8 +222,8 @@ function findHtmlCommentContinuationEnd(line) {
 function beginInterruptingRawHtmlBlock(line) {
 	const source = line.replace(/^ {0,3}/u, '');
 	if (/^<!--/u.test(source)) return { endLiteral: '-->', endExpression: null, endsOnBlank: false };
-	if (/^<(?:pre|script|style|textarea)(?:[ \t\v\f>]|$)/iu.test(source)) {
-		return { endExpression: /<\/(?:pre|script|style|textarea)>/iu, endsOnBlank: false };
+	if (/^<(?:pre|script|style|textarea)(?:[ \t\v\f>]|$)/u.test(source)) {
+		return { endExpression: /<\/(?:pre|script|style|textarea)>/u, endsOnBlank: false };
 	}
 	if (/^<\?/u.test(source)) return { endExpression: /\?>/u, endsOnBlank: false };
 	if (/^<![A-Z]/u.test(source)) return { endExpression: />/u, endsOnBlank: false };
@@ -235,7 +235,7 @@ function beginInterruptingRawHtmlBlock(line) {
 function beginTypeSevenRawHtmlBlock(line, paragraphOpen) {
 	if (paragraphOpen) return null;
 	const open = completeHtmlOpenTag.exec(line);
-	if (open !== null && !typeSevenOpenTagExclusions.has(open[1].toLowerCase())) {
+	if (open !== null && !typeSevenOpenTagExclusions.has(open[1])) {
 		return { endExpression: null, endsOnBlank: true };
 	}
 	if (completeHtmlClosingTag.test(line)) return { endExpression: null, endsOnBlank: true };
