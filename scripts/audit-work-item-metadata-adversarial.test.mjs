@@ -109,10 +109,14 @@ test('HTML comments cannot transform source lines into plain linkage', () => {
 	assert.deepEqual(extractPlainIssueRefs('- Refs #123\n'), [123]);
 });
 
-test('GFM comment blocks do not use browser-only --!> recovery as a terminator', () => {
+test('GFM comments do not use browser-only --!> recovery as a terminator', () => {
 	assert.deepEqual(
 		extractPlainIssueRefs('<!--\nRefs #124\n--!>\nRefs #125\n-->\nRefs #126\n'),
 		[126],
+	);
+	assert.deepEqual(
+		extractPlainIssueRefs('paragraph <!--\n--!>\nRefs #127\n-->\nRefs #128\n'),
+		[128],
 	);
 	assert.deepEqual(
 		parseWorkItemRole('<!--\n## Work item role\nImplementation\n--!>\n## Work item role\nTracking\n-->\n## Work item role\nImplementation\n'),
