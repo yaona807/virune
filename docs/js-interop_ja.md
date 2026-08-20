@@ -4,7 +4,7 @@
 
 ## 境界モデル
 
-Viruneは3段階で扱います。
+Viruneでは、JavaScript／TypeScript連携を次の3段階に分けて扱います。
 
 1. Runtimeで完全検証できるTypeScript宣言から生成するdirect binding
 2. 意図的なshape変換を行うcompiled TypeScript Adapter
