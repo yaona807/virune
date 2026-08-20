@@ -2,7 +2,6 @@ import assert from 'node:assert/strict';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import test from 'node:test';
-import ts from 'typescript';
 import { TypeScriptInteropProvider } from '../src/index.js';
 import { fixtureRoot } from './fixture.js';
 
@@ -387,7 +386,7 @@ test('a more-specific exports pattern cannot fall through after its conditions d
 	assert.equal(imported.witness.runtimeFormat, 'unknown');
 });
 
-test('legacy ESM package resolution does not apply CommonJS extension searching', async () => {
+test('legacy ESM package resolution does not apply CommonJS or Bundler extension searching', async () => {
 	const root = await fixtureRoot();
 	await writePackage(root, 'legacy-runtime', {
 		name: 'legacy-runtime',
@@ -397,20 +396,11 @@ test('legacy ESM package resolution does not apply CommonJS extension searching'
 		'subpath.js': 'export default "runtime";\n',
 	});
 
-	const provider = new TypeScriptInteropProvider({
-		projectRoot: root,
-		compilerOptions: {
-			module: ts.ModuleKind.ESNext,
-			moduleResolution: ts.ModuleResolutionKind.Bundler,
-		},
-	});
-	const imported = provider.resolveImport({
+	const provider = new TypeScriptInteropProvider({ projectRoot: root });
+	assert.throws(() => provider.resolveImport({
 		containingFile: join(root, 'src/main.virune'),
 		moduleSpecifier: 'legacy-runtime/subpath',
 		kind: 'default',
 		platform: 'node',
-	});
-	assert.ok(imported.type, 'the type oracle is deliberately allowed to resolve the extensionless declaration in this regression');
-	assert.equal(imported.witness.runtimeEntry, undefined);
-	assert.equal(imported.witness.runtimeFormat, 'unknown');
+	}));
 });
