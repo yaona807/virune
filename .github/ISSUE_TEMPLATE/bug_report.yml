@@ -7,17 +7,7 @@ body:
       value: |
         Before filing, search existing issues and reduce the problem to the smallest useful reproduction you can provide.
 
-        Security vulnerabilities must not be disclosed in this public form. Follow the [security policy](https://github.com/yaona807/virune/blob/main/SECURITY.md). If GitHub private vulnerability reporting is unavailable, use the Security contact request form only when the fallback eligibility conditions in that policy are satisfied, and never include vulnerability details in the public Issue title or body.
-  - type: dropdown
-    id: work_item_role
-    attributes:
-      label: Work item role
-      description: Choose Implementation for one concrete defect whose explicit observable completion criteria can determine completion. Choose Tracking only for a parent or coordination issue that will contain separate implementation work items.
-      options:
-        - Implementation
-        - Tracking
-    validations:
-      required: true
+        Security vulnerabilities must not be disclosed in this public form. Follow the [security policy](https://github.com/yaona807/virune/blob/main/SECURITY.md).
   - type: textarea
     id: problem
     attributes:
@@ -29,7 +19,7 @@ body:
     id: expected
     attributes:
       label: Expected behavior
-      description: What should have happened instead? For an Implementation bug, this required field is the baseline observable completion criterion.
+      description: What should have happened instead?
     validations:
       required: true
   - type: textarea
@@ -46,16 +36,6 @@ body:
       description: Virune version/commit, Node version, OS, target, and other relevant details.
     validations:
       required: true
-  - type: textarea
-    id: acceptance
-    attributes:
-      label: Additional acceptance criteria (optional)
-      description: If useful, describe observable completion conditions beyond the required Expected behavior. Maintainers may refine completion criteria during triage.
-  - type: textarea
-    id: boundaries
-    attributes:
-      label: Compatibility / safety boundaries
-      description: Note any Language Specification, Compiler API, Runtime ABI, Interop ABI, safety, determinism, or compatibility constraints that must not regress.
   - type: checkboxes
     id: checks
     attributes:
