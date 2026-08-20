@@ -63,6 +63,47 @@ test('ModuleLoad is declaration-level evidence and strips provider-private witne
 	assert.equal(serialized.includes(providerPrivate), false);
 });
 
+test('ModuleLoad rejects mismatched, absolute, noncanonical, or unknown witness facts', () => {
+	assert.throws(
+		() => externalModuleLoadOperation({
+			nodeId: 1,
+			span,
+			moduleSpecifier: './library.js',
+			witness: { ...witness(), moduleSpecifier: './other.js' },
+		}),
+		/witness must resolve the same module specifier/u,
+	);
+	for (const invalidWitness of [
+		{ ...witness(), declarationEntry: '/absolute/library.d.ts' },
+		{ ...witness(), runtimeEntry: 'C:/absolute/library.js' },
+		{ ...witness(), runtimeEntry: 'dist\\library.js' },
+		{ ...witness(), runtimeEntry: 'dist/../library.js' },
+	]) {
+		assert.throws(
+			() => externalModuleLoadOperation({ nodeId: 1, span, moduleSpecifier: './library.js', witness: invalidWitness }),
+			/External operation (?:declaration|runtime) (?:entry|path)/u,
+		);
+	}
+	assert.throws(
+		() => externalModuleLoadOperation({
+			nodeId: 1,
+			span,
+			moduleSpecifier: './library.js',
+			witness: { ...witness(), runtimeFormat: 'future-format' } as unknown as ModuleResolutionWitness,
+		}),
+		/Unknown module witness runtime format/u,
+	);
+	assert.throws(
+		() => externalModuleLoadOperation({
+			nodeId: 1,
+			span,
+			moduleSpecifier: './library.js',
+			witness: { ...witness(), platform: 'future-platform' } as unknown as ModuleResolutionWitness,
+		}),
+		/Unknown module witness platform/u,
+	);
+});
+
 test('current property/call/await observations map to explicit Direct operations without stronger library claims', () => {
 	const property = externalOperationFromUsage(usage({ kind: 'property' }));
 	assert.equal(property?.kind, 'read-property');
@@ -124,6 +165,36 @@ test('primitive bridge evidence drops ephemeral TypeId and unknown provider meta
 	assert.equal(serialized.includes('987654'), false, 'compiler TypeId must not enter stable operation evidence');
 	assert.equal(serialized.includes('providerPrivatePath'), false);
 	assert.equal(serialized.includes(privatePath), false);
+});
+
+test('unknown foreign and bridge enum values fail closed', () => {
+	assert.throws(
+		() => externalOperationFromUsage(usage({
+			kind: 'property',
+			foreignType: { ...stableString, category: 'future-category' } as unknown as ForeignUsageIR['foreignType'],
+		})),
+		/Unknown foreign type category/u,
+	);
+	assert.throws(
+		() => externalOperationFromUsage(usage({
+			kind: 'bridge',
+			bridge: { kind: 'primitive', bridge: 'future-bridge', targetType: 1 } as unknown as NonNullable<ForeignUsageIR['bridge']>,
+		})),
+		/Unknown primitive bridge/u,
+	);
+});
+
+test('absolute provider origin paths cannot enter operation evidence', () => {
+	assert.throws(
+		() => externalOperationFromUsage(usage({
+			kind: 'property',
+			foreignType: {
+				...stableString,
+				origin: { ...stableString.origin, declarationPath: '/checkout/types.d.ts' },
+			},
+		})),
+		/External operation declaration path must not be absolute/u,
+	);
 });
 
 test('ModuleLoad refuses an empty module specifier', () => {
