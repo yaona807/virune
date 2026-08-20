@@ -328,7 +328,7 @@ function assertBridgeMatchesForeignType(bridge: PrimitiveBridgeKind, source: Ext
 
 function canonicalOrigin(origin: ForeignOrigin): ExternalForeignOrigin {
 	return {
-		moduleSpecifier: canonicalModuleSpecifier(origin.moduleSpecifier, 'origin module specifier'),
+		moduleSpecifier: sourceModuleSpecifier(origin.moduleSpecifier, 'origin module specifier'),
 		...(origin.packageName === undefined ? {} : { packageName: canonicalProviderText(origin.packageName, 'origin package name') }),
 		...(origin.packageVersion === undefined ? {} : { packageVersion: canonicalProviderText(origin.packageVersion, 'origin package version') }),
 		...(origin.exportName === undefined ? {} : { exportName: canonicalProviderText(origin.exportName, 'origin export name') }),
