@@ -269,7 +269,8 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 		const callText = `${callTarget}(${argumentExpressions.join(', ')})`;
 		const importText = [...imports].sort().join('\n');
 		const sourceText = `${importText.length === 0 ? '' : `${importText}\n`}${declarations.join('\n')}\nexport const __viruneResult = ${callText};\n`;
-		const virtualFileName = `.virune-interop-usage-${workspace.platform}-${hash(sourceText)}.ts`;
+		const virtualFileExtension = workspace.platform === 'node' ? 'mts' : 'ts';
+		const virtualFileName = `.virune-interop-usage-${workspace.platform}-${hash(sourceText)}.${virtualFileExtension}`;
 		const virtualPath = join(usageDirectory, virtualFileName);
 		const virtualKey = canonicalFilePath(virtualPath);
 		const existing = workspace.virtualFiles.get(virtualKey);
@@ -460,6 +461,13 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 		const existing = this.#workspaces.get(platform);
 		if (existing !== undefined) return existing;
 		const typeRoots = platform === 'node' ? nodeTypeRoots(this.#compilerOptions.typeRoots) : this.#compilerOptions.typeRoots;
+		const configuredCompilerOptions = { ...this.#compilerOptions };
+		delete configuredCompilerOptions.baseUrl;
+		delete configuredCompilerOptions.paths;
+		delete configuredCompilerOptions.rootDirs;
+		delete configuredCompilerOptions.moduleSuffixes;
+		delete configuredCompilerOptions.resolvePackageJsonExports;
+		delete configuredCompilerOptions.resolvePackageJsonImports;
 		const platformConditions = platform === 'node'
 			? ['node-addons', 'module-sync']
 			: platform === 'browser' ? ['browser'] : [];
@@ -475,8 +483,10 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 				customConditions: normalizedCustomConditions(platformConditions),
 			};
 		const compilerOptions: ts.CompilerOptions = {
-			...this.#compilerOptions,
+			...configuredCompilerOptions,
 			...targetCompilerOptions,
+			resolvePackageJsonExports: true,
+			resolvePackageJsonImports: true,
 			types: platform === 'node' ? ['node'] : [],
 			...(typeRoots === undefined ? {} : { typeRoots }),
 		};
@@ -720,7 +730,8 @@ function signatureArity(parameters: readonly ts.Symbol[]): { readonly minimum: n
 }
 
 function interopProbeFileName(request: JsImportRequest): string {
-	return `.virune-interop-${hash(`${request.moduleSpecifier}:${request.kind}:${request.importedName ?? ''}`)}.ts`;
+	const extension = request.platform === 'node' ? 'mts' : 'ts';
+	return `.virune-interop-${hash(`${request.moduleSpecifier}:${request.kind}:${request.importedName ?? ''}`)}.${extension}`;
 }
 
 function usageProjectionForImport(request: JsImportRequest): UsageProjection | undefined {
