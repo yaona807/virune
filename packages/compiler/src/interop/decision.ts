@@ -97,12 +97,13 @@ export function canonicalizeInteropDecision(decision: InteropDecisionIR): Intero
 	};
 }
 
-/** Only fully resolved Direct decisions with every obligation discharged are success evidence. */
+/** Only fully resolved, non-authored Direct decisions with discharged obligations are success evidence. */
 export function isResolvedDirectInteropDecision(decision: InteropDecisionIR): boolean {
 	try {
 		const canonical = canonicalizeInteropDecision(decision);
 		return canonical.status === 'resolved'
 			&& canonical.mechanism === 'direct'
+			&& canonical.authoring === 'none'
 			&& canonical.obligations.every(obligation => obligation.status === 'discharged');
 	} catch {
 		return false;
