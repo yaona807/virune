@@ -10,7 +10,6 @@ const requiredTemplateFiles = [
 	'change_proposal.yml',
 	'conduct_contact.yml',
 	'config.yml',
-	'security_contact.yml',
 ];
 const contactOnlyForms = new Set(['conduct_contact.yml', 'security_contact.yml']);
 const allowedFormTopLevel = new Set(['name', 'description', 'title', 'labels', 'assignees', 'body']);
