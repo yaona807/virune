@@ -129,13 +129,31 @@ test('GitHub cmark-gfm block tags distinguish source from search', () => {
 	assert.deepEqual(extractPlainIssueRefs('intro\n<search>\nRefs #131\n\nRefs #132\n'), [131, 132]);
 });
 
-test('GitHub cmark-gfm short comment forms are block-only at line start, not inline comments', () => {
+test('GitHub cmark-gfm short comment forms are block-only at line start unless a later inline terminator completes them', () => {
 	assert.deepEqual(extractPlainIssueRefs('<!-->\nRefs #133\n'), [133]);
 	assert.deepEqual(extractPlainIssueRefs('<!--->\nRefs #134\n'), [134]);
 	assert.deepEqual(extractPlainIssueRefs('paragraph <!-->\nRefs #135\n'), [135]);
 	assert.deepEqual(extractPlainIssueRefs('paragraph <!--->\nRefs #136\n'), [136]);
+	assert.deepEqual(extractPlainIssueRefs('paragraph <!-->\nRefs #137\n-->\nRefs #138\n'), [138]);
+	assert.deepEqual(extractPlainIssueRefs('paragraph <!--->\nRefs #139\n-->\nRefs #140\n'), [140]);
 	assert.deepEqual(parseWorkItemRole('## Work item role <!-->\nImplementation\n'), { status: 'absent', role: null });
 	assert.deepEqual(parseWorkItemRole('## Work item role <!--->\nTracking\n'), { status: 'absent', role: null });
+});
+
+test('GitHub cmark-gfm inline comments require a complete valid comment before hiding later source lines', () => {
+	assert.deepEqual(extractPlainIssueRefs('paragraph <!-- unclosed\nRefs #141\n'), [141]);
+	assert.deepEqual(parseWorkItemRole('## Work item role <!-- --->\nImplementation\n'), { status: 'absent', role: null });
+});
+
+test('GitHub cmark-gfm HTML whitespace and attribute grammar preserve hidden raw-HTML boundaries', () => {
+	assert.deepEqual(extractPlainIssueRefs('intro\n<source\v>\nRefs #142\n\nRefs #143\n'), [143]);
+	assert.deepEqual(extractPlainIssueRefs('intro\n<source\f>\nRefs #144\n\nRefs #145\n'), [145]);
+	assert.deepEqual(extractPlainIssueRefs('\n<widget\fdata-x=\u00a0>\nRefs #146\n\nRefs #147\n'), [147]);
+});
+
+test('GitHub cmark-gfm type-4 declarations require an uppercase ASCII declaration name', () => {
+	assert.deepEqual(extractPlainIssueRefs('intro\n<!DOCTYPE\nRefs #148\n>\nRefs #149\n'), [149]);
+	assert.deepEqual(extractPlainIssueRefs('intro\n<!doctype\nRefs #150\n'), [150]);
 });
 
 test('multiline inline-code spans cannot activate or hide plain linkage', () => {
