@@ -1,6 +1,6 @@
 # VS Code対応
 
-Viruneは、シンタックスハイライトとVirune Language Serverを同梱した自己完結型のVS Code拡張を提供します。
+Viruneは、シンタックスハイライトとVirune Language Serverをまとめた、単独で利用できるVS Code拡張を提供します。
 
 ## インストール
 
