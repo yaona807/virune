@@ -4,7 +4,7 @@
 
 ## Related issue
 
-<!-- Optional for small fixes. Link the Issue when one exists or when prior discussion is required. -->
+<!-- Optional for small fixes. Link the Issue for larger features or design changes, and for changes to the language specification, public APIs or ABIs, or compatibility. -->
 
 ## Testing
 
