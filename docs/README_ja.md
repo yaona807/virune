@@ -10,7 +10,7 @@
 - [標準ライブラリリファレンス](standard-library_ja.md)
 - [VS Code対応](vscode_ja.md)
 
-## 厳密なRuntime contract
+## 厳密なRuntime契約
 
 - [Runtime ABI v2](runtime-abi_ja.md)
 
