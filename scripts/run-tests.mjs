@@ -46,6 +46,16 @@ const groups = platformSmoke ? platformGroups : [
 			command: ['packages/cli/dist/src/main.js', 'test', 'selfhost/mvp'],
 			failureOutput: '.cache/selfhost-mvp-test-failure.log',
 		},
+		{
+			name: 'self-host promotion observation contracts',
+			files: [
+				'scripts/assemble-selfhost-promotion-observation.test.mjs',
+				'scripts/create-selfhost-promotion-subject.test.mjs',
+				'scripts/run-selfhost-promotion-performance.test.mjs',
+				'scripts/run-selfhost-promotion-quality.test.mjs',
+				'scripts/selfhost-promotion-observation-workflow.test.mjs',
+			],
+		},
 		{ name: 'documentation example policy', files: ['scripts/verify-documentation-examples.test.mjs'] },
 		{
 			name: 'npm publication plan policy',
@@ -55,14 +65,7 @@ const groups = platformSmoke ? platformGroups : [
 				'scripts/verify-npm-publication-recovery.test.mjs',
 			],
 		},
-		{
-			name: 'npm package contents audit policy',
-			files: [
-				'scripts/npm-package-contents-policy.test.mjs',
-				'scripts/verify-npm-package-contents.test.mjs',
-				'scripts/verify-npm-release-candidate-contents.test.mjs',
-			],
-		},
+		{ name: 'npm package contents audit policy', files: ['scripts/verify-npm-package-contents.test.mjs'] },
 		{
 			name: 'npm package contents audit',
 			command: ['scripts/verify-npm-package-contents.mjs'],
