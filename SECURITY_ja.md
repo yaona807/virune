@@ -1,92 +1,38 @@
-# Security Policy
+# セキュリティポリシー
 
 English: [SECURITY.md](SECURITY.md)
 
-## Supported versions
+## サポート対象
 
-最新のstable release lineと`main`をsupport対象とします。Older release lineは、high-impact vulnerabilityに対するtemporary backport windowをMaintainerが明示的に告知した場合を除き、support対象外です。
+`main`と最新の安定版をサポート対象とします。
 
-| Version | Supported |
-|---|---|
-| `main` | Yes |
-| Latest stable release | Yes |
-| Older releases | 明示的な告知がある場合を除きNo |
+過去のリリースは、別途案内がある場合を除きサポート対象外です。
 
-## Vulnerabilityの報告
+## 脆弱性の報告
 
-Security vulnerabilityの疑いをpublic Issue、Discussion、Pull Request、social channelへ公開しないでください。
+セキュリティ上の問題を見つけた場合は、公開Issue、GitHub Discussions、Pull Requestなどへ詳細を投稿しないでください。
 
-[GitHub private vulnerability reporting](https://github.com/yaona807/virune/security/advisories/new)を使用してreportしてください。可能な場合、次を含めてください。
+GitHubの[private vulnerability reporting](https://github.com/yaona807/virune/security/advisories/new)から報告してください。
 
-- 影響を受けるversion、release asset、またはcommit
-- compiler、runtime、CLI、VS Code extension、language server、JavaScript interoperability layerなどの影響を受けるcomponent
-- 最小のreproductionまたはproof of concept
-- 想定されるimpactと攻撃に必要なcapability
-- 判明しているworkaroundまたはmitigation
-- Disclosure deadlineが設定されているか
+可能であれば、次の情報を含めてください。
 
-GitHub private vulnerability reportingを利用できない場合、publicな **Security contact request** Issue Formは、あなたのGitHub profileにprivate communicationへ利用できるcontact methodが既に公開されており、Virune Maintainerがその方法を使用することに同意できる場合だけ利用してください。Request Issue、そのauthor、title、bodyはpublicかつeditableです。Titleとbodyの両方へvulnerability details、affected version、reproduction/exploit step、secret、contact address、その他のsensitive informationを記載しないでください。Security contactを求めている事実自体をconfidentialにする必要がある場合、public formを使用しないでください。Maintainerはprofile上ですでに公開されているprivate-capable contact routeを利用してprivateな連絡へ移行できます。
+- 影響を受けるバージョンやコンポーネント
+- 問題を再現する方法
+- 想定される影響
+- 回避方法が分かっている場合はその内容
 
-Profileに利用可能なprivate-capable contact routeがない場合、Viruneは現時点でconfidentialなProject-level fallback intake pathを保証できません。Responseを得るためにvulnerability detailsをpublicへ開示しないでください。Unknownなprivate-delivery capabilityを利用可能として扱ってはいけません。
+private vulnerability reportingを利用できない場合でも、脆弱性の詳細を公開Issueへ投稿しないでください。
 
-Viruneがprivate channelを通じて実際に受領し、triage開始に十分な情報があるreportについて、Maintainerは3 business days以内のacknowledgement、7 business days以内のinitial severity/remediation assessmentを目標とします。Complexなreportでは追加調査が必要になる場合があります。
+## 対象範囲
 
-## Scopeとsecurity model
+Viruneはセキュリティサンドボックスではありません。
 
-Viruneはsecurity sandboxではありません。Generated JavaScriptはhost environmentのpermissionで実行されます。JavaScript execution、`unsafe` interoperability、third-party package、generated project dependency、host APIはViruneのstatic safety guaranteeの対象外です。
+生成されたJavaScriptは実行環境の権限で動作します。`unsafe`を使用した連携、第三者パッケージ、外部APIなどはVirune自身の安全性保証の対象外です。
 
-一方、例えば次の内容はreport対象になり得ます。
+Viruneのコンパイラー、CLI、Visual Studio Code拡張、language server、Interopなどに起因する脆弱性は報告対象です。
 
-- untrusted source inputによって発生するcompiler、formatter、parser、language-server crash
-- CLIまたはextensionにおけるarbitrary code executionや意図しないfilesystem/process access
-- JavaScriptまたはTypeScript boundaryでのunsafe validation
-- malicious release asset、dependency confusion、compromised build provenance
-- secretを露出するsource-map、diagnostic、generated-code behavior
-- toolingまたはserviceに対して現実的なattack pathを持つdenial of service
+## 対応
 
-## Private remediation workflow
+報告された問題は、必要に応じて非公開で調査・修正します。
 
-1. Private advisory workspaceでreportをreproduceしtriageします。
-2. 影響を受けるversion、severity、exploit prerequisite、disclosure planを記録します。
-3. Release前のdisclosureでriskが増える場合は、advisoryのprivate forkでfixを開発します。
-4. 可能な限り、fix前にfailしfix後にpassするregression testを追加します。
-5. Metadata validation、type checking、unit/integration test、VS Code/language-server test、release artifact verification、CodeQL、dependency reviewなど、関連するrepository gateを実行します。
-6. Transitive dependency change、generated file、release metadata、workflow permissionをreviewします。
-7. Release note、upgrade instruction、mitigation、希望がある場合のreporter creditを準備します。
-8. Fixed releaseとGitHub Security Advisoryを同時にpublishするか、合意したdisclosure timeに合わせます。
-9. Published assetとchecksumをverifyし、exposed credentialがあればrotateまたはrevokeします。
-10. Supported versionとpublic documentationがfixed versionを特定できる状態になってからadvisoryをcloseします。
-
-Security fixでも通常のrelease workflowを使用します。Stable release assetはimmutableとして扱い、既存stable assetを置換せずcorrected versionをpublishします。
-
-## Required repository security settings
-
-Maintainerはstable release前、および少なくともquarterlyに次のsettingを確認する必要があります。
-
-- private vulnerability reportingがenabled
-- dependency graph、Dependabot alerts、security updates、version updatesがenabled
-- secret scanningがenabled
-- 対応するsecretに対するpush protectionがenabled
-- `.github/workflows/codeql.yml`によるCodeQL advanced setupがactive
-- dependency-changing Pull Requestでdependency reviewがrequired
-- branch protectionまたはrulesetが適用されるCI/security checkをrequiredにしている
-- GitHub Actions permissionのdefaultがread-onlyであり、write scopeは必要とするworkflowだけへ付与されている
-
-Repository settingsはGitだけでは完全に表現されないため、このchecklistは **Settings → Security and analysis**、**Settings → Actions**、branch ruleset configurationで確認する必要があります。
-
-## Automated repository controls
-
-次のcontrolはrepositoryからenforceされ、弱められた場合はpull-request metadata validationをfailさせます。
-
-- `.github/dependabot.yml`がnpmとGitHub Actions dependencyをmonitorする
-- `.github/workflows/codeql.yml`がPull Request、push、weekly schedule、manual runでJavaScript/TypeScriptをanalyzeする
-- `.github/workflows/dependency-review.yml`がGitHub Dependency Reviewでchange-levelのmoderate以上のfindingを要求し、さらに`npm audit`でlockされたruntime/development dependency全体のmoderate以上のfindingを常にblockする
-- `.github/actions-policy.json`がexternal Action identity/revisionをallowlistする
-- `scripts/verify-workflows.mjs`がすべてのworkflowへexact top-level permission declarationを要求し、defaultを`contents: read`とし、review済みper-file exceptionでのみwrite scopeを許可する
-- job-level permission overrideを禁止し、review済みworkflow grantをjobが暗黙に超えられないようにする
-
-Git-managed validationだけでは、private vulnerability reporting、secret scanning、push protection、repository-wide Actions default、branch rulesetのcurrent stateを証明できません。Administratorはquarterly reviewでこれらのcontrolをGitHub settings上で確認する必要があります。GitHub change-level reviewが利用できない場合、workflowはその制約を明示的にreportし、complete locked-dependency auditをblocking fallbackとして維持します。GitHub review result自体をrequired gateにできるようにするには、Dependency Graphのenableが引き続き必要です。
-
-## Public security discussion
-
-Coordinated disclosure後は、GitHub Security Advisoryとrelease noteをcanonical public recordとして使用します。Public Issueでfollow-up hardening workをtrackingするのは、exploit-sensitive detailsを安全に公開できるようになってからにしてください。
+公開可能になった段階で、修正版などを通じて案内します。

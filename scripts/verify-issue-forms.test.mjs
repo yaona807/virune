@@ -106,7 +106,6 @@ test('requires every canonical Issue Template/config file', async t => {
 		'bug_report.yml: required canonical Issue Template file is missing',
 		'change_proposal.yml: required canonical Issue Template file is missing',
 		'conduct_contact.yml: required canonical Issue Template file is missing',
-		'security_contact.yml: required canonical Issue Template file is missing',
 	]);
 });
 
@@ -327,7 +326,6 @@ function canonicalFiles(extra = {}) {
 		'change_proposal.yml': validBugForm.replace('Bug report', 'Change proposal'),
 		'conduct_contact.yml': validContactForm.replaceAll('Security', 'Conduct'),
 		'config.yml': validConfig,
-		'security_contact.yml': validContactForm,
 		...extra,
 	};
 }
