@@ -14,7 +14,7 @@ const FORBIDDEN_BASENAMES = new Set([
 	'tsconfig.tsbuildinfo',
 	'yarn.lock',
 ]);
-const WINDOWS_RESERVED_NAME = /^(?:con|prn|aux|nul|com[1-9¹²³]|lpt[1-9¹²³])(?:\.|$)/iu;
+const WINDOWS_RESERVED_NAME = /^(?:(?:con|prn|aux|nul|com[1-9¹²³]|lpt[1-9¹²³])(?:\.|$)|(?:com0|lpt0|conin\$|conout\$)$)/iu;
 const WINDOWS_FORBIDDEN_CHARACTERS = /[<>:"|?*]/u;
 
 export function auditNpmPackageFileSet({ manifest, files, manifestPath, filesPath }) {
