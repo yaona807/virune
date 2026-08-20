@@ -59,7 +59,7 @@ test('rejects contradictory or incomplete obligation state fail closed', () => {
 	);
 });
 
-test('unresolved, pending, non-Direct, and unknown decisions are never Direct success evidence', () => {
+test('unresolved, pending, authored, non-Direct, and unknown decisions are never Direct success evidence', () => {
 	const pending: InteropDecisionIR = {
 		status: 'obligation-pending', mechanism: 'direct', authoring: 'none', claims: [],
 		obligations: [{ kind: 'runtime-resolution', stage: 'build', status: 'pending' }],
@@ -67,6 +67,8 @@ test('unresolved, pending, non-Direct, and unknown decisions are never Direct su
 	assert.equal(isResolvedDirectInteropDecision(pending), false);
 	assert.equal(isResolvedDirectInteropDecision({ ...pending, status: 'unresolved', obligations: [] }), false);
 	assert.equal(isResolvedDirectInteropDecision({ ...pending, status: 'resolved', mechanism: 'user-adapter', obligations: [] }), false);
+	assert.equal(isResolvedDirectInteropDecision({ ...pending, status: 'resolved', authoring: 'generated', obligations: [] }), false);
+	assert.equal(isResolvedDirectInteropDecision({ ...pending, status: 'resolved', authoring: 'user', obligations: [] }), false);
 
 	const unknown = {
 		status: 'future-status', mechanism: 'direct', authoring: 'none', claims: [], obligations: [],
