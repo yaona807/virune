@@ -18,13 +18,13 @@ const roleHeading = 'Work item role';
 const roleHeadingIdentity = roleHeading.toLowerCase();
 const validRoles = new Set(['Implementation', 'Tracking']);
 const interruptingHtmlBlockNames = '(?:address|article|aside|base|basefont|blockquote|body|caption|center|col|colgroup|dd|details|dialog|dir|div|dl|dt|fieldset|figcaption|figure|footer|form|frame|frameset|h[1-6]|head|header|hr|html|iframe|legend|li|link|main|menu|menuitem|nav|noframes|ol|optgroup|option|p|param|section|source|summary|table|tbody|td|tfoot|th|thead|title|tr|track|ul)';
-const interruptingHtmlBlockTypeSix = new RegExp(`^</?${interruptingHtmlBlockNames}(?:[ \\t]|/?>|$)`, 'iu');
+const interruptingHtmlBlockTypeSix = new RegExp(`^</?${interruptingHtmlBlockNames}(?:[ \\t\\v\\f]|/?>|$)`, 'iu');
 const htmlTagNamePattern = '[A-Za-z][A-Za-z0-9-]*';
 const htmlAttributeNamePattern = '[A-Za-z_:][A-Za-z0-9_.:-]*';
-const htmlAttributeValuePattern = "(?:[^\\s\"'=<>`]+|'[^']*'|\"[^\"]*\")";
-const htmlAttributePattern = `[ \\t]+${htmlAttributeNamePattern}(?:[ \\t]*=[ \\t]*${htmlAttributeValuePattern})?`;
-const completeHtmlOpenTag = new RegExp(`^ {0,3}<(${htmlTagNamePattern})(?:${htmlAttributePattern})*[ \\t]*/?>[ \\t]*$`, 'u');
-const completeHtmlClosingTag = new RegExp(`^ {0,3}</${htmlTagNamePattern}[ \\t]*>[ \\t]*$`, 'u');
+const htmlAttributeValuePattern = "(?:[^ \\t\\v\\f\\r\\n\"'=<>`\\x00]+|'[^'\\x00]*'|\"[^\"\\x00]*\")";
+const htmlAttributePattern = `[ \\t\\v\\f]+${htmlAttributeNamePattern}(?:[ \\t\\v\\f]*=[ \\t\\v\\f]*${htmlAttributeValuePattern})?`;
+const completeHtmlOpenTag = new RegExp(`^ {0,3}<(${htmlTagNamePattern})(?:${htmlAttributePattern})*[ \\t\\v\\f]*/?>[ \\t\\f]*$`, 'u');
+const completeHtmlClosingTag = new RegExp(`^ {0,3}</${htmlTagNamePattern}[ \\t\\v\\f]*>[ \\t\\f]*$`, 'u');
 const typeSevenOpenTagExclusions = new Set(['pre', 'script', 'style', 'textarea']);
 
 function requireRepository(value, path) {
@@ -179,17 +179,7 @@ function findClosingBacktickRun(line, start, expectedLength) {
 
 function findHtmlCommentStart(line, start) {
 	for (let cursor = start; cursor < line.length;) {
-		if (line.startsWith('<!--', cursor) && !isEscaped(line, cursor)) {
-			if (line.startsWith('<!-->', cursor)) {
-				cursor += 5;
-				continue;
-			}
-			if (line.startsWith('<!--->', cursor)) {
-				cursor += 6;
-				continue;
-			}
-			return cursor;
-		}
+		if (line.startsWith('<!--', cursor) && !isEscaped(line, cursor)) return cursor;
 		if (line[cursor] === '`' && !isEscaped(line, cursor)) {
 			const length = backtickRunLength(line, cursor);
 			const closing = findClosingBacktickRun(line, cursor + length, length);
@@ -206,18 +196,35 @@ function findHtmlCommentStart(line, start) {
 }
 
 function findHtmlCommentEnd(line, start) {
-	const end = line.indexOf('-->', start + 4);
-	return end === -1 ? -1 : end + 3;
+	let cursor = start + 4;
+	const nul = line.indexOf('\0', cursor);
+	for (;;) {
+		const end = line.indexOf('-->', cursor);
+		if (end === -1 || (nul !== -1 && nul < end + 3)) return -1;
+		if (end === start + 4 || line[end - 1] !== '-') return end + 3;
+		cursor = end + 3;
+	}
+}
+
+function findHtmlCommentContinuationEnd(line) {
+	let cursor = 0;
+	const nul = line.indexOf('\0');
+	for (;;) {
+		const end = line.indexOf('-->', cursor);
+		if (end === -1 || (nul !== -1 && nul < end + 3)) return -1;
+		if (end === 0 || line[end - 1] !== '-') return end + 3;
+		cursor = end + 3;
+	}
 }
 
 function beginInterruptingRawHtmlBlock(line) {
 	const source = line.replace(/^ {0,3}/u, '');
 	if (/^<!--/u.test(source)) return { endLiteral: '-->', endExpression: null, endsOnBlank: false };
-	if (/^<(?:pre|script|style|textarea)(?:[ \t>]|$)/iu.test(source)) {
+	if (/^<(?:pre|script|style|textarea)(?:[ \t\v\f>]|$)/iu.test(source)) {
 		return { endExpression: /<\/(?:pre|script|style|textarea)>/iu, endsOnBlank: false };
 	}
 	if (/^<\?/u.test(source)) return { endExpression: /\?>/u, endsOnBlank: false };
-	if (/^<![A-Za-z]/u.test(source)) return { endExpression: />/u, endsOnBlank: false };
+	if (/^<![A-Z]/u.test(source)) return { endExpression: />/u, endsOnBlank: false };
 	if (/^<!\[CDATA\[/u.test(source)) return { endExpression: /\]\]>/u, endsOnBlank: false };
 	if (interruptingHtmlBlockTypeSix.test(source)) return { endExpression: null, endsOnBlank: true };
 	return null;
@@ -327,6 +334,17 @@ function interruptsInlineCodeContinuation(line) {
 	return false;
 }
 
+function findFutureHtmlCommentEnd(lines, startLine) {
+	for (let lineIndex = startLine; lineIndex < lines.length; lineIndex += 1) {
+		const line = lines[lineIndex];
+		if (interruptsInlineCodeContinuation(line)) return null;
+		const endIndex = findHtmlCommentContinuationEnd(line);
+		if (endIndex !== -1) return { lineIndex, endIndex };
+		if (line.includes('\0')) return null;
+	}
+	return null;
+}
+
 function findMultilineBacktickClose(lines, startLine, expectedLength) {
 	for (let lineIndex = startLine; lineIndex < lines.length; lineIndex += 1) {
 		const line = lines[lineIndex];
@@ -432,23 +450,19 @@ function findFirstMultilineBacktickSpan(lines) {
 		}
 		for (let cursor = 0; cursor < line.length;) {
 			if (commentOpen) {
-				const end = line.indexOf('-->', cursor);
+				const end = findHtmlCommentContinuationEnd(line);
 				if (end === -1) break;
 				commentOpen = false;
-				cursor = end + 3;
+				cursor = end;
 				continue;
 			}
 			if (line.startsWith('<!--', cursor) && !isEscaped(line, cursor)) {
-				if (line.startsWith('<!-->', cursor)) {
-					cursor += 5;
-					continue;
-				}
-				if (line.startsWith('<!--->', cursor)) {
-					cursor += 6;
-					continue;
-				}
 				const end = findHtmlCommentEnd(line, cursor);
 				if (end === -1) {
+					if (line.indexOf('\0', cursor + 4) !== -1 || findFutureHtmlCommentEnd(lines, lineIndex + 1) === null) {
+						cursor += 4;
+						continue;
+					}
 					commentOpen = true;
 					break;
 				}
@@ -493,16 +507,16 @@ function maskMultilineBacktickCodeSpans(lines) {
 	}
 }
 
-function stripHtmlComments(line, commentState, paragraphOpen) {
+function stripHtmlComments(line, commentState, paragraphOpen, lines, lineIndex) {
 	if (!commentState.open && isIndentedCodeLine(line) && !paragraphOpen) return { line, multiline: false };
 	let visible = '';
 	let cursor = 0;
 	while (cursor < line.length) {
 		if (commentState.open) {
-			const end = line.indexOf('-->', cursor);
+			const end = findHtmlCommentContinuationEnd(line);
 			if (end === -1) return { line: visible, multiline: true };
 			commentState.open = false;
-			cursor = end + 3;
+			cursor = end;
 			continue;
 		}
 		const start = findHtmlCommentStart(line, cursor);
@@ -513,6 +527,12 @@ function stripHtmlComments(line, commentState, paragraphOpen) {
 		visible += line.slice(cursor, start);
 		const end = findHtmlCommentEnd(line, start);
 		if (end === -1) {
+			const invalidByNul = line.indexOf('\0', start + 4) !== -1;
+			if (invalidByNul || findFutureHtmlCommentEnd(lines, lineIndex + 1) === null) {
+				visible += '<!--';
+				cursor = start + 4;
+				continue;
+			}
 			commentState.open = true;
 			return { line: visible, multiline: true };
 		}
@@ -531,7 +551,8 @@ function markdownLinesOutsideHiddenRegions(body, { normalizeActiveListItems = fa
 	let listRawHtmlBlock = null;
 	let paragraphOpen = false;
 	const commentState = { open: false };
-	for (const rawLine of lines) {
+	for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
+		const rawLine = lines[lineIndex];
 		if (listFence !== null) {
 			if (/^[ \t]*$/u.test(rawLine)) {
 				paragraphOpen = false;
@@ -616,7 +637,7 @@ function markdownLinesOutsideHiddenRegions(body, { normalizeActiveListItems = fa
 			}
 		}
 		const wasCommentOpen = commentState.open;
-		const stripped = stripHtmlComments(rawLine, commentState, paragraphOpen);
+		const stripped = stripHtmlComments(rawLine, commentState, paragraphOpen, lines, lineIndex);
 		if (wasCommentOpen || stripped.multiline) {
 			output.push(null);
 			paragraphOpen = true;
