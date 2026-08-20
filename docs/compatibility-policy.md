@@ -21,6 +21,8 @@ Stable surfaces are public contracts maintained for users of stable releases. Th
 - Virune LSP / VS Code capabilities documented for stable releases, Virune-owned setting keys with their accepted stable values, meanings, and defaults, and extension command identifiers when the identifier itself is documented as part of the public interface
 - platform baselines supported by stable releases, such as the root `engines.node` requirement and the declared VS Code API baseline
 
+Protocol-level LSP interoperability follows the declared VS Code API baseline and the upstream Language Server Protocol.
+
 Stable surfaces may receive additions or corrections that preserve existing user-visible meaning. Intentional incompatible changes require a major release unless the exception below applies.
 
 A version number, versioned path, or snapshot does not by itself make a surface Stable. Stabilization must be explicit. API and ABI snapshots mechanically track reviewed public surfaces; updating a snapshot does not by itself authorize an incompatible change or make one compatible.
@@ -68,7 +70,7 @@ Completion ranking, UI layout, internal indexing, caches, scheduling, request im
 Before intentionally removing or incompatibly changing a Stable surface, Virune follows this sequence unless the exception below applies:
 
 1. Mark the old surface deprecated in public documentation and, where practical, in tooling or type metadata.
-2. Document the replacement or migration path.
+2. Document the supported replacement or migration path.
 3. Publish at least one stable release that includes the deprecation while keeping the old surface available.
 4. Remove or incompatibly change the surface in a major release, and document the change and migration path in release notes or a migration guide.
 
