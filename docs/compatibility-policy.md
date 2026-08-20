@@ -19,11 +19,12 @@ The main Stable surfaces include:
 - Virune language behavior defined by the [language specification](../spec/)
 - documented `virune.json` configuration
 - documented public standard-library declarations and the `exports` configuration in `package.json`
-- the public `@virune/compiler` API
+- the root public `@virune/compiler` API
 - Runtime ABI and Interop ABI versions explicitly declared Stable
-- documented CLI, diagnostics, and machine-readable formats
-- documented public LSP / VS Code capabilities and settings
-- supported environments such as Node.js and VS Code
+- documented CLI behavior
+- the public contract defined by [diagnostic codes and JSON format](diagnostic-codes.md), plus other machine-readable formats explicitly declared Stable
+- public LSP / VS Code capabilities, settings, and commands documented for stable releases
+- environments declared supported by stable releases, such as Node.js and VS Code
 
 Additions and fixes may be made when they preserve existing use.
 Intentional incompatible changes require a major release unless the exception below applies.
@@ -41,6 +42,8 @@ Experimental surfaces are not covered by stable compatibility guarantees and may
 
 Semantic Snapshot and Semantic Change Evidence remain Experimental until the required evaluation is complete and they are explicitly stabilized.
 Completing evaluation alone does not make them Stable.
+
+Using an Experimental surface does not affect guarantees for unrelated Stable surfaces.
 
 ### Internal
 
@@ -79,7 +82,7 @@ Before removing or incompatibly changing a Stable contract, Virune normally foll
 3. Publish at least one stable release that keeps the old contract available while marking it deprecated.
 4. Make the change in a major release and provide migration guidance.
 
-Migration guidance is prepared before release and identifies the affected surface, the old and new contracts, and the required migration steps.
+Migration guidance is prepared before release and identifies the affected versions and surface, the old and new contracts, and the required migration steps.
 
 Experimental and Internal surfaces do not require this process.
 Deprecation does not justify weakening type, safety, ABI, or validation boundaries, and marking a surface deprecated must not by itself change existing program meaning.
@@ -93,7 +96,7 @@ Only when no reasonable backward-compatible fix exists and the problem would oth
 
 The same applies when platform support ends and an existing environment can no longer be supported safely or practically.
 
-An exceptional incompatible change must state what changes, the previous behavior, why a backward-compatible fix is not possible, and any mitigation or migration path, while preserving unrelated Stable contracts.
+An exceptional incompatible change must identify the affected Stable contract, the previous behavior, why a backward-compatible fix is not possible, and any mitigation or migration path, while preserving unrelated Stable contracts.
 
 A fix that restores behavior required by the existing language specification is not a language-specification change.
 If that fix is incompatible with a Stable contract, it must satisfy this exception or wait for the next major release.
@@ -102,5 +105,6 @@ This exception must not be used to bypass the normal compatibility rules.
 
 If the specification, policy, implementation, and tests disagree, do not guess the more convenient interpretation.
 Resolve the inconsistency before treating the behavior as a Stable guarantee.
+Release notes or migration guidance alone cannot override the language specification or this policy.
 
 Green CI or snapshots alone do not authorize an incompatible change.
