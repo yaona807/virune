@@ -226,7 +226,7 @@ export function externalModuleLoadOperation(input: {
 	readonly witnesses: readonly ModuleResolutionWitness[];
 }): ExternalModuleLoadOperationIR {
 	const anchor = canonicalOperationAnchor(input.nodeId, input.span);
-	const moduleSpecifier = canonicalModuleSpecifier(input.moduleSpecifier, 'ModuleLoad module specifier');
+	const moduleSpecifier = sourceModuleSpecifier(input.moduleSpecifier, 'ModuleLoad module specifier');
 	if (input.witnesses.length === 0) {
 		return {
 			kind: 'module-load',
@@ -509,6 +509,11 @@ function sameSpan(left: SourceSpan, right: SourceSpan): boolean {
 
 function canonicalRuntimeEntry(value: string): string {
 	return canonicalRelativeLocator(value, 'runtime entry');
+}
+
+function sourceModuleSpecifier(value: string, description: string): string {
+	if (typeof value !== 'string') throw new Error(`External operation ${description} must be a string`);
+	return value;
 }
 
 function canonicalModuleSpecifier(value: string, description: string): string {
