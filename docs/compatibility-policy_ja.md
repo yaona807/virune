@@ -2,173 +2,94 @@
 
 [English](compatibility-policy.md) | [日本語](compatibility-policy_ja.md)
 
-この文書は、Viruneの安定版リリースに対する互換性の約束を定めます。既存のLanguage Specification、バージョン付きRuntime／Interop ABI、公開Compiler API、標準ライブラリ、CLI、エディタ連携、Self-hosting復旧artifactを共通のルールで整理するものであり、それぞれの詳細な規則を弱めるものではありません。
+この文書は、Viruneの安定版リリースで維持する互換性の約束を定めます。個別のAPI、ABI、診断、リリース、Self-hostingなどの詳細は、それぞれの専用文書で定めます。
 
-## 互換性クラス
+## 互換性の分類
 
-Viruneのsurfaceは **Stable**、**Experimental**、**Internal** の3つへ分類します。
+Viruneの公開範囲は **Stable**、**Experimental**、**Internal** の3つに分けます。
 
 ### Stable
 
-Stable surfaceは、stable release利用者に対する互換性の約束です。
+Stableは、安定版の利用者に対して維持する公開契約です。次のうち、文書でStableとして扱っているものが該当します。
 
-- [`../spec/`](../spec/)にある規範的なVirune言語挙動
-- 文書化済み`virune.json` project configurationのkey、受理するstable value、その意味、default
-- `packages/public-abi.snapshot.json`で追跡する文書化済みpublic standard library surface
-- `packages/compiler/api/stable-api.snapshot.json`で追跡するroot `@virune/compiler` APIと、その文書化済みbehavior contract
-- stable release向けにStableと明示したRuntime ABI／Interop ABI version
-- 文書化済みpublic CLI command／optionとその意味、および文書化済みexit codeの意味
-- [`diagnostic-codes_ja.md`](diagnostic-codes_ja.md)で定義したstable diagnostic code／JSON schema contract
-- その他、stableと明示して文書化したmachine-readable schemaとfield
-- stable release向けに文書化したVirune LSP／VS Code public capability、および文書化済みVirune固有settingのkey、受理するstable value、その意味、default
-- identifier自体を文書化したpublic extension command identifier
+- [`../spec/`](../spec/)で定めるVirune言語の規範的な挙動
+- `virune.json`の公開済み設定、受け付ける値、その意味と既定値
+- 公開標準ライブラリとroot `@virune/compiler` API
+- Stableと明示したRuntime ABI／Interop ABI
+- 公開CLIのcommand／option／exit codeの意味、diagnostic code、Stableと明示したmachine-readable schema／field
+- 公開済みのVirune LSP／VS Code capability、Virune固有setting、public command identifier
+- root `engines.node`や宣言済みVS Code API baselineなど、安定版でサポートすると定めたplatform baseline
 
-Stable surfaceはminor releaseで後方互換な追加が可能で、patch releaseで後方互換な修正が可能です。Stable contractを意図的に非互換変更する場合、原則として次のmajor releaseが必要です。
+Stableには、既存利用者の意味を変えない追加や修正を行えます。意図的な非互換変更は、下記の例外を除きmajor releaseで行います。
+
+API／ABI snapshotは公開範囲を機械的に確認するためのものです。snapshotを更新しただけで、非互換変更が許可されたり互換になったりすることはありません。
 
 ### Experimental
 
-Experimental surfaceは評価のため利用できますが、stable互換性保証の対象外です。任意のreleaseで変更・削除できます。ただし利用者への影響が想定される重要変更はrelease noteで明示することを推奨します。
+Experimentalは評価中の公開範囲で、安定版の互換性保証はありません。`@virune/compiler/experimental`など、Experimentalまたはprerelease-onlyと明示したものは任意のreleaseで変更・削除できます。
 
-現在の例:
-
-- `@virune/compiler/experimental`
-- Semantic Snapshot／Semantic Change Evidence schema。#213が要求するprototype／corpus評価の後に明示的にstabilizeされない限りExperimentalのままであり、評価完了だけでは自動的にStableにならない
-- その他、experimentalまたはprerelease-onlyと明示したAPI／schema
-
-Experimental surfaceを利用していても、無関係なStable surfaceまでExperimentalになるわけではありません。
+Experimentalを利用していても、無関係なStableまでExperimentalになるわけではありません。
 
 ### Internal
 
-Internal implementation detailはpublic compatibility contractではありません。Compiler内部AST／HIR／MIR、symbol／type arena、lowering phase、Self-hosting内部実装、cache、CI metadata、repository専用command、未文書化package subpath等が該当します。
+Internalは公開契約ではありません。Compiler内部構造、Self-hosting内部実装、cache、CI metadata、repository専用command、未文書化のpackage subpathなどが該当します。
 
-適用されるStable contractを維持する限り、Internalはdeprecationなしで変更できます。
+Stableな公開契約を維持する限り、Internalは非推奨化を経ずに変更できます。
 
-## Stable releaseのversioning
+## Versioningとbreaking change
 
-Viruneのstable releaseは、project-levelのcompatibility signalとしてSemantic Versioningを使用します。
+安定版にはSemantic Versioningを使用します。
 
-- **Patch**（例: `1.0.0` -> `1.0.1`）: 後方互換な修正。意図的なStable contract変更だけを理由に、既存のconforming programやsupport対象stable consumerへmigrationを要求しません。
-- **Minor**（例: `1.0.x` -> `1.1.0`）: 後方互換な追加・改善。既存のconforming programとstable consumerを維持します。
-- **Major**（例: `1.x.y` -> `2.0.0`）: Stable contractを意図的に変更できます。影響surfaceには明示的なmigration文書が必要です。
+- **Patch**（例: `1.0.0` -> `1.0.1`）: 後方互換な修正
+- **Minor**（例: `1.0.x` -> `1.1.0`）: 既存のStableな意味を維持する追加・改善
+- **Major**（例: `1.x.y` -> `2.0.0`）: Stableへの意図的な非互換変更。影響する利用者向けのmigration guidanceが必要
 
-Prerelease／nightlyの互換性は[`release-channels_ja.md`](release-channels_ja.md)を正本とします。Prerelease間では非互換変更があり得て、nightly snapshotには互換性保証がありません。
-## Language compatibility
+Prereleaseでは非互換変更があり得て、nightlyには互換性保証がありません。詳細は[`release-channels_ja.md`](release-channels_ja.md)に従います。
 
-[`../spec/`](../spec/)のファイルを規範的なLanguage contractとします。外部観測可能な挙動を変えないeditorial clarificationはmajor releaseを必要としません。
+Stableな公開契約について、たとえば次の変更はbreaking changeです。
 
-以前conformingだったprogramが規範contractに従ってparse、type-check、link、evaluateできなくなる場合、またはそのprogramの外部観測可能な意味が非互換に変わる場合、その意図的変更をlanguage breaking changeと扱います。
+- 公開API、ABI、標準ライブラリ、CLI、editor capabilityなどの削除、rename、または文書化済み挙動の非互換変更
+- 以前有効だった公開設定や値を拒否すること、またはその意味や既定値を非互換に変更すること
+- 以前conformingだったVirune programが規範仕様に従ってparse、type-check、link、evaluateできなくなること、または外部から観測できる意味を非互換に変えること
+- Stableなdiagnosticやmachine-readable schemaの意味・構造を非互換に変えること
+- Node.jsやVS Codeなどのminimum supported baselineを引き上げ、以前サポートしていた環境を対象外にすること
 
-既存conforming programの意味を維持するsource-compatibleなsyntax／semantics追加はminor releaseで導入できます。
+人間向けの文言、空白、色、layoutなどは、明示的に契約しない限りbyte単位の互換性対象ではありません。また、未文書化のJSON field、設定、editor／protocol detailは、偶然利用できてもStableにはなりません。
 
-既存の規範仕様が要求している挙動へCompilerを戻す修正は、Language contractの再定義ではなくcorrectness fixです。修正自体がStable surfaceと非互換になる場合は、次のmajor releaseまで待つか、下記のCorrectness／Safety／Security例外修正条件を満たす必要があります。また、誤実装へ依存していたcodeに実質的なmigrationが必要になる場合、release noteで影響挙動を明示しmigration guidanceを提供します。
+## 非推奨化
 
-## Project configuration
+Stableを意図的に削除または非互換変更する場合は、下記の例外が適用されない限り、次の順序で進めます。
 
-文書化済み`virune.json` key、その受理するstable valueと意味、文書化済みdefaultをStableとします。Optional keyや新しいaccepted valueは、既存valid configurationの意味を維持する場合にminor releaseで追加できます。
+1. 旧surfaceを公開文書でdeprecatedとし、実用的な場合はtoolingやtype metadataにも反映する。
+2. replacementまたはmigration方法を示す。
+3. 旧surfaceを利用できる状態で、deprecationを含む安定版を少なくとも1回公開する。
+4. 削除または非互換変更をmajor releaseで行い、release noteまたはmigration guideへ変更内容と移行方法を記載する。
 
-文書化済みkeyの削除／rename、以前文書上validだったconfigurationの拒否、既存valueの意味変更、同じ既存projectが非互換な挙動を得るような文書化済みdefault変更はbreakingです。未文書化extra keyやimplementation固有parser挙動は、あるCompiler versionで偶然受理されたという理由だけではStableになりません。
+ExperimentalとInternalには、このdeprecation期間を要求しません。非推奨化はtype、safety、ABI、validation境界を弱める理由にはなりません。
 
-## Runtime ABI、Interop ABI、Compiler API、standard library
+## Correctness／Safety／Securityの例外
 
-StableなRuntime／Interop ABI versionはversion付きpathとsnapshotを使用します。ABI固有の詳細規則は[`runtime-abi_ja.md`](runtime-abi_ja.md)を正本とします。新しいABI candidateへversion番号やpathを与えただけではStableにならず、stabilizationは明示的に行う必要があります。すでにStableなABIへのbreaking changeには新しいversion付きABI pathとmigration文書が必要で、snapshotを更新しただけではbreaking changeは互換になりません。
+規範仕様、安全境界、security requirementに違反すると分かっている挙動を、互換性だけを理由に維持してはいけません。
 
-Stableな`@virune/compiler` root entry pointは[`compiler-api_ja.md`](compiler-api_ja.md)に従います。Stable export symbolの削除／rename、signatureの非互換変更、文書化済みbehavior contractの非互換変更はbreakingです。`@virune/compiler/experimental`はこの保証の対象外です。
+後方互換な修正が合理的に可能なら、それを選びます。重大なcorrectness／safety／security defectが残り、合理的な互換修正がない場合に限り、major releaseを待たずに非互換修正を行えます。その場合は、影響するStable surfaceと従来挙動、互換修正を採用できない理由、mitigationまたはmigration方法を明示し、無関係なStable契約を維持します。
 
-文書化済みpublic standard library declarationとexport mapはStableです。既存public declaration／package entry pointの削除または非互換変更はbreakingです。既存programの意味を変えないadditive APIはminor releaseで追加できます。
+既存の規範仕様が要求する挙動へCompilerを戻す修正はcorrectness fixです。その修正がStableと非互換になる場合も、この例外を満たすか次のmajor releaseまで待つ必要があります。誤った実装に依存していたcodeへ移行が必要になる場合は、影響とmigration方法をrelease noteで案内します。
 
-## CLIとmachine-readable output
+この例外をSemantic Versioningやcompatibility reviewを迂回する一般手段として使ってはいけません。
 
-明示的に別扱いとしない限り、次の文書化済みCLI挙動をStableとします。
+## 詳細な契約
 
-- command／option名と、その文書化済みの意味
-- 文書化済みexit codeの意味
-- [`diagnostic-codes_ja.md`](diagnostic-codes_ja.md)で定義したdiagnostic code、severity、coordinate、JSON schemaの保証
-- その他、stableと明示して文書化したmachine-readable schema version／field
+個別の契約は次を参照してください。
 
-文書化済みcommand／optionの削除／rename、または同じ名前を維持したまま文書化済みeffectを非互換に変更することはbreakingです。
+- Language: [`../spec/`](../spec/)
+- Compiler API: [`compiler-api_ja.md`](compiler-api_ja.md)
+- Runtime／Interop ABI: [`runtime-abi_ja.md`](runtime-abi_ja.md)
+- Diagnostic／JSON schema: [`diagnostic-codes_ja.md`](diagnostic-codes_ja.md)
+- Release channel: [`release-channels_ja.md`](release-channels_ja.md)
+- Self-hosting: [`self-hosting-architecture_ja.md`](self-hosting-architecture_ja.md)、[`self-hosting-seed_ja.md`](self-hosting-seed_ja.md)
 
-人間向けpresentationはbyte-stable interfaceではありません。文書化された意味を維持する限り、文言、空白、色、折返し等のpresentation detailは変更できます。
+Self-hosting recovery artifactの保持や削除は専用のlifecycle policyに従い、Self-host CIが成功しただけではSeedやLegacy rollback pathを削除する理由になりません。
 
-JSON modeであることだけを理由に全fieldがStableになるわけではありません。JSON field／structureは、ViruneがStable machine-readable schema／fieldとして明示的に文書化した時点でStableになります。未文書化fieldへ依存するconsumerは、それをExperimental／Internal detailとして扱う必要があります。
+仕様、policy、実装、testの間に不整合がある場合は、より都合のよい解釈を推測せず、該当する契約とtestを整合させてからStableな保証として扱います。CIやsnapshotがgreenであることだけを、非互換変更の承認として扱ってはいけません。
 
-## LSP／VS Code compatibility
-
-Protocol-level interoperabilityは、宣言済みVS Code API baselineとupstream Language Server Protocolに従います。Stable release向けに文書化したVirune public capabilityは、capabilityの存在と文書化済みcontractの範囲でStableです。Advertise／document済みcapabilityの削除、またはその文書化済みprotocol behaviorの非互換変更はbreakingで、capability追加は原則compatibleです。
-
-文書化済みVirune固有VS Code setting key、その受理するstable valueと意味、文書化済みdefaultはStableです。Settingの削除／rename、以前文書上validだったvalueの拒否、同じconfigurationが非互換な挙動を得るような文書化済みdefault変更はbreakingです。Public extension command identifierは、表示labelだけでなくidentifier自体をpublic interfaceとして文書化した場合にStableとします。
-
-Completion ranking、presentation text、UI layout、内部indexing、cache、scheduling、request implementation、analysis storageは、明示的に別のcontractを定義しない限りcompatibility対象外です。未文書化のVirune固有LSP extension／wire detailは暗黙にStableとは扱いません。以前supportしていたstable environmentを除外する形でminimum VS Code API baselineを引き上げる場合、下記例外がない限りplatform baselineのbreaking changeとして扱います。
-
-## Node.js baseline
-
-Root `engines.node`をstable toolchainのminimum supported Node.js baselineとします。以前supportしていたNode.js environmentがsupport対象外になるようminimumを引き上げることは、意図的なcompatibility breakであり、原則として次のVirune major releaseで行います。
-
-Platform EOL、security requirement等により以前のbaselineを安全または現実的にsupportできなくなった場合は、下記exceptional fix ruleに従い早期変更できます。そのreleaseでは旧／新baselineと変更理由を明記します。
-
-## Deprecation手順
-
-Stable surfaceを意図的に削除または非互換変更する前に、下記exceptional fix ruleが適用される場合を除き、次の順序を必須とします。
-
-1. 該当public documentation、および実用的な場合はtooling／type metadataで旧surfaceをdeprecatedと明示する。
-2. Support対象replacementまたはmigration pathを文書化する。
-3. 旧surfaceを利用可能なままdeprecationを含むstable releaseを少なくとも1回公開してから、削除するreleaseへ進む。
-4. 削除または非互換変更はmajor releaseでのみ行う。
-5. Major releaseのrelease noteまたはmigration guideへbreaking changeとmigration手順を記載する。
-
-Deprecation warningだけでprogram semanticsを暗黙変更してはいけません。Deprecationはmigration signalであり、type、safety、ABI、validation境界を弱める許可ではありません。
-
-Experimental／Internal surfaceにはこのdeprecation期間を要求しません。
-
-## Correctness／Safety／Securityの例外修正
-
-規範仕様、安全境界、security requirementに違反すると判明している挙動を維持するためにcompatibilityを優先してはいけません。
-
-後方互換なrepairが合理的に可能ならそれを選択します。Compatibilityを維持すると重大なcorrectness／safety／security defectが残り、合理的なcompatible repairが存在しない場合に限り、次major releaseより前でもexceptional fixを行えます。そのreleaseは次を満たす必要があります。
-
-- exceptional compatibility breakが存在することを明示する
-- 影響Stable surfaceと従来挙動を特定する
-- compatible alternativeを採用できない理由を説明する
-- mitigationまたはmigration guidanceを提供する
-- 無関係なStable contractを維持する
-
-この例外をSemantic Versioning／compatibility reviewを迂回する一般手段として使ってはいけません。
-
-## Migration guideの必須条件
-
-Stable surfaceへの意図的breaking changeには、対応するstable release前にmigration guidanceが必要です。影響version／surface、旧contract、新contractを示し、適用可能な場合は具体的なmigration step／exampleを提供します。
-
-関連する複数breaking changeは1つのmigration文書へまとめられます。ただしCIやsnapshotがgreenであることを理由に、影響surfaceを記載対象から外してはいけません。
-
-## Self-hosting Legacy Compiler／fixed Seedの保持
-
-Self-hosting recovery artifactの保持期間は固定日数ではなくlifecycle conditionで決定します。
-
-- Fixed Stage 0 Seedは[`self-hosting-seed_ja.md`](self-hosting-seed_ja.md)の専用Seed更新policyで明示的に置換されるまでimmutable trust rootとして保持する。
-- Legacy Compilerは、current Self-hosting promotion／rollback policyが検証済みfallback pathを要求する間は利用可能な状態で保持する。
-- Self-host CIが成功しただけではSeed／Legacy rollback pathを削除する承認にならない。
-- Seed置換またはLegacy Compiler廃止には独立したreview済みmigration／evidenceを要求し、Language Specification、stable Compiler API、Runtime ABI、Interop ABI、public standard libraryを暗黙変更しない。
-
-## 正本関係
-
-Compatibility判断では次をauthorityとします。
-
-1. **Language semantics**: [`../spec/`](../spec/)を規範とする。解説文書と実装はこれに従う。
-2. **Public ABI／API inventory**: commit済みABI／API snapshotはreview対象public surfaceを機械的に特定する。Snapshot更新自体はbreaking changeの承認にならない。
-3. **Surface固有documentation**: project configuration、Runtime／Interop ABI、Compiler API、diagnostic／JSON、CLI、LSP／VS Code、release channel、Self-hosting文書が各surfaceの詳細contract／lifecycleを定義する。
-4. **Release note／migration guide**: 各releaseで何が変わり、どう移行するかを記述する。規範仕様や本policyを暗黙に上書きしない。
-5. **Implementation／test**: conformanceを示しregressionを検出する。Conflictする規範contractを、testがpassするという理由だけで再定義しない。
-
-Authority間に不整合が見つかった場合、より許容的な解釈を推測して採用してはいけません。Stable guaranteeとして扱う前に、該当specification／policyとtestを明示的に整合させます。
-
-## Non-goals
-
-このpolicyは次を行いません。
-
-- Experimental／Internal implementation detailをfreezeする
-- 人間向けCLI出力のbyte-for-byte互換性を保証する
-- 未文書化JSON field、project configuration key、editor setting、protocol extensionをStable化する
-- 古いmajor release lineを無期限supportすると約束する
-- compatibility維持のためsecurity、correctness、ABI、reproducibility、Self-hosting promotion gateを弱める
-- snapshot／CIがgreenであることを、非互換変更を許可する根拠として扱う
-
-[`release-channels_ja.md`](release-channels_ja.md)、[`compiler-api_ja.md`](compiler-api_ja.md)、[`runtime-abi_ja.md`](runtime-abi_ja.md)、[`diagnostic-codes_ja.md`](diagnostic-codes_ja.md)、規範的な[`../spec/`](../spec/)も参照してください。
+このpolicyは古いmajor releaseを無期限にサポートすることを約束せず、互換性維持のためにcorrectness、safety、security、ABI、reproducibility、Self-hostingのgateを弱めません。
