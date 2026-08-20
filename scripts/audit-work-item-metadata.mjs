@@ -47,6 +47,10 @@ function requireProviderObject(value, path) {
 	return value;
 }
 
+function normalizeMarkdownSource(value) {
+	return value.replace(/\u0000/gu, '\uFFFD').replace(/\r\n?/gu, '\n');
+}
+
 export async function collectGitHubWorkItems({ repository, token, fetchImpl = fetch }) {
 	const validatedRepository = requireRepository(repository, 'repository');
 	if (typeof token !== 'string' || token === '') throw new Error('GitHub token is required');
@@ -121,7 +125,7 @@ function normalizePullRequest(pullRequest, path = 'pullRequest') {
 function normalizeNullableString(value, path) {
 	if (value === null) return '';
 	if (typeof value !== 'string') throw new Error(`${path} must be a string or null`);
-	return value.replace(/\r\n?/gu, '\n');
+	return normalizeMarkdownSource(value);
 }
 
 function normalizeNames(values, key, path) {
@@ -197,10 +201,9 @@ function findHtmlCommentStart(line, start) {
 
 function findHtmlCommentEnd(line, start) {
 	let cursor = start + 4;
-	const nul = line.indexOf('\0', cursor);
 	for (;;) {
 		const end = line.indexOf('-->', cursor);
-		if (end === -1 || (nul !== -1 && nul < end + 3)) return -1;
+		if (end === -1) return -1;
 		if (end === start + 4 || line[end - 1] !== '-') return end + 3;
 		cursor = end + 3;
 	}
@@ -208,10 +211,9 @@ function findHtmlCommentEnd(line, start) {
 
 function findHtmlCommentContinuationEnd(line) {
 	let cursor = 0;
-	const nul = line.indexOf('\0');
 	for (;;) {
 		const end = line.indexOf('-->', cursor);
-		if (end === -1 || (nul !== -1 && nul < end + 3)) return -1;
+		if (end === -1) return -1;
 		if (end === 0 || line[end - 1] !== '-') return end + 3;
 		cursor = end + 3;
 	}
@@ -340,7 +342,6 @@ function findFutureHtmlCommentEnd(lines, startLine) {
 		if (interruptsInlineCodeContinuation(line)) return null;
 		const endIndex = findHtmlCommentContinuationEnd(line);
 		if (endIndex !== -1) return { lineIndex, endIndex };
-		if (line.includes('\0')) return null;
 	}
 	return null;
 }
@@ -459,7 +460,7 @@ function findFirstMultilineBacktickSpan(lines) {
 			if (line.startsWith('<!--', cursor) && !isEscaped(line, cursor)) {
 				const end = findHtmlCommentEnd(line, cursor);
 				if (end === -1) {
-					if (line.indexOf('\0', cursor + 4) !== -1 || findFutureHtmlCommentEnd(lines, lineIndex + 1) === null) {
+					if (findFutureHtmlCommentEnd(lines, lineIndex + 1) === null) {
 						cursor += 4;
 						continue;
 					}
@@ -527,8 +528,7 @@ function stripHtmlComments(line, commentState, paragraphOpen, lines, lineIndex) 
 		visible += line.slice(cursor, start);
 		const end = findHtmlCommentEnd(line, start);
 		if (end === -1) {
-			const invalidByNul = line.indexOf('\0', start + 4) !== -1;
-			if (invalidByNul || findFutureHtmlCommentEnd(lines, lineIndex + 1) === null) {
+			if (findFutureHtmlCommentEnd(lines, lineIndex + 1) === null) {
 				visible += '<!--';
 				cursor = start + 4;
 				continue;
@@ -542,7 +542,7 @@ function stripHtmlComments(line, commentState, paragraphOpen, lines, lineIndex) 
 }
 
 function markdownLinesOutsideHiddenRegions(body, { normalizeActiveListItems = false } = {}) {
-	const sourceLines = body.replace(/\r\n?/gu, '\n').split('\n');
+	const sourceLines = normalizeMarkdownSource(body).split('\n');
 	const lines = maskMultilineBacktickCodeSpans(sourceLines);
 	const output = [];
 	let fence = null;
@@ -729,7 +729,7 @@ export function extractPlainIssueRefs(body) {
 	const numbers = new Set();
 	const expression = /^Refs[ \t]+#([1-9][0-9]*)[ \t]*$/u;
 	const sourceExpression = /^(?: {0,3}(?:[-+*]|[0-9]{1,9}[.)])[ \t]+)?Refs[ \t]+#[1-9][0-9]*[ \t]*$/u;
-	const sourceLines = body.replace(/\r\n?/gu, '\n').split('\n');
+	const sourceLines = normalizeMarkdownSource(body).split('\n');
 	const lines = markdownLinesOutsideHiddenRegions(body);
 	const linkageLines = markdownLinesOutsideHiddenRegions(body, { normalizeActiveListItems: true });
 	for (let index = 0; index < lines.length; index += 1) {
