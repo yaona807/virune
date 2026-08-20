@@ -105,7 +105,6 @@ test('requires every canonical Issue Template/config file', async t => {
 	assert.deepEqual(await verifyIssueForms(root), [
 		'bug_report.yml: required canonical Issue Template file is missing',
 		'change_proposal.yml: required canonical Issue Template file is missing',
-		'conduct_contact.yml: required canonical Issue Template file is missing',
 	]);
 });
 
@@ -292,13 +291,6 @@ test('forbids free-text input and selection fields in public contact-only forms'
 		validateIssueTemplateFile('security_contact.yml', `name: Security contact\ndescription: Test\nbody:\n  - type: textarea\n    id: details\n    attributes:\n      label: Details\n`),
 		['security_contact.yml: body[0].type textarea is forbidden in public contact-only forms'],
 	);
-	assert.deepEqual(
-		validateIssueTemplateFile('conduct_contact.yml', `name: Conduct contact\ndescription: Test\nbody:\n  - type: input\n    id: contact\n    attributes:\n      label: Contact\n  - type: dropdown\n    id: category\n    attributes:\n      label: Category\n      options:\n        - Other\n`),
-		[
-			'conduct_contact.yml: body[0].type input is forbidden in public contact-only forms',
-			'conduct_contact.yml: body[1].type dropdown is forbidden in public contact-only forms',
-		],
-	);
 });
 
 test('requires every contact-only checkbox acknowledgement explicitly', () => {
@@ -324,7 +316,6 @@ function canonicalFiles(extra = {}) {
 	return {
 		'bug_report.yml': validBugForm,
 		'change_proposal.yml': validBugForm.replace('Bug report', 'Change proposal'),
-		'conduct_contact.yml': validContactForm.replaceAll('Security', 'Conduct'),
 		'config.yml': validConfig,
 		...extra,
 	};

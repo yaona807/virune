@@ -8,10 +8,9 @@ const issueTemplateDirectory = '.github/ISSUE_TEMPLATE';
 const requiredTemplateFiles = [
 	'bug_report.yml',
 	'change_proposal.yml',
-	'conduct_contact.yml',
 	'config.yml',
 ];
-const contactOnlyForms = new Set(['conduct_contact.yml', 'security_contact.yml']);
+const contactOnlyForms = new Set(['security_contact.yml']);
 const allowedFormTopLevel = new Set(['name', 'description', 'title', 'labels', 'assignees', 'body']);
 const allowedBodyTypes = new Set(['markdown', 'input', 'textarea', 'dropdown', 'checkboxes']);
 const githubBooleanTrue = new Set(['y', 'Y', 'yes', 'Yes', 'YES', 'true', 'True', 'TRUE', 'on', 'On', 'ON']);
