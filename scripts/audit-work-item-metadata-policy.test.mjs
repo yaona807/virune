@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { auditWorkItemMetadata } from './audit-work-item-metadata.mjs';
+import './evaluate-pr-policy.test.mjs';
+import './evaluate-pr-policy-workflow.test.mjs';
 
 const expected = {
 	type: ['type:bug', 'type:chore', 'type:ci', 'type:docs', 'type:feature', 'type:refactor', 'type:security', 'type:test'],
