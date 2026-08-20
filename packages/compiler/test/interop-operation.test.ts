@@ -262,10 +262,7 @@ test('External Operation sequence preserves import source order, includes side e
 	assert.deepEqual(parsed.diagnostics.filter(item => item.severity === 'error'), []);
 	const interop: InteropSemanticModel = {
 		usages: [],
-		usageIR: [
-			usage({ kind: 'property', nodeId: 50 }),
-			usage({ kind: 'call', nodeId: 51, receiverMode: 'none', mayReject: false }),
-		],
+		usageIR: [],
 		moduleWitnesses: [
 			witness('./first.js'),
 			witness('./side-effect.js'),
@@ -279,11 +276,9 @@ test('External Operation sequence preserves import source order, includes side e
 		'module-load',
 		'module-load',
 		'module-load',
-		'read-property',
-		'call',
 	]);
 	assert.deepEqual(
-		operations.filter(operation => operation.kind === 'module-load').map(operation => operation.moduleSpecifier),
+		operations.map(operation => operation.kind === 'module-load' ? operation.moduleSpecifier : undefined),
 		['./first.js', './side-effect.js', './third.js'],
 	);
 });
@@ -324,6 +319,48 @@ test('External Operation sequence rejects stale or partial module witness sequen
 			diagnostics: [],
 		}),
 		/unconsumed module witnesses/u,
+	);
+});
+
+test('External Operation sequence rejects stale or cross-session usage anchors fail closed', () => {
+	const parsed = parseSource({ id: 1, path: '/virtual/main.virune', text: 'import js { value } from "./library.js"\n' });
+	assert.ok(parsed.ast);
+	const declaration = parsed.ast.imports[0]!;
+	const validImportUsage: ForeignUsageIR = usage({
+		kind: 'import',
+		nodeId: declaration.id,
+		span: declaration.span,
+		runtimeImport: { kind: 'named', importedName: 'value' },
+		moduleWitness: witness(),
+	});
+	const base: InteropSemanticModel = {
+		usages: [],
+		usageIR: [validImportUsage],
+		moduleWitnesses: [witness()],
+		requiresJavaScriptInitialization: true,
+	};
+	assert.equal(externalOperationSequence({ module: parsed.ast, interop: base, diagnostics: [] })[0]?.kind, 'module-load');
+	assert.throws(
+		() => externalOperationSequence({
+			module: parsed.ast!,
+			interop: { ...base, usageIR: [{ ...validImportUsage, nodeId: declaration.id + 999 }] },
+			diagnostics: [],
+		}),
+		/Stale or cross-session External usage evidence/u,
+	);
+	assert.throws(
+		() => externalOperationSequence({
+			module: parsed.ast!,
+			interop: {
+				...base,
+				usageIR: [{
+					...validImportUsage,
+					span: { ...declaration.span, start: { ...declaration.span.start, offset: declaration.span.start.offset + 1 } },
+				}],
+			},
+			diagnostics: [],
+		}),
+		/Stale or cross-session External usage evidence/u,
 	);
 });
 
