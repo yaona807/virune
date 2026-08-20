@@ -361,10 +361,6 @@ function assertRuntimeWitnessCombination(witness: ModuleResolutionWitness): void
 	if (format === 'bundler') {
 		if (witness.platform !== 'browser') throw new Error('External operation bundler runtime witness requires the browser platform');
 		if (witness.runtimeEntry !== undefined) throw new Error('External operation bundler runtime witness must defer its runtime entry to the build stage');
-		return;
-	}
-	if ((format === undefined || format === 'unknown') && witness.runtimeEntry !== undefined) {
-		throw new Error('External operation unresolved runtime witness must not claim a runtime entry');
 	}
 }
 
