@@ -1,9 +1,12 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import type { ForeignUsageIR, ModuleResolutionWitness } from '../src/interop/types.js';
+import { parseSource } from '../src/project/project.js';
+import type { Diagnostic } from '../src/diagnostics/diagnostic.js';
+import type { ForeignUsageIR, InteropSemanticModel, ModuleResolutionWitness } from '../src/interop/types.js';
 import {
 	externalModuleLoadOperation,
 	externalOperationFromUsage,
+	externalOperationSequence,
 } from '../src/interop/operation.js';
 import { isResolvedDirectInteropDecision } from '../src/interop/decision.js';
 
@@ -42,46 +45,84 @@ test('import usages never infer ModuleLoad semantics from bound-value observatio
 	assert.equal(operation, undefined);
 });
 
-test('ModuleLoad is declaration-level evidence and strips provider-private witness metadata', () => {
+test('ModuleLoad keeps only runtime resolution evidence and strips declaration/provider-private metadata', () => {
 	const providerPrivate = '/temporary/provider/private.d.ts';
 	const operation = externalModuleLoadOperation({
 		nodeId: 3,
 		span,
 		moduleSpecifier: './library.js',
-		witness: {
+		witnesses: [{
 			...witness(),
+			declarationEntry: '/checkout/private/library.d.ts',
+			providerVersion: '/checkout/provider-private-version',
 			conditions: ['types', 'import', 'node'],
 			providerPrivate,
-		} as unknown as ModuleResolutionWitness,
+		} as unknown as ModuleResolutionWitness],
 	});
 
 	assert.equal(operation.kind, 'module-load');
-	assert.deepEqual(operation.witness.conditions, ['types', 'import', 'node'], 'condition precedence is semantic order, not a set');
+	assert.deepEqual(operation.runtimeWitness?.conditions, ['types', 'import', 'node'], 'condition precedence is semantic order, not a set');
 	assert.equal(isResolvedDirectInteropDecision(operation.decision), true);
+	assert.deepEqual(operation.decision.obligations, [
+		{ kind: 'runtime-resolution', stage: 'check', status: 'discharged' },
+	]);
 	const serialized = JSON.stringify(operation);
+	assert.equal(serialized.includes('providerVersion'), false);
+	assert.equal(serialized.includes('declarationEntry'), false);
+	assert.equal(serialized.includes('declarationGraphHash'), false);
 	assert.equal(serialized.includes('providerPrivate'), false);
-	assert.equal(serialized.includes(providerPrivate), false);
+	assert.equal(serialized.includes('/checkout/'), false);
 });
 
-test('ModuleLoad rejects mismatched, absolute, noncanonical, or unknown witness facts', () => {
+test('ModuleLoad represents bundler runtime resolution as a pending build obligation', () => {
+	const operation = externalModuleLoadOperation({
+		nodeId: 3,
+		span,
+		moduleSpecifier: './library.js',
+		witnesses: [{ ...witness(), platform: 'browser', runtimeFormat: 'bundler', runtimeEntry: undefined }],
+	});
+	assert.equal(operation.decision.status, 'obligation-pending');
+	assert.equal(operation.decision.mechanism, 'direct');
+	assert.deepEqual(operation.decision.obligations, [
+		{ kind: 'runtime-resolution', stage: 'build', status: 'pending' },
+	]);
+	assert.equal(isResolvedDirectInteropDecision(operation.decision), false);
+});
+
+test('ModuleLoad does not promote inconsistent binding witnesses to resolved Direct evidence', () => {
+	const operation = externalModuleLoadOperation({
+		nodeId: 3,
+		span,
+		moduleSpecifier: './library.js',
+		witnesses: [
+			witness(),
+			{ ...witness(), runtimeEntry: 'dist/other.js' },
+		],
+	});
+	assert.equal(operation.decision.status, 'unresolved');
+	assert.equal(operation.runtimeWitness, undefined);
+	assert.equal(isResolvedDirectInteropDecision(operation.decision), false);
+});
+
+test('ModuleLoad rejects mismatched, absolute, noncanonical, or unknown runtime witness facts', () => {
 	assert.throws(
 		() => externalModuleLoadOperation({
 			nodeId: 1,
 			span,
 			moduleSpecifier: './library.js',
-			witness: { ...witness(), moduleSpecifier: './other.js' },
+			witnesses: [{ ...witness(), moduleSpecifier: './other.js' }],
 		}),
 		/witness must resolve the same module specifier/u,
 	);
 	for (const invalidWitness of [
-		{ ...witness(), declarationEntry: '/absolute/library.d.ts' },
+		{ ...witness(), runtimeEntry: '/absolute/library.js' },
 		{ ...witness(), runtimeEntry: 'C:/absolute/library.js' },
 		{ ...witness(), runtimeEntry: 'dist\\library.js' },
 		{ ...witness(), runtimeEntry: 'dist/../library.js' },
 	]) {
 		assert.throws(
-			() => externalModuleLoadOperation({ nodeId: 1, span, moduleSpecifier: './library.js', witness: invalidWitness }),
-			/External operation (?:declaration|runtime) (?:entry|path)/u,
+			() => externalModuleLoadOperation({ nodeId: 1, span, moduleSpecifier: './library.js', witnesses: [invalidWitness] }),
+			/External operation runtime entry/u,
 		);
 	}
 	assert.throws(
@@ -89,7 +130,7 @@ test('ModuleLoad rejects mismatched, absolute, noncanonical, or unknown witness 
 			nodeId: 1,
 			span,
 			moduleSpecifier: './library.js',
-			witness: { ...witness(), runtimeFormat: 'future-format' } as unknown as ModuleResolutionWitness,
+			witnesses: [{ ...witness(), runtimeFormat: 'future-format' } as unknown as ModuleResolutionWitness],
 		}),
 		/Unknown module witness runtime format/u,
 	);
@@ -98,9 +139,18 @@ test('ModuleLoad rejects mismatched, absolute, noncanonical, or unknown witness 
 			nodeId: 1,
 			span,
 			moduleSpecifier: './library.js',
-			witness: { ...witness(), platform: 'future-platform' } as unknown as ModuleResolutionWitness,
+			witnesses: [{ ...witness(), platform: 'future-platform' } as unknown as ModuleResolutionWitness],
 		}),
 		/Unknown module witness platform/u,
+	);
+	assert.throws(
+		() => externalModuleLoadOperation({
+			nodeId: 1,
+			span,
+			moduleSpecifier: './library.js',
+			witnesses: [{ ...witness(), packageJsonHash: 'not-a-sha256' }],
+		}),
+		/runtime package\.json hash must be a lowercase SHA-256 digest/u,
 	);
 });
 
@@ -137,14 +187,16 @@ test('call and await observations fail closed when required execution semantics 
 	);
 });
 
-test('primitive bridge evidence drops ephemeral TypeId and unknown provider metadata', () => {
+test('primitive bridge evidence drops ephemeral TypeId, display paths, declaration paths, and unknown provider metadata', () => {
 	const privatePath = '/checkout/private/provider.ts';
 	const operation = externalOperationFromUsage(usage({
 		kind: 'bridge',
 		foreignType: {
 			...stableString,
+			display: `import("${privatePath}").Value`,
 			origin: {
 				...stableString.origin,
+				declarationPath: privatePath,
 				providerPrivatePath: privatePath,
 			} as unknown as typeof stableString.origin,
 			providerPrivatePath: privatePath,
@@ -163,11 +215,13 @@ test('primitive bridge evidence drops ephemeral TypeId and unknown provider meta
 	}
 	const serialized = JSON.stringify(operation);
 	assert.equal(serialized.includes('987654'), false, 'compiler TypeId must not enter stable operation evidence');
+	assert.equal(serialized.includes('display'), false);
+	assert.equal(serialized.includes('declarationPath'), false);
 	assert.equal(serialized.includes('providerPrivatePath'), false);
 	assert.equal(serialized.includes(privatePath), false);
 });
 
-test('unknown foreign and bridge enum values fail closed', () => {
+test('unknown foreign, bridge, and usage enum values fail closed', () => {
 	assert.throws(
 		() => externalOperationFromUsage(usage({
 			kind: 'property',
@@ -182,31 +236,143 @@ test('unknown foreign and bridge enum values fail closed', () => {
 		})),
 		/Unknown primitive bridge/u,
 	);
-});
-
-test('absolute provider origin paths cannot enter operation evidence', () => {
 	assert.throws(
-		() => externalOperationFromUsage(usage({
-			kind: 'property',
-			foreignType: {
-				...stableString,
-				origin: { ...stableString.origin, declarationPath: '/checkout/types.d.ts' },
-			},
-		})),
-		/External operation declaration path must not be absolute/u,
+		() => externalOperationFromUsage({ ...usage({}), kind: 'future-usage' } as unknown as ForeignUsageIR),
+		/Unknown Foreign usage kind/u,
 	);
 });
 
-test('ModuleLoad refuses an empty module specifier', () => {
-	assert.throws(
-		() => externalModuleLoadOperation({ nodeId: 1, span, moduleSpecifier: '', witness: witness() }),
-		/requires a module specifier/u,
+test('External Operation sequence preserves import source order, includes side effects, and excludes type-only ModuleLoad', () => {
+	const parsed = parseSource({
+		id: 1,
+		path: '/virtual/main.virune',
+		text: [
+			'import js { value } from "./first.js"',
+			'import js "./side-effect.js"',
+			'import js type { Shape } from "./types.js"',
+			'import js * as ns from "./third.js"',
+			'',
+			'fn main() -> Unit uses JavaScript {',
+			'}',
+			'',
+		].join('\n'),
+	});
+	assert.ok(parsed.ast);
+	assert.deepEqual(parsed.diagnostics.filter(item => item.severity === 'error'), []);
+	const interop: InteropSemanticModel = {
+		usages: [],
+		usageIR: [
+			usage({ kind: 'property', nodeId: 50 }),
+			usage({ kind: 'call', nodeId: 51, receiverMode: 'none', mayReject: false }),
+		],
+		moduleWitnesses: [
+			witness('./first.js'),
+			witness('./side-effect.js'),
+			witness('./types.js'),
+			witness('./third.js'),
+		],
+		requiresJavaScriptInitialization: true,
+	};
+	const operations = externalOperationSequence({ module: parsed.ast, interop, diagnostics: [] });
+	assert.deepEqual(operations.map(operation => operation.kind), [
+		'module-load',
+		'module-load',
+		'module-load',
+		'read-property',
+		'call',
+	]);
+	assert.deepEqual(
+		operations.filter(operation => operation.kind === 'module-load').map(operation => operation.moduleSpecifier),
+		['./first.js', './side-effect.js', './third.js'],
 	);
 });
 
-function witness(): ModuleResolutionWitness {
+test('External Operation sequence withholds successful Direct evidence from invalid modules', () => {
+	const parsed = parseSource({ id: 1, path: '/virtual/main.virune', text: 'import js "./library.js"\n' });
+	assert.ok(parsed.ast);
+	const interop: InteropSemanticModel = {
+		usages: [],
+		usageIR: [usage({ kind: 'call', receiverMode: 'none', mayReject: false })],
+		moduleWitnesses: [witness()],
+		requiresJavaScriptInitialization: true,
+	};
+	const diagnostics: Diagnostic[] = [{
+		code: 'L9999',
+		severity: 'error',
+		message: 'synthetic later failure',
+		span,
+	}];
+	assert.deepEqual(externalOperationSequence({ module: parsed.ast, interop, diagnostics }), []);
+});
+
+test('External Operation sequence rejects stale or partial module witness sequences fail closed', () => {
+	const parsed = parseSource({ id: 1, path: '/virtual/main.virune', text: 'import js "./library.js"\n' });
+	assert.ok(parsed.ast);
+	assert.throws(
+		() => externalOperationSequence({
+			module: parsed.ast!,
+			interop: { usages: [], usageIR: [], moduleWitnesses: [], requiresJavaScriptInitialization: true },
+			diagnostics: [],
+		}),
+		/missing module witnesses/u,
+	);
+	assert.throws(
+		() => externalOperationSequence({
+			module: parsed.ast!,
+			interop: { usages: [], usageIR: [], moduleWitnesses: [witness(), witness()], requiresJavaScriptInitialization: true },
+			diagnostics: [],
+		}),
+		/unconsumed module witnesses/u,
+	);
+});
+
+test('equivalent checkout roots serialize identical External value evidence', () => {
+	const first = externalOperationFromUsage(usage({
+		kind: 'property',
+		foreignType: {
+			...stableString,
+			display: 'import("/checkout/a/node_modules/pkg/index.d.ts").Value',
+			origin: { ...stableString.origin, declarationPath: '/checkout/a/node_modules/pkg/index.d.ts' },
+		},
+	}));
+	const second = externalOperationFromUsage(usage({
+		kind: 'property',
+		foreignType: {
+			...stableString,
+			display: 'import("/checkout/b/node_modules/pkg/index.d.ts").Value',
+			origin: { ...stableString.origin, declarationPath: '/checkout/b/node_modules/pkg/index.d.ts' },
+		},
+	}));
+	assert.equal(JSON.stringify(first), JSON.stringify(second));
+});
+
+test('package identity never selects operation mechanism or safety claims', () => {
+	const first = externalOperationFromUsage(usage({
+		kind: 'property',
+		foreignType: { ...stableString, origin: { ...stableString.origin, packageName: 'react' } },
+	}));
+	const second = externalOperationFromUsage(usage({
+		kind: 'property',
+		foreignType: { ...stableString, origin: { ...stableString.origin, packageName: 'some-other-package' } },
+	}));
+	assert.equal(first?.kind, second?.kind);
+	assert.deepEqual(first?.decision, second?.decision);
+});
+
+test('ModuleLoad refuses an empty or absolute module specifier', () => {
+	assert.throws(
+		() => externalModuleLoadOperation({ nodeId: 1, span, moduleSpecifier: '', witnesses: [witness()] }),
+		/must be a non-empty string/u,
+	);
+	assert.throws(
+		() => externalModuleLoadOperation({ nodeId: 1, span, moduleSpecifier: '/checkout/library.js', witnesses: [witness('/checkout/library.js')] }),
+		/must not be absolute/u,
+	);
+});
+
+function witness(moduleSpecifier = './library.js'): ModuleResolutionWitness {
 	return {
-		moduleSpecifier: './library.js',
+		moduleSpecifier,
 		declarationEntry: 'types/library.d.ts',
 		runtimeEntry: 'dist/library.js',
 		runtimeFormat: 'esm',
