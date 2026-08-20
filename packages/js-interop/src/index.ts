@@ -453,7 +453,7 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 		const checker = program.getTypeChecker();
 		const expression = sourceFile.statements.find(ts.isExpressionStatement)?.expression;
 		const alias = sourceFile.statements.find(ts.isTypeAliasDeclaration)?.type;
-		const resolved = ts.resolveModuleName(request.moduleSpecifier, virtualPath, workspace.compilerOptions, ts.sys).resolvedModule;
+		const resolved = ts.resolveModuleName(request.moduleSpecifier, virtualPath, workspace.compilerOptions, ts.sys, undefined, undefined, ts.ModuleKind.ESNext).resolvedModule;
 		return { program, checker, sourceFile, workspace, ...(expression === undefined ? {} : { valueNode: expression }), ...(alias === undefined ? {} : { typeNode: alias }), ...(resolved === undefined ? {} : { resolvedModule: resolved }) };
 	}
 
@@ -559,6 +559,7 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 		const declarationInfo = findPackageInfo(resolved?.resolvedFileName);
 		const runtime = resolveRuntimeModule(request, new Set<string>(nodeDefaultImportConditions));
 		const runtimeInfo = runtime.path === undefined ? {} : findRuntimePackageInfo(request, runtime.path);
+		const runtimeScopeInfo = runtime.path === undefined ? {} : findPackageInfo(runtime.path);
 		const declarationEntry = packageRelativeLocator(resolved?.resolvedFileName, declarationInfo.packageJsonPath);
 		const runtimeEntry = runtime.format === 'builtin'
 			? runtime.entry
@@ -576,7 +577,7 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 			platform: request.platform,
 			providerVersion: this.version,
 			...(resolved?.resolvedFileName === undefined || !existsSync(resolved.resolvedFileName) ? {} : { declarationGraphHash: hash(readFileSync(resolved.resolvedFileName)) }),
-			...(runtimeInfo.packageJsonPath === undefined ? {} : { packageJsonHash: hash(readFileSync(runtimeInfo.packageJsonPath)) }),
+			...(runtimeScopeInfo.packageJsonPath === undefined ? {} : { packageJsonHash: hash(readFileSync(runtimeScopeInfo.packageJsonPath)) }),
 			...(declarationInfo.packageJsonPath === undefined ? {} : { declarationPackageJsonHash: hash(readFileSync(declarationInfo.packageJsonPath)) }),
 		};
 	}
@@ -1105,7 +1106,7 @@ function resolvePackageTargetString(target: string, packageRoot: string, pattern
 		if (targetUrl.search.length > 0 || targetUrl.hash.length > 0) return null;
 		const candidate = fileURLToPath(targetUrl);
 		const locator = relative(resolve(packageRoot), candidate).replaceAll('\\', '/');
-		if (locator.length === 0 || locator === '..' || locator.startsWith('../') || locator.startsWith('/')) return invalidPackageTarget;
+		if (locator.length === 0 || locator === '..' || locator.startsWith('../') || locator.startsWith('/') || /^[A-Za-z]:\//u.test(locator)) return invalidPackageTarget;
 		return candidate;
 	} catch {
 		return invalidPackageTarget;
