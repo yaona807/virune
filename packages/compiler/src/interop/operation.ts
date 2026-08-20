@@ -276,18 +276,25 @@ function unresolvedDirectDecision(): InteropDecisionIR {
 }
 
 function runtimeResolutionDecision(witness: ExternalRuntimeResolutionWitness): InteropDecisionIR {
-	const resolvedAtCheck = witness.runtimeFormat === 'esm' || witness.runtimeFormat === 'commonjs' || witness.runtimeFormat === 'builtin';
-	return canonicalizeInteropDecision({
-		status: resolvedAtCheck ? 'resolved' : 'obligation-pending',
-		mechanism: 'direct',
-		authoring: 'none',
-		claims: [],
-		obligations: [{
-			kind: 'runtime-resolution',
-			stage: resolvedAtCheck ? 'check' : 'build',
-			status: resolvedAtCheck ? 'discharged' : 'pending',
-		}],
-	});
+	if (witness.runtimeFormat === 'esm' || witness.runtimeFormat === 'commonjs' || witness.runtimeFormat === 'builtin') {
+		return canonicalizeInteropDecision({
+			status: 'resolved',
+			mechanism: 'direct',
+			authoring: 'none',
+			claims: [],
+			obligations: [{ kind: 'runtime-resolution', stage: 'check', status: 'discharged' }],
+		});
+	}
+	if (witness.runtimeFormat === 'bundler') {
+		return canonicalizeInteropDecision({
+			status: 'obligation-pending',
+			mechanism: 'direct',
+			authoring: 'none',
+			claims: [],
+			obligations: [{ kind: 'runtime-resolution', stage: 'build', status: 'pending' }],
+		});
+	}
+	return unresolvedDirectDecision();
 }
 
 function canonicalForeignType(snapshot: StableForeignTypeSnapshot): ExternalForeignValueShape {
