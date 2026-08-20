@@ -1106,7 +1106,7 @@ function resolvePackageTargetString(target: string, packageRoot: string, pattern
 		if (targetUrl.search.length > 0 || targetUrl.hash.length > 0) return null;
 		const candidate = fileURLToPath(targetUrl);
 		const locator = relative(resolve(packageRoot), candidate).replaceAll('\\', '/');
-		if (locator.length === 0 || locator === '..' || locator.startsWith('../') || locator.startsWith('/') || /^[A-Za-z]:\//u.test(locator)) return invalidPackageTarget;
+		if (locator.length === 0 || locator === '..' || locator.startsWith('../') || locator.startsWith('/')) return invalidPackageTarget;
 		return candidate;
 	} catch {
 		return invalidPackageTarget;
