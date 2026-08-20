@@ -2,9 +2,9 @@
 
 [English](release-channels.md) | [日本語](release-channels_ja.md)
 
-Virune `v1.0.0`は、バージョン付きGitHub Releasesから配布し、npm Registryへ後追いpublishしません。最初のstable npm Registry releaseは`v1.1.0`を予定しています。Release固有のpublication、ownership、Trusted Publishing、clean install、public verificationの各gateが実装され、成功するまではnpm publicationを有効化しません。
+Virune `v1.0.0`は、バージョン付きのGitHub Releasesから配布し、npm Registryへ後から公開しません。npm Registryへ最初に公開する安定版は`v1.1.0`を予定しています。リリース固有の公開、所有権、Trusted Publishing、clean install、public verificationの各ゲートが実装され、すべて成功するまではnpmへの公開を有効にしません。
 
-GitHub Releasesはstable、prerelease、nightlyのすべてで公式かつimmutableなdistribution channelとして維持します。
+GitHub Releasesは、stable、prerelease、nightlyのすべてについて公式かつ変更不可の配布先として維持します。
 
 **npm Registry方針:** `v1.0.0`は後追いpublishしません。最初のstableは`v1.1.0`、stableは`latest`、prereleaseは`next`を使用し、nightlyはnpmへpublishしません。
 
