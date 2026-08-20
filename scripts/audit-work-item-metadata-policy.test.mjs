@@ -10,6 +10,17 @@ const expected = {
 	workflow: ['workflow:blocked', 'workflow:superseded', 'workflow:validation-only'],
 };
 
+const linkagePolicy = {
+	'CONTRIBUTING.md': {
+		plainRefs: /use plain `Refs #\.\.\.` references rather than `Closes`, `Fixes`, `Resolves`/u,
+		implementation: /A normal implementation PR must reference an `Implementation` Issue/u,
+	},
+	'CONTRIBUTING_ja.md': {
+		plainRefs: /`Closes`、`Fixes`、`Resolves`、GitHubのclosing relationshipではなくplainな`Refs #\.\.\.`を使用/u,
+		implementation: /通常のimplementation PRは`Implementation` Issueを参照する必要があります/u,
+	},
+};
+
 function sectionAtHeading(source, heading) {
 	const normalized = source.replace(/\r\n?/gu, '\n');
 	const headingExpression = /^(#{1,6})[ \t]+(.+?)[ \t]*#*[ \t]*$/gmu;
@@ -87,11 +98,12 @@ for (const file of ['CONTRIBUTING.md', 'CONTRIBUTING_ja.md']) {
 		assert.deepEqual(extractTaxonomy(source), expected);
 	});
 
-	test(`${file} work-item role and linkage policy matches the metadata audit contract`, async () => {
+	test(`${file} work-item role and linkage policy matches the repository metadata audit contract`, async () => {
 		const source = await readFile(new URL(`../${file}`, import.meta.url), 'utf8');
 		const section = sectionAtHeading(source, 'Work item role');
 		assert.match(section, /`Work item role`/u);
 		assert.deepEqual(extractRoleValues(section), ['Implementation', 'Tracking']);
-		assert.match(section, /`Refs #\.\.\.`/u);
+		assert.match(section, linkagePolicy[file].plainRefs);
+		assert.match(section, linkagePolicy[file].implementation);
 	});
 }
