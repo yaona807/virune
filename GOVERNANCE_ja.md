@@ -12,7 +12,7 @@ Viruneは現在、[`@yaona807`](https://github.com/yaona807)が単独でメン�
 
 メンテナーは主に次を担当します。
 
-- IssueとPull Requestの整理、レビュー、マージ
+- Issueの整理と、Pull Requestのレビュー・マージ
 - プロジェクトの方針や優先順位の決定
 - リリースと配布
 - セキュリティ対応
