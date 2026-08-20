@@ -3,6 +3,7 @@ import type { Diagnostic } from '../diagnostics/diagnostic.js';
 import type { NodeId, SourceSpan } from '../source.js';
 import type {
 	ForeignOrigin,
+	ForeignUsage,
 	ForeignUsageIR,
 	InteropSemanticModel,
 	ModuleResolutionWitness,
@@ -128,7 +129,7 @@ export function externalOperationSequence(input: {
 	if (input.diagnostics.some(diagnostic => diagnostic.severity === 'error')) return [];
 
 	const nodeAnchors = collectAstNodeAnchors(input.module);
-	for (const usage of input.interop.usageIR) assertCurrentUsageAnchor(usage, nodeAnchors);
+	for (const usage of input.interop.usageIR) assertCurrentUsageAnchor(usage, nodeAnchors, input.interop.usages);
 
 	const operations: ExternalOperationIR[] = [];
 	let witnessIndex = 0;
@@ -384,11 +385,47 @@ function collectAstNodeAnchors(module: A.ModuleNode): ReadonlyMap<NodeId, AstNod
 	return result;
 }
 
-function assertCurrentUsageAnchor(usage: ForeignUsageIR, nodeAnchors: ReadonlyMap<NodeId, AstNodeAnchor>): void {
+function assertCurrentUsageAnchor(
+	usage: ForeignUsageIR,
+	nodeAnchors: ReadonlyMap<NodeId, AstNodeAnchor>,
+	currentUsages: readonly ForeignUsage[],
+): void {
 	const current = nodeAnchors.get(usage.nodeId);
-	if (current === undefined || !isSourceSpan(usage.span) || !sameSpan(current.span, usage.span) || !usageMatchesAstAnchor(usage, current)) {
+	if (
+		current === undefined
+		|| !isSourceSpan(usage.span)
+		|| !sameSpan(current.span, usage.span)
+		|| !usageMatchesAstAnchor(usage, current)
+		|| !usageMatchesCurrentCheckerEvidence(usage, currentUsages)
+	) {
 		throw new Error(`Stale or cross-session External usage evidence for node ${usage.nodeId}`);
 	}
+}
+
+function usageMatchesCurrentCheckerEvidence(usage: ForeignUsageIR, currentUsages: readonly ForeignUsage[]): boolean {
+	if (usage.kind === 'import') return true;
+	const candidates = currentUsages.filter(candidate => candidate.kind === usage.kind
+		&& candidate.nodeId === usage.nodeId
+		&& isSourceSpan(candidate.span)
+		&& sameSpan(candidate.span, usage.span));
+	if (candidates.length !== 1) return false;
+	const current = candidates[0]!;
+	try {
+		if (JSON.stringify(canonicalForeignType(current.foreignType)) !== JSON.stringify(canonicalForeignType(usage.foreignType))) return false;
+	} catch {
+		return false;
+	}
+	switch (usage.kind) {
+		case 'property': return true;
+		case 'call': return current.receiverMode === usage.receiverMode && current.mayReject === usage.mayReject;
+		case 'await': return current.mayReject === usage.mayReject;
+		case 'bridge':
+			return current.bridge?.kind === 'primitive'
+				&& usage.bridge?.kind === 'primitive'
+				&& current.bridge.bridge === usage.bridge.bridge;
+		case 'import': return true;
+	}
+	return false;
 }
 
 function usageMatchesAstAnchor(usage: ForeignUsageIR, anchor: AstNodeAnchor): boolean {
