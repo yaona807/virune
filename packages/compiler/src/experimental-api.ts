@@ -12,6 +12,7 @@ export { lex } from './syntax/tokens.js';
 
 export { parseSource } from './project/project.js';
 export * from './project/incremental.js';
+export * from './interop/decision.js';
 export type {
 	ForeignCallResolution,
 	ForeignOrigin,
