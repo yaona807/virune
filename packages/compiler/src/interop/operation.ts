@@ -305,6 +305,10 @@ function runtimeResolutionDecision(witness: ExternalRuntimeResolutionWitness): I
 function canonicalForeignType(snapshot: StableForeignTypeSnapshot): ExternalForeignValueShape {
 	assertKnown(FOREIGN_CATEGORIES, snapshot.category, 'foreign type category');
 	if (snapshot.primitive !== undefined) assertKnown(FOREIGN_PRIMITIVES, snapshot.primitive, 'foreign primitive');
+	const primitiveCategory = snapshot.category === 'primitive' || snapshot.category === 'literal';
+	if (primitiveCategory !== (snapshot.primitive !== undefined)) {
+		throw new Error('External operation foreign category and primitive facts are inconsistent');
+	}
 	if (snapshot.mustUse !== undefined && typeof snapshot.mustUse !== 'boolean') throw new Error('External operation foreign mustUse must be boolean');
 	return {
 		category: snapshot.category,
