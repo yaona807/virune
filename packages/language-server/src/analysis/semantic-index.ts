@@ -1,5 +1,5 @@
 import { readFile } from 'node:fs/promises';
-import { resolve } from 'node:path';
+import { isAbsolute, resolve } from 'node:path';
 import {
 	lex,
 	type AstNode,
@@ -332,8 +332,13 @@ async function externalSymbol(
 	const type = module.semantic.arena.get(symbol.typeId);
 	if (type.kind !== 'foreign') return undefined;
 	const origin = type.snapshot.origin;
-	if (origin?.declarationPath === undefined) return undefined;
-	const path = resolve(origin.declarationPath);
+	if (origin === undefined) return undefined;
+	const legacyDeclarationPath = origin.declarationPath !== undefined && isAbsolute(origin.declarationPath)
+		? origin.declarationPath
+		: undefined;
+	const navigationPath = type.snapshot.navigation?.declarationPath ?? legacyDeclarationPath;
+	if (navigationPath === undefined) return undefined;
+	const path = resolve(navigationPath);
 	const pendingText = declarationTexts.get(path) ?? readDeclarationText(path);
 	declarationTexts.set(path, pendingText);
 	const text = await pendingText;

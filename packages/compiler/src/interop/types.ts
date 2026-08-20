@@ -9,6 +9,11 @@ export interface ForeignTypeRef {
 	readonly id: string;
 }
 
+/** Ephemeral editor metadata. Providers must not serialize this into stable semantic evidence. */
+export interface ForeignTypeNavigation {
+	readonly declarationPath: string;
+}
+
 export interface ForeignTypeSnapshot {
 	readonly ref: ForeignTypeRef;
 	readonly display: string;
@@ -16,6 +21,7 @@ export interface ForeignTypeSnapshot {
 	readonly primitive?: ForeignPrimitiveKind;
 	readonly mustUse?: boolean;
 	readonly origin?: ForeignOrigin;
+	readonly navigation?: ForeignTypeNavigation;
 }
 
 export interface ForeignOrigin {
@@ -68,15 +74,31 @@ export interface ModuleResolutionWitness {
 	readonly declarationPackageJsonHash?: string;
 }
 
+export type InteropLiteralValue =
+	| { readonly kind: 'String'; readonly value: string }
+	| { readonly kind: 'Bool'; readonly value: boolean }
+	| { readonly kind: 'Int' | 'Float'; readonly value: number }
+	| { readonly kind: 'BigInt'; readonly value: string };
+
 export type InteropArgumentType =
 	| { readonly kind: 'foreign'; readonly type: ForeignTypeRef }
-	| { readonly kind: 'native-primitive'; readonly primitive: 'Bool' | 'Int' | 'Float' | 'BigInt' | 'String' | 'Unit' }
+	| { readonly kind: 'native-primitive'; readonly primitive: 'Bool' | 'Int' | 'Float' | 'BigInt' | 'String' | 'Unit'; readonly literal?: InteropLiteralValue }
 	| { readonly kind: 'unknown' };
+
+export type InteropCallTarget =
+	| { readonly kind: 'value' }
+	| { readonly kind: 'member'; readonly receiver: ForeignTypeRef; readonly property: string };
+
+export interface InteropCallUsage {
+	readonly target: InteropCallTarget;
+	readonly arguments: readonly InteropArgumentType[];
+}
 
 export interface ForeignCallResolution {
 	readonly result: ForeignTypeSnapshot;
 	readonly parameterCount: number;
 	readonly optionalParameterCount: number;
+	readonly minimumArgumentCount?: number;
 	readonly rest: boolean;
 	readonly mayReject: boolean;
 	readonly receiverMode: 'none' | 'preserve-this';
@@ -88,6 +110,8 @@ export interface JsInteropProvider {
 	readonly generation: number;
 	resolveImport(request: JsImportRequest): JsImportResolution;
 	getProperty(type: ForeignTypeRef, name: string): ForeignTypeSnapshot | undefined;
+	/** Whole-usage resolver. When implemented, callers must not fall back to resolveCall after it returns undefined. */
+	resolveCallUsage?(type: ForeignTypeRef, usage: InteropCallUsage): ForeignCallResolution | undefined;
 	resolveCall(type: ForeignTypeRef, argumentsList: readonly InteropArgumentType[]): ForeignCallResolution | undefined;
 	resolveConstruct(type: ForeignTypeRef, argumentsList: readonly InteropArgumentType[]): ForeignCallResolution | undefined;
 	getAwaitedType(type: ForeignTypeRef): ForeignTypeSnapshot | undefined;
