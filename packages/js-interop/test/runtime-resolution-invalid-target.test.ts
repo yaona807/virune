@@ -76,7 +76,7 @@ test('a malformed nearest runtime package scope cannot be classified as CommonJS
 	}, null, 2)}\n`, 'utf8');
 	await writeFile(join(packageRoot, 'index.d.ts'), 'declare const value: string;\nexport default value;\n', 'utf8');
 	await writeFile(join(packageRoot, 'sub/package.json'), '{"type":"module"', 'utf8');
-	await writeFile(join(packageRoot, 'sub/runtime.js'), 'export default "runtime";\n', 'utf8');
+	await writeFile(join(packageRoot, 'sub/runtime.js'), 'module.exports = "runtime";\n', 'utf8');
 
 	const provider = new TypeScriptInteropProvider({ projectRoot: root });
 	const imported = provider.resolveImport({
@@ -89,4 +89,64 @@ test('a malformed nearest runtime package scope cannot be classified as CommonJS
 	assert.equal(imported.witness.packageName, 'malformed-scope-runtime');
 	assert.equal(imported.witness.runtimeEntry, 'sub/runtime.js');
 	assert.equal(imported.witness.runtimeFormat, 'unknown');
+});
+
+test('a typeless ambiguous runtime with ESM-only syntax is not classified as CommonJS', async () => {
+	const root = await fixtureRoot();
+	const packageRoot = join(root, 'node_modules', 'typeless-esm-runtime');
+	await mkdir(packageRoot, { recursive: true });
+	await writeFile(join(packageRoot, 'package.json'), `${JSON.stringify({
+		name: 'typeless-esm-runtime',
+		version: '1.0.0',
+		exports: {
+			'.': {
+				types: './index.d.ts',
+				import: './runtime.js',
+			},
+		},
+	}, null, 2)}\n`, 'utf8');
+	await writeFile(join(packageRoot, 'index.d.ts'), 'declare const value: string;\nexport default value;\n', 'utf8');
+	await writeFile(join(packageRoot, 'runtime.js'), 'export default "runtime";\n', 'utf8');
+
+	const provider = new TypeScriptInteropProvider({ projectRoot: root });
+	const imported = provider.resolveImport({
+		containingFile: join(root, 'src/main.virune'),
+		moduleSpecifier: 'typeless-esm-runtime',
+		kind: 'default',
+		platform: 'node',
+	});
+	assert.ok(imported.type);
+	assert.equal(imported.witness.packageName, 'typeless-esm-runtime');
+	assert.equal(imported.witness.runtimeEntry, 'runtime.js');
+	assert.equal(imported.witness.runtimeFormat, 'unknown');
+});
+
+test('a typeless ambiguous runtime that parses as CommonJS remains classified as CommonJS', async () => {
+	const root = await fixtureRoot();
+	const packageRoot = join(root, 'node_modules', 'typeless-cjs-runtime');
+	await mkdir(packageRoot, { recursive: true });
+	await writeFile(join(packageRoot, 'package.json'), `${JSON.stringify({
+		name: 'typeless-cjs-runtime',
+		version: '1.0.0',
+		exports: {
+			'.': {
+				types: './index.d.ts',
+				import: './runtime.js',
+			},
+		},
+	}, null, 2)}\n`, 'utf8');
+	await writeFile(join(packageRoot, 'index.d.ts'), 'declare const value: string;\nexport default value;\n', 'utf8');
+	await writeFile(join(packageRoot, 'runtime.js'), 'module.exports = "runtime";\n', 'utf8');
+
+	const provider = new TypeScriptInteropProvider({ projectRoot: root });
+	const imported = provider.resolveImport({
+		containingFile: join(root, 'src/main.virune'),
+		moduleSpecifier: 'typeless-cjs-runtime',
+		kind: 'default',
+		platform: 'node',
+	});
+	assert.ok(imported.type);
+	assert.equal(imported.witness.packageName, 'typeless-cjs-runtime');
+	assert.equal(imported.witness.runtimeEntry, 'runtime.js');
+	assert.equal(imported.witness.runtimeFormat, 'commonjs');
 });
