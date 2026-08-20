@@ -32,66 +32,57 @@ function load(value: ModuleResolutionWitness) {
 	});
 }
 
-test('runtime format and platform combinations fail closed when contradictory', () => {
-	const nodeBundler: ModuleResolutionWitness = {
-		moduleSpecifier: './library.js',
-		runtimeFormat: 'bundler',
-		conditions: ['types', 'node-addons', 'node', 'import', 'module-sync'],
-		platform: 'node',
-		providerVersion: 'provider-1',
-	};
-	for (const [value, expected] of [
-		[witness({ platform: 'browser', runtimeFormat: 'esm' }), /esm runtime witness requires the node platform/u],
-		[witness({ platform: 'browser', runtimeFormat: 'commonjs' }), /commonjs runtime witness requires the node platform/u],
-		[nodeBundler, /bundler runtime witness requires the browser platform/u],
-		[witness({ platform: 'browser', runtimeFormat: 'bundler' }), /must defer its runtime entry to the build stage/u],
+test('provider-independent evidence preserves supported platform and runtime-format facts without TypeScript-provider correlation rules', () => {
+	for (const value of [
+		witness({ platform: 'browser', runtimeFormat: 'esm' }),
+		witness({ platform: 'browser', runtimeFormat: 'commonjs' }),
+		witness({ platform: 'neutral', runtimeFormat: 'esm' }),
 	]) {
-		assert.throws(() => load(value as ModuleResolutionWitness), expected as RegExp);
+		const operation = load(value);
+		assert.equal(operation.runtimeWitness?.platform, value.platform);
+		assert.equal(operation.runtimeWitness?.runtimeFormat, value.runtimeFormat);
+		assert.equal(operation.decision.status, 'resolved');
+		assert.equal(isResolvedDirectInteropDecision(operation.decision), true);
 	}
 });
 
-test('builtin runtime witnesses require node and cannot impersonate a package', () => {
-	const builtin: ModuleResolutionWitness = {
-		moduleSpecifier: 'node:fs',
+test('builtin witness facts are preserved instead of imposing one provider implementation policy', () => {
+	const builtin = witness({
+		moduleSpecifier: 'virtual:fs',
 		runtimeEntry: 'node:fs',
 		runtimeFormat: 'builtin',
-		conditions: ['types', 'node-addons', 'node', 'import', 'module-sync'],
-		platform: 'node',
-		providerVersion: 'provider-1',
-	};
-	assert.equal(load(builtin).decision.status, 'resolved');
-
-	assert.throws(
-		() => load({ ...builtin, platform: 'browser' }),
-		/builtin runtime witness requires the node platform/u,
-	);
-	assert.throws(
-		() => load({ ...builtin, packageName: 'fs' }),
-		/builtin runtime witness must not carry package identity/u,
-	);
-});
-
-test('node: runtime entries cannot be relabeled as non-builtin resolution', () => {
-	assert.throws(
-		() => load(witness({ runtimeEntry: 'node:fs', runtimeFormat: 'esm' })),
-		/non-builtin runtime entry must not use a node: specifier/u,
-	);
-});
-
-test('browser bundler resolution remains a pending build obligation', () => {
-	const browserBundler: ModuleResolutionWitness = {
-		moduleSpecifier: './library.js',
-		runtimeFormat: 'bundler',
-		conditions: ['types', 'import', 'browser'],
 		platform: 'browser',
-		providerVersion: 'provider-1',
-	};
-	const operation = load(browserBundler);
-	assert.equal(operation.decision.status, 'obligation-pending');
-	assert.equal(isResolvedDirectInteropDecision(operation.decision), false);
+		packageName: 'virtual-fs',
+	});
+	const operation = load(builtin);
+	assert.equal(operation.runtimeWitness?.platform, 'browser');
+	assert.equal(operation.runtimeWitness?.runtimeFormat, 'builtin');
+	assert.equal(operation.runtimeWitness?.runtimeEntry, 'node:fs');
+	assert.equal(operation.runtimeWitness?.packageName, 'virtual-fs');
+	assert.equal(operation.decision.status, 'resolved');
 });
 
-test('unknown Node runtime format may retain a stable locator but never becomes resolved Direct evidence', () => {
+test('runtime entry syntax does not infer or rewrite the provider-declared runtime format', () => {
+	const operation = load(witness({ runtimeEntry: 'node:fs', runtimeFormat: 'esm' }));
+	assert.equal(operation.runtimeWitness?.runtimeEntry, 'node:fs');
+	assert.equal(operation.runtimeWitness?.runtimeFormat, 'esm');
+	assert.equal(operation.decision.status, 'resolved');
+});
+
+test('bundler resolution remains a pending build obligation regardless of provider platform or early stable locator', () => {
+	for (const value of [
+		witness({ runtimeFormat: 'bundler', platform: 'node' }),
+		witness({ runtimeFormat: 'bundler', platform: 'browser' }),
+	]) {
+		const operation = load(value);
+		assert.equal(operation.runtimeWitness?.runtimeEntry, 'dist/library.js');
+		assert.equal(operation.runtimeWitness?.platform, value.platform);
+		assert.equal(operation.decision.status, 'obligation-pending');
+		assert.equal(isResolvedDirectInteropDecision(operation.decision), false);
+	}
+});
+
+test('unknown runtime format may retain a stable locator but never becomes resolved Direct evidence', () => {
 	const operation = load(witness({
 		runtimeEntry: 'dist/data.json',
 		runtimeFormat: 'unknown',
