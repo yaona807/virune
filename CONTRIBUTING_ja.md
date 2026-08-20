@@ -2,25 +2,25 @@
 
 English: [CONTRIBUTING.md](CONTRIBUTING.md)
 
-Viruneへのコントリビューションありがとうございます。この文書では、Issue、branch、Pull Request、validation、review、Contributorの権利に関するrepository-levelの運用を定義します。
+Viruneへのコントリビューションありがとうございます。この文書では、Issue、ブランチ、Pull Request、検証、レビュー、コントリビューターの権利に関するリポジトリ全体の運用ルールを説明します。
 
 ## 原則
 
-優先順位は、correctness、safety、compatibility、determinism、reproducibility、maintainability、performance、implementation speedの順です。
+優先順位は、正しさ、安全性、互換性、決定性、再現性、保守性、性能、実装速度の順です。
 
-実装やCIを容易にすることだけを理由に、言語semantics、安全境界、test、quality/security/compatibility/reproducibility gate、public API/ABI contractを弱めないでください。unknownまたは未解決の状態は保守的に扱い、根拠なしにsafeまたは成功へ昇格させないでください。
+実装やCIを容易にすることだけを理由に、言語の意味、安全境界、テスト、品質・セキュリティ・互換性・再現性のゲート、公開API/ABIの契約を弱めないでください。未確定または未解決の状態は保守的に扱い、根拠なしに安全または成功と判断してはいけません。
 
-formattingとvalidationについては、repository-ownedの設定、script、CIを正本とします。新しいvalidation pathを追加する前に、既存commandを確認してください。
+書式と検証については、リポジトリが管理する設定、スクリプト、CIを正本とします。新しい検証手順を追加する前に、既存のコマンドを確認してください。
 
-## Project policy
+## プロジェクトの方針
 
-Contributorは、repositoryで公開されている次のProject policyにも従ってください。
+コントリビューターは、リポジトリで公開されている次の方針にも従ってください。
 
-- Communityでの行動と現在のmoderation boundaryは[Code of Conduct](CODE_OF_CONDUCT_ja.md)
-- Maintainer authorityとProject decision-makingは[Project Governance](GOVERNANCE_ja.md)
-- Vulnerability reportingとsecurity responseは[Security Policy](SECURITY_ja.md)
+- コミュニティでの行動と現在のモデレーション範囲は[行動規範](CODE_OF_CONDUCT_ja.md)
+- メンテナーの権限とプロジェクト上の意思決定は[プロジェクトガバナンス](GOVERNANCE_ja.md)
+- 脆弱性の報告とセキュリティ対応は[セキュリティポリシー](SECURITY_ja.md)
 
-これらの文書はそれぞれ異なる責務を持ちます。該当する要件がpublicなcanonical project artifactへ反映されていない限り、privateなMaintainer noteやautomation専用の作業状態をContributorへの要件として扱わないでください。
+これらの文書はそれぞれ異なる責務を持ちます。該当する要件がリポジトリまたは公開参照できるプロジェクト文書に反映されていない限り、非公開のメンテナーノートや自動化専用の作業状態をコントリビューターへの要件として扱わないでください。
 
 ## Security report
 
