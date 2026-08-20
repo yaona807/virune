@@ -163,11 +163,11 @@ test('exact candidate rejects malformed tar headers and archive termination', ()
 	);
 	const highBitSize = buildTarGzip(
 		[['package/package.json', `${JSON.stringify(baseManifest)}\n`]],
-		{ beforeChecksum: header => { header[125] |= 0x80; } },
+		{ beforeChecksum: header => { header[124] |= 0x80; } },
 	);
 	const highBitChecksum = buildTarGzip(
 		[['package/package.json', `${JSON.stringify(baseManifest)}\n`]],
-		{ afterChecksum: header => { header[149] |= 0x80; } },
+		{ afterChecksum: header => { header[148] |= 0x80; } },
 	);
 	const invalidUtf8Path = buildTarGzip(
 		[
@@ -218,8 +218,8 @@ test('exact candidate rejects malformed tar headers and archive termination', ()
 	for (const [bytes, expected] of [
 		[invalidChecksum, /invalid tar header checksum/u],
 		[invalidSize, /invalid octal tar size/u],
-		[highBitSize, /invalid octal tar size/u],
-		[highBitChecksum, /invalid octal tar checksum/u],
+		[highBitSize, /unsupported base-256 tar size/u],
+		[highBitChecksum, /unsupported base-256 tar checksum/u],
 		[invalidUtf8Path, /invalid UTF-8 tar entry name/u],
 		[nonZeroAfterNulPath, /non-zero data after NUL in tar entry name/u],
 		[nonZeroPadding, /non-zero padding bytes/u],
