@@ -17,7 +17,7 @@ const workflowLabels = new Set(['workflow:validation-only', 'workflow:superseded
 const roleHeading = 'Work item role';
 const roleHeadingIdentity = roleHeading.toLowerCase();
 const validRoles = new Set(['Implementation', 'Tracking']);
-const interruptingHtmlBlockNames = '(?:address|article|aside|base|basefont|blockquote|body|caption|center|col|colgroup|dd|details|dialog|dir|div|dl|dt|fieldset|figcaption|figure|footer|form|frame|frameset|h[1-6]|head|header|hr|html|iframe|legend|li|link|main|menu|menuitem|nav|noframes|ol|optgroup|option|p|param|search|section|summary|table|tbody|td|tfoot|th|thead|title|tr|track|ul)';
+const interruptingHtmlBlockNames = '(?:address|article|aside|base|basefont|blockquote|body|caption|center|col|colgroup|dd|details|dialog|dir|div|dl|dt|fieldset|figcaption|figure|footer|form|frame|frameset|h[1-6]|head|header|hr|html|iframe|legend|li|link|main|menu|menuitem|nav|noframes|ol|optgroup|option|p|param|section|source|summary|table|tbody|td|tfoot|th|thead|title|tr|track|ul)';
 const interruptingHtmlBlockTypeSix = new RegExp(`^</?${interruptingHtmlBlockNames}(?:[ \\t]|/?>|$)`, 'iu');
 const htmlTagNamePattern = '[A-Za-z][A-Za-z0-9-]*';
 const htmlAttributeNamePattern = '[A-Za-z_:][A-Za-z0-9_.:-]*';
@@ -179,7 +179,17 @@ function findClosingBacktickRun(line, start, expectedLength) {
 
 function findHtmlCommentStart(line, start) {
 	for (let cursor = start; cursor < line.length;) {
-		if (line.startsWith('<!--', cursor) && !isEscaped(line, cursor)) return cursor;
+		if (line.startsWith('<!--', cursor) && !isEscaped(line, cursor)) {
+			if (line.startsWith('<!-->', cursor)) {
+				cursor += 5;
+				continue;
+			}
+			if (line.startsWith('<!--->', cursor)) {
+				cursor += 6;
+				continue;
+			}
+			return cursor;
+		}
 		if (line[cursor] === '`' && !isEscaped(line, cursor)) {
 			const length = backtickRunLength(line, cursor);
 			const closing = findClosingBacktickRun(line, cursor + length, length);
@@ -196,8 +206,6 @@ function findHtmlCommentStart(line, start) {
 }
 
 function findHtmlCommentEnd(line, start) {
-	if (line.startsWith('<!-->', start)) return start + 5;
-	if (line.startsWith('<!--->', start)) return start + 6;
 	const end = line.indexOf('-->', start + 4);
 	return end === -1 ? -1 : end + 3;
 }
@@ -431,6 +439,14 @@ function findFirstMultilineBacktickSpan(lines) {
 				continue;
 			}
 			if (line.startsWith('<!--', cursor) && !isEscaped(line, cursor)) {
+				if (line.startsWith('<!-->', cursor)) {
+					cursor += 5;
+					continue;
+				}
+				if (line.startsWith('<!--->', cursor)) {
+					cursor += 6;
+					continue;
+				}
 				const end = findHtmlCommentEnd(line, cursor);
 				if (end === -1) {
 					commentOpen = true;
