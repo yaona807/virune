@@ -423,7 +423,6 @@ function usageMatchesCurrentCheckerEvidence(usage: ForeignUsageIR, currentUsages
 			return current.bridge?.kind === 'primitive'
 				&& usage.bridge?.kind === 'primitive'
 				&& current.bridge.bridge === usage.bridge.bridge;
-		case 'import': return true;
 	}
 	return false;
 }
