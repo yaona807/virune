@@ -21,11 +21,7 @@ When possible, include:
 - the expected impact;
 - any known workaround.
 
-If private vulnerability reporting is unavailable, your GitHub profile already lists a public contact method that the maintainer can use to contact you privately, and you are willing for the maintainer to use it, you may use the `Security contact request` Issue Form.
-
-This Issue is public. Do not include confidential information such as vulnerability details, reproduction steps, secrets, or contact information. Do not use this Issue Form if the fact that you are requesting security contact must itself remain confidential.
-
-If no usable private contact route is available, do not disclose vulnerability details publicly merely to request contact.
+If private vulnerability reporting is unavailable, do not post vulnerability details in a public Issue.
 
 ## Scope
 
@@ -39,4 +35,4 @@ Vulnerabilities caused by Virune's compiler, CLI, Visual Studio Code extension, 
 
 Reported issues may be investigated and fixed privately when necessary.
 
-Once disclosure is appropriate, information will be published through a fixed release, a repository security advisory, or another suitable public channel.
+Once disclosure is appropriate, information will be published through a fixed release or another suitable public channel.
