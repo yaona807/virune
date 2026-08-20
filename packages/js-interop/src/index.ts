@@ -460,15 +460,15 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 		const existing = this.#workspaces.get(platform);
 		if (existing !== undefined) return existing;
 		const typeRoots = platform === 'node' ? nodeTypeRoots(this.#compilerOptions.typeRoots) : this.#compilerOptions.typeRoots;
-		const configuredCustomConditions = normalizedCustomConditions(this.#compilerOptions.customConditions);
+		const platformConditions = platform === 'node'
+			? ['node-addons', 'module-sync']
+			: platform === 'browser' ? ['browser'] : [];
 		const targetCompilerOptions: ts.CompilerOptions = platform === 'node'
-			? { customConditions: normalizedCustomConditions([...configuredCustomConditions, 'node-addons', 'module-sync']) }
+			? { customConditions: normalizedCustomConditions(platformConditions) }
 			: {
 				module: ts.ModuleKind.ESNext,
 				moduleResolution: ts.ModuleResolutionKind.Bundler,
-				customConditions: platform === 'browser'
-					? normalizedCustomConditions([...configuredCustomConditions, 'browser'])
-					: configuredCustomConditions,
+				customConditions: normalizedCustomConditions(platformConditions),
 			};
 		const compilerOptions: ts.CompilerOptions = {
 			...this.#compilerOptions,
@@ -540,9 +540,7 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 
 	private moduleWitness(request: JsImportRequest, resolved: ts.ResolvedModuleFull | undefined): ModuleResolutionWitness {
 		const declarationInfo = findPackageInfo(resolved?.resolvedFileName);
-		const customConditions = normalizedCustomConditions(this.#compilerOptions.customConditions);
-		const runtimeConditions = new Set<string>([...nodeDefaultImportConditions, ...customConditions]);
-		const runtime = resolveRuntimeModule(request, runtimeConditions);
+		const runtime = resolveRuntimeModule(request, new Set<string>(nodeDefaultImportConditions));
 		const runtimeInfo = runtime.path === undefined ? {} : findRuntimePackageInfo(request, runtime.path);
 		const declarationEntry = packageRelativeLocator(resolved?.resolvedFileName, declarationInfo.packageJsonPath);
 		const runtimeEntry = runtime.format === 'builtin'
@@ -557,7 +555,7 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 			...(declarationEntry === undefined ? {} : { declarationEntry }),
 			...(runtimeEntry === undefined ? {} : { runtimeEntry }),
 			...(runtime.format === undefined ? {} : { runtimeFormat: runtime.format }),
-			conditions: witnessConditionsForPlatform(request.platform, customConditions),
+			conditions: witnessConditionsForPlatform(request.platform),
 			platform: request.platform,
 			providerVersion: this.version,
 			...(resolved?.resolvedFileName === undefined || !existsSync(resolved.resolvedFileName) ? {} : { declarationGraphHash: hash(readFileSync(resolved.resolvedFileName)) }),
@@ -777,14 +775,12 @@ function normalizedCustomConditions(configured: readonly string[] | undefined): 
 	return [...new Set(configured ?? [])].sort();
 }
 
-function witnessConditionsForPlatform(platform: JsImportRequest['platform'], customConditions: readonly string[]): string[] {
-	const base = platform === 'node'
+function witnessConditionsForPlatform(platform: JsImportRequest['platform']): string[] {
+	return platform === 'node'
 		? ['types', ...nodeDefaultImportConditions]
 		: platform === 'browser'
 			? ['types', 'import', 'browser']
 			: ['types', 'import'];
-	const existing = new Set(base);
-	return [...base, ...customConditions.filter(condition => !existing.has(condition))];
 }
 
 function findPackageInfo(resolvedFile: string | undefined): { readonly name?: string; readonly version?: string; readonly packageJsonPath?: string; readonly type?: string } {
@@ -921,16 +917,21 @@ function existingRuntimeFile(path: string): string | undefined {
 
 function runtimeModuleFromPath(path: string): { readonly entry: string; readonly path: string; readonly format: ModuleResolutionWitness['runtimeFormat'] } {
 	const extension = extname(path);
-	if (extension === '.mjs' || extension === '.mts') return { entry: path, path, format: 'esm' };
-	if (extension === '.cjs' || extension === '.cts') return { entry: path, path, format: 'commonjs' };
+	const pathSegments = resolve(path).split(/[\\/]/u);
+	const underNodeModules = pathSegments.includes('node_modules');
+	if (extension === '.mjs') return { entry: path, path, format: 'esm' };
+	if (extension === '.cjs') return { entry: path, path, format: 'commonjs' };
+	if (extension === '.mts') return { entry: path, path, format: underNodeModules ? 'unknown' : 'esm' };
+	if (extension === '.cts') return { entry: path, path, format: underNodeModules ? 'unknown' : 'commonjs' };
 	if (extension === '.json' || extension === '.wasm') return { entry: path, path, format: 'unknown' };
+	if (extension !== '.js' && extension !== '.ts' && extension.length !== 0) return { entry: path, path, format: 'unknown' };
+	if (extension === '.ts' && underNodeModules) return { entry: path, path, format: 'unknown' };
 	const packageScope = findRuntimePackageScope(path);
 	if (packageScope.kind === 'invalid') return { entry: path, path, format: 'unknown' };
 	if (packageScope.kind === 'valid') {
 		if (packageScope.type === 'module') return { entry: path, path, format: 'esm' };
 		if (packageScope.type === 'commonjs') return { entry: path, path, format: 'commonjs' };
 	}
-	if (extension !== '.js' && extension.length !== 0) return { entry: path, path, format: 'unknown' };
 	return { entry: path, path, format: canParseAsCommonJs(path) ? 'commonjs' : 'unknown' };
 }
 
