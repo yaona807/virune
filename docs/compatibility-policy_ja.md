@@ -14,16 +14,16 @@ Stableは、安定版の利用者に対して維持する公開契約です。�
 
 - [`../spec/`](../spec/)で定めるVirune言語の規範的な挙動
 - 文書化済み`virune.json`設定、受け付けるstable value、その意味と既定値
-- 公開標準ライブラリとroot `@virune/compiler` APIの公開symbolおよび文書化済み挙動
+- 文書化済みの標準ライブラリ公開宣言とexport map、およびroot `@virune/compiler` APIの公開symbolと文書化済み挙動
 - Stableと明示したRuntime ABI／Interop ABI
 - 文書化済みの公開CLI command／optionとその意味、およびexit codeの意味
 - [`diagnostic-codes_ja.md`](diagnostic-codes_ja.md)で定めるdiagnostic code／JSON schemaの契約と、その他Stableと明示した機械可読schema／field
-- 安定版向けに文書化したVirune LSP／VS Code capability、Virune固有setting、public command identifier
+- 安定版向けに文書化したVirune LSP／VS Code capability、Virune固有settingのkey・受け付けるstable value・意味・既定値、identifier自体をpublic interfaceとして文書化したextension command
 - root `engines.node`や宣言済みVS Code API baselineなど、安定版でサポートすると定めたplatform baseline
 
 Stableには、既存利用者の意味を変えない追加や修正を行えます。意図的な非互換変更は、下記の例外を除きmajor releaseで行います。
 
-Version番号、version付きpath、snapshotが存在するだけではStableになりません。Stable化は明示的に行います。API／ABI snapshotは公開範囲を機械的に確認するためのもので、snapshotを更新しただけで非互換変更が許可されたり互換になったりすることはありません。
+バージョン番号、バージョン付きpath、snapshotが存在するだけではStableになりません。Stable化は明示的に行います。API／ABI snapshotは公開範囲を機械的に確認するためのもので、snapshotを更新しただけで非互換変更が許可されたり互換になったりすることはありません。
 
 ### Experimental
 
@@ -60,6 +60,8 @@ Stableな公開契約について、たとえば次の変更は非互換です�
 Platform EOL、セキュリティ要件などにより従来のbaselineを安全または現実的にサポートできなくなった場合は、下記の例外条件に従ってmajor releaseより前に変更できます。その場合は旧／新baselineと変更理由を明示します。
 
 人間向けの文言、空白、色、layoutなどは、明示的に契約しない限りbyte単位の互換性対象ではありません。また、未文書化のJSON field、設定、editor／protocol detailは、偶然利用できてもStableにはなりません。
+
+補完候補の順位、UI layout、内部indexing、cache、scheduling、request実装、analysis storageも、明示的に別の契約を定めない限りStableではありません。
 
 ## 非推奨化
 
