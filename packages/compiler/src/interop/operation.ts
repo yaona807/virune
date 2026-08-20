@@ -167,7 +167,7 @@ export function externalOperationSequence(input: {
  * import has no runtime load while a side-effect import has no bound value.
  */
 export function externalOperationFromUsage(usage: ForeignUsageIR): ExternalOperationIR | undefined {
-	const anchor = { nodeId: usage.nodeId, span: usage.span };
+	const anchor = canonicalOperationAnchor(usage.nodeId, usage.span);
 	switch (usage.kind) {
 		case 'import': return undefined;
 		case 'property':
@@ -221,12 +221,12 @@ export function externalModuleLoadOperation(input: {
 	readonly moduleSpecifier: string;
 	readonly witnesses: readonly ModuleResolutionWitness[];
 }): ExternalModuleLoadOperationIR {
+	const anchor = canonicalOperationAnchor(input.nodeId, input.span);
 	const moduleSpecifier = canonicalModuleSpecifier(input.moduleSpecifier, 'ModuleLoad module specifier');
 	if (input.witnesses.length === 0) {
 		return {
 			kind: 'module-load',
-			nodeId: input.nodeId,
-			span: input.span,
+			...anchor,
 			moduleSpecifier,
 			decision: unresolvedDirectDecision(),
 		};
@@ -236,16 +236,14 @@ export function externalModuleLoadOperation(input: {
 	if (witnesses.some(witness => !sameRuntimeWitness(first, witness))) {
 		return {
 			kind: 'module-load',
-			nodeId: input.nodeId,
-			span: input.span,
+			...anchor,
 			moduleSpecifier,
 			decision: unresolvedDirectDecision(),
 		};
 	}
 	return {
 		kind: 'module-load',
-		nodeId: input.nodeId,
-		span: input.span,
+		...anchor,
 		moduleSpecifier,
 		runtimeWitness: first,
 		decision: runtimeResolutionDecision(first),
@@ -356,14 +354,14 @@ function collectAstNodeAnchors(module: A.ModuleNode): ReadonlyMap<NodeId, AstNod
 			return;
 		}
 		const record = value as Record<string, unknown>;
-		if (typeof record.id === 'number' && typeof record.kind === 'string' && isSourceSpan(record.span)) {
+		if (isNodeId(record.id) && typeof record.kind === 'string' && isSourceSpan(record.span)) {
 			if (result.has(record.id as NodeId)) throw new Error(`Duplicate AST node id ${record.id} in External operation source binding`);
 			const foreignBridge = typeof record.foreignBridge === 'string' && BRIDGES.has(record.foreignBridge as PrimitiveBridgeKind)
 				? record.foreignBridge as PrimitiveBridgeKind
 				: undefined;
 			result.set(record.id as NodeId, {
 				kind: record.kind,
-				span: record.span,
+				span: canonicalSourceSpan(record.span),
 				...(record.foreignCall === true ? { foreignCall: true as const } : {}),
 				...(foreignBridge === undefined ? {} : { foreignBridge }),
 			});
@@ -376,7 +374,7 @@ function collectAstNodeAnchors(module: A.ModuleNode): ReadonlyMap<NodeId, AstNod
 
 function assertCurrentUsageAnchor(usage: ForeignUsageIR, nodeAnchors: ReadonlyMap<NodeId, AstNodeAnchor>): void {
 	const current = nodeAnchors.get(usage.nodeId);
-	if (current === undefined || !sameSpan(current.span, usage.span) || !usageMatchesAstAnchor(usage, current)) {
+	if (current === undefined || !isSourceSpan(usage.span) || !sameSpan(current.span, usage.span) || !usageMatchesAstAnchor(usage, current)) {
 		throw new Error(`Stale or cross-session External usage evidence for node ${usage.nodeId}`);
 	}
 }
@@ -392,16 +390,34 @@ function usageMatchesAstAnchor(usage: ForeignUsageIR, anchor: AstNodeAnchor): bo
 	return false;
 }
 
+function canonicalOperationAnchor(nodeId: NodeId, span: SourceSpan): { readonly nodeId: NodeId; readonly span: SourceSpan } {
+	if (!isNodeId(nodeId)) throw new Error('External operation node id must be a safe integer');
+	return { nodeId, span: canonicalSourceSpan(span) };
+}
+
+function canonicalSourceSpan(span: SourceSpan): SourceSpan {
+	if (!isSourceSpan(span)) throw new Error('External operation source span must contain safe integer positions');
+	return {
+		fileId: span.fileId,
+		start: { offset: span.start.offset, line: span.start.line, column: span.start.column },
+		end: { offset: span.end.offset, line: span.end.line, column: span.end.column },
+	};
+}
+
+function isNodeId(value: unknown): value is NodeId {
+	return typeof value === 'number' && Number.isSafeInteger(value);
+}
+
 function isSourceSpan(value: unknown): value is SourceSpan {
 	if (value === null || typeof value !== 'object') return false;
 	const span = value as Partial<SourceSpan>;
-	return typeof span.fileId === 'number' && isSourcePosition(span.start) && isSourcePosition(span.end);
+	return isNodeId(span.fileId) && isSourcePosition(span.start) && isSourcePosition(span.end);
 }
 
 function isSourcePosition(value: unknown): value is SourceSpan['start'] {
 	if (value === null || typeof value !== 'object') return false;
 	const position = value as Partial<SourceSpan['start']>;
-	return typeof position.offset === 'number' && typeof position.line === 'number' && typeof position.column === 'number';
+	return isNodeId(position.offset) && isNodeId(position.line) && isNodeId(position.column);
 }
 
 function sameSpan(left: SourceSpan, right: SourceSpan): boolean {
