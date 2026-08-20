@@ -14,7 +14,7 @@ const FORBIDDEN_BASENAMES = new Set([
 	'tsconfig.tsbuildinfo',
 	'yarn.lock',
 ]);
-const WINDOWS_RESERVED_NAME = /^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/iu;
+const WINDOWS_RESERVED_NAME = /^(?:con|prn|aux|nul|com[1-9¹²³]|lpt[1-9¹²³])(?:\.|$)/iu;
 const WINDOWS_FORBIDDEN_CHARACTERS = /[<>:"|?*]/u;
 
 export function auditNpmPackageFileSet({ manifest, files, manifestPath, filesPath }) {
@@ -96,6 +96,7 @@ function canonicalRelativePath(value, path) {
 	assert(normalized === text, path, 'package path must already be normalized');
 	assert(text !== '.' && text !== '..' && !text.startsWith('../'), path, 'package path traversal is forbidden');
 	for (const segment of text.split('/')) {
+		assert(!segment.startsWith(' '), path, `package path segment must not start with ASCII space: ${segment}`);
 		assert(!/[ .]$/u.test(segment), path, `package path segment must not end in space or dot: ${segment}`);
 		assert(!WINDOWS_FORBIDDEN_CHARACTERS.test(segment), path, `package path segment contains a Windows-forbidden character: ${segment}`);
 		assert(!WINDOWS_RESERVED_NAME.test(segment), path, `package path segment uses a Windows-reserved name: ${segment}`);
