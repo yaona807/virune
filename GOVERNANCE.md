@@ -6,7 +6,7 @@
 
 Virune is currently an open-source project maintained by [`@yaona807`](https://github.com/yaona807).
 
-There is currently no steering committee or voting process. The maintainer makes the final decisions for the project.
+There is currently no steering committee or voting process.
 
 ## Maintainer responsibilities
 
