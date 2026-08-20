@@ -28,7 +28,7 @@ The main Stable surfaces include:
 Additions and fixes may be made when they preserve existing use.
 Intentional incompatible changes require a major release unless the exception below applies.
 
-A version number or snapshot does not by itself make a surface Stable.
+A version number, versioned path, or snapshot does not by itself make a surface Stable.
 Stabilization must be explicit, and updating a snapshot alone does not authorize an incompatible change.
 
 LSP follows the VS Code API versions supported by Virune and the Language Server Protocol.
@@ -74,7 +74,7 @@ Human-oriented presentation such as wording, color, and layout, and undocumented
 
 Before removing or incompatibly changing a Stable contract, Virune normally follows this sequence:
 
-1. Mark it deprecated in public documentation.
+1. Mark it deprecated in public documentation and, where practical, in tooling or type metadata.
 2. Provide a supported replacement or migration path.
 3. Publish at least one stable release that keeps the old contract available while marking it deprecated.
 4. Make the change in a major release and provide migration guidance.
@@ -82,14 +82,14 @@ Before removing or incompatibly changing a Stable contract, Virune normally foll
 Migration guidance is prepared before release and identifies the affected surface, the old and new contracts, and the required migration steps.
 
 Experimental and Internal surfaces do not require this process.
-Deprecation does not justify weakening type, safety, ABI, or validation boundaries.
+Deprecation does not justify weakening type, safety, ABI, or validation boundaries, and marking a surface deprecated must not by itself change existing program meaning.
 
 ## Correctness, safety, and security exception
 
-Virune must not preserve specification violations or material safety or security problems solely for compatibility.
+Virune must not preserve behavior known to violate the normative specification solely for compatibility.
 
-A backward-compatible fix is preferred when reasonably possible.
-Only when that is not possible may an incompatible fix land before the next major release.
+For material correctness, safety, or security problems, a backward-compatible fix is preferred when reasonably possible.
+Only when no reasonable backward-compatible fix exists and the problem would otherwise remain may an incompatible fix land before the next major release.
 
 The same applies when platform support ends and an existing environment can no longer be supported safely or practically.
 
