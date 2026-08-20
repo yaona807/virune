@@ -48,10 +48,15 @@ export interface ExternalRuntimeResolutionWitness {
 	readonly packageJsonHash?: string;
 }
 
+export interface ExternalSourceSpan {
+	readonly start: SourceSpan['start'];
+	readonly end: SourceSpan['end'];
+}
+
 interface ExternalOperationBase {
 	readonly kind: ExternalOperationKind;
 	readonly nodeId: NodeId;
-	readonly span: SourceSpan;
+	readonly span: ExternalSourceSpan;
 	readonly decision: InteropDecisionIR;
 }
 
@@ -467,9 +472,17 @@ function usageMatchesAstAnchor(usage: ForeignUsageIR, anchor: AstNodeAnchor): bo
 	return false;
 }
 
-function canonicalOperationAnchor(nodeId: NodeId, span: SourceSpan): { readonly nodeId: NodeId; readonly span: SourceSpan } {
+function canonicalOperationAnchor(nodeId: NodeId, span: SourceSpan): { readonly nodeId: NodeId; readonly span: ExternalSourceSpan } {
 	if (!isNodeId(nodeId)) throw new Error('External operation node id must be a safe integer');
-	return { nodeId, span: canonicalSourceSpan(span) };
+	return { nodeId, span: canonicalStableSourceSpan(span) };
+}
+
+function canonicalStableSourceSpan(span: SourceSpan): ExternalSourceSpan {
+	const canonical = canonicalSourceSpan(span);
+	return {
+		start: canonical.start,
+		end: canonical.end,
+	};
 }
 
 function canonicalSourceSpan(span: SourceSpan): SourceSpan {
@@ -513,13 +526,6 @@ function canonicalRuntimeEntry(value: string): string {
 
 function sourceModuleSpecifier(value: string, description: string): string {
 	if (typeof value !== 'string') throw new Error(`External operation ${description} must be a string`);
-	return value;
-}
-
-function canonicalModuleSpecifier(value: string, description: string): string {
-	canonicalStableText(value, description);
-	if (value.includes('\\')) throw new Error(`External operation ${description} must use canonical forward slashes`);
-	if (value.startsWith('/') || /^file:/iu.test(value) || /^[A-Za-z]:/u.test(value)) throw new Error(`External operation ${description} must not be absolute or drive-relative`);
 	return value;
 }
 
