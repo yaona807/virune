@@ -77,7 +77,7 @@ test('absolute checkout paths cannot hide in runtime witness package or conditio
 	}
 });
 
-test('source anchors are reconstructed from known scalar fields and cannot carry private metadata', () => {
+test('source anchors are reconstructed from known stable fields and cannot carry cache-local or private metadata', () => {
 	const privatePath = '/checkout/private/anchor-state';
 	const dirtySpan = {
 		...span,
@@ -90,7 +90,14 @@ test('source anchors are reconstructed from known scalar fields and cannot carry
 		span: dirtySpan,
 	} as ForeignUsageIR);
 	assert.equal(JSON.stringify(operation).includes(privatePath), false);
-	assert.deepEqual(operation?.span, span);
+	assert.deepEqual(operation?.span, { start: span.start, end: span.end });
+	assert.equal(JSON.stringify(operation).includes('fileId'), false);
+
+	const differentFileId = externalOperationFromUsage({
+		...usageWithOrigin({ moduleSpecifier: './library.js' }),
+		span: { ...span, fileId: 999 },
+	});
+	assert.equal(JSON.stringify(operation), JSON.stringify(differentFileId));
 
 	assert.throws(
 		() => externalOperationFromUsage({ ...usageWithOrigin(undefined), nodeId: Number.NaN }),
