@@ -327,37 +327,17 @@ function canonicalRuntimeWitness(witness: ModuleResolutionWitness, moduleSpecifi
 	if (witness.moduleSpecifier !== moduleSpecifier) throw new Error('External ModuleLoad witness must resolve the same module specifier');
 	assertKnown(PLATFORMS, witness.platform, 'module witness platform');
 	if (witness.runtimeFormat !== undefined) assertKnown(RUNTIME_FORMATS, witness.runtimeFormat, 'module witness runtime format');
-	assertRuntimeWitnessCombination(witness);
 	const conditions = witness.conditions.map(condition => canonicalProviderText(condition, 'module witness condition'));
 	return {
 		moduleSpecifier,
 		...(witness.packageName === undefined ? {} : { packageName: canonicalProviderText(witness.packageName, 'runtime package name') }),
 		...(witness.packageVersion === undefined ? {} : { packageVersion: canonicalProviderText(witness.packageVersion, 'runtime package version') }),
-		...(witness.runtimeEntry === undefined ? {} : { runtimeEntry: canonicalRuntimeEntry(witness.runtimeEntry, witness.runtimeFormat) }),
+		...(witness.runtimeEntry === undefined ? {} : { runtimeEntry: canonicalRuntimeEntry(witness.runtimeEntry) }),
 		...(witness.runtimeFormat === undefined ? {} : { runtimeFormat: witness.runtimeFormat }),
 		conditions,
 		platform: witness.platform,
 		...(witness.packageJsonHash === undefined ? {} : { packageJsonHash: canonicalHash(witness.packageJsonHash, 'runtime package.json hash') }),
 	};
-}
-
-function assertRuntimeWitnessCombination(witness: ModuleResolutionWitness): void {
-	const format = witness.runtimeFormat;
-	if (format === 'builtin') {
-		if (witness.platform !== 'node') throw new Error('External operation builtin runtime witness requires the node platform');
-		if (witness.packageName !== undefined || witness.packageVersion !== undefined || witness.packageJsonHash !== undefined) {
-			throw new Error('External operation builtin runtime witness must not carry package identity');
-		}
-		return;
-	}
-	if (format === 'esm' || format === 'commonjs') {
-		if (witness.platform !== 'node') throw new Error(`External operation ${format} runtime witness requires the node platform`);
-		return;
-	}
-	if (format === 'bundler') {
-		if (witness.platform !== 'browser') throw new Error('External operation bundler runtime witness requires the browser platform');
-		if (witness.runtimeEntry !== undefined) throw new Error('External operation bundler runtime witness must defer its runtime entry to the build stage');
-	}
 }
 
 function sameRuntimeWitness(left: ExternalRuntimeResolutionWitness, right: ExternalRuntimeResolutionWitness): boolean {
@@ -434,15 +414,8 @@ function sameSpan(left: SourceSpan, right: SourceSpan): boolean {
 		&& left.end.column === right.end.column;
 }
 
-function canonicalRuntimeEntry(value: string, format: ModuleResolutionWitness['runtimeFormat']): string {
-	if (format === 'builtin') {
-		const builtin = canonicalStableText(value, 'builtin runtime entry');
-		if (!builtin.startsWith('node:') || builtin.length === 'node:'.length) throw new Error('External operation builtin runtime entry must use a non-empty node: specifier');
-		return builtin;
-	}
-	const locator = canonicalRelativeLocator(value, 'runtime entry');
-	if (/^node:/iu.test(locator)) throw new Error('External operation non-builtin runtime entry must not use a node: specifier');
-	return locator;
+function canonicalRuntimeEntry(value: string): string {
+	return canonicalRelativeLocator(value, 'runtime entry');
 }
 
 function canonicalModuleSpecifier(value: string, description: string): string {
