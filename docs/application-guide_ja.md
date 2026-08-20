@@ -2,7 +2,7 @@
 
 [English](application-guide.md) | [日本語](application-guide_ja.md)
 
-このガイドは、空のプロジェクトから小さなViruneアプリケーションを構築するまでの実践的な流れを説明します。repository-ownedのshowcaseアプリケーションを前提にせず、公開されているVirune 1.0の機能とCLIだけで構成します。
+このガイドでは、空のプロジェクトから小さなViruneアプリケーションを構築するまでの実践的な流れを説明します。リポジトリ内の専用showcaseには依存せず、公開されているVirune 1.0の機能とCLIだけを使います。
 
 > [!IMPORTANT]
 > このガイドは説明用であり、規範仕様ではありません。Virune 1.0の厳密な動作は[`spec/`](../spec/README_ja.md)配下が定義します。このガイドと規範仕様が食い違う場合は、規範仕様を優先します。
@@ -18,61 +18,61 @@ virune check .
 virune run .
 ```
 
-`virune init`は`virune.json`と`src/main.virune`を作成します。source directory、output directory、entry point、target platformなどの設定は、暗黙のbuild前提にせず`virune.json`へ明示します。
+`virune init`は`virune.json`と`src/main.virune`を作成します。ソースディレクトリ、出力先、エントリーポイント、対象プラットフォームなどは、暗黙のビルド前提にせず`virune.json`へ明示します。
 
-repositoryには小さな実行例として[`examples/user-directory`](../examples/user-directory)もあります。これは参考用のexampleであり、このガイドの規範的・canonicalなsourceではありません。
+リポジトリには小さな実行例として[`examples/user-directory`](../examples/user-directory)もあります。これは参考用のexampleであり、このガイドの規範的または唯一の正本ではありません。
 
-commandの正確な構文は[CLIリファレンス](cli-reference_ja.md)、実行可能なentry pointの条件は[entry point仕様](../spec/entry-point_ja.md)を参照してください。
+コマンドの正確な構文は[CLIリファレンス](cli-reference_ja.md)、実行可能なエントリーポイントの条件は[entry point仕様](../spec/entry-point_ja.md)を参照してください。
 
-## 2. infrastructureより先にdomainをモデル化する
+## 2. 基盤より先にドメインをモデル化する
 
-applicationの概念は、名前の付いた型と明示的なdata modelで表します。
+アプリケーションの概念は、名前の付いた型と明示的なデータモデルで表します。
 
-- 同じrepresentationでも交換可能にしたくない値には`newtype`を使う。
-- 名前付きのdomain dataには`record`を使う。
-- 閉じた選択肢やdomain failureには`enum`を使う。
+- 同じ表現でも交換可能にしたくない値には`newtype`を使う。
+- 名前付きのドメインデータには`record`を使う。
+- 閉じた選択肢やドメイン上の失敗には`enum`を使う。
 - 値の不在には`Option<T>`または`T?`を使う。
-- 関数contractに含める失敗には`Result<T, E>`を使う。
-- `Option`、`Result`、enum variantは`match`で明示的に扱う。
+- 関数のcontractに含める失敗には`Result<T, E>`を使う。
+- `Option`、`Result`、enumのvariantは`match`で明示的に扱う。
 
-nominal typeのconstructionやvalidationは、その型を所有するmoduleの近くに置きます。他moduleから使いやすくするためだけに内部のconstruction detailを公開せず、必要な操作だけを狭いpublic functionとして公開します。
+nominal typeの生成やvalidationは、その型を所有するモジュールの近くに置きます。他モジュールから使いやすくするためだけに内部の生成処理を公開せず、必要な操作だけを狭いpublic functionとして公開します。
 
-`List`、`Map`、`Set`などのcollectionも、I/Oではなくdataを表すのであればdomain layerに置けます。正確なAPIは[標準ライブラリガイド](standard-library_ja.md)を参照してください。
+`List`、`Map`、`Set`などのcollectionも、I/Oではなくデータを表すのであればドメイン層に置けます。正確なAPIは[標準ライブラリガイド](standard-library_ja.md)を参照してください。
 
-型とvisibilityの厳密な規則は[types](../spec/types_ja.md)、[evaluation](../spec/evaluation_ja.md)、[modules](../spec/modules_ja.md)を参照してください。[言語ガイド](language-guide_ja.md)には検証済みexampleを含む、より広い入門があります。
+型とvisibilityの厳密な規則は[types](../spec/types_ja.md)、[evaluation](../spec/evaluation_ja.md)、[modules](../spec/modules_ja.md)を参照してください。[言語ガイド](language-guide_ja.md)には、検証済みexampleを含むより広い入門があります。
 
-## 3. effectをdependency boundaryへ置く
+## 3. エフェクトを依存境界へ置く
 
-観測可能な処理はfunction signatureから見える状態を保ちます。たとえば、標準出力へ表示するcommand-line entry pointは`uses Console`を宣言します。一方、上位layerが結果を表示するだけなら、pureなdomain transformationまで`Console`を取得する必要はありません。
+観測可能な処理は関数のsignatureから見える状態を保ちます。たとえば、標準出力へ表示するcommand-line entry pointは`uses Console`を宣言します。一方、上位層が結果を表示するだけなら、pureなドメイン変換まで`Console`を取得する必要はありません。
 
 実践上は次のように分けます。
 
-1. 可能な限りdomain transformationをpureに保つ。
-2. moduleやfunctionの境界では通常のtyped dataを受け渡す。
-3. 実際に副作用を実行するfunctionだけがbuilt-in effectを宣言する。
-4. 上位layerがI/Oをorchestrateし、下位layerは狭いtyped contractを公開する。
+1. 可能な限りドメイン変換をpureに保つ。
+2. モジュールや関数の境界では通常のtyped dataを受け渡す。
+3. 実際に副作用を実行する関数だけがbuilt-in effectを宣言する。
+4. 上位層がI/Oを組み立て、下位層は狭いtyped contractを公開する。
 
-この構成のためにVirune専用のdependency-injection frameworkは必要ありません。重要なのは、dependencyやeffectをhidden globalへ隠さないことです。
+この構成のためにVirune専用のdependency-injection frameworkは必要ありません。重要なのは、依存関係やエフェクトをhidden globalへ隠さないことです。
 
-effectとcall compatibilityの厳密な規則は[types](../spec/types_ja.md)と[evaluation](../spec/evaluation_ja.md)を参照してください。
+エフェクトとcall compatibilityの厳密な規則は[types](../spec/types_ja.md)と[evaluation](../spec/evaluation_ja.md)を参照してください。
 
 ## 4. 非同期処理とcleanupを構造化する
 
-Viruneに構造化された機能がある場合、detached JavaScript Promiseやad-hocなcleanupへ置き換えません。
+Viruneに構造化された機能がある場合、切り離されたJavaScript Promiseや場当たり的なcleanupへ置き換えません。
 
-- `async fn`で非同期operationを宣言する。
-- `parallel`と`parallel try`でchild workを構造化されたgroupとして扱う。
+- `async fn`で非同期処理を宣言する。
+- `parallel`と`parallel try`で子処理を構造化されたgroupとして扱う。
 - `await`でtask resultを待つ。
 - postfix `?`で`Result` failureを伝播する。
 - `defer`でlexical scopeへ決定的なcleanupを紐付ける。
 
-重要なのはownershipです。child workは、それを作成したstructured operationへ紐付き、cleanupは登録したscopeへ紐付きます。
+重要なのはownershipです。子処理は、それを作成したstructured operationへ紐付き、cleanupは登録したscopeへ紐付きます。
 
 task、cancellation、structured concurrencyの厳密な意味論は[tasks](../spec/tasks_ja.md)、cleanupと評価順序は[evaluation](../spec/evaluation_ja.md)を参照してください。
 
-## 5. JavaScript相互運用では最も狭いboundaryを選ぶ
+## 5. JavaScript相互運用では最も狭い境界を選ぶ
 
-実装が簡単になるという理由だけで、より弱いboundaryへAPIを移しません。external contractを正確に表現できる最も狭いboundaryから始めます。
+実装が簡単になるという理由だけで、より弱い境界へAPIを移しません。外部contractを正確に表現できる最も狭い境界から始めます。
 
 ### Generated binding
 
@@ -88,34 +88,34 @@ virune bind ./types/example.d.ts \
 
 ### TypeScript adapter
 
-JavaScript／TypeScript APIをVirune Interop ABIへ渡す前にshapeを変換する必要がある場合は、`*.interop.ts` adapterを使います。
+JavaScript／TypeScript APIをVirune Interop ABIへ渡す前に形を変換する必要がある場合は、`*.interop.ts` adapterを使います。
 
 ```bash
 virune interop init example-package
 virune interop check .
 ```
 
-adapterは狭く明示的に保ちます。dependency API全体を複製するのではなく、Viruneが実際に利用するboundaryだけを公開します。
+adapterは狭く明示的に保ちます。依存packageのAPI全体を複製するのではなく、Viruneが実際に利用する境界だけを公開します。
 
 ### Isolated unsafe FFI
 
-safeな経路ではsafety contractを表現できず、そのboundaryを明示的にauditした場合だけ`unsafe extern`を使用します。raw unsafe externはprojectの`ffi/` boundary配下にある`unsafe module`へ置きます。通常のapplication codeからはreview済みfacadeだけを呼び出します。
+safeな経路ではsafety contractを表現できず、その境界を明示的にauditした場合だけ`unsafe extern`を使用します。raw unsafe externはprojectの`ffi/` boundary配下にある`unsafe module`へ置きます。通常のアプリケーションコードからはreview済みfacadeだけを呼び出します。
 
-実践的なmodelは[JavaScript／TypeScript連携](js-interop_ja.md)を参照してください。厳密なboundary規則は規範の[JavaScript FFI](../spec/ffi_ja.md)と[JavaScript interop仕様](../spec/js-interop_ja.md)が定義します。
+実践的なmodelは[JavaScript／TypeScript連携](js-interop_ja.md)を参照してください。厳密な境界規則は規範の[JavaScript FFI](../spec/ffi_ja.md)と[JavaScript interop仕様](../spec/js-interop_ja.md)が定義します。
 
-## 6. Node.jsとbrowserのtargetを明示する
+## 6. Node.jsとbrowserの対象を明示する
 
-互換性のないplatform assumptionを1つのproject configurationへ隠しません。Node.jsとbrowserでentry pointが異なるapplicationでは、適切な`platform`を指定した別project rootまたは別configurationとして分けます。
+互換性のないplatform assumptionを1つのproject configurationへ隠しません。Node.jsとbrowserでエントリーポイントが異なるアプリケーションでは、適切な`platform`を指定した別project rootまたは別configurationとして分けます。
 
-platform固有dependencyは対応するboundaryの内側に置きます。shared moduleからNode-onlyまたはbrowser-only behaviorへ暗黙に依存しないようにします。
+platform固有の依存は対応する境界の内側に置きます。shared moduleからNode-onlyまたはbrowser-only behaviorへ暗黙に依存しないようにします。
 
-JavaScriptからVirune functionを直接呼び出す必要がある場合は、emitted implementation detailへ依存せず、サポートされた`@jsExport` boundaryを使います。
+JavaScriptからVirune functionを直接呼び出す必要がある場合は、生成されたimplementation detailへ依存せず、サポートされた`@jsExport` boundaryを使います。
 
 platformとmoduleの厳密な規則は[modules](../spec/modules_ja.md)、JavaScript exportの規則は[JavaScript FFI](../spec/ffi_ja.md)、executable entryの規則は[entry points](../spec/entry-point_ja.md)を参照してください。
 
 ## 7. 再現可能な検証loopを使う
 
-repository専用のshowcase gateへ依存せず、公開CLIをprojectに対して実行します。
+リポジトリ専用のshowcase gateへ依存せず、公開CLIをprojectに対して実行します。
 
 ```bash
 virune fmt --check .
@@ -138,15 +138,15 @@ TypeScript adapterを含む場合は、次も実行します。
 virune interop check .
 ```
 
-checked-in bindingの元になるTypeScript declarationやdependencyを変更した場合はbindingを再生成し、そのdiffをreviewします。CIでも、developerがlocalで再現できる同じpublic commandを使うことを基本とします。
+checked-in bindingの元になるTypeScript declarationやdependencyを変更した場合はbindingを再生成し、その差分をreviewします。CIでも、開発者がlocalで再現できる同じpublic commandを使うことを基本とします。
 
-commandの正確な構文は[CLIリファレンス](cli-reference_ja.md)を参照してください。
+コマンドの正確な構文は[CLIリファレンス](cli-reference_ja.md)を参照してください。
 
 ## 規範仕様とこのガイドの責務
 
 | 確認したいこと | 参照先 |
 |---|---|
-| 通常のapplicationをどう構成するか | このガイド |
+| 通常のアプリケーションをどう構成するか | このガイド |
 | 正確なtype／effect ruleは何か | [`spec/types.md`](../spec/types_ja.md) |
 | 正確なevaluation／cleanup ruleは何か | [`spec/evaluation.md`](../spec/evaluation_ja.md) |
 | 正確なasync／task ruleは何か | [`spec/tasks.md`](../spec/tasks_ja.md) |
@@ -155,12 +155,12 @@ commandの正確な構文は[CLIリファレンス](cli-reference_ja.md)を参�
 | 有効なexecutable entry pointとは何か | [`spec/entry-point.md`](../spec/entry-point_ja.md) |
 | CLIの正確な構文は何か | [CLIリファレンス](cli-reference_ja.md) |
 
-application structureを選ぶときはこのガイドを使い、厳密な動作を確定するときは規範仕様を使います。
+アプリケーション構成を選ぶときはこのガイドを使い、厳密な動作を確定するときは規範仕様を使います。
 
 ## 次に読むもの
 
-- 小さな実行可能applicationは[`examples/user-directory`](../examples/user-directory)を参照する。
+- 小さな実行可能アプリケーションは[`examples/user-directory`](../examples/user-directory)を参照する。
 - より広い構文と意味論の入門は[言語ガイド](language-guide_ja.md)を参照する。
 - foreign boundaryを設計するときは[JavaScript／TypeScript連携](js-interop_ja.md)を参照する。
-- commandのbehaviorやoptionは[CLIリファレンス](cli-reference_ja.md)を参照する。
+- コマンドの動作やoptionは[CLIリファレンス](cli-reference_ja.md)を参照する。
 - compatibilityやcorrectnessの判断に厳密なVirune 1.0 behaviorが必要な場合は[規範仕様index](../spec/README_ja.md)を参照する。
