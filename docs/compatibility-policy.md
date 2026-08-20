@@ -14,11 +14,11 @@ Stable surfaces are public contracts maintained for users of stable releases. Th
 
 - normative Virune language behavior defined by [`../spec/`](../spec/)
 - documented `virune.json` settings, accepted stable values, meanings, and defaults
-- public standard-library declarations and the public symbols and documented behavior of the root `@virune/compiler` API
+- documented public standard-library declarations and export map, plus the public symbols and documented behavior of the root `@virune/compiler` API
 - Runtime ABI and Interop ABI versions explicitly declared Stable
 - documented public CLI commands and options and their meanings, plus documented exit-code meanings
 - the diagnostic-code and JSON-schema contract in [`diagnostic-codes.md`](diagnostic-codes.md), plus other machine-readable schemas or fields explicitly declared Stable
-- Virune LSP / VS Code capabilities, Virune-owned settings, and public command identifiers documented for stable releases
+- Virune LSP / VS Code capabilities documented for stable releases, Virune-owned setting keys with their accepted stable values, meanings, and defaults, and extension command identifiers when the identifier itself is documented as part of the public interface
 - platform baselines supported by stable releases, such as the root `engines.node` requirement and the declared VS Code API baseline
 
 Stable surfaces may receive additions or corrections that preserve existing user-visible meaning. Intentional incompatible changes require a major release unless the exception below applies.
@@ -60,6 +60,8 @@ For Stable public contracts, breaking changes include, for example:
 If platform end-of-life, a security requirement, or another condition makes the previous baseline unsafe or impractical to support, it may change before the next major release under the exception below. The release must state the old and new baselines and the reason for the change.
 
 Human-oriented wording, whitespace, color, layout, and similar presentation are not byte-level compatibility contracts unless explicitly documented as such. Undocumented JSON fields, settings, editor details, and protocol details do not become Stable merely because they happen to be usable.
+
+Completion ranking, UI layout, internal indexing, caches, scheduling, request implementation, and analysis storage are also outside the Stable contract unless explicitly defined otherwise.
 
 ## Deprecation
 
