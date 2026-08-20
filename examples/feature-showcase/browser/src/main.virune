@@ -1,4 +1,0 @@
-@jsExport
-pub fn verify() -> String {
-	return Bytes.toHex(Bytes.fromUtf8("Virune feature showcase"))
-}
