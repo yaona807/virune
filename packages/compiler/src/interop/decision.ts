@@ -8,7 +8,6 @@ export type InteropSafetyClaim =
 	| 'foreign-identity-preserved'
 	| 'primitive-bridge-validated'
 	| 'receiver-preserved'
-	| 'runtime-resolution-witnessed'
 	| 'type-boundary-safe';
 
 export type InteropObligationKind = 'runtime-resolution';
@@ -36,7 +35,6 @@ const CLAIMS = new Set<InteropSafetyClaim>([
 	'foreign-identity-preserved',
 	'primitive-bridge-validated',
 	'receiver-preserved',
-	'runtime-resolution-witnessed',
 	'type-boundary-safe',
 ]);
 const OBLIGATION_KINDS = new Set<InteropObligationKind>(['runtime-resolution']);
