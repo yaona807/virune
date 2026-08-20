@@ -120,6 +120,9 @@ export function externalOperationSequence(input: {
 }): readonly ExternalOperationIR[] {
 	if (input.diagnostics.some(diagnostic => diagnostic.severity === 'error')) return [];
 
+	const nodeSpans = collectAstNodeSpans(input.module);
+	for (const usage of input.interop.usageIR) assertCurrentUsageAnchor(usage, nodeSpans);
+
 	const operations: ExternalOperationIR[] = [];
 	let witnessIndex = 0;
 	let runtimeImportDeclarations = 0;
@@ -322,6 +325,57 @@ function canonicalRuntimeWitness(witness: ModuleResolutionWitness, moduleSpecifi
 
 function sameRuntimeWitness(left: ExternalRuntimeResolutionWitness, right: ExternalRuntimeResolutionWitness): boolean {
 	return JSON.stringify(left) === JSON.stringify(right);
+}
+
+function collectAstNodeSpans(module: A.ModuleNode): ReadonlyMap<NodeId, SourceSpan> {
+	const result = new Map<NodeId, SourceSpan>();
+	const seen = new Set<object>();
+	const visit = (value: unknown): void => {
+		if (value === null || typeof value !== 'object') return;
+		if (seen.has(value)) return;
+		seen.add(value);
+		if (Array.isArray(value)) {
+			for (const item of value) visit(item);
+			return;
+		}
+		const record = value as Record<string, unknown>;
+		if (typeof record.id === 'number' && typeof record.kind === 'string' && isSourceSpan(record.span)) {
+			if (result.has(record.id as NodeId)) throw new Error(`Duplicate AST node id ${record.id} in External operation source binding`);
+			result.set(record.id as NodeId, record.span);
+		}
+		for (const child of Object.values(record)) visit(child);
+	};
+	visit(module);
+	return result;
+}
+
+function assertCurrentUsageAnchor(usage: ForeignUsageIR, nodeSpans: ReadonlyMap<NodeId, SourceSpan>): void {
+	const current = nodeSpans.get(usage.nodeId);
+	if (current === undefined || !sameSpan(current, usage.span)) {
+		throw new Error(`Stale or cross-session External usage evidence for node ${usage.nodeId}`);
+	}
+}
+
+function isSourceSpan(value: unknown): value is SourceSpan {
+	if (value === null || typeof value !== 'object') return false;
+	const span = value as Partial<SourceSpan>;
+	return typeof span.fileId === 'number' && isSourcePosition(span.start) && isSourcePosition(span.end);
+}
+
+function isSourcePosition(value: unknown): value is SourceSpan['start'] {
+	if (value === null || typeof value !== 'object') return false;
+	const position = value as Partial<SourceSpan['start']>;
+	return typeof position.offset === 'number' && typeof position.line === 'number' && typeof position.column === 'number';
+}
+
+function sameSpan(left: SourceSpan, right: SourceSpan): boolean {
+	return left.fileId === right.fileId
+		&& left.start.offset === right.start.offset
+		&& left.start.line === right.start.line
+		&& left.start.column === right.start.column
+		&& left.end.offset === right.end.offset
+		&& left.end.line === right.end.line
+		&& left.end.column === right.end.column;
 }
 
 function canonicalRuntimeEntry(value: string, format: ModuleResolutionWitness['runtimeFormat']): string {
