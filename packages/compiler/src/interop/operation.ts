@@ -202,10 +202,12 @@ export function externalOperationFromUsage(usage: ForeignUsageIR): ExternalOpera
 		case 'bridge': {
 			if (usage.bridge?.kind !== 'primitive') throw new Error('External primitive bridge operation requires an explicit primitive bridge plan');
 			assertKnown(BRIDGES, usage.bridge.bridge, 'primitive bridge');
+			const source = canonicalForeignType(usage.foreignType);
+			assertBridgeMatchesForeignType(usage.bridge.bridge, source);
 			return {
 				kind: 'bridge-foreign-primitive',
 				...anchor,
-				source: canonicalForeignType(usage.foreignType),
+				source,
 				bridge: usage.bridge.bridge,
 				decision: directDecision(['primitive-bridge-validated']),
 			};
@@ -310,6 +312,16 @@ function canonicalForeignType(snapshot: StableForeignTypeSnapshot): ExternalFore
 		...(snapshot.mustUse === undefined ? {} : { mustUse: snapshot.mustUse }),
 		...(snapshot.origin === undefined ? {} : { origin: canonicalOrigin(snapshot.origin) }),
 	};
+}
+
+function assertBridgeMatchesForeignType(bridge: PrimitiveBridgeKind, source: ExternalForeignValueShape): void {
+	const matches = bridge === 'string' ? source.primitive === 'string'
+		: bridge === 'bool' ? source.primitive === 'boolean'
+			: bridge === 'float' ? source.primitive === 'number'
+				: bridge === 'bigint' ? source.primitive === 'bigint'
+					: bridge === 'unit' ? source.primitive === 'void'
+						: source.category === 'unknown';
+	if (!matches) throw new Error('External primitive bridge evidence disagrees with foreign source facts');
 }
 
 function canonicalOrigin(origin: ForeignOrigin): ExternalForeignOrigin {
