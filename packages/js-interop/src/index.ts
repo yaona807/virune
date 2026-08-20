@@ -3,6 +3,7 @@ import { existsSync, readFileSync, statSync } from 'node:fs';
 import { builtinModules, createRequire } from 'node:module';
 import { dirname, extname, join, relative, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { Script } from 'node:vm';
 import ts from 'typescript';
 import type {
 	ForeignCallResolution,
@@ -923,10 +924,40 @@ function runtimeModuleFromPath(path: string): { readonly entry: string; readonly
 	if (extension === '.mjs' || extension === '.mts') return { entry: path, path, format: 'esm' };
 	if (extension === '.cjs' || extension === '.cts') return { entry: path, path, format: 'commonjs' };
 	if (extension === '.json' || extension === '.wasm') return { entry: path, path, format: 'unknown' };
-	const packageInfo = findPackageInfo(path);
-	if (packageInfo.type === 'module') return { entry: path, path, format: 'esm' };
-	if (packageInfo.type === 'commonjs') return { entry: path, path, format: 'commonjs' };
-	return { entry: path, path, format: extension === '.js' || extension.length === 0 ? 'commonjs' : 'unknown' };
+	const packageScope = findRuntimePackageScope(path);
+	if (packageScope.kind === 'invalid') return { entry: path, path, format: 'unknown' };
+	if (packageScope.kind === 'valid') {
+		if (packageScope.type === 'module') return { entry: path, path, format: 'esm' };
+		if (packageScope.type === 'commonjs') return { entry: path, path, format: 'commonjs' };
+	}
+	if (extension !== '.js' && extension.length !== 0) return { entry: path, path, format: 'unknown' };
+	return { entry: path, path, format: canParseAsCommonJs(path) ? 'commonjs' : 'unknown' };
+}
+
+function findRuntimePackageScope(path: string): { readonly kind: 'none' } | { readonly kind: 'invalid' } | { readonly kind: 'valid'; readonly type?: string } {
+	let current = dirname(resolve(path));
+	while (true) {
+		if (current.split(/[\\/]/u).at(-1) === 'node_modules') return { kind: 'none' };
+		const packageJsonPath = join(current, 'package.json');
+		if (existsSync(packageJsonPath)) {
+			const packageJson = readRuntimePackageJson(packageJsonPath);
+			if (packageJson === undefined) return { kind: 'invalid' };
+			return { kind: 'valid', ...(packageJson.type === undefined ? {} : { type: packageJson.type }) };
+		}
+		const parent = dirname(current);
+		if (parent === current) return { kind: 'none' };
+		current = parent;
+	}
+}
+
+function canParseAsCommonJs(path: string): boolean {
+	try {
+		const source = readFileSync(path, 'utf8').replace(/^\uFEFF?#![^\r\n]*(?:\r?\n|$)/u, '');
+		new Script(`(function (exports, require, module, __filename, __dirname) {\n${source}\n});`, { filename: path });
+		return true;
+	} catch {
+		return false;
+	}
 }
 
 function parsePackageSpecifier(specifier: string): { readonly packageName: string; readonly subpath: string } | undefined {
