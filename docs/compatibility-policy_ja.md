@@ -6,18 +6,19 @@
 
 ## 互換性の分類
 
-Viruneの公開範囲は **Stable**、**Experimental**、**Internal** の3つに分けます。
+Viruneの対象は **Stable**、**Experimental**、**Internal** の3つに分けます。
 
 ### Stable
 
-Stableは、安定版の利用者に対して維持する公開契約です。次のうち、文書でStableとして扱っているものが該当します。
+Stableは、安定版の利用者に対して維持する公開契約です。次が含まれます。
 
 - [`../spec/`](../spec/)で定めるVirune言語の規範的な挙動
-- `virune.json`の公開済み設定、受け付ける値、その意味と既定値
-- 公開標準ライブラリとroot `@virune/compiler` API
+- 文書化済み`virune.json`設定、受け付けるstable value、その意味と既定値
+- 公開標準ライブラリとroot `@virune/compiler` APIの公開symbolおよび文書化済み挙動
 - Stableと明示したRuntime ABI／Interop ABI
-- 公開CLIのcommand／option／exit codeの意味、diagnostic code、Stableと明示したmachine-readable schema／field
-- 公開済みのVirune LSP／VS Code capability、Virune固有setting、public command identifier
+- 文書化済みの公開CLI command／optionとその意味、およびexit codeの意味
+- [`diagnostic-codes_ja.md`](diagnostic-codes_ja.md)で定めるdiagnostic code／JSON schemaの契約と、その他Stableと明示した機械可読schema／field
+- 安定版向けに文書化したVirune LSP／VS Code capability、Virune固有setting、public command identifier
 - root `engines.node`や宣言済みVS Code API baselineなど、安定版でサポートすると定めたplatform baseline
 
 Stableには、既存利用者の意味を変えない追加や修正を行えます。意図的な非互換変更は、下記の例外を除きmajor releaseで行います。
@@ -28,7 +29,7 @@ Version番号、version付きpath、snapshotが存在するだけではStableに
 
 Experimentalは評価中の公開範囲で、安定版の互換性保証はありません。`@virune/compiler/experimental`など、Experimentalまたはprerelease-onlyと明示したものは任意のreleaseで変更・削除できます。
 
-Semantic Snapshot／Semantic Change Evidence schemaは、明示的にStable化されるまでExperimentalです。評価が完了しただけではStableになりません。利用者への影響が大きい変更はrelease noteで案内します。
+Semantic Snapshot／Semantic Change Evidence schemaは、#213で要求するprototype／corpus評価を終えた後に明示的にStable化されるまでExperimentalです。評価が完了しただけではStableになりません。利用者への影響が想定される重要変更は、リリースノートで明示することを推奨します。
 
 Experimentalを利用していても、無関係なStableまでExperimentalになるわけではありません。
 
@@ -38,23 +39,25 @@ Internalは公開契約ではありません。Compiler内部構造、Self-hosti
 
 Stableな公開契約を維持する限り、Internalは非推奨化を経ずに変更できます。
 
-## Versioningとbreaking change
+## バージョンと非互換変更
 
 安定版にはSemantic Versioningを使用します。
 
 - **Patch**（例: `1.0.0` -> `1.0.1`）: 後方互換な修正
 - **Minor**（例: `1.0.x` -> `1.1.0`）: 既存のStableな意味を維持する追加・改善
-- **Major**（例: `1.x.y` -> `2.0.0`）: Stableへの意図的な非互換変更。影響する利用者向けのmigration guidanceが必要
+- **Major**（例: `1.x.y` -> `2.0.0`）: Stableへの意図的な非互換変更。影響する利用者向けの移行方法が必要
 
-Prereleaseでは非互換変更があり得て、nightlyには互換性保証がありません。詳細は[`release-channels_ja.md`](release-channels_ja.md)に従います。外部から観測できる挙動を変えない規範仕様の説明修正はbreaking changeではありません。
+Prereleaseでは非互換変更があり得て、nightlyには互換性保証がありません。詳細は[`release-channels_ja.md`](release-channels_ja.md)に従います。外部から観測できる挙動を変えない規範仕様の説明修正は非互換変更ではありません。
 
-Stableな公開契約について、たとえば次の変更はbreaking changeです。
+Stableな公開契約について、たとえば次の変更は非互換です。
 
-- 公開API、ABI、標準ライブラリ、CLI、editor capabilityなどの削除、rename、または文書化済み挙動の非互換変更
+- 公開API、ABI、標準ライブラリ、CLI、エディタ機能などの削除、rename、signature変更、または文書化済み挙動の非互換変更
 - 以前有効だった公開設定や値を拒否すること、またはその意味や既定値を非互換に変更すること
 - 以前conformingだったVirune programが規範仕様に従ってparse、type-check、link、evaluateできなくなること、または外部から観測できる意味を非互換に変えること
-- Stableなdiagnosticやmachine-readable schemaの意味・構造を非互換に変えること
+- Stableなdiagnosticや機械可読schemaの意味・構造を非互換に変えること
 - Node.jsやVS Codeなどのminimum supported baselineを引き上げ、以前サポートしていた環境を対象外にすること
+
+Platform EOL、セキュリティ要件などにより従来のbaselineを安全または現実的にサポートできなくなった場合は、下記の例外条件に従ってmajor releaseより前に変更できます。その場合は旧／新baselineと変更理由を明示します。
 
 人間向けの文言、空白、色、layoutなどは、明示的に契約しない限りbyte単位の互換性対象ではありません。また、未文書化のJSON field、設定、editor／protocol detailは、偶然利用できてもStableにはなりません。
 
@@ -62,22 +65,24 @@ Stableな公開契約について、たとえば次の変更はbreaking change�
 
 Stableを意図的に削除または非互換変更する場合は、下記の例外が適用されない限り、次の順序で進めます。
 
-1. 旧surfaceを公開文書でdeprecatedとし、実用的な場合はtoolingやtype metadataにも反映する。
-2. replacementまたはmigration方法を示す。
-3. 旧surfaceを利用できる状態で、deprecationを含む安定版を少なくとも1回公開する。
-4. 削除または非互換変更をmajor releaseで行い、release noteまたはmigration guideへ変更内容と移行方法を記載する。
+1. 旧対象を公開文書で非推奨と明示し、実用的な場合はtoolingやtype metadataにも反映する。
+2. 代替手段または移行方法を示す。
+3. 旧対象を利用できる状態で、非推奨化を含む安定版を少なくとも1回公開する。
+4. 削除または非互換変更をmajor releaseで行い、リリースノートまたはmigration guideへ変更内容と移行方法を記載する。
 
-Migration guidanceは、影響するsurfaceと旧／新contractを示し、適用可能な場合は具体的な移行手順や例を含めます。
+移行方法は対応する安定版の公開前に用意し、影響するversion／対象、旧／新contractを示します。適用可能な場合は具体的な移行手順や例も含めます。
 
-ExperimentalとInternalには、このdeprecation期間を要求しません。非推奨化はtype、safety、ABI、validation境界を弱める理由にはならず、deprecatedとしただけで既存programの意味を変えてはいけません。
+ExperimentalとInternalには、この非推奨期間を要求しません。非推奨化はtype、safety、ABI、validation境界を弱める理由にはならず、非推奨としただけで既存programの意味を変えてはいけません。
 
-## Correctness／Safety／Securityの例外
+## 正しさ・安全性・セキュリティ上の例外
 
-規範仕様、安全境界、security requirementに違反すると分かっている挙動を、互換性だけを理由に維持してはいけません。
+規範仕様、安全境界、セキュリティ要件に違反すると分かっている挙動を、互換性だけを理由に維持してはいけません。
 
-後方互換な修正が合理的に可能なら、それを選びます。重大なcorrectness／safety／security defectが残り、合理的な互換修正がない場合に限り、major releaseを待たずに非互換修正を行えます。そのreleaseでは、例外的なcompatibility breakであること、影響するStable surfaceと従来挙動、互換修正を採用できない理由、mitigationまたはmigration方法を明示し、無関係なStable契約を維持します。
+後方互換な修正が合理的に可能なら、それを選びます。重大なcorrectness／safety／security defectが残る場合、またはPlatform EOLなどで従来のbaselineを安全・現実的にサポートできない場合で、合理的な互換修正がないときに限り、major releaseを待たずに非互換修正を行えます。
 
-既存の規範仕様が要求する挙動へCompilerを戻す修正はcorrectness fixです。その修正がStableと非互換になる場合も、この例外を満たすか次のmajor releaseまで待つ必要があります。誤った実装に依存していたcodeへ移行が必要になる場合は、影響とmigration方法をrelease noteで案内します。
+そのreleaseでは、例外的な非互換変更であること、影響するStableと従来挙動、互換修正を採用できない理由、緩和策または移行方法を明示し、無関係なStable契約を維持します。
+
+既存の規範仕様が要求する挙動へCompilerを戻す修正は、言語契約の変更ではなく正しさを回復する修正です。その修正がStableと非互換になる場合も、この例外を満たすか次のmajor releaseまで待つ必要があります。誤った実装に依存していたcodeへ移行が必要になる場合は、影響と移行方法をリリースノートで案内します。
 
 この例外をSemantic Versioningやcompatibility reviewを迂回する一般手段として使ってはいけません。
 
@@ -92,8 +97,8 @@ ExperimentalとInternalには、このdeprecation期間を要求しません。�
 - Release channel: [`release-channels_ja.md`](release-channels_ja.md)
 - Self-hosting: [`self-hosting-architecture_ja.md`](self-hosting-architecture_ja.md)、[`self-hosting-seed_ja.md`](self-hosting-seed_ja.md)
 
-Self-hosting recovery artifactの保持や削除は専用のlifecycle policyに従い、Self-host CIが成功しただけではSeedやLegacy rollback pathを削除する理由になりません。
+Self-hostingの復旧用artifactの保持や削除は専用のlifecycle policyに従い、Self-host CIが成功しただけではSeedやLegacy rollback pathを削除する理由になりません。
 
-仕様、policy、実装、testの間に不整合がある場合は、より都合のよい解釈を推測せず、該当する契約とtestを整合させてからStableな保証として扱います。Release noteやmigration guideは規範仕様やこのpolicyを暗黙に上書きせず、CIやsnapshotがgreenであることだけを非互換変更の承認として扱ってはいけません。
+仕様、policy、実装、testの間に不整合がある場合は、より都合のよい解釈を推測せず、該当する契約とtestを整合させてからStableな保証として扱います。リリースノートやmigration guideは規範仕様やこのpolicyを暗黙に上書きせず、CIやsnapshotがgreenであることだけを非互換変更の承認として扱ってはいけません。
 
 このpolicyは古いmajor releaseを無期限にサポートすることを約束せず、互換性維持のためにcorrectness、safety、security、ABI、reproducibility、Self-hostingのgateを弱めません。
