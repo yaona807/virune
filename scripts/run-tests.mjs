@@ -55,7 +55,14 @@ const groups = platformSmoke ? platformGroups : [
 				'scripts/verify-npm-publication-recovery.test.mjs',
 			],
 		},
-		{ name: 'npm package contents audit policy', files: ['scripts/verify-npm-package-contents.test.mjs'] },
+		{
+			name: 'npm package contents audit policy',
+			files: [
+				'scripts/npm-package-contents-policy.test.mjs',
+				'scripts/verify-npm-package-contents.test.mjs',
+				'scripts/verify-npm-release-candidate-contents.test.mjs',
+			],
+		},
 		{
 			name: 'npm package contents audit',
 			command: ['scripts/verify-npm-package-contents.mjs'],

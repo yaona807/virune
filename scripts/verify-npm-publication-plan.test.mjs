@@ -23,7 +23,6 @@ const unresolvedRequirements = [
 	'clean-registry-install-smoke',
 	'documentation-sync',
 	'generated-project-registry-smoke',
-	'package-contents-audit',
 	'package-publication-enablement',
 	'public-registry-verification',
 	'publication-gate-integration',
@@ -331,7 +330,7 @@ test('prepublication blockers cannot be silently dropped', () => {
 	withFixture(root => {
 		const path = resolve(root, '.github/release/npm-publication-v1.json');
 		const plan = readJson(path);
-		plan.unresolvedRequirements = plan.unresolvedRequirements.filter(item => item !== 'package-contents-audit');
+		plan.unresolvedRequirements = plan.unresolvedRequirements.filter(item => item !== 'trusted-publishing');
 		writeJson(path, plan);
 		assert.throws(
 			() => verifyNpmPublicationPlan(root),
