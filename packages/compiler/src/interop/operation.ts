@@ -297,9 +297,9 @@ function canonicalForeignType(snapshot: StableForeignTypeSnapshot): ExternalFore
 function canonicalOrigin(origin: ForeignOrigin): ExternalForeignOrigin {
 	return {
 		moduleSpecifier: canonicalModuleSpecifier(origin.moduleSpecifier, 'origin module specifier'),
-		...(origin.packageName === undefined ? {} : { packageName: canonicalStableText(origin.packageName, 'origin package name') }),
-		...(origin.packageVersion === undefined ? {} : { packageVersion: canonicalStableText(origin.packageVersion, 'origin package version') }),
-		...(origin.exportName === undefined ? {} : { exportName: canonicalStableText(origin.exportName, 'origin export name') }),
+		...(origin.packageName === undefined ? {} : { packageName: canonicalProviderText(origin.packageName, 'origin package name') }),
+		...(origin.packageVersion === undefined ? {} : { packageVersion: canonicalProviderText(origin.packageVersion, 'origin package version') }),
+		...(origin.exportName === undefined ? {} : { exportName: canonicalProviderText(origin.exportName, 'origin export name') }),
 	};
 }
 
@@ -307,11 +307,11 @@ function canonicalRuntimeWitness(witness: ModuleResolutionWitness, moduleSpecifi
 	if (witness.moduleSpecifier !== moduleSpecifier) throw new Error('External ModuleLoad witness must resolve the same module specifier');
 	assertKnown(PLATFORMS, witness.platform, 'module witness platform');
 	if (witness.runtimeFormat !== undefined) assertKnown(RUNTIME_FORMATS, witness.runtimeFormat, 'module witness runtime format');
-	const conditions = witness.conditions.map(condition => canonicalStableText(condition, 'module witness condition'));
+	const conditions = witness.conditions.map(condition => canonicalProviderText(condition, 'module witness condition'));
 	return {
 		moduleSpecifier,
-		...(witness.packageName === undefined ? {} : { packageName: canonicalStableText(witness.packageName, 'runtime package name') }),
-		...(witness.packageVersion === undefined ? {} : { packageVersion: canonicalStableText(witness.packageVersion, 'runtime package version') }),
+		...(witness.packageName === undefined ? {} : { packageName: canonicalProviderText(witness.packageName, 'runtime package name') }),
+		...(witness.packageVersion === undefined ? {} : { packageVersion: canonicalProviderText(witness.packageVersion, 'runtime package version') }),
 		...(witness.runtimeEntry === undefined ? {} : { runtimeEntry: canonicalRuntimeEntry(witness.runtimeEntry, witness.runtimeFormat) }),
 		...(witness.runtimeFormat === undefined ? {} : { runtimeFormat: witness.runtimeFormat }),
 		conditions,
@@ -337,6 +337,14 @@ function canonicalModuleSpecifier(value: string, description: string): string {
 	canonicalStableText(value, description);
 	if (value.includes('\\')) throw new Error(`External operation ${description} must use canonical forward slashes`);
 	if (value.startsWith('/') || /^file:/iu.test(value) || /^[A-Za-z]:\//u.test(value)) throw new Error(`External operation ${description} must not be absolute`);
+	return value;
+}
+
+function canonicalProviderText(value: string, description: string): string {
+	canonicalStableText(value, description);
+	if (value.includes('\\') || value.startsWith('/') || /^file:/iu.test(value) || /^[A-Za-z]:\//u.test(value)) {
+		throw new Error(`External operation ${description} must not contain provider-private path syntax`);
+	}
 	return value;
 }
 
