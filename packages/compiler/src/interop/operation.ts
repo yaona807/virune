@@ -426,13 +426,13 @@ function canonicalRuntimeEntry(value: string, format: ModuleResolutionWitness['r
 function canonicalModuleSpecifier(value: string, description: string): string {
 	canonicalStableText(value, description);
 	if (value.includes('\\')) throw new Error(`External operation ${description} must use canonical forward slashes`);
-	if (value.startsWith('/') || /^file:/iu.test(value) || /^[A-Za-z]:\//u.test(value)) throw new Error(`External operation ${description} must not be absolute`);
+	if (value.startsWith('/') || /^file:/iu.test(value) || /^[A-Za-z]:/u.test(value)) throw new Error(`External operation ${description} must not be absolute or drive-relative`);
 	return value;
 }
 
 function canonicalProviderText(value: string, description: string): string {
 	canonicalStableText(value, description);
-	if (value.includes('\\') || value.startsWith('/') || /^file:/iu.test(value) || /^[A-Za-z]:\//u.test(value)) {
+	if (value.includes('\\') || value.startsWith('/') || /^file:/iu.test(value) || /^[A-Za-z]:/u.test(value)) {
 		throw new Error(`External operation ${description} must not contain provider-private path syntax`);
 	}
 	return value;
@@ -447,7 +447,7 @@ function canonicalStableText(value: string, description: string): string {
 function canonicalRelativeLocator(value: string, description: string): string {
 	canonicalStableText(value, description);
 	if (value.includes('\\')) throw new Error(`External operation ${description} must use canonical forward slashes`);
-	if (value.startsWith('/') || /^[A-Za-z]:\//u.test(value)) throw new Error(`External operation ${description} must not be absolute`);
+	if (value.startsWith('/') || /^file:/iu.test(value) || /^[A-Za-z]:/u.test(value)) throw new Error(`External operation ${description} must not be absolute or drive-relative`);
 	const segments = value.split('/');
 	if (segments.some(segment => segment.length === 0 || segment === '.' || segment === '..')) throw new Error(`External operation ${description} must be a canonical relative locator`);
 	return value;
