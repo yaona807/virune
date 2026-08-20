@@ -22,11 +22,13 @@ Stableは、安定版の利用者に対して維持する公開契約です。�
 
 Stableには、既存利用者の意味を変えない追加や修正を行えます。意図的な非互換変更は、下記の例外を除きmajor releaseで行います。
 
-API／ABI snapshotは公開範囲を機械的に確認するためのものです。snapshotを更新しただけで、非互換変更が許可されたり互換になったりすることはありません。
+Version番号、version付きpath、snapshotが存在するだけではStableになりません。Stable化は明示的に行います。API／ABI snapshotは公開範囲を機械的に確認するためのもので、snapshotを更新しただけで非互換変更が許可されたり互換になったりすることはありません。
 
 ### Experimental
 
 Experimentalは評価中の公開範囲で、安定版の互換性保証はありません。`@virune/compiler/experimental`など、Experimentalまたはprerelease-onlyと明示したものは任意のreleaseで変更・削除できます。
+
+Semantic Snapshot／Semantic Change Evidence schemaは、明示的にStable化されるまでExperimentalです。評価が完了しただけではStableになりません。利用者への影響が大きい変更はrelease noteで案内します。
 
 Experimentalを利用していても、無関係なStableまでExperimentalになるわけではありません。
 
@@ -44,7 +46,7 @@ Stableな公開契約を維持する限り、Internalは非推奨化を経ずに
 - **Minor**（例: `1.0.x` -> `1.1.0`）: 既存のStableな意味を維持する追加・改善
 - **Major**（例: `1.x.y` -> `2.0.0`）: Stableへの意図的な非互換変更。影響する利用者向けのmigration guidanceが必要
 
-Prereleaseでは非互換変更があり得て、nightlyには互換性保証がありません。詳細は[`release-channels_ja.md`](release-channels_ja.md)に従います。
+Prereleaseでは非互換変更があり得て、nightlyには互換性保証がありません。詳細は[`release-channels_ja.md`](release-channels_ja.md)に従います。外部から観測できる挙動を変えない規範仕様の説明修正はbreaking changeではありません。
 
 Stableな公開契約について、たとえば次の変更はbreaking changeです。
 
@@ -65,13 +67,15 @@ Stableを意図的に削除または非互換変更する場合は、下記の�
 3. 旧surfaceを利用できる状態で、deprecationを含む安定版を少なくとも1回公開する。
 4. 削除または非互換変更をmajor releaseで行い、release noteまたはmigration guideへ変更内容と移行方法を記載する。
 
-ExperimentalとInternalには、このdeprecation期間を要求しません。非推奨化はtype、safety、ABI、validation境界を弱める理由にはなりません。
+Migration guidanceは、影響するsurfaceと旧／新contractを示し、適用可能な場合は具体的な移行手順や例を含めます。
+
+ExperimentalとInternalには、このdeprecation期間を要求しません。非推奨化はtype、safety、ABI、validation境界を弱める理由にはならず、deprecatedとしただけで既存programの意味を変えてはいけません。
 
 ## Correctness／Safety／Securityの例外
 
 規範仕様、安全境界、security requirementに違反すると分かっている挙動を、互換性だけを理由に維持してはいけません。
 
-後方互換な修正が合理的に可能なら、それを選びます。重大なcorrectness／safety／security defectが残り、合理的な互換修正がない場合に限り、major releaseを待たずに非互換修正を行えます。その場合は、影響するStable surfaceと従来挙動、互換修正を採用できない理由、mitigationまたはmigration方法を明示し、無関係なStable契約を維持します。
+後方互換な修正が合理的に可能なら、それを選びます。重大なcorrectness／safety／security defectが残り、合理的な互換修正がない場合に限り、major releaseを待たずに非互換修正を行えます。そのreleaseでは、例外的なcompatibility breakであること、影響するStable surfaceと従来挙動、互換修正を採用できない理由、mitigationまたはmigration方法を明示し、無関係なStable契約を維持します。
 
 既存の規範仕様が要求する挙動へCompilerを戻す修正はcorrectness fixです。その修正がStableと非互換になる場合も、この例外を満たすか次のmajor releaseまで待つ必要があります。誤った実装に依存していたcodeへ移行が必要になる場合は、影響とmigration方法をrelease noteで案内します。
 
@@ -90,6 +94,6 @@ ExperimentalとInternalには、このdeprecation期間を要求しません。�
 
 Self-hosting recovery artifactの保持や削除は専用のlifecycle policyに従い、Self-host CIが成功しただけではSeedやLegacy rollback pathを削除する理由になりません。
 
-仕様、policy、実装、testの間に不整合がある場合は、より都合のよい解釈を推測せず、該当する契約とtestを整合させてからStableな保証として扱います。CIやsnapshotがgreenであることだけを、非互換変更の承認として扱ってはいけません。
+仕様、policy、実装、testの間に不整合がある場合は、より都合のよい解釈を推測せず、該当する契約とtestを整合させてからStableな保証として扱います。Release noteやmigration guideは規範仕様やこのpolicyを暗黙に上書きせず、CIやsnapshotがgreenであることだけを非互換変更の承認として扱ってはいけません。
 
 このpolicyは古いmajor releaseを無期限にサポートすることを約束せず、互換性維持のためにcorrectness、safety、security、ABI、reproducibility、Self-hostingのgateを弱めません。
