@@ -21,22 +21,18 @@ GitHubの[private vulnerability reporting](https://github.com/yaona807/virune/se
 - 想定される影響
 - 回避方法が分かっている場合はその内容
 
-private vulnerability reportingを利用できず、GitHubプロフィールにメンテナーが非公開で連絡できる公開済みの連絡先があり、その方法での連絡に同意できる場合は、`Security contact request` Issue Formを利用できます。
-
-このIssueは公開されます。脆弱性の詳細、再現手順、秘密情報、連絡先などの機密情報は記載しないでください。Security contactを求めている事実自体を公開できない場合は、このIssue Formを使用しないでください。
-
-利用できる非公開の連絡経路がない場合でも、脆弱性の詳細を公開して連絡を求めないでください。
+private vulnerability reportingを利用できない場合でも、脆弱性の詳細を公開Issueへ投稿しないでください。
 
 ## 対象範囲
 
 Viruneはセキュリティサンドボックスではありません。
 
-生成されたJavaScriptは実行環境の権限で動作します。また、`unsafe`を使用した連携、第三者パッケージ、外部APIなどはVirune自身の安全性保証の対象外です。
+生成されたJavaScriptは実行環境の権限で動作します。`unsafe`を使用した連携、第三者パッケージ、外部APIなどはVirune自身の安全性保証の対象外です。
 
-一方、Viruneのコンパイラー、CLI、Visual Studio Code拡張、language server、Interopなどに起因する脆弱性は報告対象です。
+Viruneのコンパイラー、CLI、Visual Studio Code拡張、language server、Interopなどに起因する脆弱性は報告対象です。
 
 ## 対応
 
 報告された問題は、必要に応じて非公開で調査・修正します。
 
-公開可能な段階で、修正版やrepository security advisoryなどを通じて案内します。
+公開可能になった段階で、修正版などを通じて案内します。
