@@ -243,7 +243,7 @@ test('neutral package resolution does not activate Node-specific conditions', as
 	assert.deepEqual(imported.witness.conditions, ['types', 'import']);
 });
 
-test('custom conditions stay aligned between TypeScript and the Node runtime witness', async () => {
+test('TypeScript-only custom conditions do not change the Node runtime contract', async () => {
 	const root = await fixtureRoot();
 	await writePackage(root, 'custom-runtime', {
 		name: 'custom-runtime',
@@ -272,9 +272,9 @@ test('custom conditions stay aligned between TypeScript and the Node runtime wit
 		platform: 'node',
 	});
 	assert.ok(imported.type);
-	assert.equal(imported.witness.declarationEntry, 'development.d.ts');
-	assert.equal(imported.witness.runtimeEntry, 'development.mjs');
-	assert.deepEqual(imported.witness.conditions, ['types', 'node-addons', 'node', 'import', 'module-sync', 'development']);
+	assert.equal(imported.witness.declarationEntry, 'node.d.ts');
+	assert.equal(imported.witness.runtimeEntry, 'node.mjs');
+	assert.deepEqual(imported.witness.conditions, ['types', 'node-addons', 'node', 'import', 'module-sync']);
 });
 
 test('prefix-only Node builtins do not shadow a bare package with the same name', async () => {
