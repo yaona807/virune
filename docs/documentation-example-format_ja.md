@@ -2,7 +2,7 @@
 
 [English](documentation-example-format.md)
 
-管理対象ドキュメントのVirune code fenceには、検証方法を指定します。既存の主要ドキュメントは`docs/documentation-examples.json`を使用でき、新規例では通常inline directiveを使用します。
+管理対象ドキュメントのVirune code fenceには、どのように検証するかを指定します。既存の主要ドキュメントは`docs/documentation-examples.json`を使用でき、新しい例では通常inline directiveを使用します。
 
 対応modeは次のとおりです。
 
