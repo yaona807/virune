@@ -204,7 +204,7 @@ function findHtmlCommentEnd(line, start) {
 
 function beginInterruptingRawHtmlBlock(line) {
 	const source = line.replace(/^ {0,3}/u, '');
-	if (/^<!--/u.test(source)) return { endExpression: /-->/u, endsOnBlank: false };
+	if (/^<!--/u.test(source)) return { endLiteral: '-->', endExpression: null, endsOnBlank: false };
 	if (/^<(?:pre|script|style|textarea)(?:[ \t>]|$)/iu.test(source)) {
 		return { endExpression: /<\/(?:pre|script|style|textarea)>/iu, endsOnBlank: false };
 	}
@@ -227,6 +227,7 @@ function beginTypeSevenRawHtmlBlock(line, paragraphOpen) {
 
 function rawHtmlBlockEnds(block, line) {
 	if (block.endsOnBlank) return /^[ \t]*$/u.test(line);
+	if (block.endLiteral !== undefined) return line.includes(block.endLiteral);
 	return block.endExpression.test(line);
 }
 
