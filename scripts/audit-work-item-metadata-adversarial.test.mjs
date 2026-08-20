@@ -132,6 +132,8 @@ test('GitHub cmark-gfm block tags distinguish source from search', () => {
 test('GitHub cmark-gfm short comment forms are block-only at line start, not inline comments', () => {
 	assert.deepEqual(extractPlainIssueRefs('<!-->\nRefs #133\n'), [133]);
 	assert.deepEqual(extractPlainIssueRefs('<!--->\nRefs #134\n'), [134]);
+	assert.deepEqual(extractPlainIssueRefs('paragraph <!-->\nRefs #135\n'), [135]);
+	assert.deepEqual(extractPlainIssueRefs('paragraph <!--->\nRefs #136\n'), [136]);
 	assert.deepEqual(parseWorkItemRole('## Work item role <!-->\nImplementation\n'), { status: 'absent', role: null });
 	assert.deepEqual(parseWorkItemRole('## Work item role <!--->\nTracking\n'), { status: 'absent', role: null });
 });
