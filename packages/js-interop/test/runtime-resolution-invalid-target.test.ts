@@ -150,3 +150,99 @@ test('a typeless ambiguous runtime that parses as CommonJS remains classified as
 	assert.equal(imported.witness.runtimeEntry, 'runtime.js');
 	assert.equal(imported.witness.runtimeFormat, 'commonjs');
 });
+
+test('TypeScript customConditions are not trusted as active Node runtime conditions', async () => {
+	const root = await fixtureRoot();
+	const packageRoot = join(root, 'node_modules', 'custom-condition-runtime');
+	await mkdir(packageRoot, { recursive: true });
+	await writeFile(join(packageRoot, 'package.json'), `${JSON.stringify({
+		name: 'custom-condition-runtime',
+		version: '1.0.0',
+		type: 'module',
+		exports: {
+			'.': {
+				development: { types: './development.d.ts', default: './development.mjs' },
+				node: { types: './node.d.ts', default: './node.mjs' },
+				default: { types: './default.d.ts', default: './default.mjs' },
+			},
+		},
+	}, null, 2)}\n`, 'utf8');
+	await writeFile(join(packageRoot, 'development.d.ts'), 'declare const value: "development";\nexport default value;\n', 'utf8');
+	await writeFile(join(packageRoot, 'node.d.ts'), 'declare const value: "node";\nexport default value;\n', 'utf8');
+	await writeFile(join(packageRoot, 'default.d.ts'), 'declare const value: "default";\nexport default value;\n', 'utf8');
+	await writeFile(join(packageRoot, 'development.mjs'), 'export default "development";\n', 'utf8');
+	await writeFile(join(packageRoot, 'node.mjs'), 'export default "node";\n', 'utf8');
+	await writeFile(join(packageRoot, 'default.mjs'), 'export default "default";\n', 'utf8');
+
+	const provider = new TypeScriptInteropProvider({ projectRoot: root, compilerOptions: { customConditions: ['development'] } });
+	const imported = provider.resolveImport({
+		containingFile: join(root, 'src/main.virune'),
+		moduleSpecifier: 'custom-condition-runtime',
+		kind: 'default',
+		platform: 'node',
+	});
+	assert.ok(imported.type);
+	assert.equal(imported.witness.declarationEntry, 'node.d.ts');
+	assert.equal(imported.witness.runtimeEntry, 'node.mjs');
+	assert.deepEqual(imported.witness.conditions, ['types', 'node-addons', 'node', 'import', 'module-sync']);
+});
+
+test('an unsupported runtime extension is not promoted by package type', async () => {
+	const root = await fixtureRoot();
+	const packageRoot = join(root, 'node_modules', 'unsupported-extension-runtime');
+	await mkdir(packageRoot, { recursive: true });
+	await writeFile(join(packageRoot, 'package.json'), `${JSON.stringify({
+		name: 'unsupported-extension-runtime',
+		version: '1.0.0',
+		type: 'module',
+		exports: {
+			'.': {
+				types: './index.d.ts',
+				import: './runtime.jsx',
+			},
+		},
+	}, null, 2)}\n`, 'utf8');
+	await writeFile(join(packageRoot, 'index.d.ts'), 'declare const value: string;\nexport default value;\n', 'utf8');
+	await writeFile(join(packageRoot, 'runtime.jsx'), 'export default "runtime";\n', 'utf8');
+
+	const provider = new TypeScriptInteropProvider({ projectRoot: root });
+	const imported = provider.resolveImport({
+		containingFile: join(root, 'src/main.virune'),
+		moduleSpecifier: 'unsupported-extension-runtime',
+		kind: 'default',
+		platform: 'node',
+	});
+	assert.ok(imported.type);
+	assert.equal(imported.witness.runtimeEntry, 'runtime.jsx');
+	assert.equal(imported.witness.runtimeFormat, 'unknown');
+});
+
+test('TypeScript runtime sources inside node_modules are not claimed loadable by Node', async () => {
+	const root = await fixtureRoot();
+	const packageRoot = join(root, 'node_modules', 'typescript-runtime-package');
+	await mkdir(packageRoot, { recursive: true });
+	await writeFile(join(packageRoot, 'package.json'), `${JSON.stringify({
+		name: 'typescript-runtime-package',
+		version: '1.0.0',
+		type: 'module',
+		exports: {
+			'.': {
+				types: './index.d.ts',
+				import: './runtime.mts',
+			},
+		},
+	}, null, 2)}\n`, 'utf8');
+	await writeFile(join(packageRoot, 'index.d.ts'), 'declare const value: string;\nexport default value;\n', 'utf8');
+	await writeFile(join(packageRoot, 'runtime.mts'), 'export default "runtime";\n', 'utf8');
+
+	const provider = new TypeScriptInteropProvider({ projectRoot: root });
+	const imported = provider.resolveImport({
+		containingFile: join(root, 'src/main.virune'),
+		moduleSpecifier: 'typescript-runtime-package',
+		kind: 'default',
+		platform: 'node',
+	});
+	assert.ok(imported.type);
+	assert.equal(imported.witness.runtimeEntry, 'runtime.mts');
+	assert.equal(imported.witness.runtimeFormat, 'unknown');
+});
