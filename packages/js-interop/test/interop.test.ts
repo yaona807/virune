@@ -5,7 +5,6 @@ import {
 	compileSource,
 	externalOperationSequence,
 	isResolvedDirectInteropDecision,
-	parseSource,
 } from '@virune/compiler/experimental';
 import { TypeScriptInteropProvider } from '../src/index.js';
 import { fixtureRoot } from './fixture.js';
@@ -34,10 +33,6 @@ test('compiler emits direct JavaScript import, checked primitive bridge, and pro
 		path: join(root, 'src/main.virune'),
 		text: `import js { greet } from "./library.js"\n\nfn main() -> String uses JavaScript {\n\treturn greet("Virune")\n}\n`,
 	};
-	const parsed = parseSource(source);
-	assert.ok(parsed.ast);
-	assert.deepEqual(parsed.diagnostics.filter(item => item.severity === 'error'), []);
-
 	const result = compileSource(source, { platform: 'node', jsInteropProvider: provider });
 	assert.deepEqual(result.diagnostics.filter(item => item.severity === 'error'), []);
 	assert.match(result.output?.code ?? '', /import \{ greet \} from "\.\/library\.js"/u);
@@ -47,9 +42,10 @@ test('compiler emits direct JavaScript import, checked primitive bridge, and pro
 	assert.equal('ref' in usage.foreignType, false);
 	assert.doesNotThrow(() => JSON.stringify(result.semantic?.interop.usageIR));
 
+	assert.ok(result.ast);
 	assert.ok(result.semantic);
 	const operations = externalOperationSequence({
-		module: parsed.ast,
+		module: result.ast,
 		interop: result.semantic.interop,
 		diagnostics: result.diagnostics,
 	});
