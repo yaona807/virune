@@ -1,10 +1,10 @@
-# Security Policy
+# セキュリティポリシー
 
 English: [SECURITY.md](SECURITY.md)
 
-## Supported versions
+## サポート対象のバージョン
 
-最新のstable release lineと`main`をsupport対象とします。Older release lineは、high-impact vulnerabilityに対するtemporary backport windowをMaintainerが明示的に告知した場合を除き、support対象外です。
+最新の安定版リリース系列と`main`をサポート対象とします。過去のリリース系列は、重大な脆弱性に対する一時的なバックポート期間をメンテナーが明示的に告知した場合を除き、サポート対象外です。
 
 | Version | Supported |
 |---|---|
@@ -12,11 +12,11 @@ English: [SECURITY.md](SECURITY.md)
 | Latest stable release | Yes |
 | Older releases | 明示的な告知がある場合を除きNo |
 
-## Vulnerabilityの報告
+## 脆弱性の報告
 
-Security vulnerabilityの疑いをpublic Issue、Discussion、Pull Request、social channelへ公開しないでください。
+セキュリティ脆弱性の疑いをpublic Issue、Discussion、Pull Request、social channelへ公開しないでください。
 
-[GitHub private vulnerability reporting](https://github.com/yaona807/virune/security/advisories/new)を使用してreportしてください。可能な場合、次を含めてください。
+[GitHub private vulnerability reporting](https://github.com/yaona807/virune/security/advisories/new)を使用して報告してください。可能な場合、次を含めてください。
 
 - 影響を受けるversion、release asset、またはcommit
 - compiler、runtime、CLI、VS Code extension、language server、JavaScript interoperability layerなどの影響を受けるcomponent
