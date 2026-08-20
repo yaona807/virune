@@ -464,7 +464,11 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 			? ['node-addons', 'module-sync']
 			: platform === 'browser' ? ['browser'] : [];
 		const targetCompilerOptions: ts.CompilerOptions = platform === 'node'
-			? { customConditions: normalizedCustomConditions(platformConditions) }
+			? {
+				module: ts.ModuleKind.NodeNext,
+				moduleResolution: ts.ModuleResolutionKind.NodeNext,
+				customConditions: normalizedCustomConditions(platformConditions),
+			}
 			: {
 				module: ts.ModuleKind.ESNext,
 				moduleResolution: ts.ModuleResolutionKind.Bundler,
