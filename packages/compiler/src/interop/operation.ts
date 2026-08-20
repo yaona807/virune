@@ -57,6 +57,8 @@ interface ExternalOperationBase {
 interface AstNodeAnchor {
 	readonly kind: string;
 	readonly span: SourceSpan;
+	readonly foreignCall?: true;
+	readonly foreignBridge?: PrimitiveBridgeKind;
 }
 
 export interface ExternalModuleLoadOperationIR extends ExternalOperationBase {
@@ -353,7 +355,15 @@ function collectAstNodeAnchors(module: A.ModuleNode): ReadonlyMap<NodeId, AstNod
 		const record = value as Record<string, unknown>;
 		if (typeof record.id === 'number' && typeof record.kind === 'string' && isSourceSpan(record.span)) {
 			if (result.has(record.id as NodeId)) throw new Error(`Duplicate AST node id ${record.id} in External operation source binding`);
-			result.set(record.id as NodeId, { kind: record.kind, span: record.span });
+			const foreignBridge = typeof record.foreignBridge === 'string' && BRIDGES.has(record.foreignBridge as PrimitiveBridgeKind)
+				? record.foreignBridge as PrimitiveBridgeKind
+				: undefined;
+			result.set(record.id as NodeId, {
+				kind: record.kind,
+				span: record.span,
+				...(record.foreignCall === true ? { foreignCall: true as const } : {}),
+				...(foreignBridge === undefined ? {} : { foreignBridge }),
+			});
 		}
 		for (const child of Object.values(record)) visit(child);
 	};
@@ -363,18 +373,18 @@ function collectAstNodeAnchors(module: A.ModuleNode): ReadonlyMap<NodeId, AstNod
 
 function assertCurrentUsageAnchor(usage: ForeignUsageIR, nodeAnchors: ReadonlyMap<NodeId, AstNodeAnchor>): void {
 	const current = nodeAnchors.get(usage.nodeId);
-	if (current === undefined || !sameSpan(current.span, usage.span) || !usageKindMatchesAstKind(usage.kind, current.kind)) {
+	if (current === undefined || !sameSpan(current.span, usage.span) || !usageMatchesAstAnchor(usage, current)) {
 		throw new Error(`Stale or cross-session External usage evidence for node ${usage.nodeId}`);
 	}
 }
 
-function usageKindMatchesAstKind(usageKind: ForeignUsageIR['kind'], astKind: string): boolean {
-	switch (usageKind) {
-		case 'import': return astKind === 'ImportDeclaration';
-		case 'property': return astKind === 'FieldExpression';
-		case 'call': return astKind === 'CallExpression';
-		case 'await': return astKind === 'AwaitExpression';
-		case 'bridge': return astKind.endsWith('Expression');
+function usageMatchesAstAnchor(usage: ForeignUsageIR, anchor: AstNodeAnchor): boolean {
+	switch (usage.kind) {
+		case 'import': return anchor.kind === 'ImportDeclaration';
+		case 'property': return anchor.kind === 'FieldExpression';
+		case 'call': return anchor.kind === 'CallExpression' && anchor.foreignCall === true;
+		case 'await': return anchor.kind === 'AwaitExpression';
+		case 'bridge': return anchor.kind.endsWith('Expression') && usage.bridge?.kind === 'primitive' && anchor.foreignBridge === usage.bridge.bridge;
 	}
 	return false;
 }
