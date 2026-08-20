@@ -37,7 +37,7 @@ const CLAIMS = new Set<InteropSafetyClaim>([
 	'primitive-bridge-validated',
 	'receiver-preserved',
 	'runtime-resolution-witnessed',
-	typeBoundarySafe(),
+	'type-boundary-safe',
 ]);
 const OBLIGATION_KINDS = new Set<InteropObligationKind>(['runtime-resolution']);
 const OBLIGATION_STAGES = new Set<InteropObligationStage>(['check', 'codegen', 'build', 'runtime']);
@@ -71,7 +71,11 @@ export function canonicalizeInteropDecision(decision: InteropDecisionIR): Intero
 		if (previous !== undefined && previous.status !== obligation.status) {
 			throw new Error(`Conflicting Interop obligation state for ${obligation.kind} at ${obligation.stage}`);
 		}
-		obligationsByKey.set(key, obligation);
+		obligationsByKey.set(key, {
+			kind: obligation.kind,
+			stage: obligation.stage,
+			status: obligation.status,
+		});
 	}
 	const obligations = [...obligationsByKey.values()].sort((left, right) => compareText(
 		`${left.kind}\0${left.stage}\0${left.status}`,
@@ -106,8 +110,6 @@ export function isResolvedDirectInteropDecision(decision: InteropDecisionIR): bo
 		return false;
 	}
 }
-
-function typeBoundarySafe(): InteropSafetyClaim { return 'type-boundary-safe'; }
 
 function assertKnown<T extends string>(known: ReadonlySet<T>, value: T, description: string): void {
 	if (!known.has(value)) throw new Error(`Unknown ${description}: ${String(value)}`);
