@@ -1,0 +1,174 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import {
+	createPromotionShadowHistoryV2,
+	type PromotionObservationOutcome,
+	type PromotionShadowHistoryEntryInputV2,
+} from '../src/selfhost/promotion-shadow-history-v2.js';
+
+const subjectA = 'a'.repeat(64);
+const subjectB = 'b'.repeat(64);
+const commit = (character: string): string => character.repeat(40);
+const evidence = (character: string): string => character.repeat(64);
+
+function entry(
+	runId: string,
+	completedAt: string,
+	options: {
+		readonly executionCommit?: string;
+		readonly promotionSubjectId?: string;
+		readonly outcome?: PromotionObservationOutcome;
+		readonly countsTowardPromotion?: boolean;
+		readonly unexplainedDifferentials?: number;
+		readonly evidence?: readonly { readonly id: string; readonly status: 'passed' | 'failed'; readonly sha256: string }[];
+	} = {},
+): PromotionShadowHistoryEntryInputV2 {
+	return {
+		version: 2,
+		runId,
+		stage: 'required-selfhost',
+		executionCommit: options.executionCommit ?? commit('1'),
+		promotionSubjectId: options.promotionSubjectId ?? subjectA,
+		completedAt,
+		outcome: options.outcome ?? 'passed',
+		countsTowardPromotion: options.countsTowardPromotion ?? true,
+		unexplainedDifferentials: options.unexplainedDifferentials ?? 0,
+		evidence: options.evidence ?? [{ id: 'stage2-stage3-fixed-point', status: 'passed', sha256: evidence(runId.endsWith('1') ? '1' : runId.endsWith('2') ? '2' : '3') }],
+	};
+}
+
+function history(entries: readonly PromotionShadowHistoryEntryInputV2[]) {
+	return { version: 2 as const, stage: 'required-selfhost' as const, entries };
+}
+
+test('unchanged promotion subject continues across different execution commits', () => {
+	const result = createPromotionShadowHistoryV2(history([
+		entry('run-1', '2026-08-18T01:00:00.000Z', { executionCommit: commit('1') }),
+		entry('run-2', '2026-08-19T01:00:00.000Z', { executionCommit: commit('2') }),
+		entry('run-3', '2026-08-20T01:00:00.000Z', { executionCommit: commit('3') }),
+	]));
+	assert.equal(result.history.promotionSubjectId, subjectA);
+	assert.equal(result.history.successfulRuns, 3);
+	assert.equal(result.history.observationDays, 3);
+	assert.equal(result.history.firstSuccessfulAt, '2026-08-18T01:00:00.000Z');
+	assert.equal(result.history.productInvalidated, false);
+});
+
+test('subject changes reset history and A to B to A cannot resurrect the first A segment', () => {
+	const result = createPromotionShadowHistoryV2(history([
+		entry('run-1', '2026-08-17T01:00:00.000Z'),
+		entry('run-2', '2026-08-18T01:00:00.000Z'),
+		entry('run-3', '2026-08-19T01:00:00.000Z', { promotionSubjectId: subjectB }),
+		entry('run-4', '2026-08-20T01:00:00.000Z', { promotionSubjectId: subjectA }),
+	]));
+	assert.equal(result.history.promotionSubjectId, subjectA);
+	assert.equal(result.history.successfulRuns, 1);
+	assert.equal(result.history.observationDays, 1);
+	assert.equal(result.history.firstSuccessfulAt, '2026-08-20T01:00:00.000Z');
+});
+
+test('a non-counting run on a new subject starts a new subject segment without inflating history', () => {
+	const result = createPromotionShadowHistoryV2(history([
+		entry('run-1', '2026-08-18T01:00:00.000Z'),
+		entry('run-2', '2026-08-19T01:00:00.000Z'),
+		entry('run-3', '2026-08-20T01:00:00.000Z', { promotionSubjectId: subjectB, countsTowardPromotion: false }),
+	]));
+	assert.equal(result.history.promotionSubjectId, subjectB);
+	assert.equal(result.history.successfulRuns, 0);
+	assert.equal(result.history.observationDays, 0);
+});
+
+test('non-counting diagnostics neither inflate nor break a formal passing streak', () => {
+	const result = createPromotionShadowHistoryV2(history([
+		entry('run-1', '2026-08-19T01:00:00.000Z'),
+		entry('diag-1', '2026-08-19T12:00:00.000Z', { outcome: 'infrastructure-failed', countsTowardPromotion: false }),
+		entry('run-2', '2026-08-20T01:00:00.000Z'),
+	]));
+	assert.equal(result.history.successfulRuns, 2);
+	assert.equal(result.history.observationDays, 2);
+});
+
+test('counting infrastructure or cancellation resets the streak without invalidating the subject', () => {
+	for (const outcome of ['infrastructure-failed', 'cancelled'] as const) {
+		const result = createPromotionShadowHistoryV2(history([
+			entry('run-1', '2026-08-18T01:00:00.000Z'),
+			entry('run-2', '2026-08-19T01:00:00.000Z', { outcome }),
+			entry('run-3', '2026-08-20T01:00:00.000Z'),
+		]));
+		assert.equal(result.history.successfulRuns, 1, outcome);
+		assert.equal(result.history.productInvalidated, false, outcome);
+	}
+});
+
+test('counting product failure invalidates the current subject even after later success', () => {
+	const result = createPromotionShadowHistoryV2(history([
+		entry('run-1', '2026-08-18T01:00:00.000Z'),
+		entry('run-2', '2026-08-19T01:00:00.000Z', { outcome: 'product-failed', unexplainedDifferentials: 2 }),
+		entry('run-3', '2026-08-20T01:00:00.000Z'),
+	]));
+	assert.equal(result.history.productInvalidated, true);
+	assert.equal(result.history.successfulRuns, 0);
+	assert.equal(result.history.observationDays, 0);
+	assert.equal(result.history.firstSuccessfulAt, null);
+	assert.equal(result.history.unexplainedDifferentials, 2);
+});
+
+test('a counting product failure remains invalid if the same subject identity reappears later', () => {
+	const result = createPromotionShadowHistoryV2(history([
+		entry('run-1', '2026-08-16T01:00:00.000Z', { outcome: 'product-failed', unexplainedDifferentials: 1 }),
+		entry('run-2', '2026-08-17T01:00:00.000Z', { promotionSubjectId: subjectB }),
+		entry('run-3', '2026-08-18T01:00:00.000Z', { promotionSubjectId: subjectA }),
+	]));
+	assert.equal(result.history.promotionSubjectId, subjectA);
+	assert.equal(result.history.productInvalidated, true);
+	assert.equal(result.history.successfulRuns, 0);
+	assert.equal(result.history.observationDays, 0);
+	assert.equal(result.history.unexplainedDifferentials, 1);
+});
+
+test('same-day successes increase runs but not distinct observation days', () => {
+	const result = createPromotionShadowHistoryV2(history([
+		entry('run-1', '2026-08-20T01:00:00.000Z'),
+		entry('run-2', '2026-08-20T12:00:00.000Z'),
+	]));
+	assert.equal(result.history.successfulRuns, 2);
+	assert.equal(result.history.observationDays, 1);
+});
+
+test('evidence is canonicalized and retained so future policy can re-evaluate old runs', () => {
+	const result = createPromotionShadowHistoryV2(history([
+		entry('run-1', '2026-08-20T01:00:00.000Z', {
+			evidence: [
+				{ id: 'z-evidence', status: 'passed', sha256: evidence('2') },
+				{ id: 'a-evidence', status: 'passed', sha256: evidence('1') },
+			],
+		}),
+	]));
+	assert.deepEqual(result.history.entries[0]?.evidence.map(item => item.id), ['a-evidence', 'z-evidence']);
+	assert.equal(result.sha256.length, 64);
+	assert.equal(result.serialized, JSON.stringify(result.history));
+	const replay = createPromotionShadowHistoryV2({
+		version: result.history.version,
+		stage: result.history.stage,
+		entries: result.history.entries,
+	});
+	assert.equal(replay.serialized, result.serialized);
+	assert.equal(replay.sha256, result.sha256);
+});
+
+test('history rejects duplicate, unordered, stage-mismatched, and non-canonical evidence', () => {
+	const first = entry('run-1', '2026-08-19T01:00:00.000Z');
+	const second = entry('run-2', '2026-08-20T01:00:00.000Z');
+	assert.throws(() => createPromotionShadowHistoryV2(history([first, { ...second, runId: first.runId }])), /duplicate runId/u);
+	assert.throws(() => createPromotionShadowHistoryV2(history([second, first])), /strictly ordered/u);
+	assert.throws(() => createPromotionShadowHistoryV2(history([{ ...first, stage: 'required-compiler' }])), /expected required-selfhost/u);
+	assert.throws(() => createPromotionShadowHistoryV2(history([{ ...first, executionCommit: 'A'.repeat(40) }])), /lowercase 40-character Git SHA/u);
+	assert.throws(() => createPromotionShadowHistoryV2(history([{ ...first, promotionSubjectId: 'A'.repeat(64) }])), /lowercase 64-character SHA-256/u);
+	assert.throws(() => createPromotionShadowHistoryV2(history([{ ...first, unexplainedDifferentials: 1 }])), /passed observations must have zero/u);
+	assert.throws(() => createPromotionShadowHistoryV2(history([{ ...first, evidence: [{ id: 'required', status: 'failed', sha256: evidence('f') }] }])), /passed observations cannot contain failed evidence/u);
+	assert.throws(() => createPromotionShadowHistoryV2(history([{ ...first, evidence: [first.evidence[0]!, first.evidence[0]!] }])), /duplicate evidence id/u);
+	assert.throws(
+		() => createPromotionShadowHistoryV2({ version: 2, stage: 'required-selfhost', entries: [{ ...first, repository: 'yaona807/virune' }] }),
+		/expected exactly keys/u,
+	);
+});
