@@ -73,6 +73,12 @@ test('unresolved, pending, non-Direct, and unknown decisions are never Direct su
 	} as unknown as InteropDecisionIR;
 	assert.equal(isResolvedDirectInteropDecision(unknown), false);
 	assert.throws(() => canonicalizeInteropDecision(unknown), /Unknown decision status/u);
+
+	const unknownClaim = {
+		status: 'resolved', mechanism: 'direct', authoring: 'none', claims: ['runtime-resolution-witnessed'], obligations: [],
+	} as unknown as InteropDecisionIR;
+	assert.equal(isResolvedDirectInteropDecision(unknownClaim), false);
+	assert.throws(() => canonicalizeInteropDecision(unknownClaim), /Unknown Interop safety claim/u);
 });
 
 test('canonical evidence strips unrecognized obligation metadata', () => {
@@ -80,7 +86,7 @@ test('canonical evidence strips unrecognized obligation metadata', () => {
 		status: 'resolved',
 		mechanism: 'direct',
 		authoring: 'none',
-		claims: ['runtime-resolution-witnessed'],
+		claims: ['foreign-identity-preserved'],
 		obligations: [{
 			kind: 'runtime-resolution',
 			stage: 'check',
