@@ -38,7 +38,15 @@ function witness(overrides: Partial<ModuleResolutionWitness> = {}): ModuleResolu
 	};
 }
 
-test('absolute checkout paths cannot hide in origin semantic text fields', () => {
+test('source-authored origin module specifiers are preserved exactly', () => {
+	for (const moduleSpecifier of ['', '/explicit/library.js', 'file:///explicit/library.js', 'C:explicit/library.js']) {
+		const operation = externalOperationFromUsage(usageWithOrigin({ moduleSpecifier }));
+		assert.equal(operation?.kind, 'read-property');
+		if (operation?.kind === 'read-property') assert.equal(operation.result.origin?.moduleSpecifier, moduleSpecifier);
+	}
+});
+
+test('absolute checkout paths cannot hide in provider origin semantic text fields', () => {
 	for (const origin of [
 		{ moduleSpecifier: './library.js', packageName: '/checkout/private/pkg' },
 		{ moduleSpecifier: './library.js', packageVersion: 'file:///checkout/private/package.json' },
