@@ -18,8 +18,9 @@ test('CLI interop check validates project adapters and fails closed on invalid A
 	await assert.rejects(
 		runCli(['interop', 'check', root]),
 		error => {
-			const failure = error as Error & { stderr?: string };
-			assert.match(failure.stderr ?? '', /error\[INTEROP_ADAPTER\].*must not be generic/u);
+			const stderr = (error as Error & { stderr?: string }).stderr ?? '';
+			assert.match(stderr, /error\[INTEROP_ADAPTER\]/u);
+			assert.match(stderr, /must not be generic/u);
 			return true;
 		},
 	);
