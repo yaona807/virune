@@ -150,6 +150,10 @@ test('GitHub cmark-gfm inline comments require a complete valid comment before h
 	assert.deepEqual(parseWorkItemRole('## Work item role <!-- --->\nImplementation\n'), { status: 'absent', role: null });
 });
 
+test('GitHub cmark-gfm replaces NUL with U+FFFD before inline-comment parsing', () => {
+	assert.deepEqual(extractPlainIssueRefs('paragraph <!-- \u0000\nRefs #152\n-->\nRefs #153\n'), [153]);
+});
+
 test('GitHub cmark-gfm HTML whitespace and attribute grammar preserve hidden raw-HTML boundaries', () => {
 	assert.deepEqual(extractPlainIssueRefs('intro\n<source\v>\nRefs #142\n\nRefs #143\n'), [143]);
 	assert.deepEqual(extractPlainIssueRefs('intro\n<source\f>\nRefs #144\n\nRefs #145\n'), [145]);
