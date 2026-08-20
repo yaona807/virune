@@ -8,7 +8,7 @@
 npm run virune -- <command>
 ```
 
-公開npm packageをinstallした後の同等commandは`virune <command>`です。
+npmで公開されたpackageをインストールした後は、同じ操作を`virune <command>`で実行できます。
 
 ## 共通動作
 
