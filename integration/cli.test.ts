@@ -135,3 +135,25 @@ export function optional(value?: string | null): Promise<string | undefined>;
 	const compiled = compileSource({ id: 1, path: output, text }, { emit: false });
 	assert.deepEqual(compiled.diagnostics.filter(item => item.severity === 'error'), []);
 });
+
+test('CLI interop check validates project adapters and fails closed on invalid ABI', async () => {
+	const root = await makeCliProject();
+	await runCli(['init', root]);
+	const interopDirectory = join(root, 'src/interop');
+	await mkdir(interopDirectory, { recursive: true });
+	const adapter = join(interopDirectory, 'example.interop.ts');
+	await writeFile(adapter, 'export function normalize(value: string): string {\n\treturn value.trim()\n}\n', 'utf8');
+
+	assert.match((await runCli(['interop', 'check', root])).stdout, /Checked 1 TypeScript interop adapter\(s\)\./u);
+
+	await writeFile(adapter, 'export function generic<T>(value: T): T {\n\treturn value\n}\n', 'utf8');
+	await assert.rejects(
+		runCli(['interop', 'check', root]),
+		error => {
+			const stderr = (error as Error & { stderr?: string }).stderr ?? '';
+			assert.match(stderr, /error\[INTEROP_ADAPTER\]/u);
+			assert.match(stderr, /must not be generic/u);
+			return true;
+		},
+	);
+});

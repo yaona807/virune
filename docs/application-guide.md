@@ -2,170 +2,165 @@
 
 [English](application-guide.md) | [日本語](application-guide_ja.md)
 
-This guide is the task-oriented route from an empty project to a small Virune application. It explains how the public Virune 1.0 features fit together in practice by pointing directly at the repository-owned [feature showcase](../examples/feature-showcase/README.md).
-
-The showcase is the canonical executable source for this guide. This document intentionally does not copy its Virune source or runnable command blocks into separate snippets: when the example changes, there should be one source to review and verify.
+This guide is the task-oriented route from an empty project to a small Virune application. It describes the public Virune 1.0 workflow directly, without depending on a repository-owned showcase application.
 
 > [!IMPORTANT]
 > This guide is explanatory, not normative. The files under [`spec/`](../spec/README.md) define exact Virune 1.0 behavior. If this guide and the normative specification disagree, the specification wins.
 
-## The application path
+## 1. Start with a normal project
 
-A practical Virune application can be built in six steps:
+Create a project with the public CLI:
 
-1. model the domain with nominal data and explicit absence/failure;
-2. keep effects at dependency boundaries;
-3. structure asynchronous work and cleanup;
-4. choose the narrowest JavaScript interoperability tier that fits;
-5. separate Node.js and browser targets explicitly;
-6. run the same format, check, test, API, build, and execution loop continuously.
+```bash
+virune init my-app
+cd my-app
+virune check .
+virune run .
+```
 
-The feature showcase uses a small user-directory scenario so these concerns are visible in one application instead of isolated syntax examples.
+`virune init` creates `virune.json` and `src/main.virune`. Keep the project configuration explicit: the source directory, output directory, entry point, and target platform belong in `virune.json` rather than in hidden build assumptions.
 
-## 1. Model the domain first
+The repository also contains [`examples/user-directory`](../examples/user-directory) as a small runnable example. It is useful as an example, but it is not a normative or canonical source for this guide.
 
-Start with [`examples/feature-showcase/node/src/domain.virune`](../examples/feature-showcase/node/src/domain.virune).
+See the [CLI reference](cli-reference.md) for exact command syntax and the [entry-point specification](../spec/entry-point.md) for accepted executable signatures.
 
-The file demonstrates the main domain-modeling choices together:
+## 2. Model the domain before infrastructure
 
-- `newtype UserId = Int` gives the identifier nominal identity instead of treating every integer as interchangeable;
-- `record User` groups the domain data;
-- `enum DirectoryError` makes the application failure cases explicit;
-- `String?` represents optional email data through `Option<String>` rather than an implicit nullable value;
-- `Result<User, DirectoryError>` keeps validation failure in the function contract;
-- `match` handles `Option` and `Result` explicitly.
+Use nominal and explicit data modeling for application concepts:
 
-Keep construction and validation close to the module that owns a nominal type. The showcase exposes `createUserFromInt` rather than leaking the private nominal constructor across the module boundary.
+- use `newtype` when two values share a representation but must not be interchangeable;
+- use `record` for named domain data;
+- use `enum` for closed alternatives and domain failures;
+- use `Option<T>` or `T?` for explicit absence;
+- use `Result<T, E>` for failures that belong in the function contract;
+- use `match` to handle `Option`, `Result`, and enum variants explicitly.
 
-Collections belong to the same domain layer when they describe data rather than effects. [`collections.virune`](../examples/feature-showcase/node/src/collections.virune) shows `List`, `Map`, and `Set` without introducing I/O.
+Keep construction and validation close to the module that owns a nominal type. Prefer narrow public functions over exposing internal construction details merely to make another module convenient.
 
-For exact rules, see the normative [type system](../spec/types.md), [evaluation rules](../spec/evaluation.md), and [module rules](../spec/modules.md). For a broader learning-oriented explanation, see the [language guide](language-guide.md).
+Collections such as `List`, `Map`, and `Set` can remain in the domain layer when they describe data rather than I/O. Their exact APIs are documented in the [standard library guide](standard-library.md).
 
-## 2. Put effects at dependency boundaries
+For the exact type and visibility rules, see [types](../spec/types.md), [evaluation](../spec/evaluation.md), and [modules](../spec/modules.md). The [language guide](language-guide.md) provides a broader introduction with validated examples.
 
-Open [`examples/feature-showcase/node/src/main.virune`](../examples/feature-showcase/node/src/main.virune) next.
+## 3. Keep effects at dependency boundaries
 
-The executable `main` function declares `uses Console`, because printing is an observable side effect. The domain and collection functions do not declare `Console`; they receive ordinary values and return ordinary values or explicit `Result`s.
+Observable operations should remain visible in function signatures. For example, a command-line entry point that prints output declares `uses Console`; pure domain transformations do not need to acquire `Console` merely because a higher layer prints their results.
 
-This is the practical dependency-boundary pattern in Virune:
+A practical layering rule is:
 
-- keep domain transformations pure where possible;
-- pass data across module/function boundaries instead of hiding dependencies in globals;
-- declare built-in effects with `uses` at the functions that actually require them;
-- let higher layers orchestrate effectful work while lower layers expose narrow typed contracts.
+1. keep domain transformations pure where possible;
+2. pass ordinary typed data across module and function boundaries;
+3. declare built-in effects on the functions that actually perform those effects;
+4. let higher layers orchestrate I/O while lower layers expose narrow typed contracts.
 
-Virune does not require a dependency-injection framework for this pattern. The important property is that dependencies and effects remain visible in signatures and module boundaries.
+This pattern does not require a Virune-specific dependency-injection framework. The important property is that dependencies and effects do not disappear into hidden globals.
 
-The exact effect and call-compatibility rules are normative in [types](../spec/types.md) and [evaluation](../spec/evaluation.md).
+The normative effect and call-compatibility rules are in [types](../spec/types.md) and [evaluation](../spec/evaluation.md).
 
-## 3. Structure asynchronous work and cleanup
+## 4. Structure asynchronous work and cleanup
 
-[`examples/feature-showcase/node/src/workflow.virune`](../examples/feature-showcase/node/src/workflow.virune) is the canonical concurrency example.
+Use Virune's structured constructs instead of replacing them with detached JavaScript promises or ad-hoc cleanup:
 
-Read it in this order:
+- `async fn` declares asynchronous operations;
+- `parallel` and `parallel try` group child work structurally;
+- `await` waits for task results;
+- postfix `?` propagates `Result` failure;
+- `defer` attaches deterministic cleanup to lexical scope.
 
-1. `async fn` marks operations that complete asynchronously;
-2. `parallel try` starts independent operations as one structured group;
-3. `await` waits for the group result;
-4. postfix `?` propagates the `Result` failure instead of adding an unchecked exception path;
-5. `defer` registers deterministic cleanup for the scope.
+The key design property is ownership. Child work remains attached to the structured operation that created it, and cleanup remains attached to the scope that registered it.
 
-The important design property is ownership: asynchronous child work stays attached to the structured operation that created it, and cleanup remains attached to lexical scope. Do not replace those guarantees with detached JavaScript promises or ad-hoc cleanup when Virune has a structured construct for the job.
+See [tasks](../spec/tasks.md) for task, cancellation, and structured-concurrency semantics, and [evaluation](../spec/evaluation.md) for cleanup and evaluation order.
 
-Exact task and cancellation semantics are defined by the normative [task rules](../spec/tasks.md). Cleanup and evaluation order are defined by [evaluation rules](../spec/evaluation.md).
+## 5. Choose the narrowest JavaScript interoperability boundary
 
-## 4. Choose a JavaScript interoperability tier
+Do not move an API to a weaker boundary merely because it is convenient. Start with the narrowest boundary that can represent the external contract faithfully.
 
-Use the narrowest boundary that can represent the JavaScript API safely. The showcase contains all three tiers.
+### Generated binding
 
-### Tier 1: generated safe binding
+Use `virune bind` when a TypeScript declaration can be represented conservatively:
 
-- Declaration input: [`node/types/node-os-showcase.d.ts`](../examples/feature-showcase/node/types/node-os-showcase.d.ts)
-- Generated Virune binding: [`node/src/ffi/node-os.virune`](../examples/feature-showcase/node/src/ffi/node-os.virune)
+```bash
+virune bind ./types/example.d.ts \
+  --module example-package \
+  --out src/ffi/example.virune
+```
 
-Use `virune bind` when the TypeScript surface can be represented conservatively and validated at runtime. Unsupported shapes must remain `Unknown` or require a different tier; do not guess a stronger Virune type.
+Unsupported or unsafe TypeScript shapes remain `Unknown` with diagnostics. Generated bindings are reviewable source; they are not automatically trusted simply because they were generated.
 
-### Tier 2: TypeScript adapter
+### TypeScript adapter
 
-- Adapter: [`node/src/interop/read-file.interop.ts`](../examples/feature-showcase/node/src/interop/read-file.interop.ts)
+Use a `*.interop.ts` adapter when a JavaScript or TypeScript API should be reshaped before crossing the Virune Interop ABI:
 
-Use an adapter when a JavaScript/TypeScript API has a shape that should not cross the Virune Interop ABI directly. The showcase keeps Node's callback-style `readFile` contract inside TypeScript and exports a monomorphic callback-free `Promise<string>` boundary.
+```bash
+virune interop init example-package
+virune interop check .
+```
 
-### Tier 3: isolated unsafe FFI
+Keep the adapter narrow and explicit. It should expose the boundary Virune actually consumes rather than reproducing a whole dependency API.
 
-- Audited source fixture: [`node/src/ffi/unsafe-hostname.virune.example`](../examples/feature-showcase/node/src/ffi/unsafe-hostname.virune.example)
+### Isolated unsafe FFI
 
-Use `unsafe extern` only when the safety contract cannot be expressed through the safe tiers and the boundary has been explicitly audited. The raw extern belongs inside an `unsafe module` under the project's `ffi/` boundary, with normal application code calling only the reviewed facade.
+Use `unsafe extern` only when the safety contract cannot be represented through the safer paths and the boundary has been explicitly audited. Raw unsafe externs belong in an `unsafe module` under the project's `ffi/` boundary. Normal application code should call only the reviewed facade.
 
-The `.virune.example` suffix in the repository showcase is deliberate. A repository-root scan and a nested project's `src/ffi/` use different source roots; keeping the fixture non-discoverable preserves the root unsafe-path rule. Issue #81 owns staging this fixture into the showcase project's own `src/ffi/` context for continuous project-scoped validation.
+For the practical model, see [JavaScript and TypeScript interoperability](js-interop.md). Exact boundary rules are normative in [JavaScript FFI](../spec/ffi.md) and the [JavaScript interop specification](../spec/js-interop.md).
 
-For the practical interoperability model, see [JavaScript and TypeScript interoperability](js-interop.md). Exact boundary rules are normative in [JavaScript FFI](../spec/ffi.md) and the [three-tier interop specification](../spec/js-interop.md).
+## 6. Keep Node.js and browser targets explicit
 
-## 5. Keep Node.js and browser targets separate
+Do not hide incompatible platform assumptions behind one project configuration. When an application has distinct Node.js and browser entry points, keep separate project roots or configurations with the appropriate `platform` value.
 
-The showcase has two project configurations instead of one configuration with hidden platform assumptions:
+Platform-specific dependencies belong behind the matching boundary. A shared module should not silently depend on Node-only or browser-only behavior.
 
-- Node.js: [`examples/feature-showcase/node/virune.json`](../examples/feature-showcase/node/virune.json)
-- Browser: [`examples/feature-showcase/browser/virune.json`](../examples/feature-showcase/browser/virune.json)
+When JavaScript needs to call a Virune function directly, use the supported `@jsExport` boundary rather than relying on emitted implementation details.
 
-The Node project owns the executable CLI scenario, Node interoperability, tests, and public API snapshot. The browser project owns a browser-target build and an [`@jsExport` boundary](../examples/feature-showcase/browser/src/main.virune).
+Exact platform and module rules are defined by [modules](../spec/modules.md), JavaScript export rules by [JavaScript FFI](../spec/ffi.md), and executable entry rules by [entry points](../spec/entry-point.md).
 
-Keep platform-specific dependencies behind the matching project boundary. Do not make a shared module silently depend on Node-only or browser-only behavior.
+## 7. Use a repeatable verification loop
 
-Exact platform/module rules are defined by [modules](../spec/modules.md), and executable entry rules are defined by [entry points](../spec/entry-point.md).
+Run the public CLI over the project instead of relying on a special repository showcase gate:
 
-## 6. Use one verification loop
+```bash
+virune fmt --check .
+virune check .
+virune test .
+virune build .
+virune run .
+```
 
-The exact runnable commands remain in the canonical showcase under [Verify from this repository](../examples/feature-showcase/README.md#verify-from-this-repository). This guide describes their role instead of duplicating another command block that could drift.
+If the project publishes a Virune API, create a deterministic snapshot once and then check it in later verification:
 
-Run the workflow in this order:
+```bash
+virune api . --out virune.api.json
+virune api . --out virune.api.json --check
+```
 
-1. run `fmt --check` for both the Node.js and browser projects;
-2. run Node `check` and `test`;
-3. run Node `api --check` against the checked-in public API snapshot;
-4. run Node `build` and `run`;
-5. run browser `check` and `build`;
-6. regenerate the safe binding with `bind` from the checked-in TypeScript declaration fixture and verify that generated output has not drifted;
-7. validate the TypeScript adapter through `interop check`.
+If the project contains TypeScript adapters, also run:
 
-When using an installed Virune CLI in your own project, use the corresponding `virune` commands directly. A project created by `virune init` also provides the common npm scripts shown in its generated README.
+```bash
+virune interop check .
+```
 
-The checked-in [`virune.api.json`](../examples/feature-showcase/node/virune.api.json) is part of the contract: `api --check` detects public-surface drift rather than silently rewriting the snapshot.
+Regenerate checked-in bindings when their TypeScript declarations or dependencies change and review the resulting diff. CI should invoke the same public commands that developers can reproduce locally.
 
-Issue #81 is responsible for turning this complete showcase loop—including real browser execution, generated-output drift, and project-scoped unsafe FFI validation—into a continuous Pull Request quality gate. This guide does not claim that follow-up is already complete.
+The [CLI reference](cli-reference.md) is the source for exact command syntax.
 
 ## Normative specification vs. this guide
 
 | Question | Use |
 |---|---|
-| How should I structure a normal application? | This guide and the feature showcase |
+| How should I structure a normal application? | This guide |
 | What is the exact type/effect rule? | [`spec/types.md`](../spec/types.md) |
 | What is the exact evaluation/cleanup rule? | [`spec/evaluation.md`](../spec/evaluation.md) |
 | What are the exact async/task rules? | [`spec/tasks.md`](../spec/tasks.md) |
 | What is allowed at a JavaScript boundary? | [`spec/ffi.md`](../spec/ffi.md) and [`spec/js-interop.md`](../spec/js-interop.md) |
 | What is allowed across modules/platforms? | [`spec/modules.md`](../spec/modules.md) |
 | What makes a valid executable entry point? | [`spec/entry-point.md`](../spec/entry-point.md) |
+| What is the exact CLI syntax? | [CLI reference](cli-reference.md) |
 
-Use the guide to choose a design and the normative specification to resolve exact behavior.
-
-## Traceability to the canonical showcase
-
-| Task | Canonical source | Exact rules |
-|---|---|---|
-| Domain modeling | [`domain.virune`](../examples/feature-showcase/node/src/domain.virune) | [`types.md`](../spec/types.md), [`evaluation.md`](../spec/evaluation.md) |
-| Collections | [`collections.virune`](../examples/feature-showcase/node/src/collections.virune) | [`standard-library.md`](../spec/standard-library.md) |
-| Effects / executable boundary | [`main.virune`](../examples/feature-showcase/node/src/main.virune) | [`types.md`](../spec/types.md), [`entry-point.md`](../spec/entry-point.md) |
-| Structured concurrency / cleanup | [`workflow.virune`](../examples/feature-showcase/node/src/workflow.virune) | [`tasks.md`](../spec/tasks.md), [`evaluation.md`](../spec/evaluation.md) |
-| Virune-native tests | [`showcase.spec.virune`](../examples/feature-showcase/node/src/showcase.spec.virune) | [Language guide](language-guide.md) |
-| Public API snapshot | [`virune.api.json`](../examples/feature-showcase/node/virune.api.json) | [CLI reference](cli-reference.md) |
-| Safe binding | [`node-os.virune`](../examples/feature-showcase/node/src/ffi/node-os.virune) | [`ffi.md`](../spec/ffi.md) |
-| TypeScript adapter | [`read-file.interop.ts`](../examples/feature-showcase/node/src/interop/read-file.interop.ts) | [`js-interop.md`](../spec/js-interop.md) |
-| Isolated unsafe FFI | [`unsafe-hostname.virune.example`](../examples/feature-showcase/node/src/ffi/unsafe-hostname.virune.example) | [`ffi.md`](../spec/ffi.md) |
-| Node/browser split | [`node/virune.json`](../examples/feature-showcase/node/virune.json), [`browser/virune.json`](../examples/feature-showcase/browser/virune.json) | [`modules.md`](../spec/modules.md) |
+Use this guide to choose an application structure and the normative specification to resolve exact behavior.
 
 ## Where to go next
 
-- Use the [feature showcase README](../examples/feature-showcase/README.md) when you want the exact runnable commands and file layout.
-- Use the [language guide](language-guide.md) when you want a broader syntax-and-semantics introduction.
-- Use the [JavaScript interop guide](js-interop.md) when you need to design a foreign boundary in more detail.
+- Use [`examples/user-directory`](../examples/user-directory) for a small runnable application.
+- Use the [language guide](language-guide.md) for a broader syntax-and-semantics introduction.
+- Use the [JavaScript interop guide](js-interop.md) when designing a foreign boundary.
+- Use the [CLI reference](cli-reference.md) for command behavior and options.
 - Use the [normative specification index](../spec/README.md) when a compatibility or correctness decision depends on exact Virune 1.0 behavior.

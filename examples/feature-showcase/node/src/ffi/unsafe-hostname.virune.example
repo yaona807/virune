@@ -1,9 +1,0 @@
-unsafe module
-
-unsafe extern js "node:os" {
-	fn rawHostname() -> String uses JavaScript = "hostname"
-}
-
-pub fn auditedHostname() -> String uses JavaScript {
-	return rawHostname()
-}
