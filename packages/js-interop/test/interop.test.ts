@@ -1,7 +1,12 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { join } from 'node:path';
-import { compileSource } from '@virune/compiler/experimental';
+import {
+	compileSource,
+	externalOperationSequence,
+	isResolvedDirectInteropDecision,
+	parseSource,
+} from '@virune/compiler/experimental';
 import { TypeScriptInteropProvider } from '../src/index.js';
 import { fixtureRoot } from './fixture.js';
 
@@ -21,7 +26,7 @@ test('TypeScript provider resolves a conservative primitive facade', async () =>
 	assert.equal(result?.result.primitive, 'string');
 });
 
-test('compiler emits direct JavaScript import and checked primitive bridge', async () => {
+test('compiler emits direct JavaScript import, checked primitive bridge, and provider-independent operations', async () => {
 	const root = await fixtureRoot();
 	const provider = new TypeScriptInteropProvider({ projectRoot: root });
 	const source = {
@@ -29,6 +34,10 @@ test('compiler emits direct JavaScript import and checked primitive bridge', asy
 		path: join(root, 'src/main.virune'),
 		text: `import js { greet } from "./library.js"\n\nfn main() -> String uses JavaScript {\n\treturn greet("Virune")\n}\n`,
 	};
+	const parsed = parseSource(source);
+	assert.ok(parsed.ast);
+	assert.deepEqual(parsed.diagnostics.filter(item => item.severity === 'error'), []);
+
 	const result = compileSource(source, { platform: 'node', jsInteropProvider: provider });
 	assert.deepEqual(result.diagnostics.filter(item => item.severity === 'error'), []);
 	assert.match(result.output?.code ?? '', /import \{ greet \} from "\.\/library\.js"/u);
@@ -37,4 +46,29 @@ test('compiler emits direct JavaScript import and checked primitive bridge', asy
 	assert.ok(usage);
 	assert.equal('ref' in usage.foreignType, false);
 	assert.doesNotThrow(() => JSON.stringify(result.semantic?.interop.usageIR));
+
+	assert.ok(result.semantic);
+	const operations = externalOperationSequence({
+		module: parsed.ast,
+		interop: result.semantic.interop,
+		diagnostics: result.diagnostics,
+	});
+	assert.deepEqual(operations.map(operation => operation.kind), [
+		'module-load',
+		'call',
+		'bridge-foreign-primitive',
+	]);
+	assert.equal(operations[0]?.kind, 'module-load');
+	if (operations[0]?.kind === 'module-load') {
+		assert.equal(operations[0].moduleSpecifier, './library.js');
+		assert.equal(isResolvedDirectInteropDecision(operations[0].decision), true);
+		assert.equal(operations[0].runtimeWitness?.runtimeFormat, 'esm');
+	}
+	assert.equal(operations[1]?.kind, 'call');
+	assert.equal(operations[2]?.kind, 'bridge-foreign-primitive');
+	const serialized = JSON.stringify(operations);
+	assert.equal(serialized.includes(root.replaceAll('\\', '/')), false);
+	assert.equal(serialized.includes('providerVersion'), false);
+	assert.equal(serialized.includes('declarationEntry'), false);
+	assert.equal(serialized.includes('declarationGraphHash'), false);
 });
