@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { isResolvedDirectInteropDecision } from '../src/interop/decision.js';
 import { externalModuleLoadOperation, externalOperationSequence } from '../src/interop/operation.js';
-import type { ForeignUsageIR, InteropSemanticModel, ModuleResolutionWitness } from '../src/interop/types.js';
+import type { ForeignUsage, ForeignUsageIR, InteropSemanticModel, ModuleResolutionWitness } from '../src/interop/types.js';
 import { parseSource } from '../src/project/project.js';
 
 const span = {
@@ -110,8 +110,22 @@ test('same node id and span cannot rebind a usage to a different AST operation k
 		receiverMode: 'none',
 		mayReject: false,
 	};
+	const currentCall: ForeignUsage = {
+		kind: 'call',
+		nodeId: statement.expression.id,
+		span: statement.expression.span,
+		foreignType: {
+			ref: { providerId: 'test', generation: 1, id: 'field-call-result' },
+			display: 'string',
+			category: 'primitive',
+			primitive: 'string',
+			origin: { moduleSpecifier: './library.js', exportName: 'field' },
+		},
+		receiverMode: 'none',
+		mayReject: false,
+	};
 	const interop: InteropSemanticModel = {
-		usages: [],
+		usages: [currentCall],
 		usageIR: [staleCall],
 		moduleWitnesses: [],
 		requiresJavaScriptInitialization: false,
