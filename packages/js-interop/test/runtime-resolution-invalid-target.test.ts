@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import test from 'node:test';
+import ts from 'typescript';
 import { TypeScriptInteropProvider } from '../src/index.js';
 import { fixtureRoot } from './fixture.js';
 
@@ -185,6 +186,44 @@ test('TypeScript customConditions are not trusted as active Node runtime conditi
 	assert.equal(imported.witness.declarationEntry, 'node.d.ts');
 	assert.equal(imported.witness.runtimeEntry, 'node.mjs');
 	assert.deepEqual(imported.witness.conditions, ['types', 'node-addons', 'node', 'import', 'module-sync']);
+});
+
+test('Node platform pins the TypeScript resolver to Node semantics', async () => {
+	const root = await fixtureRoot();
+	const packageRoot = join(root, 'node_modules', 'node-platform-resolution');
+	await mkdir(packageRoot, { recursive: true });
+	await writeFile(join(packageRoot, 'package.json'), `${JSON.stringify({
+		name: 'node-platform-resolution',
+		version: '1.0.0',
+		type: 'module',
+		exports: {
+			'.': {
+				node: { types: './node.d.ts', default: './node.mjs' },
+				default: { types: './default.d.ts', default: './default.mjs' },
+			},
+		},
+	}, null, 2)}\n`, 'utf8');
+	await writeFile(join(packageRoot, 'node.d.ts'), 'declare const value: "node";\nexport default value;\n', 'utf8');
+	await writeFile(join(packageRoot, 'default.d.ts'), 'declare const value: "default";\nexport default value;\n', 'utf8');
+	await writeFile(join(packageRoot, 'node.mjs'), 'export default "node";\n', 'utf8');
+	await writeFile(join(packageRoot, 'default.mjs'), 'export default "default";\n', 'utf8');
+
+	const provider = new TypeScriptInteropProvider({
+		projectRoot: root,
+		compilerOptions: {
+			module: ts.ModuleKind.ESNext,
+			moduleResolution: ts.ModuleResolutionKind.Bundler,
+		},
+	});
+	const imported = provider.resolveImport({
+		containingFile: join(root, 'src/main.virune'),
+		moduleSpecifier: 'node-platform-resolution',
+		kind: 'default',
+		platform: 'node',
+	});
+	assert.ok(imported.type);
+	assert.equal(imported.witness.declarationEntry, 'node.d.ts');
+	assert.equal(imported.witness.runtimeEntry, 'node.mjs');
 });
 
 test('an unsupported runtime extension is not promoted by package type', async () => {
