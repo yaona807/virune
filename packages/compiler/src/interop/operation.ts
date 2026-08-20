@@ -54,6 +54,11 @@ interface ExternalOperationBase {
 	readonly decision: InteropDecisionIR;
 }
 
+interface AstNodeAnchor {
+	readonly kind: string;
+	readonly span: SourceSpan;
+}
+
 export interface ExternalModuleLoadOperationIR extends ExternalOperationBase {
 	readonly kind: 'module-load';
 	readonly moduleSpecifier: string;
@@ -120,8 +125,8 @@ export function externalOperationSequence(input: {
 }): readonly ExternalOperationIR[] {
 	if (input.diagnostics.some(diagnostic => diagnostic.severity === 'error')) return [];
 
-	const nodeSpans = collectAstNodeSpans(input.module);
-	for (const usage of input.interop.usageIR) assertCurrentUsageAnchor(usage, nodeSpans);
+	const nodeAnchors = collectAstNodeAnchors(input.module);
+	for (const usage of input.interop.usageIR) assertCurrentUsageAnchor(usage, nodeAnchors);
 
 	const operations: ExternalOperationIR[] = [];
 	let witnessIndex = 0;
@@ -327,8 +332,8 @@ function sameRuntimeWitness(left: ExternalRuntimeResolutionWitness, right: Exter
 	return JSON.stringify(left) === JSON.stringify(right);
 }
 
-function collectAstNodeSpans(module: A.ModuleNode): ReadonlyMap<NodeId, SourceSpan> {
-	const result = new Map<NodeId, SourceSpan>();
+function collectAstNodeAnchors(module: A.ModuleNode): ReadonlyMap<NodeId, AstNodeAnchor> {
+	const result = new Map<NodeId, AstNodeAnchor>();
 	const seen = new Set<object>();
 	const visit = (value: unknown): void => {
 		if (value === null || typeof value !== 'object') return;
@@ -341,7 +346,7 @@ function collectAstNodeSpans(module: A.ModuleNode): ReadonlyMap<NodeId, SourceSp
 		const record = value as Record<string, unknown>;
 		if (typeof record.id === 'number' && typeof record.kind === 'string' && isSourceSpan(record.span)) {
 			if (result.has(record.id as NodeId)) throw new Error(`Duplicate AST node id ${record.id} in External operation source binding`);
-			result.set(record.id as NodeId, record.span);
+			result.set(record.id as NodeId, { kind: record.kind, span: record.span });
 		}
 		for (const child of Object.values(record)) visit(child);
 	};
@@ -349,11 +354,22 @@ function collectAstNodeSpans(module: A.ModuleNode): ReadonlyMap<NodeId, SourceSp
 	return result;
 }
 
-function assertCurrentUsageAnchor(usage: ForeignUsageIR, nodeSpans: ReadonlyMap<NodeId, SourceSpan>): void {
-	const current = nodeSpans.get(usage.nodeId);
-	if (current === undefined || !sameSpan(current, usage.span)) {
+function assertCurrentUsageAnchor(usage: ForeignUsageIR, nodeAnchors: ReadonlyMap<NodeId, AstNodeAnchor>): void {
+	const current = nodeAnchors.get(usage.nodeId);
+	if (current === undefined || !sameSpan(current.span, usage.span) || !usageKindMatchesAstKind(usage.kind, current.kind)) {
 		throw new Error(`Stale or cross-session External usage evidence for node ${usage.nodeId}`);
 	}
+}
+
+function usageKindMatchesAstKind(usageKind: ForeignUsageIR['kind'], astKind: string): boolean {
+	switch (usageKind) {
+		case 'import': return astKind === 'ImportDeclaration';
+		case 'property': return astKind === 'FieldExpression';
+		case 'call': return astKind === 'CallExpression';
+		case 'await': return astKind === 'AwaitExpression';
+		case 'bridge': return astKind.endsWith('Expression');
+	}
+	return false;
 }
 
 function isSourceSpan(value: unknown): value is SourceSpan {
