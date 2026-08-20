@@ -487,6 +487,9 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 			...targetCompilerOptions,
 			resolvePackageJsonExports: true,
 			resolvePackageJsonImports: true,
+			preserveSymlinks: false,
+			allowArbitraryExtensions: false,
+			resolveJsonModule: false,
 			types: platform === 'node' ? ['node'] : [],
 			...(typeRoots === undefined ? {} : { typeRoots }),
 		};
