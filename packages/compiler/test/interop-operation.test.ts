@@ -75,11 +75,12 @@ test('ModuleLoad keeps only runtime resolution evidence and strips declaration/p
 });
 
 test('ModuleLoad represents bundler runtime resolution as a pending build obligation', () => {
+	const { runtimeEntry: _runtimeEntry, ...withoutRuntimeEntry } = witness();
 	const operation = externalModuleLoadOperation({
 		nodeId: 3,
 		span,
 		moduleSpecifier: './library.js',
-		witnesses: [{ ...witness(), platform: 'browser', runtimeFormat: 'bundler', runtimeEntry: undefined }],
+		witnesses: [{ ...withoutRuntimeEntry, platform: 'browser', runtimeFormat: 'bundler' }],
 	});
 	assert.equal(operation.decision.status, 'obligation-pending');
 	assert.equal(operation.decision.mechanism, 'direct');
