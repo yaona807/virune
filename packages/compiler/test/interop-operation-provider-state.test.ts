@@ -69,6 +69,34 @@ test('absolute checkout paths cannot hide in runtime witness package or conditio
 	}
 });
 
+test('source anchors are reconstructed from known scalar fields and cannot carry private metadata', () => {
+	const privatePath = '/checkout/private/anchor-state';
+	const dirtySpan = {
+		...span,
+		providerPrivatePath: privatePath,
+		start: { ...span.start, providerPrivatePath: privatePath },
+		end: { ...span.end, providerPrivatePath: privatePath },
+	};
+	const operation = externalOperationFromUsage({
+		...usageWithOrigin({ moduleSpecifier: './library.js' }),
+		span: dirtySpan,
+	} as ForeignUsageIR);
+	assert.equal(JSON.stringify(operation).includes(privatePath), false);
+	assert.deepEqual(operation?.span, span);
+
+	assert.throws(
+		() => externalOperationFromUsage({ ...usageWithOrigin(undefined), nodeId: Number.NaN }),
+		/node id must be a safe integer/u,
+	);
+	assert.throws(
+		() => externalOperationFromUsage({
+			...usageWithOrigin(undefined),
+			span: { ...span, start: { ...span.start, offset: Number.POSITIVE_INFINITY } },
+		}),
+		/source span must contain safe integer positions/u,
+	);
+});
+
 test('scoped package names and ordinary semantic conditions remain valid', () => {
 	const operation = externalModuleLoadOperation({
 		nodeId: 1,
