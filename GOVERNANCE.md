@@ -4,46 +4,46 @@
 
 ## Current governance model
 
-Virune is currently a public open-source project with one project maintainer, [`@yaona807`](https://github.com/yaona807). This document describes the governance that actually exists today. It does not create a steering committee, voting body, foundation, or additional maintainer role by implication.
+Virune is currently a public open-source project maintained by one project maintainer, [`@yaona807`](https://github.com/yaona807). This document describes the governance that exists today. It does not imply a steering committee, voting body, foundation, or additional maintainer role.
 
-The public repository is the source of truth for current code, public specifications, repository-owned policy, Issues, Pull Requests, and review evidence. [CONTRIBUTING.md](CONTRIBUTING.md) is the canonical contributor-workflow policy and [SECURITY.md](SECURITY.md) is the canonical security-reporting policy.
+The public repository is authoritative for current code, public specifications, repository-owned policy, Issues, Pull Requests, and review records. [CONTRIBUTING.md](CONTRIBUTING.md) defines the contributor workflow. [SECURITY.md](SECURITY.md) defines the security-reporting process.
 
-Private notes, automation coordination, or maintainer-only working state do not create requirements for external contributors or merge eligibility unless the applicable requirement is represented in the repository or another publicly referenced canonical project artifact.
+Private notes, internal automation coordination, and maintainer-only working state do not by themselves impose obligations on external contributors or affect merge eligibility. Any such requirement must be documented in the repository or in another authoritative project document that is publicly referenced.
 
-## Maintainer responsibility and authority
+## Maintainer responsibilities and authority
 
 The current project maintainer is responsible for:
 
-- triaging Issues and Pull Requests;
-- maintaining the public project roadmap and work-item boundaries;
+- triaging and prioritizing Issues and Pull Requests;
+- maintaining the public roadmap and work-item scope;
 - reviewing and merging changes;
 - maintaining repository settings and required validation;
 - making release and distribution decisions;
 - coordinating security response under the security policy;
 - moderating project-controlled community spaces under the [Code of Conduct](CODE_OF_CONDUCT.md);
-- keeping public project policy aligned with actual project behavior.
+- keeping public project policy aligned with actual project operation.
 
-Maintainer authority is not permission to bypass Virune's documented correctness, safety, compatibility, determinism, reproducibility, review, or release boundaries. Unknown or unresolved states must not be declared safe or complete merely because the maintainer prefers a change.
+These responsibilities do not allow the maintainer to bypass Virune's documented requirements for correctness, safety, compatibility, determinism, reproducibility, review, or release. An unknown or unresolved state must not be treated as safe or complete merely because the maintainer wants a change to proceed.
 
 ## Decision classes
 
-### Routine implementation decisions
+### Routine implementation changes
 
-Ordinary fixes, features, tests, refactors, documentation changes, and CI improvements follow [CONTRIBUTING.md](CONTRIBUTING.md): use an appropriate Issue, keep the Pull Request to one logical change, validate the behavior, perform adversarial review, and use current exact-head formal CI evidence before merge.
+Routine bug fixes, features, tests, refactors, documentation changes, and CI improvements follow [CONTRIBUTING.md](CONTRIBUTING.md). Use an appropriate Issue, keep each Pull Request to one logical change, validate the change, perform adversarial review, and verify formal CI against the current PR head before merge.
 
 ### Public contract changes
 
-A change that affects the Language Specification, Compiler API, Runtime ABI, Interop ABI, public standard library, externally consumed machine-readable output, compatibility promises, or another reviewed public contract requires an explicit Issue or proposal describing the affected boundary and migration/compatibility impact.
+A change that affects the Language Specification, Compiler API, Runtime ABI, Interop ABI, public standard library, externally consumed machine-readable output, compatibility guarantees, or another reviewed public contract requires an explicit Issue or proposal. That work item must describe the affected surface and the migration or compatibility impact.
 
-Such a change must not be justified solely by implementation convenience, Self-hosting convenience, or the desire to make CI pass. It requires the relevant tests and public documentation, compatibility and safety analysis, adversarial review to zero actionable findings, current exact-head formal CI, and final exact-head review before merge.
+Such a change must not be justified solely by implementation convenience, Self-hosting convenience, or the desire to make CI pass. Before merge, it requires the relevant tests and public documentation, compatibility and safety analysis, adversarial review to zero actionable findings, formal CI against the current PR head, and final exact-head review.
 
 ### Security decisions
 
-Security-sensitive investigation may remain private while disclosure would increase risk. The process, supported-version boundary, remediation requirements, and eventual public disclosure record follow [SECURITY.md](SECURITY.md). Confidential handling does not permit required security, release, or regression validation to be silently weakened.
+Security-sensitive investigations may remain private while disclosure would increase risk. The reporting and response process, supported versions, remediation requirements, and eventual public disclosure record follow [SECURITY.md](SECURITY.md). Private handling does not allow required security, release, or regression validation to be weakened.
 
 ### Release decisions
 
-A release is an explicit maintainer decision after the repository's applicable release, security, compatibility, and reproducibility gates are satisfied. CI success alone is not authority to publish when a release-specific policy or observation requirement remains unresolved.
+A release is an explicit maintainer decision made only after the repository's applicable release, security, compatibility, and reproducibility gates are satisfied. A passing CI run is not enough to publish while a release-specific policy or observation requirement remains unresolved.
 
 ### Governance decisions
 
@@ -51,24 +51,24 @@ Changes to contributor obligations, maintainer authority, moderation authority, 
 
 ## How decisions are made
 
-Virune does not currently use majority voting or a formal consensus committee. Contributors are encouraged to present evidence, alternatives, compatibility impact, and concrete objections in the relevant Issue or Pull Request. The maintainer makes the final project decision based on the documented project principles and reviewed evidence, and significant rationale should remain visible in the public work item when it is safe to publish.
+Virune does not currently use majority voting or a formal consensus committee. Contributors are encouraged to present evidence, alternatives, compatibility impact, and concrete objections in the relevant Issue or Pull Request. The maintainer makes the final decision based on the documented project principles and reviewed evidence. Significant rationale should remain visible in the public work item when it is safe to publish.
 
-A disagreement is not resolved by narrowing Acceptance Criteria after the fact, weakening a gate, or treating an unknown state as successful. When evidence is insufficient, the decision remains unresolved or the change remains unmerged.
+A disagreement must not be treated as resolved by narrowing Acceptance Criteria after the fact, weakening a gate, or treating an unknown state as successful. If the evidence is insufficient, the decision remains unresolved or the change remains unmerged.
 
 ## Adding or changing maintainers
 
 There is no automatic maintainer promotion based on contribution count, employment, sponsorship, or time in the project. Virune currently has no additional maintainer team to which authority can be delegated.
 
-If another maintainer is added in the future, the project must first document the real authority being granted, including review/merge scope, release authority, security access, moderation responsibility, and repository administration as applicable. Required permissions should be no broader than the role needs.
+If another maintainer is added in the future, the project must first document the authority actually being granted. As applicable, this includes review and merge scope, release authority, security access, moderation responsibility, and repository administration. Permissions must be no broader than the role requires.
 
-Virune also does not currently claim an independent moderation body for reports concerning the sole maintainer; that limitation is documented in [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md). Any future independent moderation process must identify the actual responsible parties and authority before the project claims that process exists.
+Virune also does not currently claim that an independent body exists to review reports concerning the sole maintainer. This limitation is documented in [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md). If an independent moderation process is introduced in the future, the project must identify the actual responsible parties and their authority before claiming that the process exists.
 
-## Emergency and continuity boundaries
+## Emergencies and continuity
 
-A security incident, compromised credential, infrastructure failure, or maintainer unavailability may justify pausing merge, publication, or release activity. It does not justify bypassing required safety or provenance checks.
+A security incident, compromised credential, infrastructure failure, or maintainer unavailability may require merge, publication, or release activity to pause. It does not justify skipping required safety or provenance checks.
 
-No automatic transfer of the official Virune project identity or administrative assets is defined today. The broader continuity work is tracked by [Issue #248](https://github.com/yaona807/virune/issues/248). Apache-2.0 continues to permit lawful forks according to the license, but a fork does not become an official Virune release merely by continuing development.
+Virune does not currently define an automatic transfer process for the official project identity or administrative assets. Broader continuity work is tracked in [Issue #248](https://github.com/yaona807/virune/issues/248). Apache-2.0 permits forks in accordance with the license, but a fork does not become an official Virune release merely because development continues there.
 
 ## Changing this document
 
-Governance changes should describe the problem being solved, the authority or obligation being changed, compatibility and safety implications, and the intended transition for existing work. Update [GOVERNANCE.md](GOVERNANCE.md) and [GOVERNANCE_ja.md](GOVERNANCE_ja.md) in the same Pull Request.
+A governance change should describe the problem being solved, the authority or obligation being changed, its compatibility and safety implications, and how existing work should transition. Update [GOVERNANCE.md](GOVERNANCE.md) and [GOVERNANCE_ja.md](GOVERNANCE_ja.md) in the same Pull Request.
