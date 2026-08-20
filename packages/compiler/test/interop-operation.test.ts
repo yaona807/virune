@@ -397,15 +397,18 @@ test('package identity never selects operation mechanism or safety claims', () =
 	assert.deepEqual(first?.decision, second?.decision);
 });
 
-test('ModuleLoad refuses an empty or absolute module specifier', () => {
-	assert.throws(
-		() => externalModuleLoadOperation({ nodeId: 1, span, moduleSpecifier: '', witnesses: [witness()] }),
-		/must be a non-empty string/u,
-	);
-	assert.throws(
-		() => externalModuleLoadOperation({ nodeId: 1, span, moduleSpecifier: '/checkout/library.js', witnesses: [witness('/checkout/library.js')] }),
-		/must not be absolute/u,
-	);
+test('ModuleLoad preserves source-authored module specifier bytes', () => {
+	for (const moduleSpecifier of ['', '/explicit/library.js']) {
+		const operation = externalModuleLoadOperation({
+			nodeId: 1,
+			span,
+			moduleSpecifier,
+			witnesses: [witness(moduleSpecifier)],
+		});
+		assert.equal(operation.moduleSpecifier, moduleSpecifier);
+		assert.equal(operation.runtimeWitness?.moduleSpecifier, moduleSpecifier);
+		assert.equal(operation.decision.status, 'resolved');
+	}
 });
 
 function witness(moduleSpecifier = './library.js'): ModuleResolutionWitness {
