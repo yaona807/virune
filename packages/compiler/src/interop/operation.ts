@@ -278,7 +278,10 @@ function unresolvedDirectDecision(): InteropDecisionIR {
 }
 
 function runtimeResolutionDecision(witness: ExternalRuntimeResolutionWitness): InteropDecisionIR {
-	if (witness.runtimeFormat === 'esm' || witness.runtimeFormat === 'commonjs' || witness.runtimeFormat === 'builtin') {
+	if (
+		(witness.runtimeFormat === 'esm' || witness.runtimeFormat === 'commonjs' || witness.runtimeFormat === 'builtin')
+		&& witness.runtimeEntry !== undefined
+	) {
 		return canonicalizeInteropDecision({
 			status: 'resolved',
 			mechanism: 'direct',
