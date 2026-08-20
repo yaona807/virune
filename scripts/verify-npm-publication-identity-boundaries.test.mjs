@@ -226,6 +226,9 @@ function buildTar(entries) {
 		Buffer.from(name).copy(header, 0, 0, 100);
 		header.write(`${content.byteLength.toString(8).padStart(11, '0')}\0`, 124, 12, 'ascii');
 		header[156] = typeFlag === '\0' ? 0 : typeFlag.charCodeAt(0);
+		header.fill(0x20, 148, 156);
+		const checksum = header.reduce((total, byte) => total + byte, 0);
+		header.write(`${checksum.toString(8).padStart(6, '0')}\0 `, 148, 8, 'ascii');
 		chunks.push(header, content);
 		const padding = (512 - content.byteLength % 512) % 512;
 		if (padding > 0) chunks.push(Buffer.alloc(padding));

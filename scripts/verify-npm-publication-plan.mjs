@@ -14,7 +14,6 @@ const REQUIRED_PREPUBLICATION_BLOCKERS = [
 	'clean-registry-install-smoke',
 	'documentation-sync',
 	'generated-project-registry-smoke',
-	'package-contents-audit',
 	'package-publication-enablement',
 	'public-registry-verification',
 	'publication-gate-integration',

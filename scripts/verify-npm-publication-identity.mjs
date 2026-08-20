@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { closeSync, constants, existsSync, fstatSync, lstatSync, openSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { TextDecoder } from 'node:util';
 import { pathToFileURL } from 'node:url';
 import { gunzipSync } from 'node:zlib';
 import { verifyNpmPublicationPlan } from './verify-npm-publication-plan.mjs';
@@ -8,6 +9,11 @@ import { verifyNpmPublicationPlan } from './verify-npm-publication-plan.mjs';
 const PUBLICATION_MANIFEST = 'PUBLICATION-MANIFEST.json';
 const RELEASE_PACKAGE_MANIFEST = 'MANIFEST.json';
 const CANDIDATE_DEPENDENCY_SECTIONS = ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies'];
+const TAR_BLOCK_SIZE = 512;
+const TAR_CHECKSUM_OFFSET = 148;
+const TAR_CHECKSUM_LENGTH = 8;
+const TAR_SIZE_OFFSET = 124;
+const TAR_SIZE_LENGTH = 12;
 
 export function registryReleaseAssetNameForPackage(registryName, version) {
 	const name = nonEmptyString(registryName, '$.registryName');
@@ -212,7 +218,7 @@ export function verifyRegistryCandidateTarball(bytes, version, registryName, fil
 	const name = packageName(registryName, '$.registryName');
 	const path = `$.registryCandidate.${file}`;
 	assert(Buffer.isBuffer(bytes) || bytes instanceof Uint8Array, path, 'expected package bytes');
-	const entries = readTarEntries(Buffer.from(bytes), path);
+	const entries = readRegistryCandidateTarEntries(Buffer.from(bytes), path);
 	const manifestEntry = entries.get('package/package.json');
 	assert(manifestEntry !== undefined && isRegularTarEntry(manifestEntry), path, 'package/package.json must be a regular file');
 	let manifest;
@@ -286,7 +292,7 @@ function verifyEmbeddedCliVersion(entries, version, file) {
 	assert(matches[0][2] === version, `$.registryCli.${file}.dist/src/main.js`, `embedded VERSION ${matches[0][2]} does not match ${version}`);
 }
 
-function isRegularTarEntry(entry) {
+export function isRegularTarEntry(entry) {
 	return entry.typeFlag === 0 || entry.typeFlag === '0'.charCodeAt(0);
 }
 
@@ -299,33 +305,85 @@ function verifyCanonicalLegalEntry(entries, entryPath, expectedBytes, path) {
 	}
 }
 
-function readTarEntries(tgzBytes, path) {
+export function readRegistryCandidateTarEntries(tgzBytes, path) {
 	let tar;
 	try {
 		tar = gunzipSync(tgzBytes);
 	} catch (error) {
 		throw new Error(`${path}: invalid gzip tarball: ${error instanceof Error ? error.message : String(error)}`);
 	}
+	assert(tar.byteLength >= TAR_BLOCK_SIZE * 2, path, 'tar archive is missing the canonical two-block end marker');
+	assert(tar.byteLength % TAR_BLOCK_SIZE === 0, path, 'tar archive byte length must be aligned to 512-byte blocks');
+
 	const entries = new Map();
 	let offset = 0;
-	while (offset + 512 <= tar.byteLength) {
-		const header = tar.subarray(offset, offset + 512);
-		if (header.every(byte => byte === 0)) break;
-		const stringField = (start, length) => header.subarray(start, start + length).toString('utf8').replace(/\0.*$/su, '');
-		const name = stringField(0, 100);
-		const prefix = stringField(345, 155);
+	while (offset + TAR_BLOCK_SIZE <= tar.byteLength) {
+		const header = tar.subarray(offset, offset + TAR_BLOCK_SIZE);
+		if (isZeroTarBlock(header)) {
+			const secondEndOffset = offset + TAR_BLOCK_SIZE;
+			assert(secondEndOffset + TAR_BLOCK_SIZE <= tar.byteLength, path, 'tar archive is missing the canonical second end block');
+			assert(isZeroTarBlock(tar.subarray(secondEndOffset, secondEndOffset + TAR_BLOCK_SIZE)), path, 'tar archive is missing the canonical second end block');
+			assert(tar.subarray(secondEndOffset + TAR_BLOCK_SIZE).every(byte => byte === 0), path, 'tar archive contains non-zero data after the canonical end marker');
+			return entries;
+		}
+
+		const block = offset / TAR_BLOCK_SIZE;
+		const declaredChecksum = parseTarOctalField(header, TAR_CHECKSUM_OFFSET, TAR_CHECKSUM_LENGTH, path, `checksum for entry at block ${block}`);
+		let actualChecksum = 0;
+		for (let index = 0; index < TAR_BLOCK_SIZE; index += 1) {
+			actualChecksum += index >= TAR_CHECKSUM_OFFSET && index < TAR_CHECKSUM_OFFSET + TAR_CHECKSUM_LENGTH ? 0x20 : header[index];
+		}
+		assert(declaredChecksum === actualChecksum, path, `invalid tar header checksum for entry at block ${block}`);
+
+		const name = decodeTarPathField(header, 0, 100, path, 'entry name', { required: true });
+		const prefix = decodeTarPathField(header, 345, 155, path, 'entry prefix');
 		const fullName = prefix.length > 0 ? `${prefix}/${name}` : name;
-		const sizeText = stringField(124, 12).trim();
-		const size = sizeText.length > 0 ? Number.parseInt(sizeText, 8) : 0;
-		assert(Number.isSafeInteger(size) && size >= 0, path, `invalid tar entry size for ${fullName}`);
-		const dataStart = offset + 512;
+		const size = parseTarOctalField(header, TAR_SIZE_OFFSET, TAR_SIZE_LENGTH, path, `size for ${fullName}`);
+		const dataStart = offset + TAR_BLOCK_SIZE;
 		const dataEnd = dataStart + size;
-		assert(dataEnd <= tar.byteLength, path, `truncated tar entry ${fullName}`);
+		const paddedSize = Math.ceil(size / TAR_BLOCK_SIZE) * TAR_BLOCK_SIZE;
+		const nextOffset = dataStart + paddedSize;
+		assert(Number.isSafeInteger(nextOffset) && nextOffset <= tar.byteLength, path, `truncated tar entry ${fullName}`);
+		assert(tar.subarray(dataEnd, nextOffset).every(byte => byte === 0), path, `tar entry ${fullName} has non-zero padding bytes`);
 		assert(!entries.has(fullName), path, `duplicate tar entry ${fullName}`);
 		entries.set(fullName, { bytes: tar.subarray(dataStart, dataEnd), typeFlag: header[156] });
-		offset = dataStart + Math.ceil(size / 512) * 512;
+		offset = nextOffset;
 	}
-	return entries;
+
+	throw new Error(`${path}: tar archive is missing the canonical two-block end marker`);
+}
+
+function parseTarOctalField(header, start, length, path, description) {
+	const field = header.subarray(start, start + length);
+	assert((field[0] & 0x80) === 0, path, `unsupported base-256 tar ${description}`);
+	const text = field.toString('latin1');
+	const core = text.replace(/[\0 ]+$/u, '').replace(/^ +/u, '');
+	assert(core.length === 0 || /^[0-7]+$/u.test(core), path, `invalid octal tar ${description}`);
+	if (core.length === 0) return 0;
+	const value = Number.parseInt(core, 8);
+	assert(Number.isSafeInteger(value) && value >= 0, path, `invalid tar ${description}`);
+	return value;
+}
+
+function decodeTarPathField(header, start, length, path, description, { required = false } = {}) {
+	const field = header.subarray(start, start + length);
+	const nulIndex = field.indexOf(0);
+	const bytes = nulIndex === -1 ? field : field.subarray(0, nulIndex);
+	if (nulIndex !== -1) {
+		assert(field.subarray(nulIndex).every(byte => byte === 0), path, `non-zero data after NUL in tar ${description}`);
+	}
+	let text;
+	try {
+		text = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+	} catch {
+		throw new Error(`${path}: invalid UTF-8 tar ${description}`);
+	}
+	if (required) assert(text.length > 0, path, `tar ${description} must not be empty`);
+	return text;
+}
+
+function isZeroTarBlock(block) {
+	return block.byteLength === TAR_BLOCK_SIZE && block.every(byte => byte === 0);
 }
 
 function publicationPackage(value, path, version) {
