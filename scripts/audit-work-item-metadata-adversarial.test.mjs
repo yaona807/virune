@@ -79,6 +79,11 @@ test('Setext headings are not plain linkage lines', () => {
 	assert.deepEqual(extractPlainIssueRefs('intro\nRefs #107\n---\nRefs #108\n'), [108]);
 });
 
+test('single-hyphen empty list markers are not Setext heading underlines', () => {
+	assert.deepEqual(extractPlainIssueRefs('Refs #151\n-\n'), [151]);
+	assert.deepEqual(parseWorkItemRole('Work item role\n-\nImplementation\n'), { status: 'absent', role: null });
+});
+
 test('plain linkage remains a source-line contract outside code', () => {
 	assert.deepEqual(extractPlainIssueRefs('- prose\nRefs #96\n\nRefs #97\n'), [96, 97]);
 	assert.deepEqual(extractPlainIssueRefs('  Refs #98\n'), []);
