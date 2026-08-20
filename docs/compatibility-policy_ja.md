@@ -2,7 +2,7 @@
 
 [English](compatibility-policy.md) | [日本語](compatibility-policy_ja.md)
 
-この文書は、Viruneのstable releaseに対する互換性契約を定義します。既存のLanguage Specification、version付きRuntime／Interop ABI、公開Compiler API、standard library、CLI、editor integration、Self-hosting recovery artifactを共通ルールで整理し、それぞれの詳細規則を弱めません。
+この文書は、Viruneの安定版リリースに対する互換性の約束を定めます。既存のLanguage Specification、バージョン付きRuntime／Interop ABI、公開Compiler API、標準ライブラリ、CLI、エディタ連携、Self-hosting復旧artifactを共通のルールで整理するものであり、それぞれの詳細な規則を弱めるものではありません。
 
 ## 互換性クラス
 
@@ -52,7 +52,6 @@ Viruneのstable releaseは、project-levelのcompatibility signalとしてSemant
 - **Major**（例: `1.x.y` -> `2.0.0`）: Stable contractを意図的に変更できます。影響surfaceには明示的なmigration文書が必要です。
 
 Prerelease／nightlyの互換性は[`release-channels_ja.md`](release-channels_ja.md)を正本とします。Prerelease間では非互換変更があり得て、nightly snapshotには互換性保証がありません。
-
 ## Language compatibility
 
 [`../spec/`](../spec/)のファイルを規範的なLanguage contractとします。外部観測可能な挙動を変えないeditorial clarificationはmajor releaseを必要としません。
