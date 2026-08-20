@@ -25,6 +25,7 @@ export type {
 	ExternalOperationKind,
 	ExternalReadPropertyOperationIR,
 	ExternalRuntimeResolutionWitness,
+	ExternalSourceSpan,
 } from './interop/operation.js';
 export type {
 	ForeignCallResolution,
