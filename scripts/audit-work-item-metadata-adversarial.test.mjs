@@ -109,6 +109,17 @@ test('HTML comments cannot transform source lines into plain linkage', () => {
 	assert.deepEqual(extractPlainIssueRefs('- Refs #123\n'), [123]);
 });
 
+test('GFM comment blocks do not use browser-only --!> recovery as a terminator', () => {
+	assert.deepEqual(
+		extractPlainIssueRefs('<!--\nRefs #124\n--!>\nRefs #125\n-->\nRefs #126\n'),
+		[126],
+	);
+	assert.deepEqual(
+		parseWorkItemRole('<!--\n## Work item role\nImplementation\n--!>\n## Work item role\nTracking\n-->\n## Work item role\nImplementation\n'),
+		{ status: 'valid', role: 'Implementation' },
+	);
+});
+
 test('multiline inline-code spans cannot activate or hide plain linkage', () => {
 	assert.deepEqual(extractPlainIssueRefs('`example\nRefs #42\n`\nRefs #43\n'), [43]);
 	assert.deepEqual(extractPlainIssueRefs('`example\nfoo <!--\n`\nRefs #44\n'), [44]);
