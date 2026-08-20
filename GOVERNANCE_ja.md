@@ -1,74 +1,74 @@
-# Virune Project Governance
+# Virune プロジェクトガバナンス
 
 English: [GOVERNANCE.md](GOVERNANCE.md)
 
-## 現在のGovernance model
+## 現在の運営体制
 
-Viruneは現在、Project Maintainer 1名で運営されるpublic open-source projectです。現在のProject Maintainerは[`@yaona807`](https://github.com/yaona807)です。この文書は、**現在実際に存在するgovernance**を記述します。Steering committee、投票機関、foundation、追加Maintainer roleが存在することを暗黙に定めるものではありません。
+Viruneは現在、1名のプロジェクトメンテナーで運営される公開オープンソースプロジェクトです。現在のメンテナーは[`@yaona807`](https://github.com/yaona807)です。この文書は、現時点で実際に存在する運営体制だけを説明します。運営委員会、投票機関、財団、追加のメンテナー役職が存在することを意味するものではありません。
 
-現在のcode、public specification、repository-owned policy、Issue、Pull Request、review evidenceについてはpublic repositoryを正本とします。[CONTRIBUTING_ja.md](CONTRIBUTING_ja.md)をContributor workflowの正本、[SECURITY_ja.md](SECURITY_ja.md)をsecurity reporting policyの正本とします。
+現在のコード、公開仕様、リポジトリで管理する方針、Issue、Pull Request、レビュー記録については、公開リポジトリを正本とします。コントリビューター向けの作業手順は[CONTRIBUTING_ja.md](CONTRIBUTING_ja.md)、セキュリティ問題の報告手順は[SECURITY_ja.md](SECURITY_ja.md)に従います。
 
-Private note、automation coordination、Maintainerだけが利用する作業状態は、該当する要件がrepositoryまたはpublicに参照可能なcanonical project artifactへ反映されない限り、external contributorへの義務やmerge eligibilityを新たに発生させません。
+非公開のメモ、内部自動化の調整情報、メンテナーだけが参照する作業状態は、それ自体では外部コントリビューターへの義務やマージ条件になりません。そうした要件を適用する場合は、リポジトリまたは公開参照できる正本資料に明記する必要があります。
 
-## Maintainerの責務と権限
+## メンテナーの責務と権限
 
-現在のProject Maintainerは次を担当します。
+現在のプロジェクトメンテナーは、次を担当します。
 
-- IssueとPull Requestのtriage
-- Public roadmapとwork-item boundaryの維持
-- 変更のreviewとmerge
-- Repository settingsとrequired validationの維持
-- Releaseとdistributionの判断
-- Security policyに基づくsecurity responseの調整
-- [Code of Conduct](CODE_OF_CONDUCT_ja.md)に基づくProject管理下community spaceのmoderation
-- Public project policyと実際のProject運用の整合維持
+- IssueとPull Requestの整理と優先付け
+- 公開ロードマップと作業項目の範囲の維持
+- 変更内容のレビューとマージ
+- リポジトリ設定と必要な検証の維持
+- リリースと配布に関する判断
+- セキュリティポリシーに基づくセキュリティ対応の調整
+- [行動規範](CODE_OF_CONDUCT_ja.md)に基づく、Viruneが管理するコミュニティ空間のモデレーション
+- 公開されているプロジェクト方針と実際の運用を一致させること
 
-Maintainerの権限は、Viruneで文書化されたcorrectness、safety、compatibility、determinism、reproducibility、review、release boundaryを迂回する権限ではありません。Maintainerが変更を望んでいるという理由だけで、unknownまたは未解決の状態をsafeまたはcompleteとして扱ってはいけません。
+これらの権限は、Viruneで定めた正確性、安全性、互換性、決定性、再現性、レビュー、リリースに関する要件を回避してよいことを意味しません。メンテナーが変更を望んでいるという理由だけで、未確認または未解決の状態を安全または完了として扱ってはなりません。
 
-## Decisionの分類
+## 意思決定の種類
 
-### 通常のimplementation decision
+### 通常の実装変更
 
-通常のbug fix、feature、test、refactor、documentation、CI改善は[CONTRIBUTING_ja.md](CONTRIBUTING_ja.md)に従います。適切なIssueを使用し、Pull Requestを1 logical changeに限定し、behaviorをvalidateし、adversarial reviewを実行し、merge前にcurrent exact headのformal CI evidenceを確認します。
+通常のバグ修正、機能追加、テスト、リファクタリング、ドキュメント変更、CI改善は[CONTRIBUTING_ja.md](CONTRIBUTING_ja.md)に従います。適切なIssueを使用し、Pull Requestは1つの論理的な変更に限定します。変更内容を検証し、敵対的レビューを実施し、マージ前に現在のPR headそのものに対するformal CIの結果を確認します。
 
-### Public contractの変更
+### 公開契約の変更
 
-Language Specification、Compiler API、Runtime ABI、Interop ABI、public standard library、外部が利用するmachine-readable output、compatibility promise、その他のreview済みpublic contractへ影響する変更には、影響するboundaryとmigration/compatibility impactを明記したIssueまたはproposalが必要です。
+Language Specification、Compiler API、Runtime ABI、Interop ABI、公開standard library、外部から利用される機械可読出力、互換性保証、その他のレビュー済み公開契約に影響する変更には、変更対象と移行・互換性への影響を明記したIssueまたはproposalが必要です。
 
-その変更をimplementation convenience、Self-hosting convenience、またはCIを通すことだけで正当化してはいけません。Merge前に、該当するtestとpublic documentation、compatibility/safety analysis、actionable finding 0件までのadversarial review、current exact headのformal CI、final exact-head reviewが必要です。
+実装上の都合、Self-hosting上の都合、またはCIを通すことだけを理由に、このような変更を正当化してはなりません。マージ前に、該当するテストと公開ドキュメント、互換性・安全性の分析、修正すべき指摘が0件になるまでの敵対的レビュー、現在のPR headに対するformal CI、最終的なexact-headレビューが必要です。
 
-### Security decision
+### セキュリティに関する判断
 
-公開することでriskが増える間、security-sensitiveな調査をprivateに扱うことがあります。Process、supported-version boundary、remediation requirement、最終的なpublic disclosure recordは[SECURITY_ja.md](SECURITY_ja.md)に従います。Confidentialに扱うことを理由に、required security/release/regression validationを暗黙に弱めてはいけません。
+公開によってリスクが高まる間は、セキュリティ上重要な調査を非公開で扱うことがあります。報告と対応の手順、サポート対象バージョン、修正要件、最終的な公開記録は[SECURITY_ja.md](SECURITY_ja.md)に従います。非公開で扱うことを理由に、必要なセキュリティ、リリース、回帰検証を弱めてはなりません。
 
-### Release decision
+### リリースに関する判断
 
-Releaseは、repositoryで適用されるrelease、security、compatibility、reproducibility gateを満たした後に行う明示的なMaintainer decisionです。Release固有のpolicyやobservation requirementが未解決である場合、CI successだけをpublishの根拠にはできません。
+リリースは、リポジトリに適用されるリリース、セキュリティ、互換性、再現性の各Gateを満たした後に行う、メンテナーの明示的な判断です。リリース固有の方針や観測要件が未解決であれば、CIが成功しているだけでは公開できません。
 
-### Governance decision
+### ガバナンスに関する判断
 
-Contributor obligation、Maintainer authority、moderation authority、merge policy、release authority、またはこのgovernance modelを変更する場合、明示的なgovernance Issueとreview可能なrepository changeが必要です。Public Markdownのgovernance documentは英語と日本語を同一変更で維持します。
+コントリビューターの義務、メンテナーの権限、モデレーション権限、マージ方針、リリース権限、この運営体制のいずれかを変更する場合は、明示的なgovernance Issueと、レビュー可能なリポジトリ上の変更が必要です。公開するMarkdownのガバナンス文書は、英語版と日本語版を同じ変更で維持します。
 
-## Decisionの決め方
+## 意思決定の進め方
 
-Viruneは現在、majority votingやformal consensus committeeを使用していません。Contributorには、関連IssueまたはPull Requestでevidence、alternative、compatibility impact、具体的なobjectionを提示することを推奨します。Maintainerは、文書化されたProject原則とreview済みevidenceに基づいて最終的なProject decisionを行い、安全に公開できる重要なrationaleはpublic work itemへ残します。
+Viruneは現在、多数決や正式な合意形成委員会を採用していません。コントリビューターには、関連するIssueまたはPull Requestで、根拠、代替案、互換性への影響、具体的な反対理由を提示することを推奨します。最終的な判断は、文書化されたプロジェクト原則とレビュー済みの根拠に基づいてメンテナーが行います。安全に公開できる重要な判断理由は、公開の作業項目に残します。
 
-意見の相違を、後からAcceptance Criteriaを狭める、gateを弱める、unknown stateをsuccessとして扱うことで解消してはいけません。Evidenceが不足している場合、そのdecisionはunresolvedのままとするか、変更をunmergedのまま維持します。
+意見の相違を、後からAcceptance Criteriaを狭めること、Gateを弱めること、未確認の状態を成功として扱うことで解消したことにしてはなりません。判断に必要な根拠が不足している場合は、判断を未解決のままにするか、変更をマージしないまま維持します。
 
-## Maintainerの追加・変更
+## メンテナーの追加・変更
 
-Contribution数、勤務先、sponsorship、Project参加期間による自動的なMaintainer昇格はありません。Viruneには現在、権限を委譲できる追加Maintainer teamは存在しません。
+貢献数、勤務先、スポンサー関係、プロジェクトへの参加期間を理由に、自動的にメンテナーへ昇格する仕組みはありません。Viruneには現在、権限を委譲できる追加のメンテナーチームも存在しません。
 
-将来Maintainerを追加する場合、まず実際に付与するauthorityを文書化します。必要に応じてreview/merge scope、release authority、security access、moderation responsibility、repository administrationを明示し、permissionはroleに必要な範囲を超えないようにします。
+将来メンテナーを追加する場合は、まず実際に付与する権限を文書化します。必要に応じて、レビュー・マージの範囲、リリース権限、セキュリティ情報へのアクセス、モデレーション責任、リポジトリ管理権限を明示します。付与する権限は、その役割に必要な範囲を超えないようにします。
 
-またViruneは現在、sole maintainer自身に関するreportについて独立したmoderation bodyが存在するとは表明していません。この制約は[CODE_OF_CONDUCT_ja.md](CODE_OF_CONDUCT_ja.md)に記載します。将来独立したmoderation processを設ける場合、Projectがその仕組みの存在を表明する前に、実際のresponsible partyとauthorityを明示する必要があります。
+またViruneは現在、唯一のメンテナー本人に関する通報を独立して審査する組織が存在するとは表明していません。この制約は[CODE_OF_CONDUCT_ja.md](CODE_OF_CONDUCT_ja.md)に記載しています。将来、独立したモデレーション手続きを設ける場合は、その仕組みが存在すると表明する前に、実際の責任者と権限を明示する必要があります。
 
-## Emergencyとcontinuity boundary
+## 緊急時と継続性
 
-Security incident、credential compromise、infrastructure failure、Maintainer不在などでは、merge、publication、release activityを停止することがあります。ただしrequired safety/provenance checkを迂回する理由にはなりません。
+セキュリティ事故、認証情報の侵害、インフラ障害、メンテナー不在などが発生した場合、マージ、公開、リリースを一時停止することがあります。ただし、それを理由に必要な安全性確認や来歴（provenance）検証を省略してはなりません。
 
-Official Virune project identityやadministrative assetの自動的な移管手順は現在定義されていません。より広いcontinuity workは[Issue #248](https://github.com/yaona807/virune/issues/248)でtrackingしています。Apache-2.0はLicenseに従ったforkを認めますが、developmentを継続したという理由だけでforkがofficial Virune releaseになるわけではありません。
+Virune公式プロジェクトとしての識別情報や管理資産を自動的に移管する手順は、現在定義されていません。より広い継続性の整備は[Issue #248](https://github.com/yaona807/virune/issues/248)で追跡しています。Apache-2.0はライセンス条件に従ったforkを認めますが、開発を継続したという理由だけで、そのforkがViruneの公式リリースになるわけではありません。
 
 ## この文書の変更
 
-Governance変更では、解決するproblem、変更されるauthorityまたはobligation、compatibility/safety implication、既存workに対するtransitionを記述してください。[GOVERNANCE.md](GOVERNANCE.md)と[GOVERNANCE_ja.md](GOVERNANCE_ja.md)は同一Pull Requestで更新します。
+ガバナンスを変更する場合は、解決しようとする問題、変更する権限または義務、互換性・安全性への影響、既存の作業をどのように移行するかを記述してください。[GOVERNANCE.md](GOVERNANCE.md)と[GOVERNANCE_ja.md](GOVERNANCE_ja.md)は同じPull Requestで更新します。
