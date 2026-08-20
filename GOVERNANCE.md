@@ -12,7 +12,7 @@ There is currently no steering committee or voting process. The maintainer makes
 
 The maintainer is primarily responsible for:
 
-- triaging, reviewing, and merging Issues and Pull Requests;
+- triaging Issues and reviewing and merging Pull Requests;
 - setting project direction and priorities;
 - releases and distribution;
 - security response;
