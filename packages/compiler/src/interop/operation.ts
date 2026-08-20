@@ -128,6 +128,7 @@ export function externalOperationSequence(input: {
 }): readonly ExternalOperationIR[] {
 	if (input.diagnostics.some(diagnostic => diagnostic.severity === 'error')) return [];
 
+	assertCurrentCheckerUsageCoverage(input.interop.usageIR, input.interop.usages);
 	const nodeAnchors = collectAstNodeAnchors(input.module);
 	for (const usage of input.interop.usageIR) assertCurrentUsageAnchor(usage, nodeAnchors, input.interop.usages);
 
@@ -383,6 +384,34 @@ function collectAstNodeAnchors(module: A.ModuleNode): ReadonlyMap<NodeId, AstNod
 	};
 	visit(module);
 	return result;
+}
+
+function assertCurrentCheckerUsageCoverage(stableUsages: readonly ForeignUsageIR[], currentUsages: readonly ForeignUsage[]): void {
+	const stable = stableUsages.filter(usage => usage.kind !== 'import');
+	const current = currentUsages.filter(usage => usage.kind !== 'import');
+	if (stable.length !== current.length) throw new Error('Stale or cross-session External usage evidence: current checker usage coverage is incomplete');
+	const stableAnchors = new Set(stable.map(nonImportUsageAnchorKey));
+	const currentAnchors = new Set(current.map(nonImportUsageAnchorKey));
+	if (stableAnchors.size !== stable.length || currentAnchors.size !== current.length) {
+		throw new Error('Stale or cross-session External usage evidence: duplicate current usage anchor');
+	}
+}
+
+function nonImportUsageAnchorKey(usage: ForeignUsage | ForeignUsageIR): string {
+	if (usage.kind === 'import' || !isNodeId(usage.nodeId) || !isSourceSpan(usage.span)) {
+		throw new Error('Stale or cross-session External usage evidence: malformed current usage anchor');
+	}
+	return JSON.stringify([
+		usage.kind,
+		usage.nodeId,
+		usage.span.fileId,
+		usage.span.start.offset,
+		usage.span.start.line,
+		usage.span.start.column,
+		usage.span.end.offset,
+		usage.span.end.line,
+		usage.span.end.column,
+	]);
 }
 
 function assertCurrentUsageAnchor(
