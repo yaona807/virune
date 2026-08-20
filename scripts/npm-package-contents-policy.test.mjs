@@ -35,3 +35,12 @@ test('rejects Windows superscript-digit device names', () => {
 		);
 	}
 });
+
+test('rejects remaining Windows DOS device names', () => {
+	for (const path of ['dist/COM0', 'dist/lpt0', 'dist/CONIN$', 'dist/conout$']) {
+		assert.throws(
+			() => auditWith(path),
+			/package path segment uses a Windows-reserved name/u,
+		);
+	}
+});
