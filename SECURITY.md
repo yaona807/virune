@@ -21,13 +21,11 @@ When possible, include:
 - the expected impact;
 - any known workaround.
 
-If private vulnerability reporting is unavailable, you may use the `Security contact request` Issue Form.
+If private vulnerability reporting is unavailable, your GitHub profile already lists a public contact method that the maintainer can use to contact you privately, and you are willing for the maintainer to use it, you may use the `Security contact request` Issue Form.
 
-This Issue is public. Do not include confidential information such as vulnerability details, reproduction steps, secrets, or contact information.
+This Issue is public. Do not include confidential information such as vulnerability details, reproduction steps, secrets, or contact information. Do not use this Issue Form if the fact that you are requesting security contact must itself remain confidential.
 
-If your GitHub profile already lists a public contact method that the maintainer can use to contact you privately, the maintainer may use that method.
-
-If no usable contact method is available, do not disclose vulnerability details publicly merely to request contact.
+If no usable private contact route is available, do not disclose vulnerability details publicly merely to request contact.
 
 ## Scope
 
