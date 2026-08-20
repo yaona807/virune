@@ -33,10 +33,17 @@ function load(value: ModuleResolutionWitness) {
 }
 
 test('runtime format and platform combinations fail closed when contradictory', () => {
+	const nodeBundler: ModuleResolutionWitness = {
+		moduleSpecifier: './library.js',
+		runtimeFormat: 'bundler',
+		conditions: ['types', 'node-addons', 'node', 'import', 'module-sync'],
+		platform: 'node',
+		providerVersion: 'provider-1',
+	};
 	for (const [value, expected] of [
 		[witness({ platform: 'browser', runtimeFormat: 'esm' }), /esm runtime witness requires the node platform/u],
 		[witness({ platform: 'browser', runtimeFormat: 'commonjs' }), /commonjs runtime witness requires the node platform/u],
-		[witness({ platform: 'node', runtimeFormat: 'bundler', runtimeEntry: undefined }), /bundler runtime witness requires the browser platform/u],
+		[nodeBundler, /bundler runtime witness requires the browser platform/u],
 		[witness({ platform: 'browser', runtimeFormat: 'bundler' }), /must defer its runtime entry to the build stage/u],
 	]) {
 		assert.throws(() => load(value as ModuleResolutionWitness), expected as RegExp);
@@ -44,12 +51,14 @@ test('runtime format and platform combinations fail closed when contradictory', 
 });
 
 test('builtin runtime witnesses require node and cannot impersonate a package', () => {
-	const builtin = witness({
+	const builtin: ModuleResolutionWitness = {
 		moduleSpecifier: 'node:fs',
 		runtimeEntry: 'node:fs',
 		runtimeFormat: 'builtin',
-		packageJsonHash: undefined,
-	});
+		conditions: ['types', 'node-addons', 'node', 'import', 'module-sync'],
+		platform: 'node',
+		providerVersion: 'provider-1',
+	};
 	assert.equal(load(builtin).decision.status, 'resolved');
 
 	assert.throws(
@@ -70,13 +79,14 @@ test('node: runtime entries cannot be relabeled as non-builtin resolution', () =
 });
 
 test('browser bundler resolution remains a pending build obligation', () => {
-	const operation = load(witness({
-		platform: 'browser',
-		runtimeEntry: undefined,
+	const browserBundler: ModuleResolutionWitness = {
+		moduleSpecifier: './library.js',
 		runtimeFormat: 'bundler',
 		conditions: ['types', 'import', 'browser'],
-		packageJsonHash: undefined,
-	}));
+		platform: 'browser',
+		providerVersion: 'provider-1',
+	};
+	const operation = load(browserBundler);
 	assert.equal(operation.decision.status, 'obligation-pending');
 	assert.equal(isResolvedDirectInteropDecision(operation.decision), false);
 });
