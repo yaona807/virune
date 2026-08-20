@@ -14,7 +14,7 @@ const FORBIDDEN_BASENAMES = new Set([
 	'tsconfig.tsbuildinfo',
 	'yarn.lock',
 ]);
-const WINDOWS_RESERVED_NAME = /^(?:(?:con|prn|aux|nul|com[1-9¹²³]|lpt[1-9¹²³])(?:\.|$)|(?:com0|lpt0|conin\$|conout\$)$)/iu;
+const WINDOWS_RESERVED_BASENAME = /^(?:con|prn|aux|nul|conin\$|conout\$|com[0-9¹²³]|lpt[0-9¹²³])$/iu;
 const WINDOWS_FORBIDDEN_CHARACTERS = /[<>:"|?*]/u;
 
 export function auditNpmPackageFileSet({ manifest, files, manifestPath, filesPath }) {
@@ -99,9 +99,15 @@ function canonicalRelativePath(value, path) {
 		assert(!segment.startsWith(' '), path, `package path segment must not start with ASCII space: ${segment}`);
 		assert(!/[ .]$/u.test(segment), path, `package path segment must not end in space or dot: ${segment}`);
 		assert(!WINDOWS_FORBIDDEN_CHARACTERS.test(segment), path, `package path segment contains a Windows-forbidden character: ${segment}`);
-		assert(!WINDOWS_RESERVED_NAME.test(segment), path, `package path segment uses a Windows-reserved name: ${segment}`);
+		assert(!isWindowsReservedName(segment), path, `package path segment uses a Windows-reserved name: ${segment}`);
 	}
 	return text;
+}
+
+function isWindowsReservedName(segment) {
+	const extensionIndex = segment.indexOf('.');
+	const basename = (extensionIndex === -1 ? segment : segment.slice(0, extensionIndex)).replace(/ +$/u, '');
+	return WINDOWS_RESERVED_BASENAME.test(basename);
 }
 
 function matchesRule(path, rule) {
