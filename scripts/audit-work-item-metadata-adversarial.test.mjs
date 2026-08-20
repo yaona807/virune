@@ -79,9 +79,9 @@ test('Setext headings are not plain linkage lines', () => {
 	assert.deepEqual(extractPlainIssueRefs('intro\nRefs #107\n---\nRefs #108\n'), [108]);
 });
 
-test('single-hyphen empty list markers are not Setext heading underlines', () => {
-	assert.deepEqual(extractPlainIssueRefs('Refs #151\n-\n'), [151]);
-	assert.deepEqual(parseWorkItemRole('Work item role\n-\nImplementation\n'), { status: 'absent', role: null });
+test('single-hyphen paragraph continuation follows GitHub cmark-gfm Setext precedence', () => {
+	assert.deepEqual(extractPlainIssueRefs('Refs #151\n-\n'), []);
+	assert.deepEqual(parseWorkItemRole('Work item role\n-\nImplementation\n'), { status: 'valid', role: 'Implementation' });
 });
 
 test('plain linkage remains a source-line contract outside code', () => {
