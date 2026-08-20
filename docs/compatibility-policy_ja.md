@@ -21,6 +21,8 @@ Stableは、安定版の利用者に対して維持する公開契約です。�
 - 安定版向けに文書化したVirune LSP／VS Codeの公開機能、Virune固有設定のkey・受け付ける値・意味・既定値、identifier自体を公開interfaceとして文書化したextension command
 - root `engines.node`や宣言済みVS Code API versionなど、安定版でサポートすると定めた最低version
 
+LSPのprotocol-level interoperabilityは、宣言済みVS Code API baselineとupstream Language Server Protocolに従います。
+
 Stableには、既存利用者の意味を変えない追加や修正を行えます。意図的な非互換変更は、下記の例外を除きmajor releaseで行います。
 
 バージョン番号、バージョン付きpath、snapshotが存在するだけではStableになりません。Stable化は明示的に行います。API／ABI snapshotは公開範囲を機械的に確認するためのもので、snapshotを更新しただけで非互換変更が許可されたり互換になったりすることはありません。
@@ -68,7 +70,7 @@ PlatformのEOL、セキュリティ要件などにより従来のversionを安�
 Stableを意図的に削除または非互換変更する場合は、下記の例外が適用されない限り、次の順序で進めます。
 
 1. 旧対象が非推奨であることを公開文書に明記し、実用的な場合はtoolingや型metadataにも反映する。
-2. 代替手段または移行方法を示す。
+2. サポート対象の代替手段または移行方法を示す。
 3. 旧対象を利用できる状態で、非推奨化を含む安定版を少なくとも1回公開する。
 4. 削除または非互換変更をmajor releaseで行い、リリースノートまたはmigration guideへ変更内容と移行方法を記載する。
 
