@@ -1,0 +1,70 @@
+name: Self-host promotion history aggregation
+
+on:
+  workflow_run:
+    workflows:
+      - Self-host promotion observation
+    types:
+      - completed
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: selfhost-promotion-history-aggregation
+  cancel-in-progress: false
+
+jobs:
+  aggregate:
+    name: Aggregate promotion history
+    if: >-
+      github.repository == 'yaona807/virune' &&
+      github.event.workflow_run.head_branch == 'main' &&
+      (github.event.workflow_run.event == 'schedule' || github.event.workflow_run.event == 'workflow_dispatch')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Check out exact trusted default-branch aggregation code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci
+      - name: Build trusted Host and compiler code
+        run: npm run build
+      - name: Aggregate canonical promotion history
+        id: aggregate
+        run: node scripts/run-selfhost-promotion-history-aggregation.mjs
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+      - name: Upload canonical aggregation report
+        if: steps.aggregate.outcome == 'success'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: selfhost-promotion-history-report-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .cache/selfhost-promotion-history/aggregation-report.json
+          if-no-files-found: error
+          retention-days: 90
+      - name: Upload canonical promotion history ledger
+        if: steps.aggregate.outcome == 'success' && steps.aggregate.outputs.publish == 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: selfhost-promotion-history-ledger-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .cache/selfhost-promotion-history/promotion-history-ledger.json
+          if-no-files-found: error
+          retention-days: 90
+      - name: Upload aggregation failure diagnostic
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: selfhost-promotion-history-failure-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .cache/selfhost-promotion-history/aggregation-failure.json
+          if-no-files-found: ignore
+          retention-days: 30

@@ -56,6 +56,18 @@ const groups = platformSmoke ? platformGroups : [
 				'scripts/selfhost-promotion-observation-workflow.test.mjs',
 			],
 		},
+		{
+			name: 'self-host promotion history contracts',
+			files: [
+				'scripts/run-selfhost-promotion-history-aggregation.test.mjs',
+				'scripts/selfhost-promotion-artifact.test.mjs',
+				'scripts/selfhost-promotion-github.test.mjs',
+				'scripts/selfhost-promotion-history-workflow.test.mjs',
+				'scripts/selfhost-promotion-observation-collector.test.mjs',
+				'scripts/selfhost-promotion-observation-resume.test.mjs',
+				'scripts/selfhost-promotion-parent-collector.test.mjs',
+			],
+		},
 		{ name: 'documentation example policy', files: ['scripts/verify-documentation-examples.test.mjs'] },
 		{
 			name: 'npm publication plan policy',

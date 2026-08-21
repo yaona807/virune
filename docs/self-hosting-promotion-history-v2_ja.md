@@ -1,0 +1,83 @@
+# 昇格履歴Ledger version 2
+
+[English](self-hosting-promotion-history-v2.md)
+
+Promotion History Ledger version 2は、信頼できる`required-selfhost`のPromotion Observation runを、継続して再評価できる履歴へ変換します。実行時の正確なGit commitを証拠として保持しつつ、観測の連続性はPromotion Subjectの製品identityで判定します。この仕組み自体は昇格を承認せず、Production compilerも変更しません。
+
+## version 1からの移行
+
+Version 1の履歴だけでは、version 2のPromotion Subject closureと、現在要求されているevidence一式を証明できません。そのためversion 2は、次の移行記録を変更不能な形で開始します。
+
+- 元の履歴version: `1`
+- 方針: `fresh-v2-no-backfill`
+- 引き継ぐ成功run数: `0`
+- 引き継ぐ観測日数: `0`
+- 理由: version 1ではPromotion Subject closureと現在のrequired evidenceを証明できないため
+
+Version 1の資料は過去の証拠として残せますが、そこで得たカウンターをversion 2へコピーしません。
+
+## 正規runとattempt
+
+Ledgerには、scheduled Promotion ObservationのGitHub runごとに1つの論理recordを保存します。各runには次を保持します。
+
+- providerのrun IDと、決定的な順序付けに使う作成時刻
+- 正確なexecution commit
+- runがfreeze済みかどうか
+- これまでに確認してcanonical化したすべてのprovider attempt
+- 昇格判定へ使えるattemptのprefix長を固定する`promotionEffectiveAttemptCount`
+
+Mutable tailでは、保持済みattemptをすべて昇格判定対象とします。後続の正式runがfreeze境界を作る場合、その後続runの作成時刻より**厳密に前に完了したattemptだけ**を昇格判定用prefixへ残します。境界と同時刻、またはそれ以降に完了したattemptも監査のため同じrunへ追記しますが、昇格判定用prefixの外側に置きます。
+
+有効なobservation artifactでは、GitHub artifact archiveとcanonicalな`observation.json`それぞれのSHA-256を独立して保持します。外側のobservation reportはcanonical JSONでなければならず、claimは正確に`required-selfhost-promotion-observation`、`productionEligible`は`false`、さらに`observationSha256`で内側のobservationを拘束します。内側のobservationもLedgerへ入れる前に、version 2の構造、logical run ID、execution commit、count対象かどうか、evidence順序、provider workflow conclusionとの整合性を再検証します。
+
+GitHub APIや通信の失敗はaggregationそのものの失敗です。artifactが存在しないものとして扱いません。
+
+## Gap
+
+正式なscheduled runは、observation artifactが欠落または不正という理由だけで履歴から消してはいけません。evidence欠落、不正evidence、attempt不完全、確認済みworkflow infrastructure failure、cancelledは明示的なgapとしてLedgerへ残します。
+
+Observation artifactが欠落・不正な状態はinfrastructure failureではなくunknownです。Workflow attemptがfailureでも、有効なcanonical observationが存在しなければ`observation-artifact-missing`として記録し、「infrastructureが原因だった」と推測しません。
+
+`observation-artifact-missing`、`observation-artifact-invalid`、`observation-source-invalid`、`observation-attempt-incomplete`のようなevidence層のunknown gapは、同じlogical run内でもstickyです。後続rerunが成功しても消しません。Freeze前に後続の有効attemptで回復できるのは、確認済みのinfrastructure failureまたはcancelledだけです。
+
+Gapは、count対象のsynthetic subject failureとして履歴へ投影します。これによりunknownを安全と推測せず、現在のstreakを確実に切ります。`A成功 → gap → A成功`となった場合、後半のAは新しいstreakから開始し、gapより前の成功へ再接続できません。
+
+Freeze境界の時点で昇格判定対象attemptが1件もないrunは`observation-attempt-incomplete`として扱います。後から追加された監査専用attemptで、このgapを過去にさかのぼって埋めることはできません。
+
+## Rerunとfreeze
+
+確認済みのinfrastructure failureになったmutable tail、またはcancelled attemptは、rerunが次の正式なscheduled runの作成時刻より前に完了した場合に限り回復できます。Unknown evidence gapはrerunで回復させません。後続の正式runがfreeze境界を作った後は、そのrunの昇格判定用attempt prefixを変更しません。
+
+Product failureはさらに強い扱いです。昇格判定に使えるattemptのいずれかが`product-failed`を記録したrunは、後続の昇格判定対象attemptで成功へ戻せません。同じPromotion Subjectが後から再登場しても、その製品失格は維持します。
+
+Freeze境界と同時刻、またはそれ以降に完了したrerunも、append-onlyな監査suffixとしてLedgerへ保存します。ただし`promotionEffectiveAttemptCount`は増やさず、gapやinfrastructure failureを修復したり、逆にfreeze済み履歴へ後からproduct failureを持ち込んだりしません。
+
+## Parent Ledgerと回復
+
+新しいLedger generationは、parent ledgerのSHA-256を保持します。既存runのidentityと保持済みattemptはappend-onlyです。Freeze済みrunではfreeze状態と`promotionEffectiveAttemptCount`を変更できず、新たに確認したprovider attemptを監査suffixへ追記することだけを許します。Mutable tailだけはfreezeするまで昇格判定用prefixを延長できます。
+
+Aggregationは、最新の検証済みparent reportとLedgerから再開します。これにより古いobservation artifactが期限切れになっても、一度canonical化した過去を再解釈せず継続できます。保持されたreportがcurrent ledgerを参照しているのに、そのledgerを発行したartifactを証明できない場合は、新しいgenesisを作り直さずfail closedにします。また、新しい成功reportが「current ledgerなし」を主張していても、それより古い保持済み成功reportが既存Ledgerの発行を証明する場合は履歴rollbackとして拒否し、version 2履歴を黙ってgenesisから再開しません。
+
+Provider inventoryは完全かつ順序が確定していなければなりません。pagination途中の件数変化、provider identityの重複、保持済みtailの欠落、保持済みrun／attempt metadataの書き換え、run順序の変更、不完全なattempt列、またはLedgerに存在しない過去runがprovider側で見つかった場合はerrorです。Tailより前の保持済みrunもproviderから確認できる間は再検証するため、古いfreeze済みrunへのlate rerunも監査suffixへ取り込めます。
+
+Canonical aggregation reportとLedger snapshotは90日保持します。Raw Promotion Observation artifactは、一度検証済みLedger generationへ取り込まれた後は、それより先に期限切れになっても過去を再解釈しません。
+
+## 現在policyでの再評価
+
+Canonical aggregationを作るたびに、現在repositoryへ入っているpromotion policyでLedgerを再評価します。後から必須になったevidenceを古い成功runが持っていない場合、そのrunをproduct failureへ書き換えはしませんが、現在policy上の連続成功はそこで切ります。
+
+Policy evaluatorはrepositoryの安全下限も固定します。automatic promotionの有効化、blocking thresholdの引き下げ、必須evidenceの削除、manual approvalの解除、Production向けrollback／stable-release条件の緩和は拒否します。
+
+Policy replayが履歴上のthreshold達成を示しても、それは証拠に過ぎません。Manual approvalや後続の昇格条件は別途必要です。
+
+## Aggregation workflow
+
+`Self-host promotion history aggregation`は`workflow_run: completed`で起動します。このeventではGitHubが`github.sha`をaggregation run用のdefault branch exact commitへ固定するため、workflowはそのSHAをcheckoutし、trigger元observationの`head_sha`は使いません。権限は`actions: read`と`contents: read`だけです。
+
+`main`上のcanonical observation workflow pathだけを受け入れます。正式履歴へ入るのはscheduled observationだけです。Manual observationは診断用aggregationを起動できますが、正式なscheduled-run inventoryには入りません。
+
+Aggregationが成功した場合は必ずcanonicalかつ`productionEligible: false`のreportを出します。Ledger artifactはcanonical generationが変化した場合だけ出します。Aggregation自体のrerun attemptは診断専用で、canonical generationを置き換えて発行できません。
+
+## 安全境界
+
+Version 2履歴は、Language Specification、Compiler API、Runtime ABI、Interop ABI、public standard library、昇格threshold、manual approval policy、Production compiler selectionを変更しません。Version 1履歴も削除せず、providerやartifactのunknown状態を安全側へ推測しません。
