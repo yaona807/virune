@@ -54,6 +54,9 @@ export function parsePromotionHistoryAggregationReportV2(value: unknown): Promot
 	if (publish !== (publishedLedgerSha256 !== null)) {
 		throw new PromotionHistoryAggregationReportError('$.publishedLedgerSha256', 'publish must exactly match presence of a published ledger SHA');
 	}
+	if (publish && trigger.observationEvent !== 'schedule') {
+		throw new PromotionHistoryAggregationReportError('$.publish', 'manual observation triggers cannot publish canonical ledger state');
+	}
 	if (publish && publishedLedgerSha256 !== currentLedgerSha256) {
 		throw new PromotionHistoryAggregationReportError('$.currentLedgerSha256', 'published ledger must be the current ledger');
 	}
@@ -95,11 +98,16 @@ export function parsePromotionHistoryAggregationReportV2(value: unknown): Promot
 
 function parseTrigger(value: unknown, path: string): PromotionHistoryAggregationReportV2['trigger'] {
 	const input = record(value, path);
-	exactKeys(input, ['aggregationRunId', 'aggregationAttempt', 'observationRunId'], path);
+	exactKeys(input, ['aggregationRunId', 'aggregationAttempt', 'observationRunId', 'observationEvent'], path);
+	const observationEvent = input.observationEvent;
+	if (observationEvent !== 'schedule' && observationEvent !== 'workflow_dispatch') {
+		throw new PromotionHistoryAggregationReportError(`${path}.observationEvent`, 'expected schedule or workflow_dispatch');
+	}
 	return {
 		aggregationRunId: runId(input.aggregationRunId, `${path}.aggregationRunId`),
 		aggregationAttempt: positiveInteger(input.aggregationAttempt, `${path}.aggregationAttempt`),
 		observationRunId: runId(input.observationRunId, `${path}.observationRunId`),
+		observationEvent,
 	};
 }
 
