@@ -77,6 +77,38 @@ test('nested same-AST base check during provider resolution cannot register the 
 	assert.equal(nestedCheckRan, true);
 });
 
+test('same-AST experimental checkModule reentrancy is rejected before it can replace the outer session', () => {
+	const { source, ast } = parsedSideEffectModule();
+	let reentrantAttempted = false;
+	const nestedProvider = providerWithResolveImport(sideEffectResolution);
+	const provider = providerWithResolveImport(request => {
+		if (!reentrantAttempted) {
+			reentrantAttempted = true;
+			assert.throws(
+				() => checkModule(ast, {
+					containingFile: source.path,
+					platform: 'node',
+					jsInteropProvider: nestedProvider,
+				}),
+				/Reentrant experimental checkModule calls for the same AST are not supported/u,
+			);
+		}
+		return sideEffectResolution(request);
+	});
+
+	const semantic = checkModule(ast, {
+		containingFile: source.path,
+		platform: 'node',
+		jsInteropProvider: provider,
+	});
+	assert.equal(reentrantAttempted, true);
+	assert.deepEqual(semantic.diagnostics.items.filter(item => item.severity === 'error'), []);
+	assert.deepEqual(
+		externalOperationSequence({ module: ast, semantic }).map(operation => operation.kind),
+		['module-load'],
+	);
+});
+
 test('one experimental TypeChecker instance rejects provider-driven reentrant checks without invalidating the outer result', () => {
 	const { source, ast } = parsedSideEffectModule();
 	let reentrantAttempted = false;
