@@ -101,7 +101,7 @@ function publication(aggregationRunId = '900', aggregationAttempt = 1) {
 	return orchestratePromotionHistoryV2({
 		stage: 'required-selfhost',
 		policy: policy(),
-		trigger: { aggregationRunId, aggregationAttempt, observationRunId: '100' },
+		trigger: { aggregationRunId, aggregationAttempt, observationRunId: '100', observationEvent: 'schedule' },
 		runs: [passingRun()],
 	});
 }
@@ -110,7 +110,7 @@ function noLedgerReport(aggregationRunId = '901', aggregationAttempt = 1) {
 	return orchestratePromotionHistoryV2({
 		stage: 'required-selfhost',
 		policy: policy(),
-		trigger: { aggregationRunId, aggregationAttempt, observationRunId: '100' },
+		trigger: { aggregationRunId, aggregationAttempt, observationRunId: '100', observationEvent: 'schedule' },
 		runs: [],
 	});
 }
@@ -134,7 +134,7 @@ test('a newer no-op report traces through to the older publishing source', () =>
 	const noop = orchestratePromotionHistoryV2({
 		stage: 'required-selfhost',
 		policy: policy(),
-		trigger: { aggregationRunId: '901', aggregationAttempt: 1, observationRunId: '100' },
+		trigger: { aggregationRunId: '901', aggregationAttempt: 1, observationRunId: '100', observationEvent: 'schedule' },
 		parent: published.ledger as PromotionHistoryLedgerV2,
 		runs: [passingRun()],
 	});
@@ -155,7 +155,7 @@ test('rerun report may retain a lineage hint but cannot itself publish canonical
 	const rerun = orchestratePromotionHistoryV2({
 		stage: 'required-selfhost',
 		policy: policy(),
-		trigger: { aggregationRunId: '901', aggregationAttempt: 2, observationRunId: '100' },
+		trigger: { aggregationRunId: '901', aggregationAttempt: 2, observationRunId: '100', observationEvent: 'schedule' },
 		parent: published.ledger as PromotionHistoryLedgerV2,
 		runs: [passingRun()],
 	});
@@ -185,7 +185,7 @@ test('a no-op current-ledger SHA cannot silently switch while searching backward
 	const noop = orchestratePromotionHistoryV2({
 		stage: 'required-selfhost',
 		policy: policy(),
-		trigger: { aggregationRunId: '901', aggregationAttempt: 1, observationRunId: '100' },
+		trigger: { aggregationRunId: '901', aggregationAttempt: 1, observationRunId: '100', observationEvent: 'schedule' },
 		parent: published.ledger as PromotionHistoryLedgerV2,
 		runs: [passingRun()],
 	});
@@ -207,7 +207,7 @@ test('a non-publishing report must self-bind its parent and current ledger ident
 	const noop = orchestratePromotionHistoryV2({
 		stage: 'required-selfhost',
 		policy: policy(),
-		trigger: { aggregationRunId: '901', aggregationAttempt: 1, observationRunId: '100' },
+		trigger: { aggregationRunId: '901', aggregationAttempt: 1, observationRunId: '100', observationEvent: 'schedule' },
 		parent: published.ledger as PromotionHistoryLedgerV2,
 		runs: [passingRun()],
 	});
@@ -229,7 +229,7 @@ test('a publishing report must bind the exact parent SHA stored in its ledger', 
 	const second = orchestratePromotionHistoryV2({
 		stage: 'required-selfhost',
 		policy: policy(),
-		trigger: { aggregationRunId: '901', aggregationAttempt: 1, observationRunId: '101' },
+		trigger: { aggregationRunId: '901', aggregationAttempt: 1, observationRunId: '101', observationEvent: 'schedule' },
 		parent: first.ledger as PromotionHistoryLedgerV2,
 		runs: [passingRun(), laterPassingRun()],
 	});
@@ -245,6 +245,36 @@ test('a publishing report must bind the exact parent SHA stored in its ledger', 
 			}],
 		}),
 		/ledger parent SHA does not match the publishing aggregation report/u,
+	);
+});
+
+test('manual-trigger report cannot be corrupted into a publishing report', () => {
+	const manual = orchestratePromotionHistoryV2({
+		stage: 'required-selfhost',
+		policy: policy(),
+		trigger: { aggregationRunId: '901', aggregationAttempt: 1, observationRunId: '777', observationEvent: 'workflow_dispatch' },
+		runs: [passingRun()],
+	});
+	const corrupted = {
+		...manual.report,
+		publish: true,
+		publishedLedgerSha256: 'f'.repeat(64),
+		currentLedgerSha256: 'f'.repeat(64),
+		currentLedgerGeneration: 1,
+		migration: {
+			sourceHistoryVersion: 1,
+			strategy: 'fresh-v2-no-backfill',
+			promotionCreditRuns: 0,
+			promotionCreditDays: 0,
+			reason: 'v1-missing-promotion-subject-closure-and-current-required-evidence',
+		},
+	};
+	assert.throws(
+		() => discoverPromotionHistoryParentV2({
+			stage: 'required-selfhost',
+			candidates: [{ runId: '901', attempt: 1, createdAt: '2026-08-21T19:00:00.000Z', conclusion: 'success', report: corrupted, ledger: null }],
+		}),
+		/manual observation triggers cannot publish canonical ledger state/u,
 	);
 });
 
