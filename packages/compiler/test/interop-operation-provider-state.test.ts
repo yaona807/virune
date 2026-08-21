@@ -68,6 +68,36 @@ test('provider-origin absolute paths are stripped without rejecting an otherwise
 	}
 });
 
+test('enumerable and non-enumerable provider navigation metadata cannot enter stable value evidence', () => {
+	const privatePath = '/checkout/private/navigation.d.ts';
+	const enumerableType = {
+		display: 'Value',
+		category: 'object' as const,
+		origin: { moduleSpecifier: './library.js' },
+		navigation: { declarationPath: privatePath },
+	};
+	const enumerable = externalOperationFromUsage({
+		kind: 'property', nodeId: 1, span, foreignType: enumerableType as unknown as ForeignUsageIR['foreignType'],
+	});
+	assert.equal(JSON.stringify(enumerable).includes('navigation'), false);
+	assert.equal(JSON.stringify(enumerable).includes(privatePath), false);
+
+	const nonEnumerableType = {
+		display: 'Value',
+		category: 'object' as const,
+		origin: { moduleSpecifier: './library.js' },
+	};
+	Object.defineProperty(nonEnumerableType, 'navigation', {
+		value: { declarationPath: privatePath },
+		enumerable: false,
+	});
+	const nonEnumerable = externalOperationFromUsage({
+		kind: 'property', nodeId: 1, span, foreignType: nonEnumerableType as ForeignUsageIR['foreignType'],
+	});
+	assert.equal(JSON.stringify(nonEnumerable).includes('navigation'), false);
+	assert.equal(JSON.stringify(nonEnumerable).includes(privatePath), false);
+});
+
 test('absolute checkout paths cannot hide in runtime witness package or condition fields', () => {
 	for (const invalid of [
 		witness({ packageName: '/checkout/private/pkg' }),
