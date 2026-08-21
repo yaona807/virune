@@ -18,8 +18,7 @@ async function compileOperations(root: string): Promise<string> {
 	assert.ok(result.semantic);
 	const operations = externalOperationSequence({
 		module: result.ast,
-		interop: result.semantic.interop,
-		diagnostics: result.diagnostics,
+		semantic: result.semantic,
 	});
 	const serialized = JSON.stringify(operations);
 	assert.equal(serialized.includes(root.replaceAll('\\', '/')), false);
