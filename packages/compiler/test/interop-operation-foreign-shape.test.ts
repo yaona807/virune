@@ -51,17 +51,19 @@ test('known primitive and non-primitive foreign shapes remain accepted', () => {
 	if (object?.kind === 'read-property') assert.equal(object.result.primitive, undefined);
 });
 
-test('primitive bridge claims require the same source fact used by the existing checker bridge rule', () => {
+test('only runtime-validated primitive bridges acquire a primitive validation claim', () => {
 	for (const [bridgeKind, foreignType] of [
 		['string', { display: 'string', category: 'primitive', primitive: 'string' }],
 		['bool', { display: 'boolean', category: 'primitive', primitive: 'boolean' }],
 		['float', { display: 'number', category: 'primitive', primitive: 'number' }],
 		['bigint', { display: 'bigint', category: 'primitive', primitive: 'bigint' }],
 		['unit', { display: 'void', category: 'primitive', primitive: 'void' }],
-		['unknown', { display: 'unknown', category: 'unknown' }],
 	] as const) {
 		const operation = externalOperationFromUsage(bridge(foreignType, bridgeKind));
 		assert.equal(operation?.kind, 'bridge-foreign-primitive');
+		if (operation?.kind === 'bridge-foreign-primitive') {
+			assert.deepEqual(operation.decision.claims, ['primitive-bridge-validated']);
+		}
 	}
 
 	const providerSpecificCategory = externalOperationFromUsage(bridge(
@@ -69,6 +71,18 @@ test('primitive bridge claims require the same source fact used by the existing 
 		'string',
 	));
 	assert.equal(providerSpecificCategory?.kind, 'bridge-foreign-primitive');
+	if (providerSpecificCategory?.kind === 'bridge-foreign-primitive') {
+		assert.deepEqual(providerSpecificCategory.decision.claims, ['primitive-bridge-validated']);
+	}
+});
+
+test('opaque foreign Unknown preserves existing Direct compatibility without claiming runtime primitive validation', () => {
+	const operation = externalOperationFromUsage(bridge({ display: 'unknown', category: 'unknown' }, 'unknown'));
+	assert.equal(operation?.kind, 'bridge-foreign-primitive');
+	if (operation?.kind !== 'bridge-foreign-primitive') return;
+	assert.equal(operation.decision.status, 'resolved');
+	assert.equal(operation.decision.mechanism, 'direct');
+	assert.deepEqual(operation.decision.claims, []);
 });
 
 test('aggregate, mismatched primitive, or non-Unknown source facts cannot gain a validated primitive bridge claim', () => {
