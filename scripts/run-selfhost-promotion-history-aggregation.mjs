@@ -80,7 +80,12 @@ export async function runPromotionHistoryAggregation({
 		const result = dependencies.orchestrate({
 			stage,
 			policy,
-			trigger: { aggregationRunId, aggregationAttempt, observationRunId: trigger.observationRunId },
+			trigger: {
+				aggregationRunId,
+				aggregationAttempt,
+				observationRunId: trigger.observationRunId,
+				observationEvent: trigger.sourceEvent,
+			},
 			...(parentLedger === null ? {} : { parent: parentLedger }),
 			runs: snapshots,
 		});
