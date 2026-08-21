@@ -1,8 +1,10 @@
 import type * as A from '../ast/nodes.js';
 import type { SemanticModel } from '../checker/checker.js';
 import type { Diagnostic } from '../diagnostics/diagnostic.js';
+import { currentCheckedBuiltinWitness } from '../session-witness.js';
 
 interface CheckedSession {
+	readonly checkerWitness: object;
 	readonly moduleState: string;
 	readonly evidenceState: string;
 	readonly diagnostics: readonly Diagnostic[];
@@ -23,8 +25,11 @@ export function registerCheckedSemantic(
 	semantic: SemanticModel,
 	diagnostics: readonly Diagnostic[] = semantic.diagnostics.items,
 ): void {
+	const checkerWitness = currentCheckedBuiltinWitness(module.span);
+	if (checkerWitness === undefined) throw new Error('Cannot register checked semantic without a checker-owned session witness');
 	const registeredDiagnostics = Object.freeze([...diagnostics]);
 	const session = Object.freeze({
+		checkerWitness,
 		moduleState: structuralState(module),
 		evidenceState: checkedEvidenceState(semantic),
 		diagnostics: registeredDiagnostics,
@@ -35,12 +40,14 @@ export function registerCheckedSemantic(
 }
 
 /**
- * A semantic result is current only while its object identity, post-check data,
- * and the diagnostics registered for that exact compilation remain unchanged.
+ * A semantic result is current only while its object identity, checker witness,
+ * post-check data, and the diagnostics registered for that exact compilation
+ * remain unchanged.
  */
 export function isCurrentCheckedSemantic(module: A.ModuleNode, semantic: SemanticModel): boolean {
 	const session = sessionBySemantic.get(semantic);
 	if (session === undefined || currentSessionByModule.get(module) !== session) return false;
+	if (currentCheckedBuiltinWitness(module.span) !== session.checkerWitness) return false;
 	try {
 		return session.moduleState === structuralState(module)
 			&& session.evidenceState === checkedEvidenceState(semantic)
