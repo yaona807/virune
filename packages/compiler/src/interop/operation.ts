@@ -319,6 +319,7 @@ function runtimeResolutionDecision(witness: ExternalRuntimeResolutionWitness): I
 
 function canonicalForeignType(snapshot: StableForeignTypeSnapshot): ExternalForeignValueShape {
 	assertKnown(FOREIGN_CATEGORIES, snapshot.category, 'foreign type category');
+	if (snapshot.category === 'any') throw new Error('External operation cannot treat TypeScript any as resolved Direct evidence');
 	if (snapshot.primitive !== undefined) assertKnown(FOREIGN_PRIMITIVES, snapshot.primitive, 'foreign primitive');
 	if (snapshot.mustUse !== undefined && typeof snapshot.mustUse !== 'boolean') throw new Error('External operation foreign mustUse must be boolean');
 	return {
@@ -356,7 +357,8 @@ function canonicalRuntimeWitness(witness: ModuleResolutionWitness, moduleSpecifi
 	if (witness.moduleSpecifier !== moduleSpecifier) throw new Error('External ModuleLoad witness must resolve the same module specifier');
 	assertKnown(PLATFORMS, witness.platform, 'module witness platform');
 	if (witness.runtimeFormat !== undefined) assertKnown(RUNTIME_FORMATS, witness.runtimeFormat, 'module witness runtime format');
-	const conditions = witness.conditions.map(condition => canonicalProviderText(condition, 'module witness condition'));
+	const conditions = [...new Set(witness.conditions.map(condition => canonicalProviderText(condition, 'module witness condition')))]
+		.sort((left, right) => left < right ? -1 : left > right ? 1 : 0);
 	return {
 		moduleSpecifier,
 		...(witness.packageName === undefined ? {} : { packageName: canonicalProviderText(witness.packageName, 'runtime package name') }),
