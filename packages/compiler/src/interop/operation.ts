@@ -224,7 +224,7 @@ export function externalOperationFromUsage(usage: ForeignUsageIR): ExternalOpera
 				...anchor,
 				source,
 				bridge: usage.bridge.bridge,
-				decision: directDecision(['primitive-bridge-validated']),
+				decision: directDecision(usage.bridge.bridge === 'unknown' ? [] : ['primitive-bridge-validated']),
 			};
 		}
 	}
