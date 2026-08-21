@@ -1,5 +1,6 @@
 import { parsePromotionHistoryAggregationReportV2 } from './promotion-history-aggregation-report-v2.js';
 import { parsePromotionHistoryLedgerV2, type PromotionHistoryLedgerResultV2 } from './promotion-history-ledger-v2.js';
+import type { PromotionHistoryAggregationReportV2 } from './promotion-history-orchestrator-v2.js';
 import type { PromotionSubjectStage } from './promotion-subject.js';
 
 export interface PromotionHistoryAggregationCandidateV2 {
@@ -52,6 +53,7 @@ export function discoverPromotionHistoryParentV2(input: {
 		if (report.trigger.aggregationRunId !== candidate.runId || report.trigger.aggregationAttempt !== candidate.attempt) {
 			throw new PromotionHistoryParentDiscoveryError(`candidates[${index}].report.trigger`, 'report trigger does not match the aggregation attempt that retained it');
 		}
+		validateReportLineageShape(report, index);
 
 		if (report.currentLedgerSha256 === null) {
 			if (report.publish || candidate.ledger !== null) {
@@ -128,6 +130,28 @@ export function discoverPromotionHistoryParentV2(input: {
 		throw new PromotionHistoryParentDiscoveryError('candidates', 'current ledger is referenced by retained reports but no valid publishing source artifact is available');
 	}
 	return { parent: null, sourceRunId: null, sourceAttempt: null, expectedLedgerSha256: null, expectedGeneration: null };
+}
+
+function validateReportLineageShape(report: PromotionHistoryAggregationReportV2, index: number): void {
+	const path = `candidates[${index}].report`;
+	if (report.currentLedgerSha256 === null) {
+		if (report.parentLedgerSha256 !== null) {
+			throw new PromotionHistoryParentDiscoveryError(`${path}.parentLedgerSha256`, 'report without current ledger cannot retain a parent ledger SHA');
+		}
+		return;
+	}
+	if (!report.publish) {
+		if (report.parentLedgerSha256 !== report.currentLedgerSha256) {
+			throw new PromotionHistoryParentDiscoveryError(`${path}.parentLedgerSha256`, 'non-publishing report must retain the current ledger as its parent');
+		}
+		return;
+	}
+	if (report.currentLedgerGeneration === 1 && report.parentLedgerSha256 !== null) {
+		throw new PromotionHistoryParentDiscoveryError(`${path}.parentLedgerSha256`, 'generation 1 publishing report must not identify a parent ledger');
+	}
+	if (report.currentLedgerGeneration !== null && report.currentLedgerGeneration > 1 && report.parentLedgerSha256 === null) {
+		throw new PromotionHistoryParentDiscoveryError(`${path}.parentLedgerSha256`, 'non-genesis publishing report must identify its parent ledger');
+	}
 }
 
 function parseCandidates(values: readonly PromotionHistoryAggregationCandidateV2[]): readonly PromotionHistoryAggregationCandidateV2[] {
