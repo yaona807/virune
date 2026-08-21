@@ -18,10 +18,13 @@ import type { PromotionSubjectStage } from './promotion-subject.js';
 export const PROMOTION_HISTORY_ORCHESTRATOR_VERSION = 2 as const;
 export const PROMOTION_HISTORY_AGGREGATION_CLAIM = 'selfhost-promotion-history-aggregation-v2' as const;
 
+export type PromotionHistoryObservationTriggerEventV2 = 'schedule' | 'workflow_dispatch';
+
 export interface PromotionHistoryAggregationTriggerV2 {
 	readonly aggregationRunId: string;
 	readonly aggregationAttempt: number;
 	readonly observationRunId: string;
+	readonly observationEvent: PromotionHistoryObservationTriggerEventV2;
 }
 
 export interface PromotionHistoryPolicySummaryV2 {
@@ -87,7 +90,9 @@ export function orchestratePromotionHistoryV2(input: {
 		...(parent === null ? {} : { parent: parent.ledger }),
 		runs: input.runs,
 	});
-	const canonicalPublish = trigger.aggregationAttempt === 1 && aggregation.publish;
+	const canonicalPublish = trigger.observationEvent === 'schedule'
+		&& trigger.aggregationAttempt === 1
+		&& aggregation.publish;
 	const currentLedgerResult = canonicalPublish ? aggregation.ledger : parent;
 	let policyReplay: PromotionPolicyReplayV2 | null = null;
 	let currentProductKnown = false;
@@ -143,10 +148,14 @@ function parseTrigger(value: PromotionHistoryAggregationTriggerV2): PromotionHis
 		throw new PromotionHistoryOrchestratorError('trigger.aggregationAttempt', 'expected positive safe integer');
 	}
 	if (!runIdPattern.test(value.observationRunId)) throw new PromotionHistoryOrchestratorError('trigger.observationRunId', 'expected canonical positive decimal run ID');
+	if (value.observationEvent !== 'schedule' && value.observationEvent !== 'workflow_dispatch') {
+		throw new PromotionHistoryOrchestratorError('trigger.observationEvent', 'expected schedule or workflow_dispatch');
+	}
 	return {
 		aggregationRunId: value.aggregationRunId,
 		aggregationAttempt: value.aggregationAttempt,
 		observationRunId: value.observationRunId,
+		observationEvent: value.observationEvent,
 	};
 }
 
