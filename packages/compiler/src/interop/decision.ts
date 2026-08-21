@@ -40,19 +40,16 @@ const CLAIMS = new Set<InteropSafetyClaim>([
 const OBLIGATION_KINDS = new Set<InteropObligationKind>(['runtime-resolution']);
 const OBLIGATION_STAGES = new Set<InteropObligationStage>(['check', 'codegen', 'build', 'runtime']);
 const OBLIGATION_STATUSES = new Set<InteropObligationStatus>(['pending', 'discharged']);
-const DECISION_KEYS = ['status', 'mechanism', 'authoring', 'claims', 'obligations'] as const;
-const OBLIGATION_KEYS = ['kind', 'stage', 'status'] as const;
 
 /**
  * Canonicalize one provider-independent Interop decision.
  *
  * The input is treated as untrusted runtime data even though callers normally
- * construct it through TypeScript. Unknown enum values, unknown fields, and
- * contradictory obligation state fail closed instead of being serialized as
- * successful evidence.
+ * construct it through TypeScript. Unknown enum values and contradictory
+ * obligation state fail closed instead of being serialized as successful
+ * evidence.
  */
 export function canonicalizeInteropDecision(decision: InteropDecisionIR): InteropDecisionIR {
-	assertExactRecordKeys(decision, DECISION_KEYS, 'Interop decision');
 	assertKnown(DECISION_STATUSES, decision.status, 'decision status');
 	assertKnown(MECHANISMS, decision.mechanism, 'Interop mechanism');
 	assertKnown(AUTHORING_MODES, decision.authoring, 'Interop authoring mode');
@@ -64,7 +61,6 @@ export function canonicalizeInteropDecision(decision: InteropDecisionIR): Intero
 
 	const obligationsByKey = new Map<string, InteropObligationIR>();
 	for (const obligation of decision.obligations) {
-		assertExactRecordKeys(obligation, OBLIGATION_KEYS, 'Interop obligation');
 		assertKnown(OBLIGATION_KINDS, obligation.kind, 'Interop obligation kind');
 		assertKnown(OBLIGATION_STAGES, obligation.stage, 'Interop obligation stage');
 		assertKnown(OBLIGATION_STATUSES, obligation.status, 'Interop obligation status');
@@ -111,25 +107,6 @@ export function isResolvedDirectInteropDecision(decision: InteropDecisionIR): bo
 			&& canonical.obligations.every(obligation => obligation.status === 'discharged');
 	} catch {
 		return false;
-	}
-}
-
-function assertExactRecordKeys(value: unknown, expected: readonly string[], description: string): void {
-	if (value === null || typeof value !== 'object' || Array.isArray(value)) {
-		throw new Error(`${description} must be a plain record`);
-	}
-	const keys = Reflect.ownKeys(value);
-	const symbolKey = keys.find((key): key is symbol => typeof key === 'symbol');
-	if (symbolKey !== undefined) throw new Error(`Unknown ${description} field: ${String(symbolKey)}`);
-	const actual = (keys as string[]).sort(compareText);
-	const canonicalExpected = [...expected].sort(compareText);
-	if (actual.length !== canonicalExpected.length || actual.some((key, index) => key !== canonicalExpected[index])) {
-		const expectedSet = new Set(expected);
-		const unknown = actual.filter(key => !expectedSet.has(key));
-		if (unknown.length > 0) throw new Error(`Unknown ${description} field: ${unknown[0]}`);
-		const actualSet = new Set(actual);
-		const missing = canonicalExpected.find(key => !actualSet.has(key));
-		throw new Error(`Missing ${description} field: ${String(missing)}`);
 	}
 }
 
