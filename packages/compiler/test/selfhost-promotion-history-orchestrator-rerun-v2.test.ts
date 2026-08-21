@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { parsePromotionHistoryAggregationReportV2 } from '../src/selfhost/promotion-history-aggregation-report-v2.js';
 import { orchestratePromotionHistoryV2 } from '../src/selfhost/promotion-history-orchestrator-v2.js';
 
 const requiredEvidence = [
@@ -59,4 +60,30 @@ test('aggregation attempt greater than one can evaluate but never publish canoni
 	assert.equal(result.serializedLedger, null);
 	assert.equal(result.ledgerSha256, null);
 	assert.deepEqual(result.report.processedRunIds, ['100']);
+});
+
+test('canonical report parser rejects a rerun attempt forged into a publishing report', () => {
+	const result = orchestratePromotionHistoryV2({
+		stage: 'required-selfhost', policy: policy(),
+		trigger: { aggregationRunId: '900', aggregationAttempt: 2, observationRunId: '100', observationEvent: 'schedule' },
+		runs: [run()],
+	});
+	const forged = {
+		...result.report,
+		publish: true,
+		publishedLedgerSha256: 'f'.repeat(64),
+		currentLedgerSha256: 'f'.repeat(64),
+		currentLedgerGeneration: 1,
+		migration: {
+			sourceHistoryVersion: 1,
+			strategy: 'fresh-v2-no-backfill',
+			promotionCreditRuns: 0,
+			promotionCreditDays: 0,
+			reason: 'v1-missing-promotion-subject-closure-and-current-required-evidence',
+		},
+	};
+	assert.throws(
+		() => parsePromotionHistoryAggregationReportV2(forged),
+		/aggregation rerun attempts cannot publish canonical ledger state/u,
+	);
 });
