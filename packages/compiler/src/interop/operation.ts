@@ -319,7 +319,6 @@ function runtimeResolutionDecision(witness: ExternalRuntimeResolutionWitness): I
 
 function canonicalForeignType(snapshot: StableForeignTypeSnapshot): ExternalForeignValueShape {
 	assertKnown(FOREIGN_CATEGORIES, snapshot.category, 'foreign type category');
-	if (snapshot.category === 'any') throw new Error('External operation cannot treat TypeScript any as resolved Direct evidence');
 	if (snapshot.primitive !== undefined) assertKnown(FOREIGN_PRIMITIVES, snapshot.primitive, 'foreign primitive');
 	if (snapshot.mustUse !== undefined && typeof snapshot.mustUse !== 'boolean') throw new Error('External operation foreign mustUse must be boolean');
 	return {
