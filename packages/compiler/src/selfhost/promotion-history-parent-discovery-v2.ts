@@ -117,6 +117,9 @@ export function discoverPromotionHistoryParentV2(input: {
 		if (parsedLedger.ledger.generation !== report.currentLedgerGeneration || parsedLedger.ledger.generation !== expectedGeneration) {
 			throw new PromotionHistoryParentDiscoveryError(`candidates[${index}].ledger.generation`, 'ledger generation does not match the aggregation report lineage');
 		}
+		if (parsedLedger.ledger.parentLedgerSha256 !== report.parentLedgerSha256) {
+			throw new PromotionHistoryParentDiscoveryError(`candidates[${index}].ledger.parentLedgerSha256`, 'ledger parent SHA does not match the publishing aggregation report');
+		}
 		return {
 			parent: parsedLedger,
 			sourceRunId: candidate.runId,
