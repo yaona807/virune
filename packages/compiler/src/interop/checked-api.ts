@@ -79,11 +79,19 @@ export function checkModule(module: A.ModuleNode, options: TypeCheckerOptions = 
 
 /** Experimental checker class that keeps direct class users on the same session boundary. */
 export class TypeChecker extends BaseTypeChecker {
+	#checking = false;
+
 	public override check(module: A.ModuleNode): SemanticModel {
+		if (this.#checking) throw new Error('Reentrant experimental TypeChecker checks are not supported');
+		this.#checking = true;
 		invalidateCheckedSemantic(module);
-		const semantic = super.check(module);
-		registerCheckedSemantic(module, semantic, semantic.diagnostics.items);
-		return semantic;
+		try {
+			const semantic = super.check(module);
+			registerCheckedSemantic(module, semantic, semantic.diagnostics.items);
+			return semantic;
+		} finally {
+			this.#checking = false;
+		}
 	}
 }
 
