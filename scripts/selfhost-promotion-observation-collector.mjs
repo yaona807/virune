@@ -133,6 +133,9 @@ function validateEmbeddedObservation(value, run, attempt) {
 	if (canonical.countsTowardPromotion !== true) {
 		throw new PromotionObservationArtifactContractError('observation-report.observation.countsTowardPromotion', 'formal scheduled observation must be countable');
 	}
+	if (canonical.completedAt < attempt.startedAt || canonical.completedAt > attempt.completedAt) {
+		throw new PromotionObservationArtifactContractError('observation-report.observation.completedAt', 'must fall within the provider attempt execution interval');
+	}
 	if (canonical.outcome === 'passed' && attempt.conclusion !== 'success') {
 		throw new PromotionObservationArtifactContractError('observation-report.observation.outcome', 'passing observation requires a successful workflow attempt');
 	}
