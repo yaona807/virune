@@ -11,14 +11,14 @@ import type { PromotionShadowHistoryEntryInputV2 } from '../src/selfhost/promoti
 const executionCommit = '1'.repeat(40);
 const subject = 'a'.repeat(64);
 
-function observation(outcome: 'passed' | 'product-failed'): PromotionShadowHistoryEntryInputV2 {
+function observation(outcome: 'passed' | 'product-failed', completedAt: string): PromotionShadowHistoryEntryInputV2 {
 	return {
 		version: 2,
 		runId: '100',
 		stage: 'required-selfhost',
 		executionCommit,
 		promotionSubjectId: subject,
-		completedAt: '2026-08-20T01:20:00.000Z',
+		completedAt,
 		outcome,
 		countsTowardPromotion: true,
 		unexplainedDifferentials: outcome === 'product-failed' ? 1 : 0,
@@ -27,15 +27,17 @@ function observation(outcome: 'passed' | 'product-failed'): PromotionShadowHisto
 }
 
 function artifactAttempt(attempt: number, outcome: 'passed' | 'product-failed'): PromotionHistoryAttemptInputV2 {
+	const startedAt = `2026-08-20T0${attempt}:00:00.000Z`;
+	const completedAt = `2026-08-20T0${attempt}:20:00.000Z`;
 	return {
 		attempt,
-		startedAt: `2026-08-20T0${attempt}:00:00.000Z`,
-		completedAt: `2026-08-20T0${attempt}:20:00.000Z`,
+		startedAt,
+		completedAt,
 		conclusion: outcome === 'passed' ? 'success' : 'failure',
 		artifact: {
 			archiveSha256: String(attempt).repeat(64),
 			bytesSha256: String(attempt + 1).repeat(64),
-			observation: observation(outcome),
+			observation: observation(outcome, completedAt),
 		},
 		gapReason: null,
 	};
