@@ -5,7 +5,7 @@ import { checkModule as checkModuleBase } from '../src/checker/checker.js';
 import { buildProject } from '../src/interop/checked-api.js';
 import { externalOperationSequence } from '../src/interop/operation-api.js';
 import type { JsInteropProvider } from '../src/interop/types.js';
-import { ProjectBuildCache, type ProjectHost } from '../src/project/project.js';
+import { buildProject as buildProjectBase, ProjectBuildCache, type ProjectHost } from '../src/project/project.js';
 
 function providerForGeneration(generation: number): JsInteropProvider {
 	return {
@@ -115,6 +115,42 @@ test('cached semantic cannot be rebound after an independent checker pass advanc
 		() => externalOperationSequence({ module: firstMain.ast!, semantic: firstMain.semantic! }),
 		/not from the current checked AST semantic session/u,
 		'a failed cached rebind must not revive the stale semantic session',
+	);
+});
+
+test('stable project cache cannot be promoted after a later checker pass advances its witness', async () => {
+	const root = resolve('virtual-operation-session-stable-cache-rebind-project');
+	const mainPath = join(root, 'src/main.virune');
+	const host = memoryHost(mainPath);
+	const cache = new ProjectBuildCache();
+	const firstProvider = providerForGeneration(1);
+	const stable = await buildProjectBase(root, {
+		write: false,
+		host,
+		incrementalCache: cache,
+		jsInteropProvider: firstProvider,
+	});
+	assert.deepEqual(stable.diagnostics.filter(item => item.severity === 'error'), []);
+	const stableMain = stable.modules.find(module => module.source.path === mainPath);
+	assert.ok(stableMain?.ast);
+	assert.ok(stableMain.semantic);
+
+	const independent = checkModuleBase(stableMain.ast, {
+		containingFile: mainPath,
+		platform: 'node',
+		jsInteropProvider: providerForGeneration(2),
+	});
+	assert.deepEqual(independent.diagnostics.items.filter(item => item.severity === 'error'), []);
+
+	await assert.rejects(
+		buildProject(root, {
+			write: false,
+			host,
+			incrementalCache: cache,
+			jsInteropProvider: firstProvider,
+		}),
+		/Cannot re-register checked semantic after its checker witness has changed/u,
+		'unregistered stable-cache evidence must prove its original checker provenance on first experimental use',
 	);
 });
 
