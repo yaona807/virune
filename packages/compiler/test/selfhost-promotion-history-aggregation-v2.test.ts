@@ -17,14 +17,19 @@ const subject = 'a'.repeat(64);
 const commit = (character: string): string => character.repeat(40);
 const digest = (character: string): string => character.repeat(64);
 
-function observation(runId: string, executionCommit: string, outcome: 'passed' | 'product-failed' = 'passed'): PromotionShadowHistoryEntryInputV2 {
+function observation(
+	runId: string,
+	executionCommit: string,
+	outcome: 'passed' | 'product-failed' = 'passed',
+	completedAt = '2026-08-20T01:20:00.000Z',
+): PromotionShadowHistoryEntryInputV2 {
 	return {
 		version: 2,
 		runId,
 		stage: 'required-selfhost',
 		executionCommit,
 		promotionSubjectId: subject,
-		completedAt: '2026-08-20T01:20:00.000Z',
+		completedAt,
 		outcome,
 		countsTowardPromotion: true,
 		unexplainedDifferentials: outcome === 'product-failed' ? 1 : 0,
@@ -33,30 +38,34 @@ function observation(runId: string, executionCommit: string, outcome: 'passed' |
 }
 
 function attempt(runId: string, executionCommit: string, attemptNumber = 1, startHour = 1): PromotionHistoryAttemptInputV2 {
+	const startedAt = `2026-08-20T${String(startHour).padStart(2, '0')}:00:00.000Z`;
+	const completedAt = `2026-08-20T${String(startHour).padStart(2, '0')}:20:00.000Z`;
 	return {
 		attempt: attemptNumber,
-		startedAt: `2026-08-20T${String(startHour).padStart(2, '0')}:00:00.000Z`,
-		completedAt: `2026-08-20T${String(startHour).padStart(2, '0')}:20:00.000Z`,
+		startedAt,
+		completedAt,
 		conclusion: 'success',
 		artifact: {
 			archiveSha256: digest(String(attemptNumber)),
 			bytesSha256: digest(String(attemptNumber + 1)),
-			observation: observation(runId, executionCommit),
+			observation: observation(runId, executionCommit, 'passed', completedAt),
 		},
 		gapReason: null,
 	};
 }
 
 function productFailureAttempt(runId: string, executionCommit: string, attemptNumber = 2, startHour = 2): PromotionHistoryAttemptInputV2 {
+	const startedAt = `2026-08-20T${String(startHour).padStart(2, '0')}:00:00.000Z`;
+	const completedAt = `2026-08-20T${String(startHour).padStart(2, '0')}:20:00.000Z`;
 	return {
 		attempt: attemptNumber,
-		startedAt: `2026-08-20T${String(startHour).padStart(2, '0')}:00:00.000Z`,
-		completedAt: `2026-08-20T${String(startHour).padStart(2, '0')}:20:00.000Z`,
+		startedAt,
+		completedAt,
 		conclusion: 'failure',
 		artifact: {
 			archiveSha256: digest('f'),
 			bytesSha256: digest('d'),
-			observation: observation(runId, executionCommit, 'product-failed'),
+			observation: observation(runId, executionCommit, 'product-failed', completedAt),
 		},
 		gapReason: null,
 	};
@@ -192,10 +201,18 @@ test('rerun that starts before but completes after the next formal run is audit-
 		runId: '100', sequenceAt: '2026-08-19T01:00:00.000Z', executionCommit: commit('1'), frozen: false,
 		attempts: [firstAttempt],
 	}]);
+	const lateBase = productFailureAttempt('100', commit('1'), 2, 2);
 	const lateAttempt: PromotionHistoryAttemptInputV2 = {
-		...productFailureAttempt('100', commit('1'), 2, 1),
+		...lateBase,
 		startedAt: '2026-08-20T01:50:00.000Z',
 		completedAt: '2026-08-20T02:10:00.000Z',
+		artifact: {
+			...lateBase.artifact!,
+			observation: {
+				...lateBase.artifact!.observation,
+				completedAt: '2026-08-20T02:10:00.000Z',
+			},
+		},
 	};
 	const result = aggregatePromotionHistoryV2({
 		stage: 'required-selfhost',
