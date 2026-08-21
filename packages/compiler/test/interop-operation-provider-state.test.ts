@@ -38,24 +38,29 @@ function witness(overrides: Partial<ModuleResolutionWitness> = {}): ModuleResolu
 	};
 }
 
-test('source-authored origin module specifiers are preserved exactly', () => {
-	for (const moduleSpecifier of ['', '/explicit/library.js', 'file:///explicit/library.js', 'C:explicit/library.js']) {
+test('stable source-like origin module specifiers remain available when they do not expose provider paths', () => {
+	for (const moduleSpecifier of ['./library.js', '../shared.js', '@scope/package', 'node:fs', 'https://example.test/library.js']) {
 		const operation = externalOperationFromUsage(usageWithOrigin({ moduleSpecifier }));
 		assert.equal(operation?.kind, 'read-property');
 		if (operation?.kind === 'read-property') assert.equal(operation.result.origin?.moduleSpecifier, moduleSpecifier);
 	}
 });
 
-test('absolute checkout paths cannot hide in provider origin semantic text fields', () => {
+test('provider-origin absolute paths are stripped without rejecting an otherwise accepted Direct operation', () => {
 	for (const origin of [
-		{ moduleSpecifier: './library.js', packageName: '/checkout/private/pkg' },
-		{ moduleSpecifier: './library.js', packageVersion: 'file:///checkout/private/package.json' },
+		{ moduleSpecifier: '/checkout/private/library.js', packageName: 'pkg', exportName: 'value' },
+		{ moduleSpecifier: './library.js', packageName: '/checkout/private/pkg', exportName: 'value' },
+		{ moduleSpecifier: './library.js', packageVersion: 'file:///checkout/private/package.json', exportName: 'value' },
 		{ moduleSpecifier: './library.js', exportName: 'C:/checkout/private/export' },
 	]) {
-		assert.throws(
-			() => externalOperationFromUsage(usageWithOrigin(origin)),
-			/provider-private path syntax/u,
-		);
+		const operation = externalOperationFromUsage(usageWithOrigin(origin));
+		assert.equal(operation?.kind, 'read-property');
+		if (operation?.kind !== 'read-property') continue;
+		const serialized = JSON.stringify(operation);
+		assert.equal(serialized.includes('/checkout/private'), false);
+		assert.equal(serialized.includes('file:///checkout/private'), false);
+		assert.equal(serialized.includes('C:/checkout/private'), false);
+		assert.equal(operation.decision.status, 'resolved');
 	}
 });
 
