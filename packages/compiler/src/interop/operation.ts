@@ -592,8 +592,8 @@ function canonicalRelativeLocator(value: string, description: string): string {
 
 function containsProviderPrivatePathSyntax(value: string): boolean {
 	if (value.includes('\\')) return true;
-	if (/(?:^|[^\p{L}\p{N}._~%+@/:-])\/{2,}/u.test(value)) return true;
-	return /(?:^|[^\p{L}\p{N}._~%+@/-])(?:file:|[A-Za-z]:|\/(?!\/))/iu.test(value);
+	if (/(?:^|[^\p{L}\p{N}._~%+/:-])\/{2,}/u.test(value)) return true;
+	return /(?:^|[^\p{L}\p{N}._~%+/-])(?:file:|[A-Za-z]:|\/(?!\/))/iu.test(value);
 }
 
 function canonicalHash(value: string, description: string): string {
