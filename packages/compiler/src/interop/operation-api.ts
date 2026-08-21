@@ -1,13 +1,14 @@
 import type * as A from '../ast/nodes.js';
 import { hasCurrentCheckedBuiltinWitness } from '../checker/session-witness.js';
 import type { SemanticModel } from '../checker/checker.js';
-import { isCurrentCheckedSemantic } from './check-session.js';
+import type { Diagnostic } from '../diagnostics/diagnostic.js';
+import { currentCheckedDiagnostics } from './check-session.js';
 import { externalOperationSequence as externalOperationSequenceFromEvidence, type ExternalOperationIR } from './operation.js';
 
 /**
  * Derive provider-independent External Operations from one checked semantic model.
  *
- * Keeping diagnostics and Interop evidence on the same exact SemanticModel prevents
+ * Keeping diagnostics and Interop evidence on the same exact registered check prevents
  * callers from substituting partial lookalike evidence. The SemanticModel must also
  * belong to the current registered public session for this AST and contain the newest
  * checker-owned builtin witness for the shared source-span identity. Non-import
@@ -17,19 +18,20 @@ export function externalOperationSequence(input: {
 	readonly module: A.ModuleNode;
 	readonly semantic: SemanticModel;
 }): readonly ExternalOperationIR[] {
-	assertCheckedAstEvidence(input.module, input.semantic);
+	const diagnostics = assertCheckedAstEvidence(input.module, input.semantic);
 	return externalOperationSequenceFromEvidence({
 		module: input.module,
 		interop: input.semantic.interop,
-		diagnostics: input.semantic.diagnostics.items,
+		diagnostics,
 	});
 }
 
 function assertCheckedAstEvidence(
 	module: A.ModuleNode,
 	semantic: SemanticModel,
-): void {
-	if (!isCurrentCheckedSemantic(module, semantic) || !hasCurrentCheckedBuiltinWitness(module.span, semantic.symbols)) {
+): readonly Diagnostic[] {
+	const diagnostics = currentCheckedDiagnostics(module, semantic);
+	if (diagnostics === undefined || !hasCurrentCheckedBuiltinWitness(module.span, semantic.symbols)) {
 		throw new Error('Stale or cross-session External usage evidence: module is not from the current checked AST semantic session');
 	}
 
@@ -57,4 +59,5 @@ function assertCheckedAstEvidence(
 			throw new Error(`Stale or cross-session External usage evidence: node ${usage.nodeId} is not from the checked AST`);
 		}
 	}
+	return diagnostics;
 }
