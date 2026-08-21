@@ -26,7 +26,7 @@ export type ExternalOperationKind =
 export type ExternalOperationEffect = 'JavaScript';
 
 export interface ExternalForeignOrigin {
-	readonly moduleSpecifier: string;
+	readonly moduleSpecifier?: string;
 	readonly packageName?: string;
 	readonly packageVersion?: string;
 	readonly exportName?: string;
@@ -340,11 +340,15 @@ function assertBridgeMatchesForeignType(bridge: PrimitiveBridgeKind, source: Ext
 }
 
 function canonicalOrigin(origin: ForeignOrigin): ExternalForeignOrigin {
+	const moduleSpecifier = canonicalOptionalOriginText(origin.moduleSpecifier, 'origin module specifier');
+	const packageName = origin.packageName === undefined ? undefined : canonicalOptionalOriginText(origin.packageName, 'origin package name');
+	const packageVersion = origin.packageVersion === undefined ? undefined : canonicalOptionalOriginText(origin.packageVersion, 'origin package version');
+	const exportName = origin.exportName === undefined ? undefined : canonicalOptionalOriginText(origin.exportName, 'origin export name');
 	return {
-		moduleSpecifier: sourceModuleSpecifier(origin.moduleSpecifier, 'origin module specifier'),
-		...(origin.packageName === undefined ? {} : { packageName: canonicalProviderText(origin.packageName, 'origin package name') }),
-		...(origin.packageVersion === undefined ? {} : { packageVersion: canonicalProviderText(origin.packageVersion, 'origin package version') }),
-		...(origin.exportName === undefined ? {} : { exportName: canonicalProviderText(origin.exportName, 'origin export name') }),
+		...(moduleSpecifier === undefined ? {} : { moduleSpecifier }),
+		...(packageName === undefined ? {} : { packageName }),
+		...(packageVersion === undefined ? {} : { packageVersion }),
+		...(exportName === undefined ? {} : { exportName }),
 	};
 }
 
@@ -541,6 +545,13 @@ function canonicalRuntimeEntry(value: string): string {
 
 function sourceModuleSpecifier(value: string, description: string): string {
 	if (typeof value !== 'string') throw new Error(`External operation ${description} must be a string`);
+	return value;
+}
+
+function canonicalOptionalOriginText(value: string, description: string): string | undefined {
+	if (typeof value !== 'string') throw new Error(`External operation ${description} must be a string`);
+	if (value.length === 0 || /\p{Cc}/u.test(value)) return undefined;
+	if (value.includes('\\') || value.startsWith('/') || /^file:/iu.test(value) || /^[A-Za-z]:/u.test(value)) return undefined;
 	return value;
 }
 
