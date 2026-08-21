@@ -395,10 +395,17 @@ function assertCurrentCheckerUsageCoverage(stableUsages: readonly ForeignUsageIR
 	const stable = stableUsages.filter(usage => usage.kind !== 'import');
 	const current = currentUsages.filter(usage => usage.kind !== 'import');
 	if (stable.length !== current.length) throw new Error('Stale or cross-session External usage evidence: current checker usage coverage is incomplete');
-	const stableAnchors = new Set(stable.map(nonImportUsageAnchorKey));
-	const currentAnchors = new Set(current.map(nonImportUsageAnchorKey));
+	const stableKeys = stable.map(nonImportUsageAnchorKey);
+	const currentKeys = current.map(nonImportUsageAnchorKey);
+	const stableAnchors = new Set(stableKeys);
+	const currentAnchors = new Set(currentKeys);
 	if (stableAnchors.size !== stable.length || currentAnchors.size !== current.length) {
 		throw new Error('Stale or cross-session External usage evidence: duplicate current usage anchor');
+	}
+	for (let index = 0; index < stableKeys.length; index++) {
+		if (stableKeys[index] !== currentKeys[index]) {
+			throw new Error('Stale or cross-session External usage evidence: current checker usage order disagrees');
+		}
 	}
 }
 
