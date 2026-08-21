@@ -46,6 +46,13 @@ test('provider-independent evidence preserves supported platform and runtime-for
 	}
 });
 
+test('runtime condition sets canonicalize provider ordering and duplicates deterministically', () => {
+	const first = load(witness({ conditions: ['types', 'node', 'import', 'node'] }));
+	const second = load(witness({ conditions: ['import', 'types', 'node'] }));
+	assert.deepEqual(first.runtimeWitness?.conditions, ['import', 'node', 'types']);
+	assert.deepEqual(first, second);
+});
+
 test('builtin witness facts are preserved instead of imposing one provider implementation policy', () => {
 	const builtin = witness({
 		moduleSpecifier: 'virtual:fs',
