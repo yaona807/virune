@@ -52,6 +52,10 @@ test('provider-origin absolute paths are stripped without rejecting an otherwise
 		{ moduleSpecifier: './library.js', packageName: '/checkout/private/pkg', exportName: 'value' },
 		{ moduleSpecifier: './library.js', packageVersion: 'file:///checkout/private/package.json', exportName: 'value' },
 		{ moduleSpecifier: './library.js', exportName: 'C:/checkout/private/export' },
+		{ moduleSpecifier: 'loader=/checkout/private/library.js', packageName: 'pkg', exportName: 'value' },
+		{ moduleSpecifier: './library.js', packageName: 'pkg=/checkout/private/pkg', exportName: 'value' },
+		{ moduleSpecifier: './library.js', packageVersion: 'version=file:///checkout/private/package.json', exportName: 'value' },
+		{ moduleSpecifier: './library.js', exportName: 'value=C:/checkout/private/export' },
 	]) {
 		const operation = externalOperationFromUsage(usageWithOrigin(origin));
 		assert.equal(operation?.kind, 'read-property');
@@ -69,6 +73,9 @@ test('absolute checkout paths cannot hide in runtime witness package or conditio
 		witness({ packageName: '/checkout/private/pkg' }),
 		witness({ packageVersion: 'file:///checkout/private/package.json' }),
 		witness({ conditions: ['types', '/checkout/private/condition'] }),
+		witness({ packageName: 'pkg=/checkout/private/pkg' }),
+		witness({ packageVersion: 'version=file:///checkout/private/package.json' }),
+		witness({ conditions: ['types', 'condition=/checkout/private/condition'] }),
 	]) {
 		assert.throws(
 			() => externalModuleLoadOperation({
@@ -80,6 +87,16 @@ test('absolute checkout paths cannot hide in runtime witness package or conditio
 			/provider-private path syntax/u,
 		);
 	}
+
+	assert.throws(
+		() => externalModuleLoadOperation({
+			nodeId: 1,
+			span,
+			moduleSpecifier: './library.js',
+			witnesses: [witness({ runtimeEntry: 'resolved=/checkout/private/library.js' })],
+		}),
+		/not be absolute or drive-relative/u,
+	);
 });
 
 test('source anchors are reconstructed from known stable fields and cannot carry cache-local or private metadata', () => {
