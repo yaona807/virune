@@ -37,13 +37,17 @@ function invalidateModules(modules: ReadonlySet<A.ModuleNode> | undefined): void
 }
 
 function registerCompileResult(result: CompileResult): CompileResult {
-	if (result.ast !== undefined && result.semantic !== undefined) registerCheckedSemantic(result.ast, result.semantic);
+	if (result.ast !== undefined && result.semantic !== undefined) {
+		registerCheckedSemantic(result.ast, result.semantic, result.diagnostics);
+	}
 	return result;
 }
 
 function registerProjectResult(result: ProjectBuildResult): ProjectBuildResult {
 	for (const module of result.modules) {
-		if (module.ast !== undefined && module.semantic !== undefined) registerCheckedSemantic(module.ast, module.semantic);
+		if (module.ast !== undefined && module.semantic !== undefined) {
+			registerCheckedSemantic(module.ast, module.semantic, result.diagnostics);
+		}
 	}
 	return result;
 }
@@ -63,7 +67,7 @@ export function compileSource(source: SourceFile, options: CompileOptions = {}):
 export function checkModule(module: A.ModuleNode, options: TypeCheckerOptions = {}): SemanticModel {
 	invalidateCheckedSemantic(module);
 	const semantic = checkModuleBase(module, options);
-	registerCheckedSemantic(module, semantic);
+	registerCheckedSemantic(module, semantic, semantic.diagnostics.items);
 	return semantic;
 }
 
@@ -72,7 +76,7 @@ export class TypeChecker extends BaseTypeChecker {
 	public override check(module: A.ModuleNode): SemanticModel {
 		invalidateCheckedSemantic(module);
 		const semantic = super.check(module);
-		registerCheckedSemantic(module, semantic);
+		registerCheckedSemantic(module, semantic, semantic.diagnostics.items);
 		return semantic;
 	}
 }
