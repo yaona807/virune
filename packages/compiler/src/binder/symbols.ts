@@ -1,5 +1,5 @@
 import type { AstNode, Declaration } from '../ast/nodes.js';
-import { registerCheckedBuiltinWitness } from '../session-witness.js';
+import { createCheckerWitness, registerCheckedBuiltinWitness, registerCheckedScopeWitness } from '../session-witness.js';
 import type { SourceSpan, SymbolId, TypeId } from '../source.js';
 import { IdGenerator } from '../source.js';
 
@@ -22,11 +22,15 @@ export class Scope {
 	public constructor(readonly parent?: Scope) {}
 	public define(symbol: SymbolInfo): boolean {
 		if (this.lookupCurrent(symbol.name) !== undefined || this.parent?.lookup(symbol.name) !== undefined) return false;
-		this.#symbols.set(symbol.name, symbol); return true;
+		this.#symbols.set(symbol.name, symbol);
+		registerCheckedScopeWitness(this, symbol);
+		return true;
 	}
 	public defineAllowParent(symbol: SymbolInfo): boolean {
 		if (this.lookupCurrent(symbol.name) !== undefined) return false;
-		this.#symbols.set(symbol.name, symbol); return true;
+		this.#symbols.set(symbol.name, symbol);
+		registerCheckedScopeWitness(this, symbol);
+		return true;
 	}
 	public lookupCurrent(name: string): SymbolInfo | undefined { return this.#symbols.get(name); }
 	public lookup(name: string): SymbolInfo | undefined { return this.#symbols.get(name) ?? this.parent?.lookup(name); }
@@ -35,9 +39,10 @@ export class Scope {
 
 export class SymbolFactory {
 	readonly #ids = new IdGenerator();
+	readonly #checkerWitness = createCheckerWitness();
 	public create(name: string, kind: SymbolKind, typeId: TypeId, span: SourceSpan, options: { readonly declaration?: AstNode | Declaration; readonly mutable?: boolean; readonly public?: boolean; readonly typeOnly?: boolean; readonly constant?: boolean } = {}): SymbolInfo {
 		const symbol: SymbolInfo = { id: this.#ids.next(), name, kind, typeId, span, mutable: options.mutable ?? false, public: options.public ?? false, typeOnly: options.typeOnly ?? false, constant: options.constant ?? false, ...(options.declaration === undefined ? {} : { declaration: options.declaration }) };
-		if (kind === 'builtin') registerCheckedBuiltinWitness(span);
+		if (kind === 'builtin') registerCheckedBuiltinWitness(span, symbol, this.#checkerWitness);
 		return symbol;
 	}
 }
