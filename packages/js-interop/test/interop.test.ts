@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { writeFile } from 'node:fs/promises';
 import test from 'node:test';
 import { join } from 'node:path';
 import {
@@ -67,4 +68,79 @@ test('compiler emits direct JavaScript import, checked primitive bridge, and pro
 	assert.equal(serialized.includes('providerVersion'), false);
 	assert.equal(serialized.includes('declarationEntry'), false);
 	assert.equal(serialized.includes('declarationGraphHash'), false);
+});
+
+test('real TypeScript provider maps property, receiver-preserving call, and foreign await semantics into External Operations', async () => {
+	const root = await fixtureRoot();
+	await writeFile(join(root, 'src/library.d.ts'), [
+		'export interface Item { value: string }',
+		'export declare const item: Item;',
+		'export interface Api { method(this: Api, value: "foo"): "member" }',
+		'export declare const api: Api;',
+		'export declare function makeItemAsync(): Promise<Item>;',
+		'',
+	].join('\n'), 'utf8');
+	await writeFile(join(root, 'src/library.js'), [
+		'export const item = { value: "value" };',
+		'export const api = { method() { return "member"; } };',
+		'export async function makeItemAsync() { return item; }',
+		'',
+	].join('\n'), 'utf8');
+	const provider = new TypeScriptInteropProvider({ projectRoot: root });
+	try {
+		const result = compileSource({
+			id: 1,
+			path: join(root, 'src/main.virune'),
+			text: [
+				'import js { item, api, makeItemAsync } from "./library.js"',
+				'',
+				'fn property() -> String uses JavaScript {',
+				'\treturn item.value',
+				'}',
+				'',
+				'fn member() -> String uses JavaScript {',
+				'\treturn api.method("foo")',
+				'}',
+				'',
+				'async fn awaited() -> String uses JavaScript {',
+				'\tlet resolved = await makeItemAsync()',
+				'\treturn resolved.value',
+				'}',
+				'',
+			].join('\n'),
+		}, { platform: 'node', jsInteropProvider: provider });
+		assert.deepEqual(result.diagnostics.filter(item => item.severity === 'error'), []);
+		assert.ok(result.ast);
+		assert.ok(result.semantic);
+
+		const operations = externalOperationSequence({
+			module: result.ast,
+			interop: result.semantic.interop,
+			diagnostics: result.diagnostics,
+		});
+		assert.deepEqual(operations.map(operation => operation.kind), [
+			'module-load',
+			'read-property',
+			'bridge-foreign-primitive',
+			'read-property',
+			'call',
+			'bridge-foreign-primitive',
+			'call',
+			'await',
+			'read-property',
+			'bridge-foreign-primitive',
+		]);
+		const calls = operations.filter(operation => operation.kind === 'call');
+		assert.equal(calls.length, 2);
+		assert.equal(calls[0]?.receiverMode, 'preserve-this');
+		assert.equal(calls[0]?.mayReject, false);
+		assert.deepEqual(calls[0]?.decision.claims, ['receiver-preserved']);
+		assert.equal(calls[1]?.receiverMode, 'none');
+		assert.equal(calls[1]?.mayReject, true);
+		const awaited = operations.find(operation => operation.kind === 'await');
+		assert.equal(awaited?.mayReject, true);
+		assert.equal(operations.filter(operation => operation.kind === 'read-property').length, 3);
+	} finally {
+		provider.dispose();
+	}
 });
