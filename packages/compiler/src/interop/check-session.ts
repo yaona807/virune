@@ -2,6 +2,14 @@ import type * as A from '../ast/nodes.js';
 import type { SemanticModel } from '../checker/checker.js';
 import type { Diagnostic } from '../diagnostics/diagnostic.js';
 import { checkedScopeWitness, currentCheckedBuiltinWitness } from '../session-witness.js';
+import type {
+	ForeignOrigin,
+	ForeignTypeSnapshot,
+	ForeignUsage,
+	ForeignUsageIR,
+	ModuleResolutionWitness,
+	StableForeignTypeSnapshot,
+} from './types.js';
 
 interface CheckedSession {
 	readonly checkerWitness: object;
@@ -73,8 +81,84 @@ export function currentCheckedDiagnostics(
 function checkedEvidenceState(semantic: SemanticModel): string {
 	return structuralState({
 		diagnostics: semantic.diagnostics.items,
-		interop: semantic.interop,
+		interop: checkedInteropEvidence(semantic),
 	});
+}
+
+/**
+ * Fingerprint only facts consumed by External Operation derivation.
+ * Provider-private/navigation metadata is deliberately not enumerated: it is
+ * neither stable evidence nor a session truth source.
+ */
+function checkedInteropEvidence(semantic: SemanticModel): unknown {
+	return {
+		usages: semantic.interop.usages
+			.filter(usage => usage.kind !== 'import')
+			.map(checkedUsageEvidence),
+		usageIR: semantic.interop.usageIR.map(checkedUsageEvidence),
+		moduleWitnesses: semantic.interop.moduleWitnesses.map(checkedModuleWitnessEvidence),
+		requiresJavaScriptInitialization: semantic.interop.requiresJavaScriptInitialization,
+	};
+}
+
+function checkedUsageEvidence(usage: ForeignUsage | ForeignUsageIR): unknown {
+	const anchor = {
+		kind: usage.kind,
+		nodeId: usage.nodeId,
+		span: checkedSpanEvidence(usage.span),
+	};
+	if (usage.kind === 'import') return anchor;
+	return {
+		...anchor,
+		foreignType: checkedForeignTypeEvidence(usage.foreignType),
+		...(usage.kind === 'call' ? { receiverMode: usage.receiverMode, mayReject: usage.mayReject } : {}),
+		...(usage.kind === 'await' ? { mayReject: usage.mayReject } : {}),
+		...(usage.kind === 'bridge' ? {
+			bridge: usage.bridge === undefined ? undefined : {
+				kind: usage.bridge.kind,
+				bridge: usage.bridge.bridge,
+			},
+		} : {}),
+	};
+}
+
+function checkedForeignTypeEvidence(snapshot: ForeignTypeSnapshot | StableForeignTypeSnapshot): unknown {
+	return {
+		category: snapshot.category,
+		primitive: snapshot.primitive,
+		mustUse: snapshot.mustUse,
+		origin: snapshot.origin === undefined ? undefined : checkedOriginEvidence(snapshot.origin),
+	};
+}
+
+function checkedOriginEvidence(origin: ForeignOrigin): unknown {
+	return {
+		moduleSpecifier: origin.moduleSpecifier,
+		packageName: origin.packageName,
+		packageVersion: origin.packageVersion,
+		exportName: origin.exportName,
+	};
+}
+
+function checkedModuleWitnessEvidence(witness: ModuleResolutionWitness): unknown {
+	return {
+		moduleSpecifier: witness.moduleSpecifier,
+		packageName: witness.packageName,
+		packageVersion: witness.packageVersion,
+		runtimeEntry: witness.runtimeEntry,
+		runtimeFormat: witness.runtimeFormat,
+		conditions: [...new Set(witness.conditions)].sort(compareText),
+		platform: witness.platform,
+		packageJsonHash: witness.packageJsonHash,
+	};
+}
+
+function checkedSpanEvidence(span: ForeignUsage['span']): unknown {
+	return {
+		fileId: span.fileId,
+		start: { offset: span.start.offset, line: span.start.line, column: span.start.column },
+		end: { offset: span.end.offset, line: span.end.line, column: span.end.column },
+	};
 }
 
 function structuralState(value: unknown): string {
@@ -109,4 +193,8 @@ function encodeStructuralValue(value: unknown, seen: Map<object, number>): strin
 	const record = value as Record<string, unknown>;
 	const keys = Object.keys(record).sort();
 	return `object:${id}:{${keys.map(key => `${JSON.stringify(key)}=${encodeStructuralValue(record[key], seen)}`).join(',')}}`;
+}
+
+function compareText(left: string, right: string): number {
+	return left < right ? -1 : left > right ? 1 : 0;
 }
