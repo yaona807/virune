@@ -49,7 +49,7 @@ function run() {
 test('aggregation attempt greater than one can evaluate but never publish canonical ledger state', () => {
 	const result = orchestratePromotionHistoryV2({
 		stage: 'required-selfhost', policy: policy(),
-		trigger: { aggregationRunId: '900', aggregationAttempt: 2, observationRunId: '100' },
+		trigger: { aggregationRunId: '900', aggregationAttempt: 2, observationRunId: '100', observationEvent: 'schedule' },
 		runs: [run()],
 	});
 	assert.equal(result.report.publish, false);
