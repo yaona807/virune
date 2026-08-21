@@ -1,6 +1,6 @@
 import type * as A from '../ast/nodes.js';
 import type { SemanticModel } from '../checker/checker.js';
-import { isCurrentCheckedSemantic } from './check-session.js';
+import { hasCurrentCheckedBuiltinWitness, isCurrentCheckedSemantic } from './check-session.js';
 import { externalOperationSequence as externalOperationSequenceFromEvidence, type ExternalOperationIR } from './operation.js';
 
 /**
@@ -9,12 +9,13 @@ import { externalOperationSequence as externalOperationSequenceFromEvidence, typ
  * Keeping diagnostics and Interop evidence on the same SemanticModel prevents a
  * caller from accidentally omitting checker failures while asking for Direct
  * operation evidence from that failed check. The SemanticModel must also belong
- * to the current check session for this exact public AST object, and non-import
+ * to the current registered public session for this AST and contain the newest
+ * checker-owned builtin witness for the shared source-span identity. Non-import
  * operation anchors must carry checker-owned inferred-type annotations.
  */
 export function externalOperationSequence(input: {
 	readonly module: A.ModuleNode;
-	readonly semantic: Pick<SemanticModel, 'diagnostics' | 'interop'>;
+	readonly semantic: Pick<SemanticModel, 'diagnostics' | 'interop' | 'symbols'>;
 }): readonly ExternalOperationIR[] {
 	assertCheckedAstEvidence(input.module, input.semantic);
 	return externalOperationSequenceFromEvidence({
@@ -26,9 +27,9 @@ export function externalOperationSequence(input: {
 
 function assertCheckedAstEvidence(
 	module: A.ModuleNode,
-	semantic: Pick<SemanticModel, 'interop'>,
+	semantic: Pick<SemanticModel, 'interop' | 'symbols'>,
 ): void {
-	if (!isCurrentCheckedSemantic(module, semantic)) {
+	if (!isCurrentCheckedSemantic(module, semantic) || !hasCurrentCheckedBuiltinWitness(module, semantic.symbols)) {
 		throw new Error('Stale or cross-session External usage evidence: module is not from the current checked AST semantic session');
 	}
 

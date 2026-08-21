@@ -1,4 +1,5 @@
 import type { AstNode, Declaration } from '../ast/nodes.js';
+import { registerCheckedBuiltinWitness } from '../interop/check-session.js';
 import type { SourceSpan, SymbolId, TypeId } from '../source.js';
 import { IdGenerator } from '../source.js';
 
@@ -35,6 +36,8 @@ export class Scope {
 export class SymbolFactory {
 	readonly #ids = new IdGenerator();
 	public create(name: string, kind: SymbolKind, typeId: TypeId, span: SourceSpan, options: { readonly declaration?: AstNode | Declaration; readonly mutable?: boolean; readonly public?: boolean; readonly typeOnly?: boolean; readonly constant?: boolean } = {}): SymbolInfo {
-		return { id: this.#ids.next(), name, kind, typeId, span, mutable: options.mutable ?? false, public: options.public ?? false, typeOnly: options.typeOnly ?? false, constant: options.constant ?? false, ...(options.declaration === undefined ? {} : { declaration: options.declaration }) };
+		const symbol: SymbolInfo = { id: this.#ids.next(), name, kind, typeId, span, mutable: options.mutable ?? false, public: options.public ?? false, typeOnly: options.typeOnly ?? false, constant: options.constant ?? false, ...(options.declaration === undefined ? {} : { declaration: options.declaration }) };
+		if (kind === 'builtin') registerCheckedBuiltinWitness(span, symbol);
+		return symbol;
 	}
 }

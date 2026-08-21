@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { join, resolve } from 'node:path';
 import test from 'node:test';
-import { buildProject, checkModule, compileSource } from '../src/interop/checked-api.js';
+import { checkModule as checkModuleBase } from '../src/checker/checker.js';
+import { buildProject, checkModule, compileSource, IncrementalProjectBuilder } from '../src/interop/checked-api.js';
 import { externalOperationSequence } from '../src/interop/operation-api.js';
 import type { JsInteropProvider } from '../src/interop/types.js';
 import { parseSource, ProjectBuildCache, type ProjectHost } from '../src/project/project.js';
@@ -64,6 +65,27 @@ function operationKinds(module: NonNullable<ReturnType<typeof parseSource>['ast'
 	return externalOperationSequence({ module, semantic }).map(operation => operation.kind);
 }
 
+function memoryHost(mainPath: string): ProjectHost {
+	return {
+		async readFile(path) {
+			if (path === mainPath) return source.text;
+			throw Object.assign(new Error(`missing ${path}`), { code: 'ENOENT' });
+		},
+	};
+}
+
+function gatedHost(mainPath: string, gate: Promise<void>): ProjectHost {
+	return {
+		async readFile(path) {
+			if (path === mainPath) {
+				await gate;
+				return source.text;
+			}
+			throw Object.assign(new Error(`missing ${path}`), { code: 'ENOENT' });
+		},
+	};
+}
+
 test('public operation derivation is bound to the exact AST that produced its SemanticModel', () => {
 	const checked = compileSource(source, { emit: false, jsInteropProvider: provider });
 	assert.deepEqual(checked.diagnostics.filter(item => item.severity === 'error'), []);
@@ -107,15 +129,43 @@ test('checking the same AST again invalidates the previous semantic session', ()
 	assert.deepEqual(operationKinds(parsed.ast, second), ['module-load', 'read-property']);
 });
 
+test('a stable checker recheck invalidates retained experimental evidence before provider resolution', () => {
+	const parsed = parseSource(source);
+	assert.ok(parsed.ast);
+	const first = checkModule(parsed.ast, { containingFile: source.path, platform: 'node', jsInteropProvider: providerForGeneration(1) });
+	assert.deepEqual(operationKinds(parsed.ast, first), ['module-load', 'read-property']);
+
+	const next = providerForGeneration(2);
+	let observedDuringResolution = false;
+	const reentrantProvider: JsInteropProvider = {
+		...next,
+		resolveImport(request) {
+			observedDuringResolution = true;
+			assert.throws(
+				() => externalOperationSequence({ module: parsed.ast!, semantic: first }),
+				/not from the current checked AST semantic session/u,
+			);
+			return next.resolveImport(request);
+		},
+	};
+	const second = checkModuleBase(parsed.ast, { containingFile: source.path, platform: 'node', jsInteropProvider: reentrantProvider });
+	assert.equal(observedDuringResolution, true);
+	assert.deepEqual(second.diagnostics.items.filter(item => item.severity === 'error'), []);
+	assert.throws(
+		() => externalOperationSequence({ module: parsed.ast!, semantic: first }),
+		/not from the current checked AST semantic session/u,
+	);
+	assert.throws(
+		() => externalOperationSequence({ module: parsed.ast!, semantic: second }),
+		/not from the current checked AST semantic session/u,
+		'base checker results are not promoted into the experimental public session registry',
+	);
+});
+
 test('incremental project recheck invalidates retained semantics when the parsed AST is reused', async () => {
 	const root = resolve('virtual-operation-session-project');
 	const mainPath = join(root, 'src/main.virune');
-	const host: ProjectHost = {
-		async readFile(path) {
-			if (path === mainPath) return source.text;
-			throw Object.assign(new Error(`missing ${path}`), { code: 'ENOENT' });
-		},
-	};
+	const host = memoryHost(mainPath);
 	const cache = new ProjectBuildCache();
 	const first = await buildProject(root, { write: false, host, incrementalCache: cache, jsInteropProvider: providerForGeneration(1) });
 	const firstMain = first.modules.find(module => module.source.path === mainPath);
@@ -135,5 +185,66 @@ test('incremental project recheck invalidates retained semantics when the parsed
 		() => externalOperationSequence({ module: firstMain.ast!, semantic: firstMain.semantic! }),
 		/not from the current checked AST semantic session/u,
 	);
+	assert.deepEqual(operationKinds(secondMain.ast, secondMain.semantic), ['module-load', 'read-property']);
+});
+
+test('cached project builds invalidate old evidence before awaiting recheck and reject concurrent cache reuse', async () => {
+	const root = resolve('virtual-operation-session-pending-project');
+	const mainPath = join(root, 'src/main.virune');
+	const cache = new ProjectBuildCache();
+	const first = await buildProject(root, { write: false, host: memoryHost(mainPath), incrementalCache: cache, jsInteropProvider: providerForGeneration(1) });
+	const firstMain = first.modules.find(module => module.source.path === mainPath);
+	assert.ok(firstMain?.ast);
+	assert.ok(firstMain.semantic);
+	assert.deepEqual(operationKinds(firstMain.ast, firstMain.semantic), ['module-load', 'read-property']);
+
+	let release!: () => void;
+	const gate = new Promise<void>(resolveGate => { release = resolveGate; });
+	const host = gatedHost(mainPath, gate);
+	const pending = buildProject(root, { write: false, host, incrementalCache: cache, jsInteropProvider: providerForGeneration(2) });
+	assert.throws(
+		() => externalOperationSequence({ module: firstMain.ast!, semantic: firstMain.semantic! }),
+		/not from the current checked AST semantic session/u,
+		'old evidence must be invalidated synchronously when the recheck starts',
+	);
+	await assert.rejects(
+		buildProject(root, { write: false, host, incrementalCache: cache, jsInteropProvider: providerForGeneration(3) }),
+		/Concurrent experimental project builds cannot share one ProjectBuildCache/u,
+	);
+	release();
+	const second = await pending;
+	const secondMain = second.modules.find(module => module.source.path === mainPath);
+	assert.ok(secondMain?.ast);
+	assert.ok(secondMain.semantic);
+	assert.deepEqual(operationKinds(secondMain.ast, secondMain.semantic), ['module-load', 'read-property']);
+});
+
+test('IncrementalProjectBuilder invalidates old evidence before awaiting recheck and rejects concurrent builds', async () => {
+	const root = resolve('virtual-operation-session-builder-project');
+	const mainPath = join(root, 'src/main.virune');
+	const builder = new IncrementalProjectBuilder();
+	const first = await builder.build(root, { write: false, host: memoryHost(mainPath), jsInteropProvider: providerForGeneration(1) });
+	const firstMain = first.modules.find(module => module.source.path === mainPath);
+	assert.ok(firstMain?.ast);
+	assert.ok(firstMain.semantic);
+	assert.deepEqual(operationKinds(firstMain.ast, firstMain.semantic), ['module-load', 'read-property']);
+
+	let release!: () => void;
+	const gate = new Promise<void>(resolveGate => { release = resolveGate; });
+	const host = gatedHost(mainPath, gate);
+	const pending = builder.build(root, { write: false, host, jsInteropProvider: providerForGeneration(2) });
+	assert.throws(
+		() => externalOperationSequence({ module: firstMain.ast!, semantic: firstMain.semantic! }),
+		/not from the current checked AST semantic session/u,
+	);
+	await assert.rejects(
+		builder.build(root, { write: false, host, jsInteropProvider: providerForGeneration(3) }),
+		/Concurrent experimental builds cannot share one IncrementalProjectBuilder/u,
+	);
+	release();
+	const second = await pending;
+	const secondMain = second.modules.find(module => module.source.path === mainPath);
+	assert.ok(secondMain?.ast);
+	assert.ok(secondMain.semantic);
 	assert.deepEqual(operationKinds(secondMain.ast, secondMain.semantic), ['module-load', 'read-property']);
 });
