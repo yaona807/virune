@@ -71,6 +71,32 @@ function passingRun(): PromotionAggregationRunSnapshotV2 {
 	};
 }
 
+function laterPassingRun(): PromotionAggregationRunSnapshotV2 {
+	const base = passingRun();
+	const baseAttempt = base.attempts[0]!;
+	const baseArtifact = baseAttempt.artifact!;
+	return {
+		...base,
+		runId: '101',
+		sequenceAt: '2026-08-21T18:17:00.000Z',
+		executionCommit: '2'.repeat(40),
+		attempts: [{
+			...baseAttempt,
+			startedAt: '2026-08-21T18:17:01.000Z',
+			completedAt: '2026-08-21T18:30:00.000Z',
+			artifact: {
+				...baseArtifact,
+				observation: {
+					...baseArtifact.observation,
+					runId: '101',
+					executionCommit: '2'.repeat(40),
+					completedAt: '2026-08-21T18:29:59.000Z',
+				},
+			},
+		}],
+	};
+}
+
 function publication(aggregationRunId = '900', aggregationAttempt = 1) {
 	return orchestratePromotionHistoryV2({
 		stage: 'required-selfhost',
@@ -195,6 +221,30 @@ test('a non-publishing report must self-bind its parent and current ledger ident
 			],
 		}),
 		/non-publishing report must retain the current ledger as its parent/u,
+	);
+});
+
+test('a publishing report must bind the exact parent SHA stored in its ledger', () => {
+	const first = publication();
+	const second = orchestratePromotionHistoryV2({
+		stage: 'required-selfhost',
+		policy: policy(),
+		trigger: { aggregationRunId: '901', aggregationAttempt: 1, observationRunId: '101' },
+		parent: first.ledger as PromotionHistoryLedgerV2,
+		runs: [passingRun(), laterPassingRun()],
+	});
+	assert.equal(second.report.publish, true);
+	assert.equal(second.report.currentLedgerGeneration, 2);
+	const corrupted = { ...second.report, parentLedgerSha256: 'f'.repeat(64) };
+	assert.throws(
+		() => discoverPromotionHistoryParentV2({
+			stage: 'required-selfhost',
+			candidates: [{
+				runId: '901', attempt: 1, createdAt: '2026-08-21T19:00:00.000Z', conclusion: 'success',
+				report: corrupted, ledger: second.ledger,
+			}],
+		}),
+		/ledger parent SHA does not match the publishing aggregation report/u,
 	);
 });
 
