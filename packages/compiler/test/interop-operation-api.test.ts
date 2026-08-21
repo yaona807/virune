@@ -43,7 +43,7 @@ const provider: JsInteropProvider = {
 	display() { return 'Value'; },
 };
 
-test('public operation derivation rejects a freshly reparsed unchecked AST paired with another check semantic model', () => {
+test('public operation derivation is bound to the exact AST that produced its SemanticModel', () => {
 	const source = {
 		id: 1,
 		path: '/virtual/main.virune',
@@ -70,6 +70,15 @@ test('public operation derivation rejects a freshly reparsed unchecked AST paire
 	assert.deepEqual(reparsed.diagnostics.filter(item => item.severity === 'error'), []);
 	assert.throws(
 		() => externalOperationSequence({ module: reparsed.ast!, semantic: checked.semantic! }),
+		/not from the checked AST/u,
+	);
+
+	const separatelyChecked = compileSource(source, { emit: false, jsInteropProvider: provider });
+	assert.deepEqual(separatelyChecked.diagnostics.filter(item => item.severity === 'error'), []);
+	assert.ok(separatelyChecked.ast);
+	assert.ok(separatelyChecked.semantic);
+	assert.throws(
+		() => externalOperationSequence({ module: separatelyChecked.ast!, semantic: checked.semantic! }),
 		/not from the checked AST/u,
 	);
 });
