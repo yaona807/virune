@@ -57,9 +57,14 @@ const sourceText = [
 ].join('\n');
 
 function memoryHost(mainPath: string): ProjectHost {
+	return multiFileHost(new Map([[mainPath, sourceText]]));
+}
+
+function multiFileHost(files: ReadonlyMap<string, string>): ProjectHost {
 	return {
 		async readFile(path) {
-			if (path === mainPath) return sourceText;
+			const text = files.get(path);
+			if (text !== undefined) return text;
 			throw Object.assign(new Error(`missing ${path}`), { code: 'ENOENT' });
 		},
 	};
@@ -110,5 +115,63 @@ test('cached semantic cannot be rebound after an independent checker pass advanc
 		() => externalOperationSequence({ module: firstMain.ast!, semantic: firstMain.semantic! }),
 		/not from the current checked AST semantic session/u,
 		'a failed cached rebind must not revive the stale semantic session',
+	);
+});
+
+test('failed multi-module registration rolls back sessions registered before a stale cache entry', async () => {
+	const root = resolve('virtual-operation-session-cache-rebind-rollback-project');
+	const mainPath = join(root, 'src/main.virune');
+	const helperPath = join(root, 'src/helper.virune');
+	const mainSource = [
+		'import { helper } from "./helper.virune"',
+		'import js { value } from "./library.js"',
+		'',
+		'fn main() -> Unit uses JavaScript {',
+		'\tdiscard value.field',
+		'}',
+		'',
+	].join('\n');
+	const helperSource = 'pub fn helper() -> Unit {}\n';
+	const host = multiFileHost(new Map([
+		[mainPath, mainSource],
+		[helperPath, helperSource],
+	]));
+	const cache = new ProjectBuildCache();
+	const firstProvider = providerForGeneration(1);
+	const first = await buildProject(root, {
+		write: false,
+		host,
+		incrementalCache: cache,
+		jsInteropProvider: firstProvider,
+	});
+	assert.deepEqual(first.diagnostics.filter(item => item.severity === 'error'), []);
+	const firstMain = first.modules.find(module => module.source.path === mainPath);
+	const firstHelper = first.modules.find(module => module.source.path === helperPath);
+	assert.ok(firstMain?.ast);
+	assert.ok(firstMain.semantic);
+	assert.ok(firstHelper?.ast);
+	assert.ok(firstHelper.semantic);
+	assert.deepEqual(externalOperationSequence({ module: firstHelper.ast, semantic: firstHelper.semantic }), []);
+
+	const independent = checkModuleBase(firstMain.ast, {
+		containingFile: mainPath,
+		platform: 'node',
+		jsInteropProvider: providerForGeneration(2),
+	});
+	assert.deepEqual(independent.diagnostics.items.filter(item => item.severity === 'error'), []);
+
+	await assert.rejects(
+		buildProject(root, {
+			write: false,
+			host,
+			incrementalCache: cache,
+			jsInteropProvider: firstProvider,
+		}),
+		/Cannot re-register checked semantic after its checker witness has changed/u,
+	);
+	assert.throws(
+		() => externalOperationSequence({ module: firstHelper.ast!, semantic: firstHelper.semantic! }),
+		/not from the current checked AST semantic session/u,
+		'modules registered before a later stale cache failure must be rolled back',
 	);
 });
