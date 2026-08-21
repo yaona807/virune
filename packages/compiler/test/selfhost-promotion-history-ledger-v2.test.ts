@@ -18,6 +18,7 @@ function observation(
 	runId: string,
 	executionCommit: string,
 	outcome: 'passed' | 'product-failed' | 'infrastructure-failed' | 'cancelled' = 'passed',
+	completedAt = '2026-08-20T01:10:00.000Z',
 ): PromotionShadowHistoryEntryInputV2 {
 	return {
 		version: 2,
@@ -25,7 +26,7 @@ function observation(
 		stage: 'required-selfhost',
 		executionCommit,
 		promotionSubjectId: subject,
-		completedAt: '2026-08-20T01:10:00.000Z',
+		completedAt,
 		outcome,
 		countsTowardPromotion: true,
 		unexplainedDifferentials: outcome === 'product-failed' ? 1 : 0,
@@ -39,15 +40,17 @@ function artifactAttempt(
 	executionCommit: string,
 	outcome: 'passed' | 'product-failed' | 'infrastructure-failed' | 'cancelled' = 'passed',
 ): PromotionHistoryAttemptInputV2 {
+	const startedAt = `2026-08-20T0${attempt}:00:00.000Z`;
+	const completedAt = `2026-08-20T0${attempt}:20:00.000Z`;
 	return {
 		attempt,
-		startedAt: `2026-08-20T0${attempt}:00:00.000Z`,
-		completedAt: `2026-08-20T0${attempt}:20:00.000Z`,
+		startedAt,
+		completedAt,
 		conclusion: outcome === 'passed' ? 'success' : 'failure',
 		artifact: {
 			archiveSha256: digest(String(attempt)),
 			bytesSha256: digest(String((attempt + 1) % 10)),
-			observation: observation(runId, executionCommit, outcome),
+			observation: observation(runId, executionCommit, outcome, completedAt),
 		},
 		gapReason: null,
 	};
