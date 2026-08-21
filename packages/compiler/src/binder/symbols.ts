@@ -37,7 +37,7 @@ export class SymbolFactory {
 	readonly #ids = new IdGenerator();
 	public create(name: string, kind: SymbolKind, typeId: TypeId, span: SourceSpan, options: { readonly declaration?: AstNode | Declaration; readonly mutable?: boolean; readonly public?: boolean; readonly typeOnly?: boolean; readonly constant?: boolean } = {}): SymbolInfo {
 		const symbol: SymbolInfo = { id: this.#ids.next(), name, kind, typeId, span, mutable: options.mutable ?? false, public: options.public ?? false, typeOnly: options.typeOnly ?? false, constant: options.constant ?? false, ...(options.declaration === undefined ? {} : { declaration: options.declaration }) };
-		if (kind === 'builtin') registerCheckedBuiltinWitness(span, symbol);
+		if (kind === 'builtin') registerCheckedBuiltinWitness(span);
 		return symbol;
 	}
 }
