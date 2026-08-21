@@ -7,15 +7,15 @@ import { externalOperationSequence as externalOperationSequenceFromEvidence, typ
  *
  * Keeping diagnostics and Interop evidence on the same SemanticModel prevents a
  * caller from accidentally omitting checker failures while asking for Direct
- * operation evidence from that failed check. Non-import operation anchors must
- * also carry checker-owned inferred-type annotations, so a freshly reparsed AST
- * cannot be paired with stale semantic evidence from another check.
+ * operation evidence from that failed check. The SemanticModel must also belong
+ * to this exact checked AST object, and non-import operation anchors must carry
+ * checker-owned inferred-type annotations.
  */
 export function externalOperationSequence(input: {
 	readonly module: A.ModuleNode;
-	readonly semantic: Pick<SemanticModel, 'diagnostics' | 'interop'>;
+	readonly semantic: Pick<SemanticModel, 'diagnostics' | 'interop' | 'symbols'>;
 }): readonly ExternalOperationIR[] {
-	assertCheckedAstEvidence(input.module, input.semantic.interop.usageIR);
+	assertCheckedAstEvidence(input.module, input.semantic);
 	return externalOperationSequenceFromEvidence({
 		module: input.module,
 		interop: input.semantic.interop,
@@ -23,7 +23,15 @@ export function externalOperationSequence(input: {
 	});
 }
 
-function assertCheckedAstEvidence(module: A.ModuleNode, usages: SemanticModel['interop']['usageIR']): void {
+function assertCheckedAstEvidence(
+	module: A.ModuleNode,
+	semantic: Pick<SemanticModel, 'interop' | 'symbols'>,
+): void {
+	const exactModuleWitness = [...semantic.symbols.values()].some(symbol => symbol.kind === 'builtin' && symbol.span === module.span);
+	if (!exactModuleWitness) {
+		throw new Error('Stale or cross-session External usage evidence: module is not from the checked AST semantic session');
+	}
+
 	const inferredByNode = new Map<number, unknown>();
 	const seen = new Set<object>();
 	const visit = (value: unknown): void => {
@@ -41,7 +49,7 @@ function assertCheckedAstEvidence(module: A.ModuleNode, usages: SemanticModel['i
 	};
 	visit(module);
 
-	for (const usage of usages) {
+	for (const usage of semantic.interop.usageIR) {
 		if (usage.kind === 'import') continue;
 		const inferredTypeId = inferredByNode.get(usage.nodeId);
 		if (typeof inferredTypeId !== 'number' || !Number.isSafeInteger(inferredTypeId)) {
