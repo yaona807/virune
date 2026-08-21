@@ -40,8 +40,11 @@ test('provider-private paths cannot hide behind arbitrary provider-text delimite
 		'pkg|/checkout/private/pkg',
 		'pkg>C:/checkout/private/pkg',
 		'pkg|file:///checkout/private/pkg',
+		'pkg@file:///checkout/private/pkg',
+		'pkg@C:private/pkg',
 		'//server/share/private/pkg',
 		'pkg|//server/share/private/pkg',
+		'pkg@//server/share/private/pkg',
 	]) {
 		const operation = externalOperationFromUsage(property(packageName));
 		assert.equal(operation?.kind, 'read-property');
@@ -55,9 +58,13 @@ test('provider-private paths cannot hide behind arbitrary provider-text delimite
 		witness({ packageName: 'pkg|/checkout/private/pkg' }),
 		witness({ packageVersion: 'version>file:///checkout/private/package.json' }),
 		witness({ conditions: ['types', 'condition>/checkout/private/condition'] }),
+		witness({ packageName: 'pkg@file:///checkout/private/pkg' }),
+		witness({ packageVersion: 'version@C:private/package.json' }),
+		witness({ conditions: ['types', 'condition@/checkout/private/condition'] }),
 		witness({ packageName: '//server/share/private/pkg' }),
 		witness({ packageVersion: 'version>//server/share/private/package.json' }),
 		witness({ conditions: ['types', 'condition>//server/share/private/condition'] }),
+		witness({ conditions: ['types', 'condition@//server/share/private/condition'] }),
 	]) {
 		assert.throws(
 			() => externalModuleLoadOperation({
