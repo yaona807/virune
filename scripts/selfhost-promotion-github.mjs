@@ -6,6 +6,7 @@ const repositoryPattern = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/u;
 const workflowPattern = /^[A-Za-z0-9._-]+\.ya?ml$/u;
 const runIdPattern = /^[1-9][0-9]*$/u;
 const gitShaPattern = /^[0-9a-f]{40}$/u;
+const githubTimestampPattern = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/u;
 
 export class PromotionGitHubProviderError extends Error {
 	constructor(path, message) {
@@ -255,10 +256,14 @@ function providerObject(value, path) {
 }
 
 function canonicalTimestamp(value, path) {
-	if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u.test(value) || new Date(value).toISOString() !== value) {
-		throw new PromotionGitHubProviderError(path, 'expected canonical ISO timestamp');
+	if (typeof value !== 'string' || !githubTimestampPattern.test(value)) {
+		throw new PromotionGitHubProviderError(path, 'expected GitHub UTC timestamp at second or millisecond precision');
 	}
-	return value;
+	const parsed = new Date(value);
+	if (Number.isNaN(parsed.getTime())) {
+		throw new PromotionGitHubProviderError(path, 'expected valid GitHub UTC timestamp');
+	}
+	return parsed.toISOString();
 }
 
 function canonicalGitSha(value, path) {
