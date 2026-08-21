@@ -23,6 +23,8 @@ export type ExternalOperationKind =
 	| 'await'
 	| 'bridge-foreign-primitive';
 
+export type ExternalOperationEffect = 'JavaScript';
+
 export interface ExternalForeignOrigin {
 	readonly moduleSpecifier: string;
 	readonly packageName?: string;
@@ -75,11 +77,13 @@ export interface ExternalModuleLoadOperationIR extends ExternalOperationBase {
 
 export interface ExternalReadPropertyOperationIR extends ExternalOperationBase {
 	readonly kind: 'read-property';
+	readonly effect: ExternalOperationEffect;
 	readonly result: ExternalForeignValueShape;
 }
 
 export interface ExternalCallOperationIR extends ExternalOperationBase {
 	readonly kind: 'call';
+	readonly effect: ExternalOperationEffect;
 	readonly result: ExternalForeignValueShape;
 	readonly receiverMode: 'none' | 'preserve-this';
 	readonly mayReject: boolean;
@@ -87,6 +91,7 @@ export interface ExternalCallOperationIR extends ExternalOperationBase {
 
 export interface ExternalAwaitOperationIR extends ExternalOperationBase {
 	readonly kind: 'await';
+	readonly effect: ExternalOperationEffect;
 	readonly result: ExternalForeignValueShape;
 	readonly mayReject: boolean;
 }
@@ -181,6 +186,7 @@ export function externalOperationFromUsage(usage: ForeignUsageIR): ExternalOpera
 			return {
 				kind: 'read-property',
 				...anchor,
+				effect: 'JavaScript',
 				result: canonicalForeignType(usage.foreignType),
 				decision: directDecision(),
 			};
@@ -191,6 +197,7 @@ export function externalOperationFromUsage(usage: ForeignUsageIR): ExternalOpera
 			return {
 				kind: 'call',
 				...anchor,
+				effect: 'JavaScript',
 				result: canonicalForeignType(usage.foreignType),
 				receiverMode,
 				mayReject: usage.mayReject,
@@ -202,6 +209,7 @@ export function externalOperationFromUsage(usage: ForeignUsageIR): ExternalOpera
 			return {
 				kind: 'await',
 				...anchor,
+				effect: 'JavaScript',
 				result: canonicalForeignType(usage.foreignType),
 				mayReject: usage.mayReject,
 				decision: directDecision(),
