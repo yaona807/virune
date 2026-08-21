@@ -15,7 +15,7 @@ import { externalOperationSequence as externalOperationSequenceFromEvidence, typ
  */
 export function externalOperationSequence(input: {
 	readonly module: A.ModuleNode;
-	readonly semantic: Pick<SemanticModel, 'diagnostics' | 'interop' | 'symbols'>;
+	readonly semantic: SemanticModel;
 }): readonly ExternalOperationIR[] {
 	assertCheckedAstEvidence(input.module, input.semantic);
 	return externalOperationSequenceFromEvidence({
@@ -27,7 +27,7 @@ export function externalOperationSequence(input: {
 
 function assertCheckedAstEvidence(
 	module: A.ModuleNode,
-	semantic: Pick<SemanticModel, 'interop' | 'symbols'>,
+	semantic: SemanticModel,
 ): void {
 	if (!isCurrentCheckedSemantic(module, semantic) || !hasCurrentCheckedBuiltinWitness(module, semantic.symbols)) {
 		throw new Error('Stale or cross-session External usage evidence: module is not from the current checked AST semantic session');
