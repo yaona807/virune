@@ -1,124 +1,115 @@
 # CI gate strategy
 
-[日本語](ci-gate-strategy_ja.md)
+[日本語版](ci-gate-strategy_ja.md)
 
-## Goals
+Virune separates pull-request validation, reproducibility verification, Nightly validation, and pre-release verification. The goal is to validate normal changes thoroughly while routing documentation-only changes and long-running checks through the appropriate paths.
 
-Virune separates immediate pull-request validation, required reproducibility verification, long-running Nightly suites, and explicit release rehearsal. The design preserves the supported operating-system and Node.js matrix while avoiding repeated metadata validation, TypeScript builds, semantic fuzzing, and reproducible release builds for the same pull-request commit.
+When CI responsibilities move, the names `CI`, `Release artifacts`, `Reproducible release required check`, and `Reproducible release artifacts` must remain stable. Repository rulesets may depend on these identifiers.
 
-Workflow and required-check names are kept stable when responsibilities move. In particular, `CI`, `Release artifacts`, `Reproducible release required check`, and `Reproducible release artifacts` remain unchanged so repository rulesets do not lose their existing check contexts.
+A successful CI result is evidence for the pull-request head commit that was actually tested. If the head changes, an older successful run must not be used as evidence for the new head.
 
-## Pull-request responsibilities
+## Pull-request validation
 
-### Change classification
+### Selecting the validation path
 
-The `classify` job computes the changed path set from the pull-request base and head commits.
+CI classifies whether a pull request contains documentation-only changes. This document does not maintain a fixed list of qualifying paths.
 
-A change is documentation-only only when every changed path is one of:
+The documentation path is used only when the change can be classified safely as documentation-only. If any non-documentation change is present, or the classification cannot be made safely, the full validation path is used.
 
-- root project Markdown files such as `README.md`, `CONTRIBUTING.md`, and `SECURITY.md`;
-- Markdown files below `docs/`.
+Pushes to `main` and manually dispatched CI runs also use the full validation path.
 
-An empty change set, workflow change, package metadata change, dependency change, source change, generated baseline change, or non-Markdown documentation asset always selects the full gate.
+### Documentation-only changes
 
-Push and manual CI runs always select the full gate.
+Documentation-only changes validate metadata and policy, then build, validate, and execute documentation examples. The remaining expensive jobs may be skipped.
 
-### Metadata and policy
+Skipping those jobs must not remove required checks or change the identifiers used by repository rulesets.
 
-The Ubuntu 24.04 / Node.js 24 `metadata` job is the only PR job that runs `npm run verify:metadata`. It validates runtime requirements, registry configuration, workflow policy, CI policy, TypeScript API boundaries, documentation, release metadata, public API and ABI snapshots, release gates, and language grammar.
+### Normal changes
 
-Documentation-only pull requests additionally build and execute the documentation examples. Other jobs are skipped for this path.
+For a normal pull request, metadata is validated on Ubuntu 24.04 / Node.js 24, and the canonical build and type check are performed once. The generated `dist` output is shared by validation jobs within the same workflow run.
 
-### Canonical build
+The main validation areas include:
 
-For a full gate, the Ubuntu 24.04 / Node.js 24 `build` job starts in parallel with metadata validation. It performs the repository's only PR project-reference build and type check, then packages the generated `dist` trees into a short-lived artifact.
+- unit and integration tests;
+- compiler quality, TypeScript bindings, the Language Server, VS Code, conformance, and formatter checks;
+- fuzz testing that generates many inputs automatically to find crashes or inconsistent results;
+- four pull-request shards that look for semantic differences between execution paths, two minutes per shard;
+- compatibility checks on Windows Server 2022 / 2025, macOS 14, and Node.js 26;
+- browser validation in Chromium;
+- the self-hosting full-language inventory when required by the changed paths.
 
-The core-test, compiler-quality, semantic-fuzz, compatibility, and browser jobs start as soon as this artifact is available. They do not wait for each other, so artifact reuse removes duplicate builds without serializing the supported platform matrix or the longest platform-independent suites.
+Checks that require operating-system-specific or native dependencies still run `npm ci` from the committed lockfile on the target environment. Built Virune output is shared, but native dependencies are not copied across platforms.
 
-### Platform-independent gates
+`Release artifacts` runs only after the required validation has succeeded. The pull-request-only semantic-difference test is intentionally absent on push and manual CI runs, and that intentional skip is accepted.
 
-The canonical build is consumed by Ubuntu 24.04 / Node.js 24 jobs that run concurrently:
+Publishing decisions do not trust a pull-request build artifact. Release artifacts are rebuilt and verified from a clean environment.
 
-- `verify` owns the complete unit and integration suite excluding the browser runtime;
-- `quality` owns the TypeScript binding corpus, bounded fuzz and semantic differential fuzz smoke suites, language-server and VS Code tests, conformance, formatter checks, and source-clone smoke tests;
-- `semantic-fuzz` runs four bounded semantic differential fuzz shards for pull requests, with two minutes assigned to each shard.
+## Required reproducibility check
 
-The pull-request semantic-fuzz job executes `scripts/semantic-fuzz-long.mjs` against the canonical compiled-output artifact. It does not rebuild the repository independently. Regression artifacts and CI timing evidence are uploaded per shard.
+`Reproducible release required check` is an independent required pull-request check. For normal changes it runs:
 
-### Platform-sensitive compatibility
+```bash
+npm run verify:reproducible-release
+```
 
-Windows Server 2022, Windows Server 2025, macOS 14, and Ubuntu Node.js 26 download the compiled-output artifact produced by the canonical build job. They still run `npm ci` locally so native and platform-specific dependencies are installed for the target runner.
+For documentation-only changes, the workflow may short-circuit after validating the change classification instead of performing the double build. The required identifiers `Reproducible release required check` and `Reproducible release artifacts` must still remain unchanged.
 
-Compatibility jobs execute only tests whose behavior may depend on the operating system, filesystem, path handling, process creation, Node.js version, VS Code host, or CLI execution:
+## Nightly
 
-- platform smoke tests;
-- language-server and VS Code tests;
-- conformance path smoke;
-- clone and process smoke.
+`Nightly quality suites` runs on its schedule, for relevant pushes to `main`, or when dispatched manually. It does not run for pull requests.
 
-They do not repeat metadata validation, type checking, the complete unit suite, binding corpus, fuzzing, or formatter validation.
+Nightly performs:
 
-### Browser and release artifacts
-
-The browser job restores the canonical build and executes emitted ESM in Chromium in parallel with core, quality, semantic-fuzz, and compatibility testing.
-
-The `Release artifacts` job runs only after metadata, build, core tests, compiler quality, pull-request semantic fuzz, compatibility, and browser jobs succeed. On push or manual CI runs, the PR-only semantic-fuzz job is skipped and the release-artifacts dependency accepts that intentional skip. Release packaging performs a clean production build and smoke verification rather than trusting a PR build artifact for publishing decisions.
-
-## Required reproducible-release check
-
-`Reproducible release required check` remains an independent pull-request workflow because its workflow and job names may be referenced by the repository ruleset. For non-documentation changes it executes `npm run verify:reproducible-release`; documentation-only changes retain the same required check context but short-circuit after classification.
-
-The required check is the only automatic pull-request workflow that performs the expensive independent double build. Release dry runs no longer start automatically for the same pull-request commit, so reproducibility is not calculated twice.
-
-## Release dry run
-
-`Release dry run` is an explicit `workflow_dispatch` rehearsal. It executes the complete stable release gate without publishing, including quality verification, release packaging, reproducibility verification, installed VSIX smoke testing, and matching Nightly evidence.
-
-Making the rehearsal explicit prevents ordinary pull requests from launching a second production release path while retaining the full pre-release verification capability. Run it against the intended release ref before publishing or after changing release policy, packaging, signing, or repair behavior.
-
-## Nightly responsibility
-
-`Nightly quality suites` runs only for its schedule, a relevant push to `main`, or manual dispatch. It no longer starts for pull requests.
-
-Nightly owns:
-
-- four 15-minute crash-fuzz shards;
-- the full binding corpus;
-- four 15-minute semantic differential fuzz shards;
+- four 15-minute shards that generate inputs to look for crashes;
+- the full TypeScript binding test corpus;
+- four 15-minute shards that look for inconsistent results between execution paths;
 - an independent reproducible release build.
 
-Pull requests receive the shorter four-shard semantic fuzz gate in `CI`. This keeps immediate feedback explicit while reserving the longer campaigns for main-branch and scheduled validation.
+A Nightly failure must not be hidden by retrying without first understanding the cause. Retain reproduction evidence, and add the necessary regression coverage before considering the underlying problem resolved.
 
-A Nightly failure must not be hidden by unconditional retries. Reproduction evidence should be retained and promoted to a regression test before the underlying issue is considered resolved.
+## Pre-release verification
+
+`Release dry run` is a manually dispatched workflow that verifies the stable release path without publishing. It covers quality validation, release packaging, reproducibility, the installed VSIX, and the required Nightly evidence.
+
+Run it before publishing, and after changing release policy, packaging, signing, or repair behavior.
+
+### Procedure
+
+1. Open **Actions** in the Virune GitHub repository.
+2. Select **Release dry run**, then open **Run workflow**.
+3. When using the GitHub UI, select the branch containing the release candidate.
+4. Start **Run workflow**.
+5. Confirm that `Stable release gate` succeeds.
+6. Under the run's Artifacts, inspect `stable-release-dry-run-<commit SHA>`. It contains release evidence, reproducibility evidence, and candidate artifacts.
+
+To run against a tag or another ref that is not selectable in the UI, use GitHub CLI (`gh`). This requires `gh` to be installed and authenticated to GitHub, with permission to run Actions for the repository.
+
+```bash
+gh workflow run "Release dry run" --ref <ref>
+```
+
+If the run fails, do not proceed to publishing. Inspect the failed validation and its evidence first.
 
 ## Artifact and cache safety
 
-The compiled-output artifact is scoped to the current workflow run and named with the commit SHA. Downstream jobs use `actions/download-artifact` without a cross-run identifier, so they cannot consume artifacts from a different pull request or earlier run.
+Shared CI build artifacts are scoped to the current workflow run. They must not be taken from a different pull request or an earlier run.
 
-The artifact contains only repository-produced `dist` directories. It does not include `node_modules`, credentials, caches, package-manager state, or release candidates.
+The shared build artifact contains only repository-produced `dist` output. It must not include `node_modules`, credentials, caches, package-manager state, or release candidates.
 
-Each runner performs `npm ci` from the checked-in lockfile. The npm cache is an installation download cache only and is never treated as build output or release evidence.
+Each environment runs `npm ci` from the committed lockfile. The npm cache is only an installation download cache and is never treated as build output or release evidence.
 
-Release packaging always rebuilds from source after a clean checkout and install.
+Release packaging always rebuilds from source after a clean checkout and dependency installation.
 
-## Observability and reproduction
+## Investigating CI failures
 
-Every wrapped CI command writes a JSON timing record containing the command, duration, exit status, operating system, Node.js version, and local reproduction command. The job summary lists commands from slowest to fastest.
+Wrapped CI commands record the command, duration, exit status, operating system, Node.js version, and local reproduction command as JSON. On failure, stdout and stderr are retained under `.cache/ci-failures/`.
 
-On failure, streamed stdout and stderr are retained under `.cache/ci-failures/` and uploaded with timing evidence. The local reproduction command is also emitted as a GitHub annotation.
+Use this sequence when investigating a failure:
 
-Representative commands:
+1. Confirm that the pull request's current head commit matches the commit tested by the failed workflow run.
+2. Open the failed job and step, then inspect the log and the reproduction command shown in the GitHub annotation.
+3. Download CI evidence when needed and inspect `.cache/ci-failures/` and `.cache/ci-timings/`.
+4. Run the reproduction command from the repository root. For failures that depend on the operating system or Node.js version, also reproduce them in the relevant environment.
+5. If the repository or implementation is responsible, fix it and validate the new head. Re-run the same head only when the failure is confirmed to come from external infrastructure such as GitHub Actions or a runner.
 
-```bash
-npm run verify:metadata
-npm run check
-npm run test:core:built -- --failure-output-only
-npm run test:binding-corpus:built
-node scripts/semantic-fuzz-long.mjs
-npm run test:platform-smoke:built
-npm run test:vscode:built
-npm run test:conformance:built
-npm run smoke:clone:built
-npm run verify:reproducible-release
-npm run release:gate
-```
+Do not treat a successful run for an older head, or an unexplained retry, as evidence for the current change.
