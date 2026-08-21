@@ -34,7 +34,7 @@ test('file URIs and Windows drive-relative provider runtime locators cannot ente
 	}
 });
 
-test('source-authored module specifiers remain exact while provider semantic paths fail closed', () => {
+test('source-authored module specifiers remain exact while optional provider-origin paths are omitted', () => {
 	for (const moduleSpecifier of ['/explicit/library.js', 'file:///explicit/library.js', 'C:explicit/library.js']) {
 		const operation = externalModuleLoadOperation({
 			nodeId: 1,
@@ -57,5 +57,10 @@ test('source-authored module specifiers remain exact while provider semantic pat
 			origin: { moduleSpecifier: './library.js', packageName: 'C:private/package' },
 		},
 	};
-	assert.throws(() => externalOperationFromUsage(usage), /provider-private path syntax/u);
+	const operation = externalOperationFromUsage(usage);
+	assert.equal(operation?.kind, 'read-property');
+	if (operation?.kind === 'read-property') {
+		assert.deepEqual(operation.result.origin, { moduleSpecifier: './library.js' });
+		assert.equal(operation.decision.status, 'resolved');
+	}
 });
