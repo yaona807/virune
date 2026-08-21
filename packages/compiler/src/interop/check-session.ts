@@ -1,9 +1,12 @@
 import type * as A from '../ast/nodes.js';
 import type { SemanticModel } from '../checker/checker.js';
+import type { Diagnostic } from '../diagnostics/diagnostic.js';
 
 interface CheckedSession {
 	readonly moduleState: string;
 	readonly evidenceState: string;
+	readonly diagnostics: readonly Diagnostic[];
+	readonly diagnosticsState: string;
 }
 
 const currentSessionByModule = new WeakMap<A.ModuleNode, CheckedSession>();
@@ -14,29 +17,46 @@ export function invalidateCheckedSemantic(module: A.ModuleNode): void {
 	currentSessionByModule.delete(module);
 }
 
-/** Bind one semantic result to the exact post-check AST and evidence state. */
-export function registerCheckedSemantic(module: A.ModuleNode, semantic: SemanticModel): void {
+/** Bind one semantic result to the exact post-check AST, evidence, and compilation diagnostics. */
+export function registerCheckedSemantic(
+	module: A.ModuleNode,
+	semantic: SemanticModel,
+	diagnostics: readonly Diagnostic[] = semantic.diagnostics.items,
+): void {
+	const registeredDiagnostics = Object.freeze([...diagnostics]);
 	const session = Object.freeze({
 		moduleState: structuralState(module),
 		evidenceState: checkedEvidenceState(semantic),
+		diagnostics: registeredDiagnostics,
+		diagnosticsState: structuralState(registeredDiagnostics),
 	});
 	currentSessionByModule.set(module, session);
 	sessionBySemantic.set(semantic, session);
 }
 
 /**
- * A semantic result is current only while both its object identity and the
- * operation-relevant post-check data remain unchanged.
+ * A semantic result is current only while its object identity, post-check data,
+ * and the diagnostics registered for that exact compilation remain unchanged.
  */
 export function isCurrentCheckedSemantic(module: A.ModuleNode, semantic: SemanticModel): boolean {
 	const session = sessionBySemantic.get(semantic);
 	if (session === undefined || currentSessionByModule.get(module) !== session) return false;
 	try {
 		return session.moduleState === structuralState(module)
-			&& session.evidenceState === checkedEvidenceState(semantic);
+			&& session.evidenceState === checkedEvidenceState(semantic)
+			&& session.diagnosticsState === structuralState(session.diagnostics);
 	} catch {
 		return false;
 	}
+}
+
+/** Return the immutable diagnostic snapshot bound to the current checked session. */
+export function currentCheckedDiagnostics(
+	module: A.ModuleNode,
+	semantic: SemanticModel,
+): readonly Diagnostic[] | undefined {
+	if (!isCurrentCheckedSemantic(module, semantic)) return undefined;
+	return sessionBySemantic.get(semantic)?.diagnostics;
 }
 
 function checkedEvidenceState(semantic: SemanticModel): string {
