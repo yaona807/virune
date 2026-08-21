@@ -7,8 +7,8 @@ Virune 1.0は、ES2022モジュールからRuntime ABI v2を利用します。�
 ## 実行時表現
 
 - primitive値は、検証済みのJavaScript primitive表現を使用します。
-- `record`は、列挙可能なfieldと、列挙されないnominal `$type` IDを持つnull-prototype objectです。
-- `enum`は、安定したtagを持つaggregate値です。
+- `record`は、列挙可能なフィールドと、列挙されないnominal `$type` IDを持つnull-prototype objectです。
+- `enum`は、安定したtagを持つ複合値です。
 - `newtype`はコンパイル時の名前的同一性を保ちますが、実行時には検証済みの基礎表現を使用します。
 - `type` aliasは実行時の同一性を持ちません。
 - `Option`と`Result`はRuntimeのconstructorとtagを使用します。
@@ -16,9 +16,9 @@ Virune 1.0は、ES2022モジュールからRuntime ABI v2を利用します。�
 
 ## `Eq`と`Hash`
 
-Runtime ABI v2には、利用者が差し替えられるprotocol registryはありません。
+Runtime ABI v2には、利用者が差し替えられる`protocol registry`はありません。
 
-`Eq`と`Hash`は、対応する不変値に対する固定の構造演算です。名前的なaggregate IDも比較に含まれるため、field構成が同じでも別の宣言から作られた値は同一として扱いません。
+`Eq`と`Hash`は、対応する不変値に対する固定の構造演算です。名前的な複合値のIDも比較に含まれるため、フィールド構成が同じでも別の宣言から作られた値は同一として扱いません。
 
 関数、resource、foreign handle、対応していない可変値は、構造比較やhashの対象外です。
 
@@ -30,15 +30,15 @@ Runtime ABI v2には、利用者が差し替えられるprotocol registryはあ�
 
 ## cleanup
 
-`defer`は、現在のfunctionまたはtask scopeへcleanupを登録します。cleanupはLIFO順で実行し、通常return、早期return、`?`による伝播、panic、async処理の完了でも実行します。
+`defer`は、現在の関数または`task`のスコープへcleanupを登録します。cleanupはLIFO順で実行し、通常return、早期return、`?`による伝播、panic、async処理の完了でも実行します。
 
 処理本体とcleanupの両方で失敗した場合は、Runtimeのerror集約契約に従って両方の情報を保持します。
 
 ## 構造化並行処理
 
-すべてのtaskはscopeに所属します。
+すべての`task`はscopeに所属します。
 
-`parallel`と`parallel try`は現在のscopeでchild taskを開始し、必要に応じてsiblingをcancelし、開始したchildがすべてsettleするまで待ちます。複数の失敗から結果を選ぶ場合は、source順に基づく決定的な選択を維持します。
+`parallel`と`parallel try`は現在のscopeでchild taskを開始し、必要に応じてsiblingをcancelし、開始したchildがすべて終了するまで待ちます。複数の失敗から結果を選ぶ場合は、ソースコード上の順序に基づく決定的な選択を維持します。
 
 通常のVirune APIからdetached taskは作成できません。
 
@@ -46,29 +46,29 @@ Runtime ABI v2には、利用者が差し替えられるprotocol registryはあ�
 
 Descriptorは、検証済みのprimitive、`Option`、`Result`、bytes、対応しているcollection、`record`、`enum`、`type` alias、`newtype`を表現します。
 
-`record` fieldには、必要に応じて次の情報を持たせられます。
+`record`のフィールドには、必要に応じて次の情報を持たせられます。
 
-- 外部JavaScriptで使うproperty名
+- 外部JavaScriptで使うプロパティ名
 - optional propertyの欠落を`None`として扱う`missingAsNone`
-- `None`を出力するときproperty自体を省略する`omitWhenNone`
+- `None`を出力するときプロパティ自体を省略する`omitWhenNone`
 - 境界で期待する`null`／`undefined`の表現
 - コンパイル時に確定したJSON defaultとstrictness情報
 
 `record`と`enum`のdescriptorは、`package#module:Type`形式の完全なnominal `typeId`を持ちます。
 
-再帰している型や解決できていない型を、安全なaggregateとして推測してはいけません。完全に検証できない場合は`Unknown`として扱うか、明示的なAdapterを要求します。
+再帰している型や解決できていない型を、安全な複合値として推測してはいけません。完全に検証できない場合は`Unknown`として扱うか、明示的なAdapterを要求します。
 
 Safe descriptorは、callback、objectをkeyに持つ任意のJavaScript `Map`／`Set`、TypeScript `Record<K, V>`を安全に変換できるとはみなしません。
 
 ## JavaScript export
 
-`@jsExport`で生成するwrapperは、JavaScriptから受け取る値を検証し、Viruneから返す値を変換します。必要な場合は末尾のoptional引数を省略し、JavaScriptへ渡すnative aggregateは防御的にcopyします。
+`@jsExport`で生成するwrapperは、JavaScriptから受け取る値を検証し、Viruneから返す値を変換します。必要な場合は末尾のoptional引数を省略し、JavaScriptへ渡すnative aggregateは防御的にコピーします。
 
 Foreign handleを、検証済みのVirune native値として扱ってはいけません。
 
 ## 公開ABIスナップショット
 
-`packages/public-abi.snapshot.json`は、Runtime v2、Interop v2、Stdlibの公開entry pointについて、package export mapと公開宣言を記録します。また、生成JavaScriptがimportするRuntime v2 symbolも記録します。
+`packages/public-abi.snapshot.json`は、Runtime v2、Interop v2、Stdlibの公開エントリーポイントについて、`package.json`の`exports`設定と公開宣言を記録します。また、生成JavaScriptがimportするRuntime v2のシンボルも記録します。
 
 互換性は次で確認します。
 
@@ -76,7 +76,7 @@ Foreign handleを、検証済みのVirune native値として扱ってはいけ�
 npm run abi:check
 ```
 
-公開symbolの削除、名前変更、非互換なsignature変更、package export mapの非互換変更、Runtime v2の公開範囲外をEmitterが参照する変更はCIで拒否します。
+公開シンボルの削除、名前変更、非互換なシグネチャ変更、`exports`設定の非互換変更、Runtime v2の公開範囲外をコード生成器が参照する変更はCIで拒否します。
 
 互換性を保った追加であっても、意図した変更であることを確認してからスナップショットを更新します。
 
@@ -84,4 +84,4 @@ npm run abi:check
 npm run abi:update
 ```
 
-スナップショットを更新しただけでは、非互換変更を許可したことにはなりません。Runtime ABIを意図的に壊す場合は、新しいversion付きABI pathと移行方法が必要です。判断は[`COMPATIBILITY_ja.md`](../COMPATIBILITY_ja.md)に従います。
+スナップショットを更新しただけでは、非互換変更を許可したことにはなりません。Runtime ABIを意図的に壊す場合は、新しいバージョン付きABIパスと移行手順が必要です。判断は[`COMPATIBILITY_ja.md`](../COMPATIBILITY_ja.md)に従います。

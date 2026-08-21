@@ -2,7 +2,7 @@
 
 English: [CONTRIBUTING.md](CONTRIBUTING.md)
 
-この文書は、Viruneそのものを変更する開発者向けの入口です。初めてリポジトリを触る場合でも、環境構築からPull Requestまでここから辿れることを目標にしています。
+この文書は、Viruneそのものを変更する開発者向けの入口です。初めてリポジトリを触る場合でも、環境構築からPull Requestまでここから辿れるようにしています。
 
 ## 1. 変更を始める前に
 
@@ -15,7 +15,7 @@ English: [CONTRIBUTING.md](CONTRIBUTING.md)
 - 公開Compiler APIの変更
 - Runtime ABIやInterop ABIの変更
 - 互換性方針に影響する変更
-- ReleaseやCIの安全境界を変える変更
+- リリースやCIの安全境界を変える変更
 
 迷う場合は、実装を大きく進める前にIssueを作成してください。
 
@@ -30,7 +30,7 @@ npm run bootstrap
 npm run build
 ```
 
-`npm run bootstrap`は、このリポジトリの設定に従って開発用依存関係を準備します。独自の導入手順を追加する前に、まずこのコマンドを使ってください。
+`npm run bootstrap`は、公開npm Registryを明示して`npm ci`を実行し、lockfileどおりに開発用依存関係を準備します。独自の導入手順を追加する前に、まずこのコマンドを使ってください。
 
 最低限の動作確認として、次を実行できます。
 
@@ -56,13 +56,39 @@ npm run test:core
 | `packages/language-server` | Language Server |
 | `packages/vscode` | VS Code拡張 |
 | `spec` | 規範的な言語仕様とRuntime ABI |
-| `conformance` | 言語仕様への適合を確認するfixture |
+| `conformance` | 言語仕様への適合を確認するテストデータ |
 | `integration` | コンポーネントをまたぐ統合テスト |
 | `selfhost` | Viruneで実装したセルフホスト用コンパイラー |
-| `.github` | CI、Release、Self-hostingの機械可読ポリシーとworkflow |
-| `scripts` | ビルド、検証、CI、Releaseで使うリポジトリ管理処理 |
+| `.github` | CI、リリース、Self-hostingの機械可読ポリシーとGitHub Actions workflow |
+| `scripts` | ビルド、検証、CI、リリースで使うリポジトリ管理処理 |
 
 同じ意味を別の場所へ複製しないでください。現在の挙動はコードとテスト、規範的な契約は`spec/`、機械判定はJSONやworkflow、個別の実装計画はIssueとPull Requestを正本とします。
+
+### Compilerの流れ
+
+Compiler全体を変更するときは、まず処理がどの段階に属するかを確認します。大まかな流れは次のとおりです。
+
+```text
+source
+  ↓
+Lexer / Parser
+  ↓
+AST
+  ↓
+project / module graph
+  ↓
+declaration収集・名前解決
+  ↓
+type / effect / control-flow / FFI検査
+  ↓
+HIR / MIR lowering
+  ↓
+ES2022 / Source Map出力
+```
+
+構文とsource spanはsyntax／Parser側、型・effect・制御フローなどの意味検査はChecker側、Runtime ABIやInterop ABIに従う出力はlowering／codegen側の責務です。
+
+Stable Compiler APIから内部AST、HIR、MIR、arena、semantic tableを直接公開しないという境界も維持してください。
 
 ## 4. 変更の進め方
 
@@ -80,7 +106,7 @@ npm run test:core
 
 関係のない整形、命名変更、リファクタリングを同じPull Requestへ混ぜないでください。
 
-通常の修正ではコミットを追加して履歴を進めます。`main`が進んだだけ、あるいはWIPコミットをまとめたいだけの理由でforce-pushしません。親Pull Requestのsquash後など、履歴が実際に複雑になり通常のrebaseやmergeでは安全に整理できない場合だけ、最新`main`からの再構成を検討します。
+通常の修正ではコミットを追加して履歴を進めます。`main`が進んだだけ、あるいは作業途中のコミットをまとめたいだけの理由でforce-pushしません。親Pull Requestのsquash後など、履歴が実際に複雑になり通常のrebaseやmergeでは安全に整理できない場合だけ、最新`main`からの再構成を検討します。
 
 ## 5. テストを選ぶ
 
@@ -97,9 +123,9 @@ npm run test:core
 | 公開ABI | `npm run abi:check` |
 | リポジトリ全体 | `npm run verify` |
 
-この表にない領域では、`package.json`と対象コードに近い既存テストを先に探してください。テストを通すためだけの新しい例外経路やfixture専用の処理を追加してはいけません。
+この表にない領域では、`package.json`と対象コードに近い既存テストを先に探してください。テストを通すためだけの新しい例外経路や、特定のテストデータだけを通す処理を追加してはいけません。
 
-バグ修正では、可能な限り修正前に失敗し修正後に成功する回帰テストを追加します。happy pathだけでなく、必要に応じて不正入力、欠落、重複、古い状態、境界値、途中失敗、cleanup、決定性も確認してください。
+バグ修正では、可能な限り修正前に失敗し修正後に成功する回帰テストを追加します。正常系だけでなく、必要に応じて不正入力、欠落、重複、古い状態、境界値、途中失敗、cleanup、決定性も確認してください。
 
 ## 6. 言語仕様を変更する場合
 
@@ -121,7 +147,23 @@ Runtime、Interop、標準ライブラリを含む公開ABIは`packages/public-a
 
 Self-hostingの都合だけでVirune言語、Compiler API、Runtime ABI、Interop ABI、公開標準ライブラリを変更してはいけません。
 
-まず既存の言語機能、内部アルゴリズム、データ契約で解決できないかを検討します。Self-hostingの現在状態、promotion条件、seed、corpusなどの正確な値は`.github/self-hosting/`のJSON、`selfhost/`、既存scriptとtestを正本とします。
+Self-hostingでは、Viruneへ移す対象を**決定的でdata-orientedなCompiler Kernel**に限定します。環境依存処理や処理の編成はJavaScript／TypeScript Hostへ残します。
+
+Hostへ残す主な責務は次のとおりです。
+
+- CLIとprocess lifecycle
+- filesystem、path解決、environment variable、暗号学的hash
+- source探索と読み込み
+- TypeScript declarationとJavaScript bindingの解析
+- VS CodeやLanguage Serverのtransport
+- package作成、リリース、attestation
+- bootstrapの編成とrollbackの選択
+
+HostとKernelの境界は、version付きで検証可能なdata-only contractにします。callback、任意のJavaScript function、class instance、TypeScript AST node、filesystem handleなど、object identityや環境に依存する値をKernel contractへ持ち込まないでください。
+
+まず既存の言語機能、内部アルゴリズム、data contractで解決できないかを検討し、それでも不適切ならHost側へ責務を残します。Self-hostingだけのために新しい構文や公開APIを追加しません。
+
+Self-hostingの現在状態、promotion条件、seed、corpusなどの正確な値は`.github/self-hosting/`のJSON、`selfhost/`、既存scriptとtestを正本とします。Production Compilerへの昇格は、これらの機械可読ポリシーが要求する検証を同じcandidate commitで満たした場合だけ行います。
 
 Self-hosting向けの検証コマンドは`package.json`の`selfhost:*`から、変更した境界に対応する既存コマンドを選んでください。必要な検証を省くために専用の近道を作らないでください。
 
@@ -135,13 +177,13 @@ CIの成功結果は、その結果が実行された**正確なcommit**に対�
 - **GitHub Actions、runner、外部Action取得などの基盤障害**: コードが原因でないことを確認できた場合だけ、同じheadの再実行を検討する。
 - **原因不明**: 推測で再実行せず、ログと失敗箇所を調べる。
 
-同じheadをgreenになるまで繰り返し再実行する運用はしません。繰り返し必要になる診断は、一時workflowではなく既存のrepository-owned commandや恒久的な検証へ組み込みます。
+同じheadを成功するまで繰り返し再実行する運用はしません。繰り返し必要になる診断は、一時workflowではなくリポジトリ内の既存コマンドや恒久的な検証へ組み込みます。
 
-## 10. Releaseに関わる変更
+## 10. リリースに関わる変更
 
-通常のCIがgreenであることだけでは、Stable Releaseを許可しません。
+通常のCIが成功したことだけでは、安定版リリースを許可しません。
 
-Releaseの正確な条件は`.github/stable-release-gate.json`、`.github/release/`、Release workflow、検証scriptを正本とします。公開する成果物は、レビュー済みのrelease identityと一致していなければなりません。
+リリースの正確な条件は`.github/stable-release-gate.json`、`.github/release/`、Release workflow、検証scriptを正本とします。公開する成果物は、レビュー済みのrelease identityと一致していなければなりません。
 
 既存の公開成果物を通常経路で上書きしないでください。復旧が必要な場合も、公開済みの状態を再確認し、正しいものを再公開せず、不明な状態を安全とみなさないことが原則です。
 
@@ -149,7 +191,7 @@ Releaseの正確な条件は`.github/stable-release-gate.json`、`.github/releas
 
 このリポジトリのMarkdownは必要最小限に保ちます。新しい恒久文書は、原則として次のすべてを満たす場合だけ追加します。
 
-1. コード、テスト、schema、workflowから安全に復元できない。
+1. コード、テスト、スキーマ、workflowから安全に復元できない。
 2. 特定のIssueやPull Requestだけに必要な一時的な説明ではなく、長期間使う契約である。
 3. 既存の文書へ自然に置けない。
 4. 維持費を払っても独立させる価値がある。
@@ -171,9 +213,9 @@ Pull Requestは1つの論理的な変更に絞ります。関連Issue、変更�
 5. 修正後の差分を最初から見直す。
 6. 新しい修正事項が0件になるまで繰り返す。
 
-CIがgreenであることや、何度レビューしたかは終了条件ではありません。
+CIが成功したことや、何度レビューしたかは終了条件ではありません。
 
-merge前には、少なくとも現在のhead、formal CI、最終差分、未解決review thread、Acceptance Criteria、残ったTODOや一時経路を確認します。headが変わった場合は、必要なCIと最終レビューをやり直してください。
+merge前には、少なくとも現在のhead、正式なCI、最終差分、未解決review thread、Acceptance Criteria、残ったTODOや一時経路を確認します。headが変わった場合は、必要なCIと最終レビューをやり直してください。
 
 日本語文書を含むPull Requestは、最終headの日本語diffをメンテナーが確認して明示的に承認するまでmergeしません。承認後にheadが変わった場合は、再度確認が必要です。
 
