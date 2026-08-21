@@ -23,7 +23,7 @@ function providerRun(id, overrides = {}) {
 	return {
 		id,
 		run_attempt: 1,
-		created_at: '2026-08-20T18:17:00.000Z',
+		created_at: '2026-08-20T18:17:00Z',
 		status: 'completed',
 		conclusion: 'success',
 		head_sha: executionCommit,
@@ -38,8 +38,8 @@ function providerRun(id, overrides = {}) {
 function providerAttempt(id, overrides = {}) {
 	return {
 		...providerRun(id),
-		run_started_at: '2026-08-20T18:17:01.000Z',
-		updated_at: '2026-08-20T18:30:00.000Z',
+		run_started_at: '2026-08-20T18:17:01Z',
+		updated_at: '2026-08-20T18:30:00Z',
 		...overrides,
 	};
 }
@@ -88,7 +88,7 @@ test('provider HTTP failure remains a collector failure rather than artifact abs
 	);
 });
 
-test('inventory validates every historical attempt against logical run identity', async () => {
+test('inventory normalizes real GitHub second-precision timestamps and validates every historical attempt', async () => {
 	const fetchImpl = async url => {
 		const path = url.pathname;
 		if (path.endsWith(`/actions/workflows/${workflow}/runs`)) return jsonResponse({ total_count: 1, workflow_runs: [providerRun(100)] });
@@ -100,8 +100,31 @@ test('inventory validates every historical attempt against logical run identity'
 	const inventory = await collectPromotionWorkflowInventory({ reader, workflow, event: 'schedule', branch: 'main' });
 	assert.equal(inventory.length, 1);
 	assert.equal(inventory[0].runId, '100');
+	assert.equal(inventory[0].createdAt, '2026-08-20T18:17:00.000Z');
 	assert.equal(inventory[0].attempts.length, 1);
+	assert.equal(inventory[0].attempts[0].startedAt, '2026-08-20T18:17:01.000Z');
+	assert.equal(inventory[0].attempts[0].completedAt, '2026-08-20T18:30:00.000Z');
 	assert.equal(inventory[0].artifacts.length, 1);
+});
+
+test('provider timestamp normalization stays strict about UTC shape and precision', async () => {
+	for (const created_at of [
+		'2026-08-20T18:17:00+00:00',
+		'2026-08-20T18:17:00.0000Z',
+		'2026-08-20 18:17:00Z',
+	]) {
+		const fetchImpl = async url => {
+			if (url.pathname.endsWith(`/actions/workflows/${workflow}/runs`)) {
+				return jsonResponse({ total_count: 1, workflow_runs: [providerRun(100, { created_at })] });
+			}
+			throw new Error(`unexpected URL ${url}`);
+		};
+		const reader = createPromotionGitHubReader({ repository, token: 'token', fetchImpl });
+		await assert.rejects(
+			() => collectPromotionWorkflowInventory({ reader, workflow, event: 'schedule', branch: 'main' }),
+			/GitHub UTC timestamp/u,
+		);
+	}
 });
 
 test('attempt execution commit drift is rejected fail closed', async () => {
