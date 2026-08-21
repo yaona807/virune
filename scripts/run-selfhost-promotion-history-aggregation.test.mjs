@@ -50,6 +50,7 @@ async function fixture({ sourceEvent = 'schedule', observationRunId = '100' } = 
 
 function baseDependencies({ observationInventory = formalInventory(), orchestrateResult = publishResult() } = {}) {
 	let inventoryCalls = 0;
+	let lastOrchestrateInput = null;
 	return {
 		createReader() { return { kind: 'reader' }; },
 		async collectInventory({ workflow }) {
@@ -61,8 +62,9 @@ function baseDependencies({ observationInventory = formalInventory(), orchestrat
 		async createParentCandidates() { return []; },
 		discoverParent() { return { parent: null, sourceRunId: null, sourceAttempt: null, expectedLedgerSha256: null, expectedGeneration: null }; },
 		async createSnapshots({ inventory }) { return inventory.map(item => ({ projected: item.runId })); },
-		orchestrate() { return orchestrateResult; },
+		orchestrate(input) { lastOrchestrateInput = input; return orchestrateResult; },
 		get inventoryCalls() { return inventoryCalls; },
+		get lastOrchestrateInput() { return lastOrchestrateInput; },
 	};
 }
 
@@ -121,6 +123,7 @@ test('publish writes exact report, ledger, and GitHub outputs', async () => {
 			'',
 		].join('\n'));
 		assert.equal(dependencies.inventoryCalls, 2);
+		assert.equal(dependencies.lastOrchestrateInput.trigger.observationEvent, 'schedule');
 	} finally { await f.cleanup(); }
 });
 
@@ -176,11 +179,14 @@ test('scheduled trigger must appear in complete formal schedule inventory', asyn
 	} finally { await f.cleanup(); }
 });
 
-test('manual trigger can aggregate existing schedule history without counting itself', async () => {
+test('manual trigger may inspect existing schedule history but is passed through as diagnostic', async () => {
 	const f = await fixture({ sourceEvent: 'workflow_dispatch', observationRunId: '777' });
 	try {
 		const dependencies = baseDependencies({ observationInventory: formalInventory(), orchestrateResult: noPublishResult() });
-		await assert.doesNotReject(() => runPromotionHistoryAggregation({ repositoryRoot: f.root, environment: f.environment, dependencies }));
+		const result = await runPromotionHistoryAggregation({ repositoryRoot: f.root, environment: f.environment, dependencies });
+		assert.equal(dependencies.lastOrchestrateInput.trigger.observationEvent, 'workflow_dispatch');
+		assert.equal(dependencies.lastOrchestrateInput.trigger.observationRunId, '777');
+		assert.equal(result.ledgerPath, null);
 	} finally { await f.cleanup(); }
 });
 
