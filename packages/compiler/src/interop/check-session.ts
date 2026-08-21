@@ -13,6 +13,7 @@ interface CheckedSession {
 
 const currentSessionByModule = new WeakMap<A.ModuleNode, CheckedSession>();
 const sessionBySemantic = new WeakMap<object, CheckedSession>();
+const originWitnessBySemantic = new WeakMap<object, object>();
 
 /** Invalidate any previously registered public semantic session for this AST object. */
 export function invalidateCheckedSemantic(module: A.ModuleNode): void {
@@ -27,6 +28,11 @@ export function registerCheckedSemantic(
 ): void {
 	const checkerWitness = currentCheckedBuiltinWitness(module.span);
 	if (checkerWitness === undefined) throw new Error('Cannot register checked semantic without a checker-owned session witness');
+	const originWitness = originWitnessBySemantic.get(semantic);
+	if (originWitness !== undefined && originWitness !== checkerWitness) {
+		throw new Error('Cannot re-register checked semantic after its checker witness has changed');
+	}
+	if (originWitness === undefined) originWitnessBySemantic.set(semantic, checkerWitness);
 	const registeredDiagnostics = Object.freeze([...diagnostics]);
 	const session = Object.freeze({
 		checkerWitness,
