@@ -17,8 +17,7 @@ function operationsForMain(result: ProjectBuildResult): readonly unknown[] {
 	assert.ok(module.semantic);
 	return externalOperationSequence({
 		module: module.ast,
-		interop: module.semantic.interop,
-		diagnostics: module.diagnostics,
+		semantic: module.semantic,
 	});
 }
 

@@ -47,8 +47,7 @@ test('compiler emits direct JavaScript import, checked primitive bridge, and pro
 	assert.ok(result.semantic);
 	const operations = externalOperationSequence({
 		module: result.ast,
-		interop: result.semantic.interop,
-		diagnostics: result.diagnostics,
+		semantic: result.semantic,
 	});
 	assert.deepEqual(operations.map(operation => operation.kind), [
 		'module-load',
@@ -68,6 +67,24 @@ test('compiler emits direct JavaScript import, checked primitive bridge, and pro
 	assert.equal(serialized.includes('providerVersion'), false);
 	assert.equal(serialized.includes('declarationEntry'), false);
 	assert.equal(serialized.includes('declarationGraphHash'), false);
+});
+
+test('public operation derivation cannot omit errors from the semantic model', async () => {
+	const root = await fixtureRoot();
+	const provider = new TypeScriptInteropProvider({ projectRoot: root });
+	try {
+		const result = compileSource({
+			id: 1,
+			path: join(root, 'src/main.virune'),
+			text: `import js { greet } from "./library.js"\n\nfn main() -> String {\n\treturn greet("Virune")\n}\n`,
+		}, { platform: 'node', jsInteropProvider: provider });
+		assert.ok(result.ast);
+		assert.ok(result.semantic);
+		assert.ok(result.semantic.diagnostics.items.some(item => item.severity === 'error'));
+		assert.deepEqual(externalOperationSequence({ module: result.ast, semantic: result.semantic }), []);
+	} finally {
+		provider.dispose();
+	}
 });
 
 test('real TypeScript provider maps property, receiver-preserving call, and foreign await semantics into External Operations', async () => {
@@ -115,8 +132,7 @@ test('real TypeScript provider maps property, receiver-preserving call, and fore
 
 		const operations = externalOperationSequence({
 			module: result.ast,
-			interop: result.semantic.interop,
-			diagnostics: result.diagnostics,
+			semantic: result.semantic,
 		});
 		assert.deepEqual(operations.map(operation => operation.kind), [
 			'module-load',
