@@ -540,6 +540,17 @@ function sameSpan(left: SourceSpan, right: SourceSpan): boolean {
 }
 
 function canonicalRuntimeEntry(value: string): string {
+	canonicalStableText(value, 'runtime entry');
+	if (value.includes('\\')) throw new Error('External operation runtime entry must use canonical forward slashes');
+	if (value.startsWith('/') || /^file:/iu.test(value) || /^[A-Za-z]:/u.test(value)) {
+		throw new Error('External operation runtime entry must not be absolute or drive-relative');
+	}
+	if (/^[A-Za-z][A-Za-z0-9+.-]*:/u.test(value)) {
+		if (containsProviderPrivatePathSyntax(value)) {
+			throw new Error('External operation runtime entry must not contain provider-private path syntax');
+		}
+		return value;
+	}
 	return canonicalRelativeLocator(value, 'runtime entry');
 }
 
