@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { parsePromotionHistoryAggregationReportV2 } from '../src/selfhost/promotion-history-aggregation-report-v2.js';
 import { orchestratePromotionHistoryV2 } from '../src/selfhost/promotion-history-orchestrator-v2.js';
 import type { PromotionAggregationRunSnapshotV2 } from '../src/selfhost/promotion-history-aggregation-v2.js';
 import type { PromotionHistoryLedgerV2 } from '../src/selfhost/promotion-history-ledger-v2.js';
@@ -173,6 +174,20 @@ test('identical inputs produce byte-identical reports and ledger hashes', () => 
 	assert.equal(first.reportSha256, second.reportSha256);
 	assert.equal(first.serializedLedger, second.serializedLedger);
 	assert.equal(first.ledgerSha256, second.ledgerSha256);
+});
+
+test('report run-id serialization is canonical even when provider IDs are not monotonic by creation time', () => {
+	const result = orchestratePromotionHistoryV2({
+		stage: 'required-selfhost',
+		policy: policy(),
+		trigger: trigger('100'),
+		runs: [
+			passingRun('200', '2026-08-20T18:17:00.000Z'),
+			passingRun('100', '2026-08-20T18:18:00.000Z'),
+		],
+	});
+	assert.deepEqual(result.report.processedRunIds, ['100', '200']);
+	assert.doesNotThrow(() => parsePromotionHistoryAggregationReportV2(result.report));
 });
 
 test('rejects malformed aggregation trigger identity', () => {
