@@ -103,20 +103,34 @@ export class IncrementalProjectBuilder extends BaseIncrementalProjectBuilder {
 	readonly #currentModules = new Set<A.ModuleNode>();
 	#building = false;
 
+	#invalidateCurrentModules(): void {
+		invalidateModules(this.#currentModules);
+		this.#currentModules.clear();
+	}
+
 	public override async build(
 		rootDirectory: string,
 		options: Omit<BuildProjectOptions, 'incrementalCache'> = {},
 	): Promise<ProjectBuildResult> {
 		if (this.#building) throw new Error('Concurrent experimental builds cannot share one IncrementalProjectBuilder');
 		this.#building = true;
-		invalidateModules(this.#currentModules);
+		this.#invalidateCurrentModules();
 		try {
 			const result = registerProjectResult(await super.build(rootDirectory, options));
-			this.#currentModules.clear();
 			for (const module of checkedModules(result)) this.#currentModules.add(module);
 			return result;
 		} finally {
 			this.#building = false;
 		}
+	}
+
+	public override invalidate(path?: string): void {
+		this.#invalidateCurrentModules();
+		super.invalidate(path);
+	}
+
+	public override clear(): void {
+		this.#invalidateCurrentModules();
+		super.clear();
 	}
 }
