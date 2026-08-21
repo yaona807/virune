@@ -28,7 +28,7 @@ Ledgerには、scheduled Promotion ObservationのGitHub runごとに1つの論�
 
 Mutable tailでは、保持済みattemptをすべて昇格判定対象とします。後続の正式runがfreeze境界を作る場合、その後続runの作成時刻より**厳密に前に完了したattemptだけ**を昇格判定用prefixへ残します。境界と同時刻、またはそれ以降に完了したattemptも監査のため同じrunへ追記しますが、昇格判定用prefixの外側に置きます。
 
-有効なobservation artifactでは、GitHub artifact archiveとcanonicalな`observation.json`それぞれのSHA-256を独立して保持します。外側のobservation reportはcanonical JSONでなければならず、claimは正確に`required-selfhost-promotion-observation`、`productionEligible`は`false`、さらに`observationSha256`で内側のobservationを拘束します。内側のobservationもLedgerへ入れる前に、version 2の構造、logical run ID、execution commit、count対象かどうか、evidence順序、provider workflow conclusionとの整合性を再検証します。
+有効なobservation artifactでは、GitHub artifact archiveとcanonicalな`observation.json`それぞれのSHA-256を独立して保持します。外側のobservation reportはcanonical JSONでなければならず、claimは正確に`required-selfhost-promotion-observation`、`productionEligible`は`false`、さらに`observationSha256`で内側のobservationを拘束します。内側のobservationもLedgerへ入れる前に、version 2の構造、logical run ID、execution commit、count対象かどうか、evidence順序、provider workflow conclusionとの整合性に加え、`completedAt`がprovider attemptの実行区間内にあることを再検証します。Ledger parser自身もこの時刻関係を独立に再検証し、最初のattemptがlogical runの作成時刻より前に開始する状態も拒否します。
 
 GitHub APIや通信の失敗はaggregationそのものの失敗です。artifactが存在しないものとして扱いません。
 
@@ -74,7 +74,7 @@ Policy replayが履歴上のthreshold達成を示しても、それは証拠に�
 
 `Self-host promotion history aggregation`は`workflow_run: completed`で起動します。このeventではGitHubが`github.sha`をaggregation run用のdefault branch exact commitへ固定するため、workflowはそのSHAをcheckoutし、trigger元observationの`head_sha`は使いません。権限は`actions: read`と`contents: read`だけです。
 
-`main`上のcanonical observation workflow pathだけを受け入れます。正式履歴へ入るのはscheduled observationだけです。Manual observationは診断用aggregationを起動できますが、正式なscheduled-run inventoryには入りません。
+`main`上のcanonical observation workflow pathだけを受け入れます。正式履歴へ入るのはscheduled observationだけです。Manual observationは診断用aggregationを起動できますが、正式なscheduled-run inventoryには入りません。Manual observationをtriggerにしたaggregationは、未処理のscheduled履歴を診断目的で確認できますが、canonical Ledger generationを発行できません。Canonical publishを許すのはscheduled observationをtriggerにしたaggregation attempt 1だけです。
 
 Aggregationが成功した場合は必ずcanonicalかつ`productionEligible: false`のreportを出します。Ledger artifactはcanonical generationが変化した場合だけ出します。Aggregation自体のrerun attemptは診断専用で、canonical generationを置き換えて発行できません。
 
