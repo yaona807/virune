@@ -17,7 +17,7 @@ English: [CONTRIBUTING.md](CONTRIBUTING.md)
 - 互換性方針に影響する変更
 - リリースやCIの安全境界を変える変更
 
-大きな作業では、複数の実装をまとめて追跡するIssueと、1つの実装変更を完了させるIssueを分けます。Pull Requestは原則として実装対象のIssueへ紐づけ、目的と完了条件がPull Request単体でも分かるようにしてください。Pull Requestがmergeされたことだけを理由にIssueを完了扱いにはせず、必要な条件を現在の`main`で確認してから閉じます。
+大きな作業では、複数の実装をまとめて追跡するIssueと、1つの実装変更を完了させるIssueを分けます。Pull Requestは原則として実装対象のIssueへ紐づけ、目的と完了条件がPull Request単体でも分かるようにしてください。Pull Requestがマージされたことだけを理由にIssueを完了扱いにはせず、必要な条件を現在の`main`で確認してから閉じます。
 
 迷う場合は、実装を大きく進める前にIssueを作成してください。
 
@@ -108,7 +108,7 @@ Stable Compiler APIから内部AST、HIR、MIR、arena、semantic tableを直接
 
 関係のない整形、命名変更、リファクタリングを同じPull Requestへ混ぜないでください。
 
-独立した作業は最新の`main`から始めます。Pull Requestを重ねるのは、子の変更を`main`単独では実装または十分に検証できない実際のsource／test依存がある場合に限ります。通常は親と子の2段までとし、CIを動かすため、conflictを避けるため、あるいは単に作業順を表すためだけに重ねません。
+独立した作業は最新の`main`から始めます。Pull Requestを重ねるのは、子の変更を`main`単独では実装または十分に検証できない、ソースコードやテスト上の実際の依存関係がある場合に限ります。通常は親と子の2段までとし、CIを動かすため、競合を避けるため、あるいは単に作業順を表すためだけに重ねません。
 
 通常の修正ではコミットを追加して履歴を進めます。`main`が進んだだけ、あるいは作業途中のコミットをまとめたいだけの理由でforce-pushしません。親Pull Requestのsquash後など、履歴が実際に複雑になり通常のrebaseやmergeでは安全に整理できない場合だけ、最新`main`からの再構成を検討します。履歴をつなぐことだけを目的としたPull Requestは作りません。
 
@@ -160,10 +160,10 @@ Hostへ残す主な責務は次のとおりです。
 - ソースファイルの探索と読み込み
 - TypeScript宣言とJavaScript bindingの解析
 - VS CodeやLanguage Serverの通信層
-- パッケージ作成、リリース、attestation（証明）
+- パッケージ作成、リリース、attestation（成果物の出所を示す証明）
 - bootstrap処理の編成とロールバックの選択
 
-HostとKernelの境界は、バージョン付きで検証可能な、データだけで表現できる契約にします。callback、任意のJavaScript関数、class instance、TypeScript AST node、ファイルハンドルなど、オブジェクトの同一性や実行環境に依存する値をKernelとの契約へ持ち込まないでください。
+HostとKernelの境界は、バージョン付きで検証可能な、データだけで表現できる契約にします。コールバック、任意のJavaScript関数、クラスのインスタンス、TypeScript AST node、ファイルハンドルなど、オブジェクトの同一性や実行環境に依存する値をKernelとの契約へ持ち込まないでください。
 
 まず既存の言語機能、内部アルゴリズム、データ契約で解決できないかを検討し、それでも不適切ならHost側へ責務を残します。Self-hostingだけのために新しい構文や公開APIを追加しません。
 
@@ -171,7 +171,7 @@ Self-hostingの現在状態、昇格条件、seed、corpusなどの正確な値�
 
 診断が必要な場合は、まず`package.json`の`selfhost:*`にある既存の入口を使います。繰り返し必要になる診断は恒久的なリポジトリ内コマンドとして整備し、GitHub Actionsだけに一時的な処理を残しません。
 
-一時的なworkflow、script、診断経路は例外です。既存の方法で調査できない理由、削除条件、責任を持つPull Requestを明確にし、`.github/self-hosting/temporary-artifacts.json`へ登録します。一時経路で既存Gateを弱めたり迂回したりしてはいけません。Pull RequestをReady for reviewにする前に、一時的な成果物と登録を削除してください。
+一時的なworkflow、スクリプト、診断経路は例外です。既存の方法で調査できない理由、削除条件、責任を持つPull Requestを明確にし、`.github/self-hosting/temporary-artifacts.json`へ登録します。一時経路で既存Gateを弱めたり迂回したりしてはいけません。Pull Requestをレビュー可能な状態にする前に、一時的な成果物と登録を削除してください。
 
 ## 9. CIが失敗した場合
 
@@ -210,7 +210,7 @@ CIの成功結果は、その結果が実行された**正確なコミット**�
 
 Pull Requestは1つの論理的な変更に絞ります。関連Issue、変更範囲、意図的に変更していない境界、実行した検証を本文に記載してください。作業中や検証前はDraftのままにします。
 
-設計、実装、Pull Requestの準備、merge判断では、変更を擁護するのではなく壊す観点でレビューします。
+設計、実装、Pull Requestの準備、マージ判断では、変更を擁護するのではなく壊す観点でレビューします。
 
 1. 要件、Acceptance Criteria、守るべき契約を確認する。
 2. 現在の差分全体を確認する。
@@ -221,11 +221,11 @@ Pull Requestは1つの論理的な変更に絞ります。関連Issue、変更�
 
 CIが成功したことや、何度レビューしたかは終了条件ではありません。
 
-merge前には、少なくとも現在のhead、正式なCI、最終差分、未解決のreview thread、Acceptance Criteria、残ったTODOや一時経路を確認します。headが変わった場合は、必要なCIと最終レビューをやり直してください。
+マージ前には、少なくとも現在のhead、正式なCI、最終差分、未解決のレビュースレッド、Acceptance Criteria、残ったTODOや一時経路を確認します。headが変わった場合は、必要なCIと最終レビューをやり直してください。
 
-日本語文書を含むPull Requestは、最終headの日本語diffをメンテナーが確認して明示的に承認するまでmergeしません。承認後にheadが変わった場合は、再度確認が必要です。
+日本語文書を含むPull Requestは、最終headの日本語diffをメンテナーが確認して明示的に承認するまでマージしません。承認後にheadが変わった場合は、再度確認が必要です。
 
-原則としてsquash mergeを使用します。merge後の確認が完了条件に含まれる場合は、`main`上でその確認を終えてからIssueを閉じてください。
+原則としてsquash mergeを使用します。マージ後の確認が完了条件に含まれる場合は、`main`上でその確認を終えてからIssueを閉じてください。
 
 ## 13. ライセンス
 
