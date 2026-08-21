@@ -118,7 +118,7 @@ export function orchestratePromotionHistoryV2(input: {
 		publishedLedgerSha256: canonicalPublish ? aggregation.ledger?.sha256 ?? null : null,
 		currentLedgerSha256: currentLedgerResult?.sha256 ?? null,
 		currentLedgerGeneration: currentLedgerResult?.ledger.generation ?? null,
-		processedRunIds: aggregation.processedRunIds,
+		processedRunIds: [...aggregation.processedRunIds].sort(compareRunIds),
 		blockedByRunId: aggregation.blockedByRunId,
 		lateAttempts: aggregation.lateAttempts,
 		currentProductKnown,
@@ -148,6 +148,12 @@ function parseTrigger(value: PromotionHistoryAggregationTriggerV2): PromotionHis
 		aggregationAttempt: value.aggregationAttempt,
 		observationRunId: value.observationRunId,
 	};
+}
+
+function compareRunIds(left: string, right: string): number {
+	const leftId = BigInt(left);
+	const rightId = BigInt(right);
+	return leftId < rightId ? -1 : leftId > rightId ? 1 : 0;
 }
 
 function sha256(value: string): string {
