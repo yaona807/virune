@@ -28,7 +28,7 @@ The ledger stores one logical record per scheduled Promotion Observation GitHub 
 
 A mutable tail treats every retained attempt as promotion-effective. When a later formal run establishes the freeze boundary, only attempts that completed strictly before that later run's creation time remain in the effective prefix. Attempts that complete at or after the boundary are appended to the same run for auditability but remain outside the effective prefix.
 
-A valid observation artifact keeps independent SHA-256 identities for the GitHub artifact archive and the canonical `observation.json` bytes. The outer observation report must be canonical JSON, carry the exact `required-selfhost-promotion-observation` claim, set `productionEligible: false`, and bind its embedded observation with `observationSha256`. The embedded observation is validated again for canonical version-2 structure, exact logical run and execution commit, countability, evidence ordering, and consistency with the provider workflow conclusion before it enters the ledger.
+A valid observation artifact keeps independent SHA-256 identities for the GitHub artifact archive and the canonical `observation.json` bytes. The outer observation report must be canonical JSON, carry the exact `required-selfhost-promotion-observation` claim, set `productionEligible: false`, and bind its embedded observation with `observationSha256`. The embedded observation is validated again for canonical version-2 structure, exact logical run and execution commit, countability, evidence ordering, consistency with the provider workflow conclusion, and a completion timestamp inside the provider attempt execution interval before it enters the ledger. The ledger parser rechecks the provider-time relationship independently, including that the first attempt does not start before the logical run creation time.
 
 GitHub/API/transport failures are aggregation failures. They are never converted into an absent-artifact gap.
 
@@ -74,7 +74,7 @@ Policy replay may report that history thresholds are satisfied, but that result 
 
 `Self-host promotion history aggregation` runs from `workflow_run: completed`. For that event GitHub binds `github.sha` to the exact default-branch commit for the aggregation run; the workflow checks out that SHA, never the triggering observation's `head_sha`. It uses read-only `actions` and `contents` permissions.
 
-Only the canonical observation workflow path on `main` is accepted. Scheduled observations form formal history; manual observation runs may trigger diagnostic aggregation but are not included in the formal scheduled-run inventory.
+Only the canonical observation workflow path on `main` is accepted. Scheduled observations form formal history; manual observation runs may trigger diagnostic aggregation but are not included in the formal scheduled-run inventory. A manual-triggered aggregation may inspect pending scheduled history, but it cannot publish a canonical ledger generation. Canonical publication requires a scheduled observation trigger and aggregation attempt 1.
 
 A successful aggregation always emits a canonical non-promotable report. A new ledger artifact is emitted only when the canonical generation changes. Aggregation rerun attempts are diagnostic and cannot publish a replacement canonical generation.
 
