@@ -21,8 +21,7 @@ test('project builds derive the same provider-independent operation contract fro
 	assert.ok(module.semantic);
 	const operations = externalOperationSequence({
 		module: module.ast,
-		interop: module.semantic.interop,
-		diagnostics: module.diagnostics,
+		semantic: module.semantic,
 	});
 	assert.deepEqual(operations.map(operation => operation.kind), [
 		'module-load',
