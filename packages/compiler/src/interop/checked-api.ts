@@ -44,12 +44,18 @@ function registerCompileResult(result: CompileResult): CompileResult {
 }
 
 function registerProjectResult(result: ProjectBuildResult): ProjectBuildResult {
-	for (const module of result.modules) {
-		if (module.ast !== undefined && module.semantic !== undefined) {
-			registerCheckedSemantic(module.ast, module.semantic, result.diagnostics);
+	const modules = checkedModules(result);
+	try {
+		for (const module of result.modules) {
+			if (module.ast !== undefined && module.semantic !== undefined) {
+				registerCheckedSemantic(module.ast, module.semantic, result.diagnostics);
+			}
 		}
+		return result;
+	} catch (error) {
+		invalidateModules(modules);
+		throw error;
 	}
-	return result;
 }
 
 function beginCachedBuild(cache: ProjectBuildCache): void {
