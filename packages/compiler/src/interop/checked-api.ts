@@ -22,6 +22,7 @@ import { invalidateCheckedSemantic, registerCheckedSemantic } from './check-sess
 
 const currentModulesByCache = new WeakMap<ProjectBuildCache, ReadonlySet<A.ModuleNode>>();
 const activeCaches = new WeakSet<ProjectBuildCache>();
+const activeCheckedModules = new WeakSet<A.ModuleNode>();
 
 function checkedModules(result: ProjectBuildResult): ReadonlySet<A.ModuleNode> {
 	const modules = new Set<A.ModuleNode>();
@@ -71,10 +72,16 @@ export function compileSource(source: SourceFile, options: CompileOptions = {}):
 
 /** Experimental checker entry point with ephemeral checked-AST session binding. */
 export function checkModule(module: A.ModuleNode, options: TypeCheckerOptions = {}): SemanticModel {
+	if (activeCheckedModules.has(module)) throw new Error('Reentrant experimental checkModule calls for the same AST are not supported');
+	activeCheckedModules.add(module);
 	invalidateCheckedSemantic(module);
-	const semantic = checkModuleBase(module, options);
-	registerCheckedSemantic(module, semantic, semantic.diagnostics.items);
-	return semantic;
+	try {
+		const semantic = checkModuleBase(module, options);
+		registerCheckedSemantic(module, semantic, semantic.diagnostics.items);
+		return semantic;
+	} finally {
+		activeCheckedModules.delete(module);
+	}
 }
 
 /** Experimental checker class that keeps direct class users on the same session boundary. */
