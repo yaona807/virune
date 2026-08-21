@@ -57,6 +57,9 @@ export function parsePromotionHistoryAggregationReportV2(value: unknown): Promot
 	if (publish && trigger.observationEvent !== 'schedule') {
 		throw new PromotionHistoryAggregationReportError('$.publish', 'manual observation triggers cannot publish canonical ledger state');
 	}
+	if (publish && trigger.aggregationAttempt !== 1) {
+		throw new PromotionHistoryAggregationReportError('$.publish', 'aggregation rerun attempts cannot publish canonical ledger state');
+	}
 	if (publish && publishedLedgerSha256 !== currentLedgerSha256) {
 		throw new PromotionHistoryAggregationReportError('$.currentLedgerSha256', 'published ledger must be the current ledger');
 	}
