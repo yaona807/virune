@@ -176,6 +176,28 @@ test('a no-op current-ledger SHA cannot silently switch while searching backward
 	);
 });
 
+test('a non-publishing report must self-bind its parent and current ledger identity', () => {
+	const published = publication();
+	const noop = orchestratePromotionHistoryV2({
+		stage: 'required-selfhost',
+		policy: policy(),
+		trigger: { aggregationRunId: '901', aggregationAttempt: 1, observationRunId: '100' },
+		parent: published.ledger as PromotionHistoryLedgerV2,
+		runs: [passingRun()],
+	});
+	const corrupted = { ...noop.report, parentLedgerSha256: 'f'.repeat(64) };
+	assert.throws(
+		() => discoverPromotionHistoryParentV2({
+			stage: 'required-selfhost',
+			candidates: [
+				{ runId: '901', attempt: 1, createdAt: '2026-08-20T20:00:00.000Z', conclusion: 'success', report: corrupted, ledger: null },
+				{ runId: '900', attempt: 1, createdAt: '2026-08-20T19:00:00.000Z', conclusion: 'success', report: published.report, ledger: published.ledger },
+			],
+		}),
+		/non-publishing report must retain the current ledger as its parent/u,
+	);
+});
+
 test('a newer successful report cannot drop a previously published ledger and restart from genesis', () => {
 	const published = publication();
 	const rollback = noLedgerReport();
