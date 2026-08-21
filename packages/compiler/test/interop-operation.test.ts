@@ -61,7 +61,7 @@ test('ModuleLoad keeps only runtime resolution evidence and strips declaration/p
 	});
 
 	assert.equal(operation.kind, 'module-load');
-	assert.deepEqual(operation.runtimeWitness?.conditions, ['types', 'import', 'node'], 'condition precedence is semantic order, not a set');
+	assert.deepEqual(operation.runtimeWitness?.conditions, ['import', 'node', 'types'], 'runtime conditions are canonical active-set evidence, not provider construction order');
 	assert.equal(isResolvedDirectInteropDecision(operation.decision), true);
 	assert.deepEqual(operation.decision.obligations, [
 		{ kind: 'runtime-resolution', stage: 'check', status: 'discharged' },
