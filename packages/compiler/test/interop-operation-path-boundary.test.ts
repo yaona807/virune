@@ -77,15 +77,21 @@ test('provider-private paths cannot hide behind arbitrary provider-text delimite
 		);
 	}
 
-	assert.throws(
-		() => externalModuleLoadOperation({
-			nodeId: 1,
-			span,
-			moduleSpecifier: './library.js',
-			witnesses: [witness({ runtimeEntry: 'resolved|/checkout/private/library.js' })],
-		}),
-		/not be absolute or drive-relative/u,
-	);
+	for (const runtimeEntry of [
+		'resolved|/checkout/private/library.js',
+		'resolved@/checkout/private/library.js',
+		'resolved@C:private/library.js',
+	]) {
+		assert.throws(
+			() => externalModuleLoadOperation({
+				nodeId: 1,
+				span,
+				moduleSpecifier: './library.js',
+				witnesses: [witness({ runtimeEntry })],
+			}),
+			/not be absolute or drive-relative/u,
+		);
+	}
 });
 
 test('broader delimiter detection preserves legitimate source-like provider text', () => {
