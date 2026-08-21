@@ -137,6 +137,29 @@ test('embedded observation schema and provider identity failures become explicit
 	}
 });
 
+test('embedded observation completion must fall within the provider attempt interval', async () => {
+	for (const completedAt of ['2026-08-20T18:17:00.999Z', '2026-08-20T18:30:00.001Z']) {
+		const snapshots = await createPromotionObservationSnapshots({
+			reader: readerFor(report(validObservation({ completedAt }))),
+			inventory: inventory({ artifact: metadata() }),
+		});
+		assert.equal(snapshots[0].attempts[0].artifact, null);
+		assert.equal(snapshots[0].attempts[0].gapReason, 'observation-artifact-invalid');
+	}
+});
+
+test('embedded observation completion may equal either provider attempt boundary', async () => {
+	for (const completedAt of ['2026-08-20T18:17:01.000Z', '2026-08-20T18:30:00.000Z']) {
+		const observation = validObservation({ completedAt });
+		const snapshots = await createPromotionObservationSnapshots({
+			reader: readerFor(report(observation)),
+			inventory: inventory({ artifact: metadata() }),
+		});
+		assert.deepEqual(snapshots[0].attempts[0].artifact.observation, observation);
+		assert.equal(snapshots[0].attempts[0].gapReason, null);
+	}
+});
+
 test('embedded observation must already use canonical evidence ordering', async () => {
 	const observation = validObservation({
 		evidence: [
