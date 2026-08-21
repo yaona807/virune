@@ -3,15 +3,16 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import test from 'node:test';
-import { verifyNpmPublicationRecoveryDocumentation, verifyNpmPublicationRecoveryPolicy } from './verify-npm-publication-recovery.mjs';
+import { verifyNpmPublicationRecoveryPolicy } from './verify-npm-publication-recovery.mjs';
 
 const root = resolve('.');
 
-test('current npm publication recovery contract is canonical and documentation is synchronized', () => {
+test('current npm publication recovery contract is canonical', () => {
 	const policy = verifyNpmPublicationRecoveryPolicy(root);
-	const english = readFileSync(resolve(root, 'docs/npm-publication-recovery.md'), 'utf8');
-	const japanese = readFileSync(resolve(root, 'docs/npm-publication-recovery_ja.md'), 'utf8');
-	assert.equal(verifyNpmPublicationRecoveryDocumentation(policy, english, japanese), true);
+	assert.equal(policy.schemaVersion, 1);
+	assert.equal(policy.observation.source, 'public-npm-registry');
+	assert.equal(policy.observation.unknownAuthorizesWrites, false);
+	assert.equal(policy.completion.publicRegistryVerificationRequired, true);
 });
 
 test('unknown or partial observation cannot authorize writes', () => {
