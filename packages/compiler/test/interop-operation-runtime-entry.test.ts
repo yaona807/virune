@@ -34,3 +34,24 @@ test('known runtime format without a runtime entry is unresolved, not Direct suc
 		assert.equal(isResolvedDirectInteropDecision(operation.decision), false);
 	}
 });
+
+test('stable non-file runtime URL locators remain valid provider evidence', () => {
+	for (const runtimeEntry of [
+		'https://cdn.example.test/packages/library.js',
+		'virtual:library-entry',
+	]) {
+		const item: ModuleResolutionWitness = {
+			...witness('esm'),
+			runtimeEntry,
+		};
+		const operation = externalModuleLoadOperation({
+			nodeId: 1,
+			span,
+			moduleSpecifier: item.moduleSpecifier,
+			witnesses: [item],
+		});
+		assert.equal(operation.runtimeWitness?.runtimeEntry, runtimeEntry);
+		assert.equal(operation.decision.status, 'resolved');
+		assert.equal(isResolvedDirectInteropDecision(operation.decision), true);
+	}
+});
