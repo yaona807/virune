@@ -65,10 +65,10 @@ function operationKinds(module: NonNullable<ReturnType<typeof parseSource>['ast'
 	return externalOperationSequence({ module, semantic }).map(operation => operation.kind);
 }
 
-function memoryHost(mainPath: string): ProjectHost {
+function memoryHost(mainPath: string, text = source.text): ProjectHost {
 	return {
 		async readFile(path) {
-			if (path === mainPath) return source.text;
+			if (path === mainPath) return text;
 			throw Object.assign(new Error(`missing ${path}`), { code: 'ENOENT' });
 		},
 	};
@@ -109,6 +109,23 @@ test('public operation derivation is bound to the exact AST that produced its Se
 		() => externalOperationSequence({ module: separatelyChecked.ast!, semantic: checked.semantic! }),
 		/not from the current checked AST semantic session/u,
 	);
+});
+
+test('project-level compilation errors withhold successful Direct operation evidence', async () => {
+	const root = resolve('virtual-operation-project-diagnostic');
+	const mainPath = join(root, 'src/main.virune');
+	const projectRejectedSource = `unsafe module\n\n${source.text}`;
+	const result = await buildProject(root, {
+		write: false,
+		host: memoryHost(mainPath, projectRejectedSource),
+		jsInteropProvider: providerForGeneration(1),
+	});
+	assert.ok(result.diagnostics.some(item => item.severity === 'error' && item.code === 'L4009'));
+	const main = result.modules.find(module => module.source.path === mainPath);
+	assert.ok(main?.ast);
+	assert.ok(main.semantic);
+	assert.deepEqual(main.semantic.diagnostics.items.filter(item => item.severity === 'error'), [], 'test must isolate a project-level error absent from SemanticModel diagnostics');
+	assert.deepEqual(externalOperationSequence({ module: main.ast, semantic: main.semantic }), []);
 });
 
 test('checking the same AST again invalidates the previous semantic session', () => {
