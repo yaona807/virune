@@ -1,4 +1,4 @@
-import type { SourceSpan } from '../source.js';
+import type { SourceSpan } from './source.js';
 
 const currentBuiltinWitnessBySpan = new WeakMap<SourceSpan, object>();
 

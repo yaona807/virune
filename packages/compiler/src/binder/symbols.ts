@@ -1,5 +1,5 @@
 import type { AstNode, Declaration } from '../ast/nodes.js';
-import { registerCheckedBuiltinWitness } from '../checker/session-witness.js';
+import { registerCheckedBuiltinWitness } from '../session-witness.js';
 import type { SourceSpan, SymbolId, TypeId } from '../source.js';
 import { IdGenerator } from '../source.js';
 

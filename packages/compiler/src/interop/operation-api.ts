@@ -1,7 +1,7 @@
 import type * as A from '../ast/nodes.js';
-import { hasCurrentCheckedBuiltinWitness } from '../checker/session-witness.js';
 import type { SemanticModel } from '../checker/checker.js';
 import type { Diagnostic } from '../diagnostics/diagnostic.js';
+import { hasCurrentCheckedBuiltinWitness } from '../session-witness.js';
 import { currentCheckedDiagnostics } from './check-session.js';
 import { externalOperationSequence as externalOperationSequenceFromEvidence, type ExternalOperationIR } from './operation.js';
 
