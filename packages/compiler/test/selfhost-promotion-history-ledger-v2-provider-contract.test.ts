@@ -83,10 +83,49 @@ test('same-timestamp run ordering uses numeric GitHub run identity', () => {
 	assert.throws(() => createPromotionHistoryLedgerV2(ledger([{ ...run10, frozen: true }, { ...run9, frozen: false }])), /strictly ordered/u);
 });
 
+test('first provider attempt cannot start before logical run creation', () => {
+	const attempt = { ...gapAttempt(), startedAt: '2026-08-20T00:59:59.999Z' };
+	assert.throws(() => createPromotionHistoryLedgerV2(ledger([{
+		runId: '100', sequenceAt: '2026-08-20T01:00:00.000Z', executionCommit: commit, frozen: false, attempts: [attempt],
+	}])), /cannot start before the logical run creation time/u);
+});
+
 test('passing observation requires a successful workflow conclusion', () => {
 	assert.throws(() => createPromotionHistoryLedgerV2(ledger([{
 		runId: '100', sequenceAt: '2026-08-20T01:00:00.000Z', executionCommit: commit, frozen: false, attempts: [passingAttempt('100', 'failure')],
 	}])), /passing observation requires a successful workflow attempt/u);
+});
+
+test('embedded observation completion must remain inside the provider attempt interval', () => {
+	for (const completedAt of ['2026-08-20T00:59:59.999Z', '2026-08-20T01:20:00.001Z']) {
+		const base = passingAttempt('100');
+		const attempt: PromotionHistoryAttemptInputV2 = {
+			...base,
+			artifact: {
+				...base.artifact!,
+				observation: { ...base.artifact!.observation, completedAt },
+			},
+		};
+		assert.throws(() => createPromotionHistoryLedgerV2(ledger([{
+			runId: '100', sequenceAt: '2026-08-20T01:00:00.000Z', executionCommit: commit, frozen: false, attempts: [attempt],
+		}])), /must fall within the provider attempt execution interval/u);
+	}
+});
+
+test('embedded observation completion may equal either provider attempt boundary', () => {
+	for (const completedAt of ['2026-08-20T01:00:00.000Z', '2026-08-20T01:20:00.000Z']) {
+		const base = passingAttempt('100');
+		const attempt: PromotionHistoryAttemptInputV2 = {
+			...base,
+			artifact: {
+				...base.artifact!,
+				observation: { ...base.artifact!.observation, completedAt },
+			},
+		};
+		assert.doesNotThrow(() => createPromotionHistoryLedgerV2(ledger([{
+			runId: '100', sequenceAt: '2026-08-20T01:00:00.000Z', executionCommit: commit, frozen: false, attempts: [attempt],
+		}])));
+	}
 });
 
 test('successful workflow may retain a missing-artifact evidence gap', () => {
