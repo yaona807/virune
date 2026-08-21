@@ -51,17 +51,18 @@ test('known primitive and non-primitive foreign shapes remain accepted', () => {
 	if (object?.kind === 'read-property') assert.equal(object.result.primitive, undefined);
 });
 
-test('TypeScript any cannot become resolved Direct operation evidence', () => {
+test('TypeScript any remains an opaque accepted foreign fact without acquiring stronger safety claims', () => {
 	const anyShape = { display: 'any', category: 'any' as const };
 	for (const usage of [
 		property(anyShape),
 		{ kind: 'call', nodeId: 1, span, foreignType: anyShape, receiverMode: 'none', mayReject: false },
 		{ kind: 'await', nodeId: 1, span, foreignType: anyShape, mayReject: true },
 	] satisfies ForeignUsageIR[]) {
-		assert.throws(
-			() => externalOperationFromUsage(usage),
-			/TypeScript any/u,
-		);
+		const operation = externalOperationFromUsage(usage);
+		assert.ok(operation);
+		assert.equal(operation.decision.status, 'resolved');
+		assert.equal(operation.decision.mechanism, 'direct');
+		assert.deepEqual(operation.decision.claims, []);
 	}
 });
 
