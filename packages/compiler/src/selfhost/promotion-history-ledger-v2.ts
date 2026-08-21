@@ -197,6 +197,9 @@ function parseRun(value: unknown, index: number, stage: PromotionSubjectStage, s
 		runId,
 		executionCommit,
 	));
+	if (attempts[0]!.startedAt < sequenceAt) {
+		throw new PromotionHistoryLedgerError(`${path}.attempts[0].startedAt`, 'first provider attempt cannot start before the logical run creation time');
+	}
 	for (let attemptIndex = 1; attemptIndex < attempts.length; attemptIndex += 1) {
 		if (attempts[attemptIndex]!.startedAt < attempts[attemptIndex - 1]!.completedAt) {
 			throw new PromotionHistoryLedgerError(`${path}.attempts[${attemptIndex}].startedAt`, 'rerun attempt cannot start before the previous attempt completed');
@@ -233,6 +236,9 @@ function parseAttempt(
 	const gapReason = nullableGapReason(attempt.gapReason, `${path}.gapReason`);
 	const artifact = attempt.artifact === null ? null : parseArtifact(attempt.artifact, `${path}.artifact`, stage, runId, executionCommit);
 	if ((artifact === null) === (gapReason === null)) throw new PromotionHistoryLedgerError(path, 'exactly one of artifact or gapReason must be present');
+	if (artifact !== null && (artifact.observation.completedAt < startedAt || artifact.observation.completedAt > completedAt)) {
+		throw new PromotionHistoryLedgerError(`${path}.artifact.observation.completedAt`, 'must fall within the provider attempt execution interval');
+	}
 	if (artifact?.observation.outcome === 'passed' && conclusion !== 'success') {
 		throw new PromotionHistoryLedgerError(`${path}.conclusion`, 'passing observation requires a successful workflow attempt');
 	}
