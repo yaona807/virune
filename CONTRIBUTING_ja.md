@@ -69,7 +69,7 @@ npm run test:core
 Compiler全体を変更するときは、まず処理がどの段階に属するかを確認します。大まかな流れは次のとおりです。
 
 ```text
-source
+ソースコード
   ↓
 Lexer / Parser
   ↓
@@ -77,16 +77,16 @@ AST
   ↓
 project / module graph
   ↓
-declaration収集・名前解決
+宣言の収集・名前解決
   ↓
-type / effect / control-flow / FFI検査
+型 / effect / control-flow / FFI検査
   ↓
 HIR / MIR lowering
   ↓
 ES2022 / Source Map出力
 ```
 
-構文とsource spanはsyntax／Parser側、型・effect・制御フローなどの意味検査はChecker側、Runtime ABIやInterop ABIに従う出力はlowering／codegen側の責務です。
+LexerとParserは構文とソース位置を扱い、Checkerは型、effect、制御フローなどの意味を検査します。loweringとコード生成は、検査済みの結果をRuntime ABIやInterop ABIに従う出力へ変換します。
 
 Stable Compiler APIから内部AST、HIR、MIR、arena、semantic tableを直接公開しないという境界も維持してください。
 
@@ -137,7 +137,7 @@ ParserやCheckerの実装だけを変更して仕様を後追いにしないで�
 
 ## 7. 公開APIとABIを変更する場合
 
-Stable Compiler APIの機械的な正本は`packages/compiler/api/stable-api.snapshot.json`と公開entry pointです。確認には`npm run api:check`を使用します。
+Stable Compiler APIの機械的な正本は`packages/compiler/api/stable-api.snapshot.json`と公開エントリーポイントです。確認には`npm run api:check`を使用します。
 
 Runtime、Interop、標準ライブラリを含む公開ABIは`packages/public-abi.snapshot.json`と[`spec/runtime-abi_ja.md`](spec/runtime-abi_ja.md)を確認し、`npm run abi:check`で検証します。
 
@@ -147,29 +147,29 @@ Runtime、Interop、標準ライブラリを含む公開ABIは`packages/public-a
 
 Self-hostingの都合だけでVirune言語、Compiler API、Runtime ABI、Interop ABI、公開標準ライブラリを変更してはいけません。
 
-Self-hostingでは、Viruneへ移す対象を**決定的でdata-orientedなCompiler Kernel**に限定します。環境依存処理や処理の編成はJavaScript／TypeScript Hostへ残します。
+Self-hostingでViruneへ移すのは、**外部環境に依存せず、入力と出力を明示的なデータとして扱える決定的なCompiler Kernel**に限ります。環境依存処理や全体の処理手順を組み立てる役割はJavaScript／TypeScript Hostへ残します。
 
 Hostへ残す主な責務は次のとおりです。
 
-- CLIとprocess lifecycle
-- filesystem、path解決、environment variable、暗号学的hash
-- source探索と読み込み
-- TypeScript declarationとJavaScript bindingの解析
-- VS CodeやLanguage Serverのtransport
-- package作成、リリース、attestation
-- bootstrapの編成とrollbackの選択
+- CLIとプロセスのライフサイクル
+- ファイルシステム、パス解決、環境変数、暗号学的ハッシュ
+- ソースファイルの探索と読み込み
+- TypeScript宣言とJavaScript bindingの解析
+- VS CodeやLanguage Serverの通信層
+- パッケージ作成、リリース、attestation（証明）
+- bootstrap処理の編成とロールバックの選択
 
-HostとKernelの境界は、version付きで検証可能なdata-only contractにします。callback、任意のJavaScript function、class instance、TypeScript AST node、filesystem handleなど、object identityや環境に依存する値をKernel contractへ持ち込まないでください。
+HostとKernelの境界は、バージョン付きで検証可能な、データだけで表現できる契約にします。callback、任意のJavaScript関数、class instance、TypeScript AST node、ファイルハンドルなど、オブジェクトの同一性や実行環境に依存する値をKernelとの契約へ持ち込まないでください。
 
-まず既存の言語機能、内部アルゴリズム、data contractで解決できないかを検討し、それでも不適切ならHost側へ責務を残します。Self-hostingだけのために新しい構文や公開APIを追加しません。
+まず既存の言語機能、内部アルゴリズム、データ契約で解決できないかを検討し、それでも不適切ならHost側へ責務を残します。Self-hostingだけのために新しい構文や公開APIを追加しません。
 
-Self-hostingの現在状態、promotion条件、seed、corpusなどの正確な値は`.github/self-hosting/`のJSON、`selfhost/`、既存scriptとtestを正本とします。Production Compilerへの昇格は、これらの機械可読ポリシーが要求する検証を同じcandidate commitで満たした場合だけ行います。
+Self-hostingの現在状態、昇格条件、seed、corpusなどの正確な値は`.github/self-hosting/`のJSON、`selfhost/`、既存のスクリプトとテストを正本とします。Production Compilerへの昇格は、これらの機械可読ポリシーが要求する検証を同じ候補コミットで満たした場合だけ行います。
 
 Self-hosting向けの検証コマンドは`package.json`の`selfhost:*`から、変更した境界に対応する既存コマンドを選んでください。必要な検証を省くために専用の近道を作らないでください。
 
 ## 9. CIが失敗した場合
 
-CIの成功結果は、その結果が実行された**正確なcommit**に対する証拠です。headを変更した後に、古いheadの成功結果を現在の変更の証拠として使わないでください。
+CIの成功結果は、その結果が実行された**正確なコミット**に対する証拠です。headを変更した後に、古いheadの成功結果を現在の変更の証拠として使わないでください。
 
 失敗はまず原因を分類します。
 
@@ -183,9 +183,9 @@ CIの成功結果は、その結果が実行された**正確なcommit**に対�
 
 通常のCIが成功したことだけでは、安定版リリースを許可しません。
 
-リリースの正確な条件は`.github/stable-release-gate.json`、`.github/release/`、Release workflow、検証scriptを正本とします。公開する成果物は、レビュー済みのrelease identityと一致していなければなりません。
+リリースの正確な条件は`.github/stable-release-gate.json`、`.github/release/`、リリース用workflow、検証スクリプトを正本とします。公開する成果物は、レビューした成果物の名前、内容、ハッシュ、対象コミットなどの識別情報と一致していなければなりません。
 
-既存の公開成果物を通常経路で上書きしないでください。復旧が必要な場合も、公開済みの状態を再確認し、正しいものを再公開せず、不明な状態を安全とみなさないことが原則です。
+既存の公開成果物を通常経路で上書きしないでください。復旧が必要な場合も、公開済みの状態を改めて確認し、正しく公開済みのものを再公開せず、不明な状態を安全とみなさないことが原則です。
 
 ## 11. 文書を変更する場合
 
@@ -215,7 +215,7 @@ Pull Requestは1つの論理的な変更に絞ります。関連Issue、変更�
 
 CIが成功したことや、何度レビューしたかは終了条件ではありません。
 
-merge前には、少なくとも現在のhead、正式なCI、最終差分、未解決review thread、Acceptance Criteria、残ったTODOや一時経路を確認します。headが変わった場合は、必要なCIと最終レビューをやり直してください。
+merge前には、少なくとも現在のhead、正式なCI、最終差分、未解決のreview thread、Acceptance Criteria、残ったTODOや一時経路を確認します。headが変わった場合は、必要なCIと最終レビューをやり直してください。
 
 日本語文書を含むPull Requestは、最終headの日本語diffをメンテナーが確認して明示的に承認するまでmergeしません。承認後にheadが変わった場合は、再度確認が必要です。
 
