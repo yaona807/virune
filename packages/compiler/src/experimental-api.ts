@@ -21,6 +21,7 @@ export type {
 	ExternalForeignOrigin,
 	ExternalForeignValueShape,
 	ExternalModuleLoadOperationIR,
+	ExternalOperationEffect,
 	ExternalOperationIR,
 	ExternalOperationKind,
 	ExternalReadPropertyOperationIR,
