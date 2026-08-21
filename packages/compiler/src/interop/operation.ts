@@ -551,13 +551,13 @@ function sourceModuleSpecifier(value: string, description: string): string {
 function canonicalOptionalOriginText(value: string, description: string): string | undefined {
 	if (typeof value !== 'string') throw new Error(`External operation ${description} must be a string`);
 	if (value.length === 0 || /\p{Cc}/u.test(value)) return undefined;
-	if (value.includes('\\') || value.startsWith('/') || /^file:/iu.test(value) || /^[A-Za-z]:/u.test(value)) return undefined;
+	if (containsProviderPrivatePathSyntax(value)) return undefined;
 	return value;
 }
 
 function canonicalProviderText(value: string, description: string): string {
 	canonicalStableText(value, description);
-	if (value.includes('\\') || value.startsWith('/') || /^file:/iu.test(value) || /^[A-Za-z]:/u.test(value)) {
+	if (containsProviderPrivatePathSyntax(value)) {
 		throw new Error(`External operation ${description} must not contain provider-private path syntax`);
 	}
 	return value;
@@ -572,10 +572,15 @@ function canonicalStableText(value: string, description: string): string {
 function canonicalRelativeLocator(value: string, description: string): string {
 	canonicalStableText(value, description);
 	if (value.includes('\\')) throw new Error(`External operation ${description} must use canonical forward slashes`);
-	if (value.startsWith('/') || /^file:/iu.test(value) || /^[A-Za-z]:/u.test(value)) throw new Error(`External operation ${description} must not be absolute or drive-relative`);
+	if (containsProviderPrivatePathSyntax(value)) throw new Error(`External operation ${description} must not be absolute or drive-relative`);
 	const segments = value.split('/');
 	if (segments.some(segment => segment.length === 0 || segment === '.' || segment === '..')) throw new Error(`External operation ${description} must be a canonical relative locator`);
 	return value;
+}
+
+function containsProviderPrivatePathSyntax(value: string): boolean {
+	if (value.includes('\\')) return true;
+	return /(?:^|[\s"'`=({\[,:;])(?:file:|[A-Za-z]:|\/(?!\/))/iu.test(value);
 }
 
 function canonicalHash(value: string, description: string): string {
