@@ -1,7 +1,7 @@
 import type * as A from '../ast/nodes.js';
 import type { SemanticModel } from '../checker/checker.js';
 import type { Diagnostic } from '../diagnostics/diagnostic.js';
-import { currentCheckedBuiltinWitness } from '../session-witness.js';
+import { checkedScopeWitness, currentCheckedBuiltinWitness } from '../session-witness.js';
 
 interface CheckedSession {
 	readonly checkerWitness: object;
@@ -13,7 +13,6 @@ interface CheckedSession {
 
 const currentSessionByModule = new WeakMap<A.ModuleNode, CheckedSession>();
 const sessionBySemantic = new WeakMap<object, CheckedSession>();
-const originWitnessBySemantic = new WeakMap<object, object>();
 
 /** Invalidate any previously registered public semantic session for this AST object. */
 export function invalidateCheckedSemantic(module: A.ModuleNode): void {
@@ -26,13 +25,11 @@ export function registerCheckedSemantic(
 	semantic: SemanticModel,
 	diagnostics: readonly Diagnostic[] = semantic.diagnostics.items,
 ): void {
-	const checkerWitness = currentCheckedBuiltinWitness(module.span);
-	if (checkerWitness === undefined) throw new Error('Cannot register checked semantic without a checker-owned session witness');
-	const originWitness = originWitnessBySemantic.get(semantic);
-	if (originWitness !== undefined && originWitness !== checkerWitness) {
+	const checkerWitness = checkedScopeWitness(semantic.globalScope);
+	if (checkerWitness === undefined) throw new Error('Cannot register checked semantic without an untainted checker-owned scope witness');
+	if (currentCheckedBuiltinWitness(module.span) !== checkerWitness) {
 		throw new Error('Cannot re-register checked semantic after its checker witness has changed');
 	}
-	if (originWitness === undefined) originWitnessBySemantic.set(semantic, checkerWitness);
 	const registeredDiagnostics = Object.freeze([...diagnostics]);
 	const session = Object.freeze({
 		checkerWitness,
@@ -53,6 +50,7 @@ export function registerCheckedSemantic(
 export function isCurrentCheckedSemantic(module: A.ModuleNode, semantic: SemanticModel): boolean {
 	const session = sessionBySemantic.get(semantic);
 	if (session === undefined || currentSessionByModule.get(module) !== session) return false;
+	if (checkedScopeWitness(semantic.globalScope) !== session.checkerWitness) return false;
 	if (currentCheckedBuiltinWitness(module.span) !== session.checkerWitness) return false;
 	try {
 		return session.moduleState === structuralState(module)
