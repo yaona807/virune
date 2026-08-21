@@ -1,124 +1,115 @@
 # CIゲート戦略
 
-[English](ci-gate-strategy.md)
+[英語版](ci-gate-strategy.md)
 
-## 目的
+Viruneでは、Pull Requestの検証、再現可能性の検証、Nightly、リリース前検証を分けています。通常の変更を十分に検証しながら、文書だけの変更や長時間の検証を適切な経路へ分けることが目的です。
 
-Viruneでは、即時のPull Request検証、必須の再現可能ビルド検証、長時間のNightly suite、明示的なrelease rehearsalを分離します。対応OS／Node.js matrixを維持しつつ、同一Pull Request commitに対するmetadata検証、TypeScript build、semantic fuzz、再現可能release buildの重複を避けます。
+CIの構成を変更する場合も、`CI`、`Release artifacts`、`Reproducible release required check`、`Reproducible release artifacts`の名前は維持します。これらはGitHubのRulesetから参照される可能性があります。
 
-責務を移動する場合もworkflow名とrequired check名は維持します。特に`CI`、`Release artifacts`、`Reproducible release required check`、`Reproducible release artifacts`は変更せず、repository Rulesetが既存のcheck contextを失わないようにします。
+CIの成功結果は、実際に検証したPull Requestの最新コミット（head）に対する証拠です。headが変わった場合、以前の成功結果を新しいheadの証拠として使ってはいけません。
 
-## Pull Request CIの責務
+## Pull Requestの検証
 
-### 変更分類
+### 検証経路の選択
 
-`classify` jobはPull Requestのbase commitとhead commitから変更pathを算出します。
+文書だけの変更かどうかはCIの変更分類で判定します。この文書では対象パスを固定の一覧として持ちません。
 
-次のいずれかだけが変更されている場合に限り、documentation-onlyとして扱います。
+文書だけの変更だと安全に判定できたPull Requestに限り、文書向けの検証経路を使用します。文書以外の変更が含まれる場合や、安全に判定できない場合は完全な検証を行います。
 
-- `README.md`、`CONTRIBUTING.md`、`SECURITY.md`などrepository rootのproject Markdown
-- `docs/`配下のMarkdown
+`main`へのpushと手動のCI実行でも、完全な検証を行います。
 
-変更fileが0件の場合、workflow、package metadata、dependency、source、generated baseline、Markdown以外のdocumentation assetが含まれる場合は、常にfull gateを選択します。
+### 文書だけの変更
 
-Pushと手動CI実行では常にfull gateを選択します。
+文書だけの変更では、メタデータとポリシーを検証したうえで、文書内のサンプルコードをビルド・検証・実行します。その他の重い検証は省略できます。
 
-### Metadataとpolicy
+省略する場合も、必須チェックそのものを削除したり、別の名前へ変更したりしてはいけません。
 
-Ubuntu 24.04／Node.js 24の`metadata` jobだけが`npm run verify:metadata`を実行します。runtime要件、registry設定、workflow policy、CI policy、TypeScript API境界、documentation、release metadata、public API／ABI snapshot、release gate、language grammarを検証します。
+### 通常の変更
 
-Documentation-only Pull Requestでは、追加でdocumentation exampleをbuild・実行します。この経路ではその他のjobをskipします。
+通常のPull Requestでは、Ubuntu 24.04／Node.js 24でメタデータを検証し、基準となるビルドと型検査を1回行います。生成した`dist`を同じワークフロー実行内の各検証で共有します。
 
-### Canonical build
+主な検証は次のとおりです。
 
-Full gateでは、Ubuntu 24.04／Node.js 24の`build` jobをmetadata検証と並列で開始します。このjobだけがPull Request用のproject reference buildとtype checkを実行し、生成した`dist` treeを短期artifactへpackageします。
+- 単体・結合テスト
+- コンパイラー品質、TypeScriptバインディング、Language Server、VS Code、準拠性、フォーマッターなどの検証
+- 多数の入力を自動生成し、クラッシュや処理結果の不一致を探すテスト（ファズテスト）
+- Pull Request向けに、異なる処理経路の結果の不一致を探すテストを4分割して実行（各2分）
+- Windows Server 2022／2025、macOS 14、Node.js 26での互換性検証
+- Chromiumでのブラウザー検証
+- 変更範囲に応じたセルフホスティングの全言語機能インベントリ
 
-Core test、compiler quality、semantic fuzz、compatibility、browserの各jobはartifactが利用可能になり次第、互いを待たずに開始します。これによりbuildの重複を除去しつつ、対応platform matrixと時間の長いplatform-independent suiteを直列化しません。
+WindowsやmacOSなど環境固有の依存関係が必要な検証では、対象環境でコミット済みのロックファイルから`npm ci`を実行します。ビルド済みのVirune成果物は共有しますが、ネイティブ依存関係まで別環境から持ち込みません。
 
-### Platform-independent gate
+`Release artifacts`は、必要な検証が成功した場合だけ実行します。Pull Request専用の結果差分テストはpushや手動CIでは実行しないため、その意図した省略は許可します。
 
-Canonical buildを使用するUbuntu 24.04／Node.js 24のjobを並列実行します。
+公開判断にはPull Requestで作成したビルド成果物を流用せず、クリーンな環境からリリース用成果物を再ビルドして検証します。
 
-- `verify`はbrowser runtimeを除く完全なunit／integration suiteを担当します。
-- `quality`はTypeScript binding corpus、時間制限付きfuzz／semantic differential fuzz smoke suite、language server／VS Code test、conformance、formatter check、source clone smoke testを担当します。
-- `semantic-fuzz`はPull Request向けに4 shardのsemantic differential fuzzを実行し、各shardへ2分を割り当てます。
+## 再現可能性の必須チェック
 
-Pull Request用semantic-fuzz jobはcanonical compiled-output artifactを使用して`scripts/semantic-fuzz-long.mjs`を実行します。Repositoryをjob内で再buildしません。Regression artifactとCI timing evidenceはshard単位でuploadします。
-
-### Platform-sensitive compatibility
-
-Windows Server 2022、Windows Server 2025、macOS 14、Ubuntu Node.js 26は、canonical build jobが生成したcompiled-output artifactをdownloadします。Native／platform固有dependencyを対象runnerへinstallするため、各jobは引き続きローカルで`npm ci`を実行します。
-
-Compatibility jobは、OS、filesystem、path処理、process生成、Node.js version、VS Code host、CLI実行に依存する可能性があるtestだけを実行します。
-
-- platform smoke test
-- language server／VS Code test
-- conformance path smoke
-- clone／process smoke
-
-Metadata検証、type check、全unit suite、binding corpus、fuzz、formatter検証は重複実行しません。
-
-### Browserとrelease artifact
-
-Browser jobはcanonical buildをrestoreし、core、quality、semantic-fuzz、compatibility testと並列でChromium上のemitted ESMを実行します。
-
-`Release artifacts` jobはmetadata、build、core test、compiler quality、Pull Request semantic fuzz、compatibility、browserの全jobが成功した場合だけ実行します。Pushまたは手動CI実行ではPull Request専用semantic-fuzz jobをskipし、release-artifactsのdependencyはその意図したskipを許可します。公開判断にPull Request build artifactを流用せず、cleanなproduction release buildとrelease smoke verificationを実行します。
-
-## 必須の再現可能release check
-
-`Reproducible release required check`は、workflow名とjob名がrepository Rulesetから参照される可能性があるため、独立したPull Request workflowとして維持します。Documentation以外の変更では`npm run verify:reproducible-release`を実行し、documentation-only変更では同じrequired check contextを維持したまま変更分類後にshort-circuitします。
-
-高コストな独立二重buildを自動実行するPull Request workflowは、このrequired checkだけです。Release dry runは同一Pull Request commitで自動起動しないため、再現可能性を二重計算しません。
-
-## Release dry run
-
-`Release dry run`は明示的に起動する`workflow_dispatch` rehearsalです。公開処理は行わず、quality検証、release package作成、再現可能性検証、install済みVSIX smoke test、対応するNightly evidenceを含むstable release gate全体を実行します。
-
-Rehearsalを明示実行へ変更することで、通常のPull Requestがproduction release pathを二重に起動することを防ぎながら、完全なrelease前検証能力を維持します。公開予定refに対して、release policy、packaging、signing、repair処理を変更した場合、または公開前に実行します。
-
-## Nightlyの責務
-
-`Nightly quality suites`はschedule、関連変更が入った`main`へのpush、手動実行の場合だけ起動します。Pull Requestでは起動しません。
-
-Nightlyは次を担当します。
-
-- 15分のcrash fuzzを4 shard
-- 完全なbinding corpus
-- 15分のsemantic differential fuzzを4 shard
-- 独立した再現可能release build
-
-Pull Requestでは`CI`内の短い4 shard semantic fuzz gateを実行します。これにより即時feedbackの責務を明確にし、長時間campaignをmain branchと定期検証へ限定します。
-
-Nightly failureを無条件retryで隠してはいけません。再現証跡を保持し、原因となる問題を解決済みとする前にregression testへ昇格させます。
-
-## Artifactとcacheの安全性
-
-Compiled-output artifactは現在のworkflow runに限定され、commit SHAを含む名前を使用します。Downstream jobはcross-run identifierを指定せず`actions/download-artifact`を使用するため、別Pull Requestまたは過去runのartifactを取得できません。
-
-Artifactに含めるのはrepositoryが生成した`dist` directoryだけです。`node_modules`、credential、cache、package manager state、release candidateは含めません。
-
-各runnerはcommit済みlockfileから`npm ci`を実行します。npm cacheはinstall用download cacheとしてだけ使用し、build outputやrelease証跡として扱いません。
-
-Release packagingはclean checkoutとinstall後に必ずsourceからrebuildします。
-
-## 観測性と再現方法
-
-Wrapperを通した各CI commandは、command、duration、exit status、OS、Node.js version、local reproduction commandを含むJSON timing recordを保存します。Job summaryには遅いcommandから順番に表示します。
-
-失敗時はstream表示したstdout／stderrを`.cache/ci-failures/`へ保持し、timing evidenceとともにuploadします。Local reproduction commandはGitHub annotationにも出力します。
-
-代表的なcommandは次のとおりです。
+`Reproducible release required check`は、Pull Requestごとに独立して実行する必須チェックです。通常の変更では次を実行します。
 
 ```bash
-npm run verify:metadata
-npm run check
-npm run test:core:built -- --failure-output-only
-npm run test:binding-corpus:built
-node scripts/semantic-fuzz-long.mjs
-npm run test:platform-smoke:built
-npm run test:vscode:built
-npm run test:conformance:built
-npm run smoke:clone:built
 npm run verify:reproducible-release
-npm run release:gate
 ```
+
+文書だけの変更では、変更分類を確認したうえで実際の二重ビルドを省略できます。ただし、`Reproducible release required check`／`Reproducible release artifacts`という必須チェックの識別子は維持します。
+
+## Nightly
+
+`Nightly quality suites`は、定期実行、関連する変更が入った`main`へのpush、または手動実行で使用します。Pull Requestでは実行しません。
+
+Nightlyでは次を行います。
+
+- 多数の入力を自動生成してクラッシュを探すテストを15分×4分割で実行
+- TypeScriptバインディングの大規模テスト一式
+- 異なる処理経路の結果の不一致を探すテストを15分×4分割で実行
+- 独立した再現可能リリースビルド
+
+Nightlyの失敗を、原因を確認せず再実行して隠してはいけません。再現に必要な証跡を残し、原因となった問題は解決済みとする前に必要な回帰テストへ反映します。
+
+## リリース前検証
+
+`Release dry run`は、実際の公開を行わずに安定版のリリース経路を確認する手動ワークフローです。品質検証、パッケージ作成、再現可能性、インストール済みVSIX、必要なNightlyの証跡をまとめて確認します。
+
+公開前のほか、リリース方針、パッケージング、署名、修復処理を変更した場合にも実行します。
+
+### 実行手順
+
+1. GitHubのViruneリポジトリで **Actions** を開きます。
+2. **Release dry run** を選び、**Run workflow** を開きます。
+3. GitHubの画面から実行する場合は、検証するリリース候補のブランチを選びます。
+4. **Run workflow** を実行します。
+5. `Stable release gate`が成功したことを確認します。
+6. 実行結果のArtifactsから`stable-release-dry-run-<commit SHA>`を確認します。ここにはリリース証跡、再現可能性の証跡、候補成果物が含まれます。
+
+GitHubの画面で選べないタグなどのrefを直接指定する場合は、GitHub CLI（`gh`）を使用できます。この方法では、`gh`をインストールしてGitHubへ認証し、対象リポジトリのActionsを実行できる権限が必要です。
+
+```bash
+gh workflow run "Release dry run" --ref <ref>
+```
+
+失敗した場合は公開へ進まず、失敗した検証と証跡を確認します。
+
+## 成果物とキャッシュ
+
+CIで共有するビルド成果物は、現在のワークフロー実行内だけで使用します。別のPull Requestや過去の実行から取得してはいけません。
+
+共有する成果物にはリポジトリが生成した`dist`だけを含め、`node_modules`、認証情報、キャッシュ、パッケージ管理ツールの状態、リリース候補を含めません。
+
+各環境はコミット済みのロックファイルから`npm ci`を実行します。npmのキャッシュはダウンロードの高速化にだけ使用し、ビルド結果やリリース証跡として扱いません。
+
+リリース用パッケージは、クリーンなチェックアウトと依存関係のインストール後に必ずソースから再ビルドします。
+
+## CI失敗時の確認
+
+CIでラップされた各コマンドは、実行コマンド、所要時間、終了状態、OS、Node.jsのバージョン、ローカルでの再現コマンドをJSONで記録します。失敗時の標準出力・標準エラーは`.cache/ci-failures/`へ保存されます。
+
+失敗を調べるときは次の順序で確認します。
+
+1. Pull Requestの現在のheadと、失敗したワークフロー実行が検証したコミットが一致していることを確認します。
+2. 失敗したジョブとステップを開き、ログとGitHubの注釈に表示された再現コマンドを確認します。
+3. 必要に応じてCIの証跡をダウンロードし、`.cache/ci-failures/`と`.cache/ci-timings/`を確認します。
+4. リポジトリのルートで再現コマンドを実行します。OSやNode.jsのバージョンに依存する失敗は、該当する環境でも確認します。
+5. リポジトリや実装が原因なら修正し、新しいheadで検証します。GitHub Actionsやランナーなど外部基盤が原因だと確認できた場合に限り、同じheadの再実行を使用します。
+
+古いheadの成功結果や、原因を確認していない再実行結果を現在の変更の証拠として扱ってはいけません。
