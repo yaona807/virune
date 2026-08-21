@@ -1,7 +1,6 @@
 import type * as A from '../ast/nodes.js';
 import type { SemanticModel } from '../checker/checker.js';
 import type { Diagnostic } from '../diagnostics/diagnostic.js';
-import { hasCurrentCheckedBuiltinWitness } from '../session-witness.js';
 import { currentCheckedDiagnostics } from './check-session.js';
 import { externalOperationSequence as externalOperationSequenceFromEvidence, type ExternalOperationIR } from './operation.js';
 
@@ -9,10 +8,9 @@ import { externalOperationSequence as externalOperationSequenceFromEvidence, typ
  * Derive provider-independent External Operations from one checked semantic model.
  *
  * Keeping diagnostics and Interop evidence on the same exact registered check prevents
- * callers from substituting partial lookalike evidence. The SemanticModel must also
- * belong to the current registered public session for this AST and contain the newest
- * checker-owned builtin witness for the shared source-span identity. Non-import
- * operation anchors must carry checker-owned inferred-type annotations.
+ * callers from substituting partial lookalike evidence. The SemanticModel must belong
+ * to the current registered public session for this AST. Non-import operation anchors
+ * must carry checker-owned inferred-type annotations.
  */
 export function externalOperationSequence(input: {
 	readonly module: A.ModuleNode;
@@ -31,7 +29,7 @@ function assertCheckedAstEvidence(
 	semantic: SemanticModel,
 ): readonly Diagnostic[] {
 	const diagnostics = currentCheckedDiagnostics(module, semantic);
-	if (diagnostics === undefined || !hasCurrentCheckedBuiltinWitness(module.span, semantic.symbols)) {
+	if (diagnostics === undefined) {
 		throw new Error('Stale or cross-session External usage evidence: module is not from the current checked AST semantic session');
 	}
 
