@@ -110,8 +110,8 @@ function failedRun(runId = '101', sequenceAt = '2026-08-21T18:17:00.000Z'): Prom
 	};
 }
 
-function trigger(observationRunId = '100') {
-	return { aggregationRunId: '900', aggregationAttempt: 1, observationRunId };
+function trigger(observationRunId = '100', observationEvent: 'schedule' | 'workflow_dispatch' = 'schedule') {
+	return { aggregationRunId: '900', aggregationAttempt: 1, observationRunId, observationEvent };
 }
 
 test('publishes a canonical genesis ledger and replays the current policy', () => {
@@ -139,7 +139,7 @@ test('same provider snapshot against its parent is a deterministic no-op', () =>
 	const second = orchestratePromotionHistoryV2({
 		stage: 'required-selfhost',
 		policy: policy(),
-		trigger: { aggregationRunId: '901', aggregationAttempt: 1, observationRunId: '100' },
+		trigger: { aggregationRunId: '901', aggregationAttempt: 1, observationRunId: '100', observationEvent: 'schedule' },
 		parent,
 		runs: [passingRun()],
 	});
@@ -155,7 +155,7 @@ test('a latest gap breaks the streak and does not expose a synthetic subject as 
 	const second = orchestratePromotionHistoryV2({
 		stage: 'required-selfhost',
 		policy: policy(),
-		trigger: { aggregationRunId: '902', aggregationAttempt: 1, observationRunId: '101' },
+		trigger: { aggregationRunId: '902', aggregationAttempt: 1, observationRunId: '101', observationEvent: 'schedule' },
 		parent: first.ledger as PromotionHistoryLedgerV2,
 		runs: [passingRun(), failedRun()],
 	});
@@ -164,6 +164,24 @@ test('a latest gap breaks the streak and does not expose a synthetic subject as 
 	assert.equal(second.report.policy?.promotionSubjectId, null);
 	assert.equal(second.report.policy?.successfulRuns, 0);
 	assert.equal(second.report.policy?.historyThresholdsSatisfied, false);
+});
+
+test('manual observation trigger can inspect backlog but cannot publish canonical state', () => {
+	const result = orchestratePromotionHistoryV2({
+		stage: 'required-selfhost',
+		policy: policy(),
+		trigger: trigger('777', 'workflow_dispatch'),
+		runs: [passingRun()],
+	});
+	assert.equal(result.report.trigger.observationEvent, 'workflow_dispatch');
+	assert.equal(result.report.publish, false);
+	assert.equal(result.report.currentLedgerSha256, null);
+	assert.equal(result.report.currentLedgerGeneration, null);
+	assert.equal(result.ledger, null);
+	assert.equal(result.serializedLedger, null);
+	assert.equal(result.ledgerSha256, null);
+	assert.deepEqual(result.report.processedRunIds, ['100']);
+	assert.doesNotThrow(() => parsePromotionHistoryAggregationReportV2(result.report));
 });
 
 test('identical inputs produce byte-identical reports and ledger hashes', () => {
@@ -195,9 +213,18 @@ test('rejects malformed aggregation trigger identity', () => {
 		() => orchestratePromotionHistoryV2({
 			stage: 'required-selfhost',
 			policy: policy(),
-			trigger: { aggregationRunId: '0900', aggregationAttempt: 1, observationRunId: '100' },
+			trigger: { aggregationRunId: '0900', aggregationAttempt: 1, observationRunId: '100', observationEvent: 'schedule' },
 			runs: [passingRun()],
 		}),
 		/canonical positive decimal run ID/u,
+	);
+	assert.throws(
+		() => orchestratePromotionHistoryV2({
+			stage: 'required-selfhost',
+			policy: policy(),
+			trigger: { aggregationRunId: '900', aggregationAttempt: 1, observationRunId: '100', observationEvent: 'push' as 'schedule' },
+			runs: [passingRun()],
+		}),
+		/expected schedule or workflow_dispatch/u,
 	);
 });
