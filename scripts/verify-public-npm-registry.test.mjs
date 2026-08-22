@@ -63,6 +63,14 @@ function publicReleaseReportFor(publicationManifest, commit = reviewedCommit) {
 			sha256: createHash('sha256').update(bytes).digest('hex'),
 			bytes: bytes.byteLength,
 		}],
+		attestations: { provenance: 'passed', cyclonedx: 'passed' },
+		vsix: {
+			file: `virune-vscode-${version}.vsix`,
+			cleanInstall: 'passed',
+			activation: 'passed',
+			languageServer: 'passed',
+			uninstall: 'passed',
+		},
 		passed: true,
 	};
 }
@@ -202,7 +210,7 @@ test('rejects missing or malformed reviewed commit identity before Registry obse
 	await assert.rejects(() => verifyPublicNpmRegistry(verifyOptions(current, { reviewedCommit: 'ABC' })), /full lowercase commit SHA/u);
 });
 
-test('public Registry verification is bound to exact public-release evidence', async () => {
+test('public Registry verification is bound to finalized exact public-release evidence', async () => {
 	for (const mutate of [
 		current => { current.publicReleaseReport.passed = false; },
 		current => { current.publicReleaseReport.expectedCommit = 'b'.repeat(40); },
@@ -210,6 +218,15 @@ test('public Registry verification is bound to exact public-release evidence', a
 		current => { current.publicReleaseReport.version = '1.1.0-rc.2'; },
 		current => { current.publicReleaseReport.release.draft = true; },
 		current => { current.publicReleaseReport.release.prerelease = false; },
+		current => { delete current.publicReleaseReport.attestations; },
+		current => { current.publicReleaseReport.attestations.provenance = 'failed'; },
+		current => { current.publicReleaseReport.attestations.cyclonedx = 'failed'; },
+		current => { delete current.publicReleaseReport.vsix; },
+		current => { current.publicReleaseReport.vsix.cleanInstall = 'failed'; },
+		current => { current.publicReleaseReport.vsix.activation = 'failed'; },
+		current => { current.publicReleaseReport.vsix.languageServer = 'failed'; },
+		current => { current.publicReleaseReport.vsix.uninstall = 'failed'; },
+		current => { current.publicReleaseReport.vsix.file = 'virune-vscode-wrong.vsix'; },
 		current => { current.publicReleaseReport.assets = []; },
 		current => { current.publicReleaseReport.assets.push(structuredClone(current.publicReleaseReport.assets[0])); },
 		current => { current.publicReleaseReport.assets[0].sha256 = '0'.repeat(64); },
