@@ -108,7 +108,7 @@ A normal change follows this sequence:
 
 Do not mix unrelated formatting, renaming, or refactoring into the same Pull Request.
 
-Start independent work from current `main`. Stack Pull Requests only when the child cannot be implemented or meaningfully validated against `main` alone because of a real source-code or test dependency. The normal maximum is two open levels: one parent and one child. Do not stack merely to run CI, avoid a conflict, or express work order.
+Start independent work from current `main`. Stack Pull Requests only when the child cannot be implemented or meaningfully validated against `main` alone because of a real source-code or test dependency. The maximum stack depth is two open levels: one parent and one child. Do not stack merely to run CI, avoid a conflict, or express work order.
 
 For ordinary fixes, append commits instead of rewriting the branch. Do not force-push merely because `main` advanced or because work-in-progress commits could be collapsed. If a parent Pull Request was squash-merged and the remaining history is genuinely difficult to reconcile safely with a normal rebase or merge, consider a clean reconstruction from current `main`. Do not create a Pull Request whose only purpose is ancestry repair.
 
