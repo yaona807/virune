@@ -3,15 +3,25 @@ import { copyFileSync, cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, sta
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { execNpmSync } from './npm-cli.mjs';
+import {
+	NPM_GENERATED_PROJECT_CAPABILITY_RELATIVE_PATH,
+	buildNpmGeneratedProjectCapability,
+	canonicalNpmGeneratedProjectCapabilityBytes,
+} from './npm-generated-project-capability.mjs';
 import { bundledCliReleaseAssetName, registryReleaseAssetNameForPackage, writeNpmPublicationIdentity } from './verify-npm-publication-identity.mjs';
+import { verifyNpmGeneratedProjectCapability } from './verify-npm-generated-project-capability.mjs';
+import { verifyNpmPublicationPlan } from './verify-npm-publication-plan.mjs';
 import { writeReleaseIntegrityFiles } from './release-manifest.mjs';
 import { verifyReleaseLicenseArtifacts } from './verify-release-license-artifacts.mjs';
 import { verifyRepositoryLicensePolicy } from './verify-repository-license-policy.mjs';
 
 verifyRepositoryLicensePolicy();
+const publicationPlan = verifyNpmPublicationPlan();
 
 const rootPackage = JSON.parse(readFileSync(resolve('package.json'), 'utf8'));
 const version = rootPackage.version;
+if (publicationPlan.currentVersion !== version) throw new Error(`Reviewed npm publication version ${publicationPlan.currentVersion} does not match root version ${version}.`);
+const npmGeneratedProjectCapability = buildNpmGeneratedProjectCapability(publicationPlan);
 const out = resolve('release');
 rmSync(out, { recursive: true, force: true });
 mkdirSync(out, { recursive: true });
@@ -33,12 +43,14 @@ const pack = directory => {
 };
 
 const stampCliVersion = directory => {
-	const cliEntryPath = resolve(directory, 'dist/src/main.js');
-	const cliEntry = readFileSync(cliEntryPath, 'utf8');
-	const versionDeclaration = /const VERSION = ['"][^'"]+['"];/gu;
-	const matches = [...cliEntry.matchAll(versionDeclaration)];
-	if (matches.length !== 1) throw new Error(`Packaged CLI must contain exactly one VERSION declaration; found ${matches.length}.`);
-	writeFileSync(cliEntryPath, cliEntry.replace(matches[0][0], `const VERSION = ${JSON.stringify(version)};`));
+	for (const relativePath of ['dist/src/main.js', 'dist/src/main-core.js']) {
+		const cliEntryPath = resolve(directory, relativePath);
+		const cliEntry = readFileSync(cliEntryPath, 'utf8');
+		const versionDeclaration = /const VERSION = ['"][^'"]+['"];/gu;
+		const matches = [...cliEntry.matchAll(versionDeclaration)];
+		if (matches.length !== 1) throw new Error(`Packaged CLI ${relativePath} must contain exactly one VERSION declaration; found ${matches.length}.`);
+		writeFileSync(cliEntryPath, cliEntry.replace(matches[0][0], `const VERSION = ${JSON.stringify(version)};`));
+	}
 };
 
 const stageRegistryPackage = item => {
@@ -52,7 +64,14 @@ const stageRegistryPackage = item => {
 		if (stagingManifest.publishConfig !== undefined) throw new Error(`Registry source workspace ${item.name} must not define publishConfig.`);
 		delete stagingManifest.private;
 		writeFileSync(stagingManifestPath, `${JSON.stringify(stagingManifest, null, '\t')}\n`);
-		if (item.name === 'virune') stampCliVersion(stagingPackage);
+		if (item.name === 'virune') {
+			stampCliVersion(stagingPackage);
+			const capabilityPath = resolve(stagingPackage, NPM_GENERATED_PROJECT_CAPABILITY_RELATIVE_PATH);
+			rmSync(capabilityPath, { force: true });
+			if (npmGeneratedProjectCapability !== null) {
+				writeFileSync(capabilityPath, canonicalNpmGeneratedProjectCapabilityBytes(npmGeneratedProjectCapability, version));
+			}
+		}
 		execNpmSync(['pack', '--ignore-scripts', stagingPackage, '--pack-destination', stagingRoot], { stdio: 'inherit' });
 		const npmPackedFile = item.name === 'virune' ? bundledCliReleaseAssetName(version) : item.file;
 		const packedPath = resolve(stagingRoot, npmPackedFile);
@@ -75,6 +94,7 @@ try {
 	delete stagingManifest.publishConfig;
 	stagingManifest.bundledDependencies = Object.keys(stagingManifest.dependencies ?? {}).sort();
 	writeFileSync(stagingManifestPath, `${JSON.stringify(stagingManifest, null, '\t')}\n`);
+	rmSync(resolve(stagingPackage, NPM_GENERATED_PROJECT_CAPABILITY_RELATIVE_PATH), { force: true });
 	stampCliVersion(stagingPackage);
 
 	const internalTarballs = internalPackages.map(item => resolve(out, item.file));
@@ -128,6 +148,7 @@ const packageEntries = packages.map(item => {
 	return { file: item.file, sha256: createHash('sha256').update(bytes).digest('hex'), bytes: bytes.byteLength };
 });
 writeFileSync(resolve(out, 'MANIFEST.json'), `${JSON.stringify({ schemaVersion: 1, version, packages: packageEntries }, null, 2)}\n`);
+verifyNpmGeneratedProjectCapability({ releaseDirectory: out });
 writeNpmPublicationIdentity({ releaseDirectory: out });
 writeReleaseIntegrityFiles(out, version);
 verifyReleaseLicenseArtifacts();
