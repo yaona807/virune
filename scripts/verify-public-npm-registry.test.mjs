@@ -172,6 +172,8 @@ function successfulRunCommand(expectedVersion = version, {
 	inspectExec,
 	generatedVersion = version,
 	generatedScripts = canonicalGeneratedScripts,
+	npxGeneratedVersion = generatedVersion,
+	npxGeneratedScripts = generatedScripts,
 	mutateGeneratedPackageOnInstall = false,
 	failExec = false,
 } = {}) {
@@ -199,7 +201,7 @@ function successfulRunCommand(expectedVersion = version, {
 				assert.equal(args[separator + 2], 'init');
 				assert.equal(typeof args[separator + 3], 'string');
 				inspectExec?.(args, options);
-				writeGeneratedProject(resolve(args[separator + 3]), generatedVersion, generatedScripts);
+				writeGeneratedProject(resolve(args[separator + 3]), npxGeneratedVersion, npxGeneratedScripts);
 				return { status: 0, stdout: 'Initialized Virune project\n', stderr: '' };
 			}
 			if (args[0] === 'install') {
@@ -475,6 +477,25 @@ test('exact-version npm exec acquisition is noninteractive, public-Registry-boun
 		}),
 	});
 	assert.equal(observed, true);
+});
+
+test('npm exec generated project fails closed on dependency and script drift independently of global install', async () => {
+	await assert.rejects(
+		() => verifyCleanGlobalCliInstall(version, {
+			runCommand: successfulRunCommand(version, { npxGeneratedVersion: '1.1.0-rc.2' }),
+			platform: 'linux',
+		}),
+		/expected 1\.1\.0-rc\.1/u,
+	);
+	await assert.rejects(
+		() => verifyCleanGlobalCliInstall(version, {
+			runCommand: successfulRunCommand(version, {
+				npxGeneratedScripts: { ...canonicalGeneratedScripts, check: 'echo skipped' },
+			}),
+			platform: 'linux',
+		}),
+		/scripts\.check: expected virune check/u,
+	);
 });
 
 test('generated project smoke rejects dependency, script, and package.json drift', async () => {
