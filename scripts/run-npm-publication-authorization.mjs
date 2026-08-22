@@ -10,6 +10,13 @@ const ROOT_MANIFEST_PATH = 'package.json';
 const DEFAULT_PUBLICATION_MANIFEST = resolve(repositoryRoot, '.cache/public-release/PUBLICATION-MANIFEST.json');
 const DEFAULT_EVIDENCE = resolve(repositoryRoot, '.cache/npm-publication-authorization/pre-write-evidence.json');
 const DEFAULT_OUTPUT = resolve(repositoryRoot, '.cache/npm-publication-authorization/npm-publication-authorization-report.json');
+const CLI_OPTIONS = Object.freeze([
+	['--expected-commit=', 'reviewedCommit'],
+	['--version=', 'releaseVersion'],
+	['--evidence-set-id=', 'evidenceSetId'],
+	['--publication-manifest=', 'publicationManifestPath'],
+	['--evidence=', 'evidencePath'],
+]);
 
 export async function runNpmPublicationAuthorization({
 	reviewedCommit,
@@ -48,6 +55,22 @@ export async function runNpmPublicationAuthorization({
 		await writeFile(outputPath, `${JSON.stringify(report, null, '\t')}\n`, 'utf8');
 	}
 	return report;
+}
+
+export function parseNpmPublicationAuthorizationArguments(argumentsList) {
+	const args = array(argumentsList, '$.arguments');
+	const parsed = {};
+	for (const argument of args) {
+		assert(typeof argument === 'string', '$.arguments', 'expected string arguments');
+		const matches = CLI_OPTIONS.filter(([prefix]) => argument.startsWith(prefix));
+		assert(matches.length === 1, '$.arguments', `unknown authorization argument ${argument}`);
+		const [prefix, property] = matches[0];
+		assert(parsed[property] === undefined, '$.arguments', `duplicate ${prefix.slice(0, -1)} argument`);
+		const value = argument.slice(prefix.length);
+		assert(value.length > 0, '$.arguments', `empty ${prefix.slice(0, -1)} argument`);
+		parsed[property] = value;
+	}
+	return parsed;
 }
 
 export function validateEvidenceDocument(value, expectedEvidenceSetId) {
@@ -124,23 +147,13 @@ function compareText(left, right) {
 
 const entry = process.argv[1] === undefined ? undefined : resolve(process.argv[1]);
 if (entry === fileURLToPath(import.meta.url)) {
-	const reviewedCommit = argumentValue('--expected-commit=');
-	const releaseVersion = argumentValue('--version=');
-	const evidenceSetId = argumentValue('--evidence-set-id=');
-	const publicationManifestPath = argumentValue('--publication-manifest=');
-	const evidencePath = argumentValue('--evidence=');
+	const parsed = parseNpmPublicationAuthorizationArguments(process.argv.slice(2));
 	const report = await runNpmPublicationAuthorization({
-		reviewedCommit,
-		releaseVersion,
-		evidenceSetId,
-		...(publicationManifestPath === undefined ? {} : { publicationManifestPath: resolve(publicationManifestPath) }),
-		...(evidencePath === undefined ? {} : { evidencePath: resolve(evidencePath) }),
+		reviewedCommit: parsed.reviewedCommit,
+		releaseVersion: parsed.releaseVersion,
+		evidenceSetId: parsed.evidenceSetId,
+		...(parsed.publicationManifestPath === undefined ? {} : { publicationManifestPath: resolve(parsed.publicationManifestPath) }),
+		...(parsed.evidencePath === undefined ? {} : { evidencePath: resolve(parsed.evidencePath) }),
 	});
 	process.stdout.write(`Authorized npm publication for ${report.version} at ${report.reviewedCommit}.\n`);
-}
-
-function argumentValue(prefix) {
-	const matches = process.argv.filter(argument => argument.startsWith(prefix));
-	assert(matches.length <= 1, '$.arguments', `duplicate ${prefix.slice(0, -1)} argument`);
-	return matches[0]?.slice(prefix.length);
 }
