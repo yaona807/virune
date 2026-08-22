@@ -19,7 +19,6 @@ export async function runNpmPublicationAuthorization({
 	publicationManifestPath = DEFAULT_PUBLICATION_MANIFEST,
 	evidenceDocument,
 	evidencePath = DEFAULT_EVIDENCE,
-	sourceRoot = repositoryRoot,
 	outputPath = DEFAULT_OUTPUT,
 } = {}) {
 	const commit = fullCommitSha(reviewedCommit, '$.reviewedCommit');
@@ -27,8 +26,8 @@ export async function runNpmPublicationAuthorization({
 	const execution = evidenceSetIdentity(evidenceSetId, '$.evidenceSetId');
 	if (outputPath !== null) await rm(outputPath, { force: true });
 
-	const plan = readReviewedJson(commit, PUBLICATION_PLAN_PATH, { sourceRoot });
-	const rootManifest = readReviewedJson(commit, ROOT_MANIFEST_PATH, { sourceRoot });
+	const plan = readReviewedJson(commit, PUBLICATION_PLAN_PATH);
+	const rootManifest = readReviewedJson(commit, ROOT_MANIFEST_PATH);
 	assert(rootManifest.version === version, '$.releaseVersion', `reviewed ${ROOT_MANIFEST_PATH} version is ${String(rootManifest.version)}, expected ${version}`);
 
 	const manifestBytes = publicationManifestBytes === undefined
@@ -60,9 +59,9 @@ export function validateEvidenceDocument(value, expectedEvidenceSetId) {
 	return array(document.records, '$.evidenceDocument.records');
 }
 
-function readReviewedJson(reviewedCommit, path, { sourceRoot }) {
+function readReviewedJson(reviewedCommit, path) {
 	const result = spawnSync('git', ['show', `${reviewedCommit}:${path}`], {
-		cwd: sourceRoot,
+		cwd: repositoryRoot,
 		encoding: 'utf8',
 		maxBuffer: 4 * 1024 * 1024,
 	});
