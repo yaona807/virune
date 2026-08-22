@@ -41,8 +41,6 @@ interface CachedBuildState {
 	readonly sourceSeals: ReadonlyMap<A.ModuleNode, CheckedSourceReuseSeal>;
 }
 
-const SET_HAS = Set.prototype.has;
-const REFLECT_APPLY = Reflect.apply;
 const currentModulesByCache = new WeakMap<ProjectBuildCache, CheckedModuleMap>();
 const reuseSealBySemantic = new WeakMap<object, SemanticReuseSeal>();
 const activeCaches = new WeakSet<ProjectBuildCache>();
@@ -202,18 +200,19 @@ function hasErrors(diagnostics: readonly Diagnostic[]): boolean {
 	return false;
 }
 
-function safeSetHas<T>(set: ReadonlySet<T>, value: T): boolean {
-	return REFLECT_APPLY(SET_HAS, set, [value]) as boolean;
-}
-
 function trackedReusedSemanticCount(result: ProjectBuildResult, previous: CheckedModuleMap | undefined): number {
 	if (previous === undefined) return 0;
-	const trackedSemantics = new Set<SemanticModel>();
-	for (const semantic of previous.values()) trackedSemantics.add(semantic);
+	const trackedSemantics: SemanticModel[] = [];
+	for (const semantic of previous.values()) trackedSemantics[trackedSemantics.length] = semantic;
 	let count = 0;
 	for (let index = 0; index < result.modules.length; index++) {
-		const module = result.modules[index]!;
-		if (module.semantic !== undefined && safeSetHas(trackedSemantics, module.semantic)) count++;
+		const semantic = result.modules[index]!.semantic;
+		if (semantic === undefined) continue;
+		for (let candidate = 0; candidate < trackedSemantics.length; candidate++) {
+			if (trackedSemantics[candidate] !== semantic) continue;
+			count++;
+			break;
+		}
 	}
 	return count;
 }
