@@ -103,7 +103,7 @@ test('custom claim and obligation array behavior cannot bypass fail-closed valid
 	assert.equal(isResolvedDirectInteropDecision(customClaims), false);
 	assert.throws(
 		() => canonicalizeInteropDecision(customClaims),
-		/Interop decision claims must be a dense array without extra fields/u,
+		/Unknown Interop decision claims field: map/u,
 	);
 
 	const obligations = [{
