@@ -110,12 +110,15 @@ test('direct experimental checker entry points register the completed checker re
 	assert.deepEqual(semantic.diagnostics.items.filter(item => item.severity === 'error'), []);
 	assert.deepEqual(externalOperationSequence(semantic).map(operation => operation.kind), ['module-load', 'read-property']);
 
+	const classParsed = parseSource({ ...source, id: 2 });
+	assert.ok(classParsed.ast);
+	assert.deepEqual(classParsed.diagnostics.filter(item => item.severity === 'error'), []);
 	const checker = new TypeChecker({
 		containingFile: source.path,
 		platform: 'node',
 		jsInteropProvider: providerForGeneration(2),
 	});
-	const classSemantic = checker.check(parsed.ast);
+	const classSemantic = checker.check(classParsed.ast);
 	assert.deepEqual(classSemantic.diagnostics.items.filter(item => item.severity === 'error'), []);
 	assert.deepEqual(externalOperationSequence(classSemantic).map(operation => operation.kind), ['module-load', 'read-property']);
 });
