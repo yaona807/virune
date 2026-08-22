@@ -64,8 +64,8 @@ const stageRegistryPackage = item => {
 		if (stagingManifest.publishConfig !== undefined) throw new Error(`Registry source workspace ${item.name} must not define publishConfig.`);
 		delete stagingManifest.private;
 		writeFileSync(stagingManifestPath, `${JSON.stringify(stagingManifest, null, '\t')}\n`);
-		if (item.name === 'virune') stampCliVersion(stagingPackage);
 		if (item.name === 'virune') {
+			stampCliVersion(stagingPackage);
 			const capabilityPath = resolve(stagingPackage, NPM_GENERATED_PROJECT_CAPABILITY_RELATIVE_PATH);
 			rmSync(capabilityPath, { force: true });
 			if (npmGeneratedProjectCapability !== null) {
