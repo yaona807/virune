@@ -71,8 +71,8 @@ export async function runNpmPublicationPrewriteGate({ reviewedCommit, releaseVer
 	const persistedReport = parseJson(await readFile(NPM_PUBLICATION_PREWRITE_OUTPUT), '$.prewriteGateOutput');
 	assert(isDeepStrictEqual(persistedReport, report), '$.prewriteGateOutput', 'persisted pre-write gate evidence differs from the validated report');
 	if (mutation !== undefined) {
-		verifyExactCleanCheckout(commit);
 		try {
+			verifyExactCleanCheckout(commit);
 			await mutation({
 				prewriteGate: structuredClone(report),
 				authorization: structuredClone(persistedAuthorizationReport),
