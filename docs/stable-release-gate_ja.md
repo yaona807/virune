@@ -16,6 +16,7 @@ tag起点のRelease workflowと手動のRelease dry-run workflowは、同じ`npm
 - FFIのUnknown fallback、unsafe boundary、review済みbinding corpus。
 - Parser、Formatter、Checker、semantic fuzz suite。
 - 公開用package、manifest、checksum、VSIX packaging、offline clean install、生成projectの実行。
+- canonicalなnpm公開前plan。fail-closedなversion境界、明示的な未準備状態、package分類、未解決の公開blockerを含めて検証します。このstable gate checkだけでnpm公開を有効化したり、別途残るpublication workflow integration blockerを解消したりはしません。
 - Registry publicationを有効化する前に、各公開予定npm packageをreview済みRegistry candidate tarballの正確なfilename、SHA-256 digest、byte sizeへ固定するnpm publication identity。
 - policyで定義した有効期間内に成功し、`head_sha`がrelease対象commitと完全に一致するNightly quality run。
 
