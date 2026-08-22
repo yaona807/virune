@@ -38,18 +38,18 @@ export interface InteropDecisionIR {
 	readonly obligations: readonly InteropObligationIR[];
 }
 
-const DECISION_STATUSES = new Set<InteropDecisionStatus>(['resolved', 'obligation-pending', 'unresolved']);
-const MECHANISMS = new Set<InteropMechanism>(['direct', 'callable-shim', 'managed', 'host', 'user-adapter', 'unsafe']);
-const AUTHORING_MODES = new Set<InteropAuthoring>(['none', 'generated', 'user']);
-const CLAIMS = new Set<InteropSafetyClaim>([
+const DECISION_STATUSES: readonly InteropDecisionStatus[] = ['resolved', 'obligation-pending', 'unresolved'];
+const MECHANISMS: readonly InteropMechanism[] = ['direct', 'callable-shim', 'managed', 'host', 'user-adapter', 'unsafe'];
+const AUTHORING_MODES: readonly InteropAuthoring[] = ['none', 'generated', 'user'];
+const CLAIMS: readonly InteropSafetyClaim[] = [
 	'foreign-identity-preserved',
 	'primitive-bridge-validated',
 	'receiver-preserved',
 	'type-boundary-safe',
-]);
-const OBLIGATION_KINDS = new Set<InteropObligationKind>(['runtime-resolution']);
-const OBLIGATION_STAGES = new Set<InteropObligationStage>(['check', 'codegen', 'build', 'runtime']);
-const OBLIGATION_STATUSES = new Set<InteropObligationStatus>(['pending', 'discharged']);
+];
+const OBLIGATION_KINDS: readonly InteropObligationKind[] = ['runtime-resolution'];
+const OBLIGATION_STAGES: readonly InteropObligationStage[] = ['check', 'codegen', 'build', 'runtime'];
+const OBLIGATION_STATUSES: readonly InteropObligationStatus[] = ['pending', 'discharged'];
 const DECISION_KEYS = ['status', 'mechanism', 'authoring', 'claims', 'obligations'] as const;
 const OBLIGATION_KEYS = ['kind', 'stage', 'status'] as const;
 
@@ -59,8 +59,8 @@ const OBLIGATION_KEYS = ['kind', 'stage', 'status'] as const;
  * The input is treated as untrusted runtime data even though callers normally
  * construct it through TypeScript. Unknown enum values, unknown/accessor fields,
  * malformed arrays, and contradictory obligation state fail closed instead of
- * being serialized as successful evidence. Safety-critical array traversal uses
- * own dense data plus numeric indexes, never inherited Array prototype hooks.
+ * being serialized as successful evidence. Safety-critical array traversal and
+ * enum membership use explicit indexes rather than inherited prototype hooks.
  */
 export function canonicalizeInteropDecision(decision: InteropDecisionIR): InteropDecisionIR {
 	const decisionRecord = readExactDataRecord(decision, DECISION_KEYS, 'Interop decision');
@@ -194,8 +194,11 @@ function containsText(values: readonly string[], expected: string): boolean {
 	return false;
 }
 
-function assertKnown<T extends string>(known: ReadonlySet<T>, value: unknown, description: string): asserts value is T {
-	if (!known.has(value as T)) throw new Error(`Unknown ${description}: ${String(value)}`);
+function assertKnown<T extends string>(known: readonly T[], value: unknown, description: string): asserts value is T {
+	for (let index = 0; index < known.length; index++) {
+		if (known[index] === value) return;
+	}
+	throw new Error(`Unknown ${description}: ${String(value)}`);
 }
 
 function compareText(left: string, right: string): number {
