@@ -50,7 +50,7 @@ function hostFor(mainPath: string): ProjectHost {
 	};
 }
 
-test('cached BuiltModule diagnostics cannot hide an unchanged semantic error from operation derivation', async () => {
+test('public BuiltModule diagnostic mutation cannot survive the required fresh rebuild after an error', async () => {
 	const root = resolve('virtual-operation-project-cached-diagnostic-mutation');
 	const mainPath = join(root, 'src/main.virune');
 	const host = hostFor(mainPath);
@@ -75,20 +75,17 @@ test('cached BuiltModule diagnostics cannot hide an unchanged semantic error fro
 		incrementalCache: cache,
 		jsInteropProvider: provider(),
 	});
-	assert.ok(second.stats.reusedCheckedModules > 0, 'test must reuse the publicly mutated cached BuiltModule');
-	assert.deepEqual(
-		second.diagnostics.filter(item => item.severity === 'error'),
-		[],
-		'test must prove cached module diagnostics mutation can remove the aggregate project error independently',
-	);
+	assert.equal(second.stats.reusedParsedModules, 0, 'error results must not retain parsed cache state for retry');
+	assert.equal(second.stats.reusedCheckedModules, 0, 'error results must not retain checked cache state for retry');
+	assert.ok(second.diagnostics.some(item => item.severity === 'error'), 'fresh rebuild must rediscover the project error');
 	const secondMain = second.modules.find(module => module.source.path === mainPath);
 	assert.ok(secondMain?.ast);
 	assert.ok(secondMain.semantic);
-	assert.equal(secondMain.semantic, firstMain.semantic, 'test must reuse the same semantic object');
+	assert.notEqual(secondMain.semantic, firstMain.semantic, 'retry after an error must use a fresh semantic object');
 	assert.ok(secondMain.semantic.diagnostics.items.some(item => item.severity === 'error'));
 	assert.deepEqual(
 		externalOperationSequence({ module: secondMain.ast, semantic: secondMain.semantic }),
 		[],
-		'current semantic errors remain authoritative even when aggregate cached diagnostics were publicly truncated',
+		'fresh semantic errors remain authoritative after public diagnostics mutation',
 	);
 });
