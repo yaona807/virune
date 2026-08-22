@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
+import { spawnSync } from 'node:child_process';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -18,6 +19,7 @@ const repositoryRoot = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const publicationPlan = JSON.parse(readFileSync(resolve(repositoryRoot, '.github/release/npm-publication-v1.json'), 'utf8'));
 const version = '1.1.0-rc.1';
 const registry = 'https://registry.npmjs.org/';
+const reviewedCommit = 'a'.repeat(40);
 
 function registryPackageUrl(name) {
 	return `${registry}${encodeURIComponent(name)}`;
@@ -120,22 +122,48 @@ function successfulRunCommand(expectedVersion = version, { inspectInstall } = {}
 	};
 }
 
-test('verifies exact reviewed package bytes, tags and clean global CLI installation', async () => {
-	const current = fixture();
-	const report = await verifyPublicNpmRegistry({
+function verifyOptions(current, overrides = {}) {
+	return {
+		reviewedCommit,
 		publicationManifest: current.publicationManifest,
 		publicationPlan,
 		outputPath: null,
 		fetchImpl: current.fetchImpl,
 		runCommand: successfulRunCommand(),
 		platform: 'linux',
-	});
+		...overrides,
+	};
+}
+
+test('verifies exact reviewed package bytes, tags and clean global CLI installation', async () => {
+	const current = fixture();
+	const report = await verifyPublicNpmRegistry(verifyOptions(current));
 	assert.equal(report.version, version);
+	assert.equal(report.reviewedCommit, reviewedCommit);
 	assert.equal(report.distTag, 'next');
 	assert.equal(report.packages.length, publicationPlan.packages.length);
 	assert.deepEqual(report.packages.map(item => item.registryName), [...report.packages.map(item => item.registryName)].sort());
 	assert.equal(report.installation.package, `virune@${version}`);
 	assert.equal(report.installation.versionOutput, `virune ${version}`);
+});
+
+test('loads npm publication policy from the exact reviewed Git commit when not injected', async () => {
+	const git = spawnSync('git', ['rev-parse', 'HEAD'], { cwd: repositoryRoot, encoding: 'utf8' });
+	assert.equal(git.status, 0, git.stderr);
+	const exactHead = git.stdout.trim();
+	assert.match(exactHead, /^[0-9a-f]{40}$/u);
+	const current = fixture();
+	const report = await verifyPublicNpmRegistry(verifyOptions(current, {
+		reviewedCommit: exactHead,
+		publicationPlan: undefined,
+	}));
+	assert.equal(report.reviewedCommit, exactHead);
+});
+
+test('rejects missing or malformed reviewed commit identity before Registry observation', async () => {
+	const current = fixture();
+	await assert.rejects(() => verifyPublicNpmRegistry(verifyOptions(current, { reviewedCommit: undefined })), /full lowercase commit SHA/u);
+	await assert.rejects(() => verifyPublicNpmRegistry(verifyOptions(current, { reviewedCommit: 'ABC' })), /full lowercase commit SHA/u);
 });
 
 test('publication manifest validation is exact, unique and fail closed', () => {
@@ -192,14 +220,7 @@ test('Registry observations reject missing, malformed, partial and stale metadat
 	]) {
 		const current = fixture();
 		mutate(current);
-		await assert.rejects(() => verifyPublicNpmRegistry({
-			publicationManifest: current.publicationManifest,
-			publicationPlan,
-			outputPath: null,
-			fetchImpl: current.fetchImpl,
-			runCommand: successfulRunCommand(),
-			platform: 'linux',
-		}));
+		await assert.rejects(() => verifyPublicNpmRegistry(verifyOptions(current)));
 	}
 });
 
@@ -214,14 +235,7 @@ test('Registry tarball integrity, shasum, SHA-256 and byte-size drift fail close
 	]) {
 		const current = fixture();
 		mutate(current);
-		await assert.rejects(() => verifyPublicNpmRegistry({
-			publicationManifest: current.publicationManifest,
-			publicationPlan,
-			outputPath: null,
-			fetchImpl: current.fetchImpl,
-			runCommand: successfulRunCommand(),
-			platform: 'linux',
-		}));
+		await assert.rejects(() => verifyPublicNpmRegistry(verifyOptions(current)));
 	}
 });
 
