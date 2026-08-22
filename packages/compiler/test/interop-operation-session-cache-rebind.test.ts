@@ -174,7 +174,7 @@ test('checked results from an unregistered stable project cache are rebuilt befo
 			incrementalCache: cache,
 			jsInteropProvider: firstProvider,
 		}),
-		/Cannot promote checked results from an unregistered project cache/u,
+		/Cannot promote parsed or checked results from an unregistered or changed project cache/u,
 		'checked objects exposed by a non-experimental cache cannot become first-registration truth',
 	);
 	assert.throws(
@@ -237,7 +237,7 @@ test('untracked multi-module stable cache remains unauthorized after rejected pr
 			incrementalCache: cache,
 			jsInteropProvider: providerForGeneration(1),
 		}),
-		/Cannot promote checked results from an unregistered project cache/u,
+		/Cannot promote parsed or checked results from an unregistered or changed project cache/u,
 	);
 	assert.throws(
 		() => externalOperationSequence({ module: stableHelper.ast!, semantic: stableHelper.semantic! }),
