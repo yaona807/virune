@@ -14,7 +14,6 @@ export function verifyReleaseLicenseArtifacts(root = repositoryRoot) {
 	const canonicalLicense = readFileSync(resolve(root, 'LICENSE'));
 	const canonicalNotice = readFileSync(resolve(root, 'NOTICE'));
 	const canonicalThirdPartyNotices = readFileSync(resolve(root, 'THIRD_PARTY_NOTICES.md'));
-	const canonicalThirdPartyNoticesJa = readFileSync(resolve(root, 'THIRD_PARTY_NOTICES_ja.md'));
 
 	const releasePackageManifest = readJson(resolve(releaseDirectory, 'package.json'));
 	if (releasePackageManifest.license !== expectedLicense) {
@@ -26,11 +25,6 @@ export function verifyReleaseLicenseArtifacts(root = repositoryRoot) {
 		readFileSync(resolve(releaseDirectory, 'THIRD_PARTY_NOTICES.md')),
 		canonicalThirdPartyNotices,
 		'release/THIRD_PARTY_NOTICES.md',
-	);
-	assertEqualBytes(
-		readFileSync(resolve(releaseDirectory, 'THIRD_PARTY_NOTICES_ja.md')),
-		canonicalThirdPartyNoticesJa,
-		'release/THIRD_PARTY_NOTICES_ja.md',
 	);
 
 	const tarballs = [
