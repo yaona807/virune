@@ -109,7 +109,6 @@ function encodeReuseStructuralValue(value: unknown, seen: Map<object, number>): 
 	if (Array.isArray(value)) {
 		if (Object.getPrototypeOf(value) !== Array.prototype) throw new Error('Cannot seal checked semantic array with a changed prototype');
 		const keys = Reflect.ownKeys(value);
-		if (keys.some(key => typeof key === 'symbol')) throw new Error('Cannot seal checked semantic array with symbol fields');
 		const lengthDescriptor = Object.getOwnPropertyDescriptor(value, 'length');
 		if (
 			lengthDescriptor === undefined
@@ -121,34 +120,41 @@ function encodeReuseStructuralValue(value: unknown, seen: Map<object, number>): 
 			throw new Error('Cannot seal checked semantic array with an invalid length');
 		}
 		const length = lengthDescriptor.value;
-		const stringKeys = keys as string[];
-		const indexKeys = stringKeys.filter(key => key !== 'length');
-		if (indexKeys.length !== length) throw new Error('Cannot seal checked semantic array with sparse or extra fields');
-		const items: string[] = [];
+		let indexKeyCount = 0;
+		for (const key of keys) {
+			if (typeof key === 'symbol') throw new Error('Cannot seal checked semantic array with symbol fields');
+			if (key === 'length') continue;
+			const index = Number(key);
+			if (!Number.isSafeInteger(index) || index < 0 || index >= length || String(index) !== key) {
+				throw new Error('Cannot seal checked semantic array with sparse or extra fields');
+			}
+			indexKeyCount++;
+		}
+		if (indexKeyCount !== length) throw new Error('Cannot seal checked semantic array with sparse or extra fields');
+		let encodedItems = '';
 		for (let index = 0; index < length; index++) {
-			if (!indexKeys.includes(String(index))) throw new Error('Cannot seal checked semantic array with sparse or extra fields');
 			const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
 			if (descriptor === undefined || !('value' in descriptor)) throw new Error('Cannot seal checked semantic array with accessor entries');
-			items.push(encodeReuseStructuralValue(descriptor.value, seen));
+			if (index > 0) encodedItems += ',';
+			encodedItems += encodeReuseStructuralValue(descriptor.value, seen);
 		}
-		return `array:${id}:[${items.join(',')}]`;
+		return `array:${id}:[${encodedItems}]`;
 	}
 
 	const prototype = Object.getPrototypeOf(value);
 	if (prototype !== Object.prototype && prototype !== null) throw new Error('Cannot seal checked semantic object with a changed prototype');
 	const keys = Reflect.ownKeys(value);
-	if (keys.some(key => typeof key === 'symbol')) throw new Error('Cannot seal checked semantic object with symbol fields');
-	const stringKeys = (keys as string[]).sort(compareText);
-	const fields = stringKeys.map(key => {
+	let encodedFields = '';
+	let fieldIndex = 0;
+	for (const key of keys) {
+		if (typeof key === 'symbol') throw new Error('Cannot seal checked semantic object with symbol fields');
 		const descriptor = Object.getOwnPropertyDescriptor(value, key);
 		if (descriptor === undefined || !('value' in descriptor)) throw new Error(`Cannot seal checked semantic accessor field ${key}`);
-		return `${JSON.stringify(key)}=${encodeReuseStructuralValue(descriptor.value, seen)}`;
-	});
-	return `object:${id}:{${fields.join(',')}}`;
-}
-
-function compareText(left: string, right: string): number {
-	return left < right ? -1 : left > right ? 1 : 0;
+		if (fieldIndex > 0) encodedFields += ',';
+		encodedFields += `${JSON.stringify(key)}=${encodeReuseStructuralValue(descriptor.value, seen)}`;
+		fieldIndex++;
+	}
+	return `object:${id}:{${encodedFields}}`;
 }
 
 function checkedModules(result: ProjectBuildResult): CheckedModuleMap {
