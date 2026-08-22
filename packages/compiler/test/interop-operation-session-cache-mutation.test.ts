@@ -193,6 +193,35 @@ test('source mutation during an async cached build is rejected before cached sem
 	assert.notEqual(mainModule(rebuilt).ast, firstMain.ast, 'failed mid-build source reuse must clear the mutated parsed AST before retry');
 });
 
+test('source mutation during an async incremental builder build clears the builder cache before retry', async () => {
+	const root = resolve('virtual-operation-session-builder-mid-build-source-mutation-project');
+	const mainPath = join(root, 'src/main.virune');
+	const builder = new IncrementalProjectBuilder();
+	const first = await builder.build(root, { write: false, host: hostFor(mainPath), jsInteropProvider: provider() });
+	assert.deepEqual(first.diagnostics.filter(item => item.severity === 'error'), []);
+	assert.deepEqual(operationKinds(first), ['module-load', 'module-load']);
+	const firstMain = mainModule(first);
+
+	const gated = gatedHostFor(mainPath);
+	const pending = builder.build(root, { write: false, host: gated.host, jsInteropProvider: provider() });
+	await gated.entered;
+	(firstMain.ast!.imports[0] as { typeOnly: boolean }).typeOnly = true;
+	gated.release();
+	await assert.rejects(
+		pending,
+		/Cannot reuse checked semantic after its checked source graph changed/u,
+	);
+	assert.throws(
+		() => externalOperationSequence({ module: firstMain.ast!, semantic: firstMain.semantic! }),
+		/not from the current checked AST semantic session/u,
+	);
+
+	const rebuilt = await builder.build(root, { write: false, host: hostFor(mainPath), jsInteropProvider: provider() });
+	assert.deepEqual(rebuilt.diagnostics.filter(item => item.severity === 'error'), []);
+	assert.deepEqual(operationKinds(rebuilt), ['module-load', 'module-load']);
+	assert.notEqual(mainModule(rebuilt).ast, firstMain.ast, 'failed builder source reuse must clear the mutated parsed AST before retry');
+});
+
 test('semantic mutation during an async cached build is rejected before evidence can be re-exposed', async () => {
 	const root = resolve('virtual-operation-session-cache-mid-build-mutation-project');
 	const mainPath = join(root, 'src/main.virune');
