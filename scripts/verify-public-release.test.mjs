@@ -6,13 +6,26 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
-import { parseChecksums, validateDownloadedRelease, validateReleaseRecord } from './verify-public-release.mjs';
+import {
+	parseChecksums,
+	readReviewedNpmPublicationPolicy,
+	resolveReviewedCommit,
+	reviewedFileExists,
+	validateDownloadedRelease,
+	validateReleaseRecord,
+} from './verify-public-release.mjs';
 
 const repositoryRoot = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const version = '1.0.0-rc.1';
+const registryVersion = '1.1.0-rc.1';
 const requiredNames = [
 	'LICENSE', 'MANIFEST.json', 'NOTICE', 'README.md', 'README_ja.md', 'RELEASE-MANIFEST.json', 'SBOM.cdx.json', 'SHA256SUMS', 'THIRD_PARTY_NOTICES.md', 'THIRD_PARTY_NOTICES_ja.md', 'package.json',
 	`virune-${version}.tgz`, `virune-compiler-${version}.tgz`, `virune-formatter-${version}.tgz`, `virune-js-interop-${version}.tgz`, `virune-runtime-${version}.tgz`, `virune-stdlib-${version}.tgz`, `virune-vscode-${version}.vsix`,
+];
+const registryRequiredNames = [
+	'LICENSE', 'MANIFEST.json', 'NOTICE', 'README.md', 'README_ja.md', 'RELEASE-MANIFEST.json', 'SBOM.cdx.json', 'SHA256SUMS', 'THIRD_PARTY_NOTICES.md', 'THIRD_PARTY_NOTICES_ja.md', 'package.json',
+	`virune-${registryVersion}.tgz`, `virune-compiler-${registryVersion}.tgz`, `virune-formatter-${registryVersion}.tgz`, `virune-js-interop-${registryVersion}.tgz`, `virune-runtime-${registryVersion}.tgz`, `virune-stdlib-${registryVersion}.tgz`, `virune-vscode-${registryVersion}.vsix`,
+	'PUBLICATION-MANIFEST.json', `virune-npm-${registryVersion}.tgz`,
 ];
 const reviewedLegalFiles = ['LICENSE', 'NOTICE', 'THIRD_PARTY_NOTICES.md', 'THIRD_PARTY_NOTICES_ja.md'];
 
@@ -36,6 +49,142 @@ test('rejects drafts, stable releases and incomplete candidates', () => {
 	assert.throws(
 		() => validateReleaseRecord({ tag_name: `v${version}`, draft: false, prerelease: true, assets: requiredNames.filter(name => name !== 'NOTICE').map(name => ({ name })) }, { tag: `v${version}`, version }),
 		/Release is missing NOTICE/u,
+	);
+});
+
+test('requires npm publication identity assets for registry-eligible prereleases', () => {
+	assert.doesNotThrow(() => validateReleaseRecord({
+		tag_name: `v${registryVersion}`,
+		draft: false,
+		prerelease: true,
+		assets: registryRequiredNames.map(name => ({ name })),
+	}, { tag: `v${registryVersion}`, version: registryVersion }));
+	assert.throws(
+		() => validateReleaseRecord({ tag_name: `v${registryVersion}`, draft: false, prerelease: true, assets: registryRequiredNames.filter(name => name !== 'PUBLICATION-MANIFEST.json').map(name => ({ name })) }, { tag: `v${registryVersion}`, version: registryVersion }),
+		/Release is missing PUBLICATION-MANIFEST\.json/u,
+	);
+	assert.throws(
+		() => validateReleaseRecord({ tag_name: `v${registryVersion}`, draft: false, prerelease: true, assets: registryRequiredNames.filter(name => name !== `virune-npm-${registryVersion}.tgz`).map(name => ({ name })) }, { tag: `v${registryVersion}`, version: registryVersion }),
+		new RegExp(`Release is missing virune-npm-${registryVersion.replaceAll('.', '\\.')}\\.tgz`, 'u'),
+	);
+});
+
+test('duplicate or unknown assets cannot substitute for missing npm publication identity evidence', () => {
+	const incomplete = registryRequiredNames.filter(name => name !== 'PUBLICATION-MANIFEST.json').map(name => ({ name }));
+	incomplete.push({ name: 'LICENSE' }, { name: 'unexpected-extra-asset.txt' });
+	assert.throws(
+		() => validateReleaseRecord({ tag_name: `v${registryVersion}`, draft: false, prerelease: true, assets: incomplete }, { tag: `v${registryVersion}`, version: registryVersion }),
+		/Release is missing PUBLICATION-MANIFEST\.json/u,
+	);
+});
+
+test('registry eligibility follows the reviewed release policy rather than a stale checkout policy', () => {
+	const withoutNpmIdentity = registryRequiredNames
+		.filter(name => name !== 'PUBLICATION-MANIFEST.json' && name !== `virune-npm-${registryVersion}.tgz`)
+		.map(name => ({ name }));
+	const release = { tag_name: `v${registryVersion}`, draft: false, prerelease: true, assets: withoutNpmIdentity };
+	const reviewedPolicy = {
+		firstStableRegistryRelease: '1.2.0',
+		distTagPolicy: { stable: 'latest', prerelease: 'next', nightly: null },
+	};
+	const staleCheckoutPolicy = {
+		firstStableRegistryRelease: '1.1.0',
+		distTagPolicy: { stable: 'latest', prerelease: 'next', nightly: null },
+	};
+	assert.doesNotThrow(() => validateReleaseRecord(release, {
+		tag: `v${registryVersion}`,
+		version: registryVersion,
+		npmPublicationPolicy: reviewedPolicy,
+	}));
+	assert.throws(() => validateReleaseRecord(release, {
+		tag: `v${registryVersion}`,
+		version: registryVersion,
+		npmPublicationPolicy: staleCheckoutPolicy,
+	}), /Release is missing PUBLICATION-MANIFEST\.json/u);
+});
+
+test('the resolved Git tag commit is the reviewed source even without an expected-commit fence', () => {
+	const tag = `v${registryVersion}`;
+	const tagCommit = 'a'.repeat(40);
+	assert.equal(resolveReviewedCommit(tag, tagCommit, undefined), tagCommit);
+	assert.equal(resolveReviewedCommit(tag, tagCommit, tagCommit), tagCommit);
+	assert.throws(() => resolveReviewedCommit(tag, undefined, undefined), /did not resolve to a commit SHA/u);
+	assert.throws(() => resolveReviewedCommit(tag, 'ABC', undefined), /did not resolve to a commit SHA/u);
+	assert.throws(() => resolveReviewedCommit(tag, tagCommit, 'b'.repeat(40)), /points to .* expected/u);
+});
+
+test('an existing tag-local npm policy wins over a later fallback policy', async () => {
+	const reviewedPolicy = {
+		firstStableRegistryRelease: '1.1.0',
+		distTagPolicy: { stable: 'latest', prerelease: 'next', nightly: null },
+	};
+	const laterFallbackPolicy = {
+		firstStableRegistryRelease: '1.2.0',
+		distTagPolicy: { stable: 'latest', prerelease: 'next', nightly: null },
+	};
+	let existenceChecks = 0;
+	let reads = 0;
+	const actual = await readReviewedNpmPublicationPolicy('a'.repeat(40), registryVersion, {
+		reviewedExists: async () => { existenceChecks += 1; return true; },
+		readReviewed: async () => { reads += 1; return Buffer.from(JSON.stringify(reviewedPolicy)); },
+		fallbackPolicy: laterFallbackPolicy,
+	});
+	assert.deepEqual(actual, reviewedPolicy);
+	assert.equal(existenceChecks, 1);
+	assert.equal(reads, 1);
+});
+
+test('missing tag-local npm policy falls back only for Registry-ineligible legacy versions', async () => {
+	const fallbackPolicy = {
+		firstStableRegistryRelease: '1.1.0',
+		distTagPolicy: { stable: 'latest', prerelease: 'next', nightly: null },
+	};
+	let reads = 0;
+	const missingPolicy = async () => false;
+	assert.equal(await readReviewedNpmPublicationPolicy('a'.repeat(40), version, {
+		reviewedExists: missingPolicy,
+		readReviewed: async () => { reads += 1; return Buffer.from('{}'); },
+		fallbackPolicy,
+	}), fallbackPolicy);
+	assert.equal(reads, 0);
+	await assert.rejects(() => readReviewedNpmPublicationPolicy('a'.repeat(40), registryVersion, {
+		reviewedExists: missingPolicy,
+		readReviewed: async () => Buffer.from('{}'),
+		fallbackPolicy,
+	}), /Reviewed npm publication policy is missing/u);
+});
+
+test('existing reviewed npm policy fails closed on inspection, read or JSON failure', async () => {
+	const fallbackPolicy = {
+		firstStableRegistryRelease: '1.1.0',
+		distTagPolicy: { stable: 'latest', prerelease: 'next', nightly: null },
+	};
+	await assert.rejects(() => readReviewedNpmPublicationPolicy('a'.repeat(40), registryVersion, {
+		reviewedExists: async () => { throw new Error('policy inspection failed'); },
+		fallbackPolicy,
+	}), /policy inspection failed/u);
+	await assert.rejects(() => readReviewedNpmPublicationPolicy('a'.repeat(40), registryVersion, {
+		reviewedExists: async () => true,
+		readReviewed: async () => { throw new Error('reviewed policy unavailable'); },
+		fallbackPolicy,
+	}), /reviewed policy unavailable/u);
+	await assert.rejects(() => readReviewedNpmPublicationPolicy('a'.repeat(40), registryVersion, {
+		reviewedExists: async () => true,
+		readReviewed: async () => Buffer.from('{ malformed'),
+		fallbackPolicy,
+	}), /Reviewed npm publication policy is malformed/u);
+});
+
+test('reviewed file existence distinguishes an absent path from an unknown Git failure', () => {
+	const head = spawnSync('git', ['rev-parse', 'HEAD'], { cwd: repositoryRoot, encoding: 'utf8' });
+	assert.equal(head.status, 0, head.stderr);
+	const reviewedCommit = head.stdout.trim();
+	assert.match(reviewedCommit, /^[0-9a-f]{40}$/u);
+	assert.equal(reviewedFileExists('.github/release/npm-publication-v1.json', { sourceRoot: repositoryRoot, reviewedCommit }), true);
+	assert.equal(reviewedFileExists('.github/release/definitely-missing-policy.json', { sourceRoot: repositoryRoot, reviewedCommit }), false);
+	assert.throws(
+		() => reviewedFileExists('.github/release/npm-publication-v1.json', { sourceRoot: repositoryRoot, reviewedCommit: 'f'.repeat(40) }),
+		/Failed to inspect reviewed/u,
 	);
 });
 
