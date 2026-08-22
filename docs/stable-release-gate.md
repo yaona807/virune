@@ -16,6 +16,7 @@ The machine-readable requirements cover:
 - FFI Unknown fallbacks, unsafe boundaries, and the reviewed binding corpus.
 - Parser, formatter, checker, and semantic fuzz suites.
 - Public release packages, manifests, checksums, VSIX packaging, offline clean installation, and generated-project execution.
+- The canonical npm prepublication plan, including its fail-closed version fence, explicit non-ready state, package classification, and unresolved publication blockers. This stable-gate check does not by itself enable npm publication or resolve the separate publication-workflow integration blocker.
 - The npm publication identity that binds every planned Registry package to the exact reviewed Registry candidate tarball filename, SHA-256 digest, and byte size before any Registry publication is enabled.
 - A successful Nightly quality run within the maximum age defined by policy whose `head_sha` exactly matches the release commit.
 
