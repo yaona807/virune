@@ -6,6 +6,7 @@ import {
 	NPM_PUBLICATION_REQUIREMENTS,
 	validateNpmPublicationAuthorizationContract,
 } from './npm-publication-authorization-contract.mjs';
+import { validateNpmPublicationPlanShape } from './npm-publication-plan-contract.mjs';
 import { registryPolicyForVersion } from './npm-publication-version-policy.mjs';
 import { verifyNpmPublicationRecoveryPolicy } from './verify-npm-publication-recovery.mjs';
 
@@ -22,6 +23,7 @@ const RUNTIME_DEPENDENCY_SECTIONS = new Set(['dependencies', 'peerDependencies',
 export function verifyNpmPublicationPlan(root = process.cwd()) {
 	const plan = readJson(resolve(root, PLAN_PATH));
 	const rootManifest = readJson(resolve(root, 'package.json'));
+	validateNpmPublicationPlanShape(plan, '$');
 	assertExactKeys(plan, [
 		'schemaVersion',
 		'stage',
