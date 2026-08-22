@@ -27,9 +27,12 @@ function authorizationContract() {
 
 function publicationPlan() {
 	return {
+		schemaVersion: 1,
 		stage: 'publication-candidate',
 		publicationReady: true,
 		unresolvedRequirements: [...NPM_PUBLICATION_POST_WRITE_REQUIREMENTS],
+		authorization: authorizationContract(),
+		forbidRegistryPublishThroughVersion: '1.0.0',
 		firstStableRegistryRelease: '1.1.0',
 		distTagPolicy: { stable: 'latest', prerelease: 'next', nightly: null },
 		trustedPublishingRequired: true,
@@ -39,7 +42,7 @@ function publicationPlan() {
 			{ directory: 'runtime', workspaceName: '@virune/runtime', registryName: '@virune/runtime', role: 'cli-dependency' },
 			{ directory: 'cli', workspaceName: 'virune', registryName: 'virune', role: 'cli' },
 		],
-		authorization: authorizationContract(),
+		excludedWorkspacePackages: [],
 	};
 }
 
@@ -136,6 +139,25 @@ test('contradictory reviewed source safety flags cannot authorize publication', 
 		plan[field] = false;
 		assert.throws(() => evaluateNpmPublicationAuthorization(input({ publicationPlan: plan })), new RegExp(field, 'u'));
 	}
+});
+
+test('unknown, missing or drifted reviewed source policy fails closed', () => {
+	for (const mutate of [
+		plan => { plan.schemaVersion = 2; },
+		plan => { plan.unreviewedPolicy = true; },
+		plan => { delete plan.excludedWorkspacePackages; },
+		plan => { plan.distTagPolicy.preview = 'preview'; },
+		plan => { plan.packages[0].unexpected = true; },
+		plan => { plan.forbidRegistryPublishThroughVersion = '0.9.0'; },
+		plan => { plan.firstStableRegistryRelease = '1.2.0'; },
+	]) {
+		const plan = publicationPlan();
+		mutate(plan);
+		assert.throws(() => evaluateNpmPublicationAuthorization(input({ publicationPlan: plan })));
+	}
+	const excluded = publicationPlan();
+	excluded.excludedWorkspacePackages = [{ directory: 'vscode', workspaceName: 'virune-vscode', reason: 'excluded', unexpected: true }];
+	assert.throws(() => evaluateNpmPublicationAuthorization(input({ publicationPlan: excluded })));
 });
 
 test('publication-candidate source state leaves exactly post-write requirements unresolved', () => {
