@@ -77,22 +77,38 @@ test('candidate verifier requires canonical capability bytes when authorized', (
 	assert.throws(() => verifyNpmGeneratedProjectCapabilityTarball(registryCliTarball([]), plan()), /must be a regular file/u);
 });
 
+test('candidate verifier binds both CLI runtime entries to the exact reviewed version', () => {
+	const bytes = canonicalNpmGeneratedProjectCapabilityBytes(capability());
+	const staleCore = registryCliTarball([
+		['package/dist/src/main-core.js', 'const VERSION = "1.1.0-rc.2";\n'],
+		[NPM_GENERATED_PROJECT_CAPABILITY_TAR_PATH, bytes],
+	], '1.1.0-rc.1', { omitDefaultCore: true });
+	assert.throws(() => verifyNpmGeneratedProjectCapabilityTarball(staleCore, plan()), /main-core\.js.*does not match 1\.1\.0-rc\.1/u);
+
+	const missingCore = registryCliTarball([
+		[NPM_GENERATED_PROJECT_CAPABILITY_TAR_PATH, bytes],
+	], '1.1.0-rc.1', { omitDefaultCore: true });
+	assert.throws(() => verifyNpmGeneratedProjectCapabilityTarball(missingCore, plan()), /main-core\.js must be a regular file/u);
+});
+
 test('prepublication audit rejects an unexpected capability instead of treating it as safe', () => {
 	const auditPlan = plan({ stage: 'prepublication-audit', publicationReady: false, currentVersion: '1.0.0' });
-	assert.deepEqual(verifyNpmGeneratedProjectCapabilityTarball(registryCliTarball([]), auditPlan), {
+	assert.deepEqual(verifyNpmGeneratedProjectCapabilityTarball(registryCliTarball([], '1.0.0'), auditPlan), {
 		present: false,
 		version: '1.0.0',
 	});
 	const unexpected = canonicalNpmGeneratedProjectCapabilityBytes(capability('1.1.0-rc.1'));
 	assert.throws(
-		() => verifyNpmGeneratedProjectCapabilityTarball(registryCliTarball([[NPM_GENERATED_PROJECT_CAPABILITY_TAR_PATH, unexpected]]), auditPlan),
+		() => verifyNpmGeneratedProjectCapabilityTarball(registryCliTarball([[NPM_GENERATED_PROJECT_CAPABILITY_TAR_PATH, unexpected]], '1.0.0'), auditPlan),
 		/capability must be absent/u,
 	);
 });
 
-function registryCliTarball(extraEntries) {
+function registryCliTarball(extraEntries, version = '1.1.0-rc.1', { omitDefaultCore = false } = {}) {
 	return gzipSync(buildTar([
-		['package/package.json', '{"name":"virune","version":"1.1.0-rc.1"}\n'],
+		['package/package.json', `${JSON.stringify({ name: 'virune', version })}\n`],
+		['package/dist/src/main.js', `const VERSION = ${JSON.stringify(version)};\n`],
+		...(!omitDefaultCore ? [['package/dist/src/main-core.js', `const VERSION = ${JSON.stringify(version)};\n`]] : []),
 		...extraEntries,
 	]));
 }
