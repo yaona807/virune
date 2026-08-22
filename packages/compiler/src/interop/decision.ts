@@ -1,3 +1,13 @@
+import {
+	copyArrayByIndex,
+	everyArrayByIndex,
+	mapArrayByIndex,
+	readDenseOwnDataArray,
+	someArrayByIndex,
+	sortArrayByIndex,
+	uniqueArrayByIndex,
+} from './array-safety.js';
+
 export type InteropDecisionStatus = 'resolved' | 'obligation-pending' | 'unresolved';
 
 export type InteropMechanism = 'direct' | 'callable-shim' | 'managed' | 'host' | 'user-adapter' | 'unsafe';
@@ -49,7 +59,8 @@ const OBLIGATION_KEYS = ['kind', 'stage', 'status'] as const;
  * The input is treated as untrusted runtime data even though callers normally
  * construct it through TypeScript. Unknown enum values, unknown/accessor fields,
  * malformed arrays, and contradictory obligation state fail closed instead of
- * being serialized as successful evidence.
+ * being serialized as successful evidence. Safety-critical array traversal uses
+ * own dense data plus numeric indexes, never inherited Array prototype hooks.
  */
 export function canonicalizeInteropDecision(decision: InteropDecisionIR): InteropDecisionIR {
 	const decisionRecord = readExactDataRecord(decision, DECISION_KEYS, 'Interop decision');
@@ -61,38 +72,40 @@ export function canonicalizeInteropDecision(decision: InteropDecisionIR): Intero
 	assertKnown(AUTHORING_MODES, authoring, 'Interop authoring mode');
 
 	const claimValues = readExactDataArray(decisionRecord.claims, 'Interop decision claims');
-	const claims = [...new Set(claimValues.map(claim => {
+	const validatedClaims = mapArrayByIndex(claimValues, claim => {
 		assertKnown(CLAIMS, claim, 'Interop safety claim');
 		return claim;
-	}))].sort(compareText);
+	});
+	const claims = sortArrayByIndex(uniqueArrayByIndex(validatedClaims), compareText);
 
 	const obligationValues = readExactDataArray(decisionRecord.obligations, 'Interop decision obligations');
-	const obligationsByKey = new Map<string, InteropObligationIR>();
-	for (const obligation of obligationValues) {
-		const obligationRecord = readExactDataRecord(obligation, OBLIGATION_KEYS, 'Interop obligation');
+	const obligations: InteropObligationIR[] = [];
+	for (let index = 0; index < obligationValues.length; index++) {
+		const obligationRecord = readExactDataRecord(obligationValues[index], OBLIGATION_KEYS, 'Interop obligation');
 		const kind = obligationRecord.kind;
 		const stage = obligationRecord.stage;
 		const obligationStatus = obligationRecord.status;
 		assertKnown(OBLIGATION_KINDS, kind, 'Interop obligation kind');
 		assertKnown(OBLIGATION_STAGES, stage, 'Interop obligation stage');
 		assertKnown(OBLIGATION_STATUSES, obligationStatus, 'Interop obligation status');
-		const key = `${kind}\0${stage}`;
-		const previous = obligationsByKey.get(key);
-		if (previous !== undefined && previous.status !== obligationStatus) {
-			throw new Error(`Conflicting Interop obligation state for ${kind} at ${stage}`);
+		let duplicate = false;
+		for (let candidate = 0; candidate < obligations.length; candidate++) {
+			const previous = obligations[candidate]!;
+			if (previous.kind !== kind || previous.stage !== stage) continue;
+			if (previous.status !== obligationStatus) {
+				throw new Error(`Conflicting Interop obligation state for ${kind} at ${stage}`);
+			}
+			duplicate = true;
+			break;
 		}
-		obligationsByKey.set(key, {
-			kind,
-			stage,
-			status: obligationStatus,
-		});
+		if (!duplicate) obligations[obligations.length] = { kind, stage, status: obligationStatus };
 	}
-	const obligations = [...obligationsByKey.values()].sort((left, right) => compareText(
+	const canonicalObligations = sortArrayByIndex(obligations, (left, right) => compareText(
 		`${left.kind}\0${left.stage}\0${left.status}`,
 		`${right.kind}\0${right.stage}\0${right.status}`,
 	));
 
-	const hasPendingObligation = obligations.some(obligation => obligation.status === 'pending');
+	const hasPendingObligation = someArrayByIndex(canonicalObligations, obligation => obligation.status === 'pending');
 	if (status === 'resolved' && hasPendingObligation) {
 		throw new Error('Resolved Interop decision cannot retain pending obligations');
 	}
@@ -105,7 +118,7 @@ export function canonicalizeInteropDecision(decision: InteropDecisionIR): Intero
 		mechanism,
 		authoring,
 		claims,
-		obligations,
+		obligations: canonicalObligations,
 	};
 }
 
@@ -116,7 +129,7 @@ export function isResolvedDirectInteropDecision(decision: InteropDecisionIR): bo
 		return canonical.status === 'resolved'
 			&& canonical.mechanism === 'direct'
 			&& canonical.authoring === 'none'
-			&& canonical.obligations.every(obligation => obligation.status === 'discharged');
+			&& everyArrayByIndex(canonical.obligations, obligation => obligation.status === 'discharged');
 	} catch {
 		return false;
 	}
@@ -127,21 +140,38 @@ function readExactDataRecord(value: unknown, expected: readonly string[], descri
 		throw new Error(`${description} must be a plain record`);
 	}
 	const keys = Reflect.ownKeys(value);
-	const symbolKey = keys.find((key): key is symbol => typeof key === 'symbol');
-	if (symbolKey !== undefined) throw new Error(`Unknown ${description} field: ${String(symbolKey)}`);
-	const actual = (keys as string[]).sort(compareText);
-	const canonicalExpected = [...expected].sort(compareText);
-	if (actual.length !== canonicalExpected.length || actual.some((key, index) => key !== canonicalExpected[index])) {
-		const expectedSet = new Set(expected);
-		const unknown = actual.filter(key => !expectedSet.has(key));
-		if (unknown.length > 0) throw new Error(`Unknown ${description} field: ${unknown[0]}`);
-		const actualSet = new Set(actual);
-		const missing = canonicalExpected.find(key => !actualSet.has(key));
-		throw new Error(`Missing ${description} field: ${String(missing)}`);
+	const actual: string[] = [];
+	for (let index = 0; index < keys.length; index++) {
+		const key = keys[index]!;
+		if (typeof key === 'symbol') throw new Error(`Unknown ${description} field: ${String(key)}`);
+		actual[actual.length] = key;
+	}
+	const canonicalActual = sortArrayByIndex(actual, compareText);
+	const canonicalExpected = sortArrayByIndex(copyArrayByIndex(expected), compareText);
+	let exact = canonicalActual.length === canonicalExpected.length;
+	if (exact) {
+		for (let index = 0; index < canonicalActual.length; index++) {
+			if (canonicalActual[index] !== canonicalExpected[index]) {
+				exact = false;
+				break;
+			}
+		}
+	}
+	if (!exact) {
+		for (let index = 0; index < canonicalActual.length; index++) {
+			const key = canonicalActual[index]!;
+			if (!containsText(canonicalExpected, key)) throw new Error(`Unknown ${description} field: ${key}`);
+		}
+		for (let index = 0; index < canonicalExpected.length; index++) {
+			const key = canonicalExpected[index]!;
+			if (!containsText(canonicalActual, key)) throw new Error(`Missing ${description} field: ${key}`);
+		}
+		throw new Error(`${description} fields do not match the canonical schema`);
 	}
 
 	const snapshot: Record<string, unknown> = {};
-	for (const key of canonicalExpected) {
+	for (let index = 0; index < canonicalExpected.length; index++) {
+		const key = canonicalExpected[index]!;
 		const descriptor = Object.getOwnPropertyDescriptor(value, key);
 		if (descriptor === undefined) throw new Error(`Missing ${description} field: ${key}`);
 		if (!('value' in descriptor)) throw new Error(`${description} field ${key} must be a data property`);
@@ -151,34 +181,12 @@ function readExactDataRecord(value: unknown, expected: readonly string[], descri
 }
 
 function readExactDataArray(value: unknown, description: string): readonly unknown[] {
-	if (!Array.isArray(value)) throw new Error(`${description} must be an array`);
-	const keys = Reflect.ownKeys(value);
-	const symbolKey = keys.find((key): key is symbol => typeof key === 'symbol');
-	if (symbolKey !== undefined) throw new Error(`Unknown ${description} field: ${String(symbolKey)}`);
-	const lengthDescriptor = Object.getOwnPropertyDescriptor(value, 'length');
-	if (lengthDescriptor === undefined || !('value' in lengthDescriptor) || typeof lengthDescriptor.value !== 'number' || !Number.isSafeInteger(lengthDescriptor.value) || lengthDescriptor.value < 0) {
-		throw new Error(`${description} has an invalid length`);
-	}
-	const length = lengthDescriptor.value;
-	const indexKeys = (keys as string[]).filter(key => key !== 'length');
-	if (indexKeys.length !== length) throw new Error(`${description} must be a dense array without extra fields`);
-	const indexes = indexKeys.map(key => {
-		const index = Number(key);
-		if (!Number.isSafeInteger(index) || index < 0 || index >= length || String(index) !== key) {
-			throw new Error(`Unknown ${description} field: ${key}`);
-		}
-		return index;
-	}).sort((left, right) => left - right);
-	if (indexes.some((index, position) => index !== position)) throw new Error(`${description} must be a dense array without extra fields`);
+	return readDenseOwnDataArray(value, description);
+}
 
-	const snapshot: unknown[] = [];
-	for (const index of indexes) {
-		const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
-		if (descriptor === undefined) throw new Error(`${description} is missing index ${index}`);
-		if (!('value' in descriptor)) throw new Error(`${description} field ${index} must be a data property`);
-		snapshot.push(descriptor.value);
-	}
-	return snapshot;
+function containsText(values: readonly string[], expected: string): boolean {
+	for (let index = 0; index < values.length; index++) if (values[index] === expected) return true;
+	return false;
 }
 
 function assertKnown<T extends string>(known: ReadonlySet<T>, value: unknown, description: string): asserts value is T {
