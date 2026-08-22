@@ -15,7 +15,7 @@ if (unitConcurrencyArguments.length > 1) {
 const unitConcurrency = unitConcurrencyArguments[0]?.slice('--unit-concurrency='.length)
 	?? (process.env.VIRUNE_CI_JOB === 'core-tests-ubuntu-node24' ? '2' : undefined);
 const integrationGroups = [
-	{ name: 'CLI workflow', files: ['integration/dist/cli.test.js'] },
+	{ name: 'CLI workflow', files: ['integration/dist/cli.test.js', 'integration/dist/cli-init-source.test.js'] },
 	{ name: 'CLI API', files: ['integration/dist/cli-api.test.js'] },
 	{ name: 'conformance expectation validation', files: ['integration/dist/conformance.test.js'] },
 	{ name: 'entry-point diagnostics', files: ['integration/dist/entry-point-invalid.test.js'] },
