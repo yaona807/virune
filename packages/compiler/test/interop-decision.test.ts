@@ -83,7 +83,7 @@ test('unresolved, pending, authored, non-Direct, and unknown decisions are never
 	assert.throws(() => canonicalizeInteropDecision(unknownClaim), /Unknown Interop safety claim/u);
 });
 
-test('canonical evidence strips unrecognized obligation metadata', () => {
+test('provider-private decision metadata fails closed instead of being projected into stable evidence', () => {
 	const decision = {
 		status: 'resolved',
 		mechanism: 'direct',
@@ -97,8 +97,9 @@ test('canonical evidence strips unrecognized obligation metadata', () => {
 		}],
 	} as unknown as InteropDecisionIR;
 
-	const canonical = canonicalizeInteropDecision(decision);
-	const serialized = JSON.stringify(canonical);
-	assert.equal(serialized.includes('providerPrivatePath'), false);
-	assert.equal(serialized.includes('/temporary/provider'), false);
+	assert.equal(isResolvedDirectInteropDecision(decision), false);
+	assert.throws(
+		() => canonicalizeInteropDecision(decision),
+		/Unknown Interop obligation field: providerPrivatePath/u,
+	);
 });
