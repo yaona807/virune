@@ -495,7 +495,7 @@ export class TypeChecker {
 		const components = type.fields === undefined ? [...(type.variants?.values() ?? [])].flat() : [...type.fields.values()];
 		if (derives.includes('Eq')) for (const component of components) if (!this.supportsDerivedEq(component, typeId!)) { this.diagnostics.error('L2061', `${typeName} cannot derive Eq because ${this.arena.display(component)} does not support derived equality`, span); break; }
 		if (derives.includes('Hash')) { if (!derives.includes('Eq')) this.diagnostics.error('L2092', `${typeName} must derive Eq before Hash`, span); for (const component of components) if (!this.supportsHash(component)) { this.diagnostics.error('L2093', `${typeName} cannot derive Hash because ${this.arena.display(component)} is not hashable`, span); break; } }
-		if (derives.includes('Json')) for (const component of components) if (!this.supportsJson(component)) { this.diagnostics.error('L2062', `${typeName} cannot derive Json because ${this.arena.display(component)} is not JSON-compatible`, span); break; }
+		if (derives.includes('Json')) for (const component of components) if (!this.supportsJson(component)) { this.diagnostics.error('L2062', `${typeName} cannot derive Json because ${this.arena.display(component)} does not support Json`, span); break; }
 	}
 
 	private checkBlock(block: A.BlockStatement, parent: Scope): void {
@@ -550,12 +550,12 @@ export class TypeChecker {
 				break;
 			}
 			case 'DeferStatement': {
-					if (this.#currentFunction === undefined) this.diagnostics.error('L2070', 'defer can be used only inside a function or test', statement.span);
-					const deferredType = this.checkExpression(statement.expression, scope);
-					if (!this.arena.equals(deferredType, this.arena.unit) && !this.arena.equals(deferredType, this.arena.never)) this.diagnostics.error('L2071', `defer expression must produce Unit, received ${this.arena.display(deferredType)}`, statement.expression.span);
-					break;
-				}
-				case 'ExpressionStatement': { const result = this.checkExpression(statement.expression, scope); if (this.isMustUse(result)) this.diagnostics.error('L2097', `Value of type ${this.arena.display(result)} must be used; bind it, return it, await it, handle it, or write discard`, statement.span); break; }
+				if (this.#currentFunction === undefined) this.diagnostics.error('L2070', 'defer can be used only inside a function or test', statement.span);
+				const deferredType = this.checkExpression(statement.expression, scope);
+				if (!this.arena.equals(deferredType, this.arena.unit) && !this.arena.equals(deferredType, this.arena.never)) this.diagnostics.error('L2071', `defer expression must produce Unit, received ${this.arena.display(deferredType)}`, statement.expression.span);
+				break;
+			}
+			case 'ExpressionStatement': { const result = this.checkExpression(statement.expression, scope); if (this.isMustUse(result)) this.diagnostics.error('L2097', `Value of type ${this.arena.display(result)} must be used; bind it, return it, await it, handle it, or write discard`, statement.span); break; }
 		}
 	}
 
@@ -658,8 +658,9 @@ export class TypeChecker {
 		if (expression.kind !== 'IdentifierExpression' || expression.symbolId === undefined) return undefined;
 		const symbol = this.#symbols.get(expression.symbolId);
 		const declaration = symbol?.declaration;
-		if (symbol?.kind !== 'function' || declaration?.kind !== 'FunctionDeclaration' || declaration.typeParameters.length !== 0) return undefined;
-		if (declaration.attributes.some(attribute => attribute.name === 'jsExport')) return undefined;
+		if (symbol?.kind !== 'function' || declaration?.kind !== 'FunctionDeclaration') return undefined;
+		const functionDeclaration = declaration as A.FunctionDeclaration;
+		if (functionDeclaration.typeParameters.length !== 0 || functionDeclaration.attributes.some(attribute => attribute.name === 'jsExport')) return undefined;
 		const parameters: NativeCallablePrimitiveKind[] = [];
 		for (const parameter of type.parameters) {
 			const primitive = this.nativeCallablePrimitive(parameter);
@@ -697,7 +698,7 @@ export class TypeChecker {
 			const item = raw[position];
 			if (!isRecord(item) || !hasExactEnumerableKeys(item, ['index', 'target'])) return undefined;
 			const index = item.index;
-			if (!Number.isSafeInteger(index) || index !== expectedIndexes[position]) return undefined;
+			if (typeof index !== 'number' || !Number.isSafeInteger(index) || index !== expectedIndexes[position]) return undefined;
 			const target = item.target;
 			if (!isRecord(target) || !hasExactEnumerableKeys(target, ['parameters', 'result']) || !Array.isArray(target.parameters)) return undefined;
 			const parameters: ContextualCallablePrimitiveKind[] = [];
@@ -842,7 +843,7 @@ export class TypeChecker {
 				if (element !== undefined && (!this.supportsEq(element) || !this.supportsHash(element))) this.diagnostics.error('L2110', `Set element type ${this.arena.display(element)} must support structural Eq and Hash`, expression.span);
 			}
 			if (namespace === 'List' && expression.callee.field === 'unique') { const element = this.listElementOf(argumentTypes[0]); if (element !== undefined && (!this.supportsEq(element) || !this.supportsHash(element))) this.diagnostics.error('L2111', `List.unique element type ${this.arena.display(element)} must support structural Eq and Hash`, expression.span); }
-				if (namespace === 'List' && expression.callee.field === 'uniqueBy') { const key = substitutions.get('U'); if (key !== undefined && (!this.supportsEq(key) || !this.supportsHash(key))) this.diagnostics.error('L2111', `List.uniqueBy key type ${this.arena.display(key)} must support structural Eq and Hash`, expression.span); }
+			if (namespace === 'List' && expression.callee.field === 'uniqueBy') { const key = substitutions.get('U'); if (key !== undefined && (!this.supportsEq(key) || !this.supportsHash(key))) this.diagnostics.error('L2111', `List.uniqueBy key type ${this.arena.display(key)} must support structural Eq and Hash`, expression.span); }
 		}
 		return calleeType.async ? this.arena.future(result) : result;
 	}
