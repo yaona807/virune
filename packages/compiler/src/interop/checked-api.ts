@@ -20,13 +20,25 @@ import {
 import { IncrementalProjectBuilder as BaseIncrementalProjectBuilder } from '../project/incremental.js';
 import type { SourceFile } from '../source.js';
 import { currentCheckedInterop, invalidateCheckedSemantic, isCurrentCheckedSemantic, registerCheckedSemantic } from './check-session.js';
-import { invalidateCheckedSourceIdentity, isCurrentCheckedSourceIdentity, registerCheckedSourceIdentity } from './source-identity.js';
+import {
+	captureCheckedSourceReuseSeal,
+	invalidateCheckedSourceIdentity,
+	isCurrentCheckedSourceIdentity,
+	matchesCheckedSourceReuseSeal,
+	registerCheckedSourceIdentity,
+	type CheckedSourceReuseSeal,
+} from './source-identity.js';
 
 type CheckedModuleMap = ReadonlyMap<A.ModuleNode, SemanticModel>;
 
 interface SemanticReuseSeal {
 	readonly operationState: string;
 	readonly semanticDiagnosticsState: string;
+}
+
+interface CachedBuildState {
+	readonly modules: CheckedModuleMap | undefined;
+	readonly sourceSeals: ReadonlyMap<A.ModuleNode, CheckedSourceReuseSeal>;
 }
 
 const currentModulesByCache = new WeakMap<ProjectBuildCache, CheckedModuleMap>();
@@ -189,13 +201,28 @@ function trackedReusedSemanticCount(result: ProjectBuildResult, previous: Checke
 	return count;
 }
 
-function trackedReusedParsedCount(result: ProjectBuildResult, previous: CheckedModuleMap | undefined): number {
-	if (previous === undefined) return 0;
+function trackedReusedParsedCount(result: ProjectBuildResult, previous: CachedBuildState | undefined): number {
+	if (previous?.modules === undefined) return 0;
 	let count = 0;
 	for (const module of result.modules) {
-		if (module.ast !== undefined && previous.has(module.ast)) count++;
+		if (module.ast === undefined) continue;
+		const previousSemantic = previous.modules.get(module.ast);
+		if (previousSemantic !== undefined && previousSemantic === module.semantic) {
+			count++;
+			continue;
+		}
+		const seal = previous.sourceSeals.get(module.ast);
+		if (seal !== undefined && matchesCheckedSourceReuseSeal(module.ast, seal)) count++;
 	}
 	return count;
+}
+
+function captureCachedBuildState(modules: CheckedModuleMap | undefined): CachedBuildState {
+	const sourceSeals = new Map<A.ModuleNode, CheckedSourceReuseSeal>();
+	if (modules !== undefined) {
+		for (const module of modules.keys()) sourceSeals.set(module, captureCheckedSourceReuseSeal(module));
+	}
+	return Object.freeze({ modules, sourceSeals });
 }
 
 function registerCompileResult(result: CompileResult): CompileResult {
@@ -222,11 +249,11 @@ function registerProjectResult(result: ProjectBuildResult): ProjectBuildResult {
 
 /**
  * Start one cached experimental build and return the exact prior experimental
- * module/semantic bindings. Cached parsed or checked entries that cannot be
- * explained by these bindings must be rebuilt before they can become operation
- * evidence.
+ * module/semantic bindings plus source-authored reuse seals. Cached parsed or
+ * checked entries that cannot be explained by these bindings must be rebuilt
+ * before they can become operation evidence.
  */
-function beginCachedBuild(cache: ProjectBuildCache): CheckedModuleMap | undefined {
+function beginCachedBuild(cache: ProjectBuildCache): CachedBuildState {
 	if (activeCaches.has(cache)) throw new Error('Concurrent experimental project builds cannot share one ProjectBuildCache');
 	const current = currentModulesByCache.get(cache);
 	if (!reusableModulesAreCurrent(current)) {
@@ -235,10 +262,19 @@ function beginCachedBuild(cache: ProjectBuildCache): CheckedModuleMap | undefine
 		cache.clear();
 		throw new Error('Cannot reuse experimental project cache after its checked result was mutated');
 	}
+	let state: CachedBuildState;
+	try {
+		state = captureCachedBuildState(current);
+	} catch {
+		invalidateModules(current);
+		currentModulesByCache.delete(cache);
+		cache.clear();
+		throw new Error('Cannot reuse experimental project cache after its checked source graph changed');
+	}
 	activeCaches.add(cache);
 	currentModulesByCache.delete(cache);
 	invalidateModules(current);
-	return current;
+	return state;
 }
 
 /** Experimental compiler entry point with ephemeral checked-AST session binding. */
@@ -286,16 +322,16 @@ export async function buildProject(
 	legacyAdditionalEntries: readonly string[] = [],
 ): Promise<ProjectBuildResult> {
 	const cache = typeof optionsOrWrite === 'object' && optionsOrWrite !== null ? optionsOrWrite.incrementalCache : undefined;
-	const previousCheckedModules = cache === undefined ? undefined : beginCachedBuild(cache);
+	const previousBuildState = cache === undefined ? undefined : beginCachedBuild(cache);
 	try {
 		const result = typeof optionsOrWrite === 'boolean'
 			? await buildProjectBase(rootDirectory, optionsOrWrite, legacyAdditionalEntries)
 			: await buildProjectBase(rootDirectory, optionsOrWrite);
 		if (cache !== undefined) {
-			const untrackedParsedReuse = result.stats.reusedParsedModules > trackedReusedParsedCount(result, previousCheckedModules);
-			const untrackedCheckedReuse = result.stats.reusedCheckedModules > trackedReusedSemanticCount(result, previousCheckedModules);
+			const untrackedParsedReuse = result.stats.reusedParsedModules > trackedReusedParsedCount(result, previousBuildState);
+			const untrackedCheckedReuse = result.stats.reusedCheckedModules > trackedReusedSemanticCount(result, previousBuildState?.modules);
 			if (untrackedParsedReuse || untrackedCheckedReuse) {
-				throw new Error('Cannot promote parsed or checked results from an unregistered project cache; retry after cache reset');
+				throw new Error('Cannot promote parsed or checked results from an unregistered or changed project cache; retry after cache reset');
 			}
 		}
 		registerProjectResult(result);
@@ -340,8 +376,15 @@ export class IncrementalProjectBuilder extends BaseIncrementalProjectBuilder {
 		this.#building = true;
 		try {
 			this.#assertReusableCurrentModules();
+			const previousBuildState = captureCachedBuildState(new Map(this.#currentModules));
 			this.#invalidateCurrentModules();
-			const result = registerProjectResult(await super.build(rootDirectory, options));
+			const result = await super.build(rootDirectory, options);
+			const untrackedParsedReuse = result.stats.reusedParsedModules > trackedReusedParsedCount(result, previousBuildState);
+			const untrackedCheckedReuse = result.stats.reusedCheckedModules > trackedReusedSemanticCount(result, previousBuildState.modules);
+			if (untrackedParsedReuse || untrackedCheckedReuse) {
+				throw new Error('Cannot reuse incremental parsed or checked results after their checked source graph changed');
+			}
+			registerProjectResult(result);
 			for (const [module, semantic] of checkedModules(result)) this.#currentModules.set(module, semantic);
 			if (result.modules.some(module => module.semantic === undefined)) super.clear();
 			return result;
