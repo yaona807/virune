@@ -387,8 +387,13 @@ function assertRuntimeResolutionCoherence(
 	platform: ModuleResolutionWitness['platform'],
 ): void {
 	const nodeBuiltinEntry = runtimeEntry?.startsWith('node:') ?? false;
+	const successfulRuntimeFormat = runtimeFormat === 'esm' || runtimeFormat === 'commonjs' || runtimeFormat === 'builtin';
 	if (runtimeFormat === 'commonjs' && platform !== 'node') {
 		throw new Error('External operation CommonJS runtime format requires the node platform');
+	}
+	if (moduleSpecifier.startsWith('node:') && runtimeEntry !== undefined && successfulRuntimeFormat
+		&& (runtimeFormat !== 'builtin' || platform !== 'node' || runtimeEntry !== moduleSpecifier)) {
+		throw new Error('External operation node: module specifier requires matching builtin runtime evidence');
 	}
 	if (nodeBuiltinEntry && (runtimeFormat !== 'builtin' || platform !== 'node')) {
 		throw new Error('External operation node builtin runtime entry requires builtin format on the node platform');
