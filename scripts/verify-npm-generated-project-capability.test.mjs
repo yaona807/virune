@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { gzipSync } from 'node:zlib';
 import test from 'node:test';
+import { validateNpmGeneratedProjectCapability as validateCliCapability } from '../packages/cli/dist/src/init-options.js';
 import {
 	NPM_GENERATED_PROJECT_CAPABILITY_KIND,
 	NPM_GENERATED_PROJECT_CAPABILITY_TAR_PATH,
@@ -46,6 +47,13 @@ test('capability is emitted only for a reviewed Registry-eligible publication ca
 	assert.throws(() => buildNpmGeneratedProjectCapability({ ...plan(), stage: 'unknown' }), /expected one of/u);
 });
 
+test('release helper and shipped CLI validator implement the same capability contract', () => {
+	const generated = buildNpmGeneratedProjectCapability(plan());
+	assert.deepEqual(generated, capability());
+	assert.deepEqual(validateNpmGeneratedProjectCapability(generated, '1.1.0-rc.1'), capability());
+	assert.deepEqual(validateCliCapability(generated, '1.1.0-rc.1'), capability());
+});
+
 test('capability schema is exact version and public-Registry bound', () => {
 	assert.deepEqual(validateNpmGeneratedProjectCapability(capability(), '1.1.0-rc.1'), capability());
 	const mutations = [
@@ -60,6 +68,7 @@ test('capability schema is exact version and public-Registry bound', () => {
 		const value = capability();
 		mutate(value);
 		assert.throws(() => validateNpmGeneratedProjectCapability(value, '1.1.0-rc.1'));
+		assert.throws(() => validateCliCapability(value, '1.1.0-rc.1'));
 	}
 });
 
