@@ -1,7 +1,8 @@
 import type * as A from '../ast/nodes.js';
 import type { SemanticModel } from '../checker/checker.js';
 import type { Diagnostic } from '../diagnostics/diagnostic.js';
-import { currentCheckedDiagnostics } from './check-session.js';
+import type { InteropSemanticModel } from './types.js';
+import { currentCheckedDiagnostics, currentCheckedInterop } from './check-session.js';
 import { externalOperationSequence as externalOperationSequenceFromEvidence, type ExternalOperationIR } from './operation.js';
 
 /**
@@ -16,20 +17,21 @@ export function externalOperationSequence(input: {
 	readonly module: A.ModuleNode;
 	readonly semantic: SemanticModel;
 }): readonly ExternalOperationIR[] {
-	const diagnostics = assertCheckedAstEvidence(input.module, input.semantic);
+	const evidence = assertCheckedAstEvidence(input.module, input.semantic);
 	return externalOperationSequenceFromEvidence({
 		module: input.module,
-		interop: input.semantic.interop,
-		diagnostics,
+		interop: evidence.interop,
+		diagnostics: evidence.diagnostics,
 	});
 }
 
 function assertCheckedAstEvidence(
 	module: A.ModuleNode,
 	semantic: SemanticModel,
-): readonly Diagnostic[] {
+): { readonly diagnostics: readonly Diagnostic[]; readonly interop: InteropSemanticModel } {
 	const diagnostics = currentCheckedDiagnostics(module, semantic);
-	if (diagnostics === undefined) {
+	const interop = currentCheckedInterop(module, semantic);
+	if (diagnostics === undefined || interop === undefined) {
 		throw new Error('Stale or cross-session External usage evidence: module is not from the current checked AST semantic session');
 	}
 
@@ -50,12 +52,12 @@ function assertCheckedAstEvidence(
 	};
 	visit(module);
 
-	for (const usage of semantic.interop.usageIR) {
+	for (const usage of interop.usageIR) {
 		if (usage.kind === 'import') continue;
 		const inferredTypeId = inferredByNode.get(usage.nodeId);
 		if (typeof inferredTypeId !== 'number' || !Number.isSafeInteger(inferredTypeId)) {
 			throw new Error(`Stale or cross-session External usage evidence: node ${usage.nodeId} is not from the checked AST`);
 		}
 	}
-	return diagnostics;
+	return { diagnostics, interop };
 }
