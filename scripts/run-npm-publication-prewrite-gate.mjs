@@ -9,6 +9,7 @@ import {
 	NPM_PUBLICATION_POST_WRITE_REQUIREMENTS,
 	NPM_PUBLICATION_PRE_WRITE_REQUIREMENTS,
 } from './npm-publication-authorization-contract.mjs';
+import { parseReleaseVersion } from './npm-publication-version-policy.mjs';
 import { runNpmPublicationAuthorization } from './run-npm-publication-authorization.mjs';
 import { runStableReleaseGate } from './stable-release-gate.mjs';
 
@@ -31,7 +32,9 @@ export async function runNpmPublicationPrewriteGate({
 	mutation,
 	outputPath = DEFAULT_OUTPUT,
 } = {}) {
-	if (outputPath !== null) await rm(outputPath, { force: true });
+	const output = outputFilePath(outputPath, '$.outputPath');
+	await rm(output, { force: true });
+	if (mutation !== undefined) assert(resolve(output) === DEFAULT_OUTPUT, '$.outputPath', 'mutation requires the canonical pre-write gate output path');
 	const commit = fullCommitSha(reviewedCommit, '$.reviewedCommit');
 	const version = nonEmptyString(releaseVersion, '$.releaseVersion');
 	const execution = evidenceSetIdentity(evidenceSetId, '$.evidenceSetId');
@@ -60,12 +63,10 @@ export async function runNpmPublicationPrewriteGate({
 		reviewedCommit: commit,
 		releaseVersion: version,
 		evidenceSetId: execution,
-		...(outputPath === null ? {} : {
-			persist: async report => {
-				await mkdir(dirname(outputPath), { recursive: true });
-				await writeFile(outputPath, `${JSON.stringify(report, null, '\t')}\n`, 'utf8');
-			},
-		}),
+		persist: async report => {
+			await mkdir(dirname(output), { recursive: true });
+			await writeFile(output, `${JSON.stringify(report, null, '\t')}\n`, 'utf8');
+		},
 		mutation,
 	});
 }
@@ -143,7 +144,7 @@ export function validateStableReleaseEvidence(value, { reviewedCommit, releaseVe
 	assert(report.commit === reviewedCommit, '$.stableReleaseEvidence.commit', `expected reviewed commit ${reviewedCommit}`);
 	assert(report.expectedNightlySha === reviewedCommit, '$.stableReleaseEvidence.expectedNightlySha', `expected Nightly evidence for ${reviewedCommit}`);
 	assert(report.passed === true, '$.stableReleaseEvidence.passed', 'stable release gate must have passed');
-	assert(typeof report.ref === 'string' && report.ref.length > 0, '$.stableReleaseEvidence.ref', 'expected a release ref');
+	validateReleaseRef(report.ref, releaseVersion);
 	assert(typeof report.generatedAt === 'string' && Number.isFinite(Date.parse(report.generatedAt)), '$.stableReleaseEvidence.generatedAt', 'expected an ISO timestamp');
 	const checks = array(report.checks, '$.stableReleaseEvidence.checks');
 	const requirements = array(report.requirements, '$.stableReleaseEvidence.requirements');
@@ -199,14 +200,25 @@ export function parseNpmPublicationPrewriteArguments(argumentsList) {
 }
 
 export async function runNpmPublicationPrewriteGateCli(argumentsList, { outputPath = DEFAULT_OUTPUT } = {}) {
-	if (outputPath !== null) await rm(outputPath, { force: true });
+	const output = outputFilePath(outputPath, '$.outputPath');
+	await rm(output, { force: true });
 	const parsed = parseNpmPublicationPrewriteArguments(argumentsList);
 	return runNpmPublicationPrewriteGate({
 		reviewedCommit: parsed.reviewedCommit,
 		releaseVersion: parsed.releaseVersion,
 		evidenceSetId: parsed.evidenceSetId,
-		outputPath,
+		outputPath: output,
 	});
+}
+
+function validateReleaseRef(value, releaseVersion) {
+	const ref = nonEmptyString(value, '$.stableReleaseEvidence.ref');
+	const expectedTag = `refs/tags/v${releaseVersion}`;
+	const expectedCandidate = `refs/heads/release-candidate/v${releaseVersion}`;
+	if (ref === expectedTag) return;
+	assert(ref === expectedCandidate, '$.stableReleaseEvidence.ref', `expected ${expectedTag} or ${expectedCandidate}`);
+	const parsed = parseReleaseVersion(releaseVersion, '$.stableReleaseEvidence.version');
+	assert(parsed.channel === 'prerelease', '$.stableReleaseEvidence.ref', 'release-candidate branch may authorize prerelease versions only');
 }
 
 function verifyExactCleanCheckout(reviewedCommit) {
@@ -256,6 +268,12 @@ function evidenceSetIdentity(value, path) {
 	const identity = nonEmptyString(value, path);
 	assert(/^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$/u.test(identity), path, 'invalid evidence set identity');
 	return identity;
+}
+
+function outputFilePath(value, path) {
+	const output = nonEmptyString(value, path);
+	assert(!output.includes('\0'), path, 'invalid output path');
+	return output;
 }
 
 function sha256(bytes) {
