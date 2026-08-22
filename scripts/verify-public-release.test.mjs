@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
-import { parseChecksums, validateDownloadedRelease, validateReleaseRecord } from './verify-public-release.mjs';
+import { parseChecksums, resolveReviewedCommit, validateDownloadedRelease, validateReleaseRecord } from './verify-public-release.mjs';
 
 const repositoryRoot = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const version = '1.0.0-rc.1';
@@ -94,6 +94,16 @@ test('registry eligibility follows the reviewed release policy rather than a sta
 		version: registryVersion,
 		npmPublicationPolicy: staleCheckoutPolicy,
 	}), /Release is missing PUBLICATION-MANIFEST\.json/u);
+});
+
+test('the resolved Git tag commit is the reviewed source even without an expected-commit fence', () => {
+	const tag = `v${registryVersion}`;
+	const tagCommit = 'a'.repeat(40);
+	assert.equal(resolveReviewedCommit(tag, tagCommit, undefined), tagCommit);
+	assert.equal(resolveReviewedCommit(tag, tagCommit, tagCommit), tagCommit);
+	assert.throws(() => resolveReviewedCommit(tag, undefined, undefined), /did not resolve to a commit SHA/u);
+	assert.throws(() => resolveReviewedCommit(tag, 'ABC', undefined), /did not resolve to a commit SHA/u);
+	assert.throws(() => resolveReviewedCommit(tag, tagCommit, 'b'.repeat(40)), /points to .* expected/u);
 });
 
 test('parses strict checksum records and rejects duplicates', () => {
