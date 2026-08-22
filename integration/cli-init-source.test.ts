@@ -78,6 +78,25 @@ test('authorized staged CLI emits exact npm dependency versions and npm README w
 	assert.doesNotMatch(readme, /GitHub Release assets rather than npm Registry packages/u);
 });
 
+test('existing package.json is preserved and a newly created README does not claim that source selection rewrote it', async () => {
+	const version = '1.1.0-rc.1';
+	const stagedPackage = await stageCandidateCli(version, capability(version));
+	const root = await makeCliProject();
+	const existingManifest = '{\n\t"name": "existing-project",\n\t"private": true\n}\n';
+	await writeFile(join(root, 'package.json'), existingManifest, 'utf8');
+	await runCliExecutable(
+		join(stagedPackage, 'dist/src/entry.js'),
+		['init', root, '--dependency-source=npm'],
+		stagedPackage,
+	);
+	assert.equal(await readFile(join(root, 'package.json'), 'utf8'), existingManifest);
+	const readme = await readFile(join(root, 'README.md'), 'utf8');
+	assert.match(readme, /preserved the existing package\.json/u);
+	assert.match(readme, /requested dependency source was npm/u);
+	assert.match(readme, /existing dependency declarations were not rewritten/u);
+	assert.doesNotMatch(readme, /No mutable npm range or dist-tag is used/u);
+});
+
 test('malformed or stale staged capability fails before project writes', async () => {
 	const cases = [
 		{ ...capability('1.1.0-rc.1'), version: '1.1.0-rc.2' },
