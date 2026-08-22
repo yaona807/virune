@@ -15,7 +15,7 @@ import { runStableReleaseGate } from './stable-release-gate.mjs';
 
 const repositoryRoot = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const KIND = 'npm-publication-prewrite-gate-v1';
-const DEFAULT_OUTPUT = resolve(repositoryRoot, '.cache/npm-publication-prewrite/npm-publication-prewrite-gate.json');
+export const NPM_PUBLICATION_PREWRITE_OUTPUT = resolve(repositoryRoot, '.cache/npm-publication-prewrite/npm-publication-prewrite-gate.json');
 const DEFAULT_STABLE_EVIDENCE = resolve(repositoryRoot, '.cache/npm-publication-prewrite/stable-release-evidence.json');
 const DEFAULT_AUTHORIZATION_OUTPUT = resolve(repositoryRoot, '.cache/npm-publication-authorization/npm-publication-authorization-report.json');
 const PUBLICATION_MANIFEST = resolve(repositoryRoot, 'release/PUBLICATION-MANIFEST.json');
@@ -25,18 +25,9 @@ const CLI_OPTIONS = Object.freeze([
 	['--version=', 'releaseVersion'],
 ]);
 
-export async function runNpmPublicationPrewriteGate({
-	reviewedCommit,
-	releaseVersion,
-	mutation,
-	outputPath = DEFAULT_OUTPUT,
-} = {}) {
-	const output = outputFilePath(outputPath, '$.outputPath');
-	await invalidateExecutionEvidence(output);
-	if (mutation !== undefined) {
-		assert(typeof mutation === 'function', '$.mutation', 'expected a function');
-		assert(resolve(output) === DEFAULT_OUTPUT, '$.outputPath', 'mutation requires the canonical pre-write gate output path');
-	}
+export async function runNpmPublicationPrewriteGate({ reviewedCommit, releaseVersion, mutation } = {}) {
+	await invalidateExecutionEvidence();
+	if (mutation !== undefined) assert(typeof mutation === 'function', '$.mutation', 'expected a function');
 	const commit = fullCommitSha(reviewedCommit, '$.reviewedCommit');
 	const version = nonEmptyString(releaseVersion, '$.releaseVersion');
 	const execution = githubEvidenceSetIdentity(process.env);
@@ -73,9 +64,9 @@ export async function runNpmPublicationPrewriteGate({
 		releaseVersion: version,
 		evidenceSetId: execution,
 	});
-	await mkdir(dirname(output), { recursive: true });
-	await writeFile(output, `${JSON.stringify(report, null, '\t')}\n`, 'utf8');
-	const persistedReport = parseJson(await readFile(output), '$.prewriteGateOutput');
+	await mkdir(dirname(NPM_PUBLICATION_PREWRITE_OUTPUT), { recursive: true });
+	await writeFile(NPM_PUBLICATION_PREWRITE_OUTPUT, `${JSON.stringify(report, null, '\t')}\n`, 'utf8');
+	const persistedReport = parseJson(await readFile(NPM_PUBLICATION_PREWRITE_OUTPUT), '$.prewriteGateOutput');
 	assert(isDeepStrictEqual(persistedReport, report), '$.prewriteGateOutput', 'persisted pre-write gate evidence differs from the validated report');
 	if (mutation !== undefined) {
 		try {
@@ -84,7 +75,7 @@ export async function runNpmPublicationPrewriteGate({
 				authorization: structuredClone(persistedAuthorizationReport),
 			});
 		} catch (error) {
-			await rm(output, { force: true });
+			await rm(NPM_PUBLICATION_PREWRITE_OUTPUT, { force: true });
 			throw error;
 		}
 	}
@@ -216,14 +207,12 @@ export function parseNpmPublicationPrewriteArguments(argumentsList) {
 	return parsed;
 }
 
-export async function runNpmPublicationPrewriteGateCli(argumentsList, { outputPath = DEFAULT_OUTPUT } = {}) {
-	const output = outputFilePath(outputPath, '$.outputPath');
-	await invalidateExecutionEvidence(output);
+export async function runNpmPublicationPrewriteGateCli(argumentsList) {
+	await invalidateExecutionEvidence();
 	const parsed = parseNpmPublicationPrewriteArguments(argumentsList);
 	return runNpmPublicationPrewriteGate({
 		reviewedCommit: parsed.reviewedCommit,
 		releaseVersion: parsed.releaseVersion,
-		outputPath: output,
 	});
 }
 
@@ -237,8 +226,8 @@ function validateReleaseRef(value, releaseVersion) {
 	assert(parsed.channel === 'prerelease', '$.stableReleaseEvidence.ref', 'release-candidate branch may authorize prerelease versions only');
 }
 
-async function invalidateExecutionEvidence(output) {
-	await rm(output, { force: true });
+async function invalidateExecutionEvidence() {
+	await rm(NPM_PUBLICATION_PREWRITE_OUTPUT, { force: true });
 	await rm(DEFAULT_STABLE_EVIDENCE, { force: true });
 	await rm(DEFAULT_AUTHORIZATION_OUTPUT, { force: true });
 }
@@ -295,12 +284,6 @@ function evidenceSetIdentity(value, path) {
 function positiveDecimal(value, path) {
 	assert(typeof value === 'string' && /^[1-9]\d*$/u.test(value), path, 'expected a positive decimal integer string');
 	return value;
-}
-
-function outputFilePath(value, path) {
-	const output = nonEmptyString(value, path);
-	assert(!output.includes('\0'), path, 'invalid output path');
-	return output;
 }
 
 function sha256(bytes) {
