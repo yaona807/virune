@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -32,6 +32,7 @@ export async function verifyPublicNpmRegistry({
 	platform = process.platform,
 	baseEnv = process.env,
 } = {}) {
+	if (outputPath !== null) await rm(outputPath, { force: true });
 	const exactCommit = fullCommitSha(reviewedCommit, '$.reviewedCommit');
 	const plan = publicationPlan ?? readReviewedPublicationPlan(exactCommit, { sourceRoot });
 	const publicationManifestBytes = publicationManifest === undefined
@@ -247,7 +248,6 @@ export async function verifyCleanGlobalCliInstall(version, {
 			'--replace-registry-host=never', '--no-audit', '--no-fund',
 		], { cwd: root, env });
 		const executable = platform === 'win32' ? resolve(prefix, 'virune.cmd') : resolve(prefix, 'bin/virune');
-		if (platform !== 'win32') await chmod(executable, 0o755);
 		const result = runCommand(executable, ['--version'], { cwd: root, env, capture: true });
 		const versionOutput = result.stdout.trim();
 		assert(versionOutput === `virune ${version}`, '$.installation.versionOutput', `expected virune ${version}, got ${versionOutput || '<empty>'}`);
