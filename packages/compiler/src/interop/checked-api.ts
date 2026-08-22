@@ -173,7 +173,8 @@ function encodeReuseStructuralValue(value: unknown, seen: Map<object, number>): 
 
 function checkedModules(result: ProjectBuildResult): CheckedModuleMap {
 	const modules = new Map<A.ModuleNode, SemanticModel>();
-	for (const module of result.modules) {
+	for (let index = 0; index < result.modules.length; index++) {
+		const module = result.modules[index]!;
 		if (module.ast !== undefined && module.semantic !== undefined) modules.set(module.ast, module.semantic);
 	}
 	return modules;
@@ -204,7 +205,8 @@ function trackedReusedSemanticCount(result: ProjectBuildResult, previous: Checke
 	const trackedSemantics = new Set<SemanticModel>();
 	for (const semantic of previous.values()) trackedSemantics.add(semantic);
 	let count = 0;
-	for (const module of result.modules) {
+	for (let index = 0; index < result.modules.length; index++) {
+		const module = result.modules[index]!;
 		if (module.semantic !== undefined && trackedSemantics.has(module.semantic)) count++;
 	}
 	return count;
@@ -213,7 +215,8 @@ function trackedReusedSemanticCount(result: ProjectBuildResult, previous: Checke
 function trackedReusedParsedCount(result: ProjectBuildResult, previous: CachedBuildState | undefined): number {
 	if (previous?.modules === undefined) return 0;
 	let count = 0;
-	for (const module of result.modules) {
+	for (let index = 0; index < result.modules.length; index++) {
+		const module = result.modules[index]!;
 		if (module.ast === undefined) continue;
 		const previousSemantic = previous.modules.get(module.ast);
 		if (previousSemantic !== undefined && previousSemantic === module.semantic) {
@@ -244,7 +247,8 @@ function registerCompileResult(result: CompileResult): CompileResult {
 function registerProjectResult(result: ProjectBuildResult): ProjectBuildResult {
 	const modules = checkedModules(result);
 	try {
-		for (const module of result.modules) {
+		for (let index = 0; index < result.modules.length; index++) {
+			const module = result.modules[index]!;
 			if (module.ast !== undefined && module.semantic !== undefined) {
 				registerCheckedModule(module.ast, module.semantic, result.diagnostics);
 			}
