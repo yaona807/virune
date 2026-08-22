@@ -1,4 +1,5 @@
 import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
 	isRegularTarEntry,
 	readRegularReleaseAsset,
@@ -49,7 +50,7 @@ function assert(condition, path, message) {
 }
 
 const entry = process.argv[1] === undefined ? undefined : resolve(process.argv[1]);
-if (entry === resolve(new URL(import.meta.url).pathname)) {
+if (entry === fileURLToPath(import.meta.url)) {
 	const result = verifyNpmGeneratedProjectCapability();
 	process.stdout.write(`Verified npm generated-project capability for ${result.version ?? result.capability.version}.\n`);
 }
