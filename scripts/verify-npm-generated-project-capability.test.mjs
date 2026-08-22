@@ -19,6 +19,7 @@ import {
 	registryReleaseAssetNameForPackage,
 } from './verify-npm-publication-identity.mjs';
 import {
+	verifyCapabilityAbsentFromTarball,
 	verifyNpmGeneratedProjectCapabilityReleaseSet,
 	verifyNpmGeneratedProjectCapabilityTarball,
 } from './verify-npm-generated-project-capability.mjs';
@@ -106,7 +107,26 @@ test('candidate verifier requires canonical capability bytes when authorized', (
 
 	const nonCanonical = registryCliTarball([[NPM_GENERATED_PROJECT_CAPABILITY_TAR_PATH, JSON.stringify(expected)]]);
 	assert.throws(() => verifyNpmGeneratedProjectCapabilityTarball(nonCanonical, plan()), /canonical deterministic JSON encoding/u);
-	assert.throws(() => verifyNpmGeneratedProjectCapabilityTarball(registryCliTarball([]), plan()), /must be a regular file/u);
+	assert.throws(() => verifyNpmGeneratedProjectCapabilityTarball(registryCliTarball([]), plan()), /canonical portable path/u);
+});
+
+test('portable capability path aliases fail closed on authorized and prohibited artifacts', () => {
+	const capabilityBytes = canonicalNpmGeneratedProjectCapabilityBytes(capability());
+	const aliasPath = NPM_GENERATED_PROJECT_CAPABILITY_TAR_PATH.replace('npm-generated-project-capability.json', 'NPM-GENERATED-PROJECT-CAPABILITY.JSON');
+	const aliased = registryCliTarball([[aliasPath, capabilityBytes]]);
+	assert.throws(
+		() => verifyNpmGeneratedProjectCapabilityTarball(aliased, plan()),
+		/canonical portable path/u,
+	);
+	assert.throws(
+		() => verifyCapabilityAbsentFromTarball(aliased, 'virune-1.1.0.tgz'),
+		/capability is authorized only in the exact virune Registry candidate artifact/u,
+	);
+	const auditPlan = plan({ stage: 'prepublication-audit', publicationReady: false, currentVersion: '1.0.0' });
+	assert.throws(
+		() => verifyNpmGeneratedProjectCapabilityTarball(registryCliTarball([[aliasPath, capabilityBytes]], '1.0.0'), auditPlan),
+		/capability must be absent/u,
+	);
 });
 
 test('release-set verifier permits capability only in the exact virune Registry candidate', () => {
