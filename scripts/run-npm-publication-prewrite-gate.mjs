@@ -1,0 +1,283 @@
+import { createHash } from 'node:crypto';
+import { spawnSync } from 'node:child_process';
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import {
+	NPM_PUBLICATION_AUTHORIZATION_REPORT_KIND,
+	NPM_PUBLICATION_POST_WRITE_REQUIREMENTS,
+	NPM_PUBLICATION_PRE_WRITE_REQUIREMENTS,
+} from './npm-publication-authorization-contract.mjs';
+import { runNpmPublicationAuthorization } from './run-npm-publication-authorization.mjs';
+import { runStableReleaseGate } from './stable-release-gate.mjs';
+
+const repositoryRoot = resolve(fileURLToPath(new URL('..', import.meta.url)));
+const KIND = 'npm-publication-prewrite-gate-v1';
+const DEFAULT_OUTPUT = resolve(repositoryRoot, '.cache/npm-publication-prewrite/npm-publication-prewrite-gate.json');
+const DEFAULT_STABLE_EVIDENCE = resolve(repositoryRoot, '.cache/npm-publication-prewrite/stable-release-evidence.json');
+const PUBLICATION_MANIFEST = resolve(repositoryRoot, 'release/PUBLICATION-MANIFEST.json');
+const PRE_WRITE_EVIDENCE = resolve(repositoryRoot, '.cache/npm-publication-authorization/pre-write-evidence.json');
+const CLI_OPTIONS = Object.freeze([
+	['--expected-commit=', 'reviewedCommit'],
+	['--version=', 'releaseVersion'],
+	['--evidence-set-id=', 'evidenceSetId'],
+]);
+
+export async function runNpmPublicationPrewriteGate({
+	reviewedCommit,
+	releaseVersion,
+	evidenceSetId,
+	mutation,
+	outputPath = DEFAULT_OUTPUT,
+} = {}) {
+	if (outputPath !== null) await rm(outputPath, { force: true });
+	const commit = fullCommitSha(reviewedCommit, '$.reviewedCommit');
+	const version = nonEmptyString(releaseVersion, '$.releaseVersion');
+	const execution = evidenceSetIdentity(evidenceSetId, '$.evidenceSetId');
+	verifyExactCleanCheckout(commit);
+	assert(process.env.GITHUB_SHA === commit, '$.environment.GITHUB_SHA', `expected exact reviewed commit ${commit}`);
+
+	await runStableReleaseGate({ root: repositoryRoot, output: DEFAULT_STABLE_EVIDENCE });
+	const stableEvidenceBytes = await readFile(DEFAULT_STABLE_EVIDENCE);
+	const stableReleaseReport = parseJson(stableEvidenceBytes, '$.stableReleaseEvidence');
+	validateStableReleaseEvidence(stableReleaseReport, { reviewedCommit: commit, releaseVersion: version });
+
+	const authorizationReport = await runNpmPublicationAuthorization({
+		reviewedCommit: commit,
+		releaseVersion: version,
+		evidenceSetId: execution,
+		publicationManifestPath: PUBLICATION_MANIFEST,
+		evidencePath: PRE_WRITE_EVIDENCE,
+		outputPath: null,
+	});
+	const report = await finalizeNpmPublicationPrewriteGate({
+		stableReleaseReport,
+		stableReleaseEvidenceBytes: stableEvidenceBytes,
+		authorizationReport,
+		reviewedCommit: commit,
+		releaseVersion: version,
+		evidenceSetId: execution,
+		mutation,
+	});
+	if (outputPath !== null) {
+		await mkdir(dirname(outputPath), { recursive: true });
+		await writeFile(outputPath, `${JSON.stringify(report, null, '\t')}\n`, 'utf8');
+	}
+	return report;
+}
+
+export async function finalizeNpmPublicationPrewriteGate({
+	stableReleaseReport,
+	stableReleaseEvidenceBytes,
+	authorizationReport,
+	reviewedCommit,
+	releaseVersion,
+	evidenceSetId,
+	mutation,
+}) {
+	const commit = fullCommitSha(reviewedCommit, '$.reviewedCommit');
+	const version = nonEmptyString(releaseVersion, '$.releaseVersion');
+	const execution = evidenceSetIdentity(evidenceSetId, '$.evidenceSetId');
+	const stableBytes = Buffer.from(stableReleaseEvidenceBytes);
+	validateStableReleaseEvidence(stableReleaseReport, { reviewedCommit: commit, releaseVersion: version });
+	const authorization = validateAuthorizationReport(authorizationReport, {
+		reviewedCommit: commit,
+		releaseVersion: version,
+		evidenceSetId: execution,
+	});
+	const report = {
+		schemaVersion: 1,
+		kind: KIND,
+		publicationReady: true,
+		reviewedCommit: commit,
+		evidenceSetId: execution,
+		version,
+		stableReleaseEvidence: {
+			sha256: sha256(stableBytes),
+			bytes: stableBytes.byteLength,
+		},
+		authorization: {
+			kind: authorization.kind,
+			publicationManifest: authorization.publicationManifest,
+			satisfiedPreWriteRequirements: [...authorization.satisfiedPreWriteRequirements],
+			remainingPostWriteCompletionRequirements: [...authorization.remainingPostWriteCompletionRequirements],
+		},
+	};
+	if (mutation !== undefined) {
+		assert(typeof mutation === 'function', '$.mutation', 'expected a function');
+		await mutation({ prewriteGate: structuredClone(report), authorization: structuredClone(authorization) });
+	}
+	return report;
+}
+
+export function validateStableReleaseEvidence(value, { reviewedCommit, releaseVersion }) {
+	const report = record(value, '$.stableReleaseEvidence');
+	assertExactKeys(report, [
+		'schemaVersion',
+		'version',
+		'commit',
+		'expectedNightlySha',
+		'ref',
+		'generatedAt',
+		'checks',
+		'requirements',
+		'passed',
+	], '$.stableReleaseEvidence');
+	assert(report.schemaVersion === 1, '$.stableReleaseEvidence.schemaVersion', 'expected schemaVersion 1');
+	assert(report.version === releaseVersion, '$.stableReleaseEvidence.version', `expected release version ${releaseVersion}`);
+	assert(report.commit === reviewedCommit, '$.stableReleaseEvidence.commit', `expected reviewed commit ${reviewedCommit}`);
+	assert(report.expectedNightlySha === reviewedCommit, '$.stableReleaseEvidence.expectedNightlySha', `expected Nightly evidence for ${reviewedCommit}`);
+	assert(report.passed === true, '$.stableReleaseEvidence.passed', 'stable release gate must have passed');
+	assert(typeof report.ref === 'string' && report.ref.length > 0, '$.stableReleaseEvidence.ref', 'expected a release ref');
+	assert(typeof report.generatedAt === 'string' && Number.isFinite(Date.parse(report.generatedAt)), '$.stableReleaseEvidence.generatedAt', 'expected an ISO timestamp');
+	const checks = array(report.checks, '$.stableReleaseEvidence.checks');
+	const requirements = array(report.requirements, '$.stableReleaseEvidence.requirements');
+	assert(checks.length > 0, '$.stableReleaseEvidence.checks', 'expected stable release checks');
+	assert(requirements.length > 0, '$.stableReleaseEvidence.requirements', 'expected stable release requirements');
+	assertUniquePassedRecords(checks, '$.stableReleaseEvidence.checks');
+	assertUniquePassedRecords(requirements, '$.stableReleaseEvidence.requirements');
+	return report;
+}
+
+export function validateAuthorizationReport(value, { reviewedCommit, releaseVersion, evidenceSetId }) {
+	const report = record(value, '$.authorization');
+	assertExactKeys(report, [
+		'schemaVersion',
+		'kind',
+		'publicationReady',
+		'reviewedCommit',
+		'evidenceSetId',
+		'version',
+		'publicationManifest',
+		'satisfiedPreWriteRequirements',
+		'remainingPostWriteCompletionRequirements',
+	], '$.authorization');
+	assert(report.schemaVersion === 1, '$.authorization.schemaVersion', 'expected schemaVersion 1');
+	assert(report.kind === NPM_PUBLICATION_AUTHORIZATION_REPORT_KIND, '$.authorization.kind', `expected ${NPM_PUBLICATION_AUTHORIZATION_REPORT_KIND}`);
+	assert(report.publicationReady === true, '$.authorization.publicationReady', 'authorization must be ready');
+	assert(report.reviewedCommit === reviewedCommit, '$.authorization.reviewedCommit', `expected reviewed commit ${reviewedCommit}`);
+	assert(report.evidenceSetId === evidenceSetId, '$.authorization.evidenceSetId', `expected evidence set ${evidenceSetId}`);
+	assert(report.version === releaseVersion, '$.authorization.version', `expected release version ${releaseVersion}`);
+	const manifest = record(report.publicationManifest, '$.authorization.publicationManifest');
+	assertExactKeys(manifest, ['sha256', 'bytes'], '$.authorization.publicationManifest');
+	assert(typeof manifest.sha256 === 'string' && /^[0-9a-f]{64}$/u.test(manifest.sha256), '$.authorization.publicationManifest.sha256', 'expected lowercase SHA-256');
+	assert(Number.isSafeInteger(manifest.bytes) && manifest.bytes > 0, '$.authorization.publicationManifest.bytes', 'expected positive byte count');
+	assertExactList(report.satisfiedPreWriteRequirements, NPM_PUBLICATION_PRE_WRITE_REQUIREMENTS, '$.authorization.satisfiedPreWriteRequirements');
+	assertExactList(report.remainingPostWriteCompletionRequirements, NPM_PUBLICATION_POST_WRITE_REQUIREMENTS, '$.authorization.remainingPostWriteCompletionRequirements');
+	return report;
+}
+
+export function parseNpmPublicationPrewriteArguments(argumentsList) {
+	const args = array(argumentsList, '$.arguments');
+	const parsed = {};
+	for (const argument of args) {
+		assert(typeof argument === 'string', '$.arguments', 'expected string arguments');
+		const matches = CLI_OPTIONS.filter(([prefix]) => argument.startsWith(prefix));
+		assert(matches.length === 1, '$.arguments', `unknown pre-write gate argument ${argument}`);
+		const [prefix, property] = matches[0];
+		assert(parsed[property] === undefined, '$.arguments', `duplicate ${prefix.slice(0, -1)} argument`);
+		const value = argument.slice(prefix.length);
+		assert(value.length > 0, '$.arguments', `empty ${prefix.slice(0, -1)} argument`);
+		parsed[property] = value;
+	}
+	return parsed;
+}
+
+export async function runNpmPublicationPrewriteGateCli(argumentsList, { outputPath = DEFAULT_OUTPUT } = {}) {
+	if (outputPath !== null) await rm(outputPath, { force: true });
+	const parsed = parseNpmPublicationPrewriteArguments(argumentsList);
+	return runNpmPublicationPrewriteGate({
+		reviewedCommit: parsed.reviewedCommit,
+		releaseVersion: parsed.releaseVersion,
+		evidenceSetId: parsed.evidenceSetId,
+		outputPath,
+	});
+}
+
+function verifyExactCleanCheckout(reviewedCommit) {
+	const head = git(['rev-parse', 'HEAD']);
+	assert(head === reviewedCommit, '$.reviewedCommit', `checkout HEAD ${head} does not match reviewed commit ${reviewedCommit}`);
+	const status = git(['status', '--porcelain=v1', '--untracked-files=normal']);
+	assert(status.length === 0, '$.checkout', 'working tree must be clean before npm publication authorization');
+}
+
+function git(args) {
+	const result = spawnSync('git', args, { cwd: repositoryRoot, encoding: 'utf8', maxBuffer: 4 * 1024 * 1024 });
+	if (result.error !== undefined) throw new Error(`git ${args.join(' ')} failed: ${result.error.message}`);
+	if ((result.status ?? 1) !== 0) throw new Error(`git ${args.join(' ')} failed: ${result.stderr.trim()}`);
+	return result.stdout.trim();
+}
+
+function assertUniquePassedRecords(values, path) {
+	const ids = [];
+	for (let index = 0; index < values.length; index += 1) {
+		const value = record(values[index], `${path}[${index}]`);
+		const id = nonEmptyString(value.id, `${path}[${index}].id`);
+		assert(value.passed === true, `${path}[${index}].passed`, `${id} must have passed`);
+		ids.push(id);
+	}
+	assert(new Set(ids).size === ids.length, path, 'duplicate evidence id');
+}
+
+function assertExactList(value, expected, path) {
+	const actual = array(value, path).map((item, index) => nonEmptyString(item, `${path}[${index}]`));
+	assert(JSON.stringify(actual) === JSON.stringify(expected), path, `expected ${expected.join(', ')}`);
+}
+
+function parseJson(bytes, path) {
+	try {
+		return JSON.parse(Buffer.from(bytes).toString('utf8'));
+	} catch (error) {
+		throw new Error(`${path}: malformed JSON: ${error instanceof Error ? error.message : String(error)}`);
+	}
+}
+
+function fullCommitSha(value, path) {
+	assert(typeof value === 'string' && /^[0-9a-f]{40}$/u.test(value), path, 'expected a full lowercase commit SHA');
+	return value;
+}
+
+function evidenceSetIdentity(value, path) {
+	const identity = nonEmptyString(value, path);
+	assert(/^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$/u.test(identity), path, 'invalid evidence set identity');
+	return identity;
+}
+
+function sha256(bytes) {
+	return createHash('sha256').update(bytes).digest('hex');
+}
+
+function record(value, path) {
+	assert(value !== null && typeof value === 'object' && !Array.isArray(value), path, 'expected an object');
+	return value;
+}
+
+function array(value, path) {
+	assert(Array.isArray(value), path, 'expected an array');
+	return value;
+}
+
+function nonEmptyString(value, path) {
+	assert(typeof value === 'string' && value.trim().length > 0, path, 'expected a non-empty non-whitespace string');
+	return value;
+}
+
+function assertExactKeys(value, expected, path) {
+	const actual = Object.keys(value).sort(compareText);
+	const wanted = [...expected].sort(compareText);
+	assert(JSON.stringify(actual) === JSON.stringify(wanted), path, `expected exact keys ${wanted.join(', ')}`);
+}
+
+function assert(condition, path, message) {
+	if (!condition) throw new Error(`${path}: ${message}`);
+}
+
+function compareText(left, right) {
+	return left < right ? -1 : left > right ? 1 : 0;
+}
+
+const entry = process.argv[1] === undefined ? undefined : resolve(process.argv[1]);
+if (entry === fileURLToPath(import.meta.url)) {
+	const report = await runNpmPublicationPrewriteGateCli(process.argv.slice(2));
+	process.stdout.write(`npm pre-write publication gate passed for ${report.version} at ${report.reviewedCommit}.\n`);
+}
