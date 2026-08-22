@@ -237,6 +237,27 @@ test('stable and authorization validators reject malformed outer schemas indepen
 	assert.throws(() => validateAuthorizationReport([], { reviewedCommit, releaseVersion, evidenceSetId }));
 });
 
+test('standalone validators reject malformed reviewed and evidence identities', () => {
+	for (const malformedCommit of ['ABC', 'a'.repeat(39), 'A'.repeat(40)]) {
+		const stable = stableReleaseReport();
+		stable.commit = malformedCommit;
+		stable.expectedNightlySha = malformedCommit;
+		assert.throws(() => validateStableReleaseEvidence(stable, { reviewedCommit: malformedCommit, releaseVersion }), /full lowercase commit SHA/u);
+		const authorization = authorizationReport();
+		authorization.reviewedCommit = malformedCommit;
+		assert.throws(() => validateAuthorizationReport(authorization, { reviewedCommit: malformedCommit, releaseVersion, evidenceSetId }), /full lowercase commit SHA/u);
+	}
+	for (const malformedEvidenceSetId of ['', ' ', 'bad*identity']) {
+		const authorization = authorizationReport();
+		authorization.evidenceSetId = malformedEvidenceSetId;
+		assert.throws(() => validateAuthorizationReport(authorization, {
+			reviewedCommit,
+			releaseVersion,
+			evidenceSetId: malformedEvidenceSetId,
+		}), /expected a non-empty non-whitespace string|invalid evidence set identity/u);
+	}
+});
+
 test('pre-write CLI parser rejects unknown, positional, duplicate and empty options', () => {
 	assert.deepEqual(parseNpmPublicationPrewriteArguments([
 		`--expected-commit=${reviewedCommit}`,
