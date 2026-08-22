@@ -49,8 +49,9 @@ function assertCheckedAstEvidence(
 			return;
 		}
 		const record = value as Record<string, unknown>;
-		if (typeof record.id === 'number' && Number.isSafeInteger(record.id)) {
-			inferredByNode.set(record.id, record.inferredTypeId);
+		const id = ownDataValue(record, 'id');
+		if (typeof id === 'number' && Number.isSafeInteger(id)) {
+			inferredByNode.set(id, ownDataValue(record, 'inferredTypeId'));
 		}
 		const keys = Reflect.ownKeys(record);
 		for (let index = 0; index < keys.length; index++) {
@@ -72,4 +73,9 @@ function assertCheckedAstEvidence(
 		}
 	}
 	return { diagnostics, interop };
+}
+
+function ownDataValue(record: Record<string, unknown>, key: string): unknown {
+	const descriptor = Object.getOwnPropertyDescriptor(record, key);
+	return descriptor !== undefined && 'value' in descriptor ? descriptor.value : undefined;
 }
