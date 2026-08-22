@@ -78,7 +78,7 @@ test('CLI discovers unimported test modules from test.include', async () => {
 
 test('CLI formatter check detects and then fixes formatting', async () => {
 	const root = await makeCliProject();
-	await mkdir(root, { recursive: true });
+	await mkdir(join(root, 'src'), { recursive: true });
 	const file = join(root, 'src/main.virune');
 	await writeFile(file, 'pub fn main()->Unit {\nreturn Unit\n}\n');
 	await assert.rejects(runCli(['fmt', '--check', root]));
