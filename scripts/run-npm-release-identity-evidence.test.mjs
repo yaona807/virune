@@ -196,6 +196,41 @@ test('current prepublication source cannot emit release-identity evidence and in
 	}
 });
 
+test('alternate reviewed head cannot emit release-identity evidence and stale success outputs are removed', async () => {
+	const head = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repositoryRoot, encoding: 'utf8' }).trim();
+	const parent = execFileSync('git', ['rev-parse', 'HEAD^'], { cwd: repositoryRoot, encoding: 'utf8' }).trim();
+	assert.notEqual(parent, head);
+	const rootManifest = JSON.parse(await readFile(resolve(repositoryRoot, 'package.json'), 'utf8'));
+	const outputDirectory = resolve(repositoryRoot, '.cache/npm-release-identity');
+	const reportPath = resolve(outputDirectory, 'npm-release-identity-report.json');
+	const evidencePath = resolve(outputDirectory, 'release-identity-integration-evidence.json');
+	await mkdir(outputDirectory, { recursive: true });
+	await writeFile(reportPath, '{"schemaVersion":1,"state":"verified"}\n', 'utf8');
+	await writeFile(evidencePath, '{"schemaVersion":1,"result":"passed"}\n', 'utf8');
+	const previous = {
+		GITHUB_RUN_ID: process.env.GITHUB_RUN_ID,
+		GITHUB_RUN_ATTEMPT: process.env.GITHUB_RUN_ATTEMPT,
+		GITHUB_SHA: process.env.GITHUB_SHA,
+	};
+	try {
+		process.env.GITHUB_RUN_ID = '123';
+		process.env.GITHUB_RUN_ATTEMPT = '1';
+		process.env.GITHUB_SHA = parent;
+		await assert.rejects(
+			() => runNpmReleaseIdentityEvidence({ reviewedCommit: parent, releaseVersion: rootManifest.version }),
+			/checkout HEAD .* does not match reviewed commit/u,
+		);
+		await assert.rejects(() => access(reportPath));
+		await assert.rejects(() => access(evidencePath));
+	} finally {
+		for (const [name, value] of Object.entries(previous)) {
+			if (value === undefined) delete process.env[name];
+			else process.env[name] = value;
+		}
+		await rm(outputDirectory, { recursive: true, force: true });
+	}
+});
+
 test('release snapshot is deterministic and rejects non-regular release artifacts', async () => {
 	const root = await mkdtemp(join(tmpdir(), 'virune-release-identity-test-'));
 	try {
