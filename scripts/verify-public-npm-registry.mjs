@@ -233,6 +233,7 @@ export async function verifyCleanGlobalCliInstall(version, {
 	const root = await mkdtemp(join(tmpdir(), 'virune-public-npm-'));
 	try {
 		const prefix = resolve(root, 'prefix');
+		const project = resolve(root, 'generated-project');
 		const npmrc = resolve(root, 'user.npmrc');
 		const globalNpmrc = resolve(root, 'global.npmrc');
 		const cache = resolve(root, 'npm-cache');
@@ -248,13 +249,69 @@ export async function verifyCleanGlobalCliInstall(version, {
 			'--replace-registry-host=never', '--no-audit', '--no-fund',
 		], { cwd: root, env });
 		const executable = platform === 'win32' ? resolve(prefix, 'virune.cmd') : resolve(prefix, 'bin/virune');
-		const result = runCommand(executable, ['--version'], { cwd: root, env, capture: true });
-		const versionOutput = result.stdout.trim();
+		const versionResult = runCommand(executable, ['--version'], { cwd: root, env, capture: true });
+		const versionOutput = versionResult.stdout.trim();
 		assert(versionOutput === `virune ${version}`, '$.installation.versionOutput', `expected virune ${version}, got ${versionOutput || '<empty>'}`);
-		return { package: `virune@${version}`, registry: PUBLIC_REGISTRY, versionOutput };
+
+		const initResult = runCommand(executable, ['init', project, '--dependency-source=npm'], { cwd: root, env, capture: true });
+		assert(initResult.stdout.includes('Initialized Virune project'), '$.installation.generatedProject.init', 'Registry CLI init did not report successful project initialization');
+		let generatedManifest;
+		try {
+			generatedManifest = JSON.parse(await readFile(resolve(project, 'package.json'), 'utf8'));
+		} catch (error) {
+			throw new Error(`$.installation.generatedProject.packageJson: generated package.json is missing or malformed: ${error instanceof Error ? error.message : String(error)}`);
+		}
+		const generatedProject = validateGeneratedNpmProjectManifest(generatedManifest, version);
+		runCommand('npm', [
+			'install', `--registry=${PUBLIC_REGISTRY}`, `--userconfig=${npmrc}`,
+			'--replace-registry-host=never', '--package-lock=false', '--no-audit', '--no-fund',
+		], { cwd: project, env });
+		runCommand('npm', ['run', 'check'], { cwd: project, env, capture: true });
+		runCommand('npm', ['run', 'build'], { cwd: project, env, capture: true });
+		const runResult = runCommand('npm', ['run', 'start'], { cwd: project, env, capture: true });
+		assert(runResult.stdout.includes('Hello from Virune'), '$.installation.generatedProject.run', 'generated project did not execute the shipped hello-world entry point');
+		return {
+			package: `virune@${version}`,
+			registry: PUBLIC_REGISTRY,
+			versionOutput,
+			generatedProject: {
+				...generatedProject,
+				install: 'passed',
+				check: 'passed',
+				build: 'passed',
+				run: 'passed',
+			},
+		};
 	} finally {
 		await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 250 });
 	}
+}
+
+export function validateGeneratedNpmProjectManifest(value, version) {
+	const document = record(value, '$.installation.generatedProject.packageJson');
+	assertExactKeys(document, ['name', 'private', 'type', 'scripts', 'dependencies', 'devDependencies'], '$.installation.generatedProject.packageJson');
+	assert(typeof document.name === 'string' && document.name.length > 0, '$.installation.generatedProject.packageJson.name', 'expected generated project name');
+	assert(document.private === true, '$.installation.generatedProject.packageJson.private', 'generated project must remain private');
+	assert(document.type === 'module', '$.installation.generatedProject.packageJson.type', 'expected module package');
+	const scripts = record(document.scripts, '$.installation.generatedProject.packageJson.scripts');
+	assertExactKeys(scripts, ['build', 'start', 'test', 'check', 'fmt'], '$.installation.generatedProject.packageJson.scripts');
+	assert(scripts.build === 'virune build', '$.installation.generatedProject.packageJson.scripts.build', 'unexpected build script');
+	assert(scripts.start === 'virune run', '$.installation.generatedProject.packageJson.scripts.start', 'unexpected start script');
+	assert(scripts.test === 'virune test', '$.installation.generatedProject.packageJson.scripts.test', 'unexpected test script');
+	assert(scripts.check === 'virune check', '$.installation.generatedProject.packageJson.scripts.check', 'unexpected check script');
+	assert(scripts.fmt === 'virune fmt .', '$.installation.generatedProject.packageJson.scripts.fmt', 'unexpected fmt script');
+	const dependencies = record(document.dependencies, '$.installation.generatedProject.packageJson.dependencies');
+	assertExactKeys(dependencies, ['@virune/runtime', '@virune/stdlib'], '$.installation.generatedProject.packageJson.dependencies');
+	assert(dependencies['@virune/runtime'] === version, '$.installation.generatedProject.packageJson.dependencies.@virune/runtime', `expected exact ${version}`);
+	assert(dependencies['@virune/stdlib'] === version, '$.installation.generatedProject.packageJson.dependencies.@virune/stdlib', `expected exact ${version}`);
+	const devDependencies = record(document.devDependencies, '$.installation.generatedProject.packageJson.devDependencies');
+	assertExactKeys(devDependencies, ['virune'], '$.installation.generatedProject.packageJson.devDependencies');
+	assert(devDependencies.virune === version, '$.installation.generatedProject.packageJson.devDependencies.virune', `expected exact ${version}`);
+	return {
+		dependencySource: 'npm',
+		dependencies: { '@virune/runtime': version, '@virune/stdlib': version },
+		devDependencies: { virune: version },
+	};
 }
 
 function readReviewedPublicationPlan(reviewedCommit, { sourceRoot }) {
