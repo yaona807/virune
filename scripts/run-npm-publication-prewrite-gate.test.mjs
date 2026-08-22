@@ -10,7 +10,8 @@ import {
 	NPM_PUBLICATION_PRE_WRITE_REQUIREMENTS,
 } from './npm-publication-authorization-contract.mjs';
 import {
-	finalizeNpmPublicationPrewriteGate,
+	buildNpmPublicationPrewriteGateReport,
+	githubEvidenceSetIdentity,
 	parseNpmPublicationPrewriteArguments,
 	runNpmPublicationPrewriteGate,
 	runNpmPublicationPrewriteGateCli,
@@ -61,8 +62,8 @@ function stableBytes(report = stableReleaseReport()) {
 	return Buffer.from(`${JSON.stringify(report, null, 2)}\n`, 'utf8');
 }
 
-function finalize(overrides = {}) {
-	return finalizeNpmPublicationPrewriteGate({
+function build(overrides = {}) {
+	return buildNpmPublicationPrewriteGateReport({
 		stableReleaseEvidenceBytes: stableBytes(),
 		authorizationReport: authorizationReport(),
 		reviewedCommit,
@@ -78,41 +79,54 @@ test('existing GitHub stable release gate does not acquire an unconditional npm 
 	assert.equal(policy.requirements.some(requirement => requirement.id.includes('prewrite') || requirement.id.includes('pre-write')), false);
 });
 
-test('valid finalized release and canonical authorization persist before reaching mutation exactly once', async () => {
-	const order = [];
-	let received;
-	let persisted;
-	const report = await finalize({
-		persist: async value => {
-			order.push('persist');
-			persisted = value;
-		},
-		mutation: async value => {
-			order.push('mutation');
-			received = value;
-		},
-	});
-	assert.deepEqual(order, ['persist', 'mutation']);
+test('valid finalized release and canonical authorization build deterministic pre-write evidence', () => {
+	const report = build();
 	assert.equal(report.publicationReady, true);
 	assert.equal(report.reviewedCommit, reviewedCommit);
 	assert.equal(report.evidenceSetId, evidenceSetId);
 	assert.equal(report.version, releaseVersion);
-	assert.deepEqual(persisted, report);
-	assert.deepEqual(received.prewriteGate, report);
-	assert.equal(received.authorization.kind, NPM_PUBLICATION_AUTHORIZATION_REPORT_KIND);
+	assert.equal(report.authorization.kind, NPM_PUBLICATION_AUTHORIZATION_REPORT_KIND);
 	assert.deepEqual(report.stableReleaseEvidence, {
 		sha256: createHash('sha256').update(stableBytes()).digest('hex'),
 		bytes: stableBytes().byteLength,
 	});
 });
 
-test('mutation cannot run without persisted pre-write gate evidence', async () => {
+test('pure report builder cannot invoke a caller-supplied mutation capability', () => {
 	let calls = 0;
-	await assert.rejects(() => finalize({ mutation: async () => { calls += 1; } }), /requires persisted pre-write gate evidence/u);
+	const report = build({ mutation: () => { calls += 1; } });
+	assert.equal(report.publicationReady, true);
 	assert.equal(calls, 0);
 });
 
-test('stable release evidence identity and pass state fail closed before persistence or mutation', async () => {
+test('GitHub execution identity is derived from run id and rerun attempt', () => {
+	assert.equal(githubEvidenceSetIdentity({
+		GITHUB_RUN_ID: '32560000000',
+		GITHUB_RUN_ATTEMPT: '1',
+	}), 'github-actions:32560000000:1');
+	assert.equal(githubEvidenceSetIdentity({
+		GITHUB_RUN_ID: '32560000000',
+		GITHUB_RUN_ATTEMPT: '2',
+	}), 'github-actions:32560000000:2');
+});
+
+test('GitHub execution identity fails closed on missing or malformed run identity', () => {
+	for (const environment of [
+		{},
+		{ GITHUB_RUN_ID: '32560000000' },
+		{ GITHUB_RUN_ATTEMPT: '1' },
+		{ GITHUB_RUN_ID: '0', GITHUB_RUN_ATTEMPT: '1' },
+		{ GITHUB_RUN_ID: '-1', GITHUB_RUN_ATTEMPT: '1' },
+		{ GITHUB_RUN_ID: '032560000000', GITHUB_RUN_ATTEMPT: '1' },
+		{ GITHUB_RUN_ID: '32560000000', GITHUB_RUN_ATTEMPT: '0' },
+		{ GITHUB_RUN_ID: '32560000000', GITHUB_RUN_ATTEMPT: '01' },
+		{ GITHUB_RUN_ID: 'run', GITHUB_RUN_ATTEMPT: '1' },
+	]) {
+		assert.throws(() => githubEvidenceSetIdentity(environment), /positive decimal integer string/u);
+	}
+});
+
+test('stable release evidence identity and pass state fail closed', () => {
 	const mutations = [
 		report => { report.schemaVersion = 2; },
 		report => { report.version = '1.1.0-rc.2'; },
@@ -132,15 +146,7 @@ test('stable release evidence identity and pass state fail closed before persist
 	for (const mutate of mutations) {
 		const stable = stableReleaseReport();
 		mutate(stable);
-		let persisted = 0;
-		let mutationsCalled = 0;
-		await assert.rejects(() => finalize({
-			stableReleaseEvidenceBytes: stableBytes(stable),
-			persist: async () => { persisted += 1; },
-			mutation: async () => { mutationsCalled += 1; },
-		}));
-		assert.equal(persisted, 0);
-		assert.equal(mutationsCalled, 0);
+		assert.throws(() => build({ stableReleaseEvidenceBytes: stableBytes(stable) }));
 	}
 });
 
@@ -161,7 +167,7 @@ test('fresh stable gate bytes must match the exact report generated in the same 
 	assert.doesNotThrow(() => validateGeneratedStableReleaseEvidence(structuredClone(generated), generated, { reviewedCommit, releaseVersion }));
 });
 
-test('authorization report drift fails closed before persistence or mutation', async () => {
+test('authorization report drift fails closed', () => {
 	const mutations = [
 		report => { report.schemaVersion = 2; },
 		report => { report.kind = 'other'; },
@@ -179,15 +185,7 @@ test('authorization report drift fails closed before persistence or mutation', a
 	for (const mutate of mutations) {
 		const authorization = authorizationReport();
 		mutate(authorization);
-		let persisted = 0;
-		let mutationsCalled = 0;
-		await assert.rejects(() => finalize({
-			authorizationReport: authorization,
-			persist: async () => { persisted += 1; },
-			mutation: async () => { mutationsCalled += 1; },
-		}));
-		assert.equal(persisted, 0);
-		assert.equal(mutationsCalled, 0);
+		assert.throws(() => build({ authorizationReport: authorization }));
 	}
 });
 
@@ -200,14 +198,14 @@ test('pre-write CLI parser rejects unknown, positional, duplicate and empty opti
 	assert.deepEqual(parseNpmPublicationPrewriteArguments([
 		`--expected-commit=${reviewedCommit}`,
 		`--version=${releaseVersion}`,
-		`--evidence-set-id=${evidenceSetId}`,
-	]), { reviewedCommit, releaseVersion, evidenceSetId });
+	]), { reviewedCommit, releaseVersion });
 	for (const args of [
 		['--unknown=value'],
 		['positional'],
 		['--versoin=1.1.0-rc.1'],
 		['--version=1.1.0', '--version=1.1.0-rc.1'],
-		['--evidence-set-id='],
+		['--version='],
+		[`--evidence-set-id=${evidenceSetId}`],
 	]) {
 		assert.throws(() => parseNpmPublicationPrewriteArguments(args));
 	}
@@ -225,7 +223,7 @@ test('CLI parse failure invalidates stale passing pre-write output before valida
 	}
 });
 
-test('malformed direct-run identity invalidates stale passing pre-write output before repository checks', async () => {
+test('malformed direct-run identity invalidates stale passing pre-write output before environment checks', async () => {
 	const root = mkdtempSync(join(tmpdir(), 'virune-prewrite-direct-'));
 	try {
 		const outputPath = join(root, 'prewrite.json');
@@ -233,7 +231,6 @@ test('malformed direct-run identity invalidates stale passing pre-write output b
 		await assert.rejects(() => runNpmPublicationPrewriteGate({
 			reviewedCommit: 'ABC',
 			releaseVersion,
-			evidenceSetId,
 			outputPath,
 		}), /full lowercase commit SHA/u);
 		assert.equal(existsSync(outputPath), false);
@@ -246,13 +243,12 @@ test('canonical runner refuses to return a non-persisted passing gate', async ()
 	await assert.rejects(() => runNpmPublicationPrewriteGate({
 		reviewedCommit,
 		releaseVersion,
-		evidenceSetId,
 		outputPath: null,
 	}), /non-empty non-whitespace string/u);
 });
 
-test('gate evidence is deterministic for identical stable and authorization inputs', async () => {
-	const first = await finalize();
-	const second = await finalize();
+test('gate evidence is deterministic for identical stable and authorization inputs', () => {
+	const first = build();
+	const second = build();
 	assert.deepEqual(second, first);
 });
