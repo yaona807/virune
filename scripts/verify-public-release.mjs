@@ -78,14 +78,9 @@ export async function readReviewedNpmPublicationPolicy(reviewedCommit, version, 
 	readReviewed = readReviewedFile,
 	fallbackPolicy = NPM_PUBLICATION_POLICY,
 } = {}) {
-	let source;
-	try {
-		source = await readReviewed(NPM_PUBLICATION_POLICY_PATH, { sourceRoot, reviewedCommit });
-	} catch (error) {
-		const legacyPolicy = registryPolicyForVersion(version, fallbackPolicy.firstStableRegistryRelease, fallbackPolicy.distTagPolicy);
-		if (legacyPolicy.registryVersionEligible) throw error;
-		return fallbackPolicy;
-	}
+	const fallbackVersionPolicy = registryPolicyForVersion(version, fallbackPolicy.firstStableRegistryRelease, fallbackPolicy.distTagPolicy);
+	if (!fallbackVersionPolicy.registryVersionEligible) return fallbackPolicy;
+	const source = await readReviewed(NPM_PUBLICATION_POLICY_PATH, { sourceRoot, reviewedCommit });
 	try {
 		return JSON.parse(Buffer.from(source).toString('utf8'));
 	} catch (error) {
