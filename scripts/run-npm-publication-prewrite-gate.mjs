@@ -29,7 +29,7 @@ export async function runNpmPublicationPrewriteGate({ reviewedCommit, releaseVer
 	await invalidateExecutionEvidence();
 	if (mutation !== undefined) assert(typeof mutation === 'function', '$.mutation', 'expected a function');
 	const commit = fullCommitSha(reviewedCommit, '$.reviewedCommit');
-	const version = nonEmptyString(releaseVersion, '$.releaseVersion');
+	const version = releaseVersionText(releaseVersion, '$.releaseVersion');
 	const execution = githubEvidenceSetIdentity(process.env);
 	verifyExactCleanCheckout(commit);
 	assert(process.env.GITHUB_SHA === commit, '$.environment.GITHUB_SHA', `expected exact reviewed commit ${commit}`);
@@ -92,7 +92,7 @@ export function buildNpmPublicationPrewriteGateReport({
 	evidenceSetId,
 }) {
 	const commit = fullCommitSha(reviewedCommit, '$.reviewedCommit');
-	const version = nonEmptyString(releaseVersion, '$.releaseVersion');
+	const version = releaseVersionText(releaseVersion, '$.releaseVersion');
 	const execution = evidenceSetIdentity(evidenceSetId, '$.evidenceSetId');
 	const stableBytes = Buffer.from(stableReleaseEvidenceBytes);
 	const stableReleaseReport = parseJson(stableBytes, '$.stableReleaseEvidence');
@@ -137,6 +137,7 @@ export function validateGeneratedStableReleaseEvidence(persistedReport, generate
 }
 
 export function validateStableReleaseEvidence(value, { reviewedCommit, releaseVersion }) {
+	const version = releaseVersionText(releaseVersion, '$.stableReleaseEvidence.expectedVersion');
 	const report = record(value, '$.stableReleaseEvidence');
 	assertExactKeys(report, [
 		'schemaVersion',
@@ -150,11 +151,11 @@ export function validateStableReleaseEvidence(value, { reviewedCommit, releaseVe
 		'passed',
 	], '$.stableReleaseEvidence');
 	assert(report.schemaVersion === 1, '$.stableReleaseEvidence.schemaVersion', 'expected schemaVersion 1');
-	assert(report.version === releaseVersion, '$.stableReleaseEvidence.version', `expected release version ${releaseVersion}`);
+	assert(report.version === version, '$.stableReleaseEvidence.version', `expected release version ${version}`);
 	assert(report.commit === reviewedCommit, '$.stableReleaseEvidence.commit', `expected reviewed commit ${reviewedCommit}`);
 	assert(report.expectedNightlySha === reviewedCommit, '$.stableReleaseEvidence.expectedNightlySha', `expected Nightly evidence for ${reviewedCommit}`);
 	assert(report.passed === true, '$.stableReleaseEvidence.passed', 'stable release gate must have passed');
-	validateReleaseRef(report.ref, releaseVersion);
+	validateReleaseRef(report.ref, version);
 	assert(typeof report.generatedAt === 'string' && Number.isFinite(Date.parse(report.generatedAt)), '$.stableReleaseEvidence.generatedAt', 'expected an ISO timestamp');
 	const checks = array(report.checks, '$.stableReleaseEvidence.checks');
 	const requirements = array(report.requirements, '$.stableReleaseEvidence.requirements');
@@ -166,6 +167,7 @@ export function validateStableReleaseEvidence(value, { reviewedCommit, releaseVe
 }
 
 export function validateAuthorizationReport(value, { reviewedCommit, releaseVersion, evidenceSetId }) {
+	const version = releaseVersionText(releaseVersion, '$.authorization.expectedVersion');
 	const report = record(value, '$.authorization');
 	assertExactKeys(report, [
 		'schemaVersion',
@@ -183,7 +185,7 @@ export function validateAuthorizationReport(value, { reviewedCommit, releaseVers
 	assert(report.publicationReady === true, '$.authorization.publicationReady', 'authorization must be ready');
 	assert(report.reviewedCommit === reviewedCommit, '$.authorization.reviewedCommit', `expected reviewed commit ${reviewedCommit}`);
 	assert(report.evidenceSetId === evidenceSetId, '$.authorization.evidenceSetId', `expected evidence set ${evidenceSetId}`);
-	assert(report.version === releaseVersion, '$.authorization.version', `expected release version ${releaseVersion}`);
+	assert(report.version === version, '$.authorization.version', `expected release version ${version}`);
 	const manifest = record(report.publicationManifest, '$.authorization.publicationManifest');
 	assertExactKeys(manifest, ['sha256', 'bytes'], '$.authorization.publicationManifest');
 	assert(typeof manifest.sha256 === 'string' && /^[0-9a-f]{64}$/u.test(manifest.sha256), '$.authorization.publicationManifest.sha256', 'expected lowercase SHA-256');
@@ -275,6 +277,10 @@ function parseJson(bytes, path) {
 function fullCommitSha(value, path) {
 	assert(typeof value === 'string' && /^[0-9a-f]{40}$/u.test(value), path, 'expected a full lowercase commit SHA');
 	return value;
+}
+
+function releaseVersionText(value, path) {
+	return parseReleaseVersion(value, path).text;
 }
 
 function evidenceSetIdentity(value, path) {
