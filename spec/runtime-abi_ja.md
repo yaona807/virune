@@ -2,58 +2,58 @@
 
 [English](runtime-abi.md)
 
-Virune 1.0.0はES2022 moduleをRuntime ABI v2向けに出力します。
+Virune 1.0.0は、Runtime ABI v2に従うES2022モジュールを出力します。
 
-## Native表現
+## ネイティブ表現
 
-- Primitiveは検証済みJavaScript primitive表現を使用します。
-- Recordはenumerable fieldと非enumerableなnominal `$type` IDを持つnull-prototype objectです。
-- Enumは安定したtag付きaggregate値です。
-- Newtypeはcompile-timeの名前的同一性を維持し、Runtimeでは検証済み基礎表現へeraseします。
-- Type aliasはRuntime同一性を持ちません。
-- OptionとResultはRuntime constructorとtagを使用します。
-- Native List、Map、SetはViruneコードから不変です。
+- プリミティブ型は、検証済みのJavaScriptプリミティブ表現を使います。
+- recordは、列挙可能なフィールドと列挙不可の名前的`$type` IDを持つ、prototypeなしのオブジェクトです。
+- enumは、安定したタグ付き集約値を使います。
+- newtypeはコンパイル時の名前的同一性を保ち、実行時には検証済みの基礎表現へ消去します。
+- type aliasは実行時の同一性を持ちません。
+- OptionとResultはRuntimeのコンストラクターとタグを使います。
+- ネイティブのList、Map、SetはViruneコードから変更できません。
 
-## 構造的EqとHash
+## 構造的なEqとHash
 
-Runtime ABI v2にはprotocol registryがありません。EqとHashは対応する不変値への固定された構造演算です。名前的aggregate IDも比較対象となるため、形が同じでも別宣言の値は同一になりません。Function、resource、Foreign handle、対応外の可変値は構造比較・Hash対象外です。
+Runtime ABI v2にはプロトコルレジストリがありません。EqとHashは、対応している不変値に対する固定の構造演算です。名前的な集約IDも比較に含まれるため、形が同じでも別の宣言から作られた値は同一として扱えません。関数、resource、Foreign handle、対応していない可変値は、構造比較やHashの対象外です。
 
-Compiler生成の`Eq`と`Hash`はこの固定演算を使用し、利用者は意味を差し替えられません。
+コンパイラーが生成する`Eq`と`Hash`はこの固定演算を使います。利用者側のコードで意味を差し替えることはできません。
 
 ## Debug
 
-Compiler生成Debugは対応値だけを安定した開発者向け表現へ変換します。明示opt-inであり、TypeScript Bindingへ自動生成しません。
+コンパイラーが生成するDebugは、対応している値だけを安定した開発者向け表現へ変換します。明示的に有効化した場合だけ使われ、TypeScriptバインディングには自動生成されません。
 
-## Cleanup
+## 後始末
 
-`defer`は現在のfunction／task scopeへcleanupを登録します。通常return、早期return、`?`伝播、panic、async完了でLIFO実行します。Primary failureとcleanup failureはRuntimeのerror集約契約に従って保持します。
+`defer`は、現在の関数／タスクのscopeへ後始末を登録します。通常の`return`、早期`return`、`?`による伝播、panic、非同期処理の完了時に、後入れ先出し（LIFO）で実行します。本体側の失敗と後始末中の失敗は、Runtimeのエラー集約契約に従って保持します。
 
 ## 構造化並行処理
 
-すべてのtaskはscopeに所属します。`parallel`と`parallel try`はcurrent scopeでchildを開始し、必要に応じてsiblingをcancelし、全childのsettleを待ち、source順による決定的failure選択を維持します。通常のVirune APIはdetached taskを公開しません。
+すべてのタスクはscopeに属します。`parallel`と`parallel try`は現在のscopeで子タスクを開始し、必要な場合は兄弟タスクをキャンセルし、すべての子タスクがsettleするまで待ちます。失敗を選ぶ順序はソース上の順序に基づき、決定的です。Runtimeは、通常のVirune APIを通じてdetached taskを公開しません。
 
 ## Interop ABI v2 descriptor
 
-Descriptorは検証済みprimitive、option、result、bytes、対応collection、record、enum、type alias、newtypeを表現します。Record fieldは次を保持できます。
+descriptorは、検証済みのプリミティブ、option、result、bytes、対応しているcollection、record、enum、type alias、newtypeを表現します。recordのフィールドには次の情報を持たせられます。
 
-- 外部JavaScript property名
-- Optional property欠落用`missingAsNone`
-- 出力時property省略用`omitWhenNone`
+- 外部JavaScriptでのプロパティ名
+- optionalなプロパティが欠けた場合に使う`missingAsNone`
+- 出力時にプロパティを省略するための`omitWhenNone`
 - 境界で期待するnull／undefined表現
-- Compile-time JSON defaultとstrict metadata
+- コンパイル時のJSON既定値と厳格性メタデータ
 
-Record／Enum descriptorは完全なnominal `typeId`（`package#module:Type`）を持ちます。再帰または未解決descriptorを安全なaggregateとして扱わず、`Unknown`へfallbackするかAdapterを要求します。
+recordとenumのdescriptorは、完全な名前的`typeId`（`package#module:Type`）を持ちます。再帰または未解決のdescriptorを暗黙に安全な集約値として扱いません。`Unknown`へフォールバックするか、Adapterを要求します。
 
-Safe descriptorはcallback検証、object keyを持つ任意JavaScript Map／Set、TypeScript `Record<K, V>`変換を保証しません。
+Safe descriptorは、callbackの検証、オブジェクトをキーにした任意のJavaScript Map／Set変換、TypeScriptの`Record<K, V>`変換を保証しません。
 
 ## JavaScript export
 
-`@jsExport` wrapperは入力を検証し、出力を変換し、必要なoptional末尾引数を省略し、JavaScriptへ公開するNative aggregateを防御的copyします。Foreign handleを検証済みNative値として扱いません。
+`@jsExport`のラッパーは入力値を検証し、出力値を変換し、必要な場合は末尾のoptional引数を省略します。JavaScriptへ公開するネイティブ集約値は防御的にコピーします。Foreign handleを検証済みのネイティブ値として扱うことはありません。
 
-## 公開ABI snapshot
+## 公開ABIスナップショット
 
-`packages/public-abi.snapshot.json`は、Runtime v2、Interop v2、Stdlib entry pointのpackage export mapと公開宣言surfaceをreview可能な形で記録します。また、生成JavaScriptがimportする全Runtime v2 symbolも記録します。
+`packages/public-abi.snapshot.json`は、Runtime v2、Interop v2、標準ライブラリのエントリーポイントについて、packageのexport mapと公開宣言の範囲をレビューできる形で記録します。また、生成JavaScriptがimportするRuntime v2の全シンボルも記録します。
 
-互換性は`npm run abi:check`で確認します。公開symbolの削除・rename・signature変更、package export map変更、Runtime v2 surface外のsymbolをEmitterが参照した場合はCIが失敗します。追加変更は別種としてreportしますが、`npm run abi:update`による意図的なsnapshot更新とreviewが必要です。
+互換性は`npm run abi:check`で確認します。公開シンボルの削除・名前変更・シグネチャ変更、packageのexport map変更、Runtime v2の公開範囲外にあるシンボルをEmitterが参照した場合はCIが失敗します。追加だけの変更は別種として報告しますが、それでもレビューと`npm run abi:update`による意図的なスナップショット更新が必要です。
 
-破壊的変更では新しいversion付きABI pathとmigration文書が必要です。snapshot更新だけで破壊的変更が互換になるわけではありません。
+破壊的変更には、新しいバージョン付きABIパスと移行文書が必要です。スナップショットを更新しただけで、破壊的変更が互換になるわけではありません。
