@@ -22,22 +22,24 @@ const PRE_WRITE_EVIDENCE = resolve(repositoryRoot, '.cache/npm-publication-autho
 const CLI_OPTIONS = Object.freeze([
 	['--expected-commit=', 'reviewedCommit'],
 	['--version=', 'releaseVersion'],
-	['--evidence-set-id=', 'evidenceSetId'],
 ]);
 
 export async function runNpmPublicationPrewriteGate({
 	reviewedCommit,
 	releaseVersion,
-	evidenceSetId,
 	mutation,
 	outputPath = DEFAULT_OUTPUT,
 } = {}) {
 	const output = outputFilePath(outputPath, '$.outputPath');
 	await rm(output, { force: true });
-	if (mutation !== undefined) assert(resolve(output) === DEFAULT_OUTPUT, '$.outputPath', 'mutation requires the canonical pre-write gate output path');
+	await rm(DEFAULT_STABLE_EVIDENCE, { force: true });
+	if (mutation !== undefined) {
+		assert(typeof mutation === 'function', '$.mutation', 'expected a function');
+		assert(resolve(output) === DEFAULT_OUTPUT, '$.outputPath', 'mutation requires the canonical pre-write gate output path');
+	}
 	const commit = fullCommitSha(reviewedCommit, '$.reviewedCommit');
 	const version = nonEmptyString(releaseVersion, '$.releaseVersion');
-	const execution = evidenceSetIdentity(evidenceSetId, '$.evidenceSetId');
+	const execution = githubEvidenceSetIdentity(process.env);
 	verifyExactCleanCheckout(commit);
 	assert(process.env.GITHUB_SHA === commit, '$.environment.GITHUB_SHA', `expected exact reviewed commit ${commit}`);
 
@@ -57,28 +59,32 @@ export async function runNpmPublicationPrewriteGate({
 		evidencePath: PRE_WRITE_EVIDENCE,
 		outputPath: null,
 	});
-	return finalizeNpmPublicationPrewriteGate({
+	const report = buildNpmPublicationPrewriteGateReport({
 		stableReleaseEvidenceBytes: stableEvidenceBytes,
 		authorizationReport,
 		reviewedCommit: commit,
 		releaseVersion: version,
 		evidenceSetId: execution,
-		persist: async report => {
-			await mkdir(dirname(output), { recursive: true });
-			await writeFile(output, `${JSON.stringify(report, null, '\t')}\n`, 'utf8');
-		},
-		mutation,
 	});
+	await mkdir(dirname(output), { recursive: true });
+	await writeFile(output, `${JSON.stringify(report, null, '\t')}\n`, 'utf8');
+	const persistedReport = parseJson(await readFile(output), '$.prewriteGateOutput');
+	assert(isDeepStrictEqual(persistedReport, report), '$.prewriteGateOutput', 'persisted pre-write gate evidence differs from the validated report');
+	if (mutation !== undefined) {
+		await mutation({
+			prewriteGate: structuredClone(report),
+			authorization: structuredClone(authorizationReport),
+		});
+	}
+	return report;
 }
 
-export async function finalizeNpmPublicationPrewriteGate({
+export function buildNpmPublicationPrewriteGateReport({
 	stableReleaseEvidenceBytes,
 	authorizationReport,
 	reviewedCommit,
 	releaseVersion,
 	evidenceSetId,
-	persist,
-	mutation,
 }) {
 	const commit = fullCommitSha(reviewedCommit, '$.reviewedCommit');
 	const version = nonEmptyString(releaseVersion, '$.releaseVersion');
@@ -91,7 +97,7 @@ export async function finalizeNpmPublicationPrewriteGate({
 		releaseVersion: version,
 		evidenceSetId: execution,
 	});
-	const report = {
+	return {
 		schemaVersion: 1,
 		kind: KIND,
 		publicationReady: true,
@@ -104,21 +110,17 @@ export async function finalizeNpmPublicationPrewriteGate({
 		},
 		authorization: {
 			kind: authorization.kind,
-			publicationManifest: authorization.publicationManifest,
+			publicationManifest: { ...authorization.publicationManifest },
 			satisfiedPreWriteRequirements: [...authorization.satisfiedPreWriteRequirements],
 			remainingPostWriteCompletionRequirements: [...authorization.remainingPostWriteCompletionRequirements],
 		},
 	};
-	if (mutation !== undefined) assert(typeof persist === 'function', '$.persist', 'mutation requires persisted pre-write gate evidence');
-	if (persist !== undefined) {
-		assert(typeof persist === 'function', '$.persist', 'expected a function');
-		await persist(structuredClone(report));
-	}
-	if (mutation !== undefined) {
-		assert(typeof mutation === 'function', '$.mutation', 'expected a function');
-		await mutation({ prewriteGate: structuredClone(report), authorization: structuredClone(authorization) });
-	}
-	return report;
+}
+
+export function githubEvidenceSetIdentity(environment = process.env) {
+	const runId = positiveDecimal(environment.GITHUB_RUN_ID, '$.environment.GITHUB_RUN_ID');
+	const runAttempt = positiveDecimal(environment.GITHUB_RUN_ATTEMPT, '$.environment.GITHUB_RUN_ATTEMPT');
+	return `github-actions:${runId}:${runAttempt}`;
 }
 
 export function validateGeneratedStableReleaseEvidence(persistedReport, generatedReport, expected) {
@@ -206,7 +208,6 @@ export async function runNpmPublicationPrewriteGateCli(argumentsList, { outputPa
 	return runNpmPublicationPrewriteGate({
 		reviewedCommit: parsed.reviewedCommit,
 		releaseVersion: parsed.releaseVersion,
-		evidenceSetId: parsed.evidenceSetId,
 		outputPath: output,
 	});
 }
@@ -268,6 +269,11 @@ function evidenceSetIdentity(value, path) {
 	const identity = nonEmptyString(value, path);
 	assert(/^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$/u.test(identity), path, 'invalid evidence set identity');
 	return identity;
+}
+
+function positiveDecimal(value, path) {
+	assert(typeof value === 'string' && /^[1-9]\d*$/u.test(value), path, 'expected a positive decimal integer string');
+	return value;
 }
 
 function outputFilePath(value, path) {
