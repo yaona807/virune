@@ -51,10 +51,9 @@ function hostFor(mainPath: string): ProjectHost {
 }
 
 function mainModule(result: Awaited<ReturnType<typeof buildProject>>) {
-	const main = result.modules.find(module => module.source.path.endsWith('/src/main.virune'));
-	assert.ok(main?.ast);
-	assert.ok(main.semantic);
-	return main;
+	const checked = result.modules.filter(module => module.ast !== undefined && module.semantic !== undefined);
+	assert.equal(checked.length, 1, 'test project must contain exactly one checked Virune module');
+	return checked[0]!;
 }
 
 function operationKinds(result: Awaited<ReturnType<typeof buildProject>>): readonly string[] {
