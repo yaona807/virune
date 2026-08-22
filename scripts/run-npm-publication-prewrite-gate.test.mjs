@@ -62,10 +62,14 @@ function stableBytes(report = stableReleaseReport()) {
 	return Buffer.from(`${JSON.stringify(report, null, 2)}\n`, 'utf8');
 }
 
+function authorizationBytes(report = authorizationReport()) {
+	return Buffer.from(`${JSON.stringify(report, null, '\t')}\n`, 'utf8');
+}
+
 function build(overrides = {}) {
 	return buildNpmPublicationPrewriteGateReport({
 		stableReleaseEvidenceBytes: stableBytes(),
-		authorizationReport: authorizationReport(),
+		authorizationEvidenceBytes: authorizationBytes(),
 		reviewedCommit,
 		releaseVersion,
 		evidenceSetId,
@@ -79,7 +83,7 @@ test('existing GitHub stable release gate does not acquire an unconditional npm 
 	assert.equal(policy.requirements.some(requirement => requirement.id.includes('prewrite') || requirement.id.includes('pre-write')), false);
 });
 
-test('valid finalized release and canonical authorization build deterministic pre-write evidence', () => {
+test('valid finalized release and canonical authorization build exact pre-write evidence', () => {
 	const report = build();
 	assert.equal(report.publicationReady, true);
 	assert.equal(report.reviewedCommit, reviewedCommit);
@@ -90,6 +94,8 @@ test('valid finalized release and canonical authorization build deterministic pr
 		sha256: createHash('sha256').update(stableBytes()).digest('hex'),
 		bytes: stableBytes().byteLength,
 	});
+	assert.equal(report.authorization.sha256, createHash('sha256').update(authorizationBytes()).digest('hex'));
+	assert.equal(report.authorization.bytes, authorizationBytes().byteLength);
 });
 
 test('pure report builder cannot invoke a caller-supplied mutation capability', () => {
@@ -167,6 +173,15 @@ test('fresh stable gate bytes must match the exact report generated in the same 
 	assert.doesNotThrow(() => validateGeneratedStableReleaseEvidence(structuredClone(generated), generated, { reviewedCommit, releaseVersion }));
 });
 
+test('authorization report bytes are the validated and hashed source of truth', () => {
+	const changed = authorizationReport();
+	changed.publicationManifest.bytes += 1;
+	const first = build();
+	const second = build({ authorizationEvidenceBytes: authorizationBytes(changed) });
+	assert.notEqual(second.authorization.sha256, first.authorization.sha256);
+	assert.equal(second.authorization.publicationManifest.bytes, changed.publicationManifest.bytes);
+});
+
 test('authorization report drift fails closed', () => {
 	const mutations = [
 		report => { report.schemaVersion = 2; },
@@ -185,8 +200,9 @@ test('authorization report drift fails closed', () => {
 	for (const mutate of mutations) {
 		const authorization = authorizationReport();
 		mutate(authorization);
-		assert.throws(() => build({ authorizationReport: authorization }));
+		assert.throws(() => build({ authorizationEvidenceBytes: authorizationBytes(authorization) }));
 	}
+	assert.throws(() => build({ authorizationEvidenceBytes: Buffer.from('{') }), /malformed JSON/u);
 });
 
 test('stable and authorization validators reject malformed outer schemas independently', () => {
