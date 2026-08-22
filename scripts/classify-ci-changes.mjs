@@ -6,15 +6,19 @@ import { fileURLToPath } from 'node:url';
 const repositoryRoot = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const documentationFiles = new Set([
 	'CODE_OF_CONDUCT.md',
+	'CODE_OF_CONDUCT_ja.md',
+	'COMPATIBILITY.md',
+	'COMPATIBILITY_ja.md',
 	'CONTRIBUTING.md',
+	'CONTRIBUTING_ja.md',
 	'README.md',
 	'README_ja.md',
 	'SECURITY.md',
+	'SECURITY_ja.md',
+	'THIRD_PARTY_NOTICES.md',
 ]);
 const documentationDirectories = Object.freeze([
 	'.github/PULL_REQUEST_TEMPLATE/',
-	'.github/self-hosting-operations/',
-	'docs/',
 ]);
 const selfhostInventoryFiles = new Set([
 	'.github/actions-policy.json',

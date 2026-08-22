@@ -11,10 +11,10 @@ const ATTRIBUTE_PATTERN = /\s+([a-z][a-z0-9-]*)=(?:"((?:\\.|[^"])*)"|'((?:\\.|[^
 
 export async function verifyDocumentationExamples(root = DEFAULT_ROOT, options = {}) {
 	const execute = options.execute ?? true;
-	const manifestPath = resolve(root, 'docs/documentation-examples.json');
+	const manifestPath = resolve(root, '.github/documentation-examples.json');
 	const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
 	if (manifest.schemaVersion !== 1 || !isRecord(manifest.documents) || !Array.isArray(manifest.inlineDocuments)) {
-		throw new Error('Invalid docs/documentation-examples.json');
+		throw new Error('Invalid .github/documentation-examples.json');
 	}
 
 	const documentPaths = [...new Set([...Object.keys(manifest.documents), ...manifest.inlineDocuments])].sort();

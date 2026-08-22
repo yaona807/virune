@@ -140,48 +140,6 @@ export function verifyNpmPublicationRecoveryPolicy(root = process.cwd()) {
 	return policy;
 }
 
-export function verifyNpmPublicationRecoveryDocumentation(policy, english, japanese) {
-	const requiredEnglish = [
-		'fresh public npm Registry observation',
-		'exact subset',
-		'missing reviewed candidates only',
-		'registry `dist.integrity`',
-		'downloaded tarball SHA-256',
-		'source repository, source commit, and provenance workflow',
-		'permanently blocks reuse of that package version',
-		'unknown state authorizes no writes',
-		'dist-tag promotion',
-		'SemVer precedence',
-		'never move a canonical tag backward',
-		'newer version, recovery is stale and must halt',
-		'idempotent tag convergence',
-		'reobserve and converge tags only',
-		'public Registry verification',
-	];
-	const requiredJapanese = [
-		'public npm Registryをfreshに観測',
-		'exact subset',
-		'未publishのreview済みcandidateだけ',
-		'Registryの`dist.integrity`',
-		'downloadしたtarballのSHA-256',
-		'source repository・source commit・provenance workflow',
-		'そのpackage versionの再利用を永久に禁止',
-		'unknown状態はwriteを一切許可しない',
-		'dist-tag promotion',
-		'SemVer precedence',
-		'canonical tagを過去versionへ巻き戻さない',
-		'より新しいversionを指している場合、recoveryはstaleとして停止',
-		'冪等なtag収束',
-		'tagだけを再観測して収束',
-		'public Registry verification',
-	];
-	for (const text of requiredEnglish) assert(english.includes(text), '$docs.en', `English recovery documentation is missing canonical phrase: ${text}`);
-	for (const text of requiredJapanese) assert(japanese.includes(text), '$docs.ja', `Japanese recovery documentation is missing canonical phrase: ${text}`);
-	assert(english.includes(policy.distTagPhase.canonicalStableTag) && english.includes(policy.distTagPhase.canonicalPrereleaseTag), '$docs.en', 'English docs must name canonical dist-tags');
-	assert(japanese.includes(policy.distTagPhase.canonicalStableTag) && japanese.includes(policy.distTagPhase.canonicalPrereleaseTag), '$docs.ja', 'Japanese docs must name canonical dist-tags');
-	return true;
-}
-
 function recoveryState(value, path) {
 	const item = record(value, path);
 	assertExactKeys(item, ['state', 'decision', 'writes'], path);
