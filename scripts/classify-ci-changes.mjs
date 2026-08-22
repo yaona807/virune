@@ -77,18 +77,18 @@ const selfhostRequiredGateDirectories = Object.freeze([
 ]);
 
 export function classifyChangedPaths(paths) {
-	const normalized = [...new Set(paths.map(path => path.trim().replaceAll('\\', '/')).filter(Boolean))].sort();
-	const documentationOnly = normalized.length > 0 && normalized.every(isDocumentationPath);
-	const selfhostInventoryRequired = normalized.length === 0
-		|| normalized.some(isSelfhostInventoryPath);
-	const selfhostRequiredGateRequired = normalized.length === 0
-		|| normalized.some(isSelfhostRequiredGatePath);
+	const exactPaths = [...new Set(paths.filter(path => path.length > 0))].sort();
+	const documentationOnly = exactPaths.length > 0 && exactPaths.every(isDocumentationPath);
+	const selfhostInventoryRequired = exactPaths.length === 0
+		|| exactPaths.some(isSelfhostInventoryPath);
+	const selfhostRequiredGateRequired = exactPaths.length === 0
+		|| exactPaths.some(isSelfhostRequiredGatePath);
 	return {
 		docsOnly: documentationOnly,
 		selfhostInventoryRequired,
 		selfhostRequiredGateRequired,
-		changedCount: normalized.length,
-		paths: normalized,
+		changedCount: exactPaths.length,
+		paths: exactPaths,
 	};
 }
 
