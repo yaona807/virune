@@ -26,7 +26,7 @@ type CheckedModuleMap = ReadonlyMap<A.ModuleNode, SemanticModel>;
 
 interface SemanticReuseSeal {
 	readonly operationState: string;
-	readonly semanticHasErrors: boolean;
+	readonly semanticDiagnosticsState: string;
 }
 
 const currentModulesByCache = new WeakMap<ProjectBuildCache, CheckedModuleMap>();
@@ -50,7 +50,10 @@ function registerCheckedModule(
 		registerCheckedSemantic(module, semantic, diagnostics);
 		const currentSeal = semanticReuseSeal(module, semantic);
 		if (previousSeal !== undefined) {
-			if (previousSeal.operationState !== currentSeal.operationState || previousSeal.semanticHasErrors !== currentSeal.semanticHasErrors) {
+			if (
+				previousSeal.operationState !== currentSeal.operationState
+				|| previousSeal.semanticDiagnosticsState !== currentSeal.semanticDiagnosticsState
+			) {
 				throw new Error('Cannot reuse checked semantic after its operation evidence changed');
 			}
 		} else {
@@ -65,12 +68,87 @@ function registerCheckedModule(
 function semanticReuseSeal(module: A.ModuleNode, semantic: SemanticModel): SemanticReuseSeal {
 	const interop = currentCheckedInterop(module, semantic);
 	if (interop === undefined) throw new Error('Cannot seal a semantic that is not the current checked session');
-	const operationState = JSON.stringify(interop);
-	if (operationState === undefined) throw new Error('Cannot seal checked operation evidence that is not serializable');
 	return Object.freeze({
-		operationState,
-		semanticHasErrors: semantic.diagnostics.items.some(item => item.severity === 'error'),
+		operationState: reuseStructuralState(interop),
+		semanticDiagnosticsState: reuseStructuralState(semantic.diagnostics.items),
 	});
+}
+
+/**
+ * Encode only own data properties from compiler-owned snapshots. Reuse safety
+ * must not depend on inherited toJSON/iterator/array helpers that callers can
+ * replace between cache preflight and cached semantic registration.
+ */
+function reuseStructuralState(value: unknown): string {
+	return encodeReuseStructuralValue(value, new Map<object, number>());
+}
+
+function encodeReuseStructuralValue(value: unknown, seen: Map<object, number>): string {
+	if (value === null) return 'null';
+	if (value === undefined) return 'undefined';
+	if (typeof value === 'string') return `string:${JSON.stringify(value)}`;
+	if (typeof value === 'boolean') return value ? 'boolean:true' : 'boolean:false';
+	if (typeof value === 'bigint') return `bigint:${value.toString(10)}`;
+	if (typeof value === 'number') {
+		if (Number.isNaN(value)) return 'number:NaN';
+		if (value === Number.POSITIVE_INFINITY) return 'number:+Infinity';
+		if (value === Number.NEGATIVE_INFINITY) return 'number:-Infinity';
+		if (Object.is(value, -0)) return 'number:-0';
+		return `number:${String(value)}`;
+	}
+	if (typeof value === 'function' || typeof value === 'symbol') {
+		throw new Error('Cannot seal checked semantic evidence containing executable or symbolic values');
+	}
+	if (typeof value !== 'object') return `${typeof value}:${String(value)}`;
+
+	const existing = seen.get(value);
+	if (existing !== undefined) return `reference:${existing}`;
+	const id = seen.size;
+	seen.set(value, id);
+
+	if (Array.isArray(value)) {
+		if (Object.getPrototypeOf(value) !== Array.prototype) throw new Error('Cannot seal checked semantic array with a changed prototype');
+		const keys = Reflect.ownKeys(value);
+		if (keys.some(key => typeof key === 'symbol')) throw new Error('Cannot seal checked semantic array with symbol fields');
+		const lengthDescriptor = Object.getOwnPropertyDescriptor(value, 'length');
+		if (
+			lengthDescriptor === undefined
+			|| !('value' in lengthDescriptor)
+			|| typeof lengthDescriptor.value !== 'number'
+			|| !Number.isSafeInteger(lengthDescriptor.value)
+			|| lengthDescriptor.value < 0
+		) {
+			throw new Error('Cannot seal checked semantic array with an invalid length');
+		}
+		const length = lengthDescriptor.value;
+		const stringKeys = keys as string[];
+		const indexKeys = stringKeys.filter(key => key !== 'length');
+		if (indexKeys.length !== length) throw new Error('Cannot seal checked semantic array with sparse or extra fields');
+		const items: string[] = [];
+		for (let index = 0; index < length; index++) {
+			if (!indexKeys.includes(String(index))) throw new Error('Cannot seal checked semantic array with sparse or extra fields');
+			const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
+			if (descriptor === undefined || !('value' in descriptor)) throw new Error('Cannot seal checked semantic array with accessor entries');
+			items.push(encodeReuseStructuralValue(descriptor.value, seen));
+		}
+		return `array:${id}:[${items.join(',')}]`;
+	}
+
+	const prototype = Object.getPrototypeOf(value);
+	if (prototype !== Object.prototype && prototype !== null) throw new Error('Cannot seal checked semantic object with a changed prototype');
+	const keys = Reflect.ownKeys(value);
+	if (keys.some(key => typeof key === 'symbol')) throw new Error('Cannot seal checked semantic object with symbol fields');
+	const stringKeys = (keys as string[]).sort(compareText);
+	const fields = stringKeys.map(key => {
+		const descriptor = Object.getOwnPropertyDescriptor(value, key);
+		if (descriptor === undefined || !('value' in descriptor)) throw new Error(`Cannot seal checked semantic accessor field ${key}`);
+		return `${JSON.stringify(key)}=${encodeReuseStructuralValue(descriptor.value, seen)}`;
+	});
+	return `object:${id}:{${fields.join(',')}}`;
+}
+
+function compareText(left: string, right: string): number {
+	return left < right ? -1 : left > right ? 1 : 0;
 }
 
 function checkedModules(result: ProjectBuildResult): CheckedModuleMap {
