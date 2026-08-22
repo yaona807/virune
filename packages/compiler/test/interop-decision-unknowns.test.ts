@@ -61,3 +61,34 @@ test('unknown decision and obligation fields fail closed instead of being ignore
 		/Unknown Interop obligation field: futureDischargeProof/u,
 	);
 });
+
+test('accessor-backed decision and obligation state fails closed before it can change after validation', () => {
+	const decision = unknownDecision({});
+	Object.defineProperty(decision, 'status', {
+		enumerable: true,
+		configurable: true,
+		get: () => 'resolved',
+	});
+	assert.equal(isResolvedDirectInteropDecision(decision), false);
+	assert.throws(
+		() => canonicalizeInteropDecision(decision),
+		/Interop decision field status must be a data property/u,
+	);
+
+	const obligation = {
+		kind: 'runtime-resolution',
+		stage: 'check',
+		status: 'pending',
+	};
+	Object.defineProperty(obligation, 'status', {
+		enumerable: true,
+		configurable: true,
+		get: () => 'discharged',
+	});
+	const nested = unknownDecision({ obligations: [obligation] });
+	assert.equal(isResolvedDirectInteropDecision(nested), false);
+	assert.throws(
+		() => canonicalizeInteropDecision(nested),
+		/Interop obligation field status must be a data property/u,
+	);
+});
