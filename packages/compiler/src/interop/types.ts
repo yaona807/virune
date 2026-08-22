@@ -107,7 +107,7 @@ export interface InteropCallUsage {
 export type ContextualCallableResult =
 	| { readonly kind: 'void' }
 	| { readonly kind: 'value'; readonly value: ContextualCallablePrimitiveKind }
-	| { readonly kind: 'promise'; readonly value: ContextualCallablePrimitiveKind };
+	| { readonly kind: 'promise'; readonly value: ContextualCallablePrimitiveKind | 'void' };
 
 /** Selected TypeScript callback facts for one native-callable argument. */
 export interface InteropCallableArgumentResolution {
