@@ -421,12 +421,12 @@ function collectAstNodeAnchors(module: A.ModuleNode): ReadonlyMap<NodeId, AstNod
 			const foreignBridge = typeof foreignBridgeValue === 'string' && BRIDGES.has(foreignBridgeValue as PrimitiveBridgeKind)
 				? foreignBridgeValue as PrimitiveBridgeKind
 				: undefined;
-			result.set(id, {
+			result.set(id, shadowMissingOwnFields({
 				kind,
 				span: canonicalSourceSpan(span),
 				...(ownDataValue(record, 'foreignCall') === true ? { foreignCall: true as const } : {}),
 				...(foreignBridge === undefined ? {} : { foreignBridge }),
-			});
+			}, ['foreignCall', 'foreignBridge']));
 		}
 		const keys = Reflect.ownKeys(record);
 		for (let index = 0; index < keys.length; index++) {
