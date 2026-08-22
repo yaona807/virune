@@ -8,6 +8,7 @@
 	"registry": "https://registry.npmjs.org/",
 	"minimumNodeVersion": "22.14.0",
 	"minimumNpmVersion": "11.5.1",
+	"allowedPublishAction": "publish",
 	"requiredPermission": {
 		"id-token": "write"
 	},
