@@ -145,7 +145,7 @@ Stable Compiler APIの機械的な正本は`packages/compiler/api/stable-api.sna
 
 Runtime、Interop、標準ライブラリを含む公開ABIは`packages/public-abi.snapshot.json`と[`spec/runtime-abi_ja.md`](spec/runtime-abi_ja.md)を確認し、`npm run abi:check`で検証します。
 
-スナップショットを更新しただけでは、非互換変更を許可したことにはなりません。Stableな契約を壊す変更は[`COMPATIBILITY_ja.md`](COMPATIBILITY_ja.md)に従って判断してください。
+スナップショットを更新しただけでは、非互換変更を許可したことにはなりません。安定扱いの契約を壊す変更は[`COMPATIBILITY_ja.md`](COMPATIBILITY_ja.md)に従って判断してください。
 
 ## 8. セルフホスティングを変更する場合
 
