@@ -19,6 +19,7 @@ const CLI_RUNTIME_ENTRIES = Object.freeze([
 	'package/dist/src/main.js',
 	'package/dist/src/main-core.js',
 ]);
+const CAPABILITY_PORTABLE_PATH = portablePathKey(NPM_GENERATED_PROJECT_CAPABILITY_TAR_PATH);
 
 export function verifyNpmGeneratedProjectCapability({ root = process.cwd(), releaseDirectory = resolve(root, 'release') } = {}) {
 	const publicationPlan = verifyNpmPublicationPlan(root);
@@ -62,11 +63,17 @@ export function verifyNpmGeneratedProjectCapabilityTarball(bytes, publicationPla
 	const path = `${candidatePath}.npmGeneratedProjectCapability`;
 	const entries = readRegistryCandidateTarEntries(Buffer.from(bytes), candidatePath);
 	verifyCliRuntimeVersions(entries, publicationPlan.currentVersion, candidatePath);
-	const entry = entries.get(NPM_GENERATED_PROJECT_CAPABILITY_TAR_PATH);
+	const matchingPaths = capabilityPortablePaths(entries);
 	if (expected === null) {
-		assert(entry === undefined, path, 'capability must be absent unless the reviewed publication plan authorizes Registry-generated projects');
+		assert(matchingPaths.length === 0, path, 'capability must be absent unless the reviewed publication plan authorizes Registry-generated projects');
 		return { present: false, version: publicationPlan.currentVersion };
 	}
+	assert(
+		matchingPaths.length === 1 && matchingPaths[0] === NPM_GENERATED_PROJECT_CAPABILITY_TAR_PATH,
+		path,
+		`capability must use the one canonical portable path ${NPM_GENERATED_PROJECT_CAPABILITY_TAR_PATH}`,
+	);
+	const entry = entries.get(NPM_GENERATED_PROJECT_CAPABILITY_TAR_PATH);
 	assert(entry !== undefined && isRegularTarEntry(entry), path, `${NPM_GENERATED_PROJECT_CAPABILITY_TAR_PATH} must be a regular file`);
 	let parsed;
 	try {
@@ -85,10 +92,18 @@ export function verifyCapabilityAbsentFromTarball(bytes, file) {
 	const path = `$.releaseArtifact.${file}`;
 	const entries = readRegistryCandidateTarEntries(Buffer.from(bytes), path);
 	assert(
-		!entries.has(NPM_GENERATED_PROJECT_CAPABILITY_TAR_PATH),
+		capabilityPortablePaths(entries).length === 0,
 		`${path}.npmGeneratedProjectCapability`,
 		'capability is authorized only in the exact virune Registry candidate artifact',
 	);
+}
+
+function capabilityPortablePaths(entries) {
+	return [...entries.keys()].filter(path => portablePathKey(path) === CAPABILITY_PORTABLE_PATH);
+}
+
+function portablePathKey(value) {
+	return value.normalize('NFC').toLowerCase();
 }
 
 function verifyCliRuntimeVersions(entries, version, path) {
