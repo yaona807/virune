@@ -80,21 +80,24 @@ test('a failed verification invalidates stale passing Registry evidence before v
 
 test('clean install verification does not repair a non-executable installed CLI before checking it', async () => {
 	const version = '1.1.0-rc.1';
-	await verifyCleanGlobalCliInstall(version, {
-		platform: 'linux',
-		baseEnv: { PATH: process.env.PATH ?? '/usr/bin' },
-		runCommand(command, args) {
-			if (command === 'npm') {
-				const prefixArgument = args.find(argument => argument.startsWith('--prefix='));
-				assert(prefixArgument !== undefined);
-				const prefix = prefixArgument.slice('--prefix='.length);
-				mkdirSync(resolve(prefix, 'bin'), { recursive: true });
-				writeFileSync(resolve(prefix, 'bin/virune'), '#!/bin/sh\n', { mode: 0o644 });
-				return { status: 0, stdout: '', stderr: '' };
-			}
-			assert.deepEqual(args, ['--version']);
-			assert.equal(statSync(command).mode & 0o111, 0, 'verifier must not chmod the installed CLI');
-			return { status: 0, stdout: `virune ${version}\n`, stderr: '' };
-		},
-	});
+	await assert.rejects(
+		() => verifyCleanGlobalCliInstall(version, {
+			platform: 'linux',
+			baseEnv: { PATH: process.env.PATH ?? '/usr/bin' },
+			runCommand(command, args) {
+				if (command === 'npm') {
+					const prefixArgument = args.find(argument => argument.startsWith('--prefix='));
+					assert(prefixArgument !== undefined);
+					const prefix = prefixArgument.slice('--prefix='.length);
+					mkdirSync(resolve(prefix, 'bin'), { recursive: true });
+					writeFileSync(resolve(prefix, 'bin/virune'), '#!/bin/sh\n', { mode: 0o644 });
+					return { status: 0, stdout: '', stderr: '' };
+				}
+				assert.deepEqual(args, ['--version']);
+				assert.equal(statSync(command).mode & 0o111, 0, 'verifier must not chmod the installed CLI');
+				throw new Error('stop-after-permission-check');
+			},
+		}),
+		/stop-after-permission-check/u,
+	);
 });
