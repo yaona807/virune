@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -15,12 +16,14 @@ const STAGE1 = '3'.repeat(64);
 const LOCK = '4'.repeat(64);
 const MANIFEST = '5'.repeat(64);
 const SEED = '6'.repeat(64);
+const CHECKED_AT = '2026-08-22T00:00:00.000Z';
 
+function hash(value) { return createHash('sha256').update(value).digest('hex'); }
 function evidence(profile, overrides = {}) {
 	const environment = profile === 'baseline'
 		? { profile, timezone: 'UTC', locale: 'C.UTF-8', homeVariant: 'host-default', tempVariant: 'host-default' }
 		: { profile, timezone: 'Asia/Tokyo', locale: 'C', homeVariant: 'isolated-home', tempVariant: 'isolated-temp' };
-	return {
+	const base = {
 		schemaVersion: 2,
 		claim: 'selfhost-clean-bootstrap-fixed-point',
 		productionEligible: false,
@@ -28,6 +31,8 @@ function evidence(profile, overrides = {}) {
 		passed: true,
 		candidateSha256: CANDIDATE,
 		repositoryCommit: COMMIT,
+		checkedAt: CHECKED_AT,
+		workingTreeClean: true,
 		dependencyMode: 'offline',
 		environment,
 		lockfileSha256: LOCK,
@@ -40,9 +45,36 @@ function evidence(profile, overrides = {}) {
 			fixedPointEquivalent: true,
 			fixedPointDifferenceCount: 0,
 		},
-		evidenceSha256: (profile === 'baseline' ? 'a' : 'b').repeat(64),
+		commands: [
+			{ name:'bootstrap', exitCode:0, stdoutSha256:'b'.repeat(64), stderrSha256:'c'.repeat(64) },
+			{ name:'install', exitCode:0, stdoutSha256:'7'.repeat(64), stderrSha256:'8'.repeat(64) },
+			{ name:'seed-verify', exitCode:0, stdoutSha256:'9'.repeat(64), stderrSha256:'a'.repeat(64) },
+		],
+		failures: [],
 		...overrides,
 	};
+	return {
+		...base,
+		evidenceSha256: overrides.evidenceSha256 ?? cleanBootstrapEvidenceSha(base),
+	};
+}
+function cleanBootstrapEvidenceSha(value) {
+	const report = {
+		version: 2,
+		candidateSha256: value.candidateSha256,
+		repositoryCommit: value.repositoryCommit,
+		checkedAt: value.checkedAt,
+		status: value.status,
+		failures: value.failures,
+		workingTreeClean: value.workingTreeClean,
+		dependencyMode: value.dependencyMode,
+		environment: value.environment,
+		lockfileSha256: value.lockfileSha256,
+		seed: value.seed,
+		bootstrap: value.bootstrap,
+		commands: value.commands,
+	};
+	return hash(JSON.stringify(report));
 }
 
 test('independent baseline and perturbed runs produce one reproducibility witness', () => {
@@ -109,6 +141,26 @@ test('profiles must be distinct and exactly baseline plus perturbed', () => {
 	assert.throws(
 		() => compareCleanBootstrapEvidence([evidence('baseline')]),
 		/Exactly two/u,
+	);
+});
+
+test('perturbed profile must change at least one real environment dimension', () => {
+	const baselineEnvironment = evidence('baseline').environment;
+	assert.throws(
+		() => compareCleanBootstrapEvidence([
+			evidence('baseline'),
+			evidence('perturbed', { environment: { ...baselineEnvironment, profile: 'perturbed' } }),
+		]),
+		/Environment perturbation dimensions did not actually differ/u,
+	);
+});
+
+test('tampered environment metadata without a matching clean-bootstrap self-hash is rejected', () => {
+	const tampered = evidence('perturbed');
+	tampered.environment = { ...tampered.environment, timezone: 'UTC' };
+	assert.throws(
+		() => compareCleanBootstrapEvidence([evidence('baseline'), tampered]),
+		/evidenceSha256 does not match canonical clean-bootstrap evidence/u,
 	);
 });
 

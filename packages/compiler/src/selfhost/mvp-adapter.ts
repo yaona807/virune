@@ -10,7 +10,6 @@ import {
 	type KernelSpanV1,
 } from './contract.js';
 import type { DifferentialKernelV1 } from './differential-harness.js';
-import { compileWithLegacyKernel } from './legacy-adapter.js';
 
 export interface ViruneResultValue<T, E = unknown> {
 	readonly $tag: 'Ok' | 'Err';
@@ -59,6 +58,7 @@ export const legacyMvpKernel: DifferentialKernelV1 = {
 
 export async function compileWithLegacyMvp(value: unknown): Promise<KernelOutputV1> {
 	const input = validateMvpInput(value);
+	const { compileWithLegacyKernel } = await import('./legacy-adapter.js');
 	const output = await compileWithLegacyKernel(input);
 	return validateKernelOutput({
 		...output,

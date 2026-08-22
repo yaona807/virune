@@ -4,7 +4,6 @@ import {
 	type KernelInputV1,
 	type KernelOutputV1,
 } from './contract.js';
-import { compileWithLegacyKernel } from './legacy-adapter.js';
 
 export const INTERNAL_COMPILER_FACADE_VERSION = 1 as const;
 export const INTERNAL_COMPILER_DEFAULT_SELECTION = 'legacy' as const;
@@ -51,7 +50,7 @@ export class InternalCompilerFacadeError extends Error {
 export function createInternalCompilerFacade(
 	dependencies: InternalCompilerFacadeDependencies = {},
 ): InternalCompilerFacade {
-	const legacyCompiler = dependencies.legacyCompiler ?? compileWithLegacyKernel;
+	const legacyCompiler = dependencies.legacyCompiler ?? lazyLegacyCompiler;
 	const selfHostCompiler = dependencies.selfHostCompiler;
 	return Object.freeze({
 		version: INTERNAL_COMPILER_FACADE_VERSION,
@@ -69,6 +68,11 @@ export function createInternalCompilerFacade(
 			return validateKernelOutput(await compiler(input));
 		},
 	});
+}
+
+async function lazyLegacyCompiler(input: KernelInputV1): Promise<KernelOutputV1> {
+	const { compileWithLegacyKernel } = await import('./legacy-adapter.js');
+	return compileWithLegacyKernel(input);
 }
 
 function parseSelection(value: unknown): InternalCompilerSelection {
