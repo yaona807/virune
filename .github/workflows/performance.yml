@@ -8,7 +8,6 @@ on:
     paths:
       - '.github/workflows/performance.yml'
       - 'benchmarks/performance/**'
-      - 'docs/performance-benchmarks.md'
       - 'package.json'
       - 'package-lock.json'
       - 'tsconfig.json'
@@ -50,7 +49,7 @@ jobs:
         run: npm run test:performance-regression
 
       - name: Run LSP completion benchmark
-        run: npm run benchmark:lsp:built -- --runs=5 --output=.cache/performance/lsp.json
+        run: npm run benchmark:lsp:built -- --runs=5 --output=.cache/performance/lsp.json --interop=.cache/performance/interop.json
 
       - name: Run JS Interop heap benchmark
         run: npm run benchmark:interop-heap:built -- --output=.cache/performance/interop.json
