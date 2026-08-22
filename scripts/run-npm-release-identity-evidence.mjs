@@ -112,6 +112,12 @@ export async function runNpmReleaseIdentityEvidence({ reviewedCommit, releaseVer
 	}
 }
 
+export async function runNpmReleaseIdentityEvidenceCli(argumentsList) {
+	await invalidateOutputs();
+	const parsed = parseNpmReleaseIdentityArguments(argumentsList);
+	return runNpmReleaseIdentityEvidence(parsed);
+}
+
 export function buildReleaseIdentityReport({
 	reviewedCommit,
 	evidenceSetId,
@@ -431,7 +437,6 @@ function compareText(left, right) {
 
 const entry = process.argv[1] === undefined ? undefined : resolve(process.argv[1]);
 if (entry === fileURLToPath(import.meta.url)) {
-	const parsed = parseNpmReleaseIdentityArguments(process.argv.slice(2));
-	const result = await runNpmReleaseIdentityEvidence(parsed);
+	const result = await runNpmReleaseIdentityEvidenceCli(process.argv.slice(2));
 	process.stdout.write(`Verified npm release identity integration for ${result.report.version} at ${result.report.reviewedCommit}.\n`);
 }
