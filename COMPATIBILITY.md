@@ -1,111 +1,190 @@
-# Compatibility and deprecation policy
+# Virune compatibility policy
 
-[日本語](COMPATIBILITY_ja.md)
+[Japanese version](COMPATIBILITY_ja.md)
 
-This document defines the compatibility guarantees for stable Virune releases.
+Virune aims to avoid breaking code and tools simply because a user upgrades to a newer stable release.
 
-## Compatibility classes
+At the same time, not every experimental feature or internal implementation detail carries the same compatibility guarantee.
+
+This document defines which parts of Virune are kept compatible and what kinds of changes are treated as incompatible changes.
+
+## Three compatibility classes
 
 Virune uses three compatibility classes:
 
-- **Stable**: public contracts preserved across stable releases
-- **Experimental**: public surfaces under evaluation with no stable compatibility guarantee
-- **Internal**: implementation details outside compatibility guarantees
+- **Stable**: preserved across stable releases
+- **Experimental**: still under evaluation and may change or be removed
+- **Internal**: used only inside Virune and not covered by compatibility guarantees
 
-### Stable
+When making a change, first identify which class the affected surface belongs to.
+
+## Stable surfaces
+
+Stable surfaces are intended to keep existing uses working when users upgrade Virune.
 
 The main Stable surfaces include:
 
-- Virune language behavior defined by the [language specification](spec/)
+- Virune syntax and behavior defined by the [Language Specification](spec/README.md)
 - documented `virune.json` configuration
-- documented public standard-library declarations and the `exports` configuration in `package.json`
-- the root public `@virune/compiler` API
+- public standard-library APIs
+- the Compiler API exported from `@virune/compiler`
 - Runtime ABI and Interop ABI versions explicitly declared Stable
-- documented CLI behavior
-- the public contract defined by diagnostic codes and JSON format, plus other machine-readable formats explicitly declared Stable
-- public LSP / VS Code capabilities, settings, and commands documented for stable releases
-- environments declared supported by stable releases, such as Node.js and VS Code
+- documented CLI commands and behavior
+- public diagnostic codes and JSON formats
+- Language Server and VS Code extension capabilities, settings, and commands documented for stable releases
+- environments declared supported, such as Node.js and VS Code
 
-Additions and fixes may be made when they preserve existing use.
-Intentional incompatible changes require a major release unless the exception below applies.
+Additions and fixes are allowed when they preserve existing use.
 
-A version number, versioned path, or snapshot does not by itself make a surface Stable.
-Stabilization must be explicit, and updating a snapshot alone does not authorize an incompatible change.
+Changes that make an existing use stop working require a major release unless the exception below applies.
 
-LSP follows the VS Code API versions supported by Virune and the Language Server Protocol.
+The Language Server follows the VS Code API versions supported by Virune and the Language Server Protocol.
 
-Published diagnostic codes are stable identifiers within their schema version. An existing `Lxxxx` code must not be reused for a different semantic condition. External tools should identify diagnostics by `source` plus `code`, or by `qualifiedCode`, rather than by message text. The exact current code ranges, catalog, and JSON field structure remain defined by the compiler-owned diagnostic sources and schema.
+### What counts as Stable
 
-### Experimental
+A public surface does not automatically become Stable merely because it exists.
 
-Experimental surfaces are not covered by stable compatibility guarantees and may change or be removed in any release.
+For example, a version number, versioned path, or snapshot file does not by itself make a surface part of the compatibility guarantee.
 
-`@virune/compiler/experimental` is Experimental.
+Stable surfaces are explicitly identified through the Language Specification, public APIs, documented configuration, or this compatibility policy.
 
-Semantic Snapshot and Semantic Change Evidence remain Experimental until the required evaluation is complete and they are explicitly stabilized.
-Completing evaluation alone does not make them Stable.
+A surface explicitly marked Experimental is not Stable even if it is publicly accessible.
 
-Using an Experimental surface does not affect guarantees for unrelated Stable surfaces.
+If the classification is unclear, check how the surface is documented for users before changing it.
 
-### Internal
+### Diagnostic codes
 
-Compiler internals, self-hosting implementation details, caches, CI data, repository-only commands, and undocumented package subpaths are Internal.
+Published `Lxxxx` diagnostic codes may be used by external tools to identify error conditions.
 
-Internal details may change without deprecation as long as Stable public contracts are preserved.
+For that reason, an existing diagnostic code must not later be reused for a different semantic condition.
 
-## Versioning and incompatible changes
+Diagnostic message wording may improve over time. External tools should identify diagnostics by `source` plus `code`, or by `qualifiedCode`, rather than by message text.
 
-Stable releases use Semantic Versioning.
+The current diagnostic codes and JSON structures are defined by the compiler-owned diagnostic definitions and related schemas.
 
-- **Patch**: backward-compatible fixes
-- **Minor**: additions and improvements that preserve existing behavior
-- **Major**: intentional incompatible changes to Stable contracts
+## Experimental surfaces
 
-Prereleases may contain incompatible changes.
-Nightlies have no compatibility guarantee.
+Experimental surfaces are still being evaluated for future stabilization.
+
+They may change or be removed between releases even when they are included in a stable Virune release.
+
+Current examples include:
+
+- `@virune/compiler/experimental`
+- `Semantic Snapshot`, which captures semantic analysis results
+- `Semantic Change Evidence`, which describes changes to those results
+
+Completing evaluation alone does not make these surfaces Stable. They become covered by compatibility guarantees only when they are explicitly stabilized.
+
+Using an Experimental surface does not remove compatibility guarantees from unrelated Stable surfaces.
+
+## Internal implementation
+
+Virune-internal implementation details are outside compatibility guarantees.
+
+Examples include:
+
+- compiler-internal data structures
+- Self-hosting implementation details
+- caches
+- CI-only data
+- repository-only commands
+- package-internal files that are not exported through `package.json` `exports`
+
+These may change without a user-facing deprecation period as long as Stable surfaces keep working.
+
+## What counts as an incompatible change
+
+Stable Virune releases follow Semantic Versioning.
+
+- **Patch**: fixes that preserve existing use
+- **Minor**: additions and improvements that preserve existing use
+- **Major**: intentional incompatible changes to Stable surfaces
 
 Examples of incompatible changes include:
 
-- removing, renaming, or incompatibly changing public APIs, ABIs, standard-library entries, CLI, or editor capabilities
-- rejecting previously valid documented configuration, or incompatibly changing its meaning or default
-- preventing a previously conforming Virune program from being parsed, type-checked, linked, or evaluated, or incompatibly changing its meaning
-- incompatibly changing Stable diagnostics or machine-readable formats
-- raising a minimum supported version and dropping a previously supported environment
+- removing a public API function
+- incompatibly changing a public API name, parameters, or return value
+- incompatibly changing how generated JavaScript connects to the Runtime
+- incompatibly changing how values cross the Virune / JavaScript boundary
+- removing an existing standard-library API
+- removing an existing CLI command
+- incompatibly changing public Language Server or VS Code extension capabilities, settings, or commands
+- removing a documented `virune.json` setting, or incompatibly changing its meaning or default
+- preventing previously valid Virune code from compiling or running, or incompatibly changing its runtime meaning
+- incompatibly changing published diagnostic codes or Stable JSON formats
+- raising a minimum supported version and dropping an environment that was previously supported
 
-Human-oriented presentation such as wording, color, and layout, and undocumented settings, JSON fields, or internal details are not Stable unless explicitly guaranteed.
+The connection rules between generated code and the Runtime are called the Runtime ABI. The connection rules used for Virune / JavaScript interop are called the Interop ABI.
 
-## Deprecation
+Prereleases may contain incompatible changes while a release is still being prepared.
 
-Before removing or incompatibly changing a Stable contract, Virune normally follows this sequence:
+Nightly builds are development snapshots and do not carry compatibility guarantees between builds.
 
-1. Mark it deprecated in public documentation and, where practical, in tooling or type metadata.
+Human-facing presentation such as wording, color, and layout, plus undocumented settings, JSON fields, and internal implementation details, are not Stable unless explicitly guaranteed.
+
+## Deprecating a feature
+
+When a Stable feature will eventually be removed or changed incompatibly, Virune normally avoids making it disappear without warning.
+
+The usual sequence is:
+
+1. Announce that the feature will be removed in the future.
 2. Provide a supported replacement or migration path.
-3. Publish at least one stable release that keeps the old contract available while marking it deprecated.
-4. Make the change in a major release and provide migration guidance.
+3. Publish at least one stable release where the old feature still works but is marked deprecated.
+4. Remove or change the old feature in a major release.
 
-Migration guidance is prepared before release and identifies the affected versions and surface, the old and new contracts, and the required migration steps.
+Migration guidance should explain what changes, which versions are affected, and what users need to update.
 
 Experimental and Internal surfaces do not require this process.
-Deprecation does not justify weakening type, safety, ABI, or validation boundaries, and marking a surface deprecated must not by itself change existing program meaning.
 
-## Correctness, safety, and security exception
+A deprecated feature keeps its existing contract until removal, including type checks, ABI requirements, and existing validation. Marking a feature deprecated must not by itself change the meaning of existing programs.
 
-Virune must not preserve behavior known to violate the normative specification solely for compatibility.
+## When correctness or safety takes priority
 
-For material correctness, safety, or security problems, a backward-compatible fix is preferred when reasonably possible.
-Only when no reasonable backward-compatible fix exists and the problem would otherwise remain may an incompatible fix land before the next major release.
+Compatibility is important, but it is not a reason to preserve behavior that is known to be incorrect or unsafe.
 
-The same applies when platform support ends and an existing environment can no longer be supported safely or practically.
+For example, if implementation behavior is found to disagree with the [Language Specification](spec/README.md), Virune does not preserve the incorrect behavior solely because it existed before.
 
-An exceptional incompatible change must identify the affected Stable contract, the previous behavior, why a backward-compatible fix is not possible, and any mitigation or migration path, while preserving unrelated Stable contracts.
+For material correctness, safety, or security problems, a backward-compatible fix is preferred whenever reasonably possible.
 
-A fix that restores behavior required by the existing language specification is not a language-specification change.
-If that fix is incompatible with a Stable contract, it must satisfy this exception or wait for the next major release.
+If no reasonable backward-compatible fix exists and leaving the issue unfixed would preserve the problem, an incompatible fix may land before the next major release.
 
-This exception must not be used to bypass the normal compatibility rules.
+The same applies when an external platform such as Node.js reaches end of support and an existing environment can no longer be maintained safely or practically.
 
-If the specification, policy, implementation, and tests disagree, do not guess the more convenient interpretation.
-Resolve the inconsistency before treating the behavior as a Stable guarantee.
-Release notes or migration guidance alone cannot override the language specification or this policy.
+An exceptional incompatible change must explain at least:
 
-Green CI or snapshots alone do not authorize an incompatible change.
+- what is affected
+- how it behaved before
+- why the issue cannot reasonably be fixed while preserving compatibility
+- how users should migrate
+
+Unrelated Stable surfaces should remain unchanged.
+
+This exception is not a way to accelerate ordinary incompatible changes.
+
+## When specification and implementation disagree
+
+If the Language Specification, compatibility policy, implementation, and tests disagree, first determine what behavior was intended.
+
+Fixing an implementation so that it matches the existing Language Specification is not itself a Language Specification change.
+
+However, if that fix is incompatible for Stable users, it must satisfy the correctness or safety exception above or wait for the next major release.
+
+Release notes or migration guidance alone cannot override the [Language Specification](spec/README.md) or this compatibility policy.
+
+Green CI or snapshot checks alone do not make an incompatible change acceptable.
+
+## If you are unsure
+
+A practical rule is:
+
+If a change may break a surface published as Stable, review its compatibility impact.
+
+Experimental surfaces may change, but existing users should still receive appropriate guidance when needed.
+
+For Internal changes, verify that no Stable behavior is affected.
+
+If you cannot tell which class applies, discuss the change in an Issue before implementation.
+
+For development workflow and validation guidance, see the [contribution guide](CONTRIBUTING.md).
