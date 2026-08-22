@@ -194,7 +194,7 @@ test('ModuleLoad rejects malformed or contradictory provider facts that enter st
 			moduleSpecifier: 'node:fs',
 			witnesses: [{ ...witness('node:fs'), runtimeEntry: 'node:fs', runtimeFormat: 'esm' }],
 		}),
-		/node builtin runtime entry requires builtin format/u,
+		/node: module specifier requires matching builtin runtime evidence/u,
 	);
 	assert.throws(
 		() => externalModuleLoadOperation({
@@ -203,7 +203,7 @@ test('ModuleLoad rejects malformed or contradictory provider facts that enter st
 			moduleSpecifier: 'node:fs',
 			witnesses: [{ ...witness('node:fs'), runtimeEntry: 'node:fs', runtimeFormat: 'builtin', platform: 'browser' }],
 		}),
-		/node builtin runtime entry requires builtin format/u,
+		/node: module specifier requires matching builtin runtime evidence/u,
 	);
 	assert.throws(
 		() => externalModuleLoadOperation({
