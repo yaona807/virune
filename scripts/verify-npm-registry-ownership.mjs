@@ -22,7 +22,6 @@ const EVIDENCE_OUTPUT_PATH = resolve(repositoryRoot, '.cache/npm-registry-owners
 const PUBLIC_REGISTRY = 'https://registry.npmjs.org/';
 const COLLECTOR_SOURCE = 'npm-cli-authenticated-readonly-v1';
 const REPORT_KIND = 'npm-registry-ownership-v1';
-const REPORT_AUTHORITY = 'same-run-live-collector';
 const NPM_READ_TIMEOUT_MS = 60_000;
 const OBSERVATION_RESULTS = Object.freeze([
 	'complete',
@@ -304,14 +303,13 @@ export function validateNpmRegistryOwnershipReport(value, {
 	assertPublicationScope(expectedPackages, policy.scope);
 	const report = record(value, '$.ownershipReport');
 	assertExactKeys(report, [
-		'schemaVersion', 'kind', 'authority', 'collectorSource', 'collectorExecutionId', 'state',
+		'schemaVersion', 'kind', 'collectorSource', 'collectorExecutionId', 'state',
 		'reviewedCommit', 'evidenceSetId', 'version', 'registry', 'policyStatus', 'expectedPrincipal',
 		'observedPrincipal', 'scope', 'scopeAuthority', 'collectorResult', 'publicationManifest',
 		'packages', 'reasons',
 	], '$.ownershipReport');
 	assert(report.schemaVersion === 1, '$.ownershipReport.schemaVersion', 'expected schemaVersion 1');
 	assert(report.kind === REPORT_KIND, '$.ownershipReport.kind', `expected ${REPORT_KIND}`);
-	assert(report.authority === REPORT_AUTHORITY, '$.ownershipReport.authority', `expected ${REPORT_AUTHORITY}`);
 	assert(report.collectorSource === COLLECTOR_SOURCE, '$.ownershipReport.collectorSource', `expected ${COLLECTOR_SOURCE}`);
 	assert(report.reviewedCommit === commit, '$.ownershipReport.reviewedCommit', `expected ${commit}`);
 	assert(report.evidenceSetId === execution, '$.ownershipReport.evidenceSetId', `expected ${execution}`);
@@ -483,7 +481,6 @@ function buildLiveCollectorReport({ classification, policy, reviewedCommit, evid
 	return {
 		schemaVersion: 1,
 		kind: REPORT_KIND,
-		authority: REPORT_AUTHORITY,
 		collectorSource: COLLECTOR_SOURCE,
 		collectorExecutionId: collectorExecutionIdentity({ reviewedCommit, evidenceSetId, version, publicationManifest: manifest }),
 		state: classification.state,
@@ -504,7 +501,8 @@ function buildLiveCollectorReport({ classification, policy, reviewedCommit, evid
 }
 
 function buildLiveRegistryOwnershipEvidence(report) {
-	assert(report.authority === REPORT_AUTHORITY, '$.ownershipReport.authority', 'canonical evidence requires same-run live collector authority');
+	assert(report.kind === REPORT_KIND, '$.ownershipReport.kind', 'canonical evidence requires the live collector report kind');
+	assert(report.collectorSource === COLLECTOR_SOURCE, '$.ownershipReport.collectorSource', 'canonical evidence requires the live collector source');
 	assert(report.state === 'verified', '$.ownershipReport.state', 'only verified ownership may emit registry-ownership evidence');
 	assert(report.collectorResult === 'complete', '$.ownershipReport.collectorResult', 'canonical evidence requires a complete live collector result');
 	assert(report.policyStatus === 'configured', '$.ownershipReport.policyStatus', 'canonical evidence requires configured reviewed ownership policy');
