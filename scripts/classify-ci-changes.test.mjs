@@ -11,6 +11,7 @@ import {
 	isDocumentationPath,
 	isSelfhostInventoryPath,
 	isSelfhostRequiredGatePath,
+	parseGitChangedPaths,
 	reviewedNonSelfhostInventoryWorkflowFiles,
 } from './classify-ci-changes.mjs';
 
@@ -101,6 +102,7 @@ test('keeps deleted and both sides of renamed paths visible to gate classificati
 		'diff',
 		'--name-only',
 		'--no-renames',
+		'-z',
 		'base...head',
 	]);
 	assert.equal(classifyChangedPaths(['packages/compiler/src/deleted.ts']).selfhostInventoryRequired, true);
@@ -109,6 +111,15 @@ test('keeps deleted and both sides of renamed paths visible to gate classificati
 		classifyChangedPaths(['packages/compiler/src/old.ts', 'packages/cli/src/new.ts']).selfhostInventoryRequired,
 		true,
 	);
+});
+
+test('parses NUL-separated git paths without quoted newline loss', () => {
+	const paths = parseGitChangedPaths('packages/compiler/src/generated\nname.ts\0packages/cli/src/main.ts\0');
+	assert.deepEqual(paths, [
+		'packages/compiler/src/generated\nname.ts',
+		'packages/cli/src/main.ts',
+	]);
+	assert.equal(classifyChangedPaths(paths).selfhostInventoryRequired, true);
 });
 
 test('keeps Required Shadow narrower than compiler-wide inventory while fail-closing self-host controls', () => {
