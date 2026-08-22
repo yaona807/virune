@@ -17,6 +17,7 @@ const repositoryRoot = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const KIND = 'npm-publication-prewrite-gate-v1';
 const DEFAULT_OUTPUT = resolve(repositoryRoot, '.cache/npm-publication-prewrite/npm-publication-prewrite-gate.json');
 const DEFAULT_STABLE_EVIDENCE = resolve(repositoryRoot, '.cache/npm-publication-prewrite/stable-release-evidence.json');
+const DEFAULT_AUTHORIZATION_OUTPUT = resolve(repositoryRoot, '.cache/npm-publication-authorization/npm-publication-authorization-report.json');
 const PUBLICATION_MANIFEST = resolve(repositoryRoot, 'release/PUBLICATION-MANIFEST.json');
 const PRE_WRITE_EVIDENCE = resolve(repositoryRoot, '.cache/npm-publication-authorization/pre-write-evidence.json');
 const CLI_OPTIONS = Object.freeze([
@@ -31,8 +32,7 @@ export async function runNpmPublicationPrewriteGate({
 	outputPath = DEFAULT_OUTPUT,
 } = {}) {
 	const output = outputFilePath(outputPath, '$.outputPath');
-	await rm(output, { force: true });
-	await rm(DEFAULT_STABLE_EVIDENCE, { force: true });
+	await invalidateExecutionEvidence(output);
 	if (mutation !== undefined) {
 		assert(typeof mutation === 'function', '$.mutation', 'expected a function');
 		assert(resolve(output) === DEFAULT_OUTPUT, '$.outputPath', 'mutation requires the canonical pre-write gate output path');
@@ -51,17 +51,24 @@ export async function runNpmPublicationPrewriteGate({
 		releaseVersion: version,
 	});
 
-	const authorizationReport = await runNpmPublicationAuthorization({
+	const generatedAuthorizationReport = await runNpmPublicationAuthorization({
 		reviewedCommit: commit,
 		releaseVersion: version,
 		evidenceSetId: execution,
 		publicationManifestPath: PUBLICATION_MANIFEST,
 		evidencePath: PRE_WRITE_EVIDENCE,
-		outputPath: null,
+		outputPath: DEFAULT_AUTHORIZATION_OUTPUT,
 	});
+	const authorizationEvidenceBytes = await readFile(DEFAULT_AUTHORIZATION_OUTPUT);
+	const persistedAuthorizationReport = parseJson(authorizationEvidenceBytes, '$.authorizationEvidence');
+	assert(
+		isDeepStrictEqual(persistedAuthorizationReport, generatedAuthorizationReport),
+		'$.authorizationEvidence',
+		'persisted authorization evidence differs from the report generated in this execution',
+	);
 	const report = buildNpmPublicationPrewriteGateReport({
 		stableReleaseEvidenceBytes: stableEvidenceBytes,
-		authorizationReport,
+		authorizationEvidenceBytes,
 		reviewedCommit: commit,
 		releaseVersion: version,
 		evidenceSetId: execution,
@@ -71,17 +78,22 @@ export async function runNpmPublicationPrewriteGate({
 	const persistedReport = parseJson(await readFile(output), '$.prewriteGateOutput');
 	assert(isDeepStrictEqual(persistedReport, report), '$.prewriteGateOutput', 'persisted pre-write gate evidence differs from the validated report');
 	if (mutation !== undefined) {
-		await mutation({
-			prewriteGate: structuredClone(report),
-			authorization: structuredClone(authorizationReport),
-		});
+		try {
+			await mutation({
+				prewriteGate: structuredClone(report),
+				authorization: structuredClone(persistedAuthorizationReport),
+			});
+		} catch (error) {
+			await rm(output, { force: true });
+			throw error;
+		}
 	}
 	return report;
 }
 
 export function buildNpmPublicationPrewriteGateReport({
 	stableReleaseEvidenceBytes,
-	authorizationReport,
+	authorizationEvidenceBytes,
 	reviewedCommit,
 	releaseVersion,
 	evidenceSetId,
@@ -92,7 +104,8 @@ export function buildNpmPublicationPrewriteGateReport({
 	const stableBytes = Buffer.from(stableReleaseEvidenceBytes);
 	const stableReleaseReport = parseJson(stableBytes, '$.stableReleaseEvidence');
 	validateStableReleaseEvidence(stableReleaseReport, { reviewedCommit: commit, releaseVersion: version });
-	const authorization = validateAuthorizationReport(authorizationReport, {
+	const authorizationBytes = Buffer.from(authorizationEvidenceBytes);
+	const authorization = validateAuthorizationReport(parseJson(authorizationBytes, '$.authorizationEvidence'), {
 		reviewedCommit: commit,
 		releaseVersion: version,
 		evidenceSetId: execution,
@@ -109,6 +122,8 @@ export function buildNpmPublicationPrewriteGateReport({
 			bytes: stableBytes.byteLength,
 		},
 		authorization: {
+			sha256: sha256(authorizationBytes),
+			bytes: authorizationBytes.byteLength,
 			kind: authorization.kind,
 			publicationManifest: { ...authorization.publicationManifest },
 			satisfiedPreWriteRequirements: [...authorization.satisfiedPreWriteRequirements],
@@ -203,7 +218,7 @@ export function parseNpmPublicationPrewriteArguments(argumentsList) {
 
 export async function runNpmPublicationPrewriteGateCli(argumentsList, { outputPath = DEFAULT_OUTPUT } = {}) {
 	const output = outputFilePath(outputPath, '$.outputPath');
-	await rm(output, { force: true });
+	await invalidateExecutionEvidence(output);
 	const parsed = parseNpmPublicationPrewriteArguments(argumentsList);
 	return runNpmPublicationPrewriteGate({
 		reviewedCommit: parsed.reviewedCommit,
@@ -220,6 +235,12 @@ function validateReleaseRef(value, releaseVersion) {
 	assert(ref === expectedCandidate, '$.stableReleaseEvidence.ref', `expected ${expectedTag} or ${expectedCandidate}`);
 	const parsed = parseReleaseVersion(releaseVersion, '$.stableReleaseEvidence.version');
 	assert(parsed.channel === 'prerelease', '$.stableReleaseEvidence.ref', 'release-candidate branch may authorize prerelease versions only');
+}
+
+async function invalidateExecutionEvidence(output) {
+	await rm(output, { force: true });
+	await rm(DEFAULT_STABLE_EVIDENCE, { force: true });
+	await rm(DEFAULT_AUTHORIZATION_OUTPUT, { force: true });
 }
 
 function verifyExactCleanCheckout(reviewedCommit) {
