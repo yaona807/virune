@@ -11,6 +11,7 @@ import {
 import {
 	parseNpmPublicationAuthorizationArguments,
 	runNpmPublicationAuthorization,
+	runNpmPublicationAuthorizationCli,
 	validateEvidenceDocument,
 } from './run-npm-publication-authorization.mjs';
 
@@ -70,6 +71,21 @@ test('authorization CLI parser rejects unknown, positional, duplicate and empty 
 		['--evidence='],
 	]) {
 		assert.throws(() => parseNpmPublicationAuthorizationArguments(args));
+	}
+});
+
+test('CLI parse failure invalidates stale passing authorization evidence first', async () => {
+	const root = mkdtempSync(join(tmpdir(), 'virune-npm-auth-cli-'));
+	try {
+		const outputPath = join(root, 'authorization.json');
+		writeFileSync(outputPath, '{"publicationReady":true}\n');
+		await assert.rejects(
+			() => runNpmPublicationAuthorizationCli(['--evidnce=typo.json'], { outputPath }),
+			/unknown authorization argument/u,
+		);
+		assert.equal(existsSync(outputPath), false, 'CLI parse failure must not preserve stale passing evidence');
+	} finally {
+		rmSync(root, { recursive: true, force: true });
 	}
 });
 
