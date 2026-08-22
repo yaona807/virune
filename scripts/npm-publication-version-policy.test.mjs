@@ -36,4 +36,6 @@ test('version policy rejects malformed versions, non-stable boundary and dist-ta
 	assert.throws(() => registryPolicyForVersion('1.1.0', '1.1.0', { ...tags, stable: 'stable' }), /must use latest/u);
 	assert.throws(() => registryPolicyForVersion('1.1.0-rc.1', '1.1.0', { ...tags, prerelease: 'rc' }), /must use next/u);
 	assert.throws(() => registryPolicyForVersion('1.1.0', '1.1.0', { ...tags, nightly: 'nightly' }), /must remain disabled/u);
+	assert.throws(() => registryPolicyForVersion('1.1.0', '1.1.0', { ...tags, preview: 'preview' }), /expected exact keys/u);
+	assert.throws(() => registryPolicyForVersion('1.1.0', '1.1.0', { stable: 'latest', prerelease: 'next' }), /expected exact keys/u);
 });
