@@ -216,19 +216,19 @@ export function externalModuleLoadOperation(input: {
 	readonly witnesses: readonly ModuleResolutionWitness[];
 }): ExternalModuleLoadOperationIR {
 	const anchor = canonicalOperationAnchor(input.nodeId, input.span);
-	if (typeof input.moduleSpecifier !== 'string') throw new Error('External ModuleLoad module specifier must be a string');
+	const moduleSpecifier = stableProviderText(input.moduleSpecifier, 'module specifier');
 	if (input.witnesses.length === 0) {
-		return freezeOperation({ kind: 'module-load', ...anchor, moduleSpecifier: input.moduleSpecifier, decision: unresolvedDirectDecision() });
+		return freezeOperation({ kind: 'module-load', ...anchor, moduleSpecifier, decision: unresolvedDirectDecision() });
 	}
-	const witnesses = input.witnesses.map(witness => canonicalRuntimeWitness(witness, input.moduleSpecifier));
+	const witnesses = input.witnesses.map(witness => canonicalRuntimeWitness(witness, moduleSpecifier));
 	const first = witnesses[0]!;
 	if (witnesses.some(witness => !sameRuntimeWitness(first, witness))) {
-		return freezeOperation({ kind: 'module-load', ...anchor, moduleSpecifier: input.moduleSpecifier, decision: unresolvedDirectDecision() });
+		return freezeOperation({ kind: 'module-load', ...anchor, moduleSpecifier, decision: unresolvedDirectDecision() });
 	}
 	return freezeOperation({
 		kind: 'module-load',
 		...anchor,
-		moduleSpecifier: input.moduleSpecifier,
+		moduleSpecifier,
 		runtimeWitness: first,
 		decision: runtimeResolutionDecision(first),
 	});
