@@ -69,6 +69,9 @@ export function validateReviewedPublicationManifest(manifest, plan) {
 	assert(document.registryVersionEligible === true, '$.publicationManifest.registryVersionEligible', 'public Registry verification requires a Registry-eligible version');
 
 	const policy = record(plan, '$.publicationPlan');
+	assert(policy.publicationReady === true, '$.publicationPlan.publicationReady', 'public Registry verification requires a publication-ready release source');
+	const unresolvedRequirements = array(policy.unresolvedRequirements, '$.publicationPlan.unresolvedRequirements');
+	assert(unresolvedRequirements.length === 0, '$.publicationPlan.unresolvedRequirements', 'public Registry verification requires zero unresolved npm publication requirements');
 	const registryPolicy = registryPolicyForVersion(
 		version,
 		nonEmptyString(policy.firstStableRegistryRelease, '$.publicationPlan.firstStableRegistryRelease'),
