@@ -119,8 +119,8 @@ test('cached semantic cannot be rebound after an independent checker pass advanc
 	);
 });
 
-test('stable project cache cannot be promoted after a later checker pass advances its witness', async () => {
-	const root = resolve('virtual-operation-session-stable-cache-rebind-project');
+test('checked results from an unregistered stable project cache are rebuilt before experimental promotion', async () => {
+	const root = resolve('virtual-operation-session-stable-cache-promotion-project');
 	const mainPath = join(root, 'src/main.virune');
 	const host = memoryHost(mainPath);
 	const cache = new ProjectBuildCache();
@@ -135,13 +135,11 @@ test('stable project cache cannot be promoted after a later checker pass advance
 	const stableMain = stable.modules.find(module => module.source.path === mainPath);
 	assert.ok(stableMain?.ast);
 	assert.ok(stableMain.semantic);
-
-	const independent = checkModuleBase(stableMain.ast, {
-		containingFile: mainPath,
-		platform: 'node',
-		jsInteropProvider: providerForGeneration(2),
-	});
-	assert.deepEqual(independent.diagnostics.items.filter(item => item.severity === 'error'), []);
+	assert.throws(
+		() => externalOperationSequence({ module: stableMain.ast!, semantic: stableMain.semantic! }),
+		/not from the current checked AST semantic session/u,
+		'base project results must not be operation-authorized before experimental registration',
+	);
 
 	await assert.rejects(
 		buildProject(root, {
@@ -150,8 +148,28 @@ test('stable project cache cannot be promoted after a later checker pass advance
 			incrementalCache: cache,
 			jsInteropProvider: firstProvider,
 		}),
-		/Cannot re-register checked semantic after its checker witness has changed/u,
-		'unregistered stable-cache evidence must prove its original checker provenance on first experimental use',
+		/Cannot promote checked results from an unregistered project cache/u,
+		'checked objects exposed by a non-experimental cache cannot become first-registration truth',
+	);
+	assert.throws(
+		() => externalOperationSequence({ module: stableMain.ast!, semantic: stableMain.semantic! }),
+		/not from the current checked AST semantic session/u,
+	);
+
+	const rebuilt = await buildProject(root, {
+		write: false,
+		host,
+		incrementalCache: cache,
+		jsInteropProvider: firstProvider,
+	});
+	assert.deepEqual(rebuilt.diagnostics.filter(item => item.severity === 'error'), []);
+	const rebuiltMain = rebuilt.modules.find(module => module.source.path === mainPath);
+	assert.ok(rebuiltMain?.ast);
+	assert.ok(rebuiltMain.semantic);
+	assert.notEqual(rebuiltMain.ast, stableMain.ast, 'rejected promotion must clear cached checked source before retry');
+	assert.deepEqual(
+		externalOperationSequence({ module: rebuiltMain.ast, semantic: rebuiltMain.semantic }).map(operation => operation.kind),
+		['module-load', 'read-property'],
 	);
 });
 
@@ -208,11 +226,11 @@ test('failed multi-module registration rolls back sessions registered before a s
 			incrementalCache: cache,
 			jsInteropProvider: firstProvider,
 		}),
-		/Cannot re-register checked semantic after its checker witness has changed/u,
+		/Cannot promote checked results from an unregistered project cache/u,
 	);
 	assert.throws(
 		() => externalOperationSequence({ module: stableHelper.ast!, semantic: stableHelper.semantic! }),
 		/not from the current checked AST semantic session/u,
-		'modules registered before a later stale cache failure must be rolled back',
+		'unregistered stable-cache modules must remain unauthorized after rejected promotion',
 	);
 });
