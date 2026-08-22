@@ -4,10 +4,13 @@ import { tmpdir } from 'node:os';
 import { basename, join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { registryPolicyForVersion } from './verify-npm-publication-identity.mjs';
 
 const repositoryRoot = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const EXPECTED_LICENSE = 'Apache-2.0';
 const REVIEWED_LEGAL_FILES = ['LICENSE', 'NOTICE', 'THIRD_PARTY_NOTICES.md', 'THIRD_PARTY_NOTICES_ja.md'];
+const NPM_PUBLICATION_POLICY_PATH = '.github/release/npm-publication-v1.json';
+const NPM_PUBLICATION_POLICY = JSON.parse(await readFile(new URL(`../${NPM_PUBLICATION_POLICY_PATH}`, import.meta.url), 'utf8'));
 
 export async function verifyPublicRelease({
 	version,
@@ -26,23 +29,22 @@ export async function verifyPublicRelease({
 	await mkdir(outputDirectory, { recursive: true });
 	const tag = `v${version}`;
 	const release = await waitForRelease({ repository, tag, token, attempts: waitAttempts, intervalMs: waitIntervalMs, fetchImpl });
-	validateReleaseRecord(release, { tag, version });
 	const tagRef = await fetchJson(`https://api.github.com/repos/${repository}/git/ref/tags/${encodeURIComponent(tag)}`, { token, fetchImpl });
-	const tagCommit = tagRef?.object?.sha;
-	if (typeof tagCommit !== 'string' || !/^[0-9a-f]{40}$/u.test(tagCommit)) throw new Error(`Tag ${tag} did not resolve to a commit SHA.`);
-	if (expectedCommit !== undefined && tagCommit !== expectedCommit) throw new Error(`Tag ${tag} points to ${tagCommit}, expected ${expectedCommit}.`);
+	const reviewedCommit = resolveReviewedCommit(tag, tagRef?.object?.sha, expectedCommit);
+	const npmPublicationPolicy = await readReviewedNpmPublicationPolicy(reviewedCommit, version);
+	validateReleaseRecord(release, { tag, version, npmPublicationPolicy });
 	for (const asset of release.assets) {
 		const response = await fetchImpl(asset.browser_download_url, { headers: requestHeaders(token) });
 		if (!response.ok) throw new Error(`Failed to download ${asset.name}: HTTP ${response.status}`);
 		await writeFile(resolve(outputDirectory, asset.name), Buffer.from(await response.arrayBuffer()));
 	}
-	const integrity = await validateDownloadedRelease(outputDirectory, version, { reviewedCommit: expectedCommit });
+	const integrity = await validateDownloadedRelease(outputDirectory, version, { reviewedCommit });
 	const installation = await validatePublicInstallation({ version, repository, runCommand });
 	const report = {
 		schemaVersion: 1,
 		version,
 		tag,
-		tagCommit,
+		tagCommit: reviewedCommit,
 		expectedCommit: expectedCommit ?? null,
 		repository,
 		release: {
@@ -65,13 +67,41 @@ export async function verifyPublicRelease({
 	return report;
 }
 
-export function validateReleaseRecord(release, { tag, version }) {
+export function resolveReviewedCommit(tag, tagCommit, expectedCommit) {
+	if (typeof tagCommit !== 'string' || !/^[0-9a-f]{40}$/u.test(tagCommit)) throw new Error(`Tag ${tag} did not resolve to a commit SHA.`);
+	if (expectedCommit !== undefined && tagCommit !== expectedCommit) throw new Error(`Tag ${tag} points to ${tagCommit}, expected ${expectedCommit}.`);
+	return tagCommit;
+}
+
+export async function readReviewedNpmPublicationPolicy(reviewedCommit, version, {
+	sourceRoot = repositoryRoot,
+	reviewedExists = reviewedFileExists,
+	readReviewed = readReviewedFile,
+	fallbackPolicy = NPM_PUBLICATION_POLICY,
+} = {}) {
+	const hasReviewedPolicy = await reviewedExists(NPM_PUBLICATION_POLICY_PATH, { sourceRoot, reviewedCommit });
+	if (!hasReviewedPolicy) {
+		const fallbackVersionPolicy = registryPolicyForVersion(version, fallbackPolicy.firstStableRegistryRelease, fallbackPolicy.distTagPolicy);
+		if (fallbackVersionPolicy.registryVersionEligible) {
+			throw new Error(`Reviewed npm publication policy is missing at ${reviewedCommit}.`);
+		}
+		return fallbackPolicy;
+	}
+	const source = await readReviewed(NPM_PUBLICATION_POLICY_PATH, { sourceRoot, reviewedCommit });
+	try {
+		return JSON.parse(Buffer.from(source).toString('utf8'));
+	} catch (error) {
+		throw new Error(`Reviewed npm publication policy is malformed at ${reviewedCommit}: ${error instanceof Error ? error.message : String(error)}`);
+	}
+}
+
+export function validateReleaseRecord(release, { tag, version, npmPublicationPolicy = NPM_PUBLICATION_POLICY }) {
 	if (release?.tag_name !== tag) throw new Error(`Expected release tag ${tag}.`);
 	if (release.draft !== false) throw new Error('Release must not be a draft.');
 	if (release.prerelease !== true) throw new Error('Release candidate must be a prerelease.');
 	if (!Array.isArray(release.assets) || release.assets.length === 0) throw new Error('Release has no uploaded assets.');
 	const names = new Set(release.assets.map(asset => asset.name));
-	for (const required of requiredAssetNames(version)) if (!names.has(required)) throw new Error(`Release is missing ${required}.`);
+	for (const required of requiredAssetNames(version, npmPublicationPolicy)) if (!names.has(required)) throw new Error(`Release is missing ${required}.`);
 }
 
 export async function validateDownloadedRelease(directory, version, { sourceRoot = repositoryRoot, reviewedCommit } = {}) {
@@ -136,6 +166,23 @@ export function parseChecksums(source) {
 		output.set(match[2], match[1]);
 	}
 	return output;
+}
+
+export function reviewedFileExists(file, { sourceRoot, reviewedCommit }) {
+	if (reviewedCommit === undefined || !/^[0-9a-f]{40}$/u.test(reviewedCommit)) throw new Error('reviewedCommit must be a full commit SHA.');
+	const result = spawnSync('git', ['ls-tree', '--name-only', '--full-tree', reviewedCommit, '--', file], {
+		cwd: sourceRoot,
+		encoding: 'utf8',
+		maxBuffer: 16 * 1024 * 1024,
+	});
+	if (result.error !== undefined) throw new Error(`Failed to inspect reviewed ${file} from ${reviewedCommit}: ${result.error.message}`);
+	if ((result.status ?? 1) !== 0) {
+		throw new Error(`Failed to inspect reviewed ${file} from ${reviewedCommit}: ${(result.stderr ?? '').trim()}`);
+	}
+	const entries = result.stdout.trim() === '' ? [] : result.stdout.trim().split(/\r?\n/u);
+	if (entries.length === 0) return false;
+	if (entries.length === 1 && entries[0] === file) return true;
+	throw new Error(`Unexpected reviewed file listing for ${file} at ${reviewedCommit}.`);
 }
 
 async function readReviewedFile(file, { sourceRoot, reviewedCommit }) {
@@ -211,11 +258,14 @@ function requestHeaders(token) {
 	return token === undefined || token === '' ? {} : { Authorization: `Bearer ${token}` };
 }
 
-function requiredAssetNames(version) {
-	return [
+function requiredAssetNames(version, npmPublicationPolicy) {
+	const required = [
 		'LICENSE', 'MANIFEST.json', 'NOTICE', 'README.md', 'README_ja.md', 'RELEASE-MANIFEST.json', 'SBOM.cdx.json', 'SHA256SUMS', 'THIRD_PARTY_NOTICES.md', 'THIRD_PARTY_NOTICES_ja.md', 'package.json',
 		`virune-${version}.tgz`, `virune-compiler-${version}.tgz`, `virune-formatter-${version}.tgz`, `virune-js-interop-${version}.tgz`, `virune-runtime-${version}.tgz`, `virune-stdlib-${version}.tgz`, `virune-vscode-${version}.vsix`,
 	];
+	const registryPolicy = registryPolicyForVersion(version, npmPublicationPolicy.firstStableRegistryRelease, npmPublicationPolicy.distTagPolicy);
+	if (registryPolicy.registryVersionEligible) required.push('PUBLICATION-MANIFEST.json', `virune-npm-${version}.tgz`);
+	return required;
 }
 
 function assertSameSet(actual, expected, label) {
