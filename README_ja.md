@@ -17,9 +17,9 @@
 
 <p align="center">
   <a href="spec/README_ja.md">言語仕様</a> ·
-  <a href="CONTRIBUTING_ja.md">開発に参加する</a> ·
+  <a href="CONTRIBUTING_ja.md">コントリビューションガイド</a> ·
   <a href="COMPATIBILITY_ja.md">互換性方針</a> ·
-  <a href="SECURITY_ja.md">セキュリティ</a> ·
+  <a href="SECURITY_ja.md">セキュリティポリシー</a> ·
   <a href="README.md">English</a>
 </p>
 
@@ -167,18 +167,18 @@ virune run
 
 - [言語仕様](spec/README_ja.md)
 - [互換性方針](COMPATIBILITY_ja.md)
-- [開発に参加する](CONTRIBUTING_ja.md)
+- [コントリビューションガイド](CONTRIBUTING_ja.md)
 - [セキュリティポリシー](SECURITY_ja.md)
 
 ## 開発に参加する
 
-IssueやPull Requestは歓迎しています。開発環境の準備、テスト、言語仕様やAPI / ABIを変更するときの注意点については[CONTRIBUTING_ja.md](CONTRIBUTING_ja.md)を参照してください。
+IssueやPull Requestは歓迎しています。開発環境の準備、テスト、言語仕様やAPI / ABIを変更するときの注意点については[コントリビューションガイド](CONTRIBUTING_ja.md)を参照してください。
 
 ## 運営
 
 Viruneは現在、[`@yaona807`](https://github.com/yaona807)がメンテナンスしています。運営委員会や投票制度は設けていません。
 
-変更や提案は原則としてIssueやPull Requestを通じて公開して進め、最終判断はメンテナーが行います。セキュリティ上の問題は[SECURITY_ja.md](SECURITY_ja.md)に従って報告してください。
+変更や提案は原則としてIssueやPull Requestを通じて公開して進め、最終判断はメンテナーが行います。セキュリティ上の問題は[セキュリティポリシー](SECURITY_ja.md)に従って報告してください。
 
 ## リリース
 
@@ -188,4 +188,4 @@ GitHub Releasesは公式な配布先として扱い、公開済みの成果物�
 
 ## ライセンス
 
-Viruneは[Apache License 2.0](LICENSE)で公開しています。第三者ソフトウェアについては[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)を参照してください。
+Viruneは[Apache License 2.0](LICENSE)で公開しています。第三者ソフトウェアについては[第三者ソフトウェアのライセンス情報](THIRD_PARTY_NOTICES.md)を参照してください。
