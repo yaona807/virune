@@ -70,7 +70,7 @@ test('current property, call, await, and primitive bridge observations map to ex
 	assert.equal(JSON.stringify(bridged).includes('999'), false);
 });
 
-test('partial and unknown usage facts fail closed', () => {
+test('partial, contradictory, and unknown usage facts fail closed', () => {
 	assert.throws(() => externalOperationFromUsage(usage({ kind: 'call', mayReject: false })), /known receiver mode/u);
 	assert.throws(() => externalOperationFromUsage(usage({ kind: 'call', receiverMode: 'none' })), /explicit rejection semantics/u);
 	assert.throws(() => externalOperationFromUsage(usage({ kind: 'await' })), /explicit rejection semantics/u);
@@ -86,6 +86,20 @@ test('partial and unknown usage facts fail closed', () => {
 		/Unknown foreign type category/u,
 	);
 	assert.throws(
+		() => externalOperationFromUsage(usage({
+			kind: 'property',
+			foreignType: { ...stableString, category: 'object' },
+		})),
+		/foreign primitive is incompatible with category object/u,
+	);
+	assert.throws(
+		() => externalOperationFromUsage(usage({
+			kind: 'property',
+			foreignType: { display: 'incomplete', category: 'primitive' },
+		})),
+		/primitive category requires an explicit primitive kind/u,
+	);
+	assert.throws(
 		() => externalOperationFromUsage(usage({ kind: 'bridge', bridge: { kind: 'primitive', bridge: 'float', targetType: 1 } })),
 		/primitive bridge evidence disagrees/u,
 	);
@@ -93,6 +107,17 @@ test('partial and unknown usage facts fail closed', () => {
 		() => externalOperationFromUsage({ ...usage({}), kind: 'future-usage' } as unknown as ForeignUsageIR),
 		/Unknown Foreign usage kind/u,
 	);
+
+	const unknownBridge = externalOperationFromUsage(usage({
+		kind: 'bridge',
+		foreignType: { display: 'unknown', category: 'unknown', origin: stableString.origin },
+		bridge: { kind: 'primitive', bridge: 'unknown', targetType: 1 },
+	}));
+	assert.equal(unknownBridge?.kind, 'bridge-foreign-primitive');
+	if (unknownBridge?.kind === 'bridge-foreign-primitive') {
+		assert.equal(unknownBridge.decision.status, 'unresolved');
+		assert.equal(isResolvedDirectInteropDecision(unknownBridge.decision), false);
+	}
 });
 
 test('ModuleLoad projects runtime evidence only and canonicalizes set-like conditions', () => {
@@ -140,12 +165,12 @@ test('ModuleLoad distinguishes build obligations and inconsistent witnesses from
 	assert.equal(isResolvedDirectInteropDecision(inconsistent.decision), false);
 });
 
-test('ModuleLoad rejects malformed provider facts that enter stable runtime evidence', () => {
+test('ModuleLoad rejects malformed or contradictory provider facts that enter stable runtime evidence', () => {
 	assert.throws(
 		() => externalModuleLoadOperation({ nodeId: 1, span, moduleSpecifier: './library.js', witnesses: [{ ...witness(), moduleSpecifier: './other.js' }] }),
 		/witness must resolve the same module specifier/u,
 	);
-	for (const runtimeEntry of ['/absolute/library.js', 'dist\\library.js', 'dist/../library.js']) {
+	for (const runtimeEntry of ['/absolute/library.js', 'dist\\library.js', 'dist/../library.js', 'https://example.test/library.js']) {
 		assert.throws(
 			() => externalModuleLoadOperation({ nodeId: 1, span, moduleSpecifier: './library.js', witnesses: [{ ...witness(), runtimeEntry }] }),
 			/External operation runtime entry/u,
@@ -162,6 +187,41 @@ test('ModuleLoad rejects malformed provider facts that enter stable runtime evid
 		() => externalModuleLoadOperation({ nodeId: 1, span, moduleSpecifier: './library.js', witnesses: [{ ...witness(), packageJsonHash: 'not-a-sha256' }] }),
 		/runtime package\.json hash must be a lowercase SHA-256 digest/u,
 	);
+	assert.throws(
+		() => externalModuleLoadOperation({
+			nodeId: 1,
+			span,
+			moduleSpecifier: 'node:fs',
+			witnesses: [{ ...witness('node:fs'), runtimeEntry: 'node:fs', runtimeFormat: 'esm' }],
+		}),
+		/node builtin runtime entry requires builtin format/u,
+	);
+	assert.throws(
+		() => externalModuleLoadOperation({
+			nodeId: 1,
+			span,
+			moduleSpecifier: 'node:fs',
+			witnesses: [{ ...witness('node:fs'), runtimeEntry: 'node:fs', runtimeFormat: 'builtin', platform: 'browser' }],
+		}),
+		/node builtin runtime entry requires builtin format/u,
+	);
+	assert.throws(
+		() => externalModuleLoadOperation({
+			nodeId: 1,
+			span,
+			moduleSpecifier: './library.js',
+			witnesses: [{ ...witness(), runtimeFormat: 'builtin' }],
+		}),
+		/builtin runtime format requires a node builtin runtime entry/u,
+	);
+
+	const builtin = externalModuleLoadOperation({
+		nodeId: 1,
+		span,
+		moduleSpecifier: 'node:fs',
+		witnesses: [{ ...witness('node:fs'), runtimeEntry: 'node:fs', runtimeFormat: 'builtin', platform: 'node' }],
+	});
+	assert.equal(isResolvedDirectInteropDecision(builtin.decision), true);
 });
 
 test('operation sequence preserves runtime import source order, includes side effects, and excludes type-only imports', () => {
