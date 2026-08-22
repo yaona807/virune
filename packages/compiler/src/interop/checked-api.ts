@@ -189,6 +189,15 @@ function trackedReusedSemanticCount(result: ProjectBuildResult, previous: Checke
 	return count;
 }
 
+function trackedReusedParsedCount(result: ProjectBuildResult, previous: CheckedModuleMap | undefined): number {
+	if (previous === undefined) return 0;
+	let count = 0;
+	for (const module of result.modules) {
+		if (module.ast !== undefined && previous.has(module.ast)) count++;
+	}
+	return count;
+}
+
 function registerCompileResult(result: CompileResult): CompileResult {
 	if (result.ast !== undefined && result.semantic !== undefined) {
 		registerCheckedModule(result.ast, result.semantic, result.diagnostics);
@@ -213,8 +222,9 @@ function registerProjectResult(result: ProjectBuildResult): ProjectBuildResult {
 
 /**
  * Start one cached experimental build and return the exact prior experimental
- * module/semantic bindings. Checked cache entries that cannot be explained by
- * these bindings must be rebuilt before they can become operation evidence.
+ * module/semantic bindings. Cached parsed or checked entries that cannot be
+ * explained by these bindings must be rebuilt before they can become operation
+ * evidence.
  */
 function beginCachedBuild(cache: ProjectBuildCache): CheckedModuleMap | undefined {
 	if (activeCaches.has(cache)) throw new Error('Concurrent experimental project builds cannot share one ProjectBuildCache');
@@ -281,14 +291,18 @@ export async function buildProject(
 		const result = typeof optionsOrWrite === 'boolean'
 			? await buildProjectBase(rootDirectory, optionsOrWrite, legacyAdditionalEntries)
 			: await buildProjectBase(rootDirectory, optionsOrWrite);
-		if (
-			cache !== undefined
-			&& result.stats.reusedCheckedModules > trackedReusedSemanticCount(result, previousCheckedModules)
-		) {
-			throw new Error('Cannot promote checked results from an unregistered project cache; retry after cache reset');
+		if (cache !== undefined) {
+			const untrackedParsedReuse = result.stats.reusedParsedModules > trackedReusedParsedCount(result, previousCheckedModules);
+			const untrackedCheckedReuse = result.stats.reusedCheckedModules > trackedReusedSemanticCount(result, previousCheckedModules);
+			if (untrackedParsedReuse || untrackedCheckedReuse) {
+				throw new Error('Cannot promote parsed or checked results from an unregistered project cache; retry after cache reset');
+			}
 		}
 		registerProjectResult(result);
-		if (cache !== undefined) currentModulesByCache.set(cache, checkedModules(result));
+		if (cache !== undefined) {
+			currentModulesByCache.set(cache, checkedModules(result));
+			if (result.modules.some(module => module.semantic === undefined)) cache.clear();
+		}
 		return result;
 	} catch (error) {
 		if (cache !== undefined) {
@@ -329,6 +343,7 @@ export class IncrementalProjectBuilder extends BaseIncrementalProjectBuilder {
 			this.#invalidateCurrentModules();
 			const result = registerProjectResult(await super.build(rootDirectory, options));
 			for (const [module, semantic] of checkedModules(result)) this.#currentModules.set(module, semantic);
+			if (result.modules.some(module => module.semantic === undefined)) super.clear();
 			return result;
 		} catch (error) {
 			this.#invalidateCurrentModules();
