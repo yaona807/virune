@@ -86,6 +86,15 @@ test('ModuleLoad validates platform and builtin runtime-witness coherence', () =
 		}),
 		/builtin runtime entry must match the imported module specifier/u,
 	);
+	assert.throws(
+		() => externalModuleLoadOperation({
+			nodeId: 1,
+			span,
+			moduleSpecifier: 'node:fs',
+			witnesses: [{ ...witness('node:fs'), runtimeEntry: 'dist/fs.js', runtimeFormat: 'esm', platform: 'node' }],
+		}),
+		/node: module specifier requires matching builtin runtime evidence/u,
+	);
 
 	const bareBuiltin = externalModuleLoadOperation({
 		nodeId: 1,
