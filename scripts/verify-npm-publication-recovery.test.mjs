@@ -32,6 +32,31 @@ test('unknown or partial observation cannot authorize writes', () => {
 	}
 });
 
+test('recovery writes require the same canonical authorization report and a fresh evidence set', () => {
+	for (const mutation of [
+		(policy) => { policy.writePreconditions.publicationGateReadyRequired = false; },
+		(policy) => { policy.writePreconditions.publicationGateEvidenceKind = 'recovery-only-ready-v1'; },
+		(policy) => { policy.writePreconditions.publicationGateEvidenceSetFreshRequired = false; },
+		(policy) => { policy.writePreconditions.exactReviewedReleaseIdentityRequired = false; },
+	]) {
+		withFixture((fixture, policy) => {
+			mutation(policy);
+			writeJson(resolve(fixture, '.github/release/npm-publication-recovery-v1.json'), policy);
+			assert.throws(() => verifyNpmPublicationRecoveryPolicy(fixture));
+		});
+	}
+	withFixture((fixture, _policy, plan) => {
+		plan.authorization.reportKind = 'alternate-authorization-v1';
+		writeJson(resolve(fixture, '.github/release/npm-publication-v1.json'), plan);
+		assert.throws(() => verifyNpmPublicationRecoveryPolicy(fixture));
+	});
+	withFixture((fixture, _policy, plan) => {
+		plan.authorization.evidenceSetBindingRequired = false;
+		writeJson(resolve(fixture, '.github/release/npm-publication-v1.json'), plan);
+		assert.throws(() => verifyNpmPublicationRecoveryPolicy(fixture));
+	});
+});
+
 test('exact recovery requires every reviewed identity dimension', () => {
 	for (const mutation of [
 		identity => identity.pop(),
@@ -130,12 +155,7 @@ test('dist-tag recovery cannot downgrade a newer canonical release', () => {
 	}
 });
 
-test('recovery policy cannot claim publication readiness or remove public verification', () => {
-	withFixture((fixture, policy, plan) => {
-		plan.publicationReady = true;
-		writeJson(resolve(fixture, '.github/release/npm-publication-v1.json'), plan);
-		assert.throws(() => verifyNpmPublicationRecoveryPolicy(fixture), /must not enable npm publication/u);
-	});
+test('recovery completion continues requiring public Registry verification', () => {
 	withFixture((fixture, policy) => {
 		policy.completion.publicRegistryVerificationRequired = false;
 		writeJson(resolve(fixture, '.github/release/npm-publication-recovery-v1.json'), policy);

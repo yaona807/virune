@@ -17,6 +17,8 @@
   },
   "writePreconditions": {
     "publicationGateReadyRequired": true,
+    "publicationGateEvidenceKind": "npm-publication-authorization-v1",
+    "publicationGateEvidenceSetFreshRequired": true,
     "exactReviewedReleaseIdentityRequired": true
   },
   "packageVersionPhase": {
