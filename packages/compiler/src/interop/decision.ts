@@ -169,13 +169,18 @@ function readExactDataRecord(value: unknown, expected: readonly string[], descri
 		throw new Error(`${description} fields do not match the canonical schema`);
 	}
 
-	const snapshot: Record<string, unknown> = {};
+	const snapshot = Object.create(null) as Record<string, unknown>;
 	for (let index = 0; index < canonicalExpected.length; index++) {
 		const key = canonicalExpected[index]!;
 		const descriptor = Object.getOwnPropertyDescriptor(value, key);
 		if (descriptor === undefined) throw new Error(`Missing ${description} field: ${key}`);
 		if (!('value' in descriptor)) throw new Error(`${description} field ${key} must be a data property`);
-		snapshot[key] = descriptor.value;
+		Object.defineProperty(snapshot, key, {
+			configurable: false,
+			enumerable: true,
+			writable: false,
+			value: descriptor.value,
+		});
 	}
 	return snapshot;
 }
