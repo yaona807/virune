@@ -383,7 +383,20 @@ function canonicalRuntimeWitness(witness: ModuleResolutionWitness, moduleSpecifi
 }
 
 function sameRuntimeWitness(left: ExternalRuntimeResolutionWitness, right: ExternalRuntimeResolutionWitness): boolean {
-	return JSON.stringify(left) === JSON.stringify(right);
+	if (
+		left.moduleSpecifier !== right.moduleSpecifier
+		|| left.packageName !== right.packageName
+		|| left.packageVersion !== right.packageVersion
+		|| left.runtimeEntry !== right.runtimeEntry
+		|| left.runtimeFormat !== right.runtimeFormat
+		|| left.platform !== right.platform
+		|| left.packageJsonHash !== right.packageJsonHash
+		|| left.conditions.length !== right.conditions.length
+	) return false;
+	for (let index = 0; index < left.conditions.length; index++) {
+		if (left.conditions[index] !== right.conditions[index]) return false;
+	}
+	return true;
 }
 
 function collectAstNodeAnchors(module: A.ModuleNode): ReadonlyMap<NodeId, AstNodeAnchor> {
@@ -444,17 +457,7 @@ function nonImportUsageAnchorKey(usage: ForeignUsage | ForeignUsageIR): string {
 	if (usage.kind === 'import' || !isNodeId(usage.nodeId) || !isSourceSpan(usage.span)) {
 		throw new Error('Stale or cross-session External usage evidence: malformed current usage anchor');
 	}
-	return JSON.stringify([
-		usage.kind,
-		usage.nodeId,
-		usage.span.fileId,
-		usage.span.start.offset,
-		usage.span.start.line,
-		usage.span.start.column,
-		usage.span.end.offset,
-		usage.span.end.line,
-		usage.span.end.column,
-	]);
+	return `${usage.kind}\0${usage.nodeId}\0${usage.span.fileId}\0${usage.span.start.offset}\0${usage.span.start.line}\0${usage.span.start.column}\0${usage.span.end.offset}\0${usage.span.end.line}\0${usage.span.end.column}`;
 }
 
 function assertCurrentUsageAnchor(
@@ -483,7 +486,7 @@ function usageMatchesCurrentCheckerEvidence(usage: ForeignUsageIR, currentUsages
 	if (candidates.length !== 1) return false;
 	const current = candidates[0]!;
 	try {
-		if (JSON.stringify(canonicalForeignType(current.foreignType)) !== JSON.stringify(canonicalForeignType(usage.foreignType))) return false;
+		if (!sameForeignValueShape(canonicalForeignType(current.foreignType), canonicalForeignType(usage.foreignType))) return false;
 	} catch {
 		return false;
 	}
@@ -497,6 +500,21 @@ function usageMatchesCurrentCheckerEvidence(usage: ForeignUsageIR, currentUsages
 				&& current.bridge.bridge === usage.bridge.bridge;
 	}
 	return false;
+}
+
+function sameForeignValueShape(left: ExternalForeignValueShape, right: ExternalForeignValueShape): boolean {
+	return left.category === right.category
+		&& left.primitive === right.primitive
+		&& left.mustUse === right.mustUse
+		&& sameForeignOrigin(left.origin, right.origin);
+}
+
+function sameForeignOrigin(left: ExternalForeignOrigin | undefined, right: ExternalForeignOrigin | undefined): boolean {
+	if (left === undefined || right === undefined) return left === right;
+	return left.moduleSpecifier === right.moduleSpecifier
+		&& left.packageName === right.packageName
+		&& left.packageVersion === right.packageVersion
+		&& left.exportName === right.exportName;
 }
 
 function usageMatchesAstAnchor(usage: ForeignUsageIR, anchor: AstNodeAnchor): boolean {
