@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import {
 	validateGeneratedNpmProjectManifest,
+	validateGeneratedNpmProjectReadme,
 	validateReviewedPublicationManifest,
 	verifyCleanGlobalCliInstall,
 	verifyPublicNpmRegistry,
@@ -166,12 +167,17 @@ function generatedProjectManifest(generatedVersion = version) {
 	};
 }
 
+function generatedProjectReadme(generatedVersion = version) {
+	return `# generated-project\n\nGenerated with Virune ${generatedVersion}.\n\nThis project starts with the Node.js target. The CLI, Runtime, and standard library use exact Virune ${generatedVersion} package versions intended for the public npm Registry. No mutable npm range or dist-tag is used.\n`;
+}
+
 function successfulRunCommand(expectedVersion = version, {
 	inspectInstall,
 	mutateGeneratedManifest,
 	startOutput = 'Hello from Virune\n',
 	initError,
 	failScript,
+	readmeText = generatedProjectReadme(),
 } = {}) {
 	let installedExecutable;
 	return (command, args, options = {}) => {
@@ -211,6 +217,7 @@ function successfulRunCommand(expectedVersion = version, {
 			const manifest = generatedProjectManifest();
 			mutateGeneratedManifest?.(manifest);
 			writeFileSync(resolve(project, 'package.json'), `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
+			if (readmeText !== null) writeFileSync(resolve(project, 'README.md'), readmeText, 'utf8');
 			return { status: 0, stdout: `Initialized Virune project in ${project}\n`, stderr: '' };
 		}
 		throw new Error(`Unexpected command ${command} ${args.join(' ')}`);
@@ -247,6 +254,7 @@ test('verifies exact reviewed package bytes, tags and clean global CLI installat
 		dependencySource: 'npm',
 		dependencies: { '@virune/runtime': version, '@virune/stdlib': version },
 		devDependencies: { virune: version },
+		readme: 'passed',
 		install: 'passed',
 		check: 'passed',
 		build: 'passed',
@@ -356,6 +364,18 @@ test('generated npm project manifest must be exact and cannot hide GitHub URLs o
 	}
 });
 
+test('generated npm project README must describe the exact Registry source without stale GitHub-mode claims', () => {
+	assert.deepEqual(validateGeneratedNpmProjectReadme(generatedProjectReadme(), version), { source: 'npm', version });
+	for (const readme of [
+		generatedProjectReadme('1.1.0-rc.2'),
+		`Generated with Virune ${version}.\nGitHub Release assets rather than npm Registry packages\n`,
+		`Generated with Virune ${version}.\npublic npm Registry\nexact Virune ${version} package versions\n`,
+		`Generated with Virune ${version}.\npublic npm Registry\nexact Virune ${version} package versions\nNo mutable npm range or dist-tag is used.\npreserved the existing package.json\n`,
+	]) {
+		assert.throws(() => validateGeneratedNpmProjectReadme(readme, version));
+	}
+});
+
 test('Registry observations reject missing, malformed, partial and stale metadata', async () => {
 	const first = publicationPlan.packages[0].registryName;
 	for (const mutate of [
@@ -444,7 +464,7 @@ test('clean global install uses isolated npm state and an allowlisted process en
 	});
 });
 
-test('generated-project smoke fails closed on CLI init, manifest, script, run, install, or version failure', async () => {
+test('generated-project smoke fails closed on CLI init, manifest, README, script, run, install, or version failure', async () => {
 	await assert.rejects(
 		() => verifyCleanGlobalCliInstall(version, {
 			runCommand: successfulRunCommand(version, { initError: 'init failed' }),
@@ -458,6 +478,20 @@ test('generated-project smoke fails closed on CLI init, manifest, script, run, i
 			platform: 'linux',
 		}),
 		/expected exact 1\.1\.0-rc\.1/u,
+	);
+	await assert.rejects(
+		() => verifyCleanGlobalCliInstall(version, {
+			runCommand: successfulRunCommand(version, { readmeText: null }),
+			platform: 'linux',
+		}),
+		/generated README\.md is missing or unreadable/u,
+	);
+	await assert.rejects(
+		() => verifyCleanGlobalCliInstall(version, {
+			runCommand: successfulRunCommand(version, { readmeText: generatedProjectReadme('1.1.0-rc.2') }),
+			platform: 'linux',
+		}),
+		/expected exact Virune version 1\.1\.0-rc\.1/u,
 	);
 	await assert.rejects(
 		() => verifyCleanGlobalCliInstall(version, {
