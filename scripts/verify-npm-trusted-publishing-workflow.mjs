@@ -69,12 +69,14 @@ export function validateNpmTrustedPublishingWorkflowSource(source, policyValue) 
 	const runner = oneLineValue(releaseJob, 4, 'runs-on', '$.workflow.jobs.release.runs-on');
 	assert(runner === policy.runner, '$.workflow.jobs.release.runs-on', `expected ${policy.runner}`);
 	assert(!runner.includes('self-hosted'), '$.workflow.jobs.release.runs-on', 'self-hosted runners are not supported');
-	const nodeVersion = setupNodeVersion(releaseJob);
-	assert(versionAtLeast(normalizeWorkflowVersion(nodeVersion), policy.minimumNodeVersion), '$.workflow.jobs.release.nodeVersion', `expected Node ${policy.minimumNodeVersion} or newer`);
+	const setupNode = setupNodeSettings(releaseJob);
+	assert(versionAtLeast(normalizeWorkflowVersion(setupNode.nodeVersion), policy.minimumNodeVersion), '$.workflow.jobs.release.nodeVersion', `expected Node ${policy.minimumNodeVersion} or newer`);
 	for (const envName of policy.forbiddenPublishCredentialEnv) {
-		assert(!hasEnvironmentBinding(lines, envName), `$.workflow.env.${envName}`, `${envName} must not be wired into the release workflow`);
+		assert(!hasEnvironmentBinding(releaseJob, envName), `$.workflow.jobs.release.env.${envName}`, `${envName} must not be wired into the release workflow`);
 	}
-	assert(!hasDisabledProvenance(lines), '$.workflow.provenance', 'npm provenance must not be explicitly disabled');
+	assert(!hasUnapprovedSecretWiring(releaseJob), '$.workflow.jobs.release.secrets', 'only the GitHub token may be wired from GitHub secrets/context in this release job');
+	assert(!hasExplicitAuthTokenConfiguration(releaseJob), '$.workflow.jobs.release.authentication', 'long-lived npm auth-token configuration is not permitted');
+	assert(!hasDisabledProvenance(releaseJob), '$.workflow.jobs.release.provenance', 'npm provenance must not be explicitly disabled');
 
 	const commands = workflowRunCommands(releaseJob);
 	const explicitNpmVersions = commands.flatMap(extractInstalledNpmVersions);
@@ -87,6 +89,7 @@ export function validateNpmTrustedPublishingWorkflowSource(source, policyValue) 
 	if (!active) {
 		assert(publicationInvocations.length === 0, '$.workflow.jobs.release.publish', 'repository-contract-only workflow must not contain npm publication commands');
 	} else {
+		assert(setupNode.registryUrl === policy.registry, '$.workflow.jobs.release.registry', `publication workflow must use ${policy.registry}`);
 		assert(explicitNpmVersions.length === 1, '$.workflow.jobs.release.npmVersion', 'publication workflow must pin one exact npm CLI version');
 		assert(publicationInvocations.length === 1, '$.workflow.jobs.release.publish', 'publication workflow must contain exactly one npm publication command');
 		const publication = publicationInvocations[0];
@@ -102,7 +105,8 @@ export function validateNpmTrustedPublishingWorkflowSource(source, policyValue) 
 		workflowFile: policy.workflowFile,
 		provider: policy.provider,
 		runner,
-		nodeVersion,
+		nodeVersion: setupNode.nodeVersion,
+		registryUrl: setupNode.registryUrl,
 		explicitNpmVersion: explicitNpmVersions[0] ?? null,
 		idTokenPermission: permissions['id-token'],
 		publishAction: active ? publicationInvocations[0].action : null,
@@ -161,21 +165,27 @@ function oneLineValue(lines, indent, key, path) {
 	return unquote(values[0]);
 }
 
-function setupNodeVersion(lines) {
+function setupNodeSettings(lines) {
 	const indexes = lines.map((line, index) => (/^\s+- uses:\s*actions\/setup-node@[0-9a-f]{40}(?:\s+#.*)?$/u.test(line) ? index : -1)).filter(index => index >= 0);
 	assert(indexes.length === 1, '$.workflow.jobs.release.setup-node', 'expected exactly one immutable actions/setup-node step');
 	let nodeVersion;
+	let registryUrl = null;
 	for (let index = indexes[0] + 1; index < lines.length; index += 1) {
 		const line = lines[index];
 		if (/^\s+- (?:uses|name|run):/u.test(line)) break;
-		const match = /^\s+node-version:\s*['"]?([^'"\s]+)['"]?\s*$/u.exec(line);
-		if (match !== null) {
+		const nodeMatch = /^\s+node-version:\s*['"]?([^'"\s]+)['"]?\s*$/u.exec(line);
+		if (nodeMatch !== null) {
 			assert(nodeVersion === undefined, '$.workflow.jobs.release.nodeVersion', 'duplicate node-version');
-			nodeVersion = match[1];
+			nodeVersion = nodeMatch[1];
+		}
+		const registryMatch = /^\s+registry-url:\s*['"]?([^'"\s]+)['"]?\s*$/u.exec(line);
+		if (registryMatch !== null) {
+			assert(registryUrl === null, '$.workflow.jobs.release.registry', 'duplicate registry-url');
+			registryUrl = registryMatch[1];
 		}
 	}
 	assert(nodeVersion !== undefined, '$.workflow.jobs.release.nodeVersion', 'actions/setup-node must pin node-version');
-	return nodeVersion;
+	return { nodeVersion, registryUrl };
 }
 
 function workflowRunCommands(lines) {
@@ -227,6 +237,17 @@ function extractInstalledNpmVersions(command) {
 function hasEnvironmentBinding(lines, name) {
 	const expression = new RegExp(`^\\s+${escapeRegExp(name)}:\\s*`, 'u');
 	return lines.some(line => expression.test(line));
+}
+
+function hasUnapprovedSecretWiring(lines) {
+	return lines.some(line => {
+		if (!line.includes('${{ secrets.')) return false;
+		return !/^\s+(?:GITHUB_TOKEN|GH_TOKEN):\s*\$\{\{\s*(?:secrets\.GITHUB_TOKEN|github\.token)\s*\}\}\s*$/u.test(line);
+	});
+}
+
+function hasExplicitAuthTokenConfiguration(lines) {
+	return workflowRunCommands(lines).some(command => /(?:_authToken|npm\s+config\s+set\s+[^\n]*auth)/iu.test(command));
 }
 
 function hasDisabledProvenance(lines) {
