@@ -3,7 +3,14 @@ import test from 'node:test';
 import { compileSource } from '../src/interop/checked-api.js';
 import { isResolvedDirectInteropDecision } from '../src/interop/decision.js';
 import { externalOperationSequence } from '../src/interop/operation-api.js';
+import { externalModuleLoadOperation } from '../src/interop/operation.js';
 import type { JsInteropProvider } from '../src/interop/types.js';
+
+const span = {
+	fileId: 1,
+	start: { offset: 0, line: 1, column: 1 },
+	end: { offset: 1, line: 1, column: 2 },
+};
 
 function provider(): JsInteropProvider {
 	return {
@@ -81,5 +88,34 @@ test('inherited optional runtime witness fields cannot promote unresolved Module
 	} finally {
 		restoreProperty(Object.prototype, 'runtimeEntry', previousEntry);
 		restoreProperty(Object.prototype, 'runtimeFormat', previousFormat);
+	}
+});
+
+test('inherited outer runtimeWitness cannot appear when ModuleLoad has no witness evidence', () => {
+	const previous = Object.getOwnPropertyDescriptor(Object.prototype, 'runtimeWitness');
+	Object.defineProperty(Object.prototype, 'runtimeWitness', {
+		configurable: true,
+		value: {
+			moduleSpecifier: './library.js',
+			runtimeEntry: 'dist/forged.js',
+			runtimeFormat: 'esm',
+			conditions: ['import'],
+			platform: 'node',
+		},
+	});
+	try {
+		const operation = externalModuleLoadOperation({
+			nodeId: 1,
+			span,
+			moduleSpecifier: './library.js',
+			witnesses: [],
+		});
+		assert.equal(operation.runtimeWitness, undefined);
+		assert.equal(Object.getOwnPropertyDescriptor(operation, 'runtimeWitness')?.value, undefined);
+		assert.equal(JSON.stringify(operation).includes('runtimeWitness'), false);
+		assert.equal(operation.decision.status, 'unresolved');
+		assert.equal(isResolvedDirectInteropDecision(operation.decision), false);
+	} finally {
+		restoreProperty(Object.prototype, 'runtimeWitness', previous);
 	}
 });
