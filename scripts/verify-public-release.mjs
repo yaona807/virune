@@ -28,7 +28,10 @@ export async function verifyPublicRelease({
 	await mkdir(outputDirectory, { recursive: true });
 	const tag = `v${version}`;
 	const release = await waitForRelease({ repository, tag, token, attempts: waitAttempts, intervalMs: waitIntervalMs, fetchImpl });
-	validateReleaseRecord(release, { tag, version });
+	const npmPublicationPolicy = expectedCommit === undefined
+		? NPM_PUBLICATION_POLICY
+		: JSON.parse((await readReviewedFile('.github/release/npm-publication-v1.json', { sourceRoot: repositoryRoot, reviewedCommit: expectedCommit })).toString('utf8'));
+	validateReleaseRecord(release, { tag, version, npmPublicationPolicy });
 	const tagRef = await fetchJson(`https://api.github.com/repos/${repository}/git/ref/tags/${encodeURIComponent(tag)}`, { token, fetchImpl });
 	const tagCommit = tagRef?.object?.sha;
 	if (typeof tagCommit !== 'string' || !/^[0-9a-f]{40}$/u.test(tagCommit)) throw new Error(`Tag ${tag} did not resolve to a commit SHA.`);
@@ -67,13 +70,13 @@ export async function verifyPublicRelease({
 	return report;
 }
 
-export function validateReleaseRecord(release, { tag, version }) {
+export function validateReleaseRecord(release, { tag, version, npmPublicationPolicy = NPM_PUBLICATION_POLICY }) {
 	if (release?.tag_name !== tag) throw new Error(`Expected release tag ${tag}.`);
 	if (release.draft !== false) throw new Error('Release must not be a draft.');
 	if (release.prerelease !== true) throw new Error('Release candidate must be a prerelease.');
 	if (!Array.isArray(release.assets) || release.assets.length === 0) throw new Error('Release has no uploaded assets.');
 	const names = new Set(release.assets.map(asset => asset.name));
-	for (const required of requiredAssetNames(version)) if (!names.has(required)) throw new Error(`Release is missing ${required}.`);
+	for (const required of requiredAssetNames(version, npmPublicationPolicy)) if (!names.has(required)) throw new Error(`Release is missing ${required}.`);
 }
 
 export async function validateDownloadedRelease(directory, version, { sourceRoot = repositoryRoot, reviewedCommit } = {}) {
@@ -213,12 +216,12 @@ function requestHeaders(token) {
 	return token === undefined || token === '' ? {} : { Authorization: `Bearer ${token}` };
 }
 
-function requiredAssetNames(version) {
+function requiredAssetNames(version, npmPublicationPolicy) {
 	const required = [
 		'LICENSE', 'MANIFEST.json', 'NOTICE', 'README.md', 'README_ja.md', 'RELEASE-MANIFEST.json', 'SBOM.cdx.json', 'SHA256SUMS', 'THIRD_PARTY_NOTICES.md', 'THIRD_PARTY_NOTICES_ja.md', 'package.json',
 		`virune-${version}.tgz`, `virune-compiler-${version}.tgz`, `virune-formatter-${version}.tgz`, `virune-js-interop-${version}.tgz`, `virune-runtime-${version}.tgz`, `virune-stdlib-${version}.tgz`, `virune-vscode-${version}.vsix`,
 	];
-	const registryPolicy = registryPolicyForVersion(version, NPM_PUBLICATION_POLICY.firstStableRegistryRelease, NPM_PUBLICATION_POLICY.distTagPolicy);
+	const registryPolicy = registryPolicyForVersion(version, npmPublicationPolicy.firstStableRegistryRelease, npmPublicationPolicy.distTagPolicy);
 	if (registryPolicy.registryVersionEligible) required.push('PUBLICATION-MANIFEST.json', `virune-npm-${version}.tgz`);
 	return required;
 }
