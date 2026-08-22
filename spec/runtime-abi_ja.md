@@ -44,7 +44,7 @@ Runtime ABI v2にはプロトコルレジストリがありません。EqとHash
 
 `record`と`enum`の記述子は、完全な名前的`typeId`（`package#module:Type`）を持ちます。再帰または未解決の記述子を暗黙に安全な集約値として扱いません。`Unknown`へフォールバックするか、Adapterを要求します。
 
-Safe descriptor（安全な記述子）は、コールバックの検証、オブジェクトをキーにした任意のJavaScript Map／Set変換、TypeScriptの`Record<K, V>`変換を保証しません。
+安全な記述子は、コールバックの検証、オブジェクトをキーにした任意のJavaScript Map／Set変換、TypeScriptの`Record<K, V>`変換を保証しません。
 
 ## JavaScriptへの公開
 
@@ -54,6 +54,6 @@ Safe descriptor（安全な記述子）は、コールバックの検証、オ�
 
 `packages/public-abi.snapshot.json`は、Runtime v2、Interop v2、標準ライブラリのエントリーポイントについて、パッケージのexport mapと公開宣言の範囲をレビューできる形で記録します。また、生成JavaScriptがimportするRuntime v2の全シンボルも記録します。
 
-互換性は`npm run abi:check`で確認します。公開シンボルの削除・名前変更・シグネチャ変更、パッケージのexport map変更、Runtime v2の公開範囲外にあるシンボルをEmitterが参照した場合はCIが失敗します。追加だけの変更は別種として報告しますが、それでもレビューと`npm run abi:update`による意図的なスナップショット更新が必要です。
+互換性は`npm run abi:check`で確認します。公開シンボルの削除・名前変更・シグネチャ変更、パッケージのexport map変更、Runtime v2の公開範囲外にあるシンボルをEmitterが参照した場合はCIが失敗します。追加だけの変更は削除や変更とは別に報告されますが、それでもレビューと`npm run abi:update`による意図的なスナップショット更新が必要です。
 
 破壊的変更には、新しいバージョン付きABIパスと移行文書が必要です。スナップショットを更新しただけで、破壊的変更が互換になるわけではありません。
