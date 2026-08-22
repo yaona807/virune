@@ -19,6 +19,7 @@ export function externalOperationSequence(input: {
 	readonly semantic: SemanticModel;
 }): readonly ExternalOperationIR[] {
 	const evidence = assertCheckedAstEvidence(input.module, input.semantic);
+	if (input.semantic.diagnostics.items.some(diagnostic => diagnostic.severity === 'error')) return [];
 	return externalOperationSequenceFromEvidence({
 		module: input.module,
 		interop: evidence.interop,
