@@ -14,6 +14,11 @@ import {
 } from './npm-generated-project-capability.mjs';
 import { verifyNpmPublicationPlan } from './verify-npm-publication-plan.mjs';
 
+const CLI_RUNTIME_ENTRIES = Object.freeze([
+	'package/dist/src/main.js',
+	'package/dist/src/main-core.js',
+]);
+
 export function verifyNpmGeneratedProjectCapability({ root = process.cwd(), releaseDirectory = resolve(root, 'release') } = {}) {
 	const publicationPlan = verifyNpmPublicationPlan(root);
 	const file = registryReleaseAssetNameForPackage('virune', publicationPlan.currentVersion);
@@ -24,8 +29,10 @@ export function verifyNpmGeneratedProjectCapability({ root = process.cwd(), rele
 export function verifyNpmGeneratedProjectCapabilityTarball(bytes, publicationPlan, file = undefined) {
 	const expected = buildNpmGeneratedProjectCapability(publicationPlan);
 	const releaseFile = file ?? registryReleaseAssetNameForPackage('virune', publicationPlan.currentVersion);
-	const path = `$.registryCandidate.${releaseFile}.npmGeneratedProjectCapability`;
-	const entries = readRegistryCandidateTarEntries(Buffer.from(bytes), `$.registryCandidate.${releaseFile}`);
+	const candidatePath = `$.registryCandidate.${releaseFile}`;
+	const path = `${candidatePath}.npmGeneratedProjectCapability`;
+	const entries = readRegistryCandidateTarEntries(Buffer.from(bytes), candidatePath);
+	verifyCliRuntimeVersions(entries, publicationPlan.currentVersion, candidatePath);
 	const entry = entries.get(NPM_GENERATED_PROJECT_CAPABILITY_TAR_PATH);
 	if (expected === null) {
 		assert(entry === undefined, path, 'capability must be absent unless the reviewed publication plan authorizes Registry-generated projects');
@@ -43,6 +50,17 @@ export function verifyNpmGeneratedProjectCapabilityTarball(bytes, publicationPla
 	assert(entry.bytes.equals(canonical), path, 'capability bytes must use canonical deterministic JSON encoding');
 	assert(JSON.stringify(capability) === JSON.stringify(expected), path, 'capability does not match the reviewed publication plan');
 	return { present: true, capability };
+}
+
+function verifyCliRuntimeVersions(entries, version, path) {
+	for (const entryPath of CLI_RUNTIME_ENTRIES) {
+		const entry = entries.get(entryPath);
+		assert(entry !== undefined && isRegularTarEntry(entry), `${path}.${entryPath}`, `${entryPath} must be a regular file`);
+		const source = entry.bytes.toString('utf8');
+		const matches = [...source.matchAll(/const VERSION = (['"])([^'"]+)\1;/gu)];
+		assert(matches.length === 1, `${path}.${entryPath}`, `expected exactly one embedded VERSION declaration; found ${matches.length}`);
+		assert(matches[0][2] === version, `${path}.${entryPath}`, `embedded VERSION ${matches[0][2]} does not match ${version}`);
+	}
 }
 
 function assert(condition, path, message) {
