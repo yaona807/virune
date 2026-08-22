@@ -223,9 +223,9 @@ function checkedSpanEvidence(span: ForeignUsage['span'] | unknown): unknown {
 }
 
 /**
- * Clone only operation-relevant checked facts into plain frozen data. This keeps
- * provider object/prototype behavior and later public collection mutation out of
- * the operation truth source without strengthening any safety claim.
+ * Clone only operation-relevant checked facts into frozen null-prototype data.
+ * Provider object/prototype behavior and later public collection mutation cannot
+ * become operation truth, including inherited values for omitted optional fields.
  */
 function snapshotOperationInterop(interop: InteropSemanticModel): InteropSemanticModel {
 	const usages: ForeignUsage[] = [];
@@ -249,7 +249,7 @@ function snapshotOperationInterop(interop: InteropSemanticModel): InteropSemanti
 	const moduleWitnesses = mapArrayByIndex(moduleWitnessValues, snapshotModuleWitness);
 	const requiresJavaScriptInitialization = ownDataProperty(interop, 'requiresJavaScriptInitialization', 'checked Interop evidence');
 	if (typeof requiresJavaScriptInitialization !== 'boolean') throw new Error('checked Interop initialization state must be boolean');
-	return Object.freeze({
+	return freezeSnapshotRecord({
 		usages: Object.freeze(usages),
 		usageIR: Object.freeze(usageIR),
 		moduleWitnesses: Object.freeze(moduleWitnesses),
@@ -268,7 +268,7 @@ function snapshotForeignUsage(value: unknown): ForeignUsage {
 	if (kind === 'call') {
 		const receiverMode = ownOptionalDataProperty(value, 'receiverMode', 'checked Interop usage');
 		const mayReject = ownOptionalDataProperty(value, 'mayReject', 'checked Interop usage');
-		return Object.freeze({
+		return freezeSnapshotRecord({
 			...base,
 			...(receiverMode === undefined ? {} : { receiverMode: receiverMode as NonNullable<ForeignUsage['receiverMode']> }),
 			...(mayReject === undefined ? {} : { mayReject: mayReject as boolean }),
@@ -276,19 +276,19 @@ function snapshotForeignUsage(value: unknown): ForeignUsage {
 	}
 	if (kind === 'await') {
 		const mayReject = ownOptionalDataProperty(value, 'mayReject', 'checked Interop usage');
-		return Object.freeze({
+		return freezeSnapshotRecord({
 			...base,
 			...(mayReject === undefined ? {} : { mayReject: mayReject as boolean }),
 		});
 	}
 	if (kind === 'bridge') {
 		const bridge = ownOptionalDataProperty(value, 'bridge', 'checked Interop usage');
-		return Object.freeze({
+		return freezeSnapshotRecord({
 			...base,
 			...(bridge === undefined ? {} : { bridge: snapshotPrimitiveBridge(bridge) }),
 		});
 	}
-	return Object.freeze(base);
+	return freezeSnapshotRecord(base);
 }
 
 function snapshotForeignUsageIR(value: unknown): ForeignUsageIR {
@@ -302,7 +302,7 @@ function snapshotForeignUsageIR(value: unknown): ForeignUsageIR {
 	if (kind === 'call') {
 		const receiverMode = ownOptionalDataProperty(value, 'receiverMode', 'checked Interop usage');
 		const mayReject = ownOptionalDataProperty(value, 'mayReject', 'checked Interop usage');
-		return Object.freeze({
+		return freezeSnapshotRecord({
 			...base,
 			...(receiverMode === undefined ? {} : { receiverMode: receiverMode as NonNullable<ForeignUsageIR['receiverMode']> }),
 			...(mayReject === undefined ? {} : { mayReject: mayReject as boolean }),
@@ -310,19 +310,19 @@ function snapshotForeignUsageIR(value: unknown): ForeignUsageIR {
 	}
 	if (kind === 'await') {
 		const mayReject = ownOptionalDataProperty(value, 'mayReject', 'checked Interop usage');
-		return Object.freeze({
+		return freezeSnapshotRecord({
 			...base,
 			...(mayReject === undefined ? {} : { mayReject: mayReject as boolean }),
 		});
 	}
 	if (kind === 'bridge') {
 		const bridge = ownOptionalDataProperty(value, 'bridge', 'checked Interop usage');
-		return Object.freeze({
+		return freezeSnapshotRecord({
 			...base,
 			...(bridge === undefined ? {} : { bridge: snapshotPrimitiveBridge(bridge) }),
 		});
 	}
-	return Object.freeze(base);
+	return freezeSnapshotRecord(base);
 }
 
 function nonImportUsageKind(value: unknown): 'property' | 'call' | 'await' | 'bridge' {
@@ -335,7 +335,7 @@ function snapshotForeignType(value: unknown): ForeignTypeSnapshot {
 	const origin = ownOptionalDataProperty(value, 'origin', 'checked foreign type');
 	const primitive = ownOptionalDataProperty(value, 'primitive', 'checked foreign type');
 	const mustUse = ownOptionalDataProperty(value, 'mustUse', 'checked foreign type');
-	return Object.freeze({
+	return freezeSnapshotRecord({
 		ref: snapshotForeignTypeRef(ownDataProperty(value, 'ref', 'checked foreign type')),
 		display: ownDataProperty(value, 'display', 'checked foreign type') as string,
 		category: ownDataProperty(value, 'category', 'checked foreign type') as ForeignTypeSnapshot['category'],
@@ -349,7 +349,7 @@ function snapshotStableForeignType(value: unknown): StableForeignTypeSnapshot {
 	const origin = ownOptionalDataProperty(value, 'origin', 'checked foreign type');
 	const primitive = ownOptionalDataProperty(value, 'primitive', 'checked foreign type');
 	const mustUse = ownOptionalDataProperty(value, 'mustUse', 'checked foreign type');
-	return Object.freeze({
+	return freezeSnapshotRecord({
 		display: ownDataProperty(value, 'display', 'checked foreign type') as string,
 		category: ownDataProperty(value, 'category', 'checked foreign type') as StableForeignTypeSnapshot['category'],
 		...(primitive === undefined ? {} : { primitive: primitive as NonNullable<StableForeignTypeSnapshot['primitive']> }),
@@ -359,7 +359,7 @@ function snapshotStableForeignType(value: unknown): StableForeignTypeSnapshot {
 }
 
 function snapshotForeignTypeRef(value: unknown): ForeignTypeRef {
-	return Object.freeze({
+	return freezeSnapshotRecord({
 		providerId: ownDataProperty(value, 'providerId', 'checked foreign type ref') as string,
 		generation: ownDataProperty(value, 'generation', 'checked foreign type ref') as number,
 		id: ownDataProperty(value, 'id', 'checked foreign type ref') as string,
@@ -370,7 +370,7 @@ function snapshotOrigin(value: unknown): ForeignOrigin {
 	const packageName = ownOptionalDataProperty(value, 'packageName', 'checked foreign origin');
 	const packageVersion = ownOptionalDataProperty(value, 'packageVersion', 'checked foreign origin');
 	const exportName = ownOptionalDataProperty(value, 'exportName', 'checked foreign origin');
-	return Object.freeze({
+	return freezeSnapshotRecord({
 		moduleSpecifier: ownDataProperty(value, 'moduleSpecifier', 'checked foreign origin') as string,
 		...(packageName === undefined ? {} : { packageName: packageName as string }),
 		...(packageVersion === undefined ? {} : { packageVersion: packageVersion as string }),
@@ -379,7 +379,7 @@ function snapshotOrigin(value: unknown): ForeignOrigin {
 }
 
 function snapshotPrimitiveBridge(value: unknown): PrimitiveBridgePlan {
-	return Object.freeze({
+	return freezeSnapshotRecord({
 		kind: ownDataProperty(value, 'kind', 'checked Interop bridge') as PrimitiveBridgePlan['kind'],
 		bridge: ownDataProperty(value, 'bridge', 'checked Interop bridge') as PrimitiveBridgePlan['bridge'],
 		targetType: ownDataProperty(value, 'targetType', 'checked Interop bridge') as PrimitiveBridgePlan['targetType'],
@@ -397,7 +397,7 @@ function snapshotModuleWitness(value: unknown): ModuleResolutionWitness {
 	const runtimeEntry = ownOptionalDataProperty(value, 'runtimeEntry', 'checked module witness');
 	const runtimeFormat = ownOptionalDataProperty(value, 'runtimeFormat', 'checked module witness');
 	const packageJsonHash = ownOptionalDataProperty(value, 'packageJsonHash', 'checked module witness');
-	return Object.freeze({
+	return freezeSnapshotRecord({
 		moduleSpecifier: ownDataProperty(value, 'moduleSpecifier', 'checked module witness') as string,
 		...(packageName === undefined ? {} : { packageName: packageName as string }),
 		...(packageVersion === undefined ? {} : { packageVersion: packageVersion as string }),
@@ -413,19 +413,36 @@ function snapshotModuleWitness(value: unknown): ModuleResolutionWitness {
 function snapshotSourceSpan(value: unknown): ForeignUsage['span'] {
 	const start = ownDataProperty(value, 'start', 'checked source span');
 	const end = ownDataProperty(value, 'end', 'checked source span');
-	return Object.freeze({
+	return freezeSnapshotRecord({
 		fileId: ownDataProperty(value, 'fileId', 'checked source span') as ForeignUsage['span']['fileId'],
-		start: Object.freeze({
+		start: freezeSnapshotRecord({
 			offset: ownDataProperty(start, 'offset', 'checked source position') as number,
 			line: ownDataProperty(start, 'line', 'checked source position') as number,
 			column: ownDataProperty(start, 'column', 'checked source position') as number,
 		}),
-		end: Object.freeze({
+		end: freezeSnapshotRecord({
 			offset: ownDataProperty(end, 'offset', 'checked source position') as number,
 			line: ownDataProperty(end, 'line', 'checked source position') as number,
 			column: ownDataProperty(end, 'column', 'checked source position') as number,
 		}),
 	});
+}
+
+function freezeSnapshotRecord<T extends object>(value: T): T {
+	const snapshot = Object.create(null) as Record<PropertyKey, unknown>;
+	const keys = Reflect.ownKeys(value);
+	for (let index = 0; index < keys.length; index++) {
+		const key = keys[index]!;
+		const descriptor = Object.getOwnPropertyDescriptor(value, key);
+		if (descriptor === undefined || !('value' in descriptor)) throw new Error('checked snapshot record must contain only own data fields');
+		Object.defineProperty(snapshot, key, {
+			configurable: false,
+			enumerable: descriptor.enumerable ?? false,
+			value: descriptor.value,
+			writable: false,
+		});
+	}
+	return Object.freeze(snapshot) as T;
 }
 
 function ownDataProperty(value: unknown, key: string, description: string): unknown {
