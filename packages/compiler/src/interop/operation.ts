@@ -333,12 +333,12 @@ function canonicalForeignType(snapshot: StableForeignTypeSnapshot): ExternalFore
 	assertKnown(FOREIGN_CATEGORIES, snapshot.category, 'foreign type category');
 	if (snapshot.primitive !== undefined) assertKnown(FOREIGN_PRIMITIVES, snapshot.primitive, 'foreign primitive');
 	if (snapshot.mustUse !== undefined && typeof snapshot.mustUse !== 'boolean') throw new Error('External operation foreign mustUse must be boolean');
-	return {
+	return shadowMissingOwnFields({
 		category: snapshot.category,
 		...(snapshot.primitive === undefined ? {} : { primitive: snapshot.primitive }),
 		...(snapshot.mustUse === undefined ? {} : { mustUse: snapshot.mustUse }),
 		...(snapshot.origin === undefined ? {} : { origin: canonicalOrigin(snapshot.origin) }),
-	};
+	}, ['primitive', 'mustUse', 'origin']);
 }
 
 function assertBridgeMatchesForeignType(bridge: PrimitiveBridgeKind, source: ExternalForeignValueShape): void {
@@ -356,12 +356,12 @@ function canonicalOrigin(origin: ForeignOrigin): ExternalForeignOrigin {
 	const packageName = origin.packageName === undefined ? undefined : canonicalOptionalOriginText(origin.packageName, 'origin package name');
 	const packageVersion = origin.packageVersion === undefined ? undefined : canonicalOptionalOriginText(origin.packageVersion, 'origin package version');
 	const exportName = origin.exportName === undefined ? undefined : canonicalOptionalOriginText(origin.exportName, 'origin export name');
-	return {
+	return shadowMissingOwnFields({
 		...(moduleSpecifier === undefined ? {} : { moduleSpecifier }),
 		...(packageName === undefined ? {} : { packageName }),
 		...(packageVersion === undefined ? {} : { packageVersion }),
 		...(exportName === undefined ? {} : { exportName }),
-	};
+	}, ['moduleSpecifier', 'packageName', 'packageVersion', 'exportName']);
 }
 
 function canonicalRuntimeWitness(witness: ModuleResolutionWitness, moduleSpecifier: string): ExternalRuntimeResolutionWitness {
@@ -370,7 +370,7 @@ function canonicalRuntimeWitness(witness: ModuleResolutionWitness, moduleSpecifi
 	if (witness.runtimeFormat !== undefined) assertKnown(RUNTIME_FORMATS, witness.runtimeFormat, 'module witness runtime format');
 	const validatedConditions = mapArrayByIndex(witness.conditions, condition => canonicalProviderText(condition, 'module witness condition'));
 	const conditions = sortArrayByIndex(uniqueArrayByIndex(validatedConditions), compareText);
-	return {
+	return shadowMissingOwnFields({
 		moduleSpecifier,
 		...(witness.packageName === undefined ? {} : { packageName: canonicalProviderText(witness.packageName, 'runtime package name') }),
 		...(witness.packageVersion === undefined ? {} : { packageVersion: canonicalProviderText(witness.packageVersion, 'runtime package version') }),
@@ -379,7 +379,7 @@ function canonicalRuntimeWitness(witness: ModuleResolutionWitness, moduleSpecifi
 		conditions,
 		platform: witness.platform,
 		...(witness.packageJsonHash === undefined ? {} : { packageJsonHash: canonicalHash(witness.packageJsonHash, 'runtime package.json hash') }),
-	};
+	}, ['packageName', 'packageVersion', 'runtimeEntry', 'runtimeFormat', 'packageJsonHash']);
 }
 
 function sameRuntimeWitness(left: ExternalRuntimeResolutionWitness, right: ExternalRuntimeResolutionWitness): boolean {
@@ -636,6 +636,20 @@ function containsProviderPrivatePathSyntax(value: string): boolean {
 
 function canonicalHash(value: string, description: string): string {
 	if (!/^[0-9a-f]{64}$/u.test(value)) throw new Error(`External operation ${description} must be a lowercase SHA-256 digest`);
+	return value;
+}
+
+function shadowMissingOwnFields<T extends object>(value: T, fields: readonly string[]): T {
+	for (let index = 0; index < fields.length; index++) {
+		const field = fields[index]!;
+		if (Object.getOwnPropertyDescriptor(value, field) !== undefined) continue;
+		Object.defineProperty(value, field, {
+			configurable: false,
+			enumerable: false,
+			value: undefined,
+			writable: false,
+		});
+	}
 	return value;
 }
 
