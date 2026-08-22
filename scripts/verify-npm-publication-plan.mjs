@@ -47,8 +47,7 @@ export function verifyNpmPublicationPlan(root = process.cwd()) {
 	}
 	validateNpmPublicationAuthorizationContract(plan.authorization, '$.authorization');
 	const unresolvedRequirements = array(plan.unresolvedRequirements, '$.unresolvedRequirements')
-		.map((value, index) => nonEmptyString(value, `$.unresolvedRequirements[${index}]`))
-		.sort(compareText);
+		.map((value, index) => nonEmptyString(value, `$.unresolvedRequirements[${index}]`));
 	assertUnique(unresolvedRequirements, '$.unresolvedRequirements', 'requirement');
 	const expectedUnresolvedRequirements = stage === 'prepublication-audit'
 		? NPM_PUBLICATION_REQUIREMENTS
@@ -129,7 +128,13 @@ export function verifyNpmPublicationPlan(root = process.cwd()) {
 		const manifest = readJson(resolve(root, 'packages', item.directory, 'package.json'));
 		assert(manifest.name === item.workspaceName, `$.${item.directory}.name`, `expected workspace package name ${item.workspaceName}`);
 		assert(manifest.version === rootManifest.version, `$.${item.directory}.version`, 'must match the reviewed root release version');
-		assert(manifest.private === true, `$.${item.directory}.private`, 'reviewed source workspaces remain private:true; publishability is defined by exact Registry candidate tarballs');
+		assert(
+			manifest.private === true,
+			`$.${item.directory}.private`,
+			stage === 'prepublication-audit'
+				? 'prepublication audit requires private:true until the publication-enablement change'
+				: 'reviewed publication-candidate source workspaces remain private:true; exact Registry candidate tarballs define publishability',
+		);
 		assert(manifest.license === reviewedLicense, `$.${item.directory}.license`, `must match reviewed root license ${reviewedLicense}`);
 		manifests.set(item.workspaceName, manifest);
 	}
