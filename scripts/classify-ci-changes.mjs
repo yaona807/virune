@@ -17,7 +17,6 @@ const documentationDirectories = Object.freeze([
 	'docs/',
 ]);
 const selfhostInventoryFiles = new Set([
-	'.github/actions-policy.json',
 	'package.json',
 	'package-lock.json',
 	'tsconfig.json',
@@ -29,8 +28,22 @@ const selfhostInventoryFiles = new Set([
 	'scripts/classify-ci-changes.mjs',
 	'scripts/classify-ci-changes.test.mjs',
 ]);
+export const reviewedNonSelfhostInventoryWorkflowFiles = Object.freeze([
+	'.github/workflows/browser-conformance.yml',
+	'.github/workflows/codeql.yml',
+	'.github/workflows/dependency-review.yml',
+	'.github/workflows/performance.yml',
+	'.github/workflows/release-dry-run.yml',
+	'.github/workflows/release-public-verify.yml',
+	'.github/workflows/release-repair.yml',
+	'.github/workflows/release-restore.yml',
+	'.github/workflows/release.yml',
+	'.github/workflows/repository-metadata-audit.yml',
+	'.github/workflows/reproducible-release-required.yml',
+	'.github/workflows/typescript-7-prototype.yml',
+	'.github/workflows/vsix-smoke.yml',
+]);
 const selfhostInventoryDirectories = Object.freeze([
-	'.github/workflows/',
 	'integration/',
 	'packages/compiler/src/',
 	'packages/compiler/test/selfhost',
@@ -84,6 +97,9 @@ export function isDocumentationPath(path) {
 }
 
 export function isSelfhostInventoryPath(path) {
+	if (path.startsWith('.github/workflows/')) {
+		return !reviewedNonSelfhostInventoryWorkflowFiles.includes(path);
+	}
 	return selfhostInventoryFiles.has(path)
 		|| selfhostInventoryDirectories.some(directory => path.startsWith(directory))
 		|| selfhostInventoryScriptPrefixes.some(prefix => path.startsWith(prefix));
@@ -97,6 +113,14 @@ export function isSelfhostRequiredGatePath(path) {
 		|| (path.startsWith('scripts/') && path.includes('selfhost'));
 }
 
+export function buildChangedPathDiffArguments(base, head) {
+	return ['diff', '--name-only', '--no-renames', '-z', `${base}...${head}`];
+}
+
+export function parseGitChangedPaths(output) {
+	return output.split('\0').filter(path => path.length > 0);
+}
+
 async function main() {
 	const argumentsMap = parseArguments(process.argv.slice(2));
 	let classification;
@@ -108,7 +132,7 @@ async function main() {
 		if (argumentsMap.base === undefined || argumentsMap.head === undefined) {
 			throw new Error('Provide --base and --head, --paths-file, or --force-full.');
 		}
-		const result = spawnSync('git', ['diff', '--name-only', '--diff-filter=ACMR', `${argumentsMap.base}...${argumentsMap.head}`], {
+		const result = spawnSync('git', buildChangedPathDiffArguments(argumentsMap.base, argumentsMap.head), {
 			cwd: repositoryRoot,
 			encoding: 'utf8',
 			maxBuffer: 16 * 1024 * 1024,
@@ -116,7 +140,7 @@ async function main() {
 		if (result.error !== undefined || result.status !== 0) {
 			throw new Error(`Unable to classify changed files: ${result.stderr || result.error?.message}`);
 		}
-		classification = classifyChangedPaths(result.stdout.split(/\r?\n/u));
+		classification = classifyChangedPaths(parseGitChangedPaths(result.stdout));
 	}
 
 	const payload = `${JSON.stringify(classification, null, '\t')}\n`;
