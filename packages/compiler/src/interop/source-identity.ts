@@ -11,15 +11,6 @@ export interface CheckedSourceReuseSeal {
 	readonly authoredState: string;
 }
 
-const CHECKER_DERIVED_FIELDS = new Set([
-	'foreignBridge',
-	'foreignCall',
-	'inferredTypeId',
-	'resolvedTypeId',
-	'symbolId',
-	'targetSymbolId',
-]);
-
 const currentStateByModule = new WeakMap<A.ModuleNode, CheckedSourceIdentityState>();
 const stateBySemantic = new WeakMap<object, CheckedSourceIdentityState>();
 
@@ -216,7 +207,7 @@ function encodeAuthoredValue(value: unknown, seen: Map<object, number>): string 
 	let fieldIndex = 0;
 	for (let index = 0; index < keys.length; index++) {
 		const key = keys[index]!;
-		if (CHECKER_DERIVED_FIELDS.has(key)) continue;
+		if (isCheckerDerivedField(key)) continue;
 		const descriptor = Object.getOwnPropertyDescriptor(value, key);
 		if (descriptor === undefined || !('value' in descriptor)) throw new Error(`checked source field ${key} must be a data property`);
 		if (fieldIndex > 0) encodedFields += ',';
@@ -283,4 +274,18 @@ function sourceStringKeys(value: object): string[] {
 		result[result.length] = key;
 	}
 	return result;
+}
+
+function isCheckerDerivedField(key: string): boolean {
+	switch (key) {
+		case 'foreignBridge':
+		case 'foreignCall':
+		case 'inferredTypeId':
+		case 'resolvedTypeId':
+		case 'symbolId':
+		case 'targetSymbolId':
+			return true;
+		default:
+			return false;
+	}
 }
