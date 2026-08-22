@@ -44,7 +44,7 @@ Virune is currently maintained by [`@yaona807`](https://github.com/yaona807). Th
 
 ## Releases
 
-Published artifacts are available from [GitHub Releases](https://github.com/yaona807/virune/releases). Release eligibility is determined by repository-owned machine-readable policy and CI; this README does not duplicate version-specific release procedures.
+Published artifacts are available from [GitHub Releases](https://github.com/yaona807/virune/releases). GitHub Releases remain an official immutable distribution channel for stable, prerelease, and nightly releases. Release eligibility is determined by repository-owned machine-readable policy and CI; this README does not duplicate version-specific release procedures.
 
 ## License
 
