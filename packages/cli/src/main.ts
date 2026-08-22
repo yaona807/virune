@@ -24,7 +24,7 @@ try {
 		case 'init': await initProject(resolve(args[1] ?? '.')); break;
 		case 'check': process.exitCode = await checkProject(resolve(args[1] ?? '.'), args.includes('--diagnostic-format=json')); break;
 		case 'build': process.exitCode = await build(resolve(args[1] ?? '.')); break;
-		case 'run': process.exitCode = await runProject(resolve(args[1] ?? '.')), normalizeProgramArgs(args.slice(2)); break;
+		case 'run': process.exitCode = await runProject(resolve(args[1] ?? '.'), normalizeProgramArgs(args.slice(2))); break;
 		case 'test': process.exitCode = await testProject(resolve(args[1] ?? '.')); break;
 		case 'fmt': process.exitCode = await formatPaths(args.slice(1)); break;
 		case 'clean': await cleanProject(resolve(args[1] ?? '.')); break;
