@@ -17,11 +17,11 @@ const version = manifest.version;
 const releaseSourceBase = `https://github.com/yaona807/virune/blob/v${version}`;
 const latestApplicationGuide = 'https://github.com/yaona807/virune/blob/main/docs/application-guide.md';
 const commandArgs = process.argv.slice(2);
-const initOptions = commandArgs[0] === 'init' ? parseInitOptions(commandArgs.slice(1)) : undefined;
-const initRoot = initOptions === undefined ? undefined : resolve(initOptions.projectPath);
 const exitCode = await runMain(commandArgs);
 
-if (exitCode === 0 && initOptions !== undefined && initRoot !== undefined) {
+if (exitCode === 0 && commandArgs[0] === 'init') {
+	const initOptions = parseInitOptions(commandArgs.slice(1));
+	const initRoot = resolve(initOptions.projectPath);
 	const canonicalGeneratedManifest = await packageJsonMatchesRequestedSource(initRoot, initOptions.dependencySource);
 	await completeInitialization(initRoot, initOptions.dependencySource, canonicalGeneratedManifest);
 }
