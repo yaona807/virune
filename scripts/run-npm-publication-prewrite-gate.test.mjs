@@ -119,6 +119,7 @@ test('stable release evidence identity and pass state fail closed before persist
 		report => { report.commit = 'b'.repeat(40); },
 		report => { report.expectedNightlySha = 'b'.repeat(40); },
 		report => { report.ref = ''; },
+		report => { report.ref = 'refs/heads/main'; },
 		report => { report.generatedAt = 'not-a-time'; },
 		report => { report.passed = false; },
 		report => { report.checks[0].passed = false; },
@@ -141,6 +142,15 @@ test('stable release evidence identity and pass state fail closed before persist
 		assert.equal(persisted, 0);
 		assert.equal(mutationsCalled, 0);
 	}
+});
+
+test('release ref binding accepts exact tags and restricts release-candidate branches to prereleases', () => {
+	const stable = stableReleaseReport();
+	stable.version = '1.1.0';
+	stable.ref = 'refs/tags/v1.1.0';
+	assert.doesNotThrow(() => validateStableReleaseEvidence(stable, { reviewedCommit, releaseVersion: '1.1.0' }));
+	stable.ref = 'refs/heads/release-candidate/v1.1.0';
+	assert.throws(() => validateStableReleaseEvidence(stable, { reviewedCommit, releaseVersion: '1.1.0' }), /prerelease versions only/u);
 });
 
 test('fresh stable gate bytes must match the exact report generated in the same execution', () => {
@@ -230,6 +240,15 @@ test('malformed direct-run identity invalidates stale passing pre-write output b
 	} finally {
 		rmSync(root, { recursive: true, force: true });
 	}
+});
+
+test('canonical runner refuses to return a non-persisted passing gate', async () => {
+	await assert.rejects(() => runNpmPublicationPrewriteGate({
+		reviewedCommit,
+		releaseVersion,
+		evidenceSetId,
+		outputPath: null,
+	}), /non-empty non-whitespace string/u);
 });
 
 test('gate evidence is deterministic for identical stable and authorization inputs', async () => {
