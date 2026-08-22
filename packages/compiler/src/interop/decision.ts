@@ -36,10 +36,12 @@ const CLAIMS: readonly InteropSafetyClaim[] = [
 const OBLIGATION_KINDS: readonly InteropObligationKind[] = ['runtime-resolution'];
 const OBLIGATION_STAGES: readonly InteropObligationStage[] = ['check', 'codegen', 'build', 'runtime'];
 const OBLIGATION_STATUSES: readonly InteropObligationStatus[] = ['pending', 'discharged'];
+const DECISION_KEYS = ['status', 'mechanism', 'authoring', 'claims', 'obligations'] as const;
+const OBLIGATION_KEYS = ['kind', 'stage', 'status'] as const;
 
 /** Canonicalize provider-independent decision facts without treating JS object identity as a security boundary. */
 export function canonicalizeInteropDecision(decision: InteropDecisionIR): InteropDecisionIR {
-	assertRecord(decision, 'Interop decision');
+	assertExactRecord(decision, DECISION_KEYS, 'Interop decision');
 	assertKnown(DECISION_STATUSES, decision.status, 'decision status');
 	assertKnown(MECHANISMS, decision.mechanism, 'Interop mechanism');
 	assertKnown(AUTHORING_MODES, decision.authoring, 'Interop authoring mode');
@@ -52,7 +54,7 @@ export function canonicalizeInteropDecision(decision: InteropDecisionIR): Intero
 	}))].sort(compareText);
 	const obligations: InteropObligationIR[] = [];
 	for (const obligation of decision.obligations) {
-		assertRecord(obligation, 'Interop obligation');
+		assertExactRecord(obligation, OBLIGATION_KEYS, 'Interop obligation');
 		assertKnown(OBLIGATION_KINDS, obligation.kind, 'Interop obligation kind');
 		assertKnown(OBLIGATION_STAGES, obligation.stage, 'Interop obligation stage');
 		assertKnown(OBLIGATION_STATUSES, obligation.status, 'Interop obligation status');
@@ -97,6 +99,17 @@ function freezeObligation(obligation: InteropObligationIR): InteropObligationIR 
 
 function assertRecord(value: unknown, description: string): asserts value is Record<string, unknown> {
 	if (value === null || typeof value !== 'object' || Array.isArray(value)) throw new Error(`${description} must be a record`);
+}
+
+function assertExactRecord(value: unknown, expected: readonly string[], description: string): asserts value is Record<string, unknown> {
+	assertRecord(value, description);
+	const keys = Object.keys(value);
+	for (const key of keys) {
+		if (!expected.includes(key)) throw new Error(`Unknown ${description} field: ${key}`);
+	}
+	for (const key of expected) {
+		if (!Object.hasOwn(value, key)) throw new Error(`Missing ${description} field: ${key}`);
+	}
 }
 
 function assertKnown<T extends string>(known: readonly T[], value: unknown, description: string): asserts value is T {
