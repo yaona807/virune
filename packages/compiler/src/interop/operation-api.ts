@@ -4,6 +4,7 @@ import type { Diagnostic } from '../diagnostics/diagnostic.js';
 import type { InteropSemanticModel } from './types.js';
 import { currentCheckedDiagnostics, currentCheckedInterop } from './check-session.js';
 import { externalOperationSequence as externalOperationSequenceFromEvidence, type ExternalOperationIR } from './operation.js';
+import { isCurrentCheckedSourceIdentity } from './source-identity.js';
 
 /**
  * Derive provider-independent External Operations from one checked semantic model.
@@ -31,7 +32,7 @@ function assertCheckedAstEvidence(
 ): { readonly diagnostics: readonly Diagnostic[]; readonly interop: InteropSemanticModel } {
 	const diagnostics = currentCheckedDiagnostics(module, semantic);
 	const interop = currentCheckedInterop(module, semantic);
-	if (diagnostics === undefined || interop === undefined) {
+	if (diagnostics === undefined || interop === undefined || !isCurrentCheckedSourceIdentity(module)) {
 		throw new Error('Stale or cross-session External usage evidence: module is not from the current checked AST semantic session');
 	}
 

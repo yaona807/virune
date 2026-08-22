@@ -10,6 +10,7 @@ import {
 	type SemanticModel,
 	type TypeCheckerOptions,
 } from '../checker/checker.js';
+import type { Diagnostic } from '../diagnostics/diagnostic.js';
 import {
 	buildProject as buildProjectBase,
 	ProjectBuildCache,
@@ -19,10 +20,30 @@ import {
 import { IncrementalProjectBuilder as BaseIncrementalProjectBuilder } from '../project/incremental.js';
 import type { SourceFile } from '../source.js';
 import { invalidateCheckedSemantic, registerCheckedSemantic } from './check-session.js';
+import { invalidateCheckedSourceIdentity, registerCheckedSourceIdentity } from './source-identity.js';
 
 const currentModulesByCache = new WeakMap<ProjectBuildCache, ReadonlySet<A.ModuleNode>>();
 const activeCaches = new WeakSet<ProjectBuildCache>();
 const activeCheckedModules = new WeakSet<A.ModuleNode>();
+
+function invalidateCheckedModule(module: A.ModuleNode): void {
+	invalidateCheckedSemantic(module);
+	invalidateCheckedSourceIdentity(module);
+}
+
+function registerCheckedModule(
+	module: A.ModuleNode,
+	semantic: SemanticModel,
+	diagnostics: readonly Diagnostic[],
+): void {
+	registerCheckedSemantic(module, semantic, diagnostics);
+	try {
+		registerCheckedSourceIdentity(module);
+	} catch (error) {
+		invalidateCheckedModule(module);
+		throw error;
+	}
+}
 
 function checkedModules(result: ProjectBuildResult): ReadonlySet<A.ModuleNode> {
 	const modules = new Set<A.ModuleNode>();
@@ -34,12 +55,12 @@ function checkedModules(result: ProjectBuildResult): ReadonlySet<A.ModuleNode> {
 
 function invalidateModules(modules: ReadonlySet<A.ModuleNode> | undefined): void {
 	if (modules === undefined) return;
-	for (const module of modules) invalidateCheckedSemantic(module);
+	for (const module of modules) invalidateCheckedModule(module);
 }
 
 function registerCompileResult(result: CompileResult): CompileResult {
 	if (result.ast !== undefined && result.semantic !== undefined) {
-		registerCheckedSemantic(result.ast, result.semantic, result.diagnostics);
+		registerCheckedModule(result.ast, result.semantic, result.diagnostics);
 	}
 	return result;
 }
@@ -49,7 +70,7 @@ function registerProjectResult(result: ProjectBuildResult): ProjectBuildResult {
 	try {
 		for (const module of result.modules) {
 			if (module.ast !== undefined && module.semantic !== undefined) {
-				registerCheckedSemantic(module.ast, module.semantic, result.diagnostics);
+				registerCheckedModule(module.ast, module.semantic, result.diagnostics);
 			}
 		}
 		return result;
@@ -74,10 +95,10 @@ export function compileSource(source: SourceFile, options: CompileOptions = {}):
 export function checkModule(module: A.ModuleNode, options: TypeCheckerOptions = {}): SemanticModel {
 	if (activeCheckedModules.has(module)) throw new Error('Reentrant experimental checkModule calls for the same AST are not supported');
 	activeCheckedModules.add(module);
-	invalidateCheckedSemantic(module);
+	invalidateCheckedModule(module);
 	try {
 		const semantic = checkModuleBase(module, options);
-		registerCheckedSemantic(module, semantic, semantic.diagnostics.items);
+		registerCheckedModule(module, semantic, semantic.diagnostics.items);
 		return semantic;
 	} finally {
 		activeCheckedModules.delete(module);
@@ -91,10 +112,10 @@ export class TypeChecker extends BaseTypeChecker {
 	public override check(module: A.ModuleNode): SemanticModel {
 		if (this.#checking) throw new Error('Reentrant experimental TypeChecker checks are not supported');
 		this.#checking = true;
-		invalidateCheckedSemantic(module);
+		invalidateCheckedModule(module);
 		try {
 			const semantic = super.check(module);
-			registerCheckedSemantic(module, semantic, semantic.diagnostics.items);
+			registerCheckedModule(module, semantic, semantic.diagnostics.items);
 			return semantic;
 		} finally {
 			this.#checking = false;
