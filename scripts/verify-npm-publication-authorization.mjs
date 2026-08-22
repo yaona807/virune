@@ -25,6 +25,9 @@ export function evaluateNpmPublicationAuthorization({
 	const authorization = validateNpmPublicationAuthorizationContract(plan.authorization, '$.publicationPlan.authorization');
 	assert(plan.stage === 'publication-candidate', '$.publicationPlan.stage', 'source must be in publication-candidate stage');
 	assert(plan.publicationReady === true, '$.publicationPlan.publicationReady', 'reviewed source declaration must be publicationReady:true');
+	assert(plan.trustedPublishingRequired === true, '$.publicationPlan.trustedPublishingRequired', 'reviewed source must continue requiring Trusted Publishing');
+	assert(plan.publicVerificationRequired === true, '$.publicationPlan.publicVerificationRequired', 'reviewed source must continue requiring public Registry verification');
+	assert(plan.sameReviewedReleaseIdentityRequired === true, '$.publicationPlan.sameReviewedReleaseIdentityRequired', 'reviewed source must require one exact reviewed release identity');
 	const unresolved = requirementList(plan.unresolvedRequirements, '$.publicationPlan.unresolvedRequirements');
 	assert(
 		JSON.stringify(unresolved) === JSON.stringify(NPM_PUBLICATION_POST_WRITE_REQUIREMENTS),
