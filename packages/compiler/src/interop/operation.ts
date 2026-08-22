@@ -412,15 +412,19 @@ function collectAstNodeAnchors(module: A.ModuleNode): ReadonlyMap<NodeId, AstNod
 			return;
 		}
 		const record = value as Record<string, unknown>;
-		if (isNodeId(record.id) && typeof record.kind === 'string' && isSourceSpan(record.span)) {
-			if (result.has(record.id as NodeId)) throw new Error(`Duplicate AST node id ${record.id} in External operation source binding`);
-			const foreignBridge = typeof record.foreignBridge === 'string' && BRIDGES.has(record.foreignBridge as PrimitiveBridgeKind)
-				? record.foreignBridge as PrimitiveBridgeKind
+		const id = ownDataValue(record, 'id');
+		const kind = ownDataValue(record, 'kind');
+		const span = ownDataValue(record, 'span');
+		if (isNodeId(id) && typeof kind === 'string' && isSourceSpan(span)) {
+			if (result.has(id)) throw new Error(`Duplicate AST node id ${id} in External operation source binding`);
+			const foreignBridgeValue = ownDataValue(record, 'foreignBridge');
+			const foreignBridge = typeof foreignBridgeValue === 'string' && BRIDGES.has(foreignBridgeValue as PrimitiveBridgeKind)
+				? foreignBridgeValue as PrimitiveBridgeKind
 				: undefined;
-			result.set(record.id as NodeId, {
-				kind: record.kind,
-				span: canonicalSourceSpan(record.span),
-				...(record.foreignCall === true ? { foreignCall: true as const } : {}),
+			result.set(id, {
+				kind,
+				span: canonicalSourceSpan(span),
+				...(ownDataValue(record, 'foreignCall') === true ? { foreignCall: true as const } : {}),
 				...(foreignBridge === undefined ? {} : { foreignBridge }),
 			});
 		}
@@ -556,14 +560,17 @@ function isNodeId(value: unknown): value is NodeId {
 
 function isSourceSpan(value: unknown): value is SourceSpan {
 	if (value === null || typeof value !== 'object') return false;
-	const span = value as Partial<SourceSpan>;
-	return isNodeId(span.fileId) && isSourcePosition(span.start) && isSourcePosition(span.end);
+	const fileId = ownDataValue(value, 'fileId');
+	const start = ownDataValue(value, 'start');
+	const end = ownDataValue(value, 'end');
+	return isNodeId(fileId) && isSourcePosition(start) && isSourcePosition(end);
 }
 
 function isSourcePosition(value: unknown): value is SourceSpan['start'] {
 	if (value === null || typeof value !== 'object') return false;
-	const position = value as Partial<SourceSpan['start']>;
-	return isNodeId(position.offset) && isNodeId(position.line) && isNodeId(position.column);
+	return isNodeId(ownDataValue(value, 'offset'))
+		&& isNodeId(ownDataValue(value, 'line'))
+		&& isNodeId(ownDataValue(value, 'column'));
 }
 
 function sameSpan(left: SourceSpan, right: SourceSpan): boolean {
@@ -651,6 +658,11 @@ function shadowMissingOwnFields<T extends object>(value: T, fields: readonly str
 		});
 	}
 	return value;
+}
+
+function ownDataValue(value: object, key: string): unknown {
+	const descriptor = Object.getOwnPropertyDescriptor(value, key);
+	return descriptor !== undefined && 'value' in descriptor ? descriptor.value : undefined;
 }
 
 function assertKnown<T extends string>(known: ReadonlySet<T>, value: T, description: string): void {
