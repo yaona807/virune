@@ -27,13 +27,9 @@
 
 One of the biggest strengths of JavaScript and TypeScript is the ecosystem that has grown around them. Virune is not trying to discard that ecosystem and build a separate world.
 
-At the same time, JavaScript brings concepts such as `null` and `undefined`, dynamic external values, exceptions, and Promise-based concurrency that applications need to account for.
+At the same time, JavaScript brings concepts such as `null` and `undefined`, dynamic external values, exceptions, and Promises that applications need to account for. TypeScript makes these values much safer to work with, but it does not replace JavaScript's runtime model.
 
-TypeScript makes these values much safer to work with while preserving JavaScript compatibility. It does not, however, replace JavaScript's runtime model.
-
-Virune therefore focuses on **handling the complexity required at JavaScript boundaries without spreading more of it than necessary into ordinary application code**.
-
-It also tries to make more than value types visible in code. Recoverable failure, effects, and the behavior of concurrent work should be understandable from declarations wherever practical.
+Virune therefore focuses on **handling the complexity required at JavaScript boundaries without spreading more of it than necessary into ordinary code**. It also tries to make recoverable failure, effects, and concurrency behavior visible from code wherever practical.
 
 Keep the JavaScript ecosystem. Keep everyday code as simple as possible. That is the basic idea behind Virune.
 
@@ -60,42 +56,18 @@ async function showDashboard(userId: string): Promise<void> {
   ]);
 
   const displayName = user.nickname ?? user.name;
-
   console.log(`${displayName}: ${orders.length} orders`);
 }
 ```
 
 This is ordinary TypeScript. It is concise, readable, and sufficient for many applications.
 
-Looking more closely, however, some information is not visible from the function declaration alone.
+The code above still leaves some concerns to surrounding design:
 
-### Absence has multiple representations
-
-For the `nickname` property above, a reader must account for a `string`, `null`, or `undefined` caused by an absent property.
-
-TypeScript tracks these states in the type system. But when the application only needs to know whether a nickname exists, carrying the distinction between `null` and `undefined` through ordinary code may not be useful.
-
-### Failure is not part of the return type
-
-From its type, `showDashboard` is `(userId: string) => Promise<void>`.
-
-That tells us the function is asynchronous, but it does not describe how `loadUser` or `loadOrders` may fail. TypeScript applications can introduce Result types or their own error conventions.
-
-Virune includes recoverable failure as the ordinary `Result<T, E>` model.
-
-### Effects are not part of the function declaration
-
-The `showDashboard` function above uses the network and writes to standard output, but those effects are not represented in its function type.
-
-Virune declares such effects with `uses`.
-
-### Concurrency lifetime is a separate design choice
-
-The example above uses `Promise.all()` to run two operations concurrently.
-
-If either Promise rejects, `Promise.all()` rejects as well, but it does not automatically stop another operation that has already started. When cancellation is needed, JavaScript code can combine APIs such as `AbortController` with the underlying operation.
-
-Virune defines the lifetime and failure behavior of concurrently started work through structured concurrency in the language and Runtime.
+- Reading `nickname` means accounting for a `string`, `null`, or `undefined` caused by an absent property.
+- The type of `showDashboard` does not describe how `loadUser` or `loadOrders` may fail. TypeScript applications can introduce Result types or their own error conventions.
+- Network access and standard output are not represented in the function type.
+- `Promise.all()` rejects when one input rejects, but it does not automatically stop another operation that has already started. Cancellation can be designed with APIs such as `AbortController` when the underlying operation supports it.
 
 ## The same code in Virune
 
@@ -136,54 +108,15 @@ async fn showDashboard(
 }
 ```
 
-The operation is similar to the TypeScript version above, but information about its behavior is also present in its declarations.
+In the code above, absence is represented with `Option`, recoverable failure with `Result`, and effects with `uses`.
 
-### Absence uses `Option`
-
-The `nickname: String?` declaration below is the short form of `Option<String>`.
-
-Ordinary Virune values are not `null` or `undefined`. An optional value is explicitly `Some` or `None`.
-
-### Failure is visible in `Result`
-
-The return type below makes it clear that the operation can fail with `DashboardError`.
-
-```virune
--> Result<Unit, DashboardError>
-```
-
-The `?` operator propagates a compatible recoverable failure to the caller.
-
-### Effects are visible in `uses`
-
-The declaration below shows that the function uses network access, tasks, and standard output.
-
-```virune
-uses Network, Task, Console
-```
-
-A reader does not need to inspect the entire implementation just to identify these categories of effects.
-
-### Concurrent work has a defined lifetime
-
-The following block starts both operations concurrently.
-
-```virune
-parallel try {
-    user: loadUser(userId)
-    orders: loadOrders(userId)
-}
-```
-
-If one operation returns `Err`, cancellation is signaled to its sibling and the parent waits for all child tasks to settle before continuing. Ordinary Virune code has no detached tasks.
+Work started by `parallel try` belongs to its parent scope. If one operation returns `Err`, cancellation is signaled to its sibling and the parent waits for all child tasks to settle before continuing.
 
 This is not a claim that TypeScript cannot implement these patterns. Some concerns that TypeScript leaves to libraries or project-level design are common language rules in Virune.
 
 ## The JavaScript boundary
 
-Virune is not isolated from the JavaScript ecosystem.
-
-JavaScript APIs that can be handled safely from their type information can be imported with `import js`.
+Virune is not isolated from the JavaScript ecosystem. When corresponding type declarations can be interpreted safely, JavaScript APIs can be imported with `import js`.
 
 ```virune
 import js { nanoid } from "nanoid"
@@ -191,11 +124,9 @@ import js { nanoid } from "nanoid"
 
 Virune does not treat every value arriving from JavaScript as a trusted native value.
 
-TypeScript `any` is not accepted as a safe type, and `unknown` is not silently narrowed to a more convenient type. Values that cannot be safely determined remain `Unknown` until they are handled explicitly.
+TypeScript `any` is not accepted as a safe type, and `unknown` is not silently narrowed to a more convenient type. Values that cannot be safely determined remain `Unknown` until they are handled explicitly. Values involving `null` or `undefined` are also handled at the boundary and converted explicitly into Virune-side types.
 
-More complex TypeScript APIs can use an Adapter so that JavaScript-side complexity remains separate from ordinary Virune code. The same principle applies to `null` and `undefined`: their distinctions are handled where the boundary requires them instead of becoming ordinary Virune values.
-
-Virune also cannot guarantee that an external library's implementation actually follows its type declarations. What can be checked at the boundary and what remains part of the dependency's trust boundary are kept separate.
+More complex TypeScript APIs can be isolated behind an Adapter. Virune also cannot guarantee that an external library's implementation actually follows its type declarations.
 
 **The goal is not to pretend JavaScript's complexity does not exist. It is to make clear where that complexity is handled.**
 
@@ -205,37 +136,9 @@ Virune does not assume that adding more language features always produces a bett
 
 When existing small features can be combined to express the same idea clearly, Virune avoids adding a dedicated syntax or mechanism only for that use case.
 
-For example, Virune 1.0 has no classes or inheritance. Data can be expressed with `record` and `enum`, while values that need distinct identities can use `newtype`.
+For example, Virune 1.0 has no classes or inheritance. Data is expressed with `record` and `enum`, distinct value identities can use `newtype`, and reusable behavior can be composed from functions and records that contain functions.
 
-```virune
-newtype UserId = Int
-
-record User {
-    id: UserId
-    name: String
-}
-
-enum UserState {
-    Active
-    Suspended
-}
-```
-
-Reusable behavior can be composed from ordinary functions and records that contain functions.
-
-```virune
-record Encoder<T> {
-    encode: fn(T) -> String
-}
-
-fn serialize<T>(value: T, encoder: Encoder<T>) -> String {
-    return encoder.encode(value)
-}
-```
-
-The point is not to prevent advanced programs from being written.
-
-**Advanced programs should still be possible while the language itself remains as simple as practical.** When existing pieces are enough, Virune does not add a new concept just to provide another way to express the same thing.
+This is not about preventing advanced programs from being written. **Advanced programs should still be possible while the language itself remains as simple as practical.** If existing pieces are enough, Virune avoids adding a new concept just to provide another way to express the same thing.
 
 ## Quick start
 
@@ -254,44 +157,7 @@ cd hello-virune
 virune run
 ```
 
-To check types and project configuration without emitting JavaScript, run:
-
-```bash
-virune check
-```
-
-To emit ES2022 JavaScript, run:
-
-```bash
-virune build
-```
-
-When no path is given, `check`, `run`, and `build` operate on the current directory.
-
-## Main language features
-
-Virune 1.0 includes:
-
-- static typing and type inference
-- `record`, `enum`, and `newtype`
-- `Option` and `Result`
-- exhaustive pattern matching
-- explicit effects with `uses`
-- `async` / `await`
-- structured concurrency with `parallel` / `parallel try`
-- cleanup with `defer`
-- generics
-- JavaScript interoperability
-- ES2022 ESM output
-- CLI, Language Server, VS Code extension, and formatter
-
-## Current status
-
-Virune 1.0 provides the core language, compiler, Runtime, standard library, CLI, editor integration, and the foundation for JavaScript interoperability.
-
-Current development is expanding the range of real JavaScript and TypeScript libraries that can be used naturally from Virune.
-
-Stable and experimental surfaces are kept separate. See the [compatibility policy](COMPATIBILITY.md) for the compatibility model.
+Use `virune check` to check types and project configuration without emitting JavaScript, and `virune build` to emit ES2022 JavaScript. When no path is given, `check`, `run`, and `build` operate on the current directory.
 
 ## Documentation
 
@@ -312,7 +178,7 @@ Changes and proposals are generally developed publicly through Issues and Pull R
 
 ## Releases
 
-Published stable, prerelease, and Nightly builds are available from [GitHub Releases](https://github.com/yaona807/virune/releases).
+Published stable, prerelease, and nightly builds are available from [GitHub Releases](https://github.com/yaona807/virune/releases).
 
 GitHub Releases are an official distribution channel, and published artifacts are not later replaced with different contents. Release eligibility is verified by repository-owned machine-readable policy and CI.
 
