@@ -1,12 +1,12 @@
-# Compatibility policy
+# Compatibility and deprecation policy
 
-日本語: [COMPATIBILITY_ja.md](COMPATIBILITY_ja.md)
+[日本語](COMPATIBILITY_ja.md)
 
-This document defines the compatibility guarantees for stable Virune releases and the rules for incompatible changes.
+This document defines the compatibility guarantees for stable Virune releases.
 
 ## Compatibility classes
 
-Virune divides exposed surfaces into three classes:
+Virune uses three compatibility classes:
 
 - **Stable**: public contracts preserved across stable releases
 - **Experimental**: public surfaces under evaluation with no stable compatibility guarantee
@@ -14,92 +14,96 @@ Virune divides exposed surfaces into three classes:
 
 ### Stable
 
-A surface is Stable only when that status is explicit. A version number, versioned path, or snapshot does not make a surface Stable by itself.
+The main Stable surfaces include:
 
-The main Stable public contracts currently include:
-
-- the normative Language Specification under [`spec/`](spec/README.md)
+- Virune language behavior defined by the [language specification](spec/)
 - documented `virune.json` configuration
-- public standard-library declarations and `package.json` `exports`
-- the Stable Compiler API exported from the `@virune/compiler` root
-- Runtime ABI and Interop ABI surfaces explicitly declared Stable
-- published CLI contracts such as commands, options, and exit status
-- diagnostics, JSON formats, and other machine-readable formats explicitly declared Stable
-- Language Server and VS Code features, settings, and commands published for stable releases
-- supported environments such as Node.js and VS Code when explicitly declared supported for stable releases
+- documented public standard-library declarations and the `exports` configuration in `package.json`
+- the root public `@virune/compiler` API
+- Runtime ABI and Interop ABI versions explicitly declared Stable
+- documented CLI behavior
+- the public contract defined by diagnostic codes and JSON format, plus other machine-readable formats explicitly declared Stable
+- public LSP / VS Code capabilities, settings, and commands documented for stable releases
+- environments declared supported by stable releases, such as Node.js and VS Code
 
-Additions and fixes are allowed when they preserve existing use. Intentional incompatible changes belong in a major release except for the exceptions below.
+Additions and fixes may be made when they preserve existing use.
+Intentional incompatible changes require a major release unless the exception below applies.
+
+A version number, versioned path, or snapshot does not by itself make a surface Stable.
+Stabilization must be explicit, and updating a snapshot alone does not authorize an incompatible change.
+
+LSP follows the VS Code API versions supported by Virune and the Language Server Protocol.
 
 ### Experimental
 
-Experimental surfaces are outside the stable compatibility guarantee. They may change or be removed in any release as evaluation continues.
+Experimental surfaces are not covered by stable compatibility guarantees and may change or be removed in any release.
 
-`@virune/compiler/experimental` is Experimental. Semantic Snapshot and Semantic Change Evidence also remain Experimental until the required evaluation is complete and they are explicitly stabilized. Completing evaluation alone does not make them Stable.
+`@virune/compiler/experimental` is Experimental.
 
-Using an Experimental surface does not weaken guarantees for unrelated Stable contracts.
+Semantic Snapshot and Semantic Change Evidence remain Experimental until the required evaluation is complete and they are explicitly stabilized.
+Completing evaluation alone does not make them Stable.
+
+Using an Experimental surface does not affect guarantees for unrelated Stable surfaces.
 
 ### Internal
 
-Compiler internals, self-hosting implementation details, caches, CI data, repository-only commands, and unpublished package subpaths are Internal.
+Compiler internals, self-hosting implementation details, caches, CI data, repository-only commands, and undocumented package subpaths are Internal.
 
-Internal details may change without prior deprecation as long as Stable contracts remain intact.
+Internal details may change without deprecation as long as Stable public contracts are preserved.
 
-## Versions and incompatible changes
+## Versioning and incompatible changes
 
-Stable releases follow Semantic Versioning.
+Stable releases use Semantic Versioning.
 
 - **Patch**: backward-compatible fixes
-- **Minor**: additions and improvements that preserve existing contracts
+- **Minor**: additions and improvements that preserve existing behavior
 - **Major**: intentional incompatible changes to Stable contracts
 
-Prereleases may contain incompatible changes. Nightly builds have no compatibility guarantee.
+Prereleases may contain incompatible changes.
+Nightlies have no compatibility guarantee.
 
-The following are incompatible changes when they affect a Stable surface:
+Examples of incompatible changes include:
 
-- removing, renaming, or incompatibly changing public APIs, ABIs, standard-library entries, CLI behavior, or editor integration
-- rejecting previously valid public configuration or incompatibly changing its meaning or defaults
-- preventing a previously conforming Virune program from parsing, type-checking, linking, or running, or incompatibly changing its meaning
+- removing, renaming, or incompatibly changing public APIs, ABIs, standard-library entries, CLI, or editor capabilities
+- rejecting previously valid documented configuration, or incompatibly changing its meaning or default
+- preventing a previously conforming Virune program from being parsed, type-checked, linked, or evaluated, or incompatibly changing its meaning
 - incompatibly changing Stable diagnostics or machine-readable formats
-- raising a minimum supported version and dropping an environment that was previously supported
+- raising a minimum supported version and dropping a previously supported environment
 
-Human-facing wording, colors, layout, unpublished settings, and internal formats are not compatibility guarantees unless explicitly declared Stable.
+Human-oriented presentation such as wording, color, and layout, and undocumented settings, JSON fields, or internal details are not Stable unless explicitly guaranteed.
 
 ## Deprecation
 
 Before removing or incompatibly changing a Stable contract, Virune normally follows this sequence:
 
-1. Mark the contract as deprecated and reflect that status in tools or type information when practical.
-2. Provide a replacement or migration path.
-3. Publish at least one stable release that still supports the old contract while marking it deprecated.
-4. Make the incompatible change in a major release and document the affected version, the before-and-after behavior, and the required migration steps.
+1. Mark it deprecated in public documentation and, where practical, in tooling or type metadata.
+2. Provide a supported replacement or migration path.
+3. Publish at least one stable release that keeps the old contract available while marking it deprecated.
+4. Make the change in a major release and provide migration guidance.
+
+Migration guidance is prepared before release and identifies the affected versions and surface, the old and new contracts, and the required migration steps.
 
 Experimental and Internal surfaces do not require this process.
-
-Deprecation must not weaken type, safety, ABI, or validation boundaries, and marking a contract deprecated must not by itself change the meaning of existing programs.
+Deprecation does not justify weakening type, safety, ABI, or validation boundaries, and marking a surface deprecated must not by itself change existing program meaning.
 
 ## Correctness, safety, and security exception
 
 Virune must not preserve behavior known to violate the normative specification solely for compatibility.
 
-For a material correctness, safety, or security problem, prefer a backward-compatible fix when one is reasonably possible. An incompatible fix may land before the next major release only when no reasonable backward-compatible fix exists and leaving the problem unresolved would be worse.
+For material correctness, safety, or security problems, a backward-compatible fix is preferred when reasonably possible.
+Only when no reasonable backward-compatible fix exists and the problem would otherwise remain may an incompatible fix land before the next major release.
 
-The same rule applies when a previously supported environment can no longer be maintained safely or practically.
+The same applies when platform support ends and an existing environment can no longer be supported safely or practically.
 
-An exceptional incompatible change must identify at least:
+An exceptional incompatible change must identify the affected Stable contract, the previous behavior, why a backward-compatible fix is not possible, and any mitigation or migration path, while preserving unrelated Stable contracts.
 
-- the affected Stable contract
-- the previous behavior
-- why a backward-compatible fix is not possible
-- available mitigation or migration steps
+A fix that restores behavior required by the existing language specification is not a language-specification change.
+If that fix is incompatible with a Stable contract, it must satisfy this exception or wait for the next major release.
 
-Do not expand the exception to unrelated Stable contracts or use it to bypass the normal compatibility rules.
+This exception must not be used to bypass the normal compatibility rules.
 
-Restoring an implementation to behavior already required by the normative Language Specification is not, by itself, a Language Specification change. If that correction is incompatible with another Stable contract, it must still satisfy this exception or wait for a major release.
+If the specification, policy, implementation, and tests disagree, do not guess the more convenient interpretation.
+Resolve the inconsistency before treating the behavior as a Stable guarantee.
+Release notes or migration guidance alone cannot override the language specification or this policy.
 
-## When canonical sources disagree
-
-[`spec/`](spec/README.md) is normative for language behavior. Other public contracts are governed by their respective public APIs, ABIs, schemas, and machine-readable policies.
-
-If the specification, implementation, tests, or snapshots disagree, do not choose the most convenient interpretation. Resolve the inconsistency before treating the behavior as a Stable guarantee.
-
-Release notes or migration guidance cannot override the Language Specification or this compatibility policy. A snapshot update or green CI alone does not authorize an incompatible change.
+Green CI or snapshots alone do not authorize an incompatible change.
