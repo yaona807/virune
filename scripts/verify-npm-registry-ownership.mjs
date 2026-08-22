@@ -85,23 +85,52 @@ export function evaluateNpmRegistryOwnership({
 	};
 }
 
-export function buildRegistryOwnershipAuthorizationEvidence(reportValue, { publicationPlan } = {}) {
+export function buildRegistryOwnershipAuthorizationEvidence(reportValue, {
+	publicationPlan,
+	ownershipPolicy,
+	reviewedCommit,
+	releaseVersion,
+	evidenceSetId,
+	publicationManifestSha256,
+	publicationManifestBytes,
+} = {}) {
 	const report = validateNpmRegistryOwnershipReport(reportValue);
 	const plan = validateNpmPublicationPlanShape(publicationPlan, '$.publicationPlan');
+	const policy = validateNpmRegistryOwnershipPolicy(ownershipPolicy);
+	const identity = expectedIdentity({
+		reviewedCommit,
+		releaseVersion,
+		evidenceSetId,
+		publicationManifestSha256,
+		publicationManifestBytes,
+	});
 	const expectedPackages = publicationPackages(plan);
-	assertPublicationScope(expectedPackages, report.scope);
+	assertPublicationScope(expectedPackages, policy.scope);
+	assert(policy.status === 'configured', '$.ownershipPolicy.status', 'registry-ownership evidence requires an explicitly configured npm principal');
+	assert(report.registry === policy.registry, '$.ownershipReport.registry', `expected ${policy.registry}`);
+	assert(report.expectedPrincipal === policy.expectedPrincipal, '$.ownershipReport.expectedPrincipal', `expected reviewed npm principal ${policy.expectedPrincipal}`);
+	assert(report.observedPrincipal === policy.expectedPrincipal, '$.ownershipReport.observedPrincipal', `expected authenticated npm principal ${policy.expectedPrincipal}`);
+	assert(report.scope === policy.scope, '$.ownershipReport.scope', `expected reviewed npm scope ${policy.scope}`);
+	assert(report.reviewedCommit === identity.reviewedCommit, '$.ownershipReport.reviewedCommit', `expected ${identity.reviewedCommit}`);
+	assert(report.evidenceSetId === identity.evidenceSetId, '$.ownershipReport.evidenceSetId', `expected ${identity.evidenceSetId}`);
+	assert(report.version === identity.version, '$.ownershipReport.version', `expected ${identity.version}`);
+	assert(report.publicationManifest.sha256 === identity.publicationManifestSha256, '$.ownershipReport.publicationManifest.sha256', 'must match exact publication manifest SHA-256');
+	assert(report.publicationManifest.bytes === identity.publicationManifestBytes, '$.ownershipReport.publicationManifest.bytes', 'must match exact publication manifest byte size');
 	const actualPackages = report.packages.map(item => item.registryName);
 	assert(JSON.stringify(actualPackages) === JSON.stringify(expectedPackages), '$.ownershipReport.packages', `expected exact publication package set ${expectedPackages.join(', ')}`);
 	assert(report.state === 'verified', '$.ownershipReport.state', 'only verified ownership may satisfy registry-ownership');
+	assert(report.observationResult === COMPLETE, '$.ownershipReport.observationResult', 'registry-ownership requires a complete authenticated observation');
+	assert(report.scopeAuthority === 'verified', '$.ownershipReport.scopeAuthority', 'registry-ownership requires verified scope authority');
+	assert(report.packages.every(item => item.state === 'owned'), '$.ownershipReport.packages', 'registry-ownership requires every publication package to be owned');
 	return {
 		schemaVersion: 1,
 		requirement: 'registry-ownership',
 		result: 'passed',
-		reviewedCommit: report.reviewedCommit,
-		evidenceSetId: report.evidenceSetId,
-		version: report.version,
-		publicationManifestSha256: report.publicationManifest.sha256,
-		publicationManifestBytes: report.publicationManifest.bytes,
+		reviewedCommit: identity.reviewedCommit,
+		evidenceSetId: identity.evidenceSetId,
+		version: identity.version,
+		publicationManifestSha256: identity.publicationManifestSha256,
+		publicationManifestBytes: identity.publicationManifestBytes,
 	};
 }
 
