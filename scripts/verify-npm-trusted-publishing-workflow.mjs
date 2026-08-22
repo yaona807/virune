@@ -7,21 +7,12 @@ const POLICY_PATH = '.github/release/npm-trusted-publishing-v1.json';
 const EXPECTED_REPOSITORY = 'yaona807/virune';
 const EXPECTED_WORKFLOW_FILE = 'release.yml';
 const PUBLIC_REGISTRY = 'https://registry.npmjs.org/';
-const POLICY_KEYS = Object.freeze([
-	'schemaVersion',
-	'status',
-	'provider',
-	'repository',
-	'workflowFile',
-	'runner',
-	'registry',
-	'minimumNodeVersion',
-	'minimumNpmVersion',
-	'requiredPermission',
-	'forbiddenPublishCredentialEnv',
-	'npmSideObservationRequired',
-]);
 const FORBIDDEN_ENV = Object.freeze(['NODE_AUTH_TOKEN', 'NPM_TOKEN']);
+const POLICY_KEYS = Object.freeze([
+	'schemaVersion', 'status', 'provider', 'repository', 'workflowFile', 'runner', 'registry',
+	'minimumNodeVersion', 'minimumNpmVersion', 'allowedPublishAction', 'requiredPermission',
+	'forbiddenPublishCredentialEnv', 'npmSideObservationRequired',
+]);
 
 export async function verifyNpmTrustedPublishingWorkflow(root = repositoryRoot) {
 	const policy = validateNpmTrustedPublishingPolicy(JSON.parse(await readFile(resolve(root, POLICY_PATH), 'utf8')));
@@ -33,7 +24,7 @@ export function validateNpmTrustedPublishingPolicy(value) {
 	const policy = record(value, '$.trustedPublishingPolicy');
 	assertExactKeys(policy, POLICY_KEYS, '$.trustedPublishingPolicy');
 	assert(policy.schemaVersion === 1, '$.trustedPublishingPolicy.schemaVersion', 'expected 1');
-	assert(policy.status === 'repository-contract-only', '$.trustedPublishingPolicy.status', 'expected repository-contract-only until a separate npm-side observation is available');
+	const status = oneOf(policy.status, ['repository-contract-only', 'publication-workflow'], '$.trustedPublishingPolicy.status');
 	assert(policy.provider === 'github-actions', '$.trustedPublishingPolicy.provider', 'expected github-actions');
 	assert(policy.repository === EXPECTED_REPOSITORY, '$.trustedPublishingPolicy.repository', `expected ${EXPECTED_REPOSITORY}`);
 	assert(policy.workflowFile === EXPECTED_WORKFLOW_FILE, '$.trustedPublishingPolicy.workflowFile', `expected ${EXPECTED_WORKFLOW_FILE}`);
@@ -42,6 +33,7 @@ export function validateNpmTrustedPublishingPolicy(value) {
 	assert(policy.registry === PUBLIC_REGISTRY, '$.trustedPublishingPolicy.registry', `expected ${PUBLIC_REGISTRY}`);
 	const minimumNodeVersion = semverText(policy.minimumNodeVersion, '$.trustedPublishingPolicy.minimumNodeVersion');
 	const minimumNpmVersion = semverText(policy.minimumNpmVersion, '$.trustedPublishingPolicy.minimumNpmVersion');
+	assert(policy.allowedPublishAction === 'publish', '$.trustedPublishingPolicy.allowedPublishAction', 'expected publish');
 	const requiredPermission = record(policy.requiredPermission, '$.trustedPublishingPolicy.requiredPermission');
 	assertExactKeys(requiredPermission, ['id-token'], '$.trustedPublishingPolicy.requiredPermission');
 	assert(requiredPermission['id-token'] === 'write', '$.trustedPublishingPolicy.requiredPermission.id-token', 'expected write');
@@ -50,14 +42,15 @@ export function validateNpmTrustedPublishingPolicy(value) {
 	assert(policy.npmSideObservationRequired === true, '$.trustedPublishingPolicy.npmSideObservationRequired', 'npm-side live observation must remain required');
 	return {
 		schemaVersion: 1,
-		status: policy.status,
-		provider: policy.provider,
-		repository: policy.repository,
-		workflowFile: policy.workflowFile,
+		status,
+		provider: 'github-actions',
+		repository: EXPECTED_REPOSITORY,
+		workflowFile: EXPECTED_WORKFLOW_FILE,
 		runner,
-		registry: policy.registry,
+		registry: PUBLIC_REGISTRY,
 		minimumNodeVersion,
 		minimumNpmVersion,
+		allowedPublishAction: 'publish',
 		requiredPermission: { 'id-token': 'write' },
 		forbiddenPublishCredentialEnv: [...FORBIDDEN_ENV],
 		npmSideObservationRequired: true,
@@ -75,23 +68,36 @@ export function validateNpmTrustedPublishingWorkflowSource(source, policyValue) 
 	const releaseJob = extractJob(lines, 'release');
 	const runner = oneLineValue(releaseJob, 4, 'runs-on', '$.workflow.jobs.release.runs-on');
 	assert(runner === policy.runner, '$.workflow.jobs.release.runs-on', `expected ${policy.runner}`);
-	assert(!runner.includes('self-hosted'), '$.workflow.jobs.release.runs-on', 'self-hosted runners are not supported by the npm Trusted Publishing contract');
+	assert(!runner.includes('self-hosted'), '$.workflow.jobs.release.runs-on', 'self-hosted runners are not supported');
 	const nodeVersion = setupNodeVersion(releaseJob);
 	assert(versionAtLeast(normalizeWorkflowVersion(nodeVersion), policy.minimumNodeVersion), '$.workflow.jobs.release.nodeVersion', `expected Node ${policy.minimumNodeVersion} or newer`);
-	const commands = workflowRunCommands(releaseJob);
-	const publishCommands = commands.filter(command => /(^|\n)\s*npm\s+(?:publish|stage\s+publish)(?:\s|$)/mu.test(command));
-	assert(publishCommands.length === 0, '$.workflow.jobs.release.publish', 'repository-contract-only workflow must not contain npm publish or npm stage publish');
 	for (const envName of policy.forbiddenPublishCredentialEnv) {
 		assert(!hasEnvironmentBinding(lines, envName), `$.workflow.env.${envName}`, `${envName} must not be wired into the release workflow`);
 	}
+	assert(!hasDisabledProvenance(lines), '$.workflow.provenance', 'npm provenance must not be explicitly disabled');
+
+	const commands = workflowRunCommands(releaseJob);
 	const explicitNpmVersions = commands.flatMap(extractInstalledNpmVersions);
 	assert(explicitNpmVersions.length <= 1, '$.workflow.jobs.release.npmVersion', 'expected at most one explicit npm CLI installation');
 	if (explicitNpmVersions.length === 1) {
 		assert(versionAtLeast(explicitNpmVersions[0], policy.minimumNpmVersion), '$.workflow.jobs.release.npmVersion', `expected npm ${policy.minimumNpmVersion} or newer`);
 	}
+	const publicationInvocations = commands.flatMap(classifyPublicationInvocations);
+	const active = policy.status === 'publication-workflow';
+	if (!active) {
+		assert(publicationInvocations.length === 0, '$.workflow.jobs.release.publish', 'repository-contract-only workflow must not contain npm publication commands');
+	} else {
+		assert(explicitNpmVersions.length === 1, '$.workflow.jobs.release.npmVersion', 'publication workflow must pin one exact npm CLI version');
+		assert(publicationInvocations.length === 1, '$.workflow.jobs.release.publish', 'publication workflow must contain exactly one npm publication command');
+		const publication = publicationInvocations[0];
+		assert(publication.canonical === true, '$.workflow.jobs.release.publish', 'publication must use a direct canonical npm command');
+		assert(publication.action === policy.allowedPublishAction, '$.workflow.jobs.release.publish', `expected allowed action ${policy.allowedPublishAction}`);
+	}
+
 	return {
 		schemaVersion: 1,
 		kind: 'npm-trusted-publishing-workflow-contract-v1',
+		status: policy.status,
 		repository: policy.repository,
 		workflowFile: policy.workflowFile,
 		provider: policy.provider,
@@ -99,7 +105,8 @@ export function validateNpmTrustedPublishingWorkflowSource(source, policyValue) 
 		nodeVersion,
 		explicitNpmVersion: explicitNpmVersions[0] ?? null,
 		idTokenPermission: permissions['id-token'],
-		publishCommandPresent: false,
+		publishAction: active ? publicationInvocations[0].action : null,
+		workflowPublicationBoundaryPresent: active,
 		longLivedPublishCredentialWiringPresent: false,
 		npmSideObservationRequired: true,
 		publicationReady: false,
@@ -148,22 +155,17 @@ function extractJob(lines, name) {
 }
 
 function oneLineValue(lines, indent, key, path) {
-	const prefix = ' '.repeat(indent);
-	const expression = new RegExp(`^${prefix}${escapeRegExp(key)}:\\s*(.+?)\\s*$`, 'u');
+	const expression = new RegExp(`^${' '.repeat(indent)}${escapeRegExp(key)}:\\s*(.+?)\\s*$`, 'u');
 	const values = lines.map(line => expression.exec(line)?.[1]).filter(value => value !== undefined);
 	assert(values.length === 1, path, `expected exactly one ${key}`);
 	return unquote(values[0]);
 }
 
 function setupNodeVersion(lines) {
-	const setupIndexes = [];
-	for (let index = 0; index < lines.length; index += 1) {
-		if (/^\s+- uses:\s*actions\/setup-node@[0-9a-f]{40}(?:\s+#.*)?$/u.test(lines[index])) setupIndexes.push(index);
-	}
-	assert(setupIndexes.length === 1, '$.workflow.jobs.release.setup-node', 'expected exactly one immutable actions/setup-node step');
-	const start = setupIndexes[0];
+	const indexes = lines.map((line, index) => (/^\s+- uses:\s*actions\/setup-node@[0-9a-f]{40}(?:\s+#.*)?$/u.test(line) ? index : -1)).filter(index => index >= 0);
+	assert(indexes.length === 1, '$.workflow.jobs.release.setup-node', 'expected exactly one immutable actions/setup-node step');
 	let nodeVersion;
-	for (let index = start + 1; index < lines.length; index += 1) {
+	for (let index = indexes[0] + 1; index < lines.length; index += 1) {
 		const line = lines[index];
 		if (/^\s+- (?:uses|name|run):/u.test(line)) break;
 		const match = /^\s+node-version:\s*['"]?([^'"\s]+)['"]?\s*$/u.exec(line);
@@ -193,13 +195,24 @@ function workflowRunCommands(lines) {
 				block.push('');
 				continue;
 			}
-			const currentIndent = line.search(/\S/u);
-			if (currentIndent <= indent) break;
+			if (line.search(/\S/u) <= indent) break;
 			block.push(line.trimStart());
 		}
 		commands.push(block.join('\n'));
 	}
 	return commands;
+}
+
+function classifyPublicationInvocations(command) {
+	const results = [];
+	for (const rawLine of command.split(/\r?\n/u)) {
+		const line = rawLine.trim();
+		if (!/\bnpm\b/u.test(line) || !/\bpublish\b/u.test(line)) continue;
+		if (/^npm\s+publish(?:\s|$)/u.test(line)) results.push({ action: 'publish', canonical: true });
+		else if (/^npm\s+stage\s+publish(?:\s|$)/u.test(line)) results.push({ action: 'stage-publish', canonical: true });
+		else results.push({ action: 'unsupported', canonical: false });
+	}
+	return results;
 }
 
 function extractInstalledNpmVersions(command) {
@@ -214,6 +227,11 @@ function extractInstalledNpmVersions(command) {
 function hasEnvironmentBinding(lines, name) {
 	const expression = new RegExp(`^\\s+${escapeRegExp(name)}:\\s*`, 'u');
 	return lines.some(line => expression.test(line));
+}
+
+function hasDisabledProvenance(lines) {
+	return lines.some(line => /^\s+NPM_CONFIG_PROVENANCE:\s*['"]?false['"]?\s*$/u.test(line))
+		|| workflowRunCommands(lines).some(command => /(?:^|\s)--provenance=false(?:\s|$)/u.test(command));
 }
 
 function normalizeWorkflowVersion(value) {
@@ -233,6 +251,11 @@ function semverComponents(value, path) {
 	const match = /^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/u.exec(value);
 	assert(match !== null, path, 'expected exact major.minor.patch version');
 	return match.slice(1).map(Number);
+}
+
+function oneOf(value, allowed, path) {
+	assert(typeof value === 'string' && allowed.includes(value), path, `expected one of ${allowed.join(', ')}`);
+	return value;
 }
 
 function stringArray(value, path) {
@@ -281,5 +304,5 @@ function assert(condition, path, message) {
 const entry = process.argv[1] === undefined ? undefined : resolve(process.argv[1]);
 if (entry === fileURLToPath(import.meta.url)) {
 	const report = await verifyNpmTrustedPublishingWorkflow();
-	process.stdout.write(`Verified npm Trusted Publishing repository contract for ${report.repository}/${report.workflowFile}; publication remains disabled pending npm-side observation.\n`);
+	process.stdout.write(`Verified npm Trusted Publishing repository contract for ${report.repository}/${report.workflowFile}; publication authority remains disabled pending npm-side observation.\n`);
 }
