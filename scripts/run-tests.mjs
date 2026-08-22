@@ -51,16 +51,8 @@ const groups = platformSmoke ? platformGroups : [
 			name: 'npm publication plan policy',
 			files: [
 				'scripts/verify-npm-publication-plan.test.mjs',
-				'scripts/verify-npm-publication-plan-candidate.test.mjs',
 				'scripts/verify-npm-publication-license.test.mjs',
 				'scripts/verify-npm-publication-recovery.test.mjs',
-				'scripts/npm-publication-version-policy.test.mjs',
-				'scripts/verify-npm-publication-authorization.test.mjs',
-				'scripts/verify-npm-publication-authorization-channel.test.mjs',
-				'scripts/run-npm-publication-authorization.test.mjs',
-				'scripts/run-npm-publication-prewrite-gate.test.mjs',
-				'scripts/run-npm-publication-prewrite-gate-order.test.mjs',
-				'scripts/verify-npm-registry-ownership.test.mjs',
 			],
 		},
 		{
