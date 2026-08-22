@@ -472,9 +472,9 @@ function structuralState(value: unknown): string {
 function encodeStructuralValue(value: unknown, seen: Map<object, number>): string {
 	if (value === null) return 'null';
 	if (value === undefined) return 'undefined';
-	if (typeof value === 'string') return `string:${value.length}:${value}`;
+	if (typeof value === 'string') return `string:${JSON.stringify(value)}`;
 	if (typeof value === 'boolean') return value ? 'boolean:true' : 'boolean:false';
-	if (typeof value === 'bigint') return `bigint:${value}`;
+	if (typeof value === 'bigint') return `bigint:${value.toString(10)}`;
 	if (typeof value === 'number') {
 		if (Number.isNaN(value)) return 'number:NaN';
 		if (value === Number.POSITIVE_INFINITY) return 'number:+Infinity';
@@ -518,7 +518,7 @@ function encodeStructuralValue(value: unknown, seen: Map<object, number>): strin
 		if (descriptor === undefined) throw new Error(`checked structural object is missing field ${key}`);
 		if (!('value' in descriptor)) throw new Error(`checked structural object field ${key} must be a data property`);
 		if (index > 0) fields += ',';
-		fields += `${key.length}:${key}=${encodeStructuralValue(descriptor.value, seen)}`;
+		fields += `${JSON.stringify(key)}=${encodeStructuralValue(descriptor.value, seen)}`;
 	}
 	return `object:${id}:{${fields}}`;
 }
