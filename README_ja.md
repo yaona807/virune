@@ -28,15 +28,19 @@
 
 言語としての厳密な動作は[`spec/`](spec/README_ja.md)を参照してください。Viruneの開発へ参加する場合は[`CONTRIBUTING_ja.md`](CONTRIBUTING_ja.md)から始めてください。リポジトリ構成、変更の進め方、テストの選び方もそちらにまとめています。
 
-## ソースから動かす
+## クイックスタート
 
-必要なNode.jsのバージョンは`package.json`の`engines`を正本とします。リポジトリを取得済みの場合は次を実行します。
+`virune init`で作成したプロジェクトには、利用するViruneのバージョンに対応したREADMEとセットアップ手順が含まれます。リポジトリを取得済みの場合は、ルート`package.json`の`engines`が要求するNode.jsを使用し、次を実行します。
 
 ```bash
 npm run bootstrap
 npm run build
 npm run virune -- --version
 ```
+
+## 運営
+
+Viruneは現在、[`@yaona807`](https://github.com/yaona807)がメンテナンスしています。変更や提案は原則としてIssueやPull Requestを通じて公開して進め、プロジェクトの最終判断はメンテナーが行います。セキュリティ問題は[`SECURITY_ja.md`](SECURITY_ja.md)に従って報告してください。
 
 ## リリース
 

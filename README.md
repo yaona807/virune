@@ -28,15 +28,19 @@ This repository is the source of truth for developing and maintaining Virune its
 
 For precise language behavior, see [`spec/`](spec/README.md). To contribute to Virune development, start with [`CONTRIBUTING.md`](CONTRIBUTING.md); repository structure, development workflow, and test selection are documented there.
 
-## Run from source
+## Quick start
 
-The supported Node.js version is defined by `engines` in the root `package.json`. From an existing checkout, run:
+A project created by `virune init` contains its own version-matched README and setup commands. For an existing repository checkout, use the Node.js version required by `engines` in the root `package.json`, then run:
 
 ```bash
 npm run bootstrap
 npm run build
 npm run virune -- --version
 ```
+
+## Governance
+
+Virune is currently maintained by [`@yaona807`](https://github.com/yaona807). Changes and proposals are generally developed publicly through Issues and Pull Requests, and final project decisions are made by the maintainer. Security reports follow [`SECURITY.md`](SECURITY.md).
 
 ## Releases
 
