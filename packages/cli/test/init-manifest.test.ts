@@ -12,8 +12,8 @@ test('v1.0.x generated projects preserve immutable GitHub Release dependencies',
 	assert.equal(generatedProjectDependencyVersions('1.0.9').source, 'github-release');
 });
 
-test('Registry-enabled release line generates exact npm versions without a selector', () => {
-	for (const version of ['1.1.0-rc.1', '1.1.0', '1.2.0', '2.0.0']) {
+test('Registry-enabled stable and prerelease lines generate exact npm versions without a selector', () => {
+	for (const version of ['1.1.0-alpha.1', '1.1.0-beta.2', '1.1.0-rc.1', '1.1.0', '1.2.0', '2.0.0']) {
 		assert.deepEqual(generatedProjectDependencyVersions(version), {
 			source: 'npm',
 			cli: version,
@@ -27,6 +27,16 @@ test('Registry-enabled release line generates exact npm versions without a selec
 		});
 		assert.deepEqual(manifest.devDependencies, { virune: version });
 	}
+});
+
+test('nightly releases remain on immutable GitHub Release dependencies', () => {
+	const version = '1.1.0-nightly.20260822.1';
+	assert.deepEqual(generatedProjectDependencyVersions(version), {
+		source: 'github-release',
+		cli: `https://github.com/yaona807/virune/releases/download/v${version}/virune-${version}.tgz`,
+		runtime: `https://github.com/yaona807/virune/releases/download/v${version}/virune-runtime-${version}.tgz`,
+		stdlib: `https://github.com/yaona807/virune/releases/download/v${version}/virune-stdlib-${version}.tgz`,
+	});
 });
 
 test('generated project manifest keeps the canonical scripts and private package boundary', () => {
