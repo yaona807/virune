@@ -32,6 +32,9 @@ function publicationPlan() {
 		unresolvedRequirements: [...NPM_PUBLICATION_POST_WRITE_REQUIREMENTS],
 		firstStableRegistryRelease: '1.1.0',
 		distTagPolicy: { stable: 'latest', prerelease: 'next', nightly: null },
+		trustedPublishingRequired: true,
+		publicVerificationRequired: true,
+		sameReviewedReleaseIdentityRequired: true,
 		packages: [
 			{ directory: 'runtime', workspaceName: '@virune/runtime', registryName: '@virune/runtime', role: 'cli-dependency' },
 			{ directory: 'cli', workspaceName: 'virune', registryName: 'virune', role: 'cli' },
@@ -127,6 +130,14 @@ test('source declaration alone cannot authorize publication', () => {
 	assert.throws(() => evaluateNpmPublicationAuthorization(input({ publicationPlan: wrongStage })), /publication-candidate/u);
 });
 
+test('contradictory reviewed source safety flags cannot authorize publication', () => {
+	for (const field of ['trustedPublishingRequired', 'publicVerificationRequired', 'sameReviewedReleaseIdentityRequired']) {
+		const plan = publicationPlan();
+		plan[field] = false;
+		assert.throws(() => evaluateNpmPublicationAuthorization(input({ publicationPlan: plan })), new RegExp(field, 'u'));
+	}
+});
+
 test('publication-candidate source state leaves exactly post-write requirements unresolved', () => {
 	for (const mutate of [
 		plan => plan.unresolvedRequirements.push('trusted-publishing'),
@@ -176,12 +187,14 @@ test('reviewed publication manifest identity must agree with the source declarat
 	assert.throws(() => evaluateNpmPublicationAuthorization(input({ publicationManifestBytes: Buffer.from('{') })), /malformed JSON/u);
 });
 
-test('unknown, missing, duplicate, failed, stale, partial or mismatched evidence fails closed', () => {
+test('unknown, missing, duplicate, failed, contradictory, stale, partial or mismatched evidence fails closed', () => {
 	const mutations = [
 		evidence => evidence.pop(),
 		evidence => { evidence[0].requirement = 'unknown-requirement'; },
 		evidence => { evidence[1].requirement = evidence[0].requirement; },
 		evidence => { evidence[0].result = 'failed'; },
+		evidence => { evidence[0].result = 'contradictory'; },
+		evidence => { delete evidence[0].result; },
 		evidence => { evidence[0].reviewedCommit = 'b'.repeat(40); },
 		evidence => { evidence[0].evidenceSetId = 'github-actions:older-run:1'; },
 		evidence => { evidence[0].version = '1.1.0-rc.2'; },
