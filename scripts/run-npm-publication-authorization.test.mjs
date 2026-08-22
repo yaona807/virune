@@ -63,6 +63,25 @@ test('a failed exact-head rerun invalidates stale passing authorization evidence
 	}
 });
 
+test('malformed rerun identity also invalidates stale passing authorization evidence', async () => {
+	const root = mkdtempSync(join(tmpdir(), 'virune-npm-auth-malformed-'));
+	try {
+		const outputPath = join(root, 'authorization.json');
+		writeFileSync(outputPath, '{"publicationReady":true}\n');
+		await assert.rejects(() => runNpmPublicationAuthorization({
+			reviewedCommit: 'ABC',
+			releaseVersion: '1.1.0-rc.1',
+			evidenceSetId,
+			publicationManifestBytes: Buffer.from('{}\n'),
+			evidenceDocument: evidenceDocument(),
+			outputPath,
+		}), /full lowercase commit SHA/u);
+		assert.equal(existsSync(outputPath), false, 'malformed rerun must invalidate stale passing evidence first');
+	} finally {
+		rmSync(root, { recursive: true, force: true });
+	}
+});
+
 test('evidence document schema and current execution identity fail closed', () => {
 	for (const mutate of [
 		document => { document.evidenceSetId = 'github-actions:older:1'; },
