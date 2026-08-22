@@ -13,6 +13,25 @@
     "release-identity-integration",
     "trusted-publishing"
   ],
+  "authorization": {
+    "schemaVersion": 1,
+    "reportKind": "npm-publication-authorization-v1",
+    "evidenceSchemaVersion": 1,
+    "evidenceSetBindingRequired": true,
+    "preWriteRequirements": [
+      "documentation-sync",
+      "package-publication-enablement",
+      "publication-gate-integration",
+      "registry-ownership",
+      "release-identity-integration",
+      "trusted-publishing"
+    ],
+    "postWriteCompletionRequirements": [
+      "clean-registry-install-smoke",
+      "generated-project-registry-smoke",
+      "public-registry-verification"
+    ]
+  },
   "forbidRegistryPublishThroughVersion": "1.0.0",
   "firstStableRegistryRelease": "1.1.0",
   "distTagPolicy": {
