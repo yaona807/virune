@@ -200,7 +200,9 @@ export function externalOperationFromUsage(usage: ForeignUsageIR): ExternalOpera
 				...anchor,
 				source,
 				bridge: usage.bridge.bridge,
-				decision: directDecision(usage.bridge.bridge === 'unknown' ? [] : ['primitive-bridge-validated']),
+				decision: usage.bridge.bridge === 'unknown'
+					? unresolvedDirectDecision()
+					: directDecision(['primitive-bridge-validated']),
 			});
 		}
 	}
@@ -264,7 +266,14 @@ function runtimeResolutionDecision(witness: ExternalRuntimeResolutionWitness): I
 function canonicalForeignType(snapshot: StableForeignTypeSnapshot): ExternalForeignValueShape {
 	assertKnown(FOREIGN_CATEGORIES, snapshot.category, 'foreign type category');
 	if (snapshot.category === 'any') throw new Error('TypeScript any cannot become successful External operation evidence');
-	if (snapshot.primitive !== undefined) assertKnown(FOREIGN_PRIMITIVES, snapshot.primitive, 'foreign primitive');
+	if (snapshot.primitive !== undefined) {
+		assertKnown(FOREIGN_PRIMITIVES, snapshot.primitive, 'foreign primitive');
+		if (snapshot.category !== 'primitive' && snapshot.category !== 'literal') {
+			throw new Error(`External operation foreign primitive is incompatible with category ${snapshot.category}`);
+		}
+	} else if (snapshot.category === 'primitive') {
+		throw new Error('External operation primitive category requires an explicit primitive kind');
+	}
 	if (snapshot.mustUse !== undefined && typeof snapshot.mustUse !== 'boolean') throw new Error('External operation foreign mustUse must be boolean');
 	const origin = snapshot.origin === undefined ? undefined : canonicalOrigin(snapshot.origin);
 	return Object.freeze({
@@ -296,11 +305,13 @@ function canonicalRuntimeWitness(witness: ModuleResolutionWitness, moduleSpecifi
 	if (!Array.isArray(witness.conditions)) throw new Error('External module witness conditions must be an array');
 	const conditionValues: readonly string[] = witness.conditions;
 	const conditions: readonly string[] = Object.freeze([...new Set(conditionValues.map((condition: string) => stableProviderText(condition, 'module witness condition')))].sort(compareText));
+	const runtimeEntry = witness.runtimeEntry === undefined ? undefined : canonicalRuntimeEntry(witness.runtimeEntry);
+	assertRuntimeResolutionCoherence(runtimeEntry, witness.runtimeFormat, witness.platform);
 	return Object.freeze({
 		moduleSpecifier,
 		...(witness.packageName === undefined ? {} : { packageName: stableProviderText(witness.packageName, 'runtime package name') }),
 		...(witness.packageVersion === undefined ? {} : { packageVersion: stableProviderText(witness.packageVersion, 'runtime package version') }),
-		...(witness.runtimeEntry === undefined ? {} : { runtimeEntry: canonicalRuntimeEntry(witness.runtimeEntry) }),
+		...(runtimeEntry === undefined ? {} : { runtimeEntry }),
 		...(witness.runtimeFormat === undefined ? {} : { runtimeFormat: witness.runtimeFormat }),
 		conditions,
 		platform: witness.platform,
@@ -353,13 +364,34 @@ function canonicalRuntimeEntry(value: string): string {
 	if (value.includes('\\') || value.startsWith('/') || /^[A-Za-z]:[\\/]/u.test(value) || /^file:/iu.test(value)) {
 		throw new Error('External operation runtime entry must not contain an absolute or provider-private path');
 	}
-	if (!/^[A-Za-z][A-Za-z0-9+.-]*:/u.test(value)) {
-		const segments = value.split('/');
-		if (segments.some(segment => segment.length === 0 || segment === '.' || segment === '..')) {
-			throw new Error('External operation runtime entry must be a canonical relative locator');
+	const scheme = /^([A-Za-z][A-Za-z0-9+.-]*):/u.exec(value)?.[1];
+	if (scheme !== undefined) {
+		if (scheme !== 'node') throw new Error(`External operation runtime entry uses unsupported scheme ${scheme}`);
+		const builtinSegments = value.slice('node:'.length).split('/');
+		if (builtinSegments.some(segment => segment.length === 0 || segment === '.' || segment === '..')) {
+			throw new Error('External operation runtime entry must be a canonical node builtin locator');
 		}
+		return value;
+	}
+	const segments = value.split('/');
+	if (segments.some(segment => segment.length === 0 || segment === '.' || segment === '..')) {
+		throw new Error('External operation runtime entry must be a canonical relative locator');
 	}
 	return value;
+}
+
+function assertRuntimeResolutionCoherence(
+	runtimeEntry: string | undefined,
+	runtimeFormat: ModuleResolutionWitness['runtimeFormat'] | undefined,
+	platform: ModuleResolutionWitness['platform'],
+): void {
+	const nodeBuiltinEntry = runtimeEntry?.startsWith('node:') ?? false;
+	if (nodeBuiltinEntry && (runtimeFormat !== 'builtin' || platform !== 'node')) {
+		throw new Error('External operation node builtin runtime entry requires builtin format on the node platform');
+	}
+	if (runtimeFormat === 'builtin' && runtimeEntry !== undefined && !nodeBuiltinEntry) {
+		throw new Error('External operation builtin runtime format requires a node builtin runtime entry');
+	}
 }
 
 function stableOptionalOriginText(value: string | undefined): string | undefined {
