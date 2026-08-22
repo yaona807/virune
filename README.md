@@ -127,7 +127,7 @@ import js { nanoid } from "nanoid"
 
 Virune does not treat every value arriving from JavaScript as a trusted native value.
 
-TypeScript `any` is not accepted as a safe type, and `unknown` is not silently narrowed to a more convenient type. Values that cannot be safely determined remain `Unknown` until they are handled explicitly. Values involving `null` or `undefined` are also handled at the boundary and converted into Virune-side types.
+TypeScript `any` is not accepted as a safe type, and `unknown` is not silently narrowed to a more convenient type. Values that cannot be safely determined remain `Unknown` until they are handled explicitly. Values involving `null` or `undefined` are also handled at the boundary and explicitly converted into Virune-side types.
 
 More complex TypeScript APIs can be isolated behind a TypeScript-side Adapter. Virune also cannot guarantee that an external library's implementation actually follows its type declarations.
 
