@@ -27,7 +27,7 @@ if (command === 'init') {
 } else {
 	await import('./main-core.js');
 	if (command === 'help' || command === '--help' || command === '-h') {
-		console.log('\nInit options:\n  --dependency-source=github-release|npm   Select immutable GitHub Release assets or exact public npm package versions');
+		console.log('\nInit options:\n  --dependency-source=github-release|npm   Select immutable GitHub Release assets or exact public npm package versions\n                                       npm requires a reviewed Registry CLI artifact');
 	}
 }
 
