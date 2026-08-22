@@ -253,16 +253,19 @@ function snapshotForeignUsage(value: unknown): ForeignUsage {
 		foreignType: snapshotForeignType(ownDataProperty(value, 'foreignType', 'checked Interop usage')),
 	};
 	if (kind === 'call') {
+		const receiverMode = ownOptionalDataProperty(value, 'receiverMode', 'checked Interop usage');
+		const mayReject = ownOptionalDataProperty(value, 'mayReject', 'checked Interop usage');
 		return Object.freeze({
 			...base,
-			receiverMode: ownOptionalDataProperty(value, 'receiverMode', 'checked Interop usage') as ForeignUsage['receiverMode'],
-			mayReject: ownOptionalDataProperty(value, 'mayReject', 'checked Interop usage') as ForeignUsage['mayReject'],
+			...(receiverMode === undefined ? {} : { receiverMode: receiverMode as NonNullable<ForeignUsage['receiverMode']> }),
+			...(mayReject === undefined ? {} : { mayReject: mayReject as boolean }),
 		});
 	}
 	if (kind === 'await') {
+		const mayReject = ownOptionalDataProperty(value, 'mayReject', 'checked Interop usage');
 		return Object.freeze({
 			...base,
-			mayReject: ownOptionalDataProperty(value, 'mayReject', 'checked Interop usage') as ForeignUsage['mayReject'],
+			...(mayReject === undefined ? {} : { mayReject: mayReject as boolean }),
 		});
 	}
 	if (kind === 'bridge') {
@@ -284,16 +287,19 @@ function snapshotForeignUsageIR(value: unknown): ForeignUsageIR {
 		foreignType: snapshotStableForeignType(ownDataProperty(value, 'foreignType', 'checked Interop usage')),
 	};
 	if (kind === 'call') {
+		const receiverMode = ownOptionalDataProperty(value, 'receiverMode', 'checked Interop usage');
+		const mayReject = ownOptionalDataProperty(value, 'mayReject', 'checked Interop usage');
 		return Object.freeze({
 			...base,
-			receiverMode: ownOptionalDataProperty(value, 'receiverMode', 'checked Interop usage') as ForeignUsageIR['receiverMode'],
-			mayReject: ownOptionalDataProperty(value, 'mayReject', 'checked Interop usage') as ForeignUsageIR['mayReject'],
+			...(receiverMode === undefined ? {} : { receiverMode: receiverMode as NonNullable<ForeignUsageIR['receiverMode']> }),
+			...(mayReject === undefined ? {} : { mayReject: mayReject as boolean }),
 		});
 	}
 	if (kind === 'await') {
+		const mayReject = ownOptionalDataProperty(value, 'mayReject', 'checked Interop usage');
 		return Object.freeze({
 			...base,
-			mayReject: ownOptionalDataProperty(value, 'mayReject', 'checked Interop usage') as ForeignUsageIR['mayReject'],
+			...(mayReject === undefined ? {} : { mayReject: mayReject as boolean }),
 		});
 	}
 	if (kind === 'bridge') {
@@ -314,31 +320,27 @@ function nonImportUsageKind(value: unknown): 'property' | 'call' | 'await' | 'br
 
 function snapshotForeignType(value: unknown): ForeignTypeSnapshot {
 	const origin = ownOptionalDataProperty(value, 'origin', 'checked foreign type');
+	const primitive = ownOptionalDataProperty(value, 'primitive', 'checked foreign type');
+	const mustUse = ownOptionalDataProperty(value, 'mustUse', 'checked foreign type');
 	return Object.freeze({
 		ref: snapshotForeignTypeRef(ownDataProperty(value, 'ref', 'checked foreign type')),
 		display: ownDataProperty(value, 'display', 'checked foreign type') as string,
 		category: ownDataProperty(value, 'category', 'checked foreign type') as ForeignTypeSnapshot['category'],
-		...(ownOptionalDataProperty(value, 'primitive', 'checked foreign type') === undefined ? {} : {
-			primitive: ownOptionalDataProperty(value, 'primitive', 'checked foreign type') as ForeignTypeSnapshot['primitive'],
-		}),
-		...(ownOptionalDataProperty(value, 'mustUse', 'checked foreign type') === undefined ? {} : {
-			mustUse: ownOptionalDataProperty(value, 'mustUse', 'checked foreign type') as boolean,
-		}),
+		...(primitive === undefined ? {} : { primitive: primitive as NonNullable<ForeignTypeSnapshot['primitive']> }),
+		...(mustUse === undefined ? {} : { mustUse: mustUse as boolean }),
 		...(origin === undefined ? {} : { origin: snapshotOrigin(origin) }),
 	});
 }
 
 function snapshotStableForeignType(value: unknown): StableForeignTypeSnapshot {
 	const origin = ownOptionalDataProperty(value, 'origin', 'checked foreign type');
+	const primitive = ownOptionalDataProperty(value, 'primitive', 'checked foreign type');
+	const mustUse = ownOptionalDataProperty(value, 'mustUse', 'checked foreign type');
 	return Object.freeze({
 		display: ownDataProperty(value, 'display', 'checked foreign type') as string,
 		category: ownDataProperty(value, 'category', 'checked foreign type') as StableForeignTypeSnapshot['category'],
-		...(ownOptionalDataProperty(value, 'primitive', 'checked foreign type') === undefined ? {} : {
-			primitive: ownOptionalDataProperty(value, 'primitive', 'checked foreign type') as StableForeignTypeSnapshot['primitive'],
-		}),
-		...(ownOptionalDataProperty(value, 'mustUse', 'checked foreign type') === undefined ? {} : {
-			mustUse: ownOptionalDataProperty(value, 'mustUse', 'checked foreign type') as boolean,
-		}),
+		...(primitive === undefined ? {} : { primitive: primitive as NonNullable<StableForeignTypeSnapshot['primitive']> }),
+		...(mustUse === undefined ? {} : { mustUse: mustUse as boolean }),
 		...(origin === undefined ? {} : { origin: snapshotOrigin(origin) }),
 	});
 }
@@ -386,7 +388,7 @@ function snapshotModuleWitness(value: unknown): ModuleResolutionWitness {
 		...(packageName === undefined ? {} : { packageName: packageName as string }),
 		...(packageVersion === undefined ? {} : { packageVersion: packageVersion as string }),
 		...(runtimeEntry === undefined ? {} : { runtimeEntry: runtimeEntry as string }),
-		...(runtimeFormat === undefined ? {} : { runtimeFormat: runtimeFormat as ModuleResolutionWitness['runtimeFormat'] }),
+		...(runtimeFormat === undefined ? {} : { runtimeFormat: runtimeFormat as NonNullable<ModuleResolutionWitness['runtimeFormat']> }),
 		conditions: Object.freeze(conditions),
 		platform: ownDataProperty(value, 'platform', 'checked module witness') as ModuleResolutionWitness['platform'],
 		providerVersion: ownDataProperty(value, 'providerVersion', 'checked module witness') as string,
