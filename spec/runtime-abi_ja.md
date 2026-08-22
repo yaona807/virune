@@ -30,11 +30,11 @@ Runtime ABI v2にはプロトコルレジストリがありません。EqとHash
 
 ## 構造化並行処理
 
-すべてのタスクはスコープに属します。`parallel`と`parallel try`は現在のスコープで子タスクを開始し、必要な場合は兄弟タスクをキャンセルし、すべての子タスクの状態が確定するまで待ちます。失敗を選ぶ順序はソース上の順序に基づき、決定的です。Runtimeは、通常のVirune APIを通じて切り離されたタスク（detached task）を公開しません。
+すべてのタスクはスコープに属します。`parallel`と`parallel try`は現在のスコープで子タスクを開始し、必要な場合は兄弟タスクをキャンセルし、すべての子タスクの状態が確定するまで待ちます。複数の失敗がある場合、報告する失敗はソース上の順序で決まります。Runtimeは、通常のVirune APIを通じて切り離されたタスク（detached task）を公開しません。
 
 ## Interop ABI v2の記述子（descriptor）
 
-descriptorは、検証済みのプリミティブ型、Option、Result、Bytes、対応しているコレクション、`record`、`enum`、`type` alias、`newtype`を表現します。`record`のフィールドには次の情報を持たせられます。
+記述子は、検証済みのプリミティブ型、Option、Result、Bytes、対応しているコレクション、`record`、`enum`、`type` alias、`newtype`を表現します。`record`のフィールドには次の情報を持たせられます。
 
 - 外部JavaScriptでのプロパティ名
 - 省略可能なプロパティが欠けた場合に使う`missingAsNone`
@@ -42,7 +42,7 @@ descriptorは、検証済みのプリミティブ型、Option、Result、Bytes�
 - 境界で期待するnull／undefined表現
 - コンパイル時のJSON既定値と厳格性メタデータ
 
-`record`と`enum`のdescriptorは、完全な名前的`typeId`（`package#module:Type`）を持ちます。再帰または未解決のdescriptorを暗黙に安全な集約値として扱いません。`Unknown`へフォールバックするか、Adapterを要求します。
+`record`と`enum`の記述子は、完全な名前的`typeId`（`package#module:Type`）を持ちます。再帰または未解決の記述子を暗黙に安全な集約値として扱いません。`Unknown`へフォールバックするか、Adapterを要求します。
 
 Safe descriptor（安全な記述子）は、コールバックの検証、オブジェクトをキーにした任意のJavaScript Map／Set変換、TypeScriptの`Record<K, V>`変換を保証しません。
 
