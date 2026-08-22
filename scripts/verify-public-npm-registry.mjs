@@ -93,7 +93,12 @@ export function validatePublicReleaseBinding(report, { reviewedCommit, publicati
 	assert(document.passed === true, '$.publicReleaseReport.passed', 'public release verification must have passed');
 	const release = record(document.release, '$.publicReleaseReport.release');
 	assert(release.draft === false, '$.publicReleaseReport.release.draft', 'release must not be a draft');
-	assert(release.prerelease === true, '$.publicReleaseReport.release.prerelease', 'release must be a prerelease');
+	const expectedPrerelease = releaseVersion.includes('-');
+	assert(
+		release.prerelease === expectedPrerelease,
+		'$.publicReleaseReport.release.prerelease',
+		expectedPrerelease ? 'release must be a prerelease' : 'stable release must not be a prerelease',
+	);
 	const attestations = record(document.attestations, '$.publicReleaseReport.attestations');
 	assertExactKeys(attestations, ['cyclonedx', 'provenance'], '$.publicReleaseReport.attestations');
 	assert(attestations.provenance === 'passed', '$.publicReleaseReport.attestations.provenance', 'provenance verification must have passed');
