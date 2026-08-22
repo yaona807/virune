@@ -11,10 +11,10 @@ import { parseChecksums, validateDownloadedRelease, validateReleaseRecord } from
 const repositoryRoot = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const version = '1.0.0-rc.1';
 const requiredNames = [
-	'LICENSE', 'MANIFEST.json', 'NOTICE', 'README.md', 'README_ja.md', 'RELEASE-MANIFEST.json', 'SBOM.cdx.json', 'SHA256SUMS', 'THIRD_PARTY_NOTICES.md', 'THIRD_PARTY_NOTICES_ja.md', 'package.json',
+	'LICENSE', 'MANIFEST.json', 'NOTICE', 'README.md', 'README_ja.md', 'RELEASE-MANIFEST.json', 'SBOM.cdx.json', 'SHA256SUMS', 'THIRD_PARTY_NOTICES.md', 'package.json',
 	`virune-${version}.tgz`, `virune-compiler-${version}.tgz`, `virune-formatter-${version}.tgz`, `virune-js-interop-${version}.tgz`, `virune-runtime-${version}.tgz`, `virune-stdlib-${version}.tgz`, `virune-vscode-${version}.vsix`,
 ];
-const reviewedLegalFiles = ['LICENSE', 'NOTICE', 'THIRD_PARTY_NOTICES.md', 'THIRD_PARTY_NOTICES_ja.md'];
+const reviewedLegalFiles = ['LICENSE', 'NOTICE', 'THIRD_PARTY_NOTICES.md'];
 
 test('accepts a published prerelease with the complete required asset set', () => {
 	assert.doesNotThrow(() => validateReleaseRecord({
@@ -54,7 +54,7 @@ test('validates downloaded checksums, reviewed legal assets and CycloneDX 1.6 SB
 	assert.equal(result.manifest.schemaVersion, 2);
 	assert.equal(result.sbom.specVersion, '1.6');
 	assert.equal(result.sbom.license, 'Apache-2.0');
-	assert.equal(result.assets.length, 8);
+	assert.equal(result.assets.length, 7);
 });
 
 test('validates reviewed legal assets against an immutable Git commit object', async t => {
