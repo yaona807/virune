@@ -38,9 +38,9 @@ npm run build
 npm run virune -- --version
 ```
 
-## Release
+## リリース
 
-公開済みの成果物は[GitHub Releases](https://github.com/yaona807/virune/releases)で確認できます。Releaseの可否はリポジトリ内の機械可読ポリシーとCIで判定し、READMEには個別バージョンの手順を重複して持ちません。
+公開済みの成果物は[GitHub Releases](https://github.com/yaona807/virune/releases)で確認できます。リリースの可否はリポジトリ内の機械可読ポリシーとCIで判定し、READMEには個別バージョンの手順を重複して持ちません。
 
 ## ライセンス
 
