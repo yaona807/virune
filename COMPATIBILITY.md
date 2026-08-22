@@ -34,6 +34,8 @@ Stabilization must be explicit, and updating a snapshot alone does not authorize
 
 LSP follows the VS Code API versions supported by Virune and the Language Server Protocol.
 
+Published diagnostic codes are stable identifiers within their schema version. An existing `Lxxxx` code must not be reused for a different semantic condition. External tools should identify diagnostics by `source` plus `code`, or by `qualifiedCode`, rather than by message text. The exact current code ranges, catalog, and JSON field structure remain defined by the compiler-owned diagnostic sources and schema.
+
 ### Experimental
 
 Experimental surfaces are not covered by stable compatibility guarantees and may change or be removed in any release.
