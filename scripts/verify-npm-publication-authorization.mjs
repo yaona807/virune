@@ -4,11 +4,15 @@ import {
 	NPM_PUBLICATION_PRE_WRITE_REQUIREMENTS,
 	validateNpmPublicationAuthorizationContract,
 } from './npm-publication-authorization-contract.mjs';
+import { validateNpmPublicationPlanShape } from './npm-publication-plan-contract.mjs';
 import {
 	bundledCliReleaseAssetName,
 	registryReleaseAssetNameForPackage,
 } from './verify-npm-publication-identity.mjs';
 import { registryPolicyForVersion } from './npm-publication-version-policy.mjs';
+
+const RETRO_PUBLISH_BOUNDARY = '1.0.0';
+const FIRST_STABLE_REGISTRY_RELEASE = '1.1.0';
 
 export function evaluateNpmPublicationAuthorization({
 	publicationPlan,
@@ -18,7 +22,7 @@ export function evaluateNpmPublicationAuthorization({
 	publicationManifestBytes,
 	evidence,
 } = {}) {
-	const plan = record(publicationPlan, '$.publicationPlan');
+	const plan = validateNpmPublicationPlanShape(publicationPlan, '$.publicationPlan');
 	const version = nonEmptyString(releaseVersion, '$.releaseVersion');
 	const commit = fullCommitSha(reviewedCommit, '$.reviewedCommit');
 	const execution = evidenceSetIdentity(evidenceSetId, '$.evidenceSetId');
@@ -28,6 +32,8 @@ export function evaluateNpmPublicationAuthorization({
 	assert(plan.trustedPublishingRequired === true, '$.publicationPlan.trustedPublishingRequired', 'reviewed source must continue requiring Trusted Publishing');
 	assert(plan.publicVerificationRequired === true, '$.publicationPlan.publicVerificationRequired', 'reviewed source must continue requiring public Registry verification');
 	assert(plan.sameReviewedReleaseIdentityRequired === true, '$.publicationPlan.sameReviewedReleaseIdentityRequired', 'reviewed source must require one exact reviewed release identity');
+	assert(plan.forbidRegistryPublishThroughVersion === RETRO_PUBLISH_BOUNDARY, '$.publicationPlan.forbidRegistryPublishThroughVersion', `expected ${RETRO_PUBLISH_BOUNDARY} retro-publish boundary`);
+	assert(plan.firstStableRegistryRelease === FIRST_STABLE_REGISTRY_RELEASE, '$.publicationPlan.firstStableRegistryRelease', `expected first stable npm release ${FIRST_STABLE_REGISTRY_RELEASE}`);
 	const unresolved = requirementList(plan.unresolvedRequirements, '$.publicationPlan.unresolvedRequirements');
 	assert(
 		JSON.stringify(unresolved) === JSON.stringify(NPM_PUBLICATION_POST_WRITE_REQUIREMENTS),
