@@ -15,5 +15,5 @@
 		"NODE_AUTH_TOKEN",
 		"NPM_TOKEN"
 	],
-	"npmSideTrustedPublisherConfigured": false
+	"npmSideObservationRequired": true
 }
