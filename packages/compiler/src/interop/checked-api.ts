@@ -178,6 +178,17 @@ function reusableModulesAreCurrent(modules: CheckedModuleMap | undefined): boole
 	return true;
 }
 
+function trackedReusedSemanticCount(result: ProjectBuildResult, previous: CheckedModuleMap | undefined): number {
+	if (previous === undefined) return 0;
+	const trackedSemantics = new Set<SemanticModel>();
+	for (const semantic of previous.values()) trackedSemantics.add(semantic);
+	let count = 0;
+	for (const module of result.modules) {
+		if (module.semantic !== undefined && trackedSemantics.has(module.semantic)) count++;
+	}
+	return count;
+}
+
 function registerCompileResult(result: CompileResult): CompileResult {
 	if (result.ast !== undefined && result.semantic !== undefined) {
 		registerCheckedModule(result.ast, result.semantic, result.diagnostics);
@@ -201,12 +212,11 @@ function registerProjectResult(result: ProjectBuildResult): ProjectBuildResult {
 }
 
 /**
- * Start one cached experimental build and report whether the cache is already
- * bound to a prior experimental result. A cache populated by the stable/base
- * project API has no checker-time experimental snapshot, so checked entries
- * from it must be rebuilt before they can become operation evidence.
+ * Start one cached experimental build and return the exact prior experimental
+ * module/semantic bindings. Checked cache entries that cannot be explained by
+ * these bindings must be rebuilt before they can become operation evidence.
  */
-function beginCachedBuild(cache: ProjectBuildCache): boolean {
+function beginCachedBuild(cache: ProjectBuildCache): CheckedModuleMap | undefined {
 	if (activeCaches.has(cache)) throw new Error('Concurrent experimental project builds cannot share one ProjectBuildCache');
 	const current = currentModulesByCache.get(cache);
 	if (!reusableModulesAreCurrent(current)) {
@@ -218,7 +228,7 @@ function beginCachedBuild(cache: ProjectBuildCache): boolean {
 	activeCaches.add(cache);
 	currentModulesByCache.delete(cache);
 	invalidateModules(current);
-	return current !== undefined;
+	return current;
 }
 
 /** Experimental compiler entry point with ephemeral checked-AST session binding. */
@@ -266,12 +276,15 @@ export async function buildProject(
 	legacyAdditionalEntries: readonly string[] = [],
 ): Promise<ProjectBuildResult> {
 	const cache = typeof optionsOrWrite === 'object' && optionsOrWrite !== null ? optionsOrWrite.incrementalCache : undefined;
-	const cacheWasExperimentallyTracked = cache === undefined ? false : beginCachedBuild(cache);
+	const previousCheckedModules = cache === undefined ? undefined : beginCachedBuild(cache);
 	try {
 		const result = typeof optionsOrWrite === 'boolean'
 			? await buildProjectBase(rootDirectory, optionsOrWrite, legacyAdditionalEntries)
 			: await buildProjectBase(rootDirectory, optionsOrWrite);
-		if (cache !== undefined && !cacheWasExperimentallyTracked && result.stats.reusedCheckedModules > 0) {
+		if (
+			cache !== undefined
+			&& result.stats.reusedCheckedModules > trackedReusedSemanticCount(result, previousCheckedModules)
+		) {
 			throw new Error('Cannot promote checked results from an unregistered project cache; retry after cache reset');
 		}
 		registerProjectResult(result);
