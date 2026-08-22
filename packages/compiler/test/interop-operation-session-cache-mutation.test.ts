@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { join, resolve } from 'node:path';
 import test from 'node:test';
+import type { Diagnostic } from '../src/diagnostics/diagnostic.js';
 import { buildProject, IncrementalProjectBuilder } from '../src/interop/checked-api.js';
 import { externalOperationSequence } from '../src/interop/operation-api.js';
 import type { JsInteropProvider } from '../src/interop/types.js';
@@ -236,5 +237,48 @@ test('inherited toJSON cannot collapse changed cached operation evidence into th
 	} finally {
 		if (previous === undefined) delete (Object.prototype as { toJSON?: unknown }).toJSON;
 		else Object.defineProperty(Object.prototype, 'toJSON', previous);
+	}
+});
+
+test('inherited Array.prototype.some cannot hide cached semantic diagnostic mutation from the reuse seal', async () => {
+	const root = resolve('virtual-operation-session-cache-inherited-some-project');
+	const mainPath = join(root, 'src/main.virune');
+	const cache = new ProjectBuildCache();
+	const first = await buildProject(root, { write: false, host: hostFor(mainPath), incrementalCache: cache, jsInteropProvider: provider() });
+	assert.deepEqual(first.diagnostics.filter(item => item.severity === 'error'), []);
+	assert.deepEqual(operationKinds(first), ['module-load', 'module-load']);
+	const firstMain = mainModule(first);
+	const targetDiagnostics = firstMain.semantic!.diagnostics.items;
+	const previous = Object.getOwnPropertyDescriptor(Array.prototype, 'some');
+	const originalSome = Array.prototype.some;
+	Object.defineProperty(Array.prototype, 'some', {
+		configurable: true,
+		writable: true,
+		value(this: unknown[], predicate: (...args: unknown[]) => unknown, thisArg?: unknown) {
+			if (this === targetDiagnostics) return false;
+			return Reflect.apply(originalSome, this, [predicate, thisArg]);
+		},
+	});
+	try {
+		const gated = gatedHostFor(mainPath);
+		const pending = buildProject(root, { write: false, host: gated.host, incrementalCache: cache, jsInteropProvider: provider() });
+		await gated.entered;
+		(targetDiagnostics as unknown as Diagnostic[]).push({
+			code: 'L9999',
+			severity: 'error',
+			message: 'synthetic cached semantic mutation',
+			span: firstMain.ast!.span,
+		});
+		gated.release();
+		await assert.rejects(
+			pending,
+			/Cannot reuse checked semantic after its operation evidence changed/u,
+		);
+		const rebuilt = await buildProject(root, { write: false, host: hostFor(mainPath), incrementalCache: cache, jsInteropProvider: provider() });
+		assert.deepEqual(rebuilt.diagnostics.filter(item => item.severity === 'error'), []);
+		assert.deepEqual(operationKinds(rebuilt), ['module-load', 'module-load']);
+	} finally {
+		if (previous === undefined) delete (Array.prototype as { some?: unknown }).some;
+		else Object.defineProperty(Array.prototype, 'some', previous);
 	}
 });
