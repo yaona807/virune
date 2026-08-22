@@ -1,9 +1,12 @@
 import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { test } from 'node:test';
+import { fileURLToPath } from 'node:url';
 import { evaluateNightlyRun, resolveExpectedNightlySha, resolveNightlyBranch, runStableReleaseGate, selectNightlyRun } from './stable-release-gate.mjs';
+
+const repositoryRoot = resolve(fileURLToPath(new URL('..', import.meta.url)));
 
 test('accepts a successful recent Nightly run for the expected commit', () => {
 	const now = Date.parse('2026-07-25T00:00:00Z');
@@ -65,6 +68,94 @@ test('resolves the exact pull-request head SHA and falls back to GITHUB_SHA', as
 	assert.equal(await resolveExpectedNightlySha({ GITHUB_EVENT_NAME: 'pull_request', GITHUB_EVENT_PATH: eventPath, GITHUB_SHA: 'merge-commit' }), 'pull-request-head');
 	assert.equal(await resolveExpectedNightlySha({ GITHUB_EVENT_NAME: 'push', GITHUB_SHA: 'tagged-commit' }), 'tagged-commit');
 	assert.equal(await resolveExpectedNightlySha({ GITHUB_EVENT_NAME: 'pull_request', GITHUB_EVENT_PATH: join(root, 'missing.json'), GITHUB_SHA: 'fallback' }), 'fallback');
+});
+
+test('canonical stable gate requires the npm publication plan verifier', async () => {
+	const policy = JSON.parse(await readFile(resolve(repositoryRoot, '.github/stable-release-gate.json'), 'utf8'));
+	assert.deepEqual(
+		policy.checks.filter(check => check.id === 'npm-publication-plan'),
+		[{ id: 'npm-publication-plan', command: ['node', 'scripts/verify-npm-publication-plan.mjs'] }],
+	);
+	assert.deepEqual(
+		policy.requirements.filter(requirement => requirement.id === 'npm-publication-plan'),
+		[{ id: 'npm-publication-plan', evidence: ['npm-publication-plan'] }],
+	);
+});
+
+test('failed npm publication plan evidence fails the stable release requirement', async t => {
+	const root = await mkdtemp(join(tmpdir(), 'virune-release-npm-plan-'));
+	t.after(() => rm(root, { recursive: true, force: true }));
+	await mkdir(join(root, '.github'), { recursive: true });
+	await writeFile(join(root, 'package.json'), '{"version":"1.0.0"}\n');
+	await writeFile(join(root, '.github/stable-release-gate.json'), `${JSON.stringify({
+		schemaVersion: 1,
+		nightly: { workflow: 'nightly.yml', branch: 'main', maxAgeHours: 36 },
+		checks: [{ id: 'npm-publication-plan', command: ['node', 'scripts/verify-npm-publication-plan.mjs'] }],
+		requirements: [{ id: 'npm-publication-plan', evidence: ['npm-publication-plan'] }],
+	}, null, '\t')}\n`);
+	const output = join(root, 'evidence.json');
+	await assert.rejects(runStableReleaseGate({
+		root,
+		output,
+		execute: async () => ({ status: 1, outputTail: 'publication plan failed' }),
+		fetchLatestNightly: async policy => ({ passed: true, conclusion: 'success', headSha: policy.expectedSha, expectedSha: policy.expectedSha }),
+	}), /Stable release gate failed/u);
+	const report = JSON.parse(await readFile(output, 'utf8'));
+	assert.equal(report.requirements.find(item => item.id === 'npm-publication-plan').passed, false);
+});
+
+test('missing or renamed npm publication plan evidence fails closed', async t => {
+	for (const checkId of [undefined, 'npm-publication-plan-renamed']) {
+		const root = await mkdtemp(join(tmpdir(), 'virune-release-npm-plan-missing-'));
+		t.after(() => rm(root, { recursive: true, force: true }));
+		await mkdir(join(root, '.github'), { recursive: true });
+		await writeFile(join(root, 'package.json'), '{"version":"1.0.0"}\n');
+		await writeFile(join(root, '.github/stable-release-gate.json'), `${JSON.stringify({
+			schemaVersion: 1,
+			nightly: { workflow: 'nightly.yml', branch: 'main', maxAgeHours: 36 },
+			checks: checkId === undefined ? [] : [{ id: checkId, command: ['node', 'scripts/verify-npm-publication-plan.mjs'] }],
+			requirements: [{ id: 'npm-publication-plan', evidence: ['npm-publication-plan'] }],
+		}, null, '\t')}\n`);
+		await assert.rejects(
+			runStableReleaseGate({
+				root,
+				output: join(root, 'evidence.json'),
+				execute: async () => ({ status: 0 }),
+				fetchLatestNightly: async () => ({ passed: true }),
+			}),
+			/Invalid stable release requirement: npm-publication-plan/u,
+		);
+	}
+});
+
+test('malformed or duplicate stable gate checks fail closed', async t => {
+	for (const checks of [
+		[{ id: 'npm-publication-plan', command: [] }],
+		[
+			{ id: 'npm-publication-plan', command: ['node', 'scripts/verify-npm-publication-plan.mjs'] },
+			{ id: 'npm-publication-plan', command: ['node', 'scripts/verify-npm-publication-plan.mjs'] },
+		],
+	]) {
+		const root = await mkdtemp(join(tmpdir(), 'virune-release-npm-plan-invalid-'));
+		t.after(() => rm(root, { recursive: true, force: true }));
+		await mkdir(join(root, '.github'), { recursive: true });
+		await writeFile(join(root, 'package.json'), '{"version":"1.0.0"}\n');
+		await writeFile(join(root, '.github/stable-release-gate.json'), `${JSON.stringify({
+			schemaVersion: 1,
+			nightly: { workflow: 'nightly.yml', branch: 'main', maxAgeHours: 36 },
+			checks,
+			requirements: [{ id: 'npm-publication-plan', evidence: ['npm-publication-plan'] }],
+		}, null, '\t')}\n`);
+		await assert.rejects(
+			runStableReleaseGate({
+				root,
+				output: join(root, 'evidence.json'),
+				execute: async () => ({ status: 0 }),
+				fetchLatestNightly: async () => ({ passed: true }),
+			}),
+			/Invalid stable release check|Duplicate stable release check: npm-publication-plan/u,
+		);
+	}
 });
 
 test('writes evidence and rejects any failed requirement', async t => {
