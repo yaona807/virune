@@ -253,22 +253,22 @@ export function externalModuleLoadOperation(input: {
 	const anchor = canonicalOperationAnchor(input.nodeId, input.span);
 	const moduleSpecifier = sourceModuleSpecifier(input.moduleSpecifier, 'ModuleLoad module specifier');
 	if (input.witnesses.length === 0) {
-		return {
+		return shadowMissingOwnFields({
 			kind: 'module-load',
 			...anchor,
 			moduleSpecifier,
 			decision: unresolvedDirectDecision(),
-		};
+		}, ['runtimeWitness']);
 	}
 	const witnesses = mapArrayByIndex(input.witnesses, witness => canonicalRuntimeWitness(witness, moduleSpecifier));
 	const first = witnesses[0]!;
 	if (someArrayByIndex(witnesses, witness => !sameRuntimeWitness(first, witness))) {
-		return {
+		return shadowMissingOwnFields({
 			kind: 'module-load',
 			...anchor,
 			moduleSpecifier,
 			decision: unresolvedDirectDecision(),
-		};
+		}, ['runtimeWitness']);
 	}
 	return {
 		kind: 'module-load',
