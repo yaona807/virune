@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
 	buildExternalOperationSequence,
+	externalModuleLoadOperation,
 	externalOperationFromUsage,
 } from '../src/interop/operation.js';
 import type { ForeignOrigin, ForeignUsageIR, InteropSemanticModel, ModuleResolutionWitness } from '../src/interop/types.js';
@@ -51,6 +52,18 @@ test('named, default, and namespace imports each produce one deterministic Modul
 	assert.deepEqual(
 		operations.map(operation => operation.kind === 'module-load' ? operation.moduleSpecifier : undefined),
 		['./named.js', './default.js', './namespace.js'],
+	);
+});
+
+test('ModuleLoad stable evidence rejects absolute checkout module specifiers', () => {
+	assert.throws(
+		() => externalModuleLoadOperation({
+			nodeId: 1,
+			span,
+			moduleSpecifier: '/checkout/private/library.js',
+			witnesses: [witness('/checkout/private/library.js')],
+		}),
+		/module specifier must not contain an absolute or provider-private path/u,
 	);
 });
 
