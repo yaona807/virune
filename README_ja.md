@@ -40,7 +40,7 @@ npm run virune -- --version
 
 ## 運営
 
-Viruneは現在、[`@yaona807`](https://github.com/yaona807)がメンテナンスしています。変更や提案は原則としてIssueやPull Requestを通じて公開して進め、プロジェクトの最終判断はメンテナーが行います。セキュリティ問題は[`SECURITY_ja.md`](SECURITY_ja.md)に従って報告してください。
+Viruneは現在、[`@yaona807`](https://github.com/yaona807)がメンテナンスしています。現在、運営委員会や投票制度は設けていません。変更や提案は原則としてIssueやPull Requestを通じて公開して進め、プロジェクトの最終判断はメンテナーが行います。セキュリティ問題は[`SECURITY_ja.md`](SECURITY_ja.md)に従って報告してください。
 
 ## リリース
 
