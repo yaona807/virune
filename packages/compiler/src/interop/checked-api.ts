@@ -133,7 +133,8 @@ function encodeReuseStructuralValue(value: unknown, seen: Map<object, number>): 
 		}
 		const length = lengthDescriptor.value;
 		let indexKeyCount = 0;
-		for (const key of keys) {
+		for (let keyIndex = 0; keyIndex < keys.length; keyIndex++) {
+			const key = keys[keyIndex]!;
 			if (typeof key === 'symbol') throw new Error('Cannot seal checked semantic array with symbol fields');
 			if (key === 'length') continue;
 			const index = Number(key);
@@ -158,7 +159,8 @@ function encodeReuseStructuralValue(value: unknown, seen: Map<object, number>): 
 	const keys = Reflect.ownKeys(value);
 	let encodedFields = '';
 	let fieldIndex = 0;
-	for (const key of keys) {
+	for (let keyIndex = 0; keyIndex < keys.length; keyIndex++) {
+		const key = keys[keyIndex]!;
 		if (typeof key === 'symbol') throw new Error('Cannot seal checked semantic object with symbol fields');
 		const descriptor = Object.getOwnPropertyDescriptor(value, key);
 		if (descriptor === undefined || !('value' in descriptor)) throw new Error(`Cannot seal checked semantic accessor field ${key}`);
