@@ -34,7 +34,7 @@ Stable化は明示的に行い、スナップショットの更新だけで非�
 
 LSPは、Viruneが対応すると定めたVS Code APIとLanguage Server Protocolに従います。
 
-公開済みの診断コードは、そのschema version内で安定した識別子として扱います。既存の`Lxxxx`コードを別の意味の診断へ再利用してはいけません。外部ツールはmessage textではなく、`source`と`code`の組み合わせ、または`qualifiedCode`で診断を識別してください。現在の正確なcode range、catalog、JSON field構造は、コンパイラーが管理する診断sourceとschemaを正本とします。
+公開済みの診断コードは、そのスキーマバージョン内で安定した識別子として扱います。既存の`Lxxxx`コードを別の意味の診断へ再利用してはいけません。外部ツールはメッセージ本文ではなく、`source`と`code`の組み合わせ、または`qualifiedCode`で診断を識別してください。現在の正確なコード範囲、診断一覧、JSONフィールド構造は、コンパイラーが管理する診断コードのソースとスキーマを正本とします。
 
 ### 実験的（Experimental）
 
