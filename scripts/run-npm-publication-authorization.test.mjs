@@ -76,7 +76,7 @@ test('evidence document schema and current execution identity fail closed', () =
 	}
 });
 
-test('production path always reads plan and root version from the exact reviewed Git commit', async () => {
+test('production path always reads plan, root version and repository from the exact reviewed Git commit', async () => {
 	const head = exactHead();
 	await assert.rejects(
 		() => runNpmPublicationAuthorization({
@@ -87,10 +87,11 @@ test('production path always reads plan and root version from the exact reviewed
 			evidenceDocument: evidenceDocument(),
 			publicationPlan: injectedCandidatePlan(),
 			reviewedRootManifest: { version: '1.0.0' },
+			sourceRoot: '/definitely/not/the/virune/repository',
 			outputPath: null,
 		}),
 		/publication-candidate/u,
-		'injected source state must be ignored in favor of the exact reviewed commit',
+		'injected source state and repository root must be ignored in favor of the exact reviewed Virune commit',
 	);
 	await assert.rejects(
 		() => runNpmPublicationAuthorization({
