@@ -262,6 +262,13 @@ export async function verifyCleanGlobalCliInstall(version, {
 			throw new Error(`$.installation.generatedProject.packageJson: generated package.json is missing or malformed: ${error instanceof Error ? error.message : String(error)}`);
 		}
 		const generatedProject = validateGeneratedNpmProjectManifest(generatedManifest, version);
+		let generatedReadme;
+		try {
+			generatedReadme = await readFile(resolve(project, 'README.md'), 'utf8');
+		} catch (error) {
+			throw new Error(`$.installation.generatedProject.readme: generated README.md is missing or unreadable: ${error instanceof Error ? error.message : String(error)}`);
+		}
+		validateGeneratedNpmProjectReadme(generatedReadme, version);
 		runCommand('npm', [
 			'install', `--registry=${PUBLIC_REGISTRY}`, `--userconfig=${npmrc}`,
 			'--replace-registry-host=never', '--package-lock=false', '--no-audit', '--no-fund',
@@ -276,6 +283,7 @@ export async function verifyCleanGlobalCliInstall(version, {
 			versionOutput,
 			generatedProject: {
 				...generatedProject,
+				readme: 'passed',
 				install: 'passed',
 				check: 'passed',
 				build: 'passed',
@@ -312,6 +320,17 @@ export function validateGeneratedNpmProjectManifest(value, version) {
 		dependencies: { '@virune/runtime': version, '@virune/stdlib': version },
 		devDependencies: { virune: version },
 	};
+}
+
+export function validateGeneratedNpmProjectReadme(value, version) {
+	const text = nonEmptyString(value, '$.installation.generatedProject.readme');
+	assert(text.includes(`Generated with Virune ${version}.`), '$.installation.generatedProject.readme', `expected exact Virune version ${version}`);
+	assert(text.includes('public npm Registry'), '$.installation.generatedProject.readme', 'must describe the public npm Registry dependency source');
+	assert(text.includes(`exact Virune ${version} package versions`), '$.installation.generatedProject.readme', 'must describe exact package versions');
+	assert(text.includes('No mutable npm range or dist-tag is used.'), '$.installation.generatedProject.readme', 'must state the immutable npm version contract');
+	assert(!text.includes('GitHub Release assets rather than npm Registry packages'), '$.installation.generatedProject.readme', 'must not describe the GitHub Release dependency source');
+	assert(!text.includes('preserved the existing package.json'), '$.installation.generatedProject.readme', 'fresh public Registry smoke must use a newly generated package.json');
+	return { source: 'npm', version };
 }
 
 function readReviewedPublicationPlan(reviewedCommit, { sourceRoot }) {
