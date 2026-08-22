@@ -26,69 +26,73 @@ export function validateNpmRegistryOwnershipPolicy(value, path = '$.ownershipPol
 	return { schemaVersion: 1, registry: PUBLIC_REGISTRY, status, expectedPrincipal, scope };
 }
 
-export function evaluateNpmRegistryOwnership({ publicationPlan, ownershipPolicy, observation } = {}) {
+export function evaluateNpmRegistryOwnership({
+	publicationPlan,
+	ownershipPolicy,
+	observation,
+	reviewedCommit,
+	releaseVersion,
+	evidenceSetId,
+	publicationManifestSha256,
+	publicationManifestBytes,
+} = {}) {
 	const plan = validateNpmPublicationPlanShape(publicationPlan, '$.publicationPlan');
 	const policy = validateNpmRegistryOwnershipPolicy(ownershipPolicy);
-	const expectedPackages = plan.packages.map(item => item.registryName).sort(compareText);
-	const scopes = [...new Set(expectedPackages.map(packageScope).filter(value => value !== null))].sort(compareText);
-	assert(scopes.length === 1, '$.publicationPlan.packages', `expected exactly one scoped publication namespace; found ${scopes.join(', ') || 'none'}`);
-	assert(scopes[0] === policy.scope, '$.ownershipPolicy.scope', `expected publication scope ${scopes[0]}`);
-
+	const identity = expectedIdentity({
+		reviewedCommit,
+		releaseVersion,
+		evidenceSetId,
+		publicationManifestSha256,
+		publicationManifestBytes,
+	});
+	const expectedPackages = publicationPackages(plan);
+	assertPublicationScope(expectedPackages, policy.scope);
 	const input = validateOwnershipObservation(observation, {
 		expectedPackages,
 		registry: policy.registry,
+		...identity,
 	});
-	const reasons = [];
-	let state = 'unknown';
-
-	if (input.result !== COMPLETE) {
-		reasons.push(`observation-${input.result}`);
-	} else if (policy.status !== 'configured') {
-		reasons.push('expected-principal-unconfigured');
-	} else if (input.principal !== policy.expectedPrincipal) {
-		state = 'conflict';
-		reasons.push('principal-mismatch');
-	} else if (input.scopeAuthority === 'conflict') {
-		state = 'conflict';
-		reasons.push('scope-authority-conflict');
-	} else if (input.packages.some(item => item.state === 'conflict')) {
-		state = 'conflict';
-		reasons.push('package-ownership-conflict');
-	} else if (input.scopeAuthority === 'unknown' || input.packages.some(item => item.state === 'unknown')) {
-		reasons.push('ownership-unknown');
-	} else if (input.packages.some(item => item.state === 'missing')) {
-		state = 'bootstrap-required';
-		reasons.push('package-bootstrap-required');
-	} else {
-		assert(input.scopeAuthority === 'verified', '$.observation.scopeAuthority', 'scope authority must be verified before ownership can pass');
-		assert(input.packages.every(item => item.state === 'owned'), '$.observation.packages', 'all publication packages must be owned before ownership can pass');
-		state = 'verified';
-	}
-
+	const packages = input.result === COMPLETE
+		? input.packages
+		: expectedPackages.map(registryName => ({ registryName, state: 'unknown' }));
+	const outcome = deriveOwnershipOutcome({
+		observationResult: input.result,
+		expectedPrincipal: policy.expectedPrincipal,
+		observedPrincipal: input.principal,
+		scopeAuthority: input.scopeAuthority,
+		packages,
+	});
 	return {
 		schemaVersion: 1,
 		kind: NPM_REGISTRY_OWNERSHIP_REPORT_KIND,
-		state,
-		reviewedCommit: input.reviewedCommit,
-		evidenceSetId: input.evidenceSetId,
-		version: input.version,
+		state: outcome.state,
+		reviewedCommit: identity.reviewedCommit,
+		evidenceSetId: identity.evidenceSetId,
+		version: identity.version,
 		registry: policy.registry,
 		expectedPrincipal: policy.expectedPrincipal,
+		observedPrincipal: input.principal,
 		scope: policy.scope,
+		scopeAuthority: input.scopeAuthority,
+		observationResult: input.result,
 		publicationManifest: {
-			sha256: input.publicationManifestSha256,
-			bytes: input.publicationManifestBytes,
+			sha256: identity.publicationManifestSha256,
+			bytes: identity.publicationManifestBytes,
 		},
 		observationId: input.observationId,
-		packages: input.packages.map(item => ({ ...item })),
-		reasons: reasons.sort(compareText),
+		packages: packages.map(item => ({ ...item })),
+		reasons: outcome.reasons,
 	};
 }
 
-export function buildRegistryOwnershipAuthorizationEvidence(reportValue) {
+export function buildRegistryOwnershipAuthorizationEvidence(reportValue, { publicationPlan } = {}) {
 	const report = validateNpmRegistryOwnershipReport(reportValue);
+	const plan = validateNpmPublicationPlanShape(publicationPlan, '$.publicationPlan');
+	const expectedPackages = publicationPackages(plan);
+	assertPublicationScope(expectedPackages, report.scope);
+	const actualPackages = report.packages.map(item => item.registryName);
+	assert(JSON.stringify(actualPackages) === JSON.stringify(expectedPackages), '$.ownershipReport.packages', `expected exact publication package set ${expectedPackages.join(', ')}`);
 	assert(report.state === 'verified', '$.ownershipReport.state', 'only verified ownership may satisfy registry-ownership');
-	assert(report.reasons.length === 0, '$.ownershipReport.reasons', 'verified ownership must not contain unresolved reasons');
 	return {
 		schemaVersion: 1,
 		requirement: 'registry-ownership',
@@ -112,7 +116,10 @@ export function validateNpmRegistryOwnershipReport(value, path = '$.ownershipRep
 		'version',
 		'registry',
 		'expectedPrincipal',
+		'observedPrincipal',
 		'scope',
+		'scopeAuthority',
+		'observationResult',
 		'publicationManifest',
 		'observationId',
 		'packages',
@@ -126,7 +133,10 @@ export function validateNpmRegistryOwnershipReport(value, path = '$.ownershipRep
 	const version = releaseVersion(report.version, `${path}.version`);
 	assert(report.registry === PUBLIC_REGISTRY, `${path}.registry`, `expected ${PUBLIC_REGISTRY}`);
 	const expectedPrincipal = report.expectedPrincipal === null ? null : npmUser(report.expectedPrincipal, `${path}.expectedPrincipal`);
+	const observedPrincipal = report.observedPrincipal === null ? null : npmUser(report.observedPrincipal, `${path}.observedPrincipal`);
 	const scope = npmScope(report.scope, `${path}.scope`);
+	const scopeAuthority = oneOf(report.scopeAuthority, SCOPE_STATES, `${path}.scopeAuthority`);
+	const observationResult = oneOf(report.observationResult, OBSERVATION_RESULTS, `${path}.observationResult`);
 	const manifest = publicationManifestIdentity(report.publicationManifest, `${path}.publicationManifest`);
 	const observationId = observationIdentity(report.observationId, `${path}.observationId`);
 	const packages = array(report.packages, `${path}.packages`).map((item, index) => ownershipPackage(item, `${path}.packages[${index}]`));
@@ -136,11 +146,9 @@ export function validateNpmRegistryOwnershipReport(value, path = '$.ownershipRep
 	const reasons = array(report.reasons, `${path}.reasons`).map((item, index) => reason(item, `${path}.reasons[${index}]`));
 	assertUnique(reasons, `${path}.reasons`, 'reason');
 	assertSorted(reasons, `${path}.reasons`, 'reason');
-	if (state === 'verified') {
-		assert(expectedPrincipal !== null, `${path}.expectedPrincipal`, 'verified ownership requires an expected principal');
-		assert(reasons.length === 0, `${path}.reasons`, 'verified ownership cannot contain unresolved reasons');
-		assert(packages.every(item => item.state === 'owned'), `${path}.packages`, 'verified ownership requires all packages to be owned');
-	}
+	const outcome = deriveOwnershipOutcome({ observationResult, expectedPrincipal, observedPrincipal, scopeAuthority, packages });
+	assert(state === outcome.state, `${path}.state`, `expected derived state ${outcome.state}`);
+	assert(JSON.stringify(reasons) === JSON.stringify(outcome.reasons), `${path}.reasons`, `expected derived reasons ${outcome.reasons.join(', ') || '<none>'}`);
 	return {
 		schemaVersion: 1,
 		kind: NPM_REGISTRY_OWNERSHIP_REPORT_KIND,
@@ -150,7 +158,10 @@ export function validateNpmRegistryOwnershipReport(value, path = '$.ownershipRep
 		version,
 		registry: PUBLIC_REGISTRY,
 		expectedPrincipal,
+		observedPrincipal,
 		scope,
+		scopeAuthority,
+		observationResult,
 		publicationManifest: manifest,
 		observationId,
 		packages,
@@ -158,11 +169,26 @@ export function validateNpmRegistryOwnershipReport(value, path = '$.ownershipRep
 	};
 }
 
-export function validateOwnershipObservation(value, { expectedPackages, registry } = {}) {
+export function validateOwnershipObservation(value, {
+	expectedPackages,
+	registry,
+	reviewedCommit,
+	version,
+	evidenceSetId,
+	publicationManifestSha256,
+	publicationManifestBytes,
+} = {}) {
 	const expected = array(expectedPackages, '$.expectedPackages').map((item, index) => npmPackage(item, `$.expectedPackages[${index}]`)).sort(compareText);
 	assert(expected.length > 0, '$.expectedPackages', 'expected at least one publication package');
 	assertUnique(expected, '$.expectedPackages', 'registryName');
 	assert(registry === PUBLIC_REGISTRY, '$.registry', `expected ${PUBLIC_REGISTRY}`);
+	const identity = expectedIdentity({
+		reviewedCommit,
+		releaseVersion: version,
+		evidenceSetId,
+		publicationManifestSha256,
+		publicationManifestBytes,
+	});
 	const observation = record(value, '$.observation');
 	assertExactKeys(observation, [
 		'schemaVersion',
@@ -183,11 +209,11 @@ export function validateOwnershipObservation(value, { expectedPackages, registry
 	assert(observation.source === OBSERVATION_SOURCE, '$.observation.source', `expected ${OBSERVATION_SOURCE}`);
 	assert(observation.registry === registry, '$.observation.registry', `expected ${registry}`);
 	const observationId = observationIdentity(observation.observationId, '$.observation.observationId');
-	const reviewedCommit = fullCommitSha(observation.reviewedCommit, '$.observation.reviewedCommit');
-	const evidenceSetId = evidenceSetIdentity(observation.evidenceSetId, '$.observation.evidenceSetId');
-	const version = releaseVersion(observation.version, '$.observation.version');
-	const publicationManifestSha256 = sha256(observation.publicationManifestSha256, '$.observation.publicationManifestSha256');
-	const publicationManifestBytes = positiveInteger(observation.publicationManifestBytes, '$.observation.publicationManifestBytes');
+	assert(observation.reviewedCommit === identity.reviewedCommit, '$.observation.reviewedCommit', `expected ${identity.reviewedCommit}`);
+	assert(observation.evidenceSetId === identity.evidenceSetId, '$.observation.evidenceSetId', `expected ${identity.evidenceSetId}`);
+	assert(observation.version === identity.version, '$.observation.version', `expected ${identity.version}`);
+	assert(observation.publicationManifestSha256 === identity.publicationManifestSha256, '$.observation.publicationManifestSha256', 'must match exact publication manifest SHA-256');
+	assert(observation.publicationManifestBytes === identity.publicationManifestBytes, '$.observation.publicationManifestBytes', 'must match exact publication manifest byte size');
 	const result = oneOf(observation.result, OBSERVATION_RESULTS, '$.observation.result');
 	if (result !== COMPLETE) {
 		assert(observation.principal === null, '$.observation.principal', 'failed observation must not infer a principal');
@@ -198,11 +224,11 @@ export function validateOwnershipObservation(value, { expectedPackages, registry
 			source: OBSERVATION_SOURCE,
 			registry,
 			observationId,
-			reviewedCommit,
-			evidenceSetId,
-			version,
-			publicationManifestSha256,
-			publicationManifestBytes,
+			reviewedCommit: identity.reviewedCommit,
+			evidenceSetId: identity.evidenceSetId,
+			version: identity.version,
+			publicationManifestSha256: identity.publicationManifestSha256,
+			publicationManifestBytes: identity.publicationManifestBytes,
 			result,
 			principal: null,
 			scopeAuthority: 'unknown',
@@ -222,16 +248,65 @@ export function validateOwnershipObservation(value, { expectedPackages, registry
 		source: OBSERVATION_SOURCE,
 		registry,
 		observationId,
-		reviewedCommit,
-		evidenceSetId,
-		version,
-		publicationManifestSha256,
-		publicationManifestBytes,
+		reviewedCommit: identity.reviewedCommit,
+		evidenceSetId: identity.evidenceSetId,
+		version: identity.version,
+		publicationManifestSha256: identity.publicationManifestSha256,
+		publicationManifestBytes: identity.publicationManifestBytes,
 		result,
 		principal,
 		scopeAuthority,
 		packages,
 	};
+}
+
+function deriveOwnershipOutcome({ observationResult, expectedPrincipal, observedPrincipal, scopeAuthority, packages }) {
+	let state = 'unknown';
+	const reasons = [];
+	if (observationResult !== COMPLETE) {
+		reasons.push(`observation-${observationResult}`);
+	} else if (expectedPrincipal === null) {
+		reasons.push('expected-principal-unconfigured');
+	} else if (observedPrincipal !== expectedPrincipal) {
+		state = 'conflict';
+		reasons.push('principal-mismatch');
+	} else if (scopeAuthority === 'conflict') {
+		state = 'conflict';
+		reasons.push('scope-authority-conflict');
+	} else if (packages.some(item => item.state === 'conflict')) {
+		state = 'conflict';
+		reasons.push('package-ownership-conflict');
+	} else if (scopeAuthority === 'unknown' || packages.some(item => item.state === 'unknown')) {
+		reasons.push('ownership-unknown');
+	} else if (packages.some(item => item.state === 'missing')) {
+		state = 'bootstrap-required';
+		reasons.push('package-bootstrap-required');
+	} else {
+		assert(scopeAuthority === 'verified', '$.scopeAuthority', 'scope authority must be verified before ownership can pass');
+		assert(packages.every(item => item.state === 'owned'), '$.packages', 'all publication packages must be owned before ownership can pass');
+		state = 'verified';
+	}
+	return { state, reasons: reasons.sort(compareText) };
+}
+
+function expectedIdentity({ reviewedCommit, releaseVersion: value, evidenceSetId, publicationManifestSha256, publicationManifestBytes }) {
+	return {
+		reviewedCommit: fullCommitSha(reviewedCommit, '$.reviewedCommit'),
+		version: releaseVersion(value, '$.releaseVersion'),
+		evidenceSetId: evidenceSetIdentity(evidenceSetId, '$.evidenceSetId'),
+		publicationManifestSha256: sha256(publicationManifestSha256, '$.publicationManifestSha256'),
+		publicationManifestBytes: positiveInteger(publicationManifestBytes, '$.publicationManifestBytes'),
+	};
+}
+
+function publicationPackages(plan) {
+	return plan.packages.map(item => npmPackage(item.registryName, '$.publicationPlan.packages.registryName')).sort(compareText);
+}
+
+function assertPublicationScope(packages, expectedScope) {
+	const scopes = [...new Set(packages.map(packageScope).filter(value => value !== null))].sort(compareText);
+	assert(scopes.length === 1, '$.publicationPlan.packages', `expected exactly one scoped publication namespace; found ${scopes.join(', ') || 'none'}`);
+	assert(scopes[0] === expectedScope, '$.ownershipPolicy.scope', `expected publication scope ${scopes[0]}`);
 }
 
 function ownershipPackage(value, path) {
@@ -271,7 +346,7 @@ function observationIdentity(value, path) {
 
 function npmUser(value, path) {
 	const user = nonEmptyString(value, path);
-	assert(/^[a-z0-9][a-z0-9._-]*$/u.test(user), path, 'invalid npm user');
+	assert(/^[A-Za-z0-9][A-Za-z0-9._-]*$/u.test(user), path, 'invalid npm user');
 	return user;
 }
 
