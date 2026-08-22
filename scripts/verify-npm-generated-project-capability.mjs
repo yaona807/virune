@@ -1,6 +1,7 @@
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
+	bundledCliReleaseAssetName,
 	isRegularTarEntry,
 	readRegularReleaseAsset,
 	readRegistryCandidateTarEntries,
@@ -21,9 +22,37 @@ const CLI_RUNTIME_ENTRIES = Object.freeze([
 
 export function verifyNpmGeneratedProjectCapability({ root = process.cwd(), releaseDirectory = resolve(root, 'release') } = {}) {
 	const publicationPlan = verifyNpmPublicationPlan(root);
-	const file = registryReleaseAssetNameForPackage('virune', publicationPlan.currentVersion);
-	const bytes = readRegularReleaseAsset(resolve(releaseDirectory, file), `$.registryCandidate.${file}`);
-	return verifyNpmGeneratedProjectCapabilityTarball(bytes, publicationPlan, file);
+	const version = publicationPlan.currentVersion;
+	const registryCliFile = registryReleaseAssetNameForPackage('virune', version);
+	const prohibitedFiles = [
+		bundledCliReleaseAssetName(version),
+		...publicationPlan.publishPackages
+			.filter(item => item.registryName !== 'virune')
+			.map(item => registryReleaseAssetNameForPackage(item.registryName, version)),
+	];
+	const files = [registryCliFile, ...prohibitedFiles];
+	const assets = Object.fromEntries(files.map(file => [
+		file,
+		readRegularReleaseAsset(resolve(releaseDirectory, file), `$.releaseArtifact.${file}`),
+	]));
+	return verifyNpmGeneratedProjectCapabilityReleaseSet({ publicationPlan, assets });
+}
+
+export function verifyNpmGeneratedProjectCapabilityReleaseSet({ publicationPlan, assets }) {
+	const version = publicationPlan.currentVersion;
+	const registryCliFile = registryReleaseAssetNameForPackage('virune', version);
+	const prohibitedFiles = [
+		bundledCliReleaseAssetName(version),
+		...publicationPlan.publishPackages
+			.filter(item => item.registryName !== 'virune')
+			.map(item => registryReleaseAssetNameForPackage(item.registryName, version)),
+	].sort(compareText);
+	const expectedFiles = [registryCliFile, ...prohibitedFiles].sort(compareText);
+	const actualFiles = Object.keys(record(assets, '$.assets')).sort(compareText);
+	assert(JSON.stringify(actualFiles) === JSON.stringify(expectedFiles), '$.assets', `expected exact capability-audit artifact set ${expectedFiles.join(', ')}`);
+	const result = verifyNpmGeneratedProjectCapabilityTarball(assets[registryCliFile], publicationPlan, registryCliFile);
+	for (const file of prohibitedFiles) verifyCapabilityAbsentFromTarball(assets[file], file);
+	return result;
 }
 
 export function verifyNpmGeneratedProjectCapabilityTarball(bytes, publicationPlan, file = undefined) {
@@ -52,6 +81,16 @@ export function verifyNpmGeneratedProjectCapabilityTarball(bytes, publicationPla
 	return { present: true, capability };
 }
 
+export function verifyCapabilityAbsentFromTarball(bytes, file) {
+	const path = `$.releaseArtifact.${file}`;
+	const entries = readRegistryCandidateTarEntries(Buffer.from(bytes), path);
+	assert(
+		!entries.has(NPM_GENERATED_PROJECT_CAPABILITY_TAR_PATH),
+		`${path}.npmGeneratedProjectCapability`,
+		'capability is authorized only in the exact virune Registry candidate artifact',
+	);
+}
+
 function verifyCliRuntimeVersions(entries, version, path) {
 	for (const entryPath of CLI_RUNTIME_ENTRIES) {
 		const entry = entries.get(entryPath);
@@ -63,8 +102,17 @@ function verifyCliRuntimeVersions(entries, version, path) {
 	}
 }
 
+function record(value, path) {
+	assert(value !== null && typeof value === 'object' && !Array.isArray(value), path, 'expected an object');
+	return value;
+}
+
 function assert(condition, path, message) {
 	if (!condition) throw new Error(`${path}: ${message}`);
+}
+
+function compareText(left, right) {
+	return left < right ? -1 : left > right ? 1 : 0;
 }
 
 const entry = process.argv[1] === undefined ? undefined : resolve(process.argv[1]);
