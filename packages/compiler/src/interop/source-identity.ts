@@ -51,7 +51,7 @@ export function isCurrentCheckedSourceIdentity(module: A.ModuleNode): boolean {
 function captureIdentities(root: unknown): object[] {
 	const identities: object[] = [];
 	walkSourceObjects(root, value => {
-		identities.push(value);
+		identities[identities.length] = value;
 		return true;
 	});
 	return identities;
@@ -59,18 +59,27 @@ function captureIdentities(root: unknown): object[] {
 
 function matchesIdentity(root: unknown, expected: readonly object[]): boolean {
 	let index = 0;
-	const matches = walkSourceObjects(root, value => expected[index++] === value);
+	const matches = walkSourceObjects(root, value => {
+		const same = expected[index] === value;
+		index++;
+		return same;
+	});
 	return matches && index === expected.length;
 }
 
+/**
+ * Traverse compiler-owned source data without inherited Array helpers or
+ * iteration. Currentness must not depend on mutable Array.prototype behavior.
+ */
 function walkSourceObjects(root: unknown, visitor: (value: object) => boolean): boolean {
 	const seen = new Set<object>();
 	const visit = (value: unknown): boolean => {
 		if (value === null || typeof value !== 'object' || seen.has(value)) return true;
 		seen.add(value);
 		if (!visitor(value)) return false;
-		for (const child of sourceChildren(value)) {
-			if (!visit(child)) return false;
+		const children = sourceChildren(value);
+		for (let index = 0; index < children.length; index++) {
+			if (!visit(children[index])) return false;
 		}
 		return true;
 	};
@@ -84,18 +93,21 @@ function sourceStructuralState(value: unknown): string {
 function encodeStructuralValue(value: unknown, seen: Map<object, number>): string {
 	if (value === null) return 'null';
 	if (value === undefined) return 'undefined';
-	if (typeof value === 'string') return `string:${JSON.stringify(value)}`;
+	if (typeof value === 'string') return `string:${value.length}:${value}`;
 	if (typeof value === 'boolean') return value ? 'boolean:true' : 'boolean:false';
-	if (typeof value === 'bigint') return `bigint:${value.toString(10)}`;
+	if (typeof value === 'bigint') return `bigint:${value}`;
 	if (typeof value === 'number') {
 		if (Number.isNaN(value)) return 'number:NaN';
 		if (value === Number.POSITIVE_INFINITY) return 'number:+Infinity';
 		if (value === Number.NEGATIVE_INFINITY) return 'number:-Infinity';
 		if (Object.is(value, -0)) return 'number:-0';
-		return `number:${String(value)}`;
+		return `number:${value}`;
 	}
-	if (typeof value === 'function') return `function:${value.name}`;
-	if (typeof value === 'symbol') return `symbol:${String(value.description ?? '')}`;
+	if (typeof value === 'function') return `function:${value.name.length}:${value.name}`;
+	if (typeof value === 'symbol') {
+		const description = value.description ?? '';
+		return `symbol:${description.length}:${description}`;
+	}
 	if (typeof value !== 'object') return `${typeof value}:${String(value)}`;
 
 	const existing = seen.get(value);
@@ -104,46 +116,79 @@ function encodeStructuralValue(value: unknown, seen: Map<object, number>): strin
 	seen.set(value, id);
 	const children = sourceChildren(value);
 	if (Array.isArray(value)) {
-		return `array:${id}:[${children.map(child => encodeStructuralValue(child, seen)).join(',')}]`;
+		let encodedItems = '';
+		for (let index = 0; index < children.length; index++) {
+			if (index > 0) encodedItems += ',';
+			encodedItems += encodeStructuralValue(children[index], seen);
+		}
+		return `array:${id}:[${encodedItems}]`;
 	}
-	const fields = sourceStringKeys(value).map((key, index) => `${JSON.stringify(key)}=${encodeStructuralValue(children[index], seen)}`);
-	return `object:${id}:{${fields.join(',')}}`;
+	const keys = sourceStringKeys(value);
+	if (keys.length !== children.length) throw new Error('checked source object keys changed while encoding');
+	let encodedFields = '';
+	for (let index = 0; index < keys.length; index++) {
+		const key = keys[index]!;
+		if (index > 0) encodedFields += ',';
+		encodedFields += `${key.length}:${key}=${encodeStructuralValue(children[index], seen)}`;
+	}
+	return `object:${id}:{${encodedFields}}`;
 }
 
 function sourceChildren(value: object): readonly unknown[] {
 	if (Array.isArray(value)) {
 		if (Object.getPrototypeOf(value) !== Array.prototype) throw new Error('checked source array prototype changed');
 		const keys = Reflect.ownKeys(value);
-		if (keys.some(key => typeof key === 'symbol')) throw new Error('checked source array contains symbol field');
 		const lengthDescriptor = Object.getOwnPropertyDescriptor(value, 'length');
-		if (lengthDescriptor === undefined || !('value' in lengthDescriptor) || typeof lengthDescriptor.value !== 'number' || !Number.isSafeInteger(lengthDescriptor.value) || lengthDescriptor.value < 0) {
+		if (
+			lengthDescriptor === undefined
+			|| !('value' in lengthDescriptor)
+			|| typeof lengthDescriptor.value !== 'number'
+			|| !Number.isSafeInteger(lengthDescriptor.value)
+			|| lengthDescriptor.value < 0
+		) {
 			throw new Error('checked source array has invalid length');
 		}
 		const length = lengthDescriptor.value;
-		const indexKeys = (keys as string[]).filter(key => key !== 'length');
-		if (indexKeys.length !== length) throw new Error('checked source array must be dense without extra fields');
-		return Array.from({ length }, (_, index) => {
-			const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
+		let indexKeyCount = 0;
+		for (let keyIndex = 0; keyIndex < keys.length; keyIndex++) {
+			const key = keys[keyIndex]!;
+			if (typeof key === 'symbol') throw new Error('checked source array contains symbol field');
+			if (key === 'length') continue;
+			const index = Number(key);
+			if (!Number.isSafeInteger(index) || index < 0 || index >= length || `${index}` !== key) {
+				throw new Error(`checked source array contains unknown field ${key}`);
+			}
+			indexKeyCount++;
+		}
+		if (indexKeyCount !== length) throw new Error('checked source array must be dense without extra fields');
+		const children: unknown[] = new Array<unknown>(length);
+		for (let index = 0; index < length; index++) {
+			const descriptor = Object.getOwnPropertyDescriptor(value, `${index}`);
 			if (descriptor === undefined || !('value' in descriptor)) throw new Error(`checked source array index ${index} must be a data property`);
-			return descriptor.value;
-		});
+			children[index] = descriptor.value;
+		}
+		return children;
 	}
 	const prototype = Object.getPrototypeOf(value);
 	if (prototype !== Object.prototype && prototype !== null) throw new Error('checked source object prototype changed');
-	return sourceStringKeys(value).map(key => {
+	const keys = sourceStringKeys(value);
+	const children: unknown[] = new Array<unknown>(keys.length);
+	for (let index = 0; index < keys.length; index++) {
+		const key = keys[index]!;
 		const descriptor = Object.getOwnPropertyDescriptor(value, key);
 		if (descriptor === undefined || !('value' in descriptor)) throw new Error(`checked source field ${key} must be a data property`);
-		return descriptor.value;
-	});
+		children[index] = descriptor.value;
+	}
+	return children;
 }
 
 function sourceStringKeys(value: object): string[] {
 	const keys = Reflect.ownKeys(value);
-	const symbolKey = keys.find((key): key is symbol => typeof key === 'symbol');
-	if (symbolKey !== undefined) throw new Error(`checked source object contains symbol field ${String(symbolKey)}`);
-	return (keys as string[]).sort(compareText);
-}
-
-function compareText(left: string, right: string): number {
-	return left < right ? -1 : left > right ? 1 : 0;
+	const result: string[] = [];
+	for (let index = 0; index < keys.length; index++) {
+		const key = keys[index]!;
+		if (typeof key === 'symbol') throw new Error(`checked source object contains symbol field ${String(key)}`);
+		result[result.length] = key;
+	}
+	return result;
 }
