@@ -25,8 +25,7 @@ const FORBIDDEN_ENV = Object.freeze(['NODE_AUTH_TOKEN', 'NPM_TOKEN']);
 
 export async function verifyNpmTrustedPublishingWorkflow(root = repositoryRoot) {
 	const policy = validateNpmTrustedPublishingPolicy(JSON.parse(await readFile(resolve(root, POLICY_PATH), 'utf8')));
-	const workflowPath = resolve(root, '.github/workflows', policy.workflowFile);
-	const source = await readFile(workflowPath, 'utf8');
+	const source = await readFile(resolve(root, '.github/workflows', policy.workflowFile), 'utf8');
 	return validateNpmTrustedPublishingWorkflowSource(source, policy);
 }
 
@@ -41,8 +40,8 @@ export function validateNpmTrustedPublishingPolicy(value) {
 	const runner = nonEmptyString(policy.runner, '$.trustedPublishingPolicy.runner');
 	assert(/^ubuntu-[0-9]{2}\.04$/u.test(runner), '$.trustedPublishingPolicy.runner', 'expected an explicit GitHub-hosted Ubuntu runner label');
 	assert(policy.registry === PUBLIC_REGISTRY, '$.trustedPublishingPolicy.registry', `expected ${PUBLIC_REGISTRY}`);
-	const minimumNodeVersion = strictSemver(policy.minimumNodeVersion, '$.trustedPublishingPolicy.minimumNodeVersion');
-	const minimumNpmVersion = strictSemver(policy.minimumNpmVersion, '$.trustedPublishingPolicy.minimumNpmVersion');
+	const minimumNodeVersion = semverText(policy.minimumNodeVersion, '$.trustedPublishingPolicy.minimumNodeVersion');
+	const minimumNpmVersion = semverText(policy.minimumNpmVersion, '$.trustedPublishingPolicy.minimumNpmVersion');
 	const requiredPermission = record(policy.requiredPermission, '$.trustedPublishingPolicy.requiredPermission');
 	assertExactKeys(requiredPermission, ['id-token'], '$.trustedPublishingPolicy.requiredPermission');
 	assert(requiredPermission['id-token'] === 'write', '$.trustedPublishingPolicy.requiredPermission.id-token', 'expected write');
@@ -108,8 +107,8 @@ export function validateNpmTrustedPublishingWorkflowSource(source, policyValue) 
 }
 
 export function versionAtLeast(actualValue, minimumValue) {
-	const actual = strictSemver(actualValue, '$.actualVersion');
-	const minimum = strictSemver(minimumValue, '$.minimumVersion');
+	const actual = semverComponents(actualValue, '$.actualVersion');
+	const minimum = semverComponents(minimumValue, '$.minimumVersion');
 	for (let index = 0; index < 3; index += 1) {
 		if (actual[index] > minimum[index]) return true;
 		if (actual[index] < minimum[index]) return false;
@@ -207,7 +206,7 @@ function extractInstalledNpmVersions(command) {
 	const versions = [];
 	for (const line of command.split(/\r?\n/u)) {
 		const match = /^\s*npm\s+install\s+(?:--global|-g)\s+npm@([0-9]+\.[0-9]+\.[0-9]+)\s*$/u.exec(line);
-		if (match !== null) versions.push(strictSemver(match[1], '$.workflow.jobs.release.npmVersion'));
+		if (match !== null) versions.push(semverText(match[1], '$.workflow.jobs.release.npmVersion'));
 	}
 	return versions;
 }
@@ -224,7 +223,12 @@ function normalizeWorkflowVersion(value) {
 	return components.join('.');
 }
 
-function strictSemver(value, path) {
+function semverText(value, path) {
+	semverComponents(value, path);
+	return value;
+}
+
+function semverComponents(value, path) {
 	assert(typeof value === 'string', path, 'expected a semantic version string');
 	const match = /^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/u.exec(value);
 	assert(match !== null, path, 'expected exact major.minor.patch version');
