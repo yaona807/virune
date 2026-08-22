@@ -59,6 +59,7 @@ const groups = platformSmoke ? platformGroups : [
 				'scripts/verify-npm-publication-authorization-channel.test.mjs',
 				'scripts/run-npm-publication-authorization.test.mjs',
 				'scripts/run-npm-publication-prewrite-gate.test.mjs',
+				'scripts/run-npm-publication-prewrite-gate-order.test.mjs',
 			],
 		},
 		{
