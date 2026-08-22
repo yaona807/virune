@@ -36,7 +36,6 @@ function toLspDiagnostic(
 		range: sourceSpanToRange(diagnostic.span),
 		severity: severity(diagnostic.severity),
 		code: diagnostic.code,
-		codeDescription: { href: `https://github.com/yaona807/virune/blob/main/docs/diagnostic-codes.md#${diagnostic.code.toLowerCase()}` },
 		source: DIAGNOSTIC_SOURCE,
 		message: diagnostic.message,
 		data: {
