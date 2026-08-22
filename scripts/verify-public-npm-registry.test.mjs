@@ -15,9 +15,16 @@ import {
 } from './verify-npm-publication-identity.mjs';
 
 const repositoryRoot = resolve(fileURLToPath(new URL('..', import.meta.url)));
-const publicationPlan = JSON.parse(readFileSync(resolve(repositoryRoot, '.github/release/npm-publication-v1.json'), 'utf8'));
+const canonicalPublicationPlan = JSON.parse(readFileSync(resolve(repositoryRoot, '.github/release/npm-publication-v1.json'), 'utf8'));
 const version = '1.1.0-rc.1';
 const registry = 'https://registry.npmjs.org/';
+
+function readyPublicationPlan() {
+	const plan = structuredClone(canonicalPublicationPlan);
+	plan.publicationReady = true;
+	plan.unresolvedRequirements = [];
+	return plan;
+}
 
 function registryPackageUrl(name) {
 	return `${registry}${encodeURIComponent(name)}`;
@@ -48,6 +55,7 @@ function responseBytes(bytes) {
 }
 
 function fixture() {
+	const publicationPlan = readyPublicationPlan();
 	const packageBytes = new Map();
 	const metadata = new Map();
 	const packuments = new Map();
@@ -99,14 +107,15 @@ function fixture() {
 		}
 		return { ok: false, status: 404 };
 	};
-	return { publicationManifest, metadata, packuments, packageBytes, failedTarballs, malformedJson, fetchImpl };
+	return { publicationPlan, publicationManifest, metadata, packuments, packageBytes, tarballs, failedTarballs, malformedJson, fetchImpl };
 }
 
-function successfulRunCommand(expectedVersion = version) {
+function successfulRunCommand(expectedVersion = version, { inspectInstall } = {}) {
 	return (command, args, options = {}) => {
 		if (command === 'npm') {
 			assert(args.includes(`virune@${version}`));
 			assert(args.includes(`--registry=${registry}`));
+			inspectInstall?.(args, options);
 			const prefixArgument = args.find(argument => argument.startsWith('--prefix='));
 			assert(prefixArgument !== undefined);
 			const prefix = prefixArgument.slice('--prefix='.length);
@@ -123,7 +132,7 @@ test('verifies exact reviewed package bytes, tags and clean global CLI installat
 	const current = fixture();
 	const report = await verifyPublicNpmRegistry({
 		publicationManifest: current.publicationManifest,
-		publicationPlan,
+		publicationPlan: current.publicationPlan,
 		outputPath: null,
 		fetchImpl: current.fetchImpl,
 		runCommand: successfulRunCommand(),
@@ -131,50 +140,65 @@ test('verifies exact reviewed package bytes, tags and clean global CLI installat
 	});
 	assert.equal(report.version, version);
 	assert.equal(report.distTag, 'next');
-	assert.equal(report.packages.length, publicationPlan.packages.length);
+	assert.equal(report.packages.length, current.publicationPlan.packages.length);
 	assert.deepEqual(report.packages.map(item => item.registryName), [...report.packages.map(item => item.registryName)].sort());
 	assert.equal(report.installation.package, `virune@${version}`);
 	assert.equal(report.installation.versionOutput, `virune ${version}`);
 });
 
-test('publication manifest validation is exact, unique and fail-closed', () => {
-	const good = fixture().publicationManifest;
-	assert.equal(validateReviewedPublicationManifest(good, publicationPlan).packages.length, publicationPlan.packages.length);
+test('publication manifest and publication plan readiness are exact and fail closed', () => {
+	const current = fixture();
+	const good = current.publicationManifest;
+	assert.equal(validateReviewedPublicationManifest(good, current.publicationPlan).packages.length, current.publicationPlan.packages.length);
+
+	const sourceNotReady = structuredClone(current.publicationPlan);
+	sourceNotReady.publicationReady = false;
+	assert.throws(() => validateReviewedPublicationManifest(good, sourceNotReady), /publication-ready release source/u);
+
+	const unresolvedSource = structuredClone(current.publicationPlan);
+	unresolvedSource.unresolvedRequirements = ['trusted-publishing'];
+	assert.throws(() => validateReviewedPublicationManifest(good, unresolvedSource), /zero unresolved npm publication requirements/u);
 
 	const notReady = structuredClone(good);
 	notReady.publicationReady = false;
-	assert.throws(() => validateReviewedPublicationManifest(notReady, publicationPlan), /publication-ready/u);
+	assert.throws(() => validateReviewedPublicationManifest(notReady, current.publicationPlan), /publication-ready candidate/u);
 
 	const missing = structuredClone(good);
 	missing.packages.pop();
-	assert.throws(() => validateReviewedPublicationManifest(missing, publicationPlan), /expected exact Registry package set/u);
+	assert.throws(() => validateReviewedPublicationManifest(missing, current.publicationPlan), /expected exact Registry package set/u);
 
 	const duplicate = structuredClone(good);
 	duplicate.packages.push(structuredClone(duplicate.packages[0]));
-	assert.throws(() => validateReviewedPublicationManifest(duplicate, publicationPlan), /duplicate registryName/u);
+	assert.throws(() => validateReviewedPublicationManifest(duplicate, current.publicationPlan), /duplicate registryName/u);
 
 	const unknown = structuredClone(good);
 	unknown.packages[0].registryName = '@virune/unknown';
 	unknown.packages[0].releaseAsset = registryReleaseAssetNameForPackage('@virune/unknown', version);
-	assert.throws(() => validateReviewedPublicationManifest(unknown, publicationPlan), /expected exact Registry package set/u);
+	assert.throws(() => validateReviewedPublicationManifest(unknown, current.publicationPlan), /expected exact Registry package set/u);
 
 	const staleTag = structuredClone(good);
 	staleTag.distTag = 'latest';
-	assert.throws(() => validateReviewedPublicationManifest(staleTag, publicationPlan), /expected next/u);
+	assert.throws(() => validateReviewedPublicationManifest(staleTag, current.publicationPlan), /expected next/u);
 
 	const unknownField = structuredClone(good);
 	unknownField.unreviewed = true;
-	assert.throws(() => validateReviewedPublicationManifest(unknownField, publicationPlan), /expected exact keys/u);
+	assert.throws(() => validateReviewedPublicationManifest(unknownField, current.publicationPlan), /expected exact keys/u);
 });
 
 test('Registry observations reject missing, malformed, partial and stale metadata', async () => {
-	const first = publicationPlan.packages[0].registryName;
+	const first = canonicalPublicationPlan.packages[0].registryName;
 	for (const mutate of [
 		current => current.metadata.delete(first),
+		current => current.packuments.delete(first),
 		current => current.malformedJson.add(`version:${first}`),
+		current => current.malformedJson.add(`package:${first}`),
+		current => { current.metadata.get(first).name = '@virune/wrong'; },
 		current => { current.metadata.get(first).version = '1.1.0-rc.2'; },
+		current => { delete current.metadata.get(first).dist; },
+		current => { current.metadata.get(first).dist.tarball = 'https://example.invalid/package.tgz'; },
 		current => { current.metadata.get(first).dist.integrity = 'sha256-invalid'; },
 		current => { current.metadata.get(first).dist.shasum = '0'.repeat(40); },
+		current => { current.packuments.get(first).name = '@virune/wrong'; },
 		current => { delete current.packuments.get(first)['dist-tags']; },
 		current => { current.packuments.get(first)['dist-tags'].next = '1.1.0-rc.2'; },
 		current => current.failedTarballs.add(first),
@@ -183,7 +207,7 @@ test('Registry observations reject missing, malformed, partial and stale metadat
 		mutate(current);
 		await assert.rejects(() => verifyPublicNpmRegistry({
 			publicationManifest: current.publicationManifest,
-			publicationPlan,
+			publicationPlan: current.publicationPlan,
 			outputPath: null,
 			fetchImpl: current.fetchImpl,
 			runCommand: successfulRunCommand(),
@@ -193,7 +217,7 @@ test('Registry observations reject missing, malformed, partial and stale metadat
 });
 
 test('Registry tarball integrity, shasum, SHA-256 and byte-size drift fail closed', async () => {
-	const first = publicationPlan.packages[0].registryName;
+	const first = canonicalPublicationPlan.packages[0].registryName;
 	for (const mutate of [
 		current => { current.metadata.get(first).dist.integrity = `sha512-${Buffer.alloc(64).toString('base64')}`; },
 		current => { current.metadata.get(first).dist.shasum = 'f'.repeat(40); },
@@ -205,13 +229,40 @@ test('Registry tarball integrity, shasum, SHA-256 and byte-size drift fail close
 		mutate(current);
 		await assert.rejects(() => verifyPublicNpmRegistry({
 			publicationManifest: current.publicationManifest,
-			publicationPlan,
+			publicationPlan: current.publicationPlan,
 			outputPath: null,
 			fetchImpl: current.fetchImpl,
 			runCommand: successfulRunCommand(),
 			platform: 'linux',
 		}));
 	}
+});
+
+test('clean global install uses isolated npm state and strips ambient credentials', async () => {
+	await verifyCleanGlobalCliInstall(version, {
+		platform: 'linux',
+		baseEnv: {
+			PATH: '/usr/bin',
+			NODE_AUTH_TOKEN: 'node-secret',
+			NPM_TOKEN: 'npm-secret',
+			GH_TOKEN: 'gh-secret',
+			GITHUB_TOKEN: 'github-secret',
+			NPM_CONFIG_REGISTRY: 'https://evil.invalid/',
+		},
+		runCommand: successfulRunCommand(version, {
+			inspectInstall: (_args, options) => {
+				assert.equal(options.env.NODE_AUTH_TOKEN, undefined);
+				assert.equal(options.env.NPM_TOKEN, undefined);
+				assert.equal(options.env.GH_TOKEN, undefined);
+				assert.equal(options.env.GITHUB_TOKEN, undefined);
+				assert.equal(options.env.NPM_CONFIG_REGISTRY, registry);
+				assert.equal(options.env.NPM_CONFIG_REPLACE_REGISTRY_HOST, 'never');
+				assert.equal(options.env.NPM_CONFIG_CACHE, resolve(options.cwd, 'npm-cache'));
+				assert.equal(options.env.NPM_CONFIG_USERCONFIG, resolve(options.cwd, 'user.npmrc'));
+				assert.equal(options.env.NPM_CONFIG_GLOBALCONFIG, resolve(options.cwd, 'global.npmrc'));
+			},
+		}),
+	});
 });
 
 test('clean global install rejects command failure and CLI version mismatch', async () => {
