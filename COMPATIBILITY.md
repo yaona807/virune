@@ -21,7 +21,7 @@ The main Stable surfaces include:
 - documented public standard-library declarations and the `exports` configuration in `package.json`
 - the root public `@virune/compiler` API
 - Runtime ABI and Interop ABI versions explicitly declared Stable
-- documented Stable CLI behavior
+- documented CLI behavior
 - the public contract defined by diagnostic codes and JSON format, plus other machine-readable formats explicitly declared Stable
 - public LSP / VS Code capabilities, settings, and commands documented for stable releases
 - environments declared supported by stable releases, such as Node.js and VS Code
