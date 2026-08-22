@@ -48,8 +48,8 @@ const OBLIGATION_KEYS = ['kind', 'stage', 'status'] as const;
  *
  * The input is treated as untrusted runtime data even though callers normally
  * construct it through TypeScript. Unknown enum values, unknown/accessor fields,
- * and contradictory obligation state fail closed instead of being serialized as
- * successful evidence.
+ * malformed arrays, and contradictory obligation state fail closed instead of
+ * being serialized as successful evidence.
  */
 export function canonicalizeInteropDecision(decision: InteropDecisionIR): InteropDecisionIR {
 	const decisionRecord = readExactDataRecord(decision, DECISION_KEYS, 'Interop decision');
@@ -60,15 +60,13 @@ export function canonicalizeInteropDecision(decision: InteropDecisionIR): Intero
 	assertKnown(MECHANISMS, mechanism, 'Interop mechanism');
 	assertKnown(AUTHORING_MODES, authoring, 'Interop authoring mode');
 
-	const claimValues = decisionRecord.claims;
-	if (!Array.isArray(claimValues)) throw new Error('Interop decision claims must be an array');
+	const claimValues = readExactDataArray(decisionRecord.claims, 'Interop decision claims');
 	const claims = [...new Set(claimValues.map(claim => {
 		assertKnown(CLAIMS, claim, 'Interop safety claim');
 		return claim;
 	}))].sort(compareText);
 
-	const obligationValues = decisionRecord.obligations;
-	if (!Array.isArray(obligationValues)) throw new Error('Interop decision obligations must be an array');
+	const obligationValues = readExactDataArray(decisionRecord.obligations, 'Interop decision obligations');
 	const obligationsByKey = new Map<string, InteropObligationIR>();
 	for (const obligation of obligationValues) {
 		const obligationRecord = readExactDataRecord(obligation, OBLIGATION_KEYS, 'Interop obligation');
@@ -148,6 +146,37 @@ function readExactDataRecord(value: unknown, expected: readonly string[], descri
 		if (descriptor === undefined) throw new Error(`Missing ${description} field: ${key}`);
 		if (!('value' in descriptor)) throw new Error(`${description} field ${key} must be a data property`);
 		snapshot[key] = descriptor.value;
+	}
+	return snapshot;
+}
+
+function readExactDataArray(value: unknown, description: string): readonly unknown[] {
+	if (!Array.isArray(value)) throw new Error(`${description} must be an array`);
+	const keys = Reflect.ownKeys(value);
+	const symbolKey = keys.find((key): key is symbol => typeof key === 'symbol');
+	if (symbolKey !== undefined) throw new Error(`Unknown ${description} field: ${String(symbolKey)}`);
+	const lengthDescriptor = Object.getOwnPropertyDescriptor(value, 'length');
+	if (lengthDescriptor === undefined || !('value' in lengthDescriptor) || typeof lengthDescriptor.value !== 'number' || !Number.isSafeInteger(lengthDescriptor.value) || lengthDescriptor.value < 0) {
+		throw new Error(`${description} has an invalid length`);
+	}
+	const length = lengthDescriptor.value;
+	const indexKeys = (keys as string[]).filter(key => key !== 'length');
+	if (indexKeys.length !== length) throw new Error(`${description} must be a dense array without extra fields`);
+	const indexes = indexKeys.map(key => {
+		const index = Number(key);
+		if (!Number.isSafeInteger(index) || index < 0 || index >= length || String(index) !== key) {
+			throw new Error(`Unknown ${description} field: ${key}`);
+		}
+		return index;
+	}).sort((left, right) => left - right);
+	if (indexes.some((index, position) => index !== position)) throw new Error(`${description} must be a dense array without extra fields`);
+
+	const snapshot: unknown[] = [];
+	for (const index of indexes) {
+		const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
+		if (descriptor === undefined) throw new Error(`${description} is missing index ${index}`);
+		if (!('value' in descriptor)) throw new Error(`${description} field ${index} must be a data property`);
+		snapshot.push(descriptor.value);
 	}
 	return snapshot;
 }
