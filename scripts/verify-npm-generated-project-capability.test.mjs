@@ -10,7 +10,14 @@ import {
 	canonicalNpmGeneratedProjectCapabilityBytes,
 	validateNpmGeneratedProjectCapability,
 } from './npm-generated-project-capability.mjs';
-import { verifyNpmGeneratedProjectCapabilityTarball } from './verify-npm-generated-project-capability.mjs';
+import {
+	bundledCliReleaseAssetName,
+	registryReleaseAssetNameForPackage,
+} from './verify-npm-publication-identity.mjs';
+import {
+	verifyNpmGeneratedProjectCapabilityReleaseSet,
+	verifyNpmGeneratedProjectCapabilityTarball,
+} from './verify-npm-generated-project-capability.mjs';
 
 const tags = { stable: 'latest', prerelease: 'next', nightly: null };
 
@@ -25,6 +32,16 @@ function plan({
 		currentVersion,
 		firstStableRegistryRelease: '1.1.0',
 		distTagPolicy: tags,
+	};
+}
+
+function releasePlan(options = {}) {
+	return {
+		...plan(options),
+		publishPackages: [
+			{ registryName: 'virune' },
+			{ registryName: '@virune/runtime' },
+		],
 	};
 }
 
@@ -84,6 +101,47 @@ test('candidate verifier requires canonical capability bytes when authorized', (
 	const nonCanonical = registryCliTarball([[NPM_GENERATED_PROJECT_CAPABILITY_TAR_PATH, JSON.stringify(expected)]]);
 	assert.throws(() => verifyNpmGeneratedProjectCapabilityTarball(nonCanonical, plan()), /canonical deterministic JSON encoding/u);
 	assert.throws(() => verifyNpmGeneratedProjectCapabilityTarball(registryCliTarball([]), plan()), /must be a regular file/u);
+});
+
+test('release-set verifier permits capability only in the exact virune Registry candidate', () => {
+	const reviewedPlan = releasePlan();
+	const version = reviewedPlan.currentVersion;
+	const registryCliFile = registryReleaseAssetNameForPackage('virune', version);
+	const runtimeFile = registryReleaseAssetNameForPackage('@virune/runtime', version);
+	const bundledFile = bundledCliReleaseAssetName(version);
+	const capabilityBytes = canonicalNpmGeneratedProjectCapabilityBytes(capability(version));
+	const cleanArtifact = registryCliTarball([], version);
+	const assets = {
+		[registryCliFile]: registryCliTarball([[NPM_GENERATED_PROJECT_CAPABILITY_TAR_PATH, capabilityBytes]], version),
+		[runtimeFile]: cleanArtifact,
+		[bundledFile]: cleanArtifact,
+	};
+	assert.deepEqual(verifyNpmGeneratedProjectCapabilityReleaseSet({ publicationPlan: reviewedPlan, assets }), {
+		present: true,
+		capability: capability(version),
+	});
+
+	for (const file of [runtimeFile, bundledFile]) {
+		const contaminated = {
+			...assets,
+			[file]: registryCliTarball([[NPM_GENERATED_PROJECT_CAPABILITY_TAR_PATH, capabilityBytes]], version),
+		};
+		assert.throws(
+			() => verifyNpmGeneratedProjectCapabilityReleaseSet({ publicationPlan: reviewedPlan, assets: contaminated }),
+			/capability is authorized only in the exact virune Registry candidate artifact/u,
+		);
+	}
+
+	const missing = { ...assets };
+	delete missing[runtimeFile];
+	assert.throws(
+		() => verifyNpmGeneratedProjectCapabilityReleaseSet({ publicationPlan: reviewedPlan, assets: missing }),
+		/expected exact capability-audit artifact set/u,
+	);
+	assert.throws(
+		() => verifyNpmGeneratedProjectCapabilityReleaseSet({ publicationPlan: reviewedPlan, assets: { ...assets, 'extra.tgz': cleanArtifact } }),
+		/expected exact capability-audit artifact set/u,
+	);
 });
 
 test('candidate verifier binds both CLI runtime entries to the exact reviewed version', () => {
