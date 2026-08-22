@@ -1,6 +1,6 @@
 # Virune 行動規範
 
-English: [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
+[英語版](CODE_OF_CONDUCT.md)
 
 Viruneは、[Contributor Covenant 3.0 日本語版](https://www.contributor-covenant.org/ja/version/3/0/code_of_conduct/)の行動基準を採用します。
 
@@ -14,4 +14,4 @@ Viruneは、[Contributor Covenant 3.0 日本語版](https://www.contributor-cove
 
 Viruneには現在メンテナーが1名しかいないため、メンテナー自身についてVirune内の別の担当者に報告する窓口はありません。GitHubのポリシーに違反する行為については、GitHubの報告機能を利用してください。
 
-セキュリティ上の問題は[SECURITY_ja.md](SECURITY_ja.md)に従って報告してください。
+セキュリティ上の問題は[セキュリティポリシー](SECURITY_ja.md)に従って報告してください。
