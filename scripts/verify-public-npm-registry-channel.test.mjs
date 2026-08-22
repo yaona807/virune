@@ -81,6 +81,26 @@ test('a failed verification invalidates stale passing Registry evidence before v
 test('clean install verification does not repair a non-executable installed CLI before checking it', async () => {
 	const version = '1.1.0-rc.1';
 	let executableChecked = false;
+	const writeGeneratedProject = projectRoot => {
+		mkdirSync(projectRoot, { recursive: true });
+		writeFileSync(resolve(projectRoot, 'package.json'), `${JSON.stringify({
+			name: 'generated-project',
+			private: true,
+			type: 'module',
+			scripts: {
+				build: 'virune build',
+				start: 'virune run',
+				test: 'virune test',
+				check: 'virune check',
+				fmt: 'virune fmt .',
+			},
+			dependencies: {
+				'@virune/runtime': version,
+				'@virune/stdlib': version,
+			},
+			devDependencies: { virune: version },
+		}, null, 2)}\n`, 'utf8');
+	};
 	await verifyCleanGlobalCliInstall(version, {
 		platform: 'linux',
 		baseEnv: { PATH: process.env.PATH ?? '/usr/bin' },
@@ -93,6 +113,16 @@ test('clean install verification does not repair a non-executable installed CLI 
 					mkdirSync(resolve(prefix, 'bin'), { recursive: true });
 					writeFileSync(resolve(prefix, 'bin/virune'), '#!/bin/sh\n', { mode: 0o644 });
 					return { status: 0, stdout: '', stderr: '' };
+				}
+				if (args[0] === 'exec') {
+					assert.equal(executableChecked, true, 'executable mode must be checked before npm exec consumer initialization');
+					const separator = args.indexOf('--');
+					assert(separator >= 0);
+					assert.equal(args[separator + 1], `virune@${version}`);
+					assert.equal(args[separator + 2], 'init');
+					assert.equal(typeof args[separator + 3], 'string');
+					writeGeneratedProject(resolve(args[separator + 3]));
+					return { status: 0, stdout: 'Initialized Virune project\n', stderr: '' };
 				}
 				if (args[0] === 'install') return { status: 0, stdout: '', stderr: '' };
 				if (args[0] === 'run') {
@@ -108,25 +138,7 @@ test('clean install verification does not repair a non-executable installed CLI 
 			}
 			if (args[0] === 'init') {
 				assert.equal(executableChecked, true, 'executable mode must be checked before consumer initialization');
-				const projectRoot = resolve(args[1]);
-				mkdirSync(projectRoot, { recursive: true });
-				writeFileSync(resolve(projectRoot, 'package.json'), `${JSON.stringify({
-					name: 'generated-project',
-					private: true,
-					type: 'module',
-					scripts: {
-						build: 'virune build',
-						start: 'virune run',
-						test: 'virune test',
-						check: 'virune check',
-						fmt: 'virune fmt .',
-					},
-					dependencies: {
-						'@virune/runtime': version,
-						'@virune/stdlib': version,
-					},
-					devDependencies: { virune: version },
-				}, null, 2)}\n`, 'utf8');
+				writeGeneratedProject(resolve(args[1]));
 				return { status: 0, stdout: 'Initialized Virune project\n', stderr: '' };
 			}
 			throw new Error(`Unexpected command: ${command} ${args.join(' ')}`);

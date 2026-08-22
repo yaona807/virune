@@ -236,11 +236,14 @@ export async function verifyCleanGlobalCliInstall(version, {
 		const npmrc = resolve(root, 'user.npmrc');
 		const globalNpmrc = resolve(root, 'global.npmrc');
 		const cache = resolve(root, 'npm-cache');
+		const npxCache = resolve(root, 'npm-exec-cache');
 		const projectRoot = resolve(root, 'generated-project');
+		const npxProjectRoot = resolve(root, 'npx-generated-project');
 		await Promise.all([
 			writeFile(npmrc, `registry=${PUBLIC_REGISTRY}\n@virune:registry=${PUBLIC_REGISTRY}\nreplace-registry-host=never\n`, 'utf8'),
 			writeFile(globalNpmrc, '', 'utf8'),
 			mkdir(cache, { recursive: true }),
+			mkdir(npxCache, { recursive: true }),
 		]);
 		const env = cleanNpmEnvironment({ root, npmrc, globalNpmrc, cache, baseEnv });
 		runCommand('npm', [
@@ -275,6 +278,23 @@ export async function verifyCleanGlobalCliInstall(version, {
 		const packageJsonAfter = await readFile(packageJsonPath);
 		assert(packageJsonAfter.equals(packageJsonBytes), '$.installation.generatedProject.packageJson', 'generated package.json changed during consumer verification');
 
+		const npxEnv = { ...env, NPM_CONFIG_CACHE: npxCache };
+		runCommand('npm', [
+			'exec', '--yes', `--registry=${PUBLIC_REGISTRY}`, `--userconfig=${npmrc}`,
+			'--replace-registry-host=never', '--', `virune@${version}`, 'init', npxProjectRoot,
+		], { cwd: root, env: npxEnv, capture: true });
+		const npxPackageJsonPath = resolve(npxProjectRoot, 'package.json');
+		const npxPackageJsonBytes = await readFile(npxPackageJsonPath);
+		let npxGeneratedManifest;
+		try {
+			npxGeneratedManifest = JSON.parse(npxPackageJsonBytes.toString('utf8'));
+		} catch (error) {
+			throw new Error(`Exact-version npm exec generated malformed package.json: ${error instanceof Error ? error.message : String(error)}`);
+		}
+		const npxGeneratedProject = validateGeneratedProjectManifest(npxGeneratedManifest, version);
+		const npxPackageJsonAfter = await readFile(npxPackageJsonPath);
+		assert(npxPackageJsonAfter.equals(npxPackageJsonBytes), '$.installation.npx.packageJson', 'npm exec generated package.json changed during verification');
+
 		return {
 			package: `virune@${version}`,
 			registry: PUBLIC_REGISTRY,
@@ -282,6 +302,13 @@ export async function verifyCleanGlobalCliInstall(version, {
 			generatedProject: {
 				...generatedProject,
 				commands: ['npm install', 'npm run check', 'npm run build', 'npm run start'],
+			},
+			npx: {
+				package: `virune@${version}`,
+				registry: PUBLIC_REGISTRY,
+				acquisition: 'npm-exec',
+				nonInteractive: true,
+				generatedProject: npxGeneratedProject,
 			},
 		};
 	} finally {
