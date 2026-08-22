@@ -67,6 +67,7 @@ function gatedHostFor(mainPath: string): { readonly host: ProjectHost; readonly 
 				}
 				throw Object.assign(new Error(`missing ${path}`), { code: 'ENOENT' });
 			},
+		},
 	};
 }
 
