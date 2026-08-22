@@ -21,10 +21,10 @@ export async function runNpmPublicationAuthorization({
 	evidencePath = DEFAULT_EVIDENCE,
 	outputPath = DEFAULT_OUTPUT,
 } = {}) {
+	if (outputPath !== null) await rm(outputPath, { force: true });
 	const commit = fullCommitSha(reviewedCommit, '$.reviewedCommit');
 	const version = nonEmptyString(releaseVersion, '$.releaseVersion');
 	const execution = evidenceSetIdentity(evidenceSetId, '$.evidenceSetId');
-	if (outputPath !== null) await rm(outputPath, { force: true });
 
 	const plan = readReviewedJson(commit, PUBLICATION_PLAN_PATH);
 	const rootManifest = readReviewedJson(commit, ROOT_MANIFEST_PATH);
@@ -129,14 +129,12 @@ if (entry === fileURLToPath(import.meta.url)) {
 	const evidenceSetId = argumentValue('--evidence-set-id=');
 	const publicationManifestPath = argumentValue('--publication-manifest=');
 	const evidencePath = argumentValue('--evidence=');
-	const outputPath = argumentValue('--output=');
 	const report = await runNpmPublicationAuthorization({
 		reviewedCommit,
 		releaseVersion,
 		evidenceSetId,
 		...(publicationManifestPath === undefined ? {} : { publicationManifestPath: resolve(publicationManifestPath) }),
 		...(evidencePath === undefined ? {} : { evidencePath: resolve(evidencePath) }),
-		...(outputPath === undefined ? {} : { outputPath: resolve(outputPath) }),
 	});
 	process.stdout.write(`Authorized npm publication for ${report.version} at ${report.reviewedCommit}.\n`);
 }
