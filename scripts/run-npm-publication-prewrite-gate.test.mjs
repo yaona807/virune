@@ -175,6 +175,23 @@ test('release ref binding accepts exact tags and restricts release-candidate bra
 	assert.throws(() => validateStableReleaseEvidence(stable, { reviewedCommit, releaseVersion: '1.1.0' }), /prerelease versions only/u);
 });
 
+test('malformed Virune release versions fail closed even when tag and evidence agree', () => {
+	for (const malformed of ['1.1', '01.1.0', '1.1.0-rc', '1.1.0-dev.1', ' 1.1.0']) {
+		const stable = stableReleaseReport();
+		stable.version = malformed;
+		stable.ref = `refs/tags/v${malformed}`;
+		const authorization = authorizationReport();
+		authorization.version = malformed;
+		assert.throws(() => build({
+			releaseVersion: malformed,
+			stableReleaseEvidenceBytes: stableBytes(stable),
+			authorizationEvidenceBytes: authorizationBytes(authorization),
+		}), /expected stable, alpha, beta, rc, or nightly Virune semantic version/u);
+		assert.throws(() => validateStableReleaseEvidence(stable, { reviewedCommit, releaseVersion: malformed }), /expected stable, alpha, beta, rc, or nightly Virune semantic version/u);
+		assert.throws(() => validateAuthorizationReport(authorization, { reviewedCommit, releaseVersion: malformed, evidenceSetId }), /expected stable, alpha, beta, rc, or nightly Virune semantic version/u);
+	}
+});
+
 test('fresh stable gate bytes must match the exact report generated in the same execution', () => {
 	const generated = stableReleaseReport();
 	const persisted = structuredClone(generated);
