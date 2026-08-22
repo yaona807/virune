@@ -290,15 +290,33 @@ export async function verifyCleanGlobalCliInstall(version, {
 }
 
 function validateGeneratedProjectManifest(manifest, version) {
-	const document = record(manifest, '$.installation.generatedProject.packageJson');
-	const dependencies = record(document.dependencies, '$.installation.generatedProject.packageJson.dependencies');
-	const devDependencies = record(document.devDependencies, '$.installation.generatedProject.packageJson.devDependencies');
-	assertExactKeys(dependencies, ['@virune/runtime', '@virune/stdlib'], '$.installation.generatedProject.packageJson.dependencies');
-	assertExactKeys(devDependencies, ['virune'], '$.installation.generatedProject.packageJson.devDependencies');
-	assert(dependencies['@virune/runtime'] === version, '$.installation.generatedProject.packageJson.dependencies.@virune/runtime', `expected ${version}`);
-	assert(dependencies['@virune/stdlib'] === version, '$.installation.generatedProject.packageJson.dependencies.@virune/stdlib', `expected ${version}`);
-	assert(devDependencies.virune === version, '$.installation.generatedProject.packageJson.devDependencies.virune', `expected ${version}`);
+	const path = '$.installation.generatedProject.packageJson';
+	const document = record(manifest, path);
+	assertExactKeys(document, ['dependencies', 'devDependencies', 'name', 'private', 'scripts', 'type'], path);
+	nonEmptyString(document.name, `${path}.name`);
+	assert(document.private === true, `${path}.private`, 'expected true');
+	assert(document.type === 'module', `${path}.type`, 'expected module');
+	const scripts = record(document.scripts, `${path}.scripts`);
+	const expectedScripts = {
+		build: 'virune build',
+		start: 'virune run',
+		test: 'virune test',
+		check: 'virune check',
+		fmt: 'virune fmt .',
+	};
+	assertExactKeys(scripts, Object.keys(expectedScripts), `${path}.scripts`);
+	for (const [name, command] of Object.entries(expectedScripts)) {
+		assert(scripts[name] === command, `${path}.scripts.${name}`, `expected ${command}`);
+	}
+	const dependencies = record(document.dependencies, `${path}.dependencies`);
+	const devDependencies = record(document.devDependencies, `${path}.devDependencies`);
+	assertExactKeys(dependencies, ['@virune/runtime', '@virune/stdlib'], `${path}.dependencies`);
+	assertExactKeys(devDependencies, ['virune'], `${path}.devDependencies`);
+	assert(dependencies['@virune/runtime'] === version, `${path}.dependencies.@virune/runtime`, `expected ${version}`);
+	assert(dependencies['@virune/stdlib'] === version, `${path}.dependencies.@virune/stdlib`, `expected ${version}`);
+	assert(devDependencies.virune === version, `${path}.devDependencies.virune`, `expected ${version}`);
 	return {
+		scripts: expectedScripts,
 		dependencies: { '@virune/runtime': version, '@virune/stdlib': version },
 		devDependencies: { virune: version },
 	};
