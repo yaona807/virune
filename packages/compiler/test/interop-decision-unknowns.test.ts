@@ -38,3 +38,26 @@ test('unknown obligation kind, stage, and status fail closed', () => {
 		assert.throws(() => canonicalizeInteropDecision(decision), pattern);
 	}
 });
+
+test('unknown decision and obligation fields fail closed instead of being ignored', () => {
+	const futureDecision = unknownDecision({ futureSafetyState: 'unsafe' });
+	assert.equal(isResolvedDirectInteropDecision(futureDecision), false);
+	assert.throws(
+		() => canonicalizeInteropDecision(futureDecision),
+		/Unknown Interop decision field: futureSafetyState/u,
+	);
+
+	const futureObligation = unknownDecision({
+		obligations: [{
+			kind: 'runtime-resolution',
+			stage: 'check',
+			status: 'discharged',
+			futureDischargeProof: 'provider-private',
+		}],
+	});
+	assert.equal(isResolvedDirectInteropDecision(futureObligation), false);
+	assert.throws(
+		() => canonicalizeInteropDecision(futureObligation),
+		/Unknown Interop obligation field: futureDischargeProof/u,
+	);
+});
