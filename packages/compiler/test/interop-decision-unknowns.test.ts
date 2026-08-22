@@ -92,3 +92,33 @@ test('accessor-backed decision and obligation state fails closed before it can c
 		/Interop obligation field status must be a data property/u,
 	);
 });
+
+test('custom claim and obligation array behavior cannot bypass fail-closed validation', () => {
+	const claims: unknown[] = [];
+	Object.defineProperty(claims, 'map', {
+		configurable: true,
+		value: () => ['type-boundary-safe'],
+	});
+	const customClaims = unknownDecision({ claims });
+	assert.equal(isResolvedDirectInteropDecision(customClaims), false);
+	assert.throws(
+		() => canonicalizeInteropDecision(customClaims),
+		/Interop decision claims must be a dense array without extra fields/u,
+	);
+
+	const obligations = [{
+		kind: 'runtime-resolution',
+		stage: 'check',
+		status: 'pending',
+	}];
+	Object.defineProperty(obligations, Symbol.iterator, {
+		configurable: true,
+		value: function* emptyIterator() {},
+	});
+	const hiddenPending = unknownDecision({ obligations });
+	assert.equal(isResolvedDirectInteropDecision(hiddenPending), false);
+	assert.throws(
+		() => canonicalizeInteropDecision(hiddenPending),
+		/Unknown Interop decision obligations field/u,
+	);
+});
