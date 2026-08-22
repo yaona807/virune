@@ -1,6 +1,6 @@
 # Compatibility and deprecation policy
 
-[日本語](compatibility-policy_ja.md)
+[日本語](COMPATIBILITY_ja.md)
 
 This document defines the compatibility guarantees for stable Virune releases.
 
@@ -16,13 +16,13 @@ Virune uses three compatibility classes:
 
 The main Stable surfaces include:
 
-- Virune language behavior defined by the [language specification](../spec/)
+- Virune language behavior defined by the [language specification](spec/)
 - documented `virune.json` configuration
 - documented public standard-library declarations and the `exports` configuration in `package.json`
 - the root public `@virune/compiler` API
 - Runtime ABI and Interop ABI versions explicitly declared Stable
 - documented CLI behavior
-- the public contract defined by [diagnostic codes and JSON format](diagnostic-codes.md), plus other machine-readable formats explicitly declared Stable
+- the public contract defined by diagnostic codes and JSON format, plus other machine-readable formats explicitly declared Stable
 - public LSP / VS Code capabilities, settings, and commands documented for stable releases
 - environments declared supported by stable releases, such as Node.js and VS Code
 
@@ -33,6 +33,8 @@ A version number, versioned path, or snapshot does not by itself make a surface 
 Stabilization must be explicit, and updating a snapshot alone does not authorize an incompatible change.
 
 LSP follows the VS Code API versions supported by Virune and the Language Server Protocol.
+
+Published diagnostic codes are stable identifiers within their schema version. An existing `Lxxxx` code must not be reused for a different semantic condition. External tools should identify diagnostics by `source` plus `code`, or by `qualifiedCode`, rather than by message text. The exact current code ranges, catalog, and JSON field structure remain defined by the compiler-owned diagnostic sources and schema.
 
 ### Experimental
 
@@ -61,7 +63,6 @@ Stable releases use Semantic Versioning.
 
 Prereleases may contain incompatible changes.
 Nightlies have no compatibility guarantee.
-See [release channels](release-channels.md).
 
 Examples of incompatible changes include:
 

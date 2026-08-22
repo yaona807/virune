@@ -5,256 +5,187 @@
 <h1 align="center">Virune</h1>
 
 <p align="center">
-  JavaScriptエコシステムのための静的型付きプログラミング言語。<br>
-  読みやすいES2022モジュールへコンパイルし、値の不在、エラー、副作用、並行処理、JavaScript境界を明示します。
+  JavaScriptのエコシステムを活かしながら、<br>
+  より単純で予測しやすいコードを書くための静的型付きプログラミング言語です。
 </p>
 
 <p align="center">
   <a href="https://github.com/yaona807/virune/actions/workflows/ci.yml"><img src="https://github.com/yaona807/virune/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI"></a>
-  <img src="https://img.shields.io/badge/version-1.0.0-5A54E8" alt="Version 1.0.0">
-  <img src="https://img.shields.io/badge/Node.js-%3E%3D24-339933?logo=nodedotjs&logoColor=white" alt="Node.js 24以上">
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue.svg" alt="Apache License 2.0"></a>
+  <a href="https://github.com/yaona807/virune/releases"><img src="https://img.shields.io/github/v/release/yaona807/virune?display_name=tag&sort=semver" alt="Latest release"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/yaona807/virune" alt="License"></a>
 </p>
 
 <p align="center">
-  <a href="#クイックスタート">クイックスタート</a> ·
-  <a href="docs/application-guide_ja.md">アプリケーションガイド</a> ·
-  <a href="docs/language-guide_ja.md">言語ガイド</a> ·
-  <a href="docs/cli-reference_ja.md">CLIリファレンス</a> ·
-  <a href="docs/vscode_ja.md">VS Code</a> ·
   <a href="spec/README_ja.md">言語仕様</a> ·
+  <a href="CONTRIBUTING_ja.md">開発に参加する</a> ·
+  <a href="COMPATIBILITY_ja.md">互換性方針</a> ·
+  <a href="SECURITY_ja.md">セキュリティ</a> ·
   <a href="README.md">English</a>
 </p>
 
-> [!IMPORTANT]
-> **配布方針:** Viruneはnpm Registryへ公開しません。Stable版v1.0.0のCLI、Runtime、標準ライブラリ、VS Code用VSIXは、バージョン固定された成果物として[GitHub Releases](https://github.com/yaona807/virune/releases/tag/v1.0.0)から配布します。生成プロジェクトはすべてのVirune依存を同一の不変なReleaseへ固定し、toolchainとRuntimeの組み合わせを一致させます。
+## なぜViruneを作っているのか
 
-## Viruneが解決する課題
+JavaScriptとTypeScriptの大きな魅力の一つは、これまで積み上げられてきたエコシステムをそのまま利用できることです。Viruneも、この資産を捨てて別の世界を作ることは目指していません。
 
-JavaScriptには成熟した実行環境と巨大なパッケージエコシステムがあり、TypeScriptは開発時の多くの誤りを検出できます。一方、TypeScriptの型は実行時には存在しないため、外部データやJavaScriptパッケージとの境界では、別途検証を設計する必要があります。
+一方で、JavaScriptには`null`と`undefined`、動的な外部の値、例外、Promiseなど、実装するときに考えることが多くあります。TypeScriptは、JavaScriptとの互換性を保ちながら、多くの値やAPIを静的な型で扱えるようにしてくれます。ただし、JavaScriptの実行モデルそのものがなくなるわけではありません。
 
-より強い安全性を持つ言語の多くは、独自のRuntime、パッケージマネージャー、配布方式を伴います。Viruneは対象を絞り、Node.js、browser、ESM、npmのエコシステムを維持しながら、アプリケーション開発で問題になりやすい要素を、明示的な言語機能と検証可能な境界へ移します。
+Viruneでは、**JavaScriptとの接続に必要な複雑さは境界で正しく扱い、通常のコードには必要以上に広げない**ことを重視しています。さらに、失敗、副作用、非同期処理の扱いなども、できるだけコードから分かるようにします。
 
-Viruneの設計原則は次の4点です。
+JavaScriptの資産を活かしながら、普段書くコードはできるだけ単純にする。これがViruneの基本的な考え方です。
 
-- **標準で読みやすい** — 予測可能な構文と、決定的で確認しやすいES2022出力。
-- **失敗を明示する** — `Option`、`Result`、`Validation`、網羅的matchを使用し、暗黙のnullable値を持たない。
-- **副作用を制御する** — 関数は`uses`で組み込みeffectを宣言し、リソースは`defer`で確実に解放する。
-- **相互運用を保守的に扱う** — JavaScript／TypeScript境界を検証し、対応できない型を推測せず`Unknown`へ退避する。
+## TypeScriptで考えてみる
 
-## Viruneの主要機能
+例えば、ユーザー情報と注文一覧をAPIから取得して、ユーザー名と注文数を表示する処理を考えます。
 
-| 課題 | Viruneの扱い |
-|---|---|
-| 値の不在 | 暗黙の`null`／`undefined`ではなく`Option<T>` |
-| 回復可能なエラー | `Result<T, E>`、`Validation<T, E>`、postfix `?`による伝播 |
-| データモデル | 名前的な`record`、`enum`、`newtype`と、透過的な`type` alias |
-| 制御構文 | guardを含む網羅的pattern matchingと構造化されたloop |
-| 副作用 | `uses`による固定の組み込みeffect宣言と、`uses *`による高階関数への転送 |
-| 並行処理 | 構造化された`async`、`await`、`parallel`、`parallel try` |
-| リソース寿命 | `defer`による決定的なLIFO cleanup |
-| JavaScript連携 | 明示的な`import js`、Runtime検証、TypeScript binding生成、Adapter |
-| ツールチェーン | CLI、Formatter、Source Map、LSP、VS Code拡張、適合性試験、Fuzz、リリース検証 |
+以下では、`loadUser`と`loadOrders`は既存のAPIクライアント関数で、通信に失敗した場合はPromiseがrejectするものとします。
 
-Viruneは意図的に、class、継承、macro、operator overload、ユーザー定義protocol、ユーザー定義capability名、暗黙nullable、通常コードでのunchecked cast、独自VM、独自パッケージマネージャーを持ちません。
+```typescript
+type User = {
+  name: string;
+  nickname?: string | null;
+};
 
-## 言語例
+type Order = {
+  id: string;
+};
 
-```virune
-pub newtype UserId = Int
+declare function loadUser(userId: string): Promise<User>;
+declare function loadOrders(userId: string): Promise<Order[]>;
 
-pub record User derives Eq, Hash, Debug, Json {
-	id: UserId
-	name: String
-	nickname: String?
-}
+async function showDashboard(userId: string): Promise<void> {
+  const [user, orders] = await Promise.all([
+    loadUser(userId),
+    loadOrders(userId),
+  ]);
 
-pub enum UserError derives Eq, Debug, Json {
-	NotFound(UserId)
-	InvalidName(String)
-}
-
-fn display(user: User) -> String {
-	let nickname = match user.nickname {
-		Some(value) => value
-		None => "未設定"
-	}
-	return "{user.name} ({nickname})"
-}
-
-pub fn main(args: List<String>) -> Result<Unit, UserError> uses Console {
-	let user = User {
-		id: UserId.create(1),
-		name: "Alice",
-		nickname: None,
-	}
-	let argumentCount = List.length(args)
-	Console.print(display(user))
-	Console.print("引数の数: {argumentCount}")
-	return Ok(Unit)
+  const displayName = user.nickname ?? user.name;
+  console.log(`${displayName}: ${orders.length} orders`);
 }
 ```
 
+これは普通のTypeScriptです。短く書けますし、このままで十分な場面も多くあります。
+
+ただ、上記のコードでは次のような部分を別途考える必要があります。
+
+- `nickname`を読み出す側では、`string`だけでなく`null`やプロパティが存在しないことによる`undefined`も扱います。
+- `showDashboard`の型からは、`loadUser`や`loadOrders`がどのように失敗するかは分かりません。TypeScriptでもResult型などを導入して表現できます。
+- ネットワークやログ出力を使うことは、関数の型には現れません。
+- `Promise.all()`は、いずれかがrejectすると全体もrejectしますが、開始済みの他の処理を自動的に止めるわけではありません。キャンセルまで行う場合は`AbortController`などを組み合わせて設計します。
+
+## 同じ処理をViruneで書く
+
+上記と同じ処理をViruneで表すと、以下のようになります。
+
+ここでは`loadUser`と`loadOrders`が、どちらも`DashboardError`を使う非同期処理として定義されているものとします。
+
+```virune
+record User {
+    name: String
+    nickname: String?
+}
+
+record Order {
+    id: String
+}
+
+enum DashboardError {
+    UserLoadFailed
+    OrderLoadFailed
+}
+
+async fn showDashboard(
+    userId: String
+) -> Result<Unit, DashboardError> uses Network, Task, Console {
+    let values = (await parallel try {
+        user: loadUser(userId),
+        orders: loadOrders(userId),
+    })?
+
+    let displayName = match values.user.nickname {
+        Some(nickname) => nickname
+        None => values.user.name
+    }
+
+    Console.print("{displayName}: {List.length(values.orders)} orders")
+    return Ok(Unit)
+}
+```
+
+上記のコードでは、値の不在を`Option`、回復可能な失敗を`Result`、利用する副作用を`uses`として表しています。
+
+`parallel try`で開始した処理は親のスコープに属します。片方が`Err`になった場合は兄弟の処理へキャンセルを通知し、開始したすべての子処理が終了してから親の処理を続けます。
+
+TypeScriptではできない、という話ではありません。TypeScriptではライブラリやプロジェクト設計に任せられていることの一部を、Viruneでは言語の共通ルールとして扱っています。
+
+## JavaScriptとの境界
+
+ViruneはJavaScriptのエコシステムから切り離された言語ではありません。対応する型宣言を安全に解釈できる範囲では、JavaScript APIを`import js`で読み込めます。
+
+```virune
+import js { nanoid } from "nanoid"
+```
+
+ただし、JavaScriptから来た値を何でもViruneの値として信用するわけではありません。
+
+通常の`import js`では、TypeScriptの`any`を安全な型として通さず、`unknown`も都合のよい型へ狭めません。安全に型を確定できない値は`Unknown`として残し、必要に応じて明示的に変換します。`null`や`undefined`を含む値も、境界で必要な違いを扱ったうえで、明示的にVirune側の型へ変換します。
+
+複雑なTypeScript APIはTypeScript側のAdapterへ分離できます。また、外部ライブラリの実装が型宣言どおりに動くことまでViruneが保証するわけではありません。
+
+**JavaScriptの複雑さを無視するのではなく、境界で扱う場所をはっきりさせる。** これもViruneの設計方針です。
+
+## 言語をできるだけシンプルに保つ
+
+Viruneは、機能が多いほど良い言語になるとは考えていません。
+
+既存の小さな機能を組み合わせることで同じことを明確に表現できるなら、そのためだけの新しい構文や仕組みは増やさない方針です。
+
+例えば、Virune 1.0にはクラスや継承がありません。データは`record`や`enum`、意味を区別したい値は`newtype`として表現し、再利用したい振る舞いは関数や関数を持つ`record`を組み合わせます。
+
+複雑なことができない言語にしたいわけではありません。**高度な処理が必要でも、言語そのものはできるだけシンプルな状態に保つ。** 既存の仕組みの組み合わせで十分なら、新しい概念を増やさないことを重視しています。
+
 ## クイックスタート
 
-### 必要環境
-
-- Node.js 24以上
-- Node.jsに同梱されるnpm
-
-### GitHub Releasesからインストールする
-
-Stable版v1.0.0のCLIをRelease tarballから直接インストールします。
+Virune 1.0.0はNode.js 24以降で利用できます。現在の安定版CLIは、GitHub Releasesの公開済みパッケージからインストールできます。
 
 ```bash
 npm install --global https://github.com/yaona807/virune/releases/download/v1.0.0/virune-1.0.0.tgz
 virune --version
 ```
 
-このtarballにはCLIの依存関係一式が含まれます。`virune`および内部の`@virune/*` packageはnpm Registryへ公開しません。GitHub Releasesでバージョン付き・整合性検証済みの成果物を配布することで、生成プロジェクトのCLI、Runtime、標準ライブラリを同じ検証済みReleaseへ固定できます。
-
-### プロジェクトを作成する
+インストールできたら、以下のコマンドで新しいプロジェクトを作成して実行します。
 
 ```bash
-virune init hello
-cd hello
+virune init hello-virune
+cd hello-virune
 npm install
-npm run check
-npm run start
+virune run
 ```
 
-`virune init`はプロジェクト用READMEを生成し、次に実行するcommandを表示します。また、CLI、Runtime、標準ライブラリを同じGitHub Releaseの成果物へ固定します。プロジェクト内で`npm install`を実行すると、生成されたES moduleから利用する`@virune/runtime`と`@virune/stdlib`がプロジェクトへ導入され、単独で実行できる状態になります。
-
-プログラム引数は`--`の後ろへ指定します。
-
-```bash
-npm run start -- Alice Bob
-```
-
-### ソースからビルドして実行する
-
-Viruneの開発へ参加する場合、または最新の`main`を評価する場合は次の手順を使用します。
-
-```bash
-git clone https://github.com/yaona807/virune.git
-cd virune
-npm run bootstrap
-npm run build
-npm run virune -- --version
-npm run example
-```
-
-次の出力が含まれます。
-
-```text
-virune 1.0.0
-Hello from Virune
-```
-
-`npm run bootstrap`は、lockfileに固定された第三者依存関係を公開npm Registryからインストールします。Virune packageをnpm Registryへ公開または同Registryからインストールする処理ではありません。レジストリ設定や環境構築の詳細は[クローン後の導入手順](docs/getting-started-from-clone_ja.md)を参照してください。
-
-## JavaScript／TypeScript連携
-
-Virune moduleとJavaScript moduleは、import構文の時点で明確に区別します。
-
-```virune
-import { User } from "./user.virune"
-import js { nanoid } from "nanoid"
-import js axios from "axios"
-import js * as fs from "node:fs/promises"
-import js "./polyfill.js"
-```
-
-Safe FFIが受け入れるのは、Runtimeで完全に検証できる値だけです。対応していないcallback、未解決generic、再帰aggregate、TypeScriptの`Record<K, V>`、objectをkeyに持つidentity-sensitiveなMap／Setは、`Unknown`へ退避するかTypeScript Adapterを要求します。
-
-詳細は[JavaScript／TypeScript連携](docs/js-interop_ja.md)、[binding対応範囲](docs/ffi-coverage_ja.md)、[規範FFI仕様](spec/js-interop_ja.md)を参照してください。
-
-## VS Code対応
-
-リポジトリから拡張機能を生成し、直接インストールできます。
-
-```bash
-npm run pack:vscode
-code --install-extension release/virune-vscode-1.0.0.vsix
-```
-
-拡張機能には、構文・Semantic Highlight、診断、Formatter、Hover、プロジェクト横断の定義・参照追跡、Call Hierarchy、Rename、CodeLens、Auto Import、JavaScript／TypeScript定義ジャンプ、Quick Fix、Virune Language Serverが含まれます。詳細は[VS Code対応](docs/vscode_ja.md)を参照してください。
+型やプロジェクト構成だけを確認する場合は`virune check`、ES2022のJavaScriptとして出力する場合は`virune build`を実行します。`check`、`run`、`build`はパスを省略すると現在のディレクトリを対象にします。
 
 ## ドキュメント
 
-| ドキュメント | 内容 |
-|---|---|
-| [導入手順](docs/getting-started-from-clone_ja.md) | Clone、install、build、run、トラブルシューティング |
-| [アプリケーションガイド](docs/application-guide_ja.md) | Domain modeling、effect、structured concurrency、interop、Node/browser構成を実際のapplication順に説明 |
-| [言語ガイド](docs/language-guide_ja.md) | Viruneの構文と意味論の実用的な解説 |
-| [CLIリファレンス](docs/cli-reference_ja.md) | Command、option、終了動作 |
-| [標準ライブラリ](docs/standard-library_ja.md) | Node.js／browser adapter |
-| [VS Code対応](docs/vscode_ja.md) | 拡張機能の導入方法と提供機能 |
-| [JavaScript連携](docs/js-interop_ja.md) | FFI、binding生成、Adapter |
-| [Compiler API](docs/compiler-api_ja.md) | Stable APIとexperimental API |
-| [Runtime ABI v2](docs/runtime-abi_ja.md) | 生成コードとRuntime間の契約 |
-| [規範言語仕様](spec/README_ja.md) | Virune 1.0の厳密な動作 |
+- [言語仕様](spec/README_ja.md)
+- [互換性方針](COMPATIBILITY_ja.md)
+- [開発に参加する](CONTRIBUTING_ja.md)
+- [セキュリティポリシー](SECURITY_ja.md)
 
-英語版ドキュメントには`_ja.md`のないファイル名を使用します。
+## 開発に参加する
 
-## 開発と検証
+IssueやPull Requestは歓迎しています。開発環境の準備、テスト、言語仕様やAPI / ABIを変更するときの注意点については[CONTRIBUTING_ja.md](CONTRIBUTING_ja.md)を参照してください。
 
-ローカルの品質ゲートをすべて実行します。
+## 運営
 
-```bash
-npm run verify
-```
+Viruneは現在、[`@yaona807`](https://github.com/yaona807)がメンテナンスしています。運営委員会や投票制度は設けていません。
 
-このコマンドは、Node.js baseline、レジストリ設定、release channel、Compiler API互換性、TypeScript build、unit／integration test、binding corpus、fuzz smoke、VS Code／LSP、conformance fixture、Formatter、規範仕様の網羅性、grammar、clean clone、release package、clean install後の実行を検証します。
+変更や提案は原則としてIssueやPull Requestを通じて公開して進め、最終判断はメンテナーが行います。セキュリティ上の問題は[SECURITY_ja.md](SECURITY_ja.md)に従って報告してください。
 
-ローカルのリリース成果物は次のコマンドで生成します。
+## リリース
 
-```bash
-npm run pack:virune
-npm run pack:vscode
-```
+公開済みの安定版、プレリリース、Nightly版は[GitHub Releases](https://github.com/yaona807/virune/releases)で確認できます。
 
-npm tarball、VSIX、SHA-256 manifestなどの成果物は`release/`へ出力されます。CLI tarballには依存関係一式を同梱し、リリース前にoffline clean installを検証します。
-
-## リポジトリ構成
-
-| Path | 内容 |
-|---|---|
-| `packages/compiler` | Lexer、Parser、Checker、project graph、Emitter、Evaluator、公開Compiler API |
-| `packages/runtime` | Runtime ABI v2とNative値操作 |
-| `packages/stdlib` | Node.js／browser adapter |
-| `packages/formatter` | Canonical Formatter |
-| `packages/language-server` | Language Server Protocol実装 |
-| `packages/vscode` | Syntax定義、extension client、同梱server |
-| `packages/js-interop` | TypeScriptベースのbinding・Adapter検証 |
-| `packages/cli` | Project、build、run、format、test、binding、conformance command |
-| `spec` | Virune 1.0の規範言語仕様 |
-| `conformance` | 受理・拒否するコードと厳密な診断結果 |
-| `corpus` | JavaScript／TypeScript相互運用corpus |
-| `fuzz-regressions` | 再現可能なcrash・regression入力 |
-
-## 安定性と互換性
-
-Viruneは、公開済みのstable APIと規範言語仕様にSemantic Versioningを適用します。Virune 1.0ではRuntime ABI v2とInterop ABI v2を正規ABIとします。Compiler内部APIと明示的なexperimental APIはstable互換性保証の対象外です。
-
-詳細は[release channel](docs/release-channels_ja.md)、[Compiler APIの互換性方針](docs/compiler-api_ja.md)、[stable release gate](docs/stable-release-gate_ja.md)を参照してください。
-
-## コントリビューション
-
-不具合報告、ドキュメント修正、相互運用の検証ケース、対象を絞ったPull Requestは[GitHub Issues](https://github.com/yaona807/virune/issues)から受け付けます。
-
-言語機能を変更する場合は、実装前にIssueを作成してください。構文、意味論、互換性への影響、仕様更新、適合性試験をまとめて確認します。Pull Requestでは英語版と日本語版のドキュメントを同期し、`npm run verify`を通してください。
-
-Repository workflowとContributor rights方針は[CONTRIBUTING_ja.md](CONTRIBUTING_ja.md)を参照してください。英語版は[CONTRIBUTING.md](CONTRIBUTING.md)です。
-
-Viruneは現在、[Yaona](https://github.com/yaona807)がメンテナンスしています。
-
-## セキュリティと保証範囲
-
-Viruneはセキュリティサンドボックスではありません。JavaScript実行と`unsafe`な相互運用は、Viruneの静的安全保証の対象外です。また、現時点では独立したセキュリティ監査を受けていません。
+GitHub Releasesは公式な配布先として扱い、公開済みの成果物は後から別の内容へ差し替えません。リリースできるかどうかは、リポジトリ内の機械可読なポリシーとCIで検証します。
 
 ## ライセンス
 
-現在のVirune repository snapshotは[Apache License 2.0](LICENSE)で提供します。著作権表示は[NOTICE](NOTICE)に記載し、第三者ライセンスは[THIRD_PARTY_NOTICES_ja.md](THIRD_PARTY_NOTICES_ja.md)を参照してください。
-
-過去の`v1.0.0` ReleaseおよびMIT条件で既に配布されたcopyは、その配布時に付与されたMIT条件で引き続き利用できます。このライセンス移行によって既存の許諾を取り消すことはありません。
+Viruneは[Apache License 2.0](LICENSE)で公開しています。第三者ソフトウェアについては[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)を参照してください。

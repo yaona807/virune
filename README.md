@@ -5,256 +5,187 @@
 <h1 align="center">Virune</h1>
 
 <p align="center">
-  A statically typed programming language for the JavaScript ecosystem.<br>
-  Virune compiles to readable ES2022 modules and makes absence, errors, effects, concurrency, and JavaScript boundaries explicit.
+  A statically typed programming language for writing simpler, more predictable code<br>
+  while keeping access to the JavaScript ecosystem.
 </p>
 
 <p align="center">
   <a href="https://github.com/yaona807/virune/actions/workflows/ci.yml"><img src="https://github.com/yaona807/virune/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI"></a>
-  <img src="https://img.shields.io/badge/version-1.0.0-5A54E8" alt="Version 1.0.0">
-  <img src="https://img.shields.io/badge/Node.js-%3E%3D24-339933?logo=nodedotjs&logoColor=white" alt="Node.js 24 or later">
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue.svg" alt="Apache License 2.0"></a>
+  <a href="https://github.com/yaona807/virune/releases"><img src="https://img.shields.io/github/v/release/yaona807/virune?display_name=tag&sort=semver" alt="Latest release"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/yaona807/virune" alt="License"></a>
 </p>
 
 <p align="center">
-  <a href="#quick-start">Quick start</a> ·
-  <a href="docs/application-guide.md">Application guide</a> ·
-  <a href="docs/language-guide.md">Language guide</a> ·
-  <a href="docs/cli-reference.md">CLI reference</a> ·
-  <a href="docs/vscode.md">VS Code</a> ·
-  <a href="spec/README.md">Specification</a> ·
+  <a href="spec/README.md">Language specification</a> ·
+  <a href="CONTRIBUTING.md">Contributing</a> ·
+  <a href="COMPATIBILITY.md">Compatibility</a> ·
+  <a href="SECURITY.md">Security</a> ·
   <a href="README_ja.md">日本語</a>
 </p>
 
-> [!IMPORTANT]
-> **Distribution policy:** Virune is not published to the npm Registry. The stable v1.0.0 CLI, Runtime, standard library, and VS Code VSIX are distributed as versioned assets through [GitHub Releases](https://github.com/yaona807/virune/releases/tag/v1.0.0). Generated projects pin all Virune dependencies to the same immutable release so the toolchain and runtime stay aligned.
+## Why Virune exists
 
-## Why Virune?
+One of the biggest strengths of JavaScript and TypeScript is the ecosystem that has grown around them. Virune is not trying to discard that ecosystem and build a separate world.
 
-JavaScript provides a mature runtime and package ecosystem, while TypeScript catches many mistakes during development. Runtime values, external data, and JavaScript package boundaries still require deliberate validation because TypeScript types are not present at runtime.
+At the same time, JavaScript brings concepts such as `null` and `undefined`, dynamic external values, exceptions, and Promises that applications need to account for. TypeScript lets developers work with many JavaScript values and APIs through static types while preserving compatibility, but it does not replace JavaScript's runtime model.
 
-Languages with stronger safety guarantees often introduce a separate runtime, package manager, or deployment model. Virune takes a narrower approach: it keeps the Node.js, browser, ESM, and npm ecosystem, while moving common application risks into explicit language constructs and checked boundaries.
+Virune therefore focuses on **handling the complexity required at JavaScript boundaries without spreading more of it than necessary into ordinary code**. It also tries to make recoverable failure, effects, and concurrency behavior visible from code wherever practical.
 
-Virune is designed around four principles:
+Keep the JavaScript ecosystem. Keep everyday code as simple as possible. That is the basic idea behind Virune.
 
-- **Readable by default** — predictable syntax and deterministic, inspectable ES2022 output.
-- **Explicit failure** — `Option`, `Result`, `Validation`, exhaustive matching, and no implicit nullable values.
-- **Controlled effects** — functions declare built-in effects with `uses`; resources use deterministic `defer` cleanup.
-- **Conservative interoperability** — JavaScript and TypeScript boundaries are validated, with unsupported types falling back to `Unknown` instead of being guessed.
+## Consider the same problem in TypeScript
 
-## What Virune provides
+Suppose an application loads a user and their orders from APIs, then prints the user's display name and order count.
 
-| Concern | Virune approach |
-|---|---|
-| Missing values | `Option<T>` instead of implicit `null` or `undefined` |
-| Recoverable errors | `Result<T, E>`, `Validation<T, E>`, and postfix `?` propagation |
-| Data modelling | Nominal `record`, `enum`, and `newtype`; transparent `type` aliases |
-| Control flow | Exhaustive pattern matching with guards and structured loops |
-| Side effects | Fixed built-in effect declarations through `uses` and higher-order forwarding through `uses *` |
-| Concurrency | Structured `async`, `await`, `parallel`, and `parallel try` |
-| Resource lifetime | Deterministic LIFO cleanup through `defer` |
-| JavaScript interop | Explicit `import js`, runtime validation, TypeScript binding generation, and adapter support |
-| Tooling | CLI, formatter, source maps, LSP, VS Code extension, conformance suite, fuzzing, and release checks |
+In the example below, `loadUser` and `loadOrders` are existing API-client functions whose Promises reject when the request fails.
 
-Virune intentionally excludes classes, inheritance, macros, operator overloading, user-defined protocols, user-defined capability names, implicit nullable values, unchecked casts in normal code, a custom VM, and a custom package manager.
+```typescript
+type User = {
+  name: string;
+  nickname?: string | null;
+};
 
-## Language example
+type Order = {
+  id: string;
+};
 
-```virune
-pub newtype UserId = Int
+declare function loadUser(userId: string): Promise<User>;
+declare function loadOrders(userId: string): Promise<Order[]>;
 
-pub record User derives Eq, Hash, Debug, Json {
-	id: UserId
-	name: String
-	nickname: String?
-}
+async function showDashboard(userId: string): Promise<void> {
+  const [user, orders] = await Promise.all([
+    loadUser(userId),
+    loadOrders(userId),
+  ]);
 
-pub enum UserError derives Eq, Debug, Json {
-	NotFound(UserId)
-	InvalidName(String)
-}
-
-fn display(user: User) -> String {
-	let nickname = match user.nickname {
-		Some(value) => value
-		None => "not set"
-	}
-	return "{user.name} ({nickname})"
-}
-
-pub fn main(args: List<String>) -> Result<Unit, UserError> uses Console {
-	let user = User {
-		id: UserId.create(1),
-		name: "Alice",
-		nickname: None,
-	}
-	let argumentCount = List.length(args)
-	Console.print(display(user))
-	Console.print("argument count: {argumentCount}")
-	return Ok(Unit)
+  const displayName = user.nickname ?? user.name;
+  console.log(`${displayName}: ${orders.length} orders`);
 }
 ```
 
+This is ordinary TypeScript. It is concise, readable, and sufficient for many applications.
+
+The code above still leaves some concerns to surrounding design:
+
+- Reading `nickname` means accounting for a `string`, `null`, or `undefined` caused by an absent property.
+- The type of `showDashboard` does not describe how `loadUser` or `loadOrders` may fail. TypeScript applications can introduce Result types or their own error conventions.
+- Network access and console output are not represented in the function type.
+- `Promise.all()` rejects when one input rejects, but it does not automatically stop another operation that has already started. Cancellation can be designed with APIs such as `AbortController` when the underlying operation supports it.
+
+## The same code in Virune
+
+The same operation can be expressed in Virune as follows.
+
+Here, assume `loadUser` and `loadOrders` are asynchronous operations that both use `DashboardError` as their recoverable error type.
+
+```virune
+record User {
+    name: String
+    nickname: String?
+}
+
+record Order {
+    id: String
+}
+
+enum DashboardError {
+    UserLoadFailed
+    OrderLoadFailed
+}
+
+async fn showDashboard(
+    userId: String
+) -> Result<Unit, DashboardError> uses Network, Task, Console {
+    let values = (await parallel try {
+        user: loadUser(userId),
+        orders: loadOrders(userId),
+    })?
+
+    let displayName = match values.user.nickname {
+        Some(nickname) => nickname
+        None => values.user.name
+    }
+
+    Console.print("{displayName}: {List.length(values.orders)} orders")
+    return Ok(Unit)
+}
+```
+
+In the code above, absence is represented with `Option`, recoverable failure with `Result`, and effects with `uses`.
+
+Work started by `parallel try` belongs to its parent scope. If one operation returns `Err`, cancellation is signaled to its sibling and the parent waits for all child tasks to settle before continuing.
+
+This is not a claim that TypeScript cannot implement these patterns. Some concerns that TypeScript leaves to libraries or project-level design are common language rules in Virune.
+
+## The JavaScript boundary
+
+Virune is not isolated from the JavaScript ecosystem. When corresponding type declarations can be interpreted safely, JavaScript APIs can be imported with `import js`.
+
+```virune
+import js { nanoid } from "nanoid"
+```
+
+Virune does not treat every value arriving from JavaScript as a trusted native value.
+
+For ordinary `import js`, TypeScript `any` is not accepted as a safe type, and `unknown` is not silently narrowed to a more convenient type. Values that cannot be safely determined remain `Unknown` until they are handled explicitly. Values involving `null` or `undefined` are also handled at the boundary and explicitly converted into Virune-side types.
+
+More complex TypeScript APIs can be isolated behind a TypeScript-side Adapter. Virune also cannot guarantee that an external library's implementation actually follows its type declarations.
+
+**The goal is not to pretend JavaScript's complexity does not exist. It is to make clear where that complexity is handled.**
+
+## Keep the language as simple as practical
+
+Virune does not assume that more language features always produce a better language.
+
+When existing small features can be combined to express the same idea clearly, Virune avoids adding a dedicated syntax or mechanism only for that use case.
+
+For example, Virune 1.0 has no classes or inheritance. Data is expressed with `record` and `enum`, distinct value identities can use `newtype`, and reusable behavior can be composed from functions and records that contain functions.
+
+The goal is not to make advanced programs impossible. **Even when advanced behavior is needed, the language itself should remain as simple as practical.** If existing pieces are enough, Virune avoids adding a new concept just to provide another way to express the same thing.
+
 ## Quick start
 
-### Requirements
-
-- Node.js 24 or later
-- npm included with Node.js
-
-### Install from GitHub Releases
-
-Install the stable v1.0.0 CLI directly from its release tarball:
+Virune 1.0.0 requires Node.js 24 or later. The current stable CLI can be installed from the published package on GitHub Releases.
 
 ```bash
 npm install --global https://github.com/yaona807/virune/releases/download/v1.0.0/virune-1.0.0.tgz
 virune --version
 ```
 
-The tarball contains the complete CLI dependency tree. The `virune` package and internal `@virune/*` packages are not published to the npm Registry. GitHub Releases provide versioned, integrity-checked assets while allowing generated projects to pin the CLI, Runtime, and standard library to one verified release.
-
-### Create a project
+After installation, create and run a project with:
 
 ```bash
-virune init hello
-cd hello
+virune init hello-virune
+cd hello-virune
 npm install
-npm run check
-npm run start
+virune run
 ```
 
-`virune init` creates a project README, prints the next commands, and pins the CLI, Runtime, and standard library to the same GitHub Release assets. The project-level `npm install` makes generated ES modules independently executable by installing `@virune/runtime` and `@virune/stdlib` into the project.
-
-Program arguments follow `--`:
-
-```bash
-npm run start -- Alice Bob
-```
-
-### Build and run from source
-
-Use this path when contributing to Virune or evaluating the latest `main` branch:
-
-```bash
-git clone https://github.com/yaona807/virune.git
-cd virune
-npm run bootstrap
-npm run build
-npm run virune -- --version
-npm run example
-```
-
-Expected output includes:
-
-```text
-virune 1.0.0
-Hello from Virune
-```
-
-`npm run bootstrap` installs the locked third-party dependencies from the public npm registry. It does not publish or install Virune packages from that registry. See the [clone guide](docs/getting-started-from-clone.md) for registry troubleshooting and environment details.
-
-## JavaScript and TypeScript interoperability
-
-Virune distinguishes Virune modules from JavaScript modules at the import site:
-
-```virune
-import { User } from "./user.virune"
-import js { nanoid } from "nanoid"
-import js axios from "axios"
-import js * as fs from "node:fs/promises"
-import js "./polyfill.js"
-```
-
-Safe FFI accepts only values that can be completely validated at runtime. Unsupported callbacks, unresolved generics, recursive aggregates, TypeScript `Record<K, V>`, and identity-sensitive object-keyed maps or sets fall back to `Unknown` or require a TypeScript adapter.
-
-See [JavaScript and TypeScript interoperability](docs/js-interop.md), [binding coverage](docs/ffi-coverage.md), and the [normative FFI specification](spec/js-interop.md).
-
-## VS Code support
-
-Build and install the extension directly from the repository:
-
-```bash
-npm run pack:vscode
-code --install-extension release/virune-vscode-1.0.0.vsix
-```
-
-The extension includes syntax and semantic highlighting, diagnostics, formatting, documentation-comment Hover and completion, project-wide symbol navigation, references, call hierarchy, rename, CodeLens, auto imports, JavaScript/TypeScript declaration navigation, quick fixes, documentation snippets and generation commands, and the bundled Virune Language Server. See [VS Code support](docs/vscode.md) for details.
+Use `virune check` to check types and project configuration without emitting JavaScript, and `virune build` to emit ES2022 JavaScript. When no path is given, `check`, `run`, and `build` operate on the current directory.
 
 ## Documentation
 
-| Document | Purpose |
-|---|---|
-| [Getting started](docs/getting-started-from-clone.md) | Clone, install, build, run, and troubleshoot |
-| [Application guide](docs/application-guide.md) | Task-oriented route through domain modelling, effects, structured concurrency, interop, and Node/browser project structure |
-| [Language guide](docs/language-guide.md) | Practical introduction to Virune syntax and semantics |
-| [CLI reference](docs/cli-reference.md) | Commands, options, and exit behaviour |
-| [Standard library](docs/standard-library.md) | Node.js and browser adapters |
-| [VS Code support](docs/vscode.md) | Extension installation and language features |
-| [JavaScript interop](docs/js-interop.md) | FFI model, binding generation, and adapters |
-| [Compiler API](docs/compiler-api.md) | Stable and experimental compiler interfaces |
-| [Runtime ABI v2](docs/runtime-abi.md) | Generated-code runtime contract |
-| [Normative specification](spec/README.md) | Exact Virune 1.0 language behaviour |
-
-Japanese documentation uses the `_ja.md` suffix.
-
-## Development and verification
-
-Run the complete local quality gate:
-
-```bash
-npm run verify
-```
-
-The gate checks the Node.js baseline, registry configuration, release channel, compiler API compatibility, TypeScript build, unit and integration tests, binding corpus, fuzz smoke tests, VS Code and LSP behaviour, conformance fixtures, formatter output, normative specification coverage, grammar, clean-clone behaviour, release packages, and clean-install execution.
-
-Create local release artifacts with:
-
-```bash
-npm run pack:virune
-npm run pack:vscode
-```
-
-Artifacts, SHA-256 manifests, npm tarballs, and the VSIX are written to `release/`. The CLI tarball bundles its complete dependency tree and is tested with an offline clean install before release.
-
-## Repository layout
-
-| Path | Contents |
-|---|---|
-| `packages/compiler` | Lexer, parser, checker, project graph, emitter, evaluator, and public compiler API |
-| `packages/runtime` | Runtime ABI v2 and native value operations |
-| `packages/stdlib` | Node.js and browser adapters |
-| `packages/formatter` | Canonical source formatter |
-| `packages/language-server` | Language Server Protocol implementation |
-| `packages/vscode` | Syntax definitions, extension client, and bundled server |
-| `packages/js-interop` | TypeScript-backed binding and adapter validation |
-| `packages/cli` | Project, build, run, formatting, test, binding, and conformance commands |
-| `spec` | Normative Virune 1.0 specification |
-| `conformance` | Accepted and rejected language fixtures with exact diagnostics |
-| `corpus` | JavaScript and TypeScript interoperability corpus |
-| `fuzz-regressions` | Reproducible crash and regression inputs |
-
-## Stability and compatibility
-
-Virune follows Semantic Versioning for documented stable APIs and the normative language specification. Runtime ABI v2 and Interop ABI v2 are the canonical ABIs for Virune 1.0. Compiler internals and explicitly experimental APIs are not covered by the stable compatibility guarantee.
-
-See [release channels](docs/release-channels.md), [the compatibility policy for the Compiler API](docs/compiler-api.md), and [the stable release gate](docs/stable-release-gate.md).
+- [Language specification](spec/README.md)
+- [Compatibility policy](COMPATIBILITY.md)
+- [Contributing](CONTRIBUTING.md)
+- [Security policy](SECURITY.md)
 
 ## Contributing
 
-Bug reports, documentation corrections, interoperability cases, and focused pull requests are welcome through [GitHub Issues](https://github.com/yaona807/virune/issues).
+Issues and Pull Requests are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, tests, and the rules that apply when changing the language specification or public API / ABI.
 
-Before implementing a language change, open an issue so the syntax, semantics, compatibility impact, specification updates, and conformance coverage can be reviewed together. Pull requests should keep the English and Japanese documentation synchronized and pass `npm run verify`.
+## Governance
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for the repository workflow and contributor-rights policy. The Japanese guide is available at [CONTRIBUTING_ja.md](CONTRIBUTING_ja.md).
+Virune is currently maintained by [`@yaona807`](https://github.com/yaona807). There is currently no steering committee or voting process.
 
-Virune is currently maintained by [Yaona](https://github.com/yaona807).
+Changes and proposals are generally developed publicly through Issues and Pull Requests, and final project decisions are made by the maintainer. Security reports follow [SECURITY.md](SECURITY.md).
 
-## Security and scope
+## Releases
 
-Virune is not a security sandbox. JavaScript execution and `unsafe` interoperability remain outside the language's static safety guarantees. The project has not yet undergone an independent security audit.
+Published stable, prerelease, and nightly builds are available from [GitHub Releases](https://github.com/yaona807/virune/releases).
+
+GitHub Releases are an official distribution channel, and published artifacts are not later replaced with different contents. Release eligibility is verified by repository-owned machine-readable policy and CI.
 
 ## License
 
-The current Virune repository snapshot is available under the [Apache License 2.0](LICENSE). Copyright attribution is recorded in [NOTICE](NOTICE), and third-party notices are listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
-
-The historical `v1.0.0` release and copies already distributed under MIT remain available under the MIT terms that accompanied those copies. The license transition does not revoke those grants.
+Virune is licensed under the [Apache License 2.0](LICENSE). See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for third-party software notices.
