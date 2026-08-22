@@ -14,21 +14,23 @@ const repositoryRoot = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const PUBLIC_REGISTRY = 'https://registry.npmjs.org/';
 const DEFAULT_PUBLICATION_MANIFEST = resolve(repositoryRoot, '.cache/public-release/PUBLICATION-MANIFEST.json');
 const DEFAULT_OUTPUT = resolve(repositoryRoot, '.cache/public-release/public-npm-registry-report.json');
-const DEFAULT_PLAN = resolve(repositoryRoot, '.github/release/npm-publication-v1.json');
+const PUBLICATION_PLAN_PATH = '.github/release/npm-publication-v1.json';
 const STRIPPED_CREDENTIAL_ENV = new Set(['GH_TOKEN', 'GITHUB_TOKEN', 'NODE_AUTH_TOKEN', 'NPM_TOKEN']);
 
 export async function verifyPublicNpmRegistry({
+	reviewedCommit,
 	publicationManifest,
 	publicationManifestPath = DEFAULT_PUBLICATION_MANIFEST,
 	publicationPlan,
-	publicationPlanPath = DEFAULT_PLAN,
+	sourceRoot = repositoryRoot,
 	outputPath = DEFAULT_OUTPUT,
 	fetchImpl = fetch,
 	runCommand = execute,
 	platform = process.platform,
 	baseEnv = process.env,
 } = {}) {
-	const plan = publicationPlan ?? JSON.parse(await readFile(publicationPlanPath, 'utf8'));
+	const exactCommit = fullCommitSha(reviewedCommit, '$.reviewedCommit');
+	const plan = publicationPlan ?? readReviewedPublicationPlan(exactCommit, { sourceRoot });
 	const manifest = publicationManifest ?? JSON.parse(await readFile(publicationManifestPath, 'utf8'));
 	const reviewed = validateReviewedPublicationManifest(manifest, plan);
 	const packages = [];
@@ -42,6 +44,7 @@ export async function verifyPublicNpmRegistry({
 		registry: PUBLIC_REGISTRY,
 		version: reviewed.version,
 		githubReleaseTag: reviewed.githubReleaseTag,
+		reviewedCommit: exactCommit,
 		distTag: reviewed.distTag,
 		packages,
 		installation,
@@ -185,6 +188,21 @@ export async function verifyCleanGlobalCliInstall(version, {
 	}
 }
 
+function readReviewedPublicationPlan(reviewedCommit, { sourceRoot }) {
+	const result = spawnSync('git', ['show', `${reviewedCommit}:${PUBLICATION_PLAN_PATH}`], {
+		cwd: sourceRoot,
+		encoding: 'utf8',
+		maxBuffer: 4 * 1024 * 1024,
+	});
+	if (result.error !== undefined) throw new Error(`Failed to read reviewed npm publication plan from ${reviewedCommit}: ${result.error.message}`);
+	if ((result.status ?? 1) !== 0) throw new Error(`Failed to read reviewed npm publication plan from ${reviewedCommit}: ${result.stderr.trim()}`);
+	try {
+		return JSON.parse(result.stdout);
+	} catch (error) {
+		throw new Error(`Reviewed npm publication plan is malformed JSON at ${reviewedCommit}: ${error instanceof Error ? error.message : String(error)}`);
+	}
+}
+
 function cleanNpmEnvironment({ root, npmrc, globalNpmrc, cache, baseEnv }) {
 	const env = {};
 	for (const [key, value] of Object.entries(baseEnv)) {
@@ -214,6 +232,11 @@ async function fetchJson(url, fetchImpl, label) {
 	} catch (error) {
 		throw new Error(`Public npm Registry returned malformed JSON for ${label}: ${error instanceof Error ? error.message : String(error)}`);
 	}
+}
+
+function fullCommitSha(value, path) {
+	assert(typeof value === 'string' && /^[0-9a-f]{40}$/u.test(value), path, 'expected a full lowercase commit SHA');
+	return value;
 }
 
 function record(value, path) {
@@ -266,9 +289,11 @@ function execute(command, args, { cwd, env = process.env, capture = false } = {}
 
 const entry = process.argv[1] === undefined ? undefined : resolve(process.argv[1]);
 if (entry === fileURLToPath(import.meta.url)) {
+	const reviewedCommit = process.argv.find(argument => argument.startsWith('--expected-commit='))?.slice('--expected-commit='.length);
 	const publicationManifestPath = process.argv.find(argument => argument.startsWith('--publication-manifest='))?.slice('--publication-manifest='.length);
 	const outputPath = process.argv.find(argument => argument.startsWith('--output='))?.slice('--output='.length);
 	const report = await verifyPublicNpmRegistry({
+		reviewedCommit,
 		...(publicationManifestPath === undefined ? {} : { publicationManifestPath: resolve(publicationManifestPath) }),
 		...(outputPath === undefined ? {} : { outputPath: resolve(outputPath) }),
 	});
