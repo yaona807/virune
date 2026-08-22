@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
 import test from 'node:test';
 import {
 	NPM_PUBLICATION_AUTHORIZATION_REPORT_KIND,
@@ -10,6 +10,7 @@ import {
 	NPM_PUBLICATION_PRE_WRITE_REQUIREMENTS,
 } from './npm-publication-authorization-contract.mjs';
 import {
+	NPM_PUBLICATION_PREWRITE_OUTPUT,
 	buildNpmPublicationPrewriteGateReport,
 	githubEvidenceSetIdentity,
 	parseNpmPublicationPrewriteArguments,
@@ -75,6 +76,15 @@ function build(overrides = {}) {
 		evidenceSetId,
 		...overrides,
 	});
+}
+
+function seedCanonicalStaleOutput() {
+	mkdirSync(dirname(NPM_PUBLICATION_PREWRITE_OUTPUT), { recursive: true });
+	writeFileSync(NPM_PUBLICATION_PREWRITE_OUTPUT, '{"publicationReady":true}\n');
+}
+
+function clearCanonicalOutput() {
+	rmSync(NPM_PUBLICATION_PREWRITE_OUTPUT, { force: true });
 }
 
 test('existing GitHub stable release gate does not acquire an unconditional npm pre-write dependency', () => {
@@ -222,45 +232,39 @@ test('pre-write CLI parser rejects unknown, positional, duplicate and empty opti
 		['--version=1.1.0', '--version=1.1.0-rc.1'],
 		['--version='],
 		[`--evidence-set-id=${evidenceSetId}`],
+		['--output=/tmp/prewrite.json'],
 	]) {
 		assert.throws(() => parseNpmPublicationPrewriteArguments(args));
 	}
 });
 
-test('CLI parse failure invalidates stale passing pre-write output before validation', async () => {
-	const root = mkdtempSync(join(tmpdir(), 'virune-prewrite-cli-'));
+test('CLI parse failure invalidates stale canonical passing output before validation', async () => {
+	seedCanonicalStaleOutput();
 	try {
-		const outputPath = join(root, 'prewrite.json');
-		writeFileSync(outputPath, '{"publicationReady":true}\n');
-		await assert.rejects(() => runNpmPublicationPrewriteGateCli(['--unknown=value'], { outputPath }));
-		assert.equal(existsSync(outputPath), false);
+		await assert.rejects(() => runNpmPublicationPrewriteGateCli(['--unknown=value']));
+		assert.equal(existsSync(NPM_PUBLICATION_PREWRITE_OUTPUT), false);
 	} finally {
-		rmSync(root, { recursive: true, force: true });
+		clearCanonicalOutput();
 	}
 });
 
-test('malformed direct-run identity invalidates stale passing pre-write output before environment checks', async () => {
-	const root = mkdtempSync(join(tmpdir(), 'virune-prewrite-direct-'));
+test('malformed direct-run identity invalidates stale canonical output without touching caller paths', async () => {
+	const root = mkdtempSync(join(tmpdir(), 'virune-prewrite-arbitrary-'));
+	const arbitrary = join(root, 'do-not-touch.json');
+	writeFileSync(arbitrary, 'sentinel\n');
+	seedCanonicalStaleOutput();
 	try {
-		const outputPath = join(root, 'prewrite.json');
-		writeFileSync(outputPath, '{"publicationReady":true}\n');
 		await assert.rejects(() => runNpmPublicationPrewriteGate({
 			reviewedCommit: 'ABC',
 			releaseVersion,
-			outputPath,
+			outputPath: arbitrary,
 		}), /full lowercase commit SHA/u);
-		assert.equal(existsSync(outputPath), false);
+		assert.equal(existsSync(NPM_PUBLICATION_PREWRITE_OUTPUT), false);
+		assert.equal(readFileSync(arbitrary, 'utf8'), 'sentinel\n');
 	} finally {
+		clearCanonicalOutput();
 		rmSync(root, { recursive: true, force: true });
 	}
-});
-
-test('canonical runner refuses to return a non-persisted passing gate', async () => {
-	await assert.rejects(() => runNpmPublicationPrewriteGate({
-		reviewedCommit,
-		releaseVersion,
-		outputPath: null,
-	}), /non-empty non-whitespace string/u);
 });
 
 test('gate evidence is deterministic for identical stable and authorization inputs', () => {
