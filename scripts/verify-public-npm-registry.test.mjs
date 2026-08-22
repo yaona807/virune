@@ -20,6 +20,13 @@ const publicationPlan = JSON.parse(readFileSync(resolve(repositoryRoot, '.github
 const version = '1.1.0-rc.1';
 const registry = 'https://registry.npmjs.org/';
 const reviewedCommit = 'a'.repeat(40);
+const canonicalGeneratedScripts = Object.freeze({
+	build: 'virune build',
+	start: 'virune run',
+	test: 'virune test',
+	check: 'virune check',
+	fmt: 'virune fmt .',
+});
 
 function registryPackageUrl(name) {
 	return `${registry}${encodeURIComponent(name)}`;
@@ -148,6 +155,7 @@ function refreshReleaseBinding(current, commit = reviewedCommit) {
 function successfulRunCommand(expectedVersion = version, {
 	inspectInstall,
 	generatedVersion = version,
+	generatedScripts = canonicalGeneratedScripts,
 	mutateGeneratedPackageOnInstall = false,
 } = {}) {
 	return (command, args, options = {}) => {
@@ -184,6 +192,7 @@ function successfulRunCommand(expectedVersion = version, {
 				name: 'generated-project',
 				private: true,
 				type: 'module',
+				scripts: generatedScripts,
 				dependencies: {
 					'@virune/runtime': generatedVersion,
 					'@virune/stdlib': generatedVersion,
@@ -222,6 +231,7 @@ test('verifies exact reviewed package bytes, tags and clean CLI consumer workflo
 	assert.deepEqual(report.packages.map(item => item.registryName), [...report.packages.map(item => item.registryName)].sort());
 	assert.equal(report.installation.package, `virune@${version}`);
 	assert.equal(report.installation.versionOutput, `virune ${version}`);
+	assert.deepEqual(report.installation.generatedProject.scripts, canonicalGeneratedScripts);
 	assert.deepEqual(report.installation.generatedProject.dependencies, {
 		'@virune/runtime': version,
 		'@virune/stdlib': version,
@@ -399,13 +409,22 @@ test('clean global install uses isolated npm state and an allowlisted process en
 	});
 });
 
-test('generated project smoke rejects dependency drift and package.json mutation', async () => {
+test('generated project smoke rejects dependency, script, and package.json drift', async () => {
 	await assert.rejects(
 		() => verifyCleanGlobalCliInstall(version, {
 			runCommand: successfulRunCommand(version, { generatedVersion: '1.1.0-rc.2' }),
 			platform: 'linux',
 		}),
 		/expected 1\.1\.0-rc\.1/u,
+	);
+	await assert.rejects(
+		() => verifyCleanGlobalCliInstall(version, {
+			runCommand: successfulRunCommand(version, {
+				generatedScripts: { ...canonicalGeneratedScripts, check: 'echo skipped' },
+			}),
+			platform: 'linux',
+		}),
+		/scripts\.check: expected virune check/u,
 	);
 	await assert.rejects(
 		() => verifyCleanGlobalCliInstall(version, {
