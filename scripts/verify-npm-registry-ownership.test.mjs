@@ -96,7 +96,6 @@ function report({ policy = configuredPolicy(), observed = observation(), identit
 	return {
 		schemaVersion: 1,
 		kind: 'npm-registry-ownership-v1',
-		authority: 'same-run-live-collector',
 		collectorSource: COLLECTOR_SOURCE,
 		collectorExecutionId: collectorId(identity),
 		state: classification.state,
@@ -293,7 +292,8 @@ test('ownership report is exact identity-bound and deterministically re-derived'
 		publicationManifest: publicationManifestIdentity,
 	}));
 	const mutations = [
-		reportValue => { reportValue.authority = 'self-attested'; },
+		reportValue => { reportValue.kind = 'self-attested'; },
+		reportValue => { reportValue.collectorSource = 'self-attested'; },
 		reportValue => { reportValue.collectorExecutionId = 'f'.repeat(64); },
 		reportValue => { reportValue.reviewedCommit = 'b'.repeat(40); },
 		reportValue => { reportValue.evidenceSetId = 'github-actions:32560000000:2'; },
@@ -348,6 +348,7 @@ test('production collector uses only bounded authenticated read commands and fin
 	assert(source.includes("runNpmReadOnly(['team', 'ls', `${policy.scope}:developers`, '--json'])"));
 	assert(source.includes("runNpmReadOnly(['access', 'list', 'packages', principal, '--json'])"));
 	assert(source.includes('timeout: NPM_READ_TIMEOUT_MS'));
+	assert.equal(source.includes('authority:'), false, 'serialized ownership report must not self-assert publication authority');
 	for (const forbidden of [
 		"runNpmReadOnly(['publish'",
 		"runNpmReadOnly(['owner', 'add'",
