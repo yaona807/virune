@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
+import { isDeepStrictEqual } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import {
 	NPM_PUBLICATION_AUTHORIZATION_REPORT_KIND,
@@ -37,10 +38,13 @@ export async function runNpmPublicationPrewriteGate({
 	verifyExactCleanCheckout(commit);
 	assert(process.env.GITHUB_SHA === commit, '$.environment.GITHUB_SHA', `expected exact reviewed commit ${commit}`);
 
-	await runStableReleaseGate({ root: repositoryRoot, output: DEFAULT_STABLE_EVIDENCE });
+	const generatedStableReport = await runStableReleaseGate({ root: repositoryRoot, output: DEFAULT_STABLE_EVIDENCE });
 	const stableEvidenceBytes = await readFile(DEFAULT_STABLE_EVIDENCE);
 	const stableReleaseReport = parseJson(stableEvidenceBytes, '$.stableReleaseEvidence');
-	validateStableReleaseEvidence(stableReleaseReport, { reviewedCommit: commit, releaseVersion: version });
+	validateGeneratedStableReleaseEvidence(stableReleaseReport, generatedStableReport, {
+		reviewedCommit: commit,
+		releaseVersion: version,
+	});
 
 	const authorizationReport = await runNpmPublicationAuthorization({
 		reviewedCommit: commit,
@@ -50,35 +54,36 @@ export async function runNpmPublicationPrewriteGate({
 		evidencePath: PRE_WRITE_EVIDENCE,
 		outputPath: null,
 	});
-	const report = await finalizeNpmPublicationPrewriteGate({
-		stableReleaseReport,
+	return finalizeNpmPublicationPrewriteGate({
 		stableReleaseEvidenceBytes: stableEvidenceBytes,
 		authorizationReport,
 		reviewedCommit: commit,
 		releaseVersion: version,
 		evidenceSetId: execution,
+		...(outputPath === null ? {} : {
+			persist: async report => {
+				await mkdir(dirname(outputPath), { recursive: true });
+				await writeFile(outputPath, `${JSON.stringify(report, null, '\t')}\n`, 'utf8');
+			},
+		}),
 		mutation,
 	});
-	if (outputPath !== null) {
-		await mkdir(dirname(outputPath), { recursive: true });
-		await writeFile(outputPath, `${JSON.stringify(report, null, '\t')}\n`, 'utf8');
-	}
-	return report;
 }
 
 export async function finalizeNpmPublicationPrewriteGate({
-	stableReleaseReport,
 	stableReleaseEvidenceBytes,
 	authorizationReport,
 	reviewedCommit,
 	releaseVersion,
 	evidenceSetId,
+	persist,
 	mutation,
 }) {
 	const commit = fullCommitSha(reviewedCommit, '$.reviewedCommit');
 	const version = nonEmptyString(releaseVersion, '$.releaseVersion');
 	const execution = evidenceSetIdentity(evidenceSetId, '$.evidenceSetId');
 	const stableBytes = Buffer.from(stableReleaseEvidenceBytes);
+	const stableReleaseReport = parseJson(stableBytes, '$.stableReleaseEvidence');
 	validateStableReleaseEvidence(stableReleaseReport, { reviewedCommit: commit, releaseVersion: version });
 	const authorization = validateAuthorizationReport(authorizationReport, {
 		reviewedCommit: commit,
@@ -103,11 +108,21 @@ export async function finalizeNpmPublicationPrewriteGate({
 			remainingPostWriteCompletionRequirements: [...authorization.remainingPostWriteCompletionRequirements],
 		},
 	};
+	if (mutation !== undefined) assert(typeof persist === 'function', '$.persist', 'mutation requires persisted pre-write gate evidence');
+	if (persist !== undefined) {
+		assert(typeof persist === 'function', '$.persist', 'expected a function');
+		await persist(structuredClone(report));
+	}
 	if (mutation !== undefined) {
 		assert(typeof mutation === 'function', '$.mutation', 'expected a function');
 		await mutation({ prewriteGate: structuredClone(report), authorization: structuredClone(authorization) });
 	}
 	return report;
+}
+
+export function validateGeneratedStableReleaseEvidence(persistedReport, generatedReport, expected) {
+	assert(isDeepStrictEqual(persistedReport, generatedReport), '$.stableReleaseEvidence', 'persisted stable release evidence differs from the report generated in this execution');
+	return validateStableReleaseEvidence(persistedReport, expected);
 }
 
 export function validateStableReleaseEvidence(value, { reviewedCommit, releaseVersion }) {
