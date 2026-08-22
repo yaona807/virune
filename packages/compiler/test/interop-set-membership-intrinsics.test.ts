@@ -40,16 +40,12 @@ function provider(): JsInteropProvider {
 	};
 }
 
-function withSpoofedSetHas<T>(spoofedValue: unknown, callback: () => T): T {
+function withSetHasOverride<T>(replacement: (this: Set<unknown>, value: unknown) => boolean, callback: () => T): T {
 	const previous = Object.getOwnPropertyDescriptor(Set.prototype, 'has');
-	const original = Set.prototype.has;
 	Object.defineProperty(Set.prototype, 'has', {
 		configurable: true,
 		writable: true,
-		value(this: Set<unknown>, value: unknown): boolean {
-			if (value === spoofedValue) return true;
-			return Reflect.apply(original, this, [value]) as boolean;
-		},
+		value: replacement,
 	});
 	try {
 		return callback();
@@ -57,6 +53,14 @@ function withSpoofedSetHas<T>(spoofedValue: unknown, callback: () => T): T {
 		if (previous === undefined) Reflect.deleteProperty(Set.prototype, 'has');
 		else Object.defineProperty(Set.prototype, 'has', previous);
 	}
+}
+
+function withSpoofedSetHas<T>(spoofedValue: unknown, callback: () => T): T {
+	const original = Set.prototype.has;
+	return withSetHasOverride(function spoofedHas(value: unknown): boolean {
+		if (value === spoofedValue) return true;
+		return Reflect.apply(original, this, [value]) as boolean;
+	}, callback);
 }
 
 test('unknown decision claims cannot become resolved Direct through Set.prototype.has', () => {
@@ -122,6 +126,32 @@ test('source-authored typeOnly cannot be hidden from reuse seals through Set.pro
 			matchesCheckedSourceReuseSeal(checked.ast!, seal),
 			false,
 			'Set prototype spoofing must not classify source-authored typeOnly as checker-derived',
+		);
+	});
+});
+
+test('Set.prototype.has cannot erase the exact source object-graph witness', () => {
+	const checked = compileSource({
+		id: 2,
+		path: '/virtual/set-membership-identity.virune',
+		text: [
+			'import js "./library.js"',
+			'',
+			'fn main() -> Unit uses JavaScript {}',
+			'',
+		].join('\n'),
+	}, { emit: false, platform: 'node', jsInteropProvider: provider() });
+	assert.deepEqual(checked.diagnostics.filter(item => item.severity === 'error'), []);
+	assert.ok(checked.ast);
+
+	withSetHasOverride(() => true, () => {
+		const seal = captureCheckedSourceReuseSeal(checked.ast!);
+		const replacement = Array.from(checked.ast!.imports);
+		(checked.ast as { imports: typeof checked.ast.imports }).imports = replacement;
+		assert.equal(
+			matchesCheckedSourceReuseSeal(checked.ast!, seal),
+			false,
+			'structurally equivalent collection replacement must still fail exact identity checks',
 		);
 	});
 });
