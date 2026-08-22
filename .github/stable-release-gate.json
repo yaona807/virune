@@ -15,6 +15,10 @@
 			"command": ["npm", "run", "verify:release"]
 		},
 		{
+			"id": "npm-publication-plan",
+			"command": ["node", "scripts/verify-npm-publication-plan.mjs"]
+		},
+		{
 			"id": "npm-publication-identity",
 			"command": ["node", "scripts/verify-npm-publication-identity.mjs"]
 		},
@@ -43,6 +47,7 @@
 		{"id": "binding-corpus", "evidence": ["quality"]},
 		{"id": "clean-install", "evidence": ["release-artifacts"]},
 		{"id": "release-packages", "evidence": ["release-artifacts"]},
+		{"id": "npm-publication-plan", "evidence": ["npm-publication-plan"]},
 		{"id": "npm-publication-identity", "evidence": ["npm-publication-identity"]},
 		{"id": "npm-exact-candidate-contents", "evidence": ["npm-exact-candidate-contents"]},
 		{"id": "reproducible-release", "evidence": ["reproducible-release"]},
