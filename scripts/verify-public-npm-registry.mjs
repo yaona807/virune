@@ -255,16 +255,20 @@ export async function verifyCleanGlobalCliInstall(version, {
 
 		const initResult = runCommand(executable, ['init', project, '--dependency-source=npm'], { cwd: root, env, capture: true });
 		assert(initResult.stdout.includes('Initialized Virune project'), '$.installation.generatedProject.init', 'Registry CLI init did not report successful project initialization');
+		const generatedManifestPath = resolve(project, 'package.json');
+		let generatedManifestText;
 		let generatedManifest;
 		try {
-			generatedManifest = JSON.parse(await readFile(resolve(project, 'package.json'), 'utf8'));
+			generatedManifestText = await readFile(generatedManifestPath, 'utf8');
+			generatedManifest = JSON.parse(generatedManifestText);
 		} catch (error) {
 			throw new Error(`$.installation.generatedProject.packageJson: generated package.json is missing or malformed: ${error instanceof Error ? error.message : String(error)}`);
 		}
 		const generatedProject = validateGeneratedNpmProjectManifest(generatedManifest, version);
+		const generatedReadmePath = resolve(project, 'README.md');
 		let generatedReadme;
 		try {
-			generatedReadme = await readFile(resolve(project, 'README.md'), 'utf8');
+			generatedReadme = await readFile(generatedReadmePath, 'utf8');
 		} catch (error) {
 			throw new Error(`$.installation.generatedProject.readme: generated README.md is missing or unreadable: ${error instanceof Error ? error.message : String(error)}`);
 		}
@@ -273,6 +277,16 @@ export async function verifyCleanGlobalCliInstall(version, {
 			'install', `--registry=${PUBLIC_REGISTRY}`, `--userconfig=${npmrc}`,
 			'--replace-registry-host=never', '--package-lock=false', '--no-audit', '--no-fund',
 		], { cwd: project, env });
+		assert(
+			await readFile(generatedManifestPath, 'utf8') === generatedManifestText,
+			'$.installation.generatedProject.packageJson',
+			'generated package.json changed during npm install',
+		);
+		assert(
+			await readFile(generatedReadmePath, 'utf8') === generatedReadme,
+			'$.installation.generatedProject.readme',
+			'generated README.md changed during npm install',
+		);
 		runCommand('npm', ['run', 'check'], { cwd: project, env, capture: true });
 		runCommand('npm', ['run', 'build'], { cwd: project, env, capture: true });
 		const runResult = runCommand('npm', ['run', 'start'], { cwd: project, env, capture: true });
