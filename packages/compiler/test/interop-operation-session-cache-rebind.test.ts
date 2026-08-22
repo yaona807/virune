@@ -70,6 +70,32 @@ function multiFileHost(files: ReadonlyMap<string, string>): ProjectHost {
 	};
 }
 
+function gatedMultiFileHost(files: ReadonlyMap<string, string>, gatedPath: string): {
+	readonly host: ProjectHost;
+	readonly entered: Promise<void>;
+	readonly release: () => void;
+} {
+	let markEntered: () => void = () => {};
+	let release: () => void = () => {};
+	const entered = new Promise<void>(resolveEntered => { markEntered = resolveEntered; });
+	const gate = new Promise<void>(resolveGate => { release = resolveGate; });
+	return {
+		entered,
+		release: () => release(),
+		host: {
+			async readFile(path) {
+				const text = files.get(path);
+				if (text === undefined) throw Object.assign(new Error(`missing ${path}`), { code: 'ENOENT' });
+				if (path === gatedPath) {
+					markEntered();
+					await gate;
+				}
+				return text;
+			},
+		},
+	};
+}
+
 test('cached semantic cannot be rebound after an independent checker pass advances its witness', async () => {
 	const root = resolve('virtual-operation-session-cache-rebind-project');
 	const mainPath = join(root, 'src/main.virune');
@@ -173,7 +199,53 @@ test('checked results from an unregistered stable project cache are rebuilt befo
 	);
 });
 
-test('failed multi-module registration rolls back sessions registered before a stale cache entry', async () => {
+test('untracked multi-module stable cache remains unauthorized after rejected promotion', async () => {
+	const root = resolve('virtual-operation-session-untracked-multi-module-cache-project');
+	const mainPath = join(root, 'src/main.virune');
+	const helperPath = join(root, 'src/helper.virune');
+	const mainSource = [
+		'import { helper } from "./helper.virune"',
+		'import js { value } from "./library.js"',
+		'',
+		'fn main() -> Unit uses JavaScript {',
+		'\tdiscard value.field',
+		'}',
+		'',
+	].join('\n');
+	const helperSource = 'pub fn helper() -> Unit {}\n';
+	const files = new Map([
+		[mainPath, mainSource],
+		[helperPath, helperSource],
+	]);
+	const host = multiFileHost(files);
+	const cache = new ProjectBuildCache();
+	const stable = await buildProjectBase(root, {
+		write: false,
+		host,
+		incrementalCache: cache,
+		jsInteropProvider: providerForGeneration(1),
+	});
+	assert.deepEqual(stable.diagnostics.filter(item => item.severity === 'error'), []);
+	const stableHelper = stable.modules.find(module => module.source.path === helperPath);
+	assert.ok(stableHelper?.ast);
+	assert.ok(stableHelper.semantic);
+
+	await assert.rejects(
+		buildProject(root, {
+			write: false,
+			host,
+			incrementalCache: cache,
+			jsInteropProvider: providerForGeneration(1),
+		}),
+		/Cannot promote checked results from an unregistered project cache/u,
+	);
+	assert.throws(
+		() => externalOperationSequence({ module: stableHelper.ast!, semantic: stableHelper.semantic! }),
+		/not from the current checked AST semantic session/u,
+	);
+});
+
+test('tracked multi-module re-registration rolls back earlier modules when a later source changed mid-build', async () => {
 	const root = resolve('virtual-operation-session-cache-rebind-rollback-project');
 	const mainPath = join(root, 'src/main.virune');
 	const helperPath = join(root, 'src/helper.virune');
@@ -187,50 +259,69 @@ test('failed multi-module registration rolls back sessions registered before a s
 		'',
 	].join('\n');
 	const helperSource = 'pub fn helper() -> Unit {}\n';
-	const host = multiFileHost(new Map([
+	const files = new Map([
 		[mainPath, mainSource],
 		[helperPath, helperSource],
-	]));
+	]);
 	const cache = new ProjectBuildCache();
-	const firstProvider = providerForGeneration(1);
-	const stable = await buildProjectBase(root, {
+	const first = await buildProject(root, {
 		write: false,
-		host,
+		host: multiFileHost(files),
 		incrementalCache: cache,
-		jsInteropProvider: firstProvider,
+		jsInteropProvider: providerForGeneration(1),
 	});
-	assert.deepEqual(stable.diagnostics.filter(item => item.severity === 'error'), []);
-	const stableMain = stable.modules.find(module => module.source.path === mainPath);
-	const stableHelper = stable.modules.find(module => module.source.path === helperPath);
-	assert.ok(stableMain?.ast);
-	assert.ok(stableMain.semantic);
-	assert.ok(stableHelper?.ast);
-	assert.ok(stableHelper.semantic);
-	assert.throws(
-		() => externalOperationSequence({ module: stableHelper.ast!, semantic: stableHelper.semantic! }),
-		/not from the current checked AST semantic session/u,
-		'stable base results must not be operation-authorized before experimental registration',
+	assert.deepEqual(first.diagnostics.filter(item => item.severity === 'error'), []);
+	const firstMain = first.modules.find(module => module.source.path === mainPath);
+	const firstHelper = first.modules.find(module => module.source.path === helperPath);
+	assert.ok(firstMain?.ast);
+	assert.ok(firstMain.semantic);
+	assert.ok(firstHelper?.ast);
+	assert.ok(firstHelper.semantic);
+	assert.deepEqual(
+		first.modules.filter(module => module.semantic !== undefined).map(module => module.source.path),
+		[helperPath, mainPath],
+		'test must register helper before the later main-module failure',
 	);
+	assert.deepEqual(externalOperationSequence({ module: firstHelper.ast, semantic: firstHelper.semantic }), []);
 
-	const independent = checkModuleBase(stableMain.ast, {
-		containingFile: mainPath,
-		platform: 'node',
-		jsInteropProvider: providerForGeneration(2),
+	const gated = gatedMultiFileHost(files, mainPath);
+	const pending = buildProject(root, {
+		write: false,
+		host: gated.host,
+		incrementalCache: cache,
+		jsInteropProvider: providerForGeneration(1),
 	});
-	assert.deepEqual(independent.diagnostics.items.filter(item => item.severity === 'error'), []);
-
+	await gated.entered;
+	const jsImport = firstMain.ast.imports.find(item => item.sourceKind === 'javascript');
+	assert.ok(jsImport);
+	(jsImport as { typeOnly: boolean }).typeOnly = true;
+	gated.release();
 	await assert.rejects(
-		buildProject(root, {
-			write: false,
-			host,
-			incrementalCache: cache,
-			jsInteropProvider: firstProvider,
-		}),
-		/Cannot promote checked results from an unregistered project cache/u,
+		pending,
+		/Cannot reuse checked semantic after its checked source graph changed/u,
 	);
 	assert.throws(
-		() => externalOperationSequence({ module: stableHelper.ast!, semantic: stableHelper.semantic! }),
+		() => externalOperationSequence({ module: firstHelper.ast!, semantic: firstHelper.semantic! }),
 		/not from the current checked AST semantic session/u,
-		'unregistered stable-cache modules must remain unauthorized after rejected promotion',
+		'helper re-registration before the later main failure must be rolled back',
+	);
+	assert.throws(
+		() => externalOperationSequence({ module: firstMain.ast!, semantic: firstMain.semantic! }),
+		/not from the current checked AST semantic session/u,
+	);
+
+	const rebuilt = await buildProject(root, {
+		write: false,
+		host: multiFileHost(files),
+		incrementalCache: cache,
+		jsInteropProvider: providerForGeneration(1),
+	});
+	assert.deepEqual(rebuilt.diagnostics.filter(item => item.severity === 'error'), []);
+	const rebuiltMain = rebuilt.modules.find(module => module.source.path === mainPath);
+	assert.ok(rebuiltMain?.ast);
+	assert.ok(rebuiltMain.semantic);
+	assert.deepEqual(
+		externalOperationSequence({ module: rebuiltMain.ast, semantic: rebuiltMain.semantic }).map(operation => operation.kind),
+		['module-load', 'read-property'],
 	);
 });
