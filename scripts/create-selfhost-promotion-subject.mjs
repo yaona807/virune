@@ -29,6 +29,19 @@ export const REQUIRED_SELFHOST_HOST_FILES = Object.freeze([
 
 const sha256Pattern = /^[0-9a-f]{64}$/u;
 const builtins = new Set([...builtinModules, ...builtinModules.map(name => `node:${name}`)]);
+const unboundPackageExecutionFields = Object.freeze([
+	'browser',
+	'cpu',
+	'imports',
+	'libc',
+	'main',
+	'module',
+	'optionalDependencies',
+	'os',
+	'peerDependencies',
+	'peerDependenciesMeta',
+	'sideEffects',
+]);
 const sourceRoot = fileURLToPath(new URL('..', import.meta.url));
 
 export async function createRequiredSelfhostPromotionSubject({
@@ -87,6 +100,7 @@ export async function hashPackageProductSurface({ packageRoot, claim }) {
 	const packageFile = await resolveNonSymlinkInside(root, 'package.json', 'package.json', 'file');
 	const packageBytes = await readFile(packageFile);
 	const packageManifest = parseJsonObject(packageBytes, `${claim}.package.json`);
+	assertNoUnboundPackageExecutionMetadata(packageManifest, claim);
 	const packageSurface = {
 		name: canonicalText(packageManifest.name, `${claim}.package.name`),
 		version: canonicalText(packageManifest.version, `${claim}.package.version`),
@@ -270,6 +284,12 @@ function canonicalStringRecord(value, label) {
 		result[canonicalKey] = canonicalText(value[key], `${label}.${canonicalKey}`);
 	}
 	return result;
+}
+function assertNoUnboundPackageExecutionMetadata(value, claim) {
+	const present = unboundPackageExecutionFields.filter(field => value[field] !== undefined);
+	if (present.length > 0) {
+		throw new Error(`${claim}.package.json has unsupported execution-relevant metadata: ${present.join(', ')}`);
+	}
 }
 function validateSelfHash(value, label) { const claimed = canonicalSha(value.evidenceSha256, `${label}.evidenceSha256`); const { evidenceSha256: _sha, ...record } = value; if (sha256(JSON.stringify(record)) !== claimed) throw new Error(`${label} self-hash is invalid`); }
 function parseJsonObject(bytes, label) { let value; try { value = JSON.parse(bytes.toString('utf8')); } catch (error) { throw new Error(`${label} is invalid JSON: ${error instanceof Error ? error.message : String(error)}`); } if (!isRecord(value)) throw new Error(`${label} must be a JSON object`); return value; }

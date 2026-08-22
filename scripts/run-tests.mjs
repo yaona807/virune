@@ -89,6 +89,7 @@ const groups = platformSmoke ? platformGroups : [
 				'scripts/compare-selfhost-clean-bootstrap-evidence.test.mjs',
 				'scripts/create-selfhost-promotion-subject.test.mjs',
 				'scripts/create-selfhost-promotion-subject-dynamic-loading.test.mjs',
+				'scripts/create-selfhost-promotion-package-surface.test.mjs',
 				'scripts/run-selfhost-promotion-performance.test.mjs',
 				'scripts/run-selfhost-promotion-quality.test.mjs',
 				'scripts/selfhost-promotion-host-contract.test.mjs',
