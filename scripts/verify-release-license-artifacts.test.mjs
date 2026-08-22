@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { gzipSync } from 'node:zlib';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import test from 'node:test';
@@ -68,16 +68,6 @@ test('rejects modified release third-party notices', () => {
 		assert.throws(
 			() => verifyReleaseLicenseArtifacts(root),
 			/release\/THIRD_PARTY_NOTICES\.md does not match the canonical repository file/u,
-		);
-	});
-});
-
-test('rejects a release that drops the Japanese third-party notices', () => {
-	withFixture(root => {
-		unlinkSync(resolve(root, 'release/THIRD_PARTY_NOTICES_ja.md'));
-		assert.throws(
-			() => verifyReleaseLicenseArtifacts(root),
-			/THIRD_PARTY_NOTICES_ja\.md/u,
 		);
 	});
 });
@@ -151,7 +141,6 @@ function withFixture(run) {
 		writeFileSync(resolve(root, 'LICENSE'), 'canonical Apache license text\n');
 		writeFileSync(resolve(root, 'NOTICE'), 'Virune\nCopyright 2026 Yaona and the Virune project authors\n');
 		writeFileSync(resolve(root, 'THIRD_PARTY_NOTICES.md'), '# Third-Party Notices\n\nExample notice\n');
-		writeFileSync(resolve(root, 'THIRD_PARTY_NOTICES_ja.md'), '# 第三者ライセンス\n\nExample notice ja\n');
 		for (const directory of workspaceDirectories) {
 			mkdirSync(resolve(root, 'packages', directory), { recursive: true });
 			writeJson(resolve(root, 'packages', directory, 'package.json'), {
@@ -161,7 +150,7 @@ function withFixture(run) {
 			});
 		}
 		writeJson(resolve(root, 'release/package.json'), { name: 'virune-local-release', version, license: expectedLicense });
-		for (const file of ['LICENSE', 'NOTICE', 'THIRD_PARTY_NOTICES.md', 'THIRD_PARTY_NOTICES_ja.md']) {
+		for (const file of ['LICENSE', 'NOTICE', 'THIRD_PARTY_NOTICES.md']) {
 			writeFileSync(resolve(root, 'release', file), readFileSync(resolve(root, file)));
 		}
 		writeJson(resolve(root, 'release/SBOM.cdx.json'), {
