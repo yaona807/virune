@@ -13,6 +13,21 @@ export interface NpmGeneratedProjectCapability {
 	readonly dependencySource: 'npm';
 }
 
+export interface GeneratedProjectPackageManifest {
+	readonly name: string;
+	readonly private: true;
+	readonly type: 'module';
+	readonly scripts: {
+		readonly build: 'virune build';
+		readonly start: 'virune run';
+		readonly test: 'virune test';
+		readonly check: 'virune check';
+		readonly fmt: 'virune fmt .';
+	};
+	readonly dependencies: Readonly<Record<'@virune/runtime' | '@virune/stdlib', string>>;
+	readonly devDependencies: Readonly<Record<'virune', string>>;
+}
+
 export const NPM_GENERATED_PROJECT_CAPABILITY_FILE = 'npm-generated-project-capability.json';
 export const NPM_GENERATED_PROJECT_CAPABILITY_KIND = 'npm-generated-project-dependency-source-v1' as const;
 export const PUBLIC_NPM_REGISTRY = 'https://registry.npmjs.org/' as const;
@@ -41,6 +56,46 @@ export function parseInitOptions(argumentsList: readonly string[]): InitOptions 
 		projectPath: projectPath ?? '.',
 		dependencySource: dependencySource ?? 'github-release',
 	};
+}
+
+export function buildGeneratedProjectPackageManifest(
+	projectName: string,
+	version: string,
+	dependencySource: InitDependencySource,
+): GeneratedProjectPackageManifest {
+	const releaseAssetBase = `https://github.com/yaona807/virune/releases/download/v${version}`;
+	const releaseAsset = (file: string): string => `${releaseAssetBase}/${file}`;
+	return {
+		name: projectName,
+		private: true,
+		type: 'module',
+		scripts: {
+			build: 'virune build',
+			start: 'virune run',
+			test: 'virune test',
+			check: 'virune check',
+			fmt: 'virune fmt .',
+		},
+		dependencies: dependencySource === 'npm'
+			? { '@virune/runtime': version, '@virune/stdlib': version }
+			: {
+				'@virune/runtime': releaseAsset(`virune-runtime-${version}.tgz`),
+				'@virune/stdlib': releaseAsset(`virune-stdlib-${version}.tgz`),
+			},
+		devDependencies: dependencySource === 'npm'
+			? { virune: version }
+			: { virune: releaseAsset(`virune-${version}.tgz`) },
+	};
+}
+
+export function matchesGeneratedProjectPackageManifest(
+	value: unknown,
+	projectName: string,
+	version: string,
+	dependencySource: InitDependencySource,
+): boolean {
+	if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
+	return JSON.stringify(value) === JSON.stringify(buildGeneratedProjectPackageManifest(projectName, version, dependencySource));
 }
 
 export function validateNpmGeneratedProjectCapability(
