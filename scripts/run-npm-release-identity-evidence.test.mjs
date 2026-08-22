@@ -1,16 +1,20 @@
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
+import { access, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import * as releaseIdentityModule from './run-npm-release-identity-evidence.mjs';
 import {
 	buildReleaseIdentityReport,
 	parseNpmReleaseIdentityArguments,
+	runNpmReleaseIdentityEvidence,
 	snapshotReleaseDirectory,
 } from './run-npm-release-identity-evidence.mjs';
 
+const repositoryRoot = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const reviewedCommit = 'a'.repeat(40);
 const evidenceSetId = 'github-actions:123:1';
 const version = '1.1.0-rc.1';
@@ -137,6 +141,39 @@ test('release identity CLI parser rejects unknown, duplicate, empty, and partial
 test('canonical passed evidence builder is not exported as a caller authority surface', () => {
 	assert.equal('buildCanonicalEvidence' in releaseIdentityModule, false);
 	assert.equal(typeof releaseIdentityModule.runNpmReleaseIdentityEvidence, 'function');
+});
+
+test('current prepublication source cannot emit release-identity evidence and invalidates stale success outputs', async () => {
+	const head = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repositoryRoot, encoding: 'utf8' }).trim();
+	const rootManifest = JSON.parse(await readFile(resolve(repositoryRoot, 'package.json'), 'utf8'));
+	const outputDirectory = resolve(repositoryRoot, '.cache/npm-release-identity');
+	const reportPath = resolve(outputDirectory, 'npm-release-identity-report.json');
+	const evidencePath = resolve(outputDirectory, 'release-identity-integration-evidence.json');
+	await mkdir(outputDirectory, { recursive: true });
+	await writeFile(reportPath, '{"schemaVersion":1,"state":"verified"}\n', 'utf8');
+	await writeFile(evidencePath, '{"schemaVersion":1,"result":"passed"}\n', 'utf8');
+	const previous = {
+		GITHUB_RUN_ID: process.env.GITHUB_RUN_ID,
+		GITHUB_RUN_ATTEMPT: process.env.GITHUB_RUN_ATTEMPT,
+		GITHUB_SHA: process.env.GITHUB_SHA,
+	};
+	try {
+		process.env.GITHUB_RUN_ID = '123';
+		process.env.GITHUB_RUN_ATTEMPT = '1';
+		process.env.GITHUB_SHA = head;
+		await assert.rejects(
+			() => runNpmReleaseIdentityEvidence({ reviewedCommit: head, releaseVersion: rootManifest.version }),
+			/requires publication-candidate stage/u,
+		);
+		await assert.rejects(() => access(reportPath));
+		await assert.rejects(() => access(evidencePath));
+	} finally {
+		for (const [name, value] of Object.entries(previous)) {
+			if (value === undefined) delete process.env[name];
+			else process.env[name] = value;
+		}
+		await rm(outputDirectory, { recursive: true, force: true });
+	}
 });
 
 test('release snapshot is deterministic and rejects non-regular release artifacts', async () => {
