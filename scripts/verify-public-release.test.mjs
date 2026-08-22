@@ -11,8 +11,8 @@ import { parseChecksums, validateDownloadedRelease, validateReleaseRecord } from
 const repositoryRoot = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const version = '1.0.0-rc.1';
 const requiredNames = [
-	'LICENSE', 'MANIFEST.json', 'NOTICE', 'README.md', 'README_ja.md', 'RELEASE-MANIFEST.json', 'SBOM.cdx.json', 'SHA256SUMS', 'THIRD_PARTY_NOTICES.md', 'THIRD_PARTY_NOTICES_ja.md', 'package.json',
-	`virune-${version}.tgz`, `virune-compiler-${version}.tgz`, `virune-formatter-${version}.tgz`, `virune-js-interop-${version}.tgz`, `virune-runtime-${version}.tgz`, `virune-stdlib-${version}.tgz`, `virune-vscode-${version}.vsix`,
+	'LICENSE', 'MANIFEST.json', 'NOTICE', 'PUBLICATION-MANIFEST.json', 'README.md', 'README_ja.md', 'RELEASE-MANIFEST.json', 'SBOM.cdx.json', 'SHA256SUMS', 'THIRD_PARTY_NOTICES.md', 'THIRD_PARTY_NOTICES_ja.md', 'package.json',
+	`virune-${version}.tgz`, `virune-npm-${version}.tgz`, `virune-compiler-${version}.tgz`, `virune-formatter-${version}.tgz`, `virune-js-interop-${version}.tgz`, `virune-runtime-${version}.tgz`, `virune-stdlib-${version}.tgz`, `virune-vscode-${version}.vsix`,
 ];
 const reviewedLegalFiles = ['LICENSE', 'NOTICE', 'THIRD_PARTY_NOTICES.md', 'THIRD_PARTY_NOTICES_ja.md'];
 
@@ -36,6 +36,23 @@ test('rejects drafts, stable releases and incomplete candidates', () => {
 	assert.throws(
 		() => validateReleaseRecord({ tag_name: `v${version}`, draft: false, prerelease: true, assets: requiredNames.filter(name => name !== 'NOTICE').map(name => ({ name })) }, { tag: `v${version}`, version }),
 		/Release is missing NOTICE/u,
+	);
+	assert.throws(
+		() => validateReleaseRecord({ tag_name: `v${version}`, draft: false, prerelease: true, assets: requiredNames.filter(name => name !== 'PUBLICATION-MANIFEST.json').map(name => ({ name })) }, { tag: `v${version}`, version }),
+		/Release is missing PUBLICATION-MANIFEST\.json/u,
+	);
+	assert.throws(
+		() => validateReleaseRecord({ tag_name: `v${version}`, draft: false, prerelease: true, assets: requiredNames.filter(name => name !== `virune-npm-${version}.tgz`).map(name => ({ name })) }, { tag: `v${version}`, version }),
+		new RegExp(`Release is missing virune-npm-${version.replaceAll('.', '\\.')}\\.tgz`, 'u'),
+	);
+});
+
+test('duplicate or unknown assets cannot substitute for missing npm publication identity evidence', () => {
+	const incomplete = requiredNames.filter(name => name !== 'PUBLICATION-MANIFEST.json').map(name => ({ name }));
+	incomplete.push({ name: 'LICENSE' }, { name: 'unexpected-extra-asset.txt' });
+	assert.throws(
+		() => validateReleaseRecord({ tag_name: `v${version}`, draft: false, prerelease: true, assets: incomplete }, { tag: `v${version}`, version }),
+		/Release is missing PUBLICATION-MANIFEST\.json/u,
 	);
 });
 
