@@ -23,17 +23,17 @@ const PUBLIC_REGISTRY = 'https://registry.npmjs.org/';
 const COLLECTOR_SOURCE = 'npm-cli-authenticated-readonly-v1';
 const REPORT_KIND = 'npm-registry-ownership-v1';
 const REPORT_AUTHORITY = 'same-run-live-collector';
+const NPM_READ_TIMEOUT_MS = 60_000;
 const OBSERVATION_RESULTS = Object.freeze([
 	'complete',
 	'policy-unconfigured',
-	'authentication-failed',
+	'whoami-failed',
 	'scope-read-failed',
 	'package-access-failed',
 	'unsupported',
 ]);
 const PACKAGE_STATES = Object.freeze(['owned', 'missing', 'conflict', 'unknown']);
 const SCOPE_STATES = Object.freeze(['verified', 'conflict', 'unknown']);
-const REPORT_STATES = Object.freeze(['verified', 'bootstrap-required', 'conflict', 'unknown']);
 const SAFE_NPM_ENV = new Set([
 	'APPDATA',
 	'CI',
@@ -113,13 +113,7 @@ export function validateNpmRegistryOwnershipObservation(value, { expectedPackage
 	assert(registry === PUBLIC_REGISTRY, '$.registry', `expected ${PUBLIC_REGISTRY}`);
 	const observation = record(value, '$.observation');
 	assertExactKeys(observation, [
-		'schemaVersion',
-		'source',
-		'registry',
-		'result',
-		'principal',
-		'scopeAuthority',
-		'packages',
+		'schemaVersion', 'source', 'registry', 'result', 'principal', 'scopeAuthority', 'packages',
 	], '$.observation');
 	assert(observation.schemaVersion === 1, '$.observation.schemaVersion', 'expected schemaVersion 1');
 	assert(observation.source === COLLECTOR_SOURCE, '$.observation.source', `expected ${COLLECTOR_SOURCE}`);
@@ -136,7 +130,7 @@ export function validateNpmRegistryOwnershipObservation(value, { expectedPackage
 		'$.observation.packages',
 		`expected exact package set ${expected.join(', ')}`,
 	);
-	if (result === 'policy-unconfigured' || result === 'authentication-failed') {
+	if (result === 'policy-unconfigured' || result === 'whoami-failed') {
 		assert(principal === null, '$.observation.principal', `${result} must not infer an npm principal`);
 		assert(scopeAuthority === 'unknown', '$.observation.scopeAuthority', `${result} must keep scope authority unknown`);
 		assert(packages.every(item => item.state === 'unknown'), '$.observation.packages', `${result} must keep package state unknown`);
@@ -144,6 +138,11 @@ export function validateNpmRegistryOwnershipObservation(value, { expectedPackage
 	if (result === 'scope-read-failed') {
 		assert(scopeAuthority === 'unknown', '$.observation.scopeAuthority', 'scope read failure must keep scope authority unknown');
 		assert(packages.every(item => item.state === 'unknown'), '$.observation.packages', 'scope read failure must not synthesize package state');
+	}
+	if (result === 'package-access-failed') {
+		assert(principal !== null, '$.observation.principal', 'package access failure requires the authenticated npm principal');
+		assert(scopeAuthority === 'verified', '$.observation.scopeAuthority', 'package access failure occurs only after scope authority verification');
+		assert(packages.every(item => item.state === 'unknown'), '$.observation.packages', 'package access failure must keep package state unknown');
 	}
 	return {
 		schemaVersion: 1,
@@ -171,16 +170,20 @@ export function parseNpmTeamMembersOutput(stdout) {
 	return members;
 }
 
-export function parseNpmPackageAccessOutput(stdout, registryName) {
-	const name = npmPackage(registryName, '$.registryName');
-	const parsed = record(parseJsonText(stdout, '$.npmAccess.stdout'), '$.npmAccess.stdout');
-	const keys = Object.keys(parsed).sort(compareText);
-	assert(keys.length <= 1 && (keys.length === 0 || keys[0] === name), '$.npmAccess.stdout', `expected only optional ${name} access entry`);
-	if (keys.length === 0) return 'unknown';
-	const access = parsed[name];
-	if (access === 'read-write') return 'owned';
-	if (access === 'read-only' || access === 'no-access') return 'conflict';
-	throw new Error(`$.npmAccess.stdout.${name}: unsupported npm access level ${String(access)}`);
+export function parseNpmPackageAccessMap(stdout, expectedPackages) {
+	const expected = array(expectedPackages, '$.expectedPackages')
+		.map((item, index) => npmPackage(item, `$.expectedPackages[${index}]`))
+		.sort(compareText);
+	assert(expected.length > 0, '$.expectedPackages', 'expected at least one reviewed package');
+	assertUnique(expected, '$.expectedPackages', 'registryName');
+	const accessMap = record(parseJsonText(stdout, '$.npmAccess.stdout'), '$.npmAccess.stdout');
+	return expected.map(registryName => {
+		if (!Object.hasOwn(accessMap, registryName)) return { registryName, state: 'unknown' };
+		const access = accessMap[registryName];
+		if (access === 'read-write') return { registryName, state: 'owned' };
+		if (access === 'read-only' || access === 'no-access') return { registryName, state: 'conflict' };
+		throw new Error(`$.npmAccess.stdout.${registryName}: unsupported npm access level ${String(access)}`);
+	});
 }
 
 export function parseNpmRegistryOwnershipArguments(argumentsList) {
@@ -258,6 +261,7 @@ export async function runNpmRegistryOwnershipCollector({ reviewedCommit, release
 		});
 		assert(isDeepStrictEqual(persistedReport, report), '$.ownershipReport', 'persisted ownership report differs from validated same-run report');
 		if (report.state !== 'verified') return { report, evidence: null };
+		verifyExactCleanCheckout(commit);
 		const evidence = buildLiveRegistryOwnershipEvidence(report);
 		await persistJson(EVIDENCE_OUTPUT_PATH, evidence);
 		const persistedEvidence = JSON.parse(await readFile(EVIDENCE_OUTPUT_PATH, 'utf8'));
@@ -388,7 +392,7 @@ export function validatePublicationManifestForOwnership(bytes, {
 function collectLiveNpmObservation({ expectedPackages, policy }) {
 	const unknownPackages = () => expectedPackages.map(registryName => ({ registryName, state: 'unknown' }));
 	const whoami = runNpmReadOnly(['whoami']);
-	if (!whoami.ok) return unresolvedObservation('authentication-failed', expectedPackages);
+	if (!whoami.ok) return unresolvedObservation('whoami-failed', expectedPackages);
 	let principal;
 	try {
 		principal = parseNpmWhoamiOutput(whoami.stdout);
@@ -407,20 +411,12 @@ function collectLiveNpmObservation({ expectedPackages, policy }) {
 		};
 	}
 	const team = runNpmReadOnly(['team', 'ls', `${policy.scope}:developers`, '--json']);
-	if (!team.ok) {
-		return {
-			...unresolvedObservation('scope-read-failed', expectedPackages),
-			principal,
-		};
-	}
+	if (!team.ok) return unresolvedObservation('scope-read-failed', expectedPackages, principal);
 	let members;
 	try {
 		members = parseNpmTeamMembersOutput(team.stdout);
 	} catch {
-		return {
-			...unresolvedObservation('unsupported', expectedPackages),
-			principal,
-		};
+		return unresolvedObservation('unsupported', expectedPackages, principal);
 	}
 	if (!members.includes(principal)) {
 		return {
@@ -433,41 +429,50 @@ function collectLiveNpmObservation({ expectedPackages, policy }) {
 			packages: unknownPackages(),
 		};
 	}
-	const packages = [];
-	let commandFailed = false;
-	let unsupported = false;
-	for (const registryName of expectedPackages) {
-		const access = runNpmReadOnly(['access', 'list', 'packages', principal, registryName, '--json']);
-		if (!access.ok) {
-			commandFailed = true;
-			packages.push({ registryName, state: 'unknown' });
-			continue;
-		}
-		try {
-			packages.push({ registryName, state: parseNpmPackageAccessOutput(access.stdout, registryName) });
-		} catch {
-			unsupported = true;
-			packages.push({ registryName, state: 'unknown' });
-		}
+	const access = runNpmReadOnly(['access', 'list', 'packages', principal, '--json']);
+	if (!access.ok) {
+		return {
+			schemaVersion: 1,
+			source: COLLECTOR_SOURCE,
+			registry: PUBLIC_REGISTRY,
+			result: 'package-access-failed',
+			principal,
+			scopeAuthority: 'verified',
+			packages: unknownPackages(),
+		};
+	}
+	let packages;
+	try {
+		packages = parseNpmPackageAccessMap(access.stdout, expectedPackages);
+	} catch {
+		return {
+			schemaVersion: 1,
+			source: COLLECTOR_SOURCE,
+			registry: PUBLIC_REGISTRY,
+			result: 'unsupported',
+			principal,
+			scopeAuthority: 'verified',
+			packages: unknownPackages(),
+		};
 	}
 	return {
 		schemaVersion: 1,
 		source: COLLECTOR_SOURCE,
 		registry: PUBLIC_REGISTRY,
-		result: unsupported ? 'unsupported' : commandFailed ? 'package-access-failed' : 'complete',
+		result: 'complete',
 		principal,
 		scopeAuthority: 'verified',
 		packages,
 	};
 }
 
-function unresolvedObservation(result, expectedPackages) {
+function unresolvedObservation(result, expectedPackages, principal = null) {
 	return {
 		schemaVersion: 1,
 		source: COLLECTOR_SOURCE,
 		registry: PUBLIC_REGISTRY,
 		result,
-		principal: null,
+		principal,
 		scopeAuthority: 'unknown',
 		packages: expectedPackages.map(registryName => ({ registryName, state: 'unknown' })),
 	};
@@ -584,6 +589,7 @@ function runNpmReadOnly(args) {
 		encoding: 'utf8',
 		maxBuffer: 1024 * 1024,
 		env: npmReadEnvironment(process.env),
+		timeout: NPM_READ_TIMEOUT_MS,
 		windowsHide: true,
 	});
 	return {
