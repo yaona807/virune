@@ -30,12 +30,13 @@ test('classifies maintained human documentation as documentation-only', () => {
 	assert.equal(result.changedCount, 7);
 });
 
-test('requires the full gate for workflow, dependency, source, machine policy, and specification changes', () => {
+test('requires the full gate for workflow, dependency, source, machine policy, specification, and legal artifact changes', () => {
 	for (const path of [
 		'.github/workflows/ci.yml',
 		'.github/PULL_REQUEST_TEMPLATE/config.yml',
 		'.github/self-hosting/temporary-artifacts.json',
 		'.github/documentation-examples.json',
+		'THIRD_PARTY_NOTICES.md',
 		'package-lock.json',
 		'packages/compiler/src/compiler.ts',
 		'scripts/classify-ci-changes.mjs',
@@ -136,7 +137,7 @@ test('limits documentation paths to the consolidated reviewed Markdown locations
 	assert.equal(isDocumentationPath('SECURITY.md'), true);
 	assert.equal(isDocumentationPath('SECURITY_ja.md'), true);
 	assert.equal(isDocumentationPath('COMPATIBILITY.md'), true);
-	assert.equal(isDocumentationPath('THIRD_PARTY_NOTICES.md'), true);
+	assert.equal(isDocumentationPath('THIRD_PARTY_NOTICES.md'), false);
 	assert.equal(isDocumentationPath('.github/PULL_REQUEST_TEMPLATE/self-hosting.md'), true);
 	assert.equal(isDocumentationPath('docs/release-channels.md'), false);
 	assert.equal(isDocumentationPath('.github/self-hosting-operations/README_ja.md'), false);
