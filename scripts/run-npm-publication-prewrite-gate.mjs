@@ -41,6 +41,7 @@ export async function runNpmPublicationPrewriteGate({ reviewedCommit, releaseVer
 		reviewedCommit: commit,
 		releaseVersion: version,
 	});
+	verifyExactCleanCheckout(commit);
 
 	const generatedAuthorizationReport = await runNpmPublicationAuthorization({
 		reviewedCommit: commit,
@@ -64,6 +65,7 @@ export async function runNpmPublicationPrewriteGate({ reviewedCommit, releaseVer
 		releaseVersion: version,
 		evidenceSetId: execution,
 	});
+	verifyExactCleanCheckout(commit);
 	await mkdir(dirname(NPM_PUBLICATION_PREWRITE_OUTPUT), { recursive: true });
 	await writeFile(NPM_PUBLICATION_PREWRITE_OUTPUT, `${JSON.stringify(report, null, '\t')}\n`, 'utf8');
 	const persistedReport = parseJson(await readFile(NPM_PUBLICATION_PREWRITE_OUTPUT), '$.prewriteGateOutput');
