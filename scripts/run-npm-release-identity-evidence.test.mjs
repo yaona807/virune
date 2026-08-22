@@ -11,6 +11,7 @@ import {
 	buildReleaseIdentityReport,
 	parseNpmReleaseIdentityArguments,
 	runNpmReleaseIdentityEvidence,
+	runNpmReleaseIdentityEvidenceCli,
 	snapshotReleaseDirectory,
 } from './run-npm-release-identity-evidence.mjs';
 
@@ -135,6 +136,25 @@ test('release identity CLI parser rejects unknown, duplicate, empty, and partial
 		['positional', `--expected-commit=${reviewedCommit}`, `--version=${version}`],
 	]) {
 		assert.throws(() => parseNpmReleaseIdentityArguments(args));
+	}
+});
+
+test('malformed CLI invocation invalidates stale passing identity evidence before argument validation', async () => {
+	const outputDirectory = resolve(repositoryRoot, '.cache/npm-release-identity');
+	const reportPath = resolve(outputDirectory, 'npm-release-identity-report.json');
+	const evidencePath = resolve(outputDirectory, 'release-identity-integration-evidence.json');
+	await mkdir(outputDirectory, { recursive: true });
+	await writeFile(reportPath, '{"schemaVersion":1,"state":"verified"}\n', 'utf8');
+	await writeFile(evidencePath, '{"schemaVersion":1,"result":"passed"}\n', 'utf8');
+	try {
+		await assert.rejects(
+			() => runNpmReleaseIdentityEvidenceCli(['--versoin=1.1.0-rc.1']),
+			/unknown release-identity argument/u,
+		);
+		await assert.rejects(() => access(reportPath));
+		await assert.rejects(() => access(evidencePath));
+	} finally {
+		await rm(outputDirectory, { recursive: true, force: true });
 	}
 });
 
