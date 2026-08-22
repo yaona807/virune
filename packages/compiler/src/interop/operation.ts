@@ -1,6 +1,15 @@
 import type * as A from '../ast/nodes.js';
 import type { Diagnostic } from '../diagnostics/diagnostic.js';
 import type { NodeId, SourceSpan } from '../source.js';
+import {
+	filterArrayByIndex,
+	mapArrayByIndex,
+	readDenseOwnDataArray,
+	sliceArrayByIndex,
+	someArrayByIndex,
+	sortArrayByIndex,
+	uniqueArrayByIndex,
+} from './array-safety.js';
 import type {
 	ForeignOrigin,
 	ForeignUsage,
@@ -136,38 +145,41 @@ export function externalOperationSequence(input: {
 	readonly interop: InteropSemanticModel;
 	readonly diagnostics: readonly Diagnostic[];
 }): readonly ExternalOperationIR[] {
-	if (input.diagnostics.some(diagnostic => diagnostic.severity === 'error')) return [];
+	if (someArrayByIndex(input.diagnostics, diagnostic => diagnostic.severity === 'error')) return [];
 
 	assertCurrentCheckerUsageCoverage(input.interop.usageIR, input.interop.usages);
 	const nodeAnchors = collectAstNodeAnchors(input.module);
-	for (const usage of input.interop.usageIR) assertCurrentUsageAnchor(usage, nodeAnchors, input.interop.usages);
+	for (let index = 0; index < input.interop.usageIR.length; index++) {
+		assertCurrentUsageAnchor(input.interop.usageIR[index]!, nodeAnchors, input.interop.usages);
+	}
 
 	const operations: ExternalOperationIR[] = [];
 	let witnessIndex = 0;
 	let runtimeImportDeclarations = 0;
-	for (const declaration of input.module.imports) {
+	for (let importIndex = 0; importIndex < input.module.imports.length; importIndex++) {
+		const declaration = input.module.imports[importIndex]!;
 		if (declaration.sourceKind !== 'javascript') continue;
 		const witnessCount = importResolutionCount(declaration);
-		const witnesses = input.interop.moduleWitnesses.slice(witnessIndex, witnessIndex + witnessCount);
+		const witnesses = sliceArrayByIndex(input.interop.moduleWitnesses, witnessIndex, witnessIndex + witnessCount);
 		if (witnesses.length !== witnessCount) throw new Error(`External operation evidence is missing module witnesses for ${declaration.source}`);
 		witnessIndex += witnessCount;
 		if (declaration.typeOnly) continue;
 		runtimeImportDeclarations++;
-		operations.push(externalModuleLoadOperation({
+		operations[operations.length] = externalModuleLoadOperation({
 			nodeId: declaration.id,
 			span: declaration.span,
 			moduleSpecifier: declaration.source,
 			witnesses,
-		}));
+		});
 	}
 	if (witnessIndex !== input.interop.moduleWitnesses.length) throw new Error('External operation evidence contains unconsumed module witnesses');
 	if (input.interop.requiresJavaScriptInitialization !== (runtimeImportDeclarations > 0)) {
 		throw new Error('External operation JavaScript initialization state disagrees with source import semantics');
 	}
 
-	for (const usage of input.interop.usageIR) {
-		const operation = externalOperationFromUsage(usage);
-		if (operation !== undefined) operations.push(operation);
+	for (let index = 0; index < input.interop.usageIR.length; index++) {
+		const operation = externalOperationFromUsage(input.interop.usageIR[index]!);
+		if (operation !== undefined) operations[operations.length] = operation;
 	}
 	return operations;
 }
@@ -248,9 +260,9 @@ export function externalModuleLoadOperation(input: {
 			decision: unresolvedDirectDecision(),
 		};
 	}
-	const witnesses = input.witnesses.map(witness => canonicalRuntimeWitness(witness, moduleSpecifier));
+	const witnesses = mapArrayByIndex(input.witnesses, witness => canonicalRuntimeWitness(witness, moduleSpecifier));
 	const first = witnesses[0]!;
-	if (witnesses.some(witness => !sameRuntimeWitness(first, witness))) {
+	if (someArrayByIndex(witnesses, witness => !sameRuntimeWitness(first, witness))) {
 		return {
 			kind: 'module-load',
 			...anchor,
@@ -356,8 +368,8 @@ function canonicalRuntimeWitness(witness: ModuleResolutionWitness, moduleSpecifi
 	if (witness.moduleSpecifier !== moduleSpecifier) throw new Error('External ModuleLoad witness must resolve the same module specifier');
 	assertKnown(PLATFORMS, witness.platform, 'module witness platform');
 	if (witness.runtimeFormat !== undefined) assertKnown(RUNTIME_FORMATS, witness.runtimeFormat, 'module witness runtime format');
-	const conditions = [...new Set(witness.conditions.map(condition => canonicalProviderText(condition, 'module witness condition')))]
-		.sort((left, right) => left < right ? -1 : left > right ? 1 : 0);
+	const validatedConditions = mapArrayByIndex(witness.conditions, condition => canonicalProviderText(condition, 'module witness condition'));
+	const conditions = sortArrayByIndex(uniqueArrayByIndex(validatedConditions), compareText);
 	return {
 		moduleSpecifier,
 		...(witness.packageName === undefined ? {} : { packageName: canonicalProviderText(witness.packageName, 'runtime package name') }),
@@ -382,7 +394,8 @@ function collectAstNodeAnchors(module: A.ModuleNode): ReadonlyMap<NodeId, AstNod
 		if (seen.has(value)) return;
 		seen.add(value);
 		if (Array.isArray(value)) {
-			for (const item of value) visit(item);
+			const items = readDenseOwnDataArray(value, 'checked AST array');
+			for (let index = 0; index < items.length; index++) visit(items[index]);
 			return;
 		}
 		const record = value as Record<string, unknown>;
@@ -398,21 +411,26 @@ function collectAstNodeAnchors(module: A.ModuleNode): ReadonlyMap<NodeId, AstNod
 				...(foreignBridge === undefined ? {} : { foreignBridge }),
 			});
 		}
-		for (const child of Object.values(record)) visit(child);
+		const keys = Reflect.ownKeys(record);
+		for (let index = 0; index < keys.length; index++) {
+			const key = keys[index]!;
+			if (typeof key === 'symbol') throw new Error(`External operation AST contains symbol field ${String(key)}`);
+			const descriptor = Object.getOwnPropertyDescriptor(record, key);
+			if (descriptor === undefined || !('value' in descriptor)) throw new Error(`External operation AST field ${key} must be a data property`);
+			visit(descriptor.value);
+		}
 	};
 	visit(module);
 	return result;
 }
 
 function assertCurrentCheckerUsageCoverage(stableUsages: readonly ForeignUsageIR[], currentUsages: readonly ForeignUsage[]): void {
-	const stable = stableUsages.filter(usage => usage.kind !== 'import');
-	const current = currentUsages.filter(usage => usage.kind !== 'import');
+	const stable = filterArrayByIndex(stableUsages, usage => usage.kind !== 'import');
+	const current = filterArrayByIndex(currentUsages, usage => usage.kind !== 'import');
 	if (stable.length !== current.length) throw new Error('Stale or cross-session External usage evidence: current checker usage coverage is incomplete');
-	const stableKeys = stable.map(nonImportUsageAnchorKey);
-	const currentKeys = current.map(nonImportUsageAnchorKey);
-	const stableAnchors = new Set(stableKeys);
-	const currentAnchors = new Set(currentKeys);
-	if (stableAnchors.size !== stable.length || currentAnchors.size !== current.length) {
+	const stableKeys = mapArrayByIndex(stable, nonImportUsageAnchorKey);
+	const currentKeys = mapArrayByIndex(current, nonImportUsageAnchorKey);
+	if (uniqueArrayByIndex(stableKeys).length !== stable.length || uniqueArrayByIndex(currentKeys).length !== current.length) {
 		throw new Error('Stale or cross-session External usage evidence: duplicate current usage anchor');
 	}
 	for (let index = 0; index < stableKeys.length; index++) {
@@ -458,7 +476,7 @@ function assertCurrentUsageAnchor(
 
 function usageMatchesCurrentCheckerEvidence(usage: ForeignUsageIR, currentUsages: readonly ForeignUsage[]): boolean {
 	if (usage.kind === 'import') return true;
-	const candidates = currentUsages.filter(candidate => candidate.kind === usage.kind
+	const candidates = filterArrayByIndex(currentUsages, candidate => candidate.kind === usage.kind
 		&& candidate.nodeId === usage.nodeId
 		&& isSourceSpan(candidate.span)
 		&& sameSpan(candidate.span, usage.span));
@@ -586,7 +604,9 @@ function canonicalRelativeLocator(value: string, description: string): string {
 	if (value.includes('\\')) throw new Error(`External operation ${description} must use canonical forward slashes`);
 	if (containsProviderPrivatePathSyntax(value)) throw new Error(`External operation ${description} must not be absolute or drive-relative`);
 	const segments = value.split('/');
-	if (segments.some(segment => segment.length === 0 || segment === '.' || segment === '..')) throw new Error(`External operation ${description} must be a canonical relative locator`);
+	if (someArrayByIndex(segments, segment => segment.length === 0 || segment === '.' || segment === '..')) {
+		throw new Error(`External operation ${description} must be a canonical relative locator`);
+	}
 	return value;
 }
 
@@ -603,4 +623,8 @@ function canonicalHash(value: string, description: string): string {
 
 function assertKnown<T extends string>(known: ReadonlySet<T>, value: T, description: string): void {
 	if (!known.has(value)) throw new Error(`Unknown ${description}: ${String(value)}`);
+}
+
+function compareText(left: string, right: string): number {
+	return left < right ? -1 : left > right ? 1 : 0;
 }
