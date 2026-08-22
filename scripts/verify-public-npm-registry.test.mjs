@@ -49,7 +49,25 @@ function responseBytes(bytes) {
 	};
 }
 
-function fixture() {
+function publicReleaseReportFor(publicationManifest, commit = reviewedCommit) {
+	const bytes = Buffer.from(`${JSON.stringify(publicationManifest, null, 2)}\n`, 'utf8');
+	return {
+		schemaVersion: 1,
+		version,
+		tag: `v${version}`,
+		tagCommit: commit,
+		expectedCommit: commit,
+		release: { draft: false, prerelease: true },
+		assets: [{
+			file: 'PUBLICATION-MANIFEST.json',
+			sha256: createHash('sha256').update(bytes).digest('hex'),
+			bytes: bytes.byteLength,
+		}],
+		passed: true,
+	};
+}
+
+function fixture({ commit = reviewedCommit } = {}) {
 	const packageBytes = new Map();
 	const metadata = new Map();
 	const packuments = new Map();
@@ -81,7 +99,18 @@ function fixture() {
 		distTag: 'next',
 		packages,
 	};
-	const fetchImpl = async url => {
+	const current = {
+		publicationManifest,
+		publicReleaseReport: publicReleaseReportFor(publicationManifest, commit),
+		metadata,
+		packuments,
+		packageBytes,
+		tarballs,
+		failedTarballs,
+		malformedJson,
+		fetchImpl: null,
+	};
+	current.fetchImpl = async url => {
 		for (const pkg of packages) {
 			const name = pkg.registryName;
 			if (url === registryVersionUrl(name)) {
@@ -101,7 +130,11 @@ function fixture() {
 		}
 		return { ok: false, status: 404 };
 	};
-	return { publicationManifest, metadata, packuments, packageBytes, tarballs, failedTarballs, malformedJson, fetchImpl };
+	return current;
+}
+
+function refreshReleaseBinding(current, commit = reviewedCommit) {
+	current.publicReleaseReport = publicReleaseReportFor(current.publicationManifest, commit);
 }
 
 function successfulRunCommand(expectedVersion = version, { inspectInstall } = {}) {
@@ -126,6 +159,7 @@ function verifyOptions(current, overrides = {}) {
 	return {
 		reviewedCommit,
 		publicationManifest: current.publicationManifest,
+		publicReleaseReport: current.publicReleaseReport,
 		publicationPlan,
 		outputPath: null,
 		fetchImpl: current.fetchImpl,
@@ -141,6 +175,8 @@ test('verifies exact reviewed package bytes, tags and clean global CLI installat
 	assert.equal(report.version, version);
 	assert.equal(report.reviewedCommit, reviewedCommit);
 	assert.equal(report.distTag, 'next');
+	assert.match(report.releaseBinding.publicationManifestSha256, /^[0-9a-f]{64}$/u);
+	assert(report.releaseBinding.publicationManifestBytes > 0);
 	assert.equal(report.packages.length, publicationPlan.packages.length);
 	assert.deepEqual(report.packages.map(item => item.registryName), [...report.packages.map(item => item.registryName)].sort());
 	assert.equal(report.installation.package, `virune@${version}`);
@@ -152,7 +188,7 @@ test('loads npm publication policy from the exact reviewed Git commit when not i
 	assert.equal(git.status, 0, git.stderr);
 	const exactHead = git.stdout.trim();
 	assert.match(exactHead, /^[0-9a-f]{40}$/u);
-	const current = fixture();
+	const current = fixture({ commit: exactHead });
 	const report = await verifyPublicNpmRegistry(verifyOptions(current, {
 		reviewedCommit: exactHead,
 		publicationPlan: undefined,
@@ -164,6 +200,25 @@ test('rejects missing or malformed reviewed commit identity before Registry obse
 	const current = fixture();
 	await assert.rejects(() => verifyPublicNpmRegistry(verifyOptions(current, { reviewedCommit: undefined })), /full lowercase commit SHA/u);
 	await assert.rejects(() => verifyPublicNpmRegistry(verifyOptions(current, { reviewedCommit: 'ABC' })), /full lowercase commit SHA/u);
+});
+
+test('public Registry verification is bound to exact public-release evidence', async () => {
+	for (const mutate of [
+		current => { current.publicReleaseReport.passed = false; },
+		current => { current.publicReleaseReport.expectedCommit = 'b'.repeat(40); },
+		current => { current.publicReleaseReport.tagCommit = 'b'.repeat(40); },
+		current => { current.publicReleaseReport.version = '1.1.0-rc.2'; },
+		current => { current.publicReleaseReport.release.draft = true; },
+		current => { current.publicReleaseReport.release.prerelease = false; },
+		current => { current.publicReleaseReport.assets = []; },
+		current => { current.publicReleaseReport.assets.push(structuredClone(current.publicReleaseReport.assets[0])); },
+		current => { current.publicReleaseReport.assets[0].sha256 = '0'.repeat(64); },
+		current => { current.publicReleaseReport.assets[0].bytes += 1; },
+	]) {
+		const current = fixture();
+		mutate(current);
+		await assert.rejects(() => verifyPublicNpmRegistry(verifyOptions(current)));
+	}
 });
 
 test('publication manifest validation is exact, unique and fail closed', () => {
@@ -229,8 +284,14 @@ test('Registry tarball integrity, shasum, SHA-256 and byte-size drift fail close
 	for (const mutate of [
 		current => { current.metadata.get(first).dist.integrity = `sha512-${Buffer.alloc(64).toString('base64')}`; },
 		current => { current.metadata.get(first).dist.shasum = 'f'.repeat(40); },
-		current => { current.publicationManifest.packages.find(item => item.registryName === first).sha256 = '0'.repeat(64); },
-		current => { current.publicationManifest.packages.find(item => item.registryName === first).bytes += 1; },
+		current => {
+			current.publicationManifest.packages.find(item => item.registryName === first).sha256 = '0'.repeat(64);
+			refreshReleaseBinding(current);
+		},
+		current => {
+			current.publicationManifest.packages.find(item => item.registryName === first).bytes += 1;
+			refreshReleaseBinding(current);
+		},
 		current => current.packageBytes.set(first, Buffer.from('changed Registry bytes\n')),
 	]) {
 		const current = fixture();
@@ -239,25 +300,36 @@ test('Registry tarball integrity, shasum, SHA-256 and byte-size drift fail close
 	}
 });
 
-test('clean global install uses isolated npm state and strips ambient credentials', async () => {
+test('clean global install uses isolated npm state and an allowlisted process environment', async () => {
 	await verifyCleanGlobalCliInstall(version, {
 		platform: 'linux',
 		baseEnv: {
 			PATH: '/usr/bin',
+			LANG: 'C.UTF-8',
+			CI: 'true',
 			HOME: '/home/original',
 			USERPROFILE: 'C:\\Users\\original',
 			NODE_AUTH_TOKEN: 'node-secret',
 			NPM_TOKEN: 'npm-secret',
 			GH_TOKEN: 'gh-secret',
 			GITHUB_TOKEN: 'github-secret',
+			AWS_SECRET_ACCESS_KEY: 'aws-secret',
+			SSH_AUTH_SOCK: '/tmp/agent.sock',
+			NODE_OPTIONS: '--require ./unexpected.cjs',
 			NPM_CONFIG_REGISTRY: 'https://evil.invalid/',
 		},
 		runCommand: successfulRunCommand(version, {
 			inspectInstall: (_args, options) => {
+				assert.equal(options.env.PATH, '/usr/bin');
+				assert.equal(options.env.LANG, 'C.UTF-8');
+				assert.equal(options.env.CI, 'true');
 				assert.equal(options.env.NODE_AUTH_TOKEN, undefined);
 				assert.equal(options.env.NPM_TOKEN, undefined);
 				assert.equal(options.env.GH_TOKEN, undefined);
 				assert.equal(options.env.GITHUB_TOKEN, undefined);
+				assert.equal(options.env.AWS_SECRET_ACCESS_KEY, undefined);
+				assert.equal(options.env.SSH_AUTH_SOCK, undefined);
+				assert.equal(options.env.NODE_OPTIONS, undefined);
 				assert.equal(options.env.HOME, options.cwd);
 				assert.equal(options.env.USERPROFILE, options.cwd);
 				assert.equal(options.env.XDG_CONFIG_HOME, resolve(options.cwd, 'xdg-config'));
