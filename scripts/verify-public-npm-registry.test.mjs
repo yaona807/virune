@@ -166,7 +166,14 @@ function generatedProjectManifest(generatedVersion = version) {
 	};
 }
 
-function successfulRunCommand(expectedVersion = version, { inspectInstall, mutateGeneratedManifest, startOutput = 'Hello from Virune\n' } = {}) {
+function successfulRunCommand(expectedVersion = version, {
+	inspectInstall,
+	mutateGeneratedManifest,
+	startOutput = 'Hello from Virune\n',
+	initError,
+	failScript,
+} = {}) {
+	let installedExecutable;
 	return (command, args, options = {}) => {
 		if (command === 'npm' && args[0] === 'install' && args.includes('--global')) {
 			assert(args.includes(`virune@${version}`));
@@ -175,8 +182,9 @@ function successfulRunCommand(expectedVersion = version, { inspectInstall, mutat
 			const prefixArgument = args.find(argument => argument.startsWith('--prefix='));
 			assert(prefixArgument !== undefined);
 			const prefix = prefixArgument.slice('--prefix='.length);
+			installedExecutable = resolve(prefix, 'bin/virune');
 			mkdirSync(resolve(prefix, 'bin'), { recursive: true });
-			writeFileSync(resolve(prefix, 'bin/virune'), '#!/bin/sh\n');
+			writeFileSync(installedExecutable, '#!/bin/sh\n');
 			return { status: 0, stdout: '', stderr: '' };
 		}
 		if (command === 'npm' && args[0] === 'install') {
@@ -187,10 +195,16 @@ function successfulRunCommand(expectedVersion = version, { inspectInstall, mutat
 		}
 		if (command === 'npm' && args[0] === 'run') {
 			assert(['check', 'build', 'start'].includes(args[1]));
+			if (args[1] === failScript) throw new Error(`${args[1]} failed`);
 			return { status: 0, stdout: args[1] === 'start' ? startOutput : '', stderr: '' };
 		}
-		if (args.length === 1 && args[0] === '--version') return { status: 0, stdout: `virune ${expectedVersion}\n`, stderr: '' };
+		if (args.length === 1 && args[0] === '--version') {
+			assert.equal(command, installedExecutable, 'version check must use the Registry-installed CLI executable');
+			return { status: 0, stdout: `virune ${expectedVersion}\n`, stderr: '' };
+		}
 		if (args[0] === 'init') {
+			assert.equal(command, installedExecutable, 'generated-project init must use the Registry-installed CLI executable');
+			if (initError !== undefined) throw new Error(initError);
 			assert.equal(args[2], '--dependency-source=npm');
 			const project = args[1];
 			mkdirSync(project, { recursive: true });
@@ -430,13 +444,27 @@ test('clean global install uses isolated npm state and an allowlisted process en
 	});
 });
 
-test('generated-project smoke fails closed on CLI init, manifest, run, or version failure', async () => {
+test('generated-project smoke fails closed on CLI init, manifest, script, run, install, or version failure', async () => {
+	await assert.rejects(
+		() => verifyCleanGlobalCliInstall(version, {
+			runCommand: successfulRunCommand(version, { initError: 'init failed' }),
+			platform: 'linux',
+		}),
+		/init failed/u,
+	);
 	await assert.rejects(
 		() => verifyCleanGlobalCliInstall(version, {
 			runCommand: successfulRunCommand(version, { mutateGeneratedManifest: value => { value.devDependencies.virune = 'next'; } }),
 			platform: 'linux',
 		}),
 		/expected exact 1\.1\.0-rc\.1/u,
+	);
+	await assert.rejects(
+		() => verifyCleanGlobalCliInstall(version, {
+			runCommand: successfulRunCommand(version, { failScript: 'check' }),
+			platform: 'linux',
+		}),
+		/check failed/u,
 	);
 	await assert.rejects(
 		() => verifyCleanGlobalCliInstall(version, {
