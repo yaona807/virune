@@ -5,7 +5,7 @@
 <h1 align="center">Virune</h1>
 
 <p align="center">
-  JavaScriptエコシステムを対象とした静的型付きプログラミング言語です。
+  JavaScriptエコシステム向けの静的型付きプログラミング言語です。
 </p>
 
 <p align="center">
