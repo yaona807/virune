@@ -13,6 +13,12 @@ interface GeneratedManifest {
 	readonly devDependencies: Record<string, string>;
 }
 
+test('CLI help exposes both init dependency sources and the npm capability boundary', async () => {
+	const result = await runCli(['--help']);
+	assert.match(result.stdout, /--dependency-source=github-release\|npm/u);
+	assert.match(result.stdout, /npm requires a reviewed Registry CLI artifact/u);
+});
+
 test('explicit github-release dependency source reproduces the default immutable dependency model', async () => {
 	const root = await makeCliProject();
 	await runCli(['init', root, '--dependency-source=github-release']);
