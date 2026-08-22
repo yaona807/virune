@@ -22,7 +22,7 @@ export function validateNpmPublicationPlanShape(value, path = '$') {
 	const plan = record(value, path);
 	assertExactKeys(plan, NPM_PUBLICATION_PLAN_KEYS, path);
 	assert(plan.schemaVersion === 1, `${path}.schemaVersion`, 'expected schemaVersion 1');
-	assert(oneOf(plan.stage, ['prepublication-audit', 'publication-candidate'], `${path}.stage`) !== undefined, `${path}.stage`, 'invalid stage');
+	oneOf(plan.stage, ['prepublication-audit', 'publication-candidate'], `${path}.stage`);
 	assert(typeof plan.publicationReady === 'boolean', `${path}.publicationReady`, 'expected a boolean');
 
 	const distTagPolicy = record(plan.distTagPolicy, `${path}.distTagPolicy`);
@@ -36,7 +36,7 @@ export function validateNpmPublicationPlanShape(value, path = '$') {
 		const workspaceName = packageName(packageValue.workspaceName, `${packagePath}.workspaceName`);
 		const registryName = packageName(packageValue.registryName, `${packagePath}.registryName`);
 		const role = oneOf(packageValue.role, ['cli', 'cli-dependency'], `${packagePath}.role`);
-		assert(registryName === workspaceName, `${packagePath}.registryName`, 'registry package name must match workspace package identity');
+		assert(registryName === workspaceName, `${packagePath}.registryName`, 'registry package renaming is not modeled by the current release packaging path');
 		return { directory, workspaceName, registryName, role };
 	});
 	assert(packages.length > 0, `${path}.packages`, 'at least one publication package is required');
@@ -45,7 +45,8 @@ export function validateNpmPublicationPlanShape(value, path = '$') {
 	assertUnique(packages.map(item => item.registryName), `${path}.packages`, 'registryName');
 	assert(packages.filter(item => item.role === 'cli').length === 1, `${path}.packages`, 'exactly one CLI publication package is required');
 	const cli = packages.find(item => item.role === 'cli');
-	assert(cli.workspaceName === 'virune' && cli.registryName === 'virune', `${path}.packages`, 'canonical CLI publication package must be virune');
+	assert(cli.workspaceName === 'virune', `${path}.packages`, 'canonical CLI workspace package must be virune');
+	assert(cli.registryName === 'virune', `${path}.packages`, 'canonical CLI registry name must be virune');
 
 	const excluded = array(plan.excludedWorkspacePackages, `${path}.excludedWorkspacePackages`).map((item, index) => {
 		const excludedPath = `${path}.excludedWorkspacePackages[${index}]`;
@@ -101,11 +102,14 @@ function nonEmptyString(value, path) {
 function assertExactKeys(value, expected, path) {
 	const actual = Object.keys(value).sort(compareText);
 	const wanted = [...expected].sort(compareText);
-	assert(JSON.stringify(actual) === JSON.stringify(wanted), path, `expected exact keys ${wanted.join(', ')}`);
+	assert(JSON.stringify(actual) === JSON.stringify(wanted), path, `expected keys ${wanted.join(', ')}`);
 }
 
 function assertUnique(values, path, label) {
-	assert(new Set(values).size === values.length, path, `duplicate ${label}`);
+	const sorted = [...values].sort(compareText);
+	for (let index = 1; index < sorted.length; index += 1) {
+		assert(sorted[index] !== sorted[index - 1], path, `duplicate ${label} ${sorted[index]}`);
+	}
 }
 
 function assert(condition, path, message) {
