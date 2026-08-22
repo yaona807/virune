@@ -15,7 +15,6 @@ const documentationFiles = new Set([
 	'README_ja.md',
 	'SECURITY.md',
 	'SECURITY_ja.md',
-	'THIRD_PARTY_NOTICES.md',
 ]);
 const documentationDirectories = Object.freeze([
 	'.github/PULL_REQUEST_TEMPLATE/',
