@@ -71,6 +71,31 @@ test('duplicate or unknown assets cannot substitute for missing npm publication 
 	);
 });
 
+test('registry eligibility follows the reviewed release policy rather than a stale checkout policy', () => {
+	const withoutNpmIdentity = registryRequiredNames
+		.filter(name => name !== 'PUBLICATION-MANIFEST.json' && name !== `virune-npm-${registryVersion}.tgz`)
+		.map(name => ({ name }));
+	const release = { tag_name: `v${registryVersion}`, draft: false, prerelease: true, assets: withoutNpmIdentity };
+	const reviewedPolicy = {
+		firstStableRegistryRelease: '1.2.0',
+		distTagPolicy: { stable: 'latest', prerelease: 'next', nightly: null },
+	};
+	const staleCheckoutPolicy = {
+		firstStableRegistryRelease: '1.1.0',
+		distTagPolicy: { stable: 'latest', prerelease: 'next', nightly: null },
+	};
+	assert.doesNotThrow(() => validateReleaseRecord(release, {
+		tag: `v${registryVersion}`,
+		version: registryVersion,
+		npmPublicationPolicy: reviewedPolicy,
+	}));
+	assert.throws(() => validateReleaseRecord(release, {
+		tag: `v${registryVersion}`,
+		version: registryVersion,
+		npmPublicationPolicy: staleCheckoutPolicy,
+	}), /Release is missing PUBLICATION-MANIFEST\.json/u);
+});
+
 test('parses strict checksum records and rejects duplicates', () => {
 	const digest = 'a'.repeat(64);
 	assert.equal(parseChecksums(`${digest}  example.tgz\n`).get('example.tgz'), digest);
