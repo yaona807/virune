@@ -1,20 +1,31 @@
-export function copyArrayByIndex<T>(values: readonly T[]): T[] {
-	const result = new Array<T>(values.length);
-	for (let index = 0; index < values.length; index++) result[index] = values[index]!;
+function appendOwnData<T>(values: T[], value: T): void {
+	Object.defineProperty(values, `${values.length}`, {
+		configurable: true,
+		enumerable: true,
+		writable: true,
+		value,
+	});
+}
+
+function createOwnDataArray<T>(length: number, valueAt: (index: number) => T): T[] {
+	const result: T[] = [];
+	for (let index = 0; index < length; index++) appendOwnData(result, valueAt(index));
 	return result;
 }
 
+export function copyArrayByIndex<T>(values: readonly T[]): T[] {
+	return createOwnDataArray(values.length, index => values[index]!);
+}
+
 export function mapArrayByIndex<T, U>(values: readonly T[], mapper: (value: T, index: number) => U): U[] {
-	const result = new Array<U>(values.length);
-	for (let index = 0; index < values.length; index++) result[index] = mapper(values[index]!, index);
-	return result;
+	return createOwnDataArray(values.length, index => mapper(values[index]!, index));
 }
 
 export function filterArrayByIndex<T>(values: readonly T[], predicate: (value: T, index: number) => boolean): T[] {
 	const result: T[] = [];
 	for (let index = 0; index < values.length; index++) {
 		const value = values[index]!;
-		if (predicate(value, index)) result[result.length] = value;
+		if (predicate(value, index)) appendOwnData(result, value);
 	}
 	return result;
 }
@@ -33,20 +44,10 @@ export function everyArrayByIndex<T>(values: readonly T[], predicate: (value: T,
 	return true;
 }
 
-export function findArrayByIndex<T>(values: readonly T[], predicate: (value: T, index: number) => boolean): T | undefined {
-	for (let index = 0; index < values.length; index++) {
-		const value = values[index]!;
-		if (predicate(value, index)) return value;
-	}
-	return undefined;
-}
-
 export function sliceArrayByIndex<T>(values: readonly T[], start: number, end = values.length): T[] {
 	const boundedStart = Math.max(0, Math.min(values.length, start));
 	const boundedEnd = Math.max(boundedStart, Math.min(values.length, end));
-	const result = new Array<T>(boundedEnd - boundedStart);
-	for (let index = boundedStart; index < boundedEnd; index++) result[index - boundedStart] = values[index]!;
-	return result;
+	return createOwnDataArray(boundedEnd - boundedStart, index => values[boundedStart + index]!);
 }
 
 export function sortArrayByIndex<T>(values: readonly T[], compare: (left: T, right: T) => number): T[] {
@@ -74,7 +75,7 @@ export function uniqueArrayByIndex<T>(values: readonly T[], equals: (left: T, ri
 				break;
 			}
 		}
-		if (!duplicate) result[result.length] = value;
+		if (!duplicate) appendOwnData(result, value);
 	}
 	return result;
 }
@@ -92,7 +93,7 @@ export function readDenseOwnDataArray(value: unknown, description: string): read
 		throw new Error(`${description} has an invalid length`);
 	}
 	const length = lengthDescriptor.value;
-	const result = new Array<unknown>(length);
+	const result: unknown[] = [];
 	const keys = Reflect.ownKeys(value);
 	let indexKeyCount = 0;
 	for (let keyIndex = 0; keyIndex < keys.length; keyIndex++) {
@@ -103,12 +104,14 @@ export function readDenseOwnDataArray(value: unknown, description: string): read
 		if (!Number.isSafeInteger(index) || index < 0 || index >= length || `${index}` !== key) {
 			throw new Error(`Unknown ${description} field: ${key}`);
 		}
-		const descriptor = Object.getOwnPropertyDescriptor(value, key);
-		if (descriptor === undefined) throw new Error(`${description} is missing index ${index}`);
-		if (!('value' in descriptor)) throw new Error(`${description} field ${index} must be a data property`);
-		result[index] = descriptor.value;
 		indexKeyCount++;
 	}
 	if (indexKeyCount !== length) throw new Error(`${description} must be a dense array without extra fields`);
+	for (let index = 0; index < length; index++) {
+		const descriptor = Object.getOwnPropertyDescriptor(value, `${index}`);
+		if (descriptor === undefined) throw new Error(`${description} is missing index ${index}`);
+		if (!('value' in descriptor)) throw new Error(`${description} field ${index} must be a data property`);
+		appendOwnData(result, descriptor.value);
+	}
 	return result;
 }
