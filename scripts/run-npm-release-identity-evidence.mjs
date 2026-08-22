@@ -5,15 +5,16 @@ import { tmpdir } from 'node:os';
 import { dirname, resolve } from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
 import { fileURLToPath } from 'node:url';
-import { githubEvidenceSetIdentity } from './run-npm-publication-prewrite-gate.mjs';
 import { parseReleaseVersion } from './npm-publication-version-policy.mjs';
-import { validateDownloadedRelease } from './verify-public-release.mjs';
+import { createReviewedRepositorySourceReader } from './reviewed-repository-source.mjs';
+import { githubEvidenceSetIdentity } from './run-npm-publication-prewrite-gate.mjs';
 import {
 	readRegularReleaseAsset,
 	verifyNpmPublicationIdentity,
 } from './verify-npm-publication-identity.mjs';
 import { verifyNpmPublicationPlan } from './verify-npm-publication-plan.mjs';
 import { verifyNpmReleaseCandidateContents } from './verify-npm-release-candidate-contents.mjs';
+import { validateDownloadedRelease } from './verify-public-release.mjs';
 
 const repositoryRoot = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const PUBLICATION_PLAN_PATH = '.github/release/npm-publication-v1.json';
@@ -37,8 +38,9 @@ export async function runNpmReleaseIdentityEvidence({ reviewedCommit, releaseVer
 	try {
 		verifyExactCleanCheckout(commit);
 		assert(process.env.GITHUB_SHA === commit, '$.environment.GITHUB_SHA', `expected exact reviewed commit ${commit}`);
-		const reviewedPlan = readReviewedJson(commit, PUBLICATION_PLAN_PATH);
-		const reviewedRootManifest = readReviewedJson(commit, ROOT_MANIFEST_PATH);
+		const reviewedSource = createReviewedRepositorySourceReader(repositoryRoot, commit);
+		const reviewedPlan = await readReviewedJson(reviewedSource, PUBLICATION_PLAN_PATH, '$.reviewedPublicationPlan');
+		const reviewedRootManifest = await readReviewedJson(reviewedSource, ROOT_MANIFEST_PATH, '$.reviewedRootManifest');
 		const checkoutPlan = await readJson(resolve(repositoryRoot, PUBLICATION_PLAN_PATH), '$.checkoutPublicationPlan');
 		const checkoutRootManifest = await readJson(resolve(repositoryRoot, ROOT_MANIFEST_PATH), '$.checkoutRootManifest');
 		assert(isDeepStrictEqual(checkoutPlan, reviewedPlan), '$.checkoutPublicationPlan', 'checkout publication plan differs from the exact reviewed commit');
@@ -296,18 +298,12 @@ function buildCanonicalEvidence(report) {
 	};
 }
 
-function readReviewedJson(reviewedCommit, path) {
-	const result = spawnSync('git', ['show', `${reviewedCommit}:${path}`], {
-		cwd: repositoryRoot,
-		encoding: 'utf8',
-		maxBuffer: 4 * 1024 * 1024,
-	});
-	if (result.error !== undefined) throw new Error(`Failed to read reviewed ${path} from ${reviewedCommit}: ${result.error.message}`);
-	if ((result.status ?? 1) !== 0) throw new Error(`Failed to read reviewed ${path} from ${reviewedCommit}: ${result.stderr.trim()}`);
+async function readReviewedJson(sourceReader, sourcePath, logicalPath) {
+	const bytes = await sourceReader.read(sourcePath);
 	try {
-		return JSON.parse(result.stdout);
+		return JSON.parse(Buffer.from(bytes).toString('utf8'));
 	} catch (error) {
-		throw new Error(`Reviewed ${path} is malformed JSON at ${reviewedCommit}: ${error instanceof Error ? error.message : String(error)}`);
+		throw new Error(`${logicalPath} is malformed JSON at the reviewed commit: ${error instanceof Error ? error.message : String(error)}`);
 	}
 }
 
