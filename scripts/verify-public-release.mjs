@@ -29,23 +29,21 @@ export async function verifyPublicRelease({
 	const tag = `v${version}`;
 	const release = await waitForRelease({ repository, tag, token, attempts: waitAttempts, intervalMs: waitIntervalMs, fetchImpl });
 	const tagRef = await fetchJson(`https://api.github.com/repos/${repository}/git/ref/tags/${encodeURIComponent(tag)}`, { token, fetchImpl });
-	const tagCommit = tagRef?.object?.sha;
-	if (typeof tagCommit !== 'string' || !/^[0-9a-f]{40}$/u.test(tagCommit)) throw new Error(`Tag ${tag} did not resolve to a commit SHA.`);
-	if (expectedCommit !== undefined && tagCommit !== expectedCommit) throw new Error(`Tag ${tag} points to ${tagCommit}, expected ${expectedCommit}.`);
-	const npmPublicationPolicy = JSON.parse((await readReviewedFile('.github/release/npm-publication-v1.json', { sourceRoot: repositoryRoot, reviewedCommit: tagCommit })).toString('utf8'));
+	const reviewedCommit = resolveReviewedCommit(tag, tagRef?.object?.sha, expectedCommit);
+	const npmPublicationPolicy = JSON.parse((await readReviewedFile('.github/release/npm-publication-v1.json', { sourceRoot: repositoryRoot, reviewedCommit })).toString('utf8'));
 	validateReleaseRecord(release, { tag, version, npmPublicationPolicy });
 	for (const asset of release.assets) {
 		const response = await fetchImpl(asset.browser_download_url, { headers: requestHeaders(token) });
 		if (!response.ok) throw new Error(`Failed to download ${asset.name}: HTTP ${response.status}`);
 		await writeFile(resolve(outputDirectory, asset.name), Buffer.from(await response.arrayBuffer()));
 	}
-	const integrity = await validateDownloadedRelease(outputDirectory, version, { reviewedCommit: tagCommit });
+	const integrity = await validateDownloadedRelease(outputDirectory, version, { reviewedCommit });
 	const installation = await validatePublicInstallation({ version, repository, runCommand });
 	const report = {
 		schemaVersion: 1,
 		version,
 		tag,
-		tagCommit,
+		tagCommit: reviewedCommit,
 		expectedCommit: expectedCommit ?? null,
 		repository,
 		release: {
@@ -66,6 +64,12 @@ export async function verifyPublicRelease({
 	await writeFile(resolve(outputDirectory, 'public-release-report.json'), `${JSON.stringify(report, null, '\t')}\n`, 'utf8');
 	console.log(`Verified public release ${tag}: ${release.html_url}`);
 	return report;
+}
+
+export function resolveReviewedCommit(tag, tagCommit, expectedCommit) {
+	if (typeof tagCommit !== 'string' || !/^[0-9a-f]{40}$/u.test(tagCommit)) throw new Error(`Tag ${tag} did not resolve to a commit SHA.`);
+	if (expectedCommit !== undefined && tagCommit !== expectedCommit) throw new Error(`Tag ${tag} points to ${tagCommit}, expected ${expectedCommit}.`);
+	return tagCommit;
 }
 
 export function validateReleaseRecord(release, { tag, version, npmPublicationPolicy = NPM_PUBLICATION_POLICY }) {
