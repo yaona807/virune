@@ -1,0 +1,19 @@
+{
+	"schemaVersion": 1,
+	"status": "repository-contract-only",
+	"provider": "github-actions",
+	"repository": "yaona807/virune",
+	"workflowFile": "release.yml",
+	"runner": "ubuntu-24.04",
+	"registry": "https://registry.npmjs.org/",
+	"minimumNodeVersion": "22.14.0",
+	"minimumNpmVersion": "11.5.1",
+	"requiredPermission": {
+		"id-token": "write"
+	},
+	"forbiddenPublishCredentialEnv": [
+		"NODE_AUTH_TOKEN",
+		"NPM_TOKEN"
+	],
+	"npmSideTrustedPublisherConfigured": false
+}
