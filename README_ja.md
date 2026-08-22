@@ -97,8 +97,8 @@ async fn showDashboard(
     userId: String
 ) -> Result<Unit, DashboardError> uses Network, Task, Console {
     let values = await (parallel try {
-        user: loadUser(userId)
-        orders: loadOrders(userId)
+        user: loadUser(userId),
+        orders: loadOrders(userId),
     })?
 
     let displayName = match values.user.nickname {
@@ -127,7 +127,7 @@ import js { nanoid } from "nanoid"
 
 ただし、JavaScriptから来た値を何でもViruneの値として信用するわけではありません。
 
-TypeScriptの`any`は安全な型として通さず、`unknown`も都合のよい型へ狭めません。安全に型を確定できない値は`Unknown`として残し、必要に応じて明示的に変換します。`null`や`undefined`を含む値も、境界で必要な違いを扱ったうえで、明示的にVirune側の型へ変換します。
+通常の`import js`では、TypeScriptの`any`を安全な型として通さず、`unknown`も都合のよい型へ狭めません。安全に型を確定できない値は`Unknown`として残し、必要に応じて明示的に変換します。`null`や`undefined`を含む値も、境界で必要な違いを扱ったうえで、明示的にVirune側の型へ変換します。
 
 複雑なTypeScript APIはTypeScript側のAdapterへ分離できます。また、外部ライブラリの実装が型宣言どおりに動くことまでViruneが保証するわけではありません。
 
