@@ -7,7 +7,7 @@
 	},
 	"attestations": {
 		"action": "actions/attest",
-		"reference": "59d89421af93a897026c735860bf21b6eb4f7b26",
+		"reference": "1e69f48acb82d1966a394da916b4c1698aa569d6",
 		"subjects": "release/*",
 		"provenance": true,
 		"sbom": true
