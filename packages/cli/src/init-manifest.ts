@@ -61,14 +61,18 @@ function parseReleaseVersion(version: string): {
 	readonly patch: number;
 	readonly channel: 'stable' | 'prerelease' | 'nightly';
 } {
-	const match = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z]+(?:[.-][0-9A-Za-z]+)*))?(?:\+[0-9A-Za-z]+(?:[.-][0-9A-Za-z]+)*)?$/u.exec(version);
+	const match = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z]+(?:[.-][0-9A-Za-z]+)*))?$/u.exec(version);
 	if (match === null) throw new Error(`Invalid Virune release version ${version}.`);
 	const major = Number(match[1]);
 	const minor = Number(match[2]);
 	const patch = Number(match[3]);
 	if (![major, minor, patch].every(Number.isSafeInteger)) throw new Error(`Virune release version is outside the supported integer range: ${version}.`);
 	const prerelease = match[4];
-	const channel = prerelease === undefined ? 'stable' : prerelease.startsWith('nightly.') ? 'nightly' : 'prerelease';
+	let channel: 'stable' | 'prerelease' | 'nightly';
+	if (prerelease === undefined) channel = 'stable';
+	else if (/^nightly\.\d{8}\.(?:0|[1-9]\d*)$/u.test(prerelease)) channel = 'nightly';
+	else if (/^(?:alpha|beta|rc)\.(?:0|[1-9]\d*)$/u.test(prerelease)) channel = 'prerelease';
+	else throw new Error(`Unsupported Virune release channel ${version}.`);
 	return { major, minor, patch, channel };
 }
 
