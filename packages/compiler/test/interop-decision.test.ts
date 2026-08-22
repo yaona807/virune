@@ -81,18 +81,36 @@ test('unknown, unresolved, pending, authored, and non-Direct decisions are not D
 	assert.throws(() => canonicalizeInteropDecision(unknownClaim), /Unknown Interop safety claim/u);
 });
 
-test('unrelated same-process metadata is omitted rather than becoming stable decision evidence', () => {
-	const input = {
+test('unknown decision and obligation fields fail closed for forward compatibility', () => {
+	const unknownDecisionField = {
 		status: 'resolved',
 		mechanism: 'direct',
 		authoring: 'none',
 		claims: [],
-		obligations: [{ kind: 'runtime-resolution', stage: 'check', status: 'discharged', providerPrivate: '/tmp/provider' }],
-		providerPrivate: '/tmp/provider',
+		obligations: [],
+		futureSafetyRequirement: true,
 	} as unknown as InteropDecisionIR;
+	assert.equal(isResolvedDirectInteropDecision(unknownDecisionField), false);
+	assert.throws(
+		() => canonicalizeInteropDecision(unknownDecisionField),
+		/Unknown Interop decision field: futureSafetyRequirement/u,
+	);
 
-	const canonical = canonicalizeInteropDecision(input);
-	assert.equal(isResolvedDirectInteropDecision(canonical), true);
-	assert.equal(JSON.stringify(canonical).includes('providerPrivate'), false);
-	assert.equal(JSON.stringify(canonical).includes('/tmp/provider'), false);
+	const unknownObligationField = {
+		status: 'resolved',
+		mechanism: 'direct',
+		authoring: 'none',
+		claims: [],
+		obligations: [{
+			kind: 'runtime-resolution',
+			stage: 'check',
+			status: 'discharged',
+			futureSafetyRequirement: true,
+		}],
+	} as unknown as InteropDecisionIR;
+	assert.equal(isResolvedDirectInteropDecision(unknownObligationField), false);
+	assert.throws(
+		() => canonicalizeInteropDecision(unknownObligationField),
+		/Unknown Interop obligation field: futureSafetyRequirement/u,
+	);
 });
