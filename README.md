@@ -26,7 +26,7 @@
 
 This repository is the source of truth for developing and maintaining Virune itself. It contains the compiler, Runtime, standard library, CLI, editor integration, self-hosting implementation, tests, CI, and normative specification.
 
-For precise language behavior, see [`spec/`](spec/README.md). To contribute to Virune development, start with [`CONTRIBUTING.md`](CONTRIBUTING.md).
+For precise language behavior, see [`spec/`](spec/README.md). To contribute to Virune development, start with [`CONTRIBUTING.md`](CONTRIBUTING.md); repository structure, development workflow, and test selection are documented there.
 
 ## Run from source
 
@@ -37,25 +37,6 @@ npm run bootstrap
 npm run build
 npm run virune -- --version
 ```
-
-Setup details, test selection, and Pull Request requirements are documented in [`CONTRIBUTING.md`](CONTRIBUTING.md).
-
-## Main directories
-
-| Path | Purpose |
-|---|---|
-| `packages/compiler` | Lexer, Parser, type checking, project processing, code generation, Compiler API |
-| `packages/runtime` | Runtime used by generated code |
-| `packages/stdlib` | Standard library |
-| `packages/js-interop` | JavaScript / TypeScript interoperability |
-| `packages/cli` | `virune` CLI |
-| `packages/language-server` | Language Server |
-| `packages/vscode` | VS Code extension |
-| `spec` | Normative language specification and Runtime ABI |
-| `conformance` | Specification conformance test data |
-| `integration` | Cross-component integration tests |
-| `selfhost` | Self-hosting compiler implemented in Virune |
-| `scripts` | Repository-owned build, validation, release, and CI scripts |
 
 ## Releases
 
