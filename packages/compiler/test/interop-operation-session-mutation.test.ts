@@ -93,6 +93,34 @@ test('post-check AST mutation cannot remove one of multiple runtime ModuleLoad o
 	);
 });
 
+test('post-check AST prototype mutation cannot substitute source iteration semantics', () => {
+	const checked = compileSource({
+		id: 1,
+		path: '/virtual/import-prototype-mutation.virune',
+		text: [
+			'import js "./first.js"',
+			'import js "./second.js"',
+			'',
+			'fn main() -> Unit uses JavaScript {}',
+			'',
+		].join('\n'),
+	}, { emit: false, jsInteropProvider: provider() });
+	assert.deepEqual(checked.diagnostics.filter(item => item.severity === 'error'), []);
+	assert.deepEqual(operations(checked), ['module-load', 'module-load']);
+	assert.ok(checked.ast);
+
+	const prototype = Object.create(Array.prototype) as Record<PropertyKey, unknown>;
+	Object.defineProperty(prototype, Symbol.iterator, {
+		configurable: true,
+		value: function* emptyIterator() {},
+	});
+	Object.setPrototypeOf(checked.ast.imports, prototype);
+	assert.throws(
+		() => operations(checked),
+		/not from the current checked AST semantic session/u,
+	);
+});
+
 test('post-check semantic mutation cannot remove current non-import operation evidence', () => {
 	const checked = checkedPropertyRead();
 	assert.deepEqual(checked.diagnostics.filter(item => item.severity === 'error'), []);
@@ -136,6 +164,33 @@ test('custom usage-array methods cannot substitute fingerprint evidence', () => 
 	assert.throws(
 		() => operations(checked),
 		/not from the current checked AST semantic session/u,
+	);
+});
+
+test('inherited usage-array behavior cannot substitute checker-time operation evidence', () => {
+	const checked = checkedPropertyRead();
+	assert.deepEqual(checked.diagnostics.filter(item => item.severity === 'error'), []);
+	assert.deepEqual(operations(checked), ['module-load', 'read-property']);
+	assert.ok(checked.semantic);
+
+	const usageIrPrototype = Object.create(Array.prototype) as Record<PropertyKey, unknown>;
+	Object.defineProperty(usageIrPrototype, Symbol.iterator, {
+		configurable: true,
+		value: function* emptyIterator() {},
+	});
+	Object.setPrototypeOf(checked.semantic.interop.usageIR, usageIrPrototype);
+
+	const usagesPrototype = Object.create(Array.prototype) as Record<PropertyKey, unknown>;
+	Object.defineProperty(usagesPrototype, 'filter', {
+		configurable: true,
+		value: () => [],
+	});
+	Object.setPrototypeOf(checked.semantic.interop.usages, usagesPrototype);
+
+	assert.deepEqual(
+		operations(checked),
+		['module-load', 'read-property'],
+		'operation derivation must use the private checker-time snapshot, not inherited public collection behavior',
 	);
 });
 
