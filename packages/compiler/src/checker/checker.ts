@@ -1171,7 +1171,7 @@ export class TypeChecker {
 			const futureId = this.checkExpression(entry.value, scope); const future = this.arena.get(futureId);
 			if (future.kind !== 'future') { this.diagnostics.error('L2037', 'parallel entries must be async expressions', entry.value.span); fields.set(entry.name, this.arena.error); continue; }
 			if (expression.tryMode) {
-				const result = this.arena.get(future.value); if (result.kind !== 'result') { this.diagnostics.error('L2038', 'parallel try entries must return Result', expression.value?.span ?? expression.span); fields.set(entry.name, this.arena.error); continue; }
+				const result = this.arena.get(future.value); if (result.kind !== 'result') { this.diagnostics.error('L2038', 'parallel try entries must return Result', entry.value.span); fields.set(entry.name, this.arena.error); continue; }
 				if (commonError !== undefined && !this.arena.equals(commonError, result.error)) this.diagnostics.error('L2039', 'parallel try entries must share the same error type', expression.span); commonError ??= result.error; fields.set(entry.name, result.value);
 			} else fields.set(entry.name, future.value);
 		}
