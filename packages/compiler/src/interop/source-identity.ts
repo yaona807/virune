@@ -6,6 +6,20 @@ interface CheckedSourceIdentityState {
 	readonly structuralState: string;
 }
 
+export interface CheckedSourceReuseSeal {
+	readonly identities: readonly object[];
+	readonly authoredState: string;
+}
+
+const CHECKER_DERIVED_FIELDS = new Set([
+	'foreignBridge',
+	'foreignCall',
+	'inferredTypeId',
+	'resolvedTypeId',
+	'symbolId',
+	'targetSymbolId',
+]);
+
 const currentStateByModule = new WeakMap<A.ModuleNode, CheckedSourceIdentityState>();
 const stateBySemantic = new WeakMap<object, CheckedSourceIdentityState>();
 
@@ -43,6 +57,28 @@ export function isCurrentCheckedSourceIdentity(module: A.ModuleNode): boolean {
 	try {
 		return matchesIdentity(module, state.identities)
 			&& sourceStructuralState(module) === state.structuralState;
+	} catch {
+		return false;
+	}
+}
+
+/**
+ * Capture the source-authored graph state across one incremental recheck. The
+ * checker may legitimately rewrite its own scalar annotations, so those fields
+ * are excluded while source syntax, spans, node ids, object identities, and all
+ * other own data remain sealed.
+ */
+export function captureCheckedSourceReuseSeal(module: A.ModuleNode): CheckedSourceReuseSeal {
+	return Object.freeze({
+		identities: Object.freeze(captureIdentities(module)),
+		authoredState: sourceAuthoredState(module),
+	});
+}
+
+export function matchesCheckedSourceReuseSeal(module: A.ModuleNode, seal: CheckedSourceReuseSeal): boolean {
+	try {
+		return matchesIdentity(module, seal.identities)
+			&& sourceAuthoredState(module) === seal.authoredState;
 	} catch {
 		return false;
 	}
@@ -90,6 +126,10 @@ function sourceStructuralState(value: unknown): string {
 	return encodeStructuralValue(value, new Map<object, number>());
 }
 
+function sourceAuthoredState(value: unknown): string {
+	return encodeAuthoredValue(value, new Map<object, number>());
+}
+
 function encodeStructuralValue(value: unknown, seen: Map<object, number>): string {
 	if (value === null) return 'null';
 	if (value === undefined) return 'undefined';
@@ -130,6 +170,58 @@ function encodeStructuralValue(value: unknown, seen: Map<object, number>): strin
 		const key = keys[index]!;
 		if (index > 0) encodedFields += ',';
 		encodedFields += `${key.length}:${key}=${encodeStructuralValue(children[index], seen)}`;
+	}
+	return `object:${id}:{${encodedFields}}`;
+}
+
+function encodeAuthoredValue(value: unknown, seen: Map<object, number>): string {
+	if (value === null) return 'null';
+	if (value === undefined) return 'undefined';
+	if (typeof value === 'string') return `string:${value.length}:${value}`;
+	if (typeof value === 'boolean') return value ? 'boolean:true' : 'boolean:false';
+	if (typeof value === 'bigint') return `bigint:${value}`;
+	if (typeof value === 'number') {
+		if (Number.isNaN(value)) return 'number:NaN';
+		if (value === Number.POSITIVE_INFINITY) return 'number:+Infinity';
+		if (value === Number.NEGATIVE_INFINITY) return 'number:-Infinity';
+		if (Object.is(value, -0)) return 'number:-0';
+		return `number:${value}`;
+	}
+	if (typeof value === 'function') return `function:${value.name.length}:${value.name}`;
+	if (typeof value === 'symbol') {
+		const description = value.description ?? '';
+		return `symbol:${description.length}:${description}`;
+	}
+	if (typeof value !== 'object') return `${typeof value}:${String(value)}`;
+
+	const existing = seen.get(value);
+	if (existing !== undefined) return `reference:${existing}`;
+	const id = seen.size;
+	seen.set(value, id);
+
+	if (Array.isArray(value)) {
+		const children = sourceChildren(value);
+		let encodedItems = '';
+		for (let index = 0; index < children.length; index++) {
+			if (index > 0) encodedItems += ',';
+			encodedItems += encodeAuthoredValue(children[index], seen);
+		}
+		return `array:${id}:[${encodedItems}]`;
+	}
+
+	const prototype = Object.getPrototypeOf(value);
+	if (prototype !== Object.prototype && prototype !== null) throw new Error('checked source object prototype changed');
+	const keys = sourceStringKeys(value);
+	let encodedFields = '';
+	let fieldIndex = 0;
+	for (let index = 0; index < keys.length; index++) {
+		const key = keys[index]!;
+		if (CHECKER_DERIVED_FIELDS.has(key)) continue;
+		const descriptor = Object.getOwnPropertyDescriptor(value, key);
+		if (descriptor === undefined || !('value' in descriptor)) throw new Error(`checked source field ${key} must be a data property`);
+		if (fieldIndex > 0) encodedFields += ',';
+		encodedFields += `${key.length}:${key}=${encodeAuthoredValue(descriptor.value, seen)}`;
+		fieldIndex++;
 	}
 	return `object:${id}:{${encodedFields}}`;
 }
