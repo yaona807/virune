@@ -108,6 +108,10 @@ function arrayContainsErrorDiagnostic(values: unknown[]): boolean {
 	return false;
 }
 
+function emptyIterator(original: typeof Array.prototype[typeof Symbol.iterator]): IterableIterator<unknown> {
+	return Reflect.apply(original, [], []) as IterableIterator<unknown>;
+}
+
 test('inherited Array iterator cannot erase a pending obligation and produce resolved Direct evidence', () => {
 	const previous = Object.getOwnPropertyDescriptor(Array.prototype, Symbol.iterator);
 	const original = Array.prototype[Symbol.iterator];
@@ -115,7 +119,7 @@ test('inherited Array iterator cannot erase a pending obligation and produce res
 		configurable: true,
 		writable: true,
 		value: function selectiveIterator(this: unknown[]) {
-			if (arrayContainsPendingObligation(this)) return [][Symbol.iterator]();
+			if (arrayContainsPendingObligation(this)) return emptyIterator(original);
 			return Reflect.apply(original, this, []) as IterableIterator<unknown>;
 		},
 	});
@@ -179,7 +183,7 @@ test('inherited Array iterator cannot erase registered project diagnostics', () 
 		configurable: true,
 		writable: true,
 		value: function selectiveIterator(this: unknown[]) {
-			if (arrayContainsErrorDiagnostic(this)) return [][Symbol.iterator]();
+			if (arrayContainsErrorDiagnostic(this)) return emptyIterator(original);
 			return Reflect.apply(original, this, []) as IterableIterator<unknown>;
 		},
 	});
