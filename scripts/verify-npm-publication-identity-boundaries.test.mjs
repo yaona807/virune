@@ -23,9 +23,13 @@ test('release packaging stages every Registry candidate as publishable while kee
 	assert.match(source, /delete stagingManifest\.private;/u);
 	assert.match(source, /for \(const item of registryPackages\) stageRegistryPackage\(item\);/u);
 	assert.match(source, /execNpmSync\(\['pack', '--ignore-scripts', stagingPackage, '--pack-destination', stagingRoot\]/u);
-	assert.match(source, /if \(item\.name === 'virune'\) stampCliVersion\(stagingPackage\);/u);
+	assert.match(
+		source,
+		/if \(item\.name === 'virune'\) \{\s*stampCliVersion\(stagingPackage\);\s*const capabilityPath = resolve\(stagingPackage, NPM_GENERATED_PROJECT_CAPABILITY_RELATIVE_PATH\);\s*rmSync\(capabilityPath, \{ force: true \}\);\s*if \(npmGeneratedProjectCapability !== null\) \{\s*writeFileSync\(capabilityPath, canonicalNpmGeneratedProjectCapabilityBytes\(npmGeneratedProjectCapability, version\)\);\s*\}\s*\}/u,
+	);
 	assert.match(source, /stagingManifest\.private = true;/u);
 	assert.match(source, /stagingManifest\.bundledDependencies = Object\.keys\(stagingManifest\.dependencies \?\? \{\}\)\.sort\(\);/u);
+	assert.match(source, /rmSync\(resolve\(stagingPackage, NPM_GENERATED_PROJECT_CAPABILITY_RELATIVE_PATH\), \{ force: true \}\);\s*stampCliVersion\(stagingPackage\);/u);
 	assert.doesNotMatch(source, /execNpmSync\(\['pack', directory,/u);
 });
 
