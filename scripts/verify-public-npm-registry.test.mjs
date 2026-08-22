@@ -20,6 +20,13 @@ const publicationPlan = JSON.parse(readFileSync(resolve(repositoryRoot, '.github
 const version = '1.1.0-rc.1';
 const registry = 'https://registry.npmjs.org/';
 const reviewedCommit = 'a'.repeat(40);
+const canonicalGeneratedScripts = Object.freeze({
+	build: 'virune build',
+	start: 'virune run',
+	test: 'virune test',
+	check: 'virune check',
+	fmt: 'virune fmt .',
+});
 
 function registryPackageUrl(name) {
 	return `${registry}${encodeURIComponent(name)}`;
@@ -145,20 +152,55 @@ function refreshReleaseBinding(current, commit = reviewedCommit) {
 	current.publicReleaseReport = publicReleaseReportFor(current.publicationManifest, commit);
 }
 
-function successfulRunCommand(expectedVersion = version, { inspectInstall } = {}) {
+function successfulRunCommand(expectedVersion = version, {
+	inspectInstall,
+	generatedVersion = version,
+	generatedScripts = canonicalGeneratedScripts,
+	mutateGeneratedPackageOnInstall = false,
+} = {}) {
 	return (command, args, options = {}) => {
 		if (command === 'npm') {
-			assert(args.includes(`virune@${version}`));
-			assert(args.includes(`--registry=${registry}`));
-			inspectInstall?.(args, options);
-			const prefixArgument = args.find(argument => argument.startsWith('--prefix='));
-			assert(prefixArgument !== undefined);
-			const prefix = prefixArgument.slice('--prefix='.length);
-			mkdirSync(resolve(prefix, 'bin'), { recursive: true });
-			writeFileSync(resolve(prefix, 'bin/virune'), '#!/bin/sh\n');
-			return { status: 0, stdout: '', stderr: '' };
+			if (args[0] === 'install' && args.includes('--global')) {
+				assert(args.includes(`virune@${version}`));
+				assert(args.includes(`--registry=${registry}`));
+				inspectInstall?.(args, options);
+				const prefixArgument = args.find(argument => argument.startsWith('--prefix='));
+				assert(prefixArgument !== undefined);
+				const prefix = prefixArgument.slice('--prefix='.length);
+				mkdirSync(resolve(prefix, 'bin'), { recursive: true });
+				writeFileSync(resolve(prefix, 'bin/virune'), '#!/bin/sh\n');
+				return { status: 0, stdout: '', stderr: '' };
+			}
+			if (args[0] === 'install') {
+				assert(args.includes(`--registry=${registry}`));
+				assert(args.includes('--replace-registry-host=never'));
+				if (mutateGeneratedPackageOnInstall) {
+					writeFileSync(resolve(options.cwd, 'package.json'), `${readFileSync(resolve(options.cwd, 'package.json'), 'utf8')} `);
+				}
+				return { status: 0, stdout: '', stderr: '' };
+			}
+			if (args[0] === 'run' && ['check', 'build', 'start'].includes(args[1])) {
+				return { status: 0, stdout: args[1] === 'start' ? 'Hello from Virune\n' : '', stderr: '' };
+			}
+			throw new Error(`Unexpected npm command ${args.join(' ')}`);
 		}
 		if (args.length === 1 && args[0] === '--version') return { status: 0, stdout: `virune ${expectedVersion}\n`, stderr: '' };
+		if (args[0] === 'init') {
+			const projectRoot = resolve(args[1]);
+			mkdirSync(projectRoot, { recursive: true });
+			writeFileSync(resolve(projectRoot, 'package.json'), `${JSON.stringify({
+				name: 'generated-project',
+				private: true,
+				type: 'module',
+				scripts: generatedScripts,
+				dependencies: {
+					'@virune/runtime': generatedVersion,
+					'@virune/stdlib': generatedVersion,
+				},
+				devDependencies: { virune: generatedVersion },
+			}, null, 2)}\n`);
+			return { status: 0, stdout: 'Initialized Virune project\n', stderr: '' };
+		}
 		throw new Error(`Unexpected command ${command} ${args.join(' ')}`);
 	};
 }
@@ -177,7 +219,7 @@ function verifyOptions(current, overrides = {}) {
 	};
 }
 
-test('verifies exact reviewed package bytes, tags and clean global CLI installation', async () => {
+test('verifies exact reviewed package bytes, tags and clean CLI consumer workflow', async () => {
 	const current = fixture();
 	const report = await verifyPublicNpmRegistry(verifyOptions(current));
 	assert.equal(report.version, version);
@@ -189,6 +231,13 @@ test('verifies exact reviewed package bytes, tags and clean global CLI installat
 	assert.deepEqual(report.packages.map(item => item.registryName), [...report.packages.map(item => item.registryName)].sort());
 	assert.equal(report.installation.package, `virune@${version}`);
 	assert.equal(report.installation.versionOutput, `virune ${version}`);
+	assert.deepEqual(report.installation.generatedProject.scripts, canonicalGeneratedScripts);
+	assert.deepEqual(report.installation.generatedProject.dependencies, {
+		'@virune/runtime': version,
+		'@virune/stdlib': version,
+	});
+	assert.deepEqual(report.installation.generatedProject.devDependencies, { virune: version });
+	assert.deepEqual(report.installation.generatedProject.commands, ['npm install', 'npm run check', 'npm run build', 'npm run start']);
 });
 
 test('loads npm publication policy from the exact reviewed Git commit when not injected', async () => {
@@ -358,6 +407,32 @@ test('clean global install uses isolated npm state and an allowlisted process en
 			},
 		}),
 	});
+});
+
+test('generated project smoke rejects dependency, script, and package.json drift', async () => {
+	await assert.rejects(
+		() => verifyCleanGlobalCliInstall(version, {
+			runCommand: successfulRunCommand(version, { generatedVersion: '1.1.0-rc.2' }),
+			platform: 'linux',
+		}),
+		/expected 1\.1\.0-rc\.1/u,
+	);
+	await assert.rejects(
+		() => verifyCleanGlobalCliInstall(version, {
+			runCommand: successfulRunCommand(version, {
+				generatedScripts: { ...canonicalGeneratedScripts, check: 'echo skipped' },
+			}),
+			platform: 'linux',
+		}),
+		/scripts\.check: expected virune check/u,
+	);
+	await assert.rejects(
+		() => verifyCleanGlobalCliInstall(version, {
+			runCommand: successfulRunCommand(version, { mutateGeneratedPackageOnInstall: true }),
+			platform: 'linux',
+		}),
+		/generated package\.json changed/u,
+	);
 });
 
 test('clean global install rejects command failure and CLI version mismatch', async () => {
