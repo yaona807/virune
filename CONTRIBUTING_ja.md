@@ -1,6 +1,6 @@
 # Viruneの開発に参加する
 
-English: [CONTRIBUTING.md](CONTRIBUTING.md)
+[英語版](CONTRIBUTING.md)
 
 Viruneへのコントリビューションを歓迎します。
 
@@ -159,7 +159,7 @@ Pull Requestには、関係のない整形、リファクタリング、命名�
 
 ### 言語仕様
 
-Viruneの構文や型のルールは[`spec/`](spec/README_ja.md)にまとめています。
+Viruneの構文や型のルールは[言語仕様](spec/README_ja.md)にまとめています。
 
 例えば、以下は言語仕様に関わる変更です。
 
@@ -205,7 +205,7 @@ Viruneでは主に、
 
 これらを変更すると、以前に生成したコードや既存の相互運用コードが動かなくなる可能性があります。
 
-公開ABIに関わる変更では、`packages/public-abi.snapshot.json`と[`spec/runtime-abi_ja.md`](spec/runtime-abi_ja.md)を確認してください。
+公開ABIに関わる変更では、`packages/public-abi.snapshot.json`と[Runtime ABI v2](spec/runtime-abi_ja.md)を確認してください。
 
 ```bash
 npm run abi:check
