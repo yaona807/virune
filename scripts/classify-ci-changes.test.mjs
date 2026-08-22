@@ -6,10 +6,13 @@ import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import {
+	buildChangedPathDiffArguments,
 	classifyChangedPaths,
 	isDocumentationPath,
 	isSelfhostInventoryPath,
 	isSelfhostRequiredGatePath,
+	parseGitChangedPaths,
+	reviewedNonSelfhostInventoryWorkflowFiles,
 } from './classify-ci-changes.mjs';
 
 const repositoryRoot = resolve(fileURLToPath(new URL('..', import.meta.url)));
@@ -61,6 +64,54 @@ test('requires self-host inventory for compiler-boundary and cross-cutting chang
 	]) {
 		assert.equal(classifyChangedPaths([path]).selfhostInventoryRequired, true, path);
 	}
+});
+
+test('skips self-host inventory for reviewed non-selfhost workflow maintenance', () => {
+	for (const path of reviewedNonSelfhostInventoryWorkflowFiles) {
+		assert.equal(classifyChangedPaths([path]).selfhostInventoryRequired, false, path);
+	}
+	assert.equal(
+		classifyChangedPaths(['.github/workflows/codeql.yml', '.github/actions-policy.json']).selfhostInventoryRequired,
+		false,
+	);
+	assert.equal(classifyChangedPaths(['.github/actions-policy.json']).selfhostInventoryRequired, false);
+});
+
+test('fails closed for unknown and self-host workflow changes', () => {
+	for (const path of [
+		'.github/workflows/new-workflow.yml',
+		'.github/workflows/nightly.yml',
+		'.github/workflows/selfhost-clean-bootstrap.yml',
+		'.github/workflows/selfhost-fixed-seed.yml',
+		'.github/workflows/selfhost-promotion-policy.yml',
+	]) {
+		assert.equal(classifyChangedPaths([path]).selfhostInventoryRequired, true, path);
+	}
+});
+
+test('keeps deleted and both sides of renamed paths visible to gate classification', () => {
+	assert.deepEqual(buildChangedPathDiffArguments('base', 'head'), [
+		'diff',
+		'--name-only',
+		'--no-renames',
+		'-z',
+		'base...head',
+	]);
+	assert.equal(classifyChangedPaths(['packages/compiler/src/deleted.ts']).selfhostInventoryRequired, true);
+	assert.equal(classifyChangedPaths(['selfhost/deleted.virune']).selfhostRequiredGateRequired, true);
+	assert.equal(
+		classifyChangedPaths(['packages/compiler/src/old.ts', 'packages/cli/src/new.ts']).selfhostInventoryRequired,
+		true,
+	);
+});
+
+test('parses NUL-separated git paths without line splitting', () => {
+	const paths = parseGitChangedPaths('packages/compiler/src/generated\nname.ts\0packages/cli/src/main.ts\0');
+	assert.deepEqual(paths, [
+		'packages/compiler/src/generated\nname.ts',
+		'packages/cli/src/main.ts',
+	]);
+	assert.equal(classifyChangedPaths(paths).selfhostInventoryRequired, true);
 });
 
 test('keeps Required Shadow narrower than compiler-wide inventory while fail-closing self-host controls', () => {
@@ -141,6 +192,10 @@ test('self-host inventory path rules are repository-owned and conservative', () 
 	assert.equal(isSelfhostInventoryPath('packages/compiler/test/selfhost-ready.test.ts'), true);
 	assert.equal(isSelfhostInventoryPath('packages/runtime/src/variant.ts'), true);
 	assert.equal(isSelfhostInventoryPath('scripts/run-selfhost-focused.mjs'), true);
+	assert.equal(isSelfhostInventoryPath('.github/workflows/ci.yml'), true);
+	assert.equal(isSelfhostInventoryPath('.github/workflows/new-workflow.yml'), true);
+	assert.equal(isSelfhostInventoryPath('.github/workflows/codeql.yml'), false);
+	assert.equal(isSelfhostInventoryPath('.github/actions-policy.json'), false);
 	assert.equal(isSelfhostInventoryPath('packages/vscode/src/extension.ts'), false);
 });
 
