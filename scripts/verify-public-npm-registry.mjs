@@ -13,14 +13,17 @@ import {
 const repositoryRoot = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const PUBLIC_REGISTRY = 'https://registry.npmjs.org/';
 const DEFAULT_PUBLICATION_MANIFEST = resolve(repositoryRoot, '.cache/public-release/PUBLICATION-MANIFEST.json');
-const DEFAULT_OUTPUT = resolve(repositoryRoot, '.cache/public-release/public-npm-registry-report.json');
+const DEFAULT_PUBLIC_RELEASE_REPORT = resolve(repositoryRoot, '.cache/public-release/public-release-report.json');
+const DEFAULT_OUTPUT = resolve(repositoryRoot, '.cache/public-npm-registry/public-npm-registry-report.json');
 const PUBLICATION_PLAN_PATH = '.github/release/npm-publication-v1.json';
-const STRIPPED_CREDENTIAL_ENV = new Set(['GH_TOKEN', 'GITHUB_TOKEN', 'NODE_AUTH_TOKEN', 'NPM_TOKEN']);
+const SAFE_PROCESS_ENV = new Set(['CI', 'COMSPEC', 'LANG', 'LC_ALL', 'PATH', 'PATHEXT', 'SYSTEMROOT', 'TEMP', 'TMP', 'TMPDIR', 'WINDIR']);
 
 export async function verifyPublicNpmRegistry({
 	reviewedCommit,
 	publicationManifest,
 	publicationManifestPath = DEFAULT_PUBLICATION_MANIFEST,
+	publicReleaseReport,
+	publicReleaseReportPath = DEFAULT_PUBLIC_RELEASE_REPORT,
 	publicationPlan,
 	sourceRoot = repositoryRoot,
 	outputPath = DEFAULT_OUTPUT,
@@ -31,7 +34,28 @@ export async function verifyPublicNpmRegistry({
 } = {}) {
 	const exactCommit = fullCommitSha(reviewedCommit, '$.reviewedCommit');
 	const plan = publicationPlan ?? readReviewedPublicationPlan(exactCommit, { sourceRoot });
-	const manifest = publicationManifest ?? JSON.parse(await readFile(publicationManifestPath, 'utf8'));
+	const publicationManifestBytes = publicationManifest === undefined
+		? await readFile(publicationManifestPath)
+		: Buffer.from(`${JSON.stringify(publicationManifest, null, 2)}\n`, 'utf8');
+	let manifest;
+	try {
+		manifest = publicationManifest ?? JSON.parse(publicationManifestBytes.toString('utf8'));
+	} catch (error) {
+		throw new Error(`Reviewed PUBLICATION-MANIFEST.json is malformed JSON: ${error instanceof Error ? error.message : String(error)}`);
+	}
+	let releaseReport = publicReleaseReport;
+	if (releaseReport === undefined) {
+		try {
+			releaseReport = JSON.parse(await readFile(publicReleaseReportPath, 'utf8'));
+		} catch (error) {
+			throw new Error(`Public release verification report is missing or malformed: ${error instanceof Error ? error.message : String(error)}`);
+		}
+	}
+	const releaseBinding = validatePublicReleaseBinding(releaseReport, {
+		reviewedCommit: exactCommit,
+		publicationManifestBytes,
+		version: manifest?.version,
+	});
 	const reviewed = validateReviewedPublicationManifest(manifest, plan);
 	const packages = [];
 	for (const pkg of reviewed.packages) {
@@ -46,6 +70,7 @@ export async function verifyPublicNpmRegistry({
 		githubReleaseTag: reviewed.githubReleaseTag,
 		reviewedCommit: exactCommit,
 		distTag: reviewed.distTag,
+		releaseBinding,
 		packages,
 		installation,
 		passed: true,
@@ -55,6 +80,35 @@ export async function verifyPublicNpmRegistry({
 		await writeFile(outputPath, `${JSON.stringify(report, null, '\t')}\n`, 'utf8');
 	}
 	return report;
+}
+
+export function validatePublicReleaseBinding(report, { reviewedCommit, publicationManifestBytes, version }) {
+	const document = record(report, '$.publicReleaseReport');
+	assert(document.schemaVersion === 1, '$.publicReleaseReport.schemaVersion', 'expected 1');
+	const releaseVersion = nonEmptyString(version, '$.publicationManifest.version');
+	assert(document.version === releaseVersion, '$.publicReleaseReport.version', `expected ${releaseVersion}`);
+	assert(document.tag === `v${releaseVersion}`, '$.publicReleaseReport.tag', `expected v${releaseVersion}`);
+	assert(document.tagCommit === reviewedCommit, '$.publicReleaseReport.tagCommit', `expected ${reviewedCommit}`);
+	assert(document.expectedCommit === reviewedCommit, '$.publicReleaseReport.expectedCommit', `expected ${reviewedCommit}`);
+	assert(document.passed === true, '$.publicReleaseReport.passed', 'public release verification must have passed');
+	const release = record(document.release, '$.publicReleaseReport.release');
+	assert(release.draft === false, '$.publicReleaseReport.release.draft', 'release must not be a draft');
+	assert(release.prerelease === true, '$.publicReleaseReport.release.prerelease', 'release must be a prerelease');
+	const assets = array(document.assets, '$.publicReleaseReport.assets');
+	const publicationAssets = assets.filter((item, index) => {
+		const asset = record(item, `$.publicReleaseReport.assets[${index}]`);
+		return asset.file === 'PUBLICATION-MANIFEST.json';
+	});
+	assert(publicationAssets.length === 1, '$.publicReleaseReport.assets', 'expected exactly one PUBLICATION-MANIFEST.json asset');
+	const asset = record(publicationAssets[0], '$.publicReleaseReport.assets.PUBLICATION-MANIFEST.json');
+	const expectedSha256 = nonEmptyString(asset.sha256, '$.publicReleaseReport.assets.PUBLICATION-MANIFEST.json.sha256');
+	assert(/^[0-9a-f]{64}$/u.test(expectedSha256), '$.publicReleaseReport.assets.PUBLICATION-MANIFEST.json.sha256', 'expected lowercase SHA-256');
+	assert(Number.isSafeInteger(asset.bytes) && asset.bytes > 0, '$.publicReleaseReport.assets.PUBLICATION-MANIFEST.json.bytes', 'expected positive safe integer byte size');
+	const bytes = Buffer.from(publicationManifestBytes);
+	const actualSha256 = createHash('sha256').update(bytes).digest('hex');
+	assert(actualSha256 === expectedSha256, '$.publicReleaseReport.assets.PUBLICATION-MANIFEST.json.sha256', 'does not match reviewed PUBLICATION-MANIFEST.json bytes');
+	assert(bytes.byteLength === asset.bytes, '$.publicReleaseReport.assets.PUBLICATION-MANIFEST.json.bytes', 'does not match reviewed PUBLICATION-MANIFEST.json byte size');
+	return { publicationManifestSha256: actualSha256, publicationManifestBytes: bytes.byteLength };
 }
 
 export function validateReviewedPublicationManifest(manifest, plan) {
@@ -206,7 +260,7 @@ function readReviewedPublicationPlan(reviewedCommit, { sourceRoot }) {
 function cleanNpmEnvironment({ root, npmrc, globalNpmrc, cache, baseEnv }) {
 	const env = {};
 	for (const [key, value] of Object.entries(baseEnv)) {
-		if (key.toLowerCase().startsWith('npm_config_') || STRIPPED_CREDENTIAL_ENV.has(key.toUpperCase())) continue;
+		if (!SAFE_PROCESS_ENV.has(key.toUpperCase())) continue;
 		if (value !== undefined) env[key] = value;
 	}
 	env.HOME = root;
@@ -291,10 +345,12 @@ const entry = process.argv[1] === undefined ? undefined : resolve(process.argv[1
 if (entry === fileURLToPath(import.meta.url)) {
 	const reviewedCommit = process.argv.find(argument => argument.startsWith('--expected-commit='))?.slice('--expected-commit='.length);
 	const publicationManifestPath = process.argv.find(argument => argument.startsWith('--publication-manifest='))?.slice('--publication-manifest='.length);
+	const publicReleaseReportPath = process.argv.find(argument => argument.startsWith('--public-release-report='))?.slice('--public-release-report='.length);
 	const outputPath = process.argv.find(argument => argument.startsWith('--output='))?.slice('--output='.length);
 	const report = await verifyPublicNpmRegistry({
 		reviewedCommit,
 		...(publicationManifestPath === undefined ? {} : { publicationManifestPath: resolve(publicationManifestPath) }),
+		...(publicReleaseReportPath === undefined ? {} : { publicReleaseReportPath: resolve(publicReleaseReportPath) }),
 		...(outputPath === undefined ? {} : { outputPath: resolve(outputPath) }),
 	});
 	process.stdout.write(`Verified ${report.packages.length} public npm Registry packages for ${report.version}.\n`);
