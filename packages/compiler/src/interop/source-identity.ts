@@ -95,14 +95,17 @@ function matchesIdentity(root: unknown, expected: readonly object[]): boolean {
 }
 
 /**
- * Traverse compiler-owned source data without inherited Array helpers or
- * iteration. Currentness must not depend on mutable Array.prototype behavior.
+ * Traverse compiler-owned source data without inherited collection helpers or
+ * iteration. Currentness must not depend on mutable prototype behavior.
  */
 function walkSourceObjects(root: unknown, visitor: (value: object) => boolean): boolean {
-	const seen = new Set<object>();
+	const seen: object[] = [];
 	const visit = (value: unknown): boolean => {
-		if (value === null || typeof value !== 'object' || seen.has(value)) return true;
-		seen.add(value);
+		if (value === null || typeof value !== 'object') return true;
+		for (let index = 0; index < seen.length; index++) {
+			if (seen[index] === value) return true;
+		}
+		seen[seen.length] = value;
 		if (!visitor(value)) return false;
 		const children = sourceChildren(value);
 		for (let index = 0; index < children.length; index++) {
