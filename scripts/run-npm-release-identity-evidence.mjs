@@ -23,6 +23,10 @@ const RELEASE_DIRECTORY = resolve(repositoryRoot, 'release');
 const OUTPUT_PATH = resolve(repositoryRoot, '.cache/npm-release-identity/npm-release-identity-report.json');
 const EVIDENCE_OUTPUT_PATH = resolve(repositoryRoot, '.cache/npm-release-identity/release-identity-integration-evidence.json');
 const REPORT_KIND = 'npm-release-identity-integration-v1';
+const CLI_OPTIONS = Object.freeze([
+	['--expected-commit=', 'reviewedCommit'],
+	['--version=', 'releaseVersion'],
+]);
 
 export async function runNpmReleaseIdentityEvidence({ reviewedCommit, releaseVersion } = {}) {
 	await invalidateOutputs();
@@ -86,12 +90,7 @@ export async function runNpmReleaseIdentityEvidence({ reviewedCommit, releaseVer
 		});
 
 		verifyExactCleanCheckout(commit);
-		const finalSnapshot = await snapshotReleaseDirectory(RELEASE_DIRECTORY);
-		assert(
-			isDeepStrictEqual(finalSnapshot.identity, snapshot.identity),
-			'$.releaseArtifacts',
-			'release artifact set changed while release-identity evidence was being generated',
-		);
+		await assertReleaseSnapshotUnchanged(snapshot.identity);
 		await persistJson(OUTPUT_PATH, report);
 		const persistedReport = await readJson(OUTPUT_PATH, '$.releaseIdentityReport');
 		assert(isDeepStrictEqual(persistedReport, report), '$.releaseIdentityReport', 'persisted release-identity report differs from the validated report');
@@ -100,6 +99,8 @@ export async function runNpmReleaseIdentityEvidence({ reviewedCommit, releaseVer
 		await persistJson(EVIDENCE_OUTPUT_PATH, evidence);
 		const persistedEvidence = await readJson(EVIDENCE_OUTPUT_PATH, '$.releaseIdentityEvidence');
 		assert(isDeepStrictEqual(persistedEvidence, evidence), '$.releaseIdentityEvidence', 'persisted release-identity evidence differs from the canonical evidence');
+		verifyExactCleanCheckout(commit);
+		await assertReleaseSnapshotUnchanged(snapshot.identity);
 		return { report, evidence };
 	} catch (error) {
 		await invalidateOutputs();
@@ -139,12 +140,49 @@ export function buildReleaseIdentityReport({
 	}).sort((left, right) => compareText(left.registryName, right.registryName));
 	assertUnique(packages.map(item => item.registryName), '$.publicationIdentity.packages', 'registryName');
 	assertUnique(packages.map(item => item.releaseAsset), '$.publicationIdentity.packages', 'releaseAsset');
+
+	const releaseSet = artifactSetIdentity(releaseArtifactSet, '$.releaseArtifactSet');
+	const manifestFile = releaseSet.files.find(item => item.file === PUBLICATION_MANIFEST_FILE);
+	assert(manifestFile !== undefined, '$.releaseArtifactSet.files', `${PUBLICATION_MANIFEST_FILE} is missing`);
+	assert(manifestFile.sha256 === manifest.sha256, '$.publicationManifest.sha256', 'does not match release artifact set');
+	assert(manifestFile.bytes === manifest.bytes, '$.publicationManifest.bytes', 'does not match release artifact set');
+	for (const pkg of packages) {
+		const releaseFile = releaseSet.files.find(item => item.file === pkg.releaseAsset);
+		assert(releaseFile !== undefined, '$.releaseArtifactSet.files', `missing reviewed candidate ${pkg.releaseAsset}`);
+		assert(releaseFile.sha256 === pkg.sha256, `$.publicationIdentity.packages.${pkg.registryName}.sha256`, 'does not match release artifact set');
+		assert(releaseFile.bytes === pkg.bytes, `$.publicationIdentity.packages.${pkg.registryName}.bytes`, 'does not match release artifact set');
+	}
+
 	const downloaded = record(integrity, '$.releaseIntegrity');
 	assert(downloaded.manifest?.version === releaseVersion, '$.releaseIntegrity.manifest.version', `expected ${releaseVersion}`);
+	const integrityAssets = array(downloaded.assets, '$.releaseIntegrity.assets').map((item, index) => {
+		const asset = record(item, `$.releaseIntegrity.assets[${index}]`);
+		assertExactKeys(asset, ['file', 'sha256', 'bytes'], `$.releaseIntegrity.assets[${index}]`);
+		return {
+			file: nonEmptyString(asset.file, `$.releaseIntegrity.assets[${index}].file`),
+			sha256: sha256Digest(asset.sha256, `$.releaseIntegrity.assets[${index}].sha256`),
+			bytes: positiveSafeInteger(asset.bytes, `$.releaseIntegrity.assets[${index}].bytes`),
+		};
+	}).sort((left, right) => compareText(left.file, right.file));
+	const expectedIntegrityAssets = releaseSet.files
+		.filter(item => item.file !== 'SHA256SUMS')
+		.sort((left, right) => compareText(left.file, right.file));
+	assert(isDeepStrictEqual(integrityAssets, expectedIntegrityAssets), '$.releaseIntegrity.assets', 'release-integrity evidence does not match the exact release artifact set');
+
 	const audit = record(candidateAudit, '$.candidateAudit');
 	assert(audit.version === releaseVersion, '$.candidateAudit.version', `expected ${releaseVersion}`);
 	assert(audit.packageCount === packages.length, '$.candidateAudit.packageCount', `expected ${packages.length}`);
-	const releaseSet = artifactSetIdentity(releaseArtifactSet, '$.releaseArtifactSet');
+	const auditedPackages = array(audit.packages, '$.candidateAudit.packages').map((item, index) => {
+		const pkg = record(item, `$.candidateAudit.packages[${index}]`);
+		return {
+			registryName: nonEmptyString(pkg.registryName, `$.candidateAudit.packages[${index}].registryName`),
+			releaseAsset: nonEmptyString(pkg.releaseAsset, `$.candidateAudit.packages[${index}].releaseAsset`),
+			sha256: sha256Digest(pkg.sha256, `$.candidateAudit.packages[${index}].sha256`),
+			bytes: positiveSafeInteger(pkg.bytes, `$.candidateAudit.packages[${index}].bytes`),
+		};
+	}).sort((left, right) => compareText(left.registryName, right.registryName));
+	assert(isDeepStrictEqual(auditedPackages, packages), '$.candidateAudit.packages', 'exact candidate audit does not match publication identity');
+
 	return {
 		schemaVersion: 1,
 		kind: REPORT_KIND,
@@ -191,6 +229,33 @@ export async function snapshotReleaseDirectory(releaseDirectory) {
 	};
 }
 
+export function parseNpmReleaseIdentityArguments(argumentsList) {
+	const args = array(argumentsList, '$.arguments');
+	const parsed = {};
+	for (const argument of args) {
+		assert(typeof argument === 'string', '$.arguments', 'expected string arguments');
+		const matches = CLI_OPTIONS.filter(([prefix]) => argument.startsWith(prefix));
+		assert(matches.length === 1, '$.arguments', `unknown release-identity argument ${argument}`);
+		const [prefix, property] = matches[0];
+		assert(parsed[property] === undefined, '$.arguments', `duplicate ${prefix.slice(0, -1)} argument`);
+		const value = argument.slice(prefix.length);
+		assert(value.length > 0, '$.arguments', `empty ${prefix.slice(0, -1)} argument`);
+		parsed[property] = value;
+	}
+	assert(parsed.reviewedCommit !== undefined, '$.arguments', 'missing --expected-commit argument');
+	assert(parsed.releaseVersion !== undefined, '$.arguments', 'missing --version argument');
+	return parsed;
+}
+
+async function assertReleaseSnapshotUnchanged(expectedIdentity) {
+	const actual = await snapshotReleaseDirectory(RELEASE_DIRECTORY);
+	assert(
+		isDeepStrictEqual(actual.identity, expectedIdentity),
+		'$.releaseArtifacts',
+		'release artifact set changed while release-identity evidence was being generated',
+	);
+}
+
 async function materializeReleaseSnapshot(snapshot) {
 	const directory = await mkdtemp(resolve(tmpdir(), 'virune-release-identity-'));
 	for (const entry of snapshot.entries) await writeFile(resolve(directory, entry.file), entry.content);
@@ -198,20 +263,36 @@ async function materializeReleaseSnapshot(snapshot) {
 }
 
 function buildCanonicalEvidence(report) {
-	assert(report.kind === REPORT_KIND, '$.releaseIdentityReport.kind', `expected ${REPORT_KIND}`);
-	assert(report.state === 'verified', '$.releaseIdentityReport.state', 'only verified release identity may emit evidence');
-	assert(report.checks?.releaseIntegrity === 'passed', '$.releaseIdentityReport.checks.releaseIntegrity', 'release integrity must pass');
-	assert(report.checks?.publicationIdentity === 'passed', '$.releaseIdentityReport.checks.publicationIdentity', 'publication identity must pass');
-	assert(report.checks?.exactCandidateContents === 'passed', '$.releaseIdentityReport.checks.exactCandidateContents', 'exact candidate contents must pass');
+	const value = record(report, '$.releaseIdentityReport');
+	assertExactKeys(value, [
+		'schemaVersion',
+		'kind',
+		'state',
+		'reviewedCommit',
+		'evidenceSetId',
+		'version',
+		'publicationManifest',
+		'releaseArtifactSet',
+		'packages',
+		'checks',
+	], '$.releaseIdentityReport');
+	assert(value.schemaVersion === 1, '$.releaseIdentityReport.schemaVersion', 'expected 1');
+	assert(value.kind === REPORT_KIND, '$.releaseIdentityReport.kind', `expected ${REPORT_KIND}`);
+	assert(value.state === 'verified', '$.releaseIdentityReport.state', 'only verified release identity may emit evidence');
+	const checks = record(value.checks, '$.releaseIdentityReport.checks');
+	assertExactKeys(checks, ['releaseIntegrity', 'publicationIdentity', 'exactCandidateContents'], '$.releaseIdentityReport.checks');
+	assert(checks.releaseIntegrity === 'passed', '$.releaseIdentityReport.checks.releaseIntegrity', 'release integrity must pass');
+	assert(checks.publicationIdentity === 'passed', '$.releaseIdentityReport.checks.publicationIdentity', 'publication identity must pass');
+	assert(checks.exactCandidateContents === 'passed', '$.releaseIdentityReport.checks.exactCandidateContents', 'exact candidate contents must pass');
 	return {
 		schemaVersion: 1,
 		requirement: 'release-identity-integration',
 		result: 'passed',
-		reviewedCommit: report.reviewedCommit,
-		evidenceSetId: report.evidenceSetId,
-		version: report.version,
-		publicationManifestSha256: report.publicationManifest.sha256,
-		publicationManifestBytes: report.publicationManifest.bytes,
+		reviewedCommit: fullCommitSha(value.reviewedCommit, '$.releaseIdentityReport.reviewedCommit'),
+		evidenceSetId: evidenceSetIdentity(value.evidenceSetId, '$.releaseIdentityReport.evidenceSetId'),
+		version: parseReleaseVersion(value.version, '$.releaseIdentityReport.version').text,
+		publicationManifestSha256: artifactIdentity(value.publicationManifest, '$.releaseIdentityReport.publicationManifest').sha256,
+		publicationManifestBytes: artifactIdentity(value.publicationManifest, '$.releaseIdentityReport.publicationManifest').bytes,
 	};
 }
 
@@ -354,7 +435,7 @@ function compareText(left, right) {
 
 const entry = process.argv[1] === undefined ? undefined : resolve(process.argv[1]);
 if (entry === fileURLToPath(import.meta.url)) {
-	const [commitArgument, versionArgument] = process.argv.slice(2);
-	const result = await runNpmReleaseIdentityEvidence({ reviewedCommit: commitArgument, releaseVersion: versionArgument });
+	const parsed = parseNpmReleaseIdentityArguments(process.argv.slice(2));
+	const result = await runNpmReleaseIdentityEvidence(parsed);
 	process.stdout.write(`Verified npm release identity integration for ${result.report.version} at ${result.report.reviewedCommit}.\n`);
 }
