@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import { join, resolve } from 'node:path';
 import test from 'node:test';
+import type * as A from '../src/ast/nodes.js';
+import type { SemanticModel } from '../src/checker/checker.js';
 import { buildProject, IncrementalProjectBuilder } from '../src/interop/checked-api.js';
 import { externalOperationSequence } from '../src/interop/operation-api.js';
 import type { JsInteropProvider } from '../src/interop/types.js';
@@ -52,11 +54,14 @@ function hostFor(mainPath: string, helperPath: string): ProjectHost {
 	};
 }
 
-function mainModule(result: ProjectBuildResult, mainPath: string) {
+function mainModule(result: ProjectBuildResult, mainPath: string): {
+	readonly ast: A.ModuleNode;
+	readonly semantic: SemanticModel;
+} {
 	const module = result.modules.find(item => item.source.path === mainPath);
 	assert.ok(module?.ast);
 	assert.ok(module.semantic);
-	return module;
+	return { ast: module.ast, semantic: module.semantic };
 }
 
 function assertProjectOnlyFailure(result: ProjectBuildResult, mainPath: string): void {
