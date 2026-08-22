@@ -21,9 +21,9 @@ Viruneでは、互換性の扱いを次の3つに分けます。
 - 標準ライブラリの公開宣言と`package.json`の`exports`設定
 - `@virune/compiler`のルート公開API
 - Stableと明示したRuntime ABIとInterop ABI
-- 文書化されたCLI
+- 安定版で公開するCLIのコマンド、オプション、終了状態
 - 診断コードとJSON形式で定める公開仕様と、Stableと明示したその他の機械可読形式
-- 安定版向けに文書化されたLSP／VS Codeの公開機能、設定、公開コマンド
+- 安定版で公開するLSP／VS Codeの機能、設定、コマンド
 - Node.jsやVS Codeなど、安定版で対応すると定めた環境
 
 既存の利用方法を壊さない追加や修正はできます。
