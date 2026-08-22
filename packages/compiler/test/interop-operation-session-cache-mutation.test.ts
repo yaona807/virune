@@ -50,6 +50,26 @@ function hostFor(mainPath: string): ProjectHost {
 	};
 }
 
+function gatedHostFor(mainPath: string): { readonly host: ProjectHost; readonly entered: Promise<void>; readonly release: () => void } {
+	let markEntered: () => void = () => {};
+	let release: () => void = () => {};
+	const entered = new Promise<void>(resolveEntered => { markEntered = resolveEntered; });
+	const gate = new Promise<void>(resolveGate => { release = resolveGate; });
+	return {
+		entered,
+		release: () => release(),
+		host: {
+			async readFile(path) {
+				if (path === mainPath) {
+					markEntered();
+					await gate;
+					return sourceText;
+				}
+				throw Object.assign(new Error(`missing ${path}`), { code: 'ENOENT' });
+			},
+	};
+}
+
 function mainModule(result: Awaited<ReturnType<typeof buildProject>>) {
 	const checked = result.modules.filter(module => module.ast !== undefined && module.semantic !== undefined);
 	assert.equal(checked.length, 1, 'test project must contain exactly one checked Virune module');
@@ -138,6 +158,34 @@ test('mutated cached semantic evidence cannot be re-approved by IncrementalProje
 	);
 
 	const rebuilt = await builder.build(root, { write: false, host, jsInteropProvider: provider() });
+	assert.deepEqual(rebuilt.diagnostics.filter(item => item.severity === 'error'), []);
+	assert.deepEqual(operationKinds(rebuilt), ['module-load', 'module-load']);
+});
+
+test('semantic mutation during an async cached build is rejected before evidence can be re-exposed', async () => {
+	const root = resolve('virtual-operation-session-cache-mid-build-mutation-project');
+	const mainPath = join(root, 'src/main.virune');
+	const cache = new ProjectBuildCache();
+	const first = await buildProject(root, { write: false, host: hostFor(mainPath), incrementalCache: cache, jsInteropProvider: provider() });
+	assert.deepEqual(first.diagnostics.filter(item => item.severity === 'error'), []);
+	assert.deepEqual(operationKinds(first), ['module-load', 'module-load']);
+	const firstMain = mainModule(first);
+
+	const gated = gatedHostFor(mainPath);
+	const pending = buildProject(root, { write: false, host: gated.host, incrementalCache: cache, jsInteropProvider: provider() });
+	await gated.entered;
+	(firstMain.semantic!.interop.moduleWitnesses as unknown as { length: number }).length = 1;
+	gated.release();
+	await assert.rejects(
+		pending,
+		/Cannot reuse checked semantic after its operation evidence changed/u,
+	);
+	assert.throws(
+		() => externalOperationSequence({ module: firstMain.ast!, semantic: firstMain.semantic! }),
+		/not from the current checked AST semantic session/u,
+	);
+
+	const rebuilt = await buildProject(root, { write: false, host: hostFor(mainPath), incrementalCache: cache, jsInteropProvider: provider() });
 	assert.deepEqual(rebuilt.diagnostics.filter(item => item.severity === 'error'), []);
 	assert.deepEqual(operationKinds(rebuilt), ['module-load', 'module-load']);
 });

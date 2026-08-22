@@ -19,12 +19,18 @@ import {
 } from '../project/project.js';
 import { IncrementalProjectBuilder as BaseIncrementalProjectBuilder } from '../project/incremental.js';
 import type { SourceFile } from '../source.js';
-import { invalidateCheckedSemantic, isCurrentCheckedSemantic, registerCheckedSemantic } from './check-session.js';
+import { currentCheckedInterop, invalidateCheckedSemantic, isCurrentCheckedSemantic, registerCheckedSemantic } from './check-session.js';
 import { invalidateCheckedSourceIdentity, isCurrentCheckedSourceIdentity, registerCheckedSourceIdentity } from './source-identity.js';
 
 type CheckedModuleMap = ReadonlyMap<A.ModuleNode, SemanticModel>;
 
+interface SemanticReuseSeal {
+	readonly operationState: string;
+	readonly semanticHasErrors: boolean;
+}
+
 const currentModulesByCache = new WeakMap<ProjectBuildCache, CheckedModuleMap>();
+const reuseSealBySemantic = new WeakMap<object, SemanticReuseSeal>();
 const activeCaches = new WeakSet<ProjectBuildCache>();
 const activeCheckedModules = new WeakSet<A.ModuleNode>();
 
@@ -38,13 +44,33 @@ function registerCheckedModule(
 	semantic: SemanticModel,
 	diagnostics: readonly Diagnostic[],
 ): void {
+	const previousSeal = reuseSealBySemantic.get(semantic);
 	try {
 		registerCheckedSourceIdentity(module, semantic);
 		registerCheckedSemantic(module, semantic, diagnostics);
+		const currentSeal = semanticReuseSeal(module, semantic);
+		if (previousSeal !== undefined) {
+			if (previousSeal.operationState !== currentSeal.operationState || previousSeal.semanticHasErrors !== currentSeal.semanticHasErrors) {
+				throw new Error('Cannot reuse checked semantic after its operation evidence changed');
+			}
+		} else {
+			reuseSealBySemantic.set(semantic, currentSeal);
+		}
 	} catch (error) {
 		invalidateCheckedModule(module);
 		throw error;
 	}
+}
+
+function semanticReuseSeal(module: A.ModuleNode, semantic: SemanticModel): SemanticReuseSeal {
+	const interop = currentCheckedInterop(module, semantic);
+	if (interop === undefined) throw new Error('Cannot seal a semantic that is not the current checked session');
+	const operationState = JSON.stringify(interop);
+	if (operationState === undefined) throw new Error('Cannot seal checked operation evidence that is not serializable');
+	return Object.freeze({
+		operationState,
+		semanticHasErrors: semantic.diagnostics.items.some(item => item.severity === 'error'),
+	});
 }
 
 function checkedModules(result: ProjectBuildResult): CheckedModuleMap {
