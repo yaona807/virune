@@ -6,7 +6,13 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
-import { parseChecksums, resolveReviewedCommit, validateDownloadedRelease, validateReleaseRecord } from './verify-public-release.mjs';
+import {
+	parseChecksums,
+	readReviewedNpmPublicationPolicy,
+	resolveReviewedCommit,
+	validateDownloadedRelease,
+	validateReleaseRecord,
+} from './verify-public-release.mjs';
 
 const repositoryRoot = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const version = '1.0.0-rc.1';
@@ -106,6 +112,26 @@ test('the resolved Git tag commit is the reviewed source even without an expecte
 	assert.throws(() => resolveReviewedCommit(tag, tagCommit, 'b'.repeat(40)), /points to .* expected/u);
 });
 
+test('missing reviewed npm policy falls back only for legacy Registry-ineligible versions', async () => {
+	const fallbackPolicy = {
+		firstStableRegistryRelease: '1.1.0',
+		distTagPolicy: { stable: 'latest', prerelease: 'next', nightly: null },
+	};
+	const missingPolicy = async () => { throw new Error('reviewed policy missing'); };
+	assert.equal(await readReviewedNpmPublicationPolicy('a'.repeat(40), version, {
+		readReviewed: missingPolicy,
+		fallbackPolicy,
+	}), fallbackPolicy);
+	await assert.rejects(() => readReviewedNpmPublicationPolicy('a'.repeat(40), registryVersion, {
+		readReviewed: missingPolicy,
+		fallbackPolicy,
+	}), /reviewed policy missing/u);
+	await assert.rejects(() => readReviewedNpmPublicationPolicy('a'.repeat(40), version, {
+		readReviewed: async () => Buffer.from('{ malformed'),
+		fallbackPolicy,
+	}), /Reviewed npm publication policy is malformed/u);
+});
+
 test('parses strict checksum records and rejects duplicates', () => {
 	const digest = 'a'.repeat(64);
 	assert.equal(parseChecksums(`${digest}  example.tgz\n`).get('example.tgz'), digest);
@@ -177,7 +203,7 @@ async function writeDownloadedReleaseFixture(directory, {
 			bomFormat: 'CycloneDX',
 			specVersion: '1.6',
 			serialNumber: 'urn:uuid:00000000-0000-5000-8000-000000000000',
-			metadata: { component: { version, licenses: [{ license: { id: sbomLicense } }] } },
+			metadata: { component: { version, licenses: [{ license: { id: sbomLicense } }] },
 			components: [],
 		}, null, 2)}\n`)],
 	]);
