@@ -298,10 +298,14 @@ export function compileSource(source: SourceFile, options: CompileOptions = {}):
 /** Experimental checker entry point with ephemeral checked-AST session binding. */
 export function checkModule(module: A.ModuleNode, options: TypeCheckerOptions = {}): SemanticModel {
 	if (activeCheckedModules.has(module)) throw new Error('Reentrant experimental checkModule calls for the same AST are not supported');
+	const sourceSeal = captureCheckedSourceReuseSeal(module);
 	activeCheckedModules.add(module);
 	invalidateCheckedModule(module);
 	try {
 		const semantic = checkModuleBase(module, options);
+		if (!matchesCheckedSourceReuseSeal(module, sourceSeal)) {
+			throw new Error('Cannot register checked semantic after its source-authored AST changed during check');
+		}
 		registerCheckedModule(module, semantic, semantic.diagnostics.items);
 		return semantic;
 	} finally {
@@ -315,10 +319,14 @@ export class TypeChecker extends BaseTypeChecker {
 
 	public override check(module: A.ModuleNode): SemanticModel {
 		if (this.#checking) throw new Error('Reentrant experimental TypeChecker checks are not supported');
+		const sourceSeal = captureCheckedSourceReuseSeal(module);
 		this.#checking = true;
 		invalidateCheckedModule(module);
 		try {
 			const semantic = super.check(module);
+			if (!matchesCheckedSourceReuseSeal(module, sourceSeal)) {
+				throw new Error('Cannot register checked semantic after its source-authored AST changed during check');
+			}
 			registerCheckedModule(module, semantic, semantic.diagnostics.items);
 			return semantic;
 		} finally {
