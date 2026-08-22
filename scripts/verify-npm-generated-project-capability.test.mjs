@@ -1,9 +1,13 @@
 import assert from 'node:assert/strict';
 import { gzipSync } from 'node:zlib';
 import test from 'node:test';
-import { validateNpmGeneratedProjectCapability as validateCliCapability } from '../packages/cli/dist/src/init-options.js';
+import {
+	NPM_GENERATED_PROJECT_CAPABILITY_FILE as CLI_CAPABILITY_FILE,
+	validateNpmGeneratedProjectCapability as validateCliCapability,
+} from '../packages/cli/dist/src/init-options.js';
 import {
 	NPM_GENERATED_PROJECT_CAPABILITY_KIND,
+	NPM_GENERATED_PROJECT_CAPABILITY_RELATIVE_PATH,
 	NPM_GENERATED_PROJECT_CAPABILITY_TAR_PATH,
 	PUBLIC_NPM_REGISTRY,
 	buildNpmGeneratedProjectCapability,
@@ -66,6 +70,8 @@ test('capability is emitted only for a reviewed Registry-eligible publication ca
 
 test('release helper and shipped CLI validator implement the same capability contract', () => {
 	const generated = buildNpmGeneratedProjectCapability(plan());
+	assert.equal(NPM_GENERATED_PROJECT_CAPABILITY_RELATIVE_PATH, `dist/src/${CLI_CAPABILITY_FILE}`);
+	assert.equal(NPM_GENERATED_PROJECT_CAPABILITY_TAR_PATH, `package/dist/src/${CLI_CAPABILITY_FILE}`);
 	assert.deepEqual(generated, capability());
 	assert.deepEqual(validateNpmGeneratedProjectCapability(generated, '1.1.0-rc.1'), capability());
 	assert.deepEqual(validateCliCapability(generated, '1.1.0-rc.1'), capability());
