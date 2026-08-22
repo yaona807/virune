@@ -13,6 +13,49 @@ function createOwnDataArray<T>(length: number, valueAt: (index: number) => T): T
 	return result;
 }
 
+function denseOwnDataArrayLength(value: unknown, description: string): number {
+	if (!Array.isArray(value)) throw new Error(`${description} must be an array`);
+	const lengthDescriptor = Object.getOwnPropertyDescriptor(value, 'length');
+	if (
+		lengthDescriptor === undefined
+		|| !('value' in lengthDescriptor)
+		|| typeof lengthDescriptor.value !== 'number'
+		|| !Number.isSafeInteger(lengthDescriptor.value)
+		|| lengthDescriptor.value < 0
+	) {
+		throw new Error(`${description} has an invalid length`);
+	}
+	const length = lengthDescriptor.value;
+	const keys = Reflect.ownKeys(value);
+	let indexKeyCount = 0;
+	for (let keyIndex = 0; keyIndex < keys.length; keyIndex++) {
+		const key = keys[keyIndex]!;
+		if (typeof key === 'symbol') throw new Error(`Unknown ${description} field: ${String(key)}`);
+		if (key === 'length') continue;
+		const index = Number(key);
+		if (!Number.isSafeInteger(index) || index < 0 || index >= length || `${index}` !== key) {
+			throw new Error(`Unknown ${description} field: ${key}`);
+		}
+		indexKeyCount++;
+	}
+	if (indexKeyCount !== length) throw new Error(`${description} must be a dense array without extra fields`);
+	return length;
+}
+
+export function forEachDenseOwnDataArray(
+	value: unknown,
+	description: string,
+	visitor: (value: unknown, index: number) => void,
+): void {
+	const length = denseOwnDataArrayLength(value, description);
+	for (let index = 0; index < length; index++) {
+		const descriptor = Object.getOwnPropertyDescriptor(value as object, `${index}`);
+		if (descriptor === undefined) throw new Error(`${description} is missing index ${index}`);
+		if (!('value' in descriptor)) throw new Error(`${description} field ${index} must be a data property`);
+		visitor(descriptor.value, index);
+	}
+}
+
 export function copyArrayByIndex<T>(values: readonly T[]): T[] {
 	return createOwnDataArray(values.length, index => values[index]!);
 }
@@ -64,6 +107,18 @@ export function sortArrayByIndex<T>(values: readonly T[], compare: (left: T, rig
 	return result;
 }
 
+export function sortDenseOwnArrayInPlace<T>(values: T[], compare: (left: T, right: T) => number): void {
+	for (let index = 1; index < values.length; index++) {
+		const value = values[index]!;
+		let insertion = index;
+		while (insertion > 0 && compare(values[insertion - 1]!, value) > 0) {
+			values[insertion] = values[insertion - 1]!;
+			insertion--;
+		}
+		values[insertion] = value;
+	}
+}
+
 export function uniqueArrayByIndex<T>(values: readonly T[], equals: (left: T, right: T) => boolean = (left, right) => left === right): T[] {
 	const result: T[] = [];
 	for (let index = 0; index < values.length; index++) {
@@ -81,37 +136,7 @@ export function uniqueArrayByIndex<T>(values: readonly T[], equals: (left: T, ri
 }
 
 export function readDenseOwnDataArray(value: unknown, description: string): readonly unknown[] {
-	if (!Array.isArray(value)) throw new Error(`${description} must be an array`);
-	const lengthDescriptor = Object.getOwnPropertyDescriptor(value, 'length');
-	if (
-		lengthDescriptor === undefined
-		|| !('value' in lengthDescriptor)
-		|| typeof lengthDescriptor.value !== 'number'
-		|| !Number.isSafeInteger(lengthDescriptor.value)
-		|| lengthDescriptor.value < 0
-	) {
-		throw new Error(`${description} has an invalid length`);
-	}
-	const length = lengthDescriptor.value;
 	const result: unknown[] = [];
-	const keys = Reflect.ownKeys(value);
-	let indexKeyCount = 0;
-	for (let keyIndex = 0; keyIndex < keys.length; keyIndex++) {
-		const key = keys[keyIndex]!;
-		if (typeof key === 'symbol') throw new Error(`Unknown ${description} field: ${String(key)}`);
-		if (key === 'length') continue;
-		const index = Number(key);
-		if (!Number.isSafeInteger(index) || index < 0 || index >= length || `${index}` !== key) {
-			throw new Error(`Unknown ${description} field: ${key}`);
-		}
-		indexKeyCount++;
-	}
-	if (indexKeyCount !== length) throw new Error(`${description} must be a dense array without extra fields`);
-	for (let index = 0; index < length; index++) {
-		const descriptor = Object.getOwnPropertyDescriptor(value, `${index}`);
-		if (descriptor === undefined) throw new Error(`${description} is missing index ${index}`);
-		if (!('value' in descriptor)) throw new Error(`${description} field ${index} must be a data property`);
-		appendOwnData(result, descriptor.value);
-	}
+	forEachDenseOwnDataArray(value, description, item => appendOwnData(result, item));
 	return result;
 }
