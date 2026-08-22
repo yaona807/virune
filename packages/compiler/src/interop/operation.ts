@@ -306,7 +306,7 @@ function canonicalRuntimeWitness(witness: ModuleResolutionWitness, moduleSpecifi
 	const conditionValues: readonly string[] = witness.conditions;
 	const conditions: readonly string[] = Object.freeze([...new Set(conditionValues.map((condition: string) => stableProviderText(condition, 'module witness condition')))].sort(compareText));
 	const runtimeEntry = witness.runtimeEntry === undefined ? undefined : canonicalRuntimeEntry(witness.runtimeEntry);
-	assertRuntimeResolutionCoherence(runtimeEntry, witness.runtimeFormat, witness.platform);
+	assertRuntimeResolutionCoherence(moduleSpecifier, runtimeEntry, witness.runtimeFormat, witness.platform);
 	return Object.freeze({
 		moduleSpecifier,
 		...(witness.packageName === undefined ? {} : { packageName: stableProviderText(witness.packageName, 'runtime package name') }),
@@ -381,16 +381,24 @@ function canonicalRuntimeEntry(value: string): string {
 }
 
 function assertRuntimeResolutionCoherence(
+	moduleSpecifier: string,
 	runtimeEntry: string | undefined,
 	runtimeFormat: ModuleResolutionWitness['runtimeFormat'] | undefined,
 	platform: ModuleResolutionWitness['platform'],
 ): void {
 	const nodeBuiltinEntry = runtimeEntry?.startsWith('node:') ?? false;
+	if (runtimeFormat === 'commonjs' && platform !== 'node') {
+		throw new Error('External operation CommonJS runtime format requires the node platform');
+	}
 	if (nodeBuiltinEntry && (runtimeFormat !== 'builtin' || platform !== 'node')) {
 		throw new Error('External operation node builtin runtime entry requires builtin format on the node platform');
 	}
-	if (runtimeFormat === 'builtin' && runtimeEntry !== undefined && !nodeBuiltinEntry) {
-		throw new Error('External operation builtin runtime format requires a node builtin runtime entry');
+	if (runtimeFormat === 'builtin' && runtimeEntry !== undefined) {
+		if (!nodeBuiltinEntry) throw new Error('External operation builtin runtime format requires a node builtin runtime entry');
+		const expectedRuntimeEntry = moduleSpecifier.startsWith('node:') ? moduleSpecifier : `node:${moduleSpecifier}`;
+		if (runtimeEntry !== expectedRuntimeEntry) {
+			throw new Error('External operation builtin runtime entry must match the imported module specifier');
+		}
 	}
 }
 
