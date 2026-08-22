@@ -12,6 +12,30 @@ export { lex } from './syntax/tokens.js';
 
 export { parseSource } from './project/project.js';
 export * from './project/incremental.js';
+export {
+	buildProject,
+	checkModule,
+	compileSource,
+	IncrementalProjectBuilder,
+	TypeChecker,
+} from './interop/checked-api.js';
+export * from './interop/decision.js';
+export { externalOperationSequence } from './interop/operation-api.js';
+export type {
+	ExternalAwaitOperationIR,
+	ExternalBridgeForeignPrimitiveOperationIR,
+	ExternalCallOperationIR,
+	ExternalForeignOrigin,
+	ExternalForeignValueShape,
+	ExternalModuleLoadOperationIR,
+	ExternalOperationEffect,
+	ExternalOperationIR,
+	ExternalOperationKind,
+	ExternalReadPropertyOperationIR,
+	ExternalRuntimeResolutionWitness,
+	ExternalSourcePosition,
+	ExternalSourceSpan,
+} from './interop/operation.js';
 export type {
 	ForeignCallResolution,
 	ForeignOrigin,
