@@ -10,6 +10,7 @@ import {
 	parseChecksums,
 	readReviewedNpmPublicationPolicy,
 	resolveReviewedCommit,
+	reviewedFileExists,
 	validateDownloadedRelease,
 	validateReleaseRecord,
 } from './verify-public-release.mjs';
@@ -112,33 +113,79 @@ test('the resolved Git tag commit is the reviewed source even without an expecte
 	assert.throws(() => resolveReviewedCommit(tag, tagCommit, 'b'.repeat(40)), /points to .* expected/u);
 });
 
-test('legacy Registry-ineligible versions do not depend on a tag-local npm policy', async () => {
+test('an existing tag-local npm policy wins over a later fallback policy', async () => {
+	const reviewedPolicy = {
+		firstStableRegistryRelease: '1.1.0',
+		distTagPolicy: { stable: 'latest', prerelease: 'next', nightly: null },
+	};
+	const laterFallbackPolicy = {
+		firstStableRegistryRelease: '1.2.0',
+		distTagPolicy: { stable: 'latest', prerelease: 'next', nightly: null },
+	};
+	let existenceChecks = 0;
+	let reads = 0;
+	const actual = await readReviewedNpmPublicationPolicy('a'.repeat(40), registryVersion, {
+		reviewedExists: async () => { existenceChecks += 1; return true; },
+		readReviewed: async () => { reads += 1; return Buffer.from(JSON.stringify(reviewedPolicy)); },
+		fallbackPolicy: laterFallbackPolicy,
+	});
+	assert.deepEqual(actual, reviewedPolicy);
+	assert.equal(existenceChecks, 1);
+	assert.equal(reads, 1);
+});
+
+test('missing tag-local npm policy falls back only for Registry-ineligible legacy versions', async () => {
 	const fallbackPolicy = {
 		firstStableRegistryRelease: '1.1.0',
 		distTagPolicy: { stable: 'latest', prerelease: 'next', nightly: null },
 	};
 	let reads = 0;
-	const shouldNotRead = async () => { reads += 1; throw new Error('unexpected reviewed policy read'); };
+	const missingPolicy = async () => false;
 	assert.equal(await readReviewedNpmPublicationPolicy('a'.repeat(40), version, {
-		readReviewed: shouldNotRead,
+		reviewedExists: missingPolicy,
+		readReviewed: async () => { reads += 1; return Buffer.from('{}'); },
 		fallbackPolicy,
 	}), fallbackPolicy);
 	assert.equal(reads, 0);
+	await assert.rejects(() => readReviewedNpmPublicationPolicy('a'.repeat(40), registryVersion, {
+		reviewedExists: missingPolicy,
+		readReviewed: async () => Buffer.from('{}'),
+		fallbackPolicy,
+	}), /Reviewed npm publication policy is missing/u);
 });
 
-test('Registry-eligible versions fail closed on missing, unreadable or malformed reviewed policy', async () => {
+test('existing reviewed npm policy fails closed on inspection, read or JSON failure', async () => {
 	const fallbackPolicy = {
 		firstStableRegistryRelease: '1.1.0',
 		distTagPolicy: { stable: 'latest', prerelease: 'next', nightly: null },
 	};
 	await assert.rejects(() => readReviewedNpmPublicationPolicy('a'.repeat(40), registryVersion, {
+		reviewedExists: async () => { throw new Error('policy inspection failed'); },
+		fallbackPolicy,
+	}), /policy inspection failed/u);
+	await assert.rejects(() => readReviewedNpmPublicationPolicy('a'.repeat(40), registryVersion, {
+		reviewedExists: async () => true,
 		readReviewed: async () => { throw new Error('reviewed policy unavailable'); },
 		fallbackPolicy,
 	}), /reviewed policy unavailable/u);
 	await assert.rejects(() => readReviewedNpmPublicationPolicy('a'.repeat(40), registryVersion, {
+		reviewedExists: async () => true,
 		readReviewed: async () => Buffer.from('{ malformed'),
 		fallbackPolicy,
 	}), /Reviewed npm publication policy is malformed/u);
+});
+
+test('reviewed file existence distinguishes an absent path from an unknown Git failure', () => {
+	const head = spawnSync('git', ['rev-parse', 'HEAD'], { cwd: repositoryRoot, encoding: 'utf8' });
+	assert.equal(head.status, 0, head.stderr);
+	const reviewedCommit = head.stdout.trim();
+	assert.match(reviewedCommit, /^[0-9a-f]{40}$/u);
+	assert.equal(reviewedFileExists('.github/release/npm-publication-v1.json', { sourceRoot: repositoryRoot, reviewedCommit }), true);
+	assert.equal(reviewedFileExists('.github/release/definitely-missing-policy.json', { sourceRoot: repositoryRoot, reviewedCommit }), false);
+	assert.throws(
+		() => reviewedFileExists('.github/release/npm-publication-v1.json', { sourceRoot: repositoryRoot, reviewedCommit: 'f'.repeat(40) }),
+		/Failed to inspect reviewed/u,
+	);
 });
 
 test('parses strict checksum records and rejects duplicates', () => {
