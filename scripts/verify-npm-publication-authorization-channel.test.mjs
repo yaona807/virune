@@ -13,15 +13,10 @@ const evidenceSetId = 'github-actions:stable-release:1';
 
 function plan() {
 	return {
+		schemaVersion: 1,
 		stage: 'publication-candidate',
 		publicationReady: true,
 		unresolvedRequirements: [...NPM_PUBLICATION_POST_WRITE_REQUIREMENTS],
-		firstStableRegistryRelease: '1.1.0',
-		distTagPolicy: { stable: 'latest', prerelease: 'next', nightly: null },
-		trustedPublishingRequired: true,
-		publicVerificationRequired: true,
-		sameReviewedReleaseIdentityRequired: true,
-		packages: [{ directory: 'cli', workspaceName: 'virune', registryName: 'virune', role: 'cli' }],
 		authorization: {
 			schemaVersion: 1,
 			reportKind: 'npm-publication-authorization-v1',
@@ -30,6 +25,14 @@ function plan() {
 			preWriteRequirements: [...NPM_PUBLICATION_PRE_WRITE_REQUIREMENTS],
 			postWriteCompletionRequirements: [...NPM_PUBLICATION_POST_WRITE_REQUIREMENTS],
 		},
+		forbidRegistryPublishThroughVersion: '1.0.0',
+		firstStableRegistryRelease: '1.1.0',
+		distTagPolicy: { stable: 'latest', prerelease: 'next', nightly: null },
+		trustedPublishingRequired: true,
+		publicVerificationRequired: true,
+		sameReviewedReleaseIdentityRequired: true,
+		packages: [{ directory: 'cli', workspaceName: 'virune', registryName: 'virune', role: 'cli' }],
+		excludedWorkspacePackages: [],
 	};
 }
 
