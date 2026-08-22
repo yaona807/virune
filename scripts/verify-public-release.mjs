@@ -4,10 +4,12 @@ import { tmpdir } from 'node:os';
 import { basename, join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { registryPolicyForVersion } from './verify-npm-publication-identity.mjs';
 
 const repositoryRoot = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const EXPECTED_LICENSE = 'Apache-2.0';
 const REVIEWED_LEGAL_FILES = ['LICENSE', 'NOTICE', 'THIRD_PARTY_NOTICES.md', 'THIRD_PARTY_NOTICES_ja.md'];
+const NPM_PUBLICATION_POLICY = JSON.parse(await readFile(new URL('../.github/release/npm-publication-v1.json', import.meta.url), 'utf8'));
 
 export async function verifyPublicRelease({
 	version,
@@ -212,10 +214,13 @@ function requestHeaders(token) {
 }
 
 function requiredAssetNames(version) {
-	return [
-		'LICENSE', 'MANIFEST.json', 'NOTICE', 'PUBLICATION-MANIFEST.json', 'README.md', 'README_ja.md', 'RELEASE-MANIFEST.json', 'SBOM.cdx.json', 'SHA256SUMS', 'THIRD_PARTY_NOTICES.md', 'THIRD_PARTY_NOTICES_ja.md', 'package.json',
-		`virune-${version}.tgz`, `virune-npm-${version}.tgz`, `virune-compiler-${version}.tgz`, `virune-formatter-${version}.tgz`, `virune-js-interop-${version}.tgz`, `virune-runtime-${version}.tgz`, `virune-stdlib-${version}.tgz`, `virune-vscode-${version}.vsix`,
+	const required = [
+		'LICENSE', 'MANIFEST.json', 'NOTICE', 'README.md', 'README_ja.md', 'RELEASE-MANIFEST.json', 'SBOM.cdx.json', 'SHA256SUMS', 'THIRD_PARTY_NOTICES.md', 'THIRD_PARTY_NOTICES_ja.md', 'package.json',
+		`virune-${version}.tgz`, `virune-compiler-${version}.tgz`, `virune-formatter-${version}.tgz`, `virune-js-interop-${version}.tgz`, `virune-runtime-${version}.tgz`, `virune-stdlib-${version}.tgz`, `virune-vscode-${version}.vsix`,
 	];
+	const registryPolicy = registryPolicyForVersion(version, NPM_PUBLICATION_POLICY.firstStableRegistryRelease, NPM_PUBLICATION_POLICY.distTagPolicy);
+	if (registryPolicy.registryVersionEligible) required.push('PUBLICATION-MANIFEST.json', `virune-npm-${version}.tgz`);
+	return required;
 }
 
 function assertSameSet(actual, expected, label) {
