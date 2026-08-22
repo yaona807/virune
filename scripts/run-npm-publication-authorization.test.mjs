@@ -8,7 +8,11 @@ import {
 	NPM_PUBLICATION_POST_WRITE_REQUIREMENTS,
 	NPM_PUBLICATION_PRE_WRITE_REQUIREMENTS,
 } from './npm-publication-authorization-contract.mjs';
-import { runNpmPublicationAuthorization, validateEvidenceDocument } from './run-npm-publication-authorization.mjs';
+import {
+	parseNpmPublicationAuthorizationArguments,
+	runNpmPublicationAuthorization,
+	validateEvidenceDocument,
+} from './run-npm-publication-authorization.mjs';
 
 const repositoryRoot = resolve('.');
 const evidenceSetId = 'github-actions:32550000000:1';
@@ -43,6 +47,31 @@ function injectedCandidatePlan() {
 		},
 	};
 }
+
+test('authorization CLI parser rejects unknown, positional, duplicate and empty options', () => {
+	assert.deepEqual(parseNpmPublicationAuthorizationArguments([
+		'--expected-commit=' + 'a'.repeat(40),
+		'--version=1.1.0-rc.1',
+		'--evidence-set-id=github-actions:1:1',
+		'--publication-manifest=.cache/public-release/PUBLICATION-MANIFEST.json',
+		'--evidence=.cache/npm-publication-authorization/pre-write-evidence.json',
+	]), {
+		reviewedCommit: 'a'.repeat(40),
+		releaseVersion: '1.1.0-rc.1',
+		evidenceSetId: 'github-actions:1:1',
+		publicationManifestPath: '.cache/public-release/PUBLICATION-MANIFEST.json',
+		evidencePath: '.cache/npm-publication-authorization/pre-write-evidence.json',
+	});
+	for (const args of [
+		['--unknown=value'],
+		['positional'],
+		['--evidnce=typo.json'],
+		['--version=1.1.0', '--version=1.1.0-rc.1'],
+		['--evidence='],
+	]) {
+		assert.throws(() => parseNpmPublicationAuthorizationArguments(args));
+	}
+});
 
 test('a failed exact-head rerun invalidates stale passing authorization evidence before validation', async () => {
 	const root = mkdtempSync(join(tmpdir(), 'virune-npm-auth-stale-'));
