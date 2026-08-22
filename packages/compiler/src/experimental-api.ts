@@ -37,6 +37,9 @@ export type {
 	ExternalSourceSpan,
 } from './interop/operation.js';
 export type {
+	CallableProjectionEvidence,
+	ContextualCallablePrimitiveKind,
+	ContextualCallableResult,
 	ForeignCallResolution,
 	ForeignOrigin,
 	ForeignPrimitiveKind,
@@ -44,6 +47,7 @@ export type {
 	ForeignTypeSnapshot,
 	ForeignUsage,
 	InteropArgumentType,
+	InteropCallableArgumentResolution,
 	InteropCallTarget,
 	InteropCallUsage,
 	InteropLiteralValue,
@@ -53,6 +57,9 @@ export type {
 	JsImportResolution,
 	JsInteropProvider,
 	ModuleResolutionWitness,
+	NativeCallableBoundaryDescriptor,
+	NativeCallablePrimitiveKind,
+	NativeCallableTypeTemplate,
 	PrimitiveBridgeKind,
 	RuntimeImportPlan,
 } from './interop/types.js';
