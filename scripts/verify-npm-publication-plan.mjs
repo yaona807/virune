@@ -45,7 +45,7 @@ export function verifyNpmPublicationPlan(root = process.cwd()) {
 	} else {
 		assert(plan.publicationReady === true, '$.publicationReady', 'publication-candidate stage requires a reviewed publicationReady:true declaration');
 	}
-	const authorization = validateNpmPublicationAuthorizationContract(plan.authorization, '$.authorization');
+	validateNpmPublicationAuthorizationContract(plan.authorization, '$.authorization');
 	const unresolvedRequirements = array(plan.unresolvedRequirements, '$.unresolvedRequirements')
 		.map((value, index) => nonEmptyString(value, `$.unresolvedRequirements[${index}]`))
 		.sort(compareText);
@@ -191,7 +191,6 @@ export function verifyNpmPublicationPlan(root = process.cwd()) {
 		stage,
 		publicationReady: plan.publicationReady,
 		unresolvedRequirements,
-		authorization,
 		currentVersion: rootManifest.version,
 		forbidRegistryPublishThroughVersion: forbiddenThroughText,
 		firstStableRegistryRelease: firstStableText,
