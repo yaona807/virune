@@ -81,6 +81,7 @@ const groups = platformSmoke ? platformGroups : [
 			files: [
 				'scripts/verify-npm-publication-identity.test.mjs',
 				'scripts/verify-npm-publication-identity-boundaries.test.mjs',
+				'scripts/verify-npm-generated-project-capability.test.mjs',
 			],
 		},
 		{
