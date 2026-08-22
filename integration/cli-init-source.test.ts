@@ -34,7 +34,7 @@ test('explicit github-release dependency source reproduces the default immutable
 	}
 });
 
-test('invalid init source state fails before creating the target directory', async () => {
+test('invalid init source state fails before creating the target directory with the canonical CLI error exit', async () => {
 	const parent = await makeCliProject();
 	const cases = [
 		['--dependency-source='],
@@ -45,7 +45,10 @@ test('invalid init source state fails before creating the target directory', asy
 	];
 	for (const [index, invalid] of cases.entries()) {
 		const root = join(parent, `invalid-${index}`);
-		await assert.rejects(() => runCli(['init', root, ...invalid]));
+		await assert.rejects(
+			() => runCli(['init', root, ...invalid]),
+			error => (error as { code?: string | number }).code === 3,
+		);
 		await assert.rejects(() => stat(root), error => (error as NodeJS.ErrnoException).code === 'ENOENT');
 	}
 });
