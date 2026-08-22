@@ -2,6 +2,14 @@ import type * as A from '../ast/nodes.js';
 import type { SemanticModel } from '../checker/checker.js';
 import type { Diagnostic } from '../diagnostics/diagnostic.js';
 import { checkedScopeWitness, currentCheckedBuiltinWitness } from '../session-witness.js';
+import {
+	copyArrayByIndex,
+	filterArrayByIndex,
+	mapArrayByIndex,
+	readDenseOwnDataArray,
+	sortArrayByIndex,
+	uniqueArrayByIndex,
+} from './array-safety.js';
 import type {
 	ForeignOrigin,
 	ForeignTypeRef,
@@ -47,7 +55,7 @@ export function registerCheckedSemantic(
 	const interop = semantic.interop;
 	const semanticDiagnostics = semantic.diagnostics.items;
 	const operationInterop = snapshotOperationInterop(interop);
-	const registeredDiagnostics = Object.freeze([...diagnostics]);
+	const registeredDiagnostics = Object.freeze(copyArrayByIndex(diagnostics));
 	const session: CheckedSession = Object.freeze({
 		checkerWitness,
 		moduleState: structuralState(module),
@@ -120,12 +128,11 @@ function checkedInteropEvidence(interop: InteropSemanticModel): unknown {
 	const usages = readDenseDataArray(ownDataProperty(interop, 'usages', 'checked Interop evidence'), 'checked Interop usages');
 	const usageIR = readDenseDataArray(ownDataProperty(interop, 'usageIR', 'checked Interop evidence'), 'checked Interop usage IR');
 	const moduleWitnesses = readDenseDataArray(ownDataProperty(interop, 'moduleWitnesses', 'checked Interop evidence'), 'checked Interop module witnesses');
+	const nonImportUsages = filterArrayByIndex(usages, usage => ownDataProperty(usage, 'kind', 'checked Interop usage') !== 'import');
 	return {
-		usages: usages
-			.filter(usage => ownDataProperty(usage, 'kind', 'checked Interop usage') !== 'import')
-			.map(checkedUsageEvidence),
-		usageIR: usageIR.map(checkedUsageEvidence),
-		moduleWitnesses: moduleWitnesses.map(checkedModuleWitnessEvidence),
+		usages: mapArrayByIndex(nonImportUsages, checkedUsageEvidence),
+		usageIR: mapArrayByIndex(usageIR, checkedUsageEvidence),
+		moduleWitnesses: mapArrayByIndex(moduleWitnesses, checkedModuleWitnessEvidence),
 		requiresJavaScriptInitialization: ownDataProperty(interop, 'requiresJavaScriptInitialization', 'checked Interop evidence'),
 	};
 }
@@ -180,10 +187,11 @@ function checkedOriginEvidence(origin: ForeignOrigin | unknown): unknown {
 
 function checkedModuleWitnessEvidence(witness: ModuleResolutionWitness | unknown): unknown {
 	const conditionValues = readDenseDataArray(ownDataProperty(witness, 'conditions', 'checked module witness'), 'checked module witness conditions');
-	const conditions = [...new Set(conditionValues.map(condition => {
+	const validatedConditions = mapArrayByIndex(conditionValues, condition => {
 		if (typeof condition !== 'string') throw new Error('checked module witness condition must be a string');
 		return condition;
-	}))].sort(compareText);
+	});
+	const conditions = sortArrayByIndex(uniqueArrayByIndex(validatedConditions), compareText);
 	return {
 		moduleSpecifier: ownDataProperty(witness, 'moduleSpecifier', 'checked module witness'),
 		packageName: ownOptionalDataProperty(witness, 'packageName', 'checked module witness'),
@@ -221,19 +229,24 @@ function checkedSpanEvidence(span: ForeignUsage['span'] | unknown): unknown {
  */
 function snapshotOperationInterop(interop: InteropSemanticModel): InteropSemanticModel {
 	const usages: ForeignUsage[] = [];
-	for (const usage of readDenseDataArray(ownDataProperty(interop, 'usages', 'checked Interop evidence'), 'checked Interop usages')) {
+	const usageValues = readDenseDataArray(ownDataProperty(interop, 'usages', 'checked Interop evidence'), 'checked Interop usages');
+	for (let index = 0; index < usageValues.length; index++) {
+		const usage = usageValues[index];
 		if (ownDataProperty(usage, 'kind', 'checked Interop usage') === 'import') continue;
-		usages.push(snapshotForeignUsage(usage));
+		usages[usages.length] = snapshotForeignUsage(usage);
 	}
 	const usageIR: ForeignUsageIR[] = [];
-	for (const usage of readDenseDataArray(ownDataProperty(interop, 'usageIR', 'checked Interop evidence'), 'checked Interop usage IR')) {
+	const usageIRValues = readDenseDataArray(ownDataProperty(interop, 'usageIR', 'checked Interop evidence'), 'checked Interop usage IR');
+	for (let index = 0; index < usageIRValues.length; index++) {
+		const usage = usageIRValues[index];
 		if (ownDataProperty(usage, 'kind', 'checked Interop usage') === 'import') continue;
-		usageIR.push(snapshotForeignUsageIR(usage));
+		usageIR[usageIR.length] = snapshotForeignUsageIR(usage);
 	}
-	const moduleWitnesses = readDenseDataArray(
+	const moduleWitnessValues = readDenseDataArray(
 		ownDataProperty(interop, 'moduleWitnesses', 'checked Interop evidence'),
 		'checked Interop module witnesses',
-	).map(snapshotModuleWitness);
+	);
+	const moduleWitnesses = mapArrayByIndex(moduleWitnessValues, snapshotModuleWitness);
 	const requiresJavaScriptInitialization = ownDataProperty(interop, 'requiresJavaScriptInitialization', 'checked Interop evidence');
 	if (typeof requiresJavaScriptInitialization !== 'boolean') throw new Error('checked Interop initialization state must be boolean');
 	return Object.freeze({
@@ -374,7 +387,8 @@ function snapshotPrimitiveBridge(value: unknown): PrimitiveBridgePlan {
 }
 
 function snapshotModuleWitness(value: unknown): ModuleResolutionWitness {
-	const conditions = readDenseDataArray(ownDataProperty(value, 'conditions', 'checked module witness'), 'checked module witness conditions').map(condition => {
+	const conditionValues = readDenseDataArray(ownDataProperty(value, 'conditions', 'checked module witness'), 'checked module witness conditions');
+	const conditions = mapArrayByIndex(conditionValues, condition => {
 		if (typeof condition !== 'string') throw new Error('checked module witness condition must be a string');
 		return condition;
 	});
@@ -431,29 +445,7 @@ function ownOptionalDataProperty(value: unknown, key: string, description: strin
 }
 
 function readDenseDataArray(value: unknown, description: string): readonly unknown[] {
-	if (!Array.isArray(value)) throw new Error(`${description} must be an array`);
-	const keys = Reflect.ownKeys(value);
-	const symbolKey = keys.find((key): key is symbol => typeof key === 'symbol');
-	if (symbolKey !== undefined) throw new Error(`Unknown ${description} field: ${String(symbolKey)}`);
-	const lengthDescriptor = Object.getOwnPropertyDescriptor(value, 'length');
-	if (lengthDescriptor === undefined || !('value' in lengthDescriptor) || typeof lengthDescriptor.value !== 'number' || !Number.isSafeInteger(lengthDescriptor.value) || lengthDescriptor.value < 0) {
-		throw new Error(`${description} has an invalid length`);
-	}
-	const length = lengthDescriptor.value;
-	const indexKeys = (keys as string[]).filter(key => key !== 'length');
-	if (indexKeys.length !== length) throw new Error(`${description} must be a dense array without extra fields`);
-	const indexes = indexKeys.map(key => {
-		const index = Number(key);
-		if (!Number.isSafeInteger(index) || index < 0 || index >= length || String(index) !== key) throw new Error(`Unknown ${description} field: ${key}`);
-		return index;
-	}).sort((left, right) => left - right);
-	if (indexes.some((index, position) => index !== position)) throw new Error(`${description} must be a dense array without extra fields`);
-	return indexes.map(index => {
-		const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
-		if (descriptor === undefined) throw new Error(`${description} is missing index ${index}`);
-		if (!('value' in descriptor)) throw new Error(`${description} field ${index} must be a data property`);
-		return descriptor.value;
-	});
+	return readDenseOwnDataArray(value, description);
 }
 
 function structuralState(value: unknown): string {
@@ -485,21 +477,33 @@ function encodeStructuralValue(value: unknown, seen: Map<object, number>): strin
 	if (Array.isArray(value)) {
 		if (Object.getPrototypeOf(value) !== Array.prototype) throw new Error('checked structural array prototype changed');
 		const items = readDenseDataArray(value, 'checked structural array');
-		return `array:${id}:[${items.map(item => encodeStructuralValue(item, seen)).join(',')}]`;
+		let encodedItems = '';
+		for (let index = 0; index < items.length; index++) {
+			if (index > 0) encodedItems += ',';
+			encodedItems += encodeStructuralValue(items[index], seen);
+		}
+		return `array:${id}:[${encodedItems}]`;
 	}
 	const prototype = Object.getPrototypeOf(value);
 	if (prototype !== Object.prototype && prototype !== null) throw new Error('checked structural object prototype changed');
 	const keys = Reflect.ownKeys(value);
-	const symbolKey = keys.find((key): key is symbol => typeof key === 'symbol');
-	if (symbolKey !== undefined) throw new Error(`checked structural object contains symbol field ${String(symbolKey)}`);
-	const stringKeys = (keys as string[]).sort(compareText);
-	const fields = stringKeys.map(key => {
+	const stringKeys: string[] = [];
+	for (let index = 0; index < keys.length; index++) {
+		const key = keys[index]!;
+		if (typeof key === 'symbol') throw new Error(`checked structural object contains symbol field ${String(key)}`);
+		stringKeys[stringKeys.length] = key;
+	}
+	const sortedKeys = sortArrayByIndex(stringKeys, compareText);
+	let fields = '';
+	for (let index = 0; index < sortedKeys.length; index++) {
+		const key = sortedKeys[index]!;
 		const descriptor = Object.getOwnPropertyDescriptor(value, key);
 		if (descriptor === undefined) throw new Error(`checked structural object is missing field ${key}`);
 		if (!('value' in descriptor)) throw new Error(`checked structural object field ${key} must be a data property`);
-		return `${JSON.stringify(key)}=${encodeStructuralValue(descriptor.value, seen)}`;
-	});
-	return `object:${id}:{${fields.join(',')}}`;
+		if (index > 0) fields += ',';
+		fields += `${JSON.stringify(key)}=${encodeStructuralValue(descriptor.value, seen)}`;
+	}
+	return `object:${id}:{${fields}}`;
 }
 
 function compareText(left: string, right: string): number {
