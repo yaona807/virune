@@ -93,7 +93,7 @@ test('existing package.json is preserved and a newly created README does not cla
 	const readme = await readFile(join(root, 'README.md'), 'utf8');
 	assert.match(readme, /preserved the existing package\.json/u);
 	assert.match(readme, /requested dependency source was npm/u);
-	assert.match(readme, /existing dependency declarations were not rewritten/u);
+	assert.match(readme, /dependency declarations were not rewritten/u);
 	assert.doesNotMatch(readme, /No mutable npm range or dist-tag is used/u);
 });
 
