@@ -13,7 +13,8 @@ export interface NpmGeneratedProjectCapability {
 	readonly dependencySource: 'npm';
 }
 
-export const NPM_GENERATED_PROJECT_CAPABILITY_FIELD = 'viruneDistribution';
+export const NPM_GENERATED_PROJECT_CAPABILITY_FILE = 'npm-generated-project-capability.json';
+export const NPM_GENERATED_PROJECT_CAPABILITY_KIND = 'npm-generated-project-dependency-source-v1' as const;
 export const PUBLIC_NPM_REGISTRY = 'https://registry.npmjs.org/' as const;
 
 const DEPENDENCY_SOURCE_PREFIX = '--dependency-source=';
@@ -50,13 +51,13 @@ export function validateNpmGeneratedProjectCapability(
 	const capability = record(value, 'npm generated-project capability');
 	assertExactKeys(capability, ['schemaVersion', 'kind', 'version', 'registry', 'dependencySource']);
 	assert(capability.schemaVersion === 1, 'expected schemaVersion 1');
-	assert(capability.kind === 'npm-generated-project-dependency-source-v1', 'unexpected capability kind');
+	assert(capability.kind === NPM_GENERATED_PROJECT_CAPABILITY_KIND, `unexpected capability kind ${String(capability.kind)}`);
 	assert(capability.version === expectedVersion, `expected capability version ${expectedVersion}`);
 	assert(capability.registry === PUBLIC_NPM_REGISTRY, `expected Registry ${PUBLIC_NPM_REGISTRY}`);
 	assert(capability.dependencySource === 'npm', 'expected npm dependency source capability');
 	return {
 		schemaVersion: 1,
-		kind: 'npm-generated-project-dependency-source-v1',
+		kind: NPM_GENERATED_PROJECT_CAPABILITY_KIND,
 		version: expectedVersion,
 		registry: PUBLIC_NPM_REGISTRY,
 		dependencySource: 'npm',
