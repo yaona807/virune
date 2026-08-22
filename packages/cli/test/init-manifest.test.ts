@@ -10,6 +10,7 @@ test('v1.0.x generated projects preserve immutable GitHub Release dependencies',
 		stdlib: 'https://github.com/yaona807/virune/releases/download/v1.0.0/virune-stdlib-1.0.0.tgz',
 	});
 	assert.equal(generatedProjectDependencyVersions('1.0.9').source, 'github-release');
+	assert.equal(generatedProjectDependencyVersions('1.0.0-rc.2').source, 'github-release');
 });
 
 test('Registry-enabled stable and prerelease lines generate exact npm versions without a selector', () => {
@@ -59,8 +60,11 @@ test('generated project manifest keeps the canonical scripts and private package
 	});
 });
 
-test('malformed release versions fail closed', () => {
-	for (const version of ['', '1', '1.1', '01.1.0', '1.01.0', '1.1.0-', 'latest']) {
+test('malformed and unsupported release versions fail closed', () => {
+	for (const version of ['', '1', '1.1', '01.1.0', '1.01.0', '1.1.0-', '1.1.0+build.1', 'latest']) {
 		assert.throws(() => generatedProjectDependencyVersions(version), /Invalid Virune release version/u);
+	}
+	for (const version of ['1.1.0-dev.1', '1.1.0-preview.1', '1.1.0-rc', '1.1.0-nightly.20260822']) {
+		assert.throws(() => generatedProjectDependencyVersions(version), /Unsupported Virune release channel/u);
 	}
 });
