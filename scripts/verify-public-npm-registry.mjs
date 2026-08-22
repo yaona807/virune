@@ -1,8 +1,7 @@
 import { createHash } from 'node:crypto';
 import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
-import { mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { basename, join, resolve } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import {
@@ -16,6 +15,7 @@ const PUBLIC_REGISTRY = 'https://registry.npmjs.org/';
 const DEFAULT_PUBLICATION_MANIFEST = resolve(repositoryRoot, '.cache/public-release/PUBLICATION-MANIFEST.json');
 const DEFAULT_OUTPUT = resolve(repositoryRoot, '.cache/public-release/public-npm-registry-report.json');
 const DEFAULT_PLAN = resolve(repositoryRoot, '.github/release/npm-publication-v1.json');
+const STRIPPED_CREDENTIAL_ENV = new Set(['GH_TOKEN', 'GITHUB_TOKEN', 'NODE_AUTH_TOKEN', 'NPM_TOKEN']);
 
 export async function verifyPublicNpmRegistry({
 	publicationManifest,
@@ -26,6 +26,7 @@ export async function verifyPublicNpmRegistry({
 	fetchImpl = fetch,
 	runCommand = execute,
 	platform = process.platform,
+	baseEnv = process.env,
 } = {}) {
 	const plan = publicationPlan ?? JSON.parse(await readFile(publicationPlanPath, 'utf8'));
 	const manifest = publicationManifest ?? JSON.parse(await readFile(publicationManifestPath, 'utf8'));
@@ -34,8 +35,8 @@ export async function verifyPublicNpmRegistry({
 	for (const pkg of reviewed.packages) {
 		packages.push(await verifyRegistryPackage(pkg, reviewed.version, reviewed.distTag, { fetchImpl }));
 	}
-	packages.sort((left, right) => left.registryName.localeCompare(right.registryName));
-	const installation = await verifyCleanGlobalCliInstall(reviewed.version, { runCommand, platform });
+	packages.sort((left, right) => compareText(left.registryName, right.registryName));
+	const installation = await verifyCleanGlobalCliInstall(reviewed.version, { runCommand, platform, baseEnv });
 	const report = {
 		schemaVersion: 1,
 		registry: PUBLIC_REGISTRY,
@@ -47,7 +48,7 @@ export async function verifyPublicNpmRegistry({
 		passed: true,
 	};
 	if (outputPath !== null) {
-		await mkdir(resolve(outputPath, '..'), { recursive: true });
+		await mkdir(dirname(outputPath), { recursive: true });
 		await writeFile(outputPath, `${JSON.stringify(report, null, '\t')}\n`, 'utf8');
 	}
 	return report;
@@ -151,13 +152,23 @@ export async function verifyRegistryPackage(reviewed, version, distTag, { fetchI
 	};
 }
 
-export async function verifyCleanGlobalCliInstall(version, { runCommand = execute, platform = process.platform } = {}) {
+export async function verifyCleanGlobalCliInstall(version, {
+	runCommand = execute,
+	platform = process.platform,
+	baseEnv = process.env,
+} = {}) {
 	const root = await mkdtemp(join(tmpdir(), 'virune-public-npm-'));
 	try {
 		const prefix = resolve(root, 'prefix');
-		const npmrc = resolve(root, 'npmrc');
-		await writeFile(npmrc, `registry=${PUBLIC_REGISTRY}\n@virune:registry=${PUBLIC_REGISTRY}\nreplace-registry-host=never\n`, 'utf8');
-		const env = cleanNpmEnvironment(npmrc);
+		const npmrc = resolve(root, 'user.npmrc');
+		const globalNpmrc = resolve(root, 'global.npmrc');
+		const cache = resolve(root, 'npm-cache');
+		await Promise.all([
+			writeFile(npmrc, `registry=${PUBLIC_REGISTRY}\n@virune:registry=${PUBLIC_REGISTRY}\nreplace-registry-host=never\n`, 'utf8'),
+			writeFile(globalNpmrc, '', 'utf8'),
+			mkdir(cache, { recursive: true }),
+		]);
+		const env = cleanNpmEnvironment({ npmrc, globalNpmrc, cache, baseEnv });
 		runCommand('npm', [
 			'install', '--global', `virune@${version}`, `--prefix=${prefix}`,
 			`--registry=${PUBLIC_REGISTRY}`, `--userconfig=${npmrc}`,
@@ -174,13 +185,15 @@ export async function verifyCleanGlobalCliInstall(version, { runCommand = execut
 	}
 }
 
-function cleanNpmEnvironment(npmrc) {
+function cleanNpmEnvironment({ npmrc, globalNpmrc, cache, baseEnv }) {
 	const env = {};
-	for (const [key, value] of Object.entries(process.env)) {
-		if (key.toLowerCase().startsWith('npm_config_')) continue;
+	for (const [key, value] of Object.entries(baseEnv)) {
+		if (key.toLowerCase().startsWith('npm_config_') || STRIPPED_CREDENTIAL_ENV.has(key.toUpperCase())) continue;
 		if (value !== undefined) env[key] = value;
 	}
 	env.NPM_CONFIG_USERCONFIG = npmrc;
+	env.NPM_CONFIG_GLOBALCONFIG = globalNpmrc;
+	env.NPM_CONFIG_CACHE = cache;
 	env.NPM_CONFIG_REGISTRY = PUBLIC_REGISTRY;
 	env.NPM_CONFIG_REPLACE_REGISTRY_HOST = 'never';
 	return env;
