@@ -49,6 +49,9 @@ type Order = {
   id: string;
 };
 
+declare function loadUser(userId: string): Promise<User>;
+declare function loadOrders(userId: string): Promise<Order[]>;
+
 async function showDashboard(userId: string): Promise<void> {
   const [user, orders] = await Promise.all([
     loadUser(userId),
@@ -66,7 +69,7 @@ async function showDashboard(userId: string): Promise<void> {
 
 - `nickname`を読み出す側では、`string`だけでなく`null`やプロパティが存在しないことによる`undefined`も扱います。
 - `showDashboard`の型からは、`loadUser`や`loadOrders`がどのように失敗するかは分かりません。TypeScriptでもResult型などを導入して表現できます。
-- ネットワークや標準出力を使うことは、関数の型には現れません。
+- ネットワークやログ出力を使うことは、関数の型には現れません。
 - `Promise.all()`は、いずれかがrejectすると全体もrejectしますが、開始済みの他の処理を自動的に止めるわけではありません。キャンセルまで行う場合は`AbortController`などを組み合わせて設計します。
 
 ## 同じ処理をViruneで書く
@@ -126,19 +129,19 @@ import js { nanoid } from "nanoid"
 
 TypeScriptの`any`は安全な型として通さず、`unknown`も都合のよい型へ狭めません。安全に型を確定できない値は`Unknown`として残し、必要に応じて明示的に変換します。`null`や`undefined`を含む値も、境界で必要な違いを扱ったうえでVirune側の型へ変換します。
 
-複雑なTypeScript APIはAdapterへ分離できます。また、外部ライブラリの実装が型宣言どおりに動くことまでViruneが保証するわけではありません。
+複雑なTypeScript APIはTypeScript側のAdapterへ分離できます。また、外部ライブラリの実装が型宣言どおりに動くことまでViruneが保証するわけではありません。
 
 **JavaScriptの複雑さを無視するのではなく、境界で扱う場所をはっきりさせる。** これもViruneの設計方針です。
 
-## 言語を必要以上に大きくしない
+## 言語をできるだけシンプルに保つ
 
-Viruneは、機能が増えるほど良い言語になるとは考えていません。
+Viruneは、機能が多いほど良い言語になるとは考えていません。
 
 既存の小さな機能を組み合わせることで同じことを明確に表現できるなら、そのためだけの新しい構文や仕組みは増やさない方針です。
 
 例えば、Virune 1.0にはクラスや継承がありません。データは`record`や`enum`、意味を区別したい値は`newtype`として表現し、再利用したい振る舞いは関数や関数を持つ`record`を組み合わせます。
 
-高度な機能を否定するためではありません。**高度なことができても、言語そのものはできるだけ単純な状態に保つ。** 既存の仕組みの組み合わせで十分なら、新しい概念を増やさないことを重視しています。
+複雑なことができない言語にしたいわけではありません。**高度な処理が必要でも、言語そのものはできるだけシンプルな状態に保つ。** 既存の仕組みの組み合わせで十分なら、新しい概念を増やさないことを重視しています。
 
 ## クイックスタート
 
