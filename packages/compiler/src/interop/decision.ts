@@ -47,36 +47,46 @@ const OBLIGATION_KEYS = ['kind', 'stage', 'status'] as const;
  * Canonicalize one provider-independent Interop decision.
  *
  * The input is treated as untrusted runtime data even though callers normally
- * construct it through TypeScript. Unknown enum values, unknown fields, and
- * contradictory obligation state fail closed instead of being serialized as
+ * construct it through TypeScript. Unknown enum values, unknown/accessor fields,
+ * and contradictory obligation state fail closed instead of being serialized as
  * successful evidence.
  */
 export function canonicalizeInteropDecision(decision: InteropDecisionIR): InteropDecisionIR {
-	assertExactRecordKeys(decision, DECISION_KEYS, 'Interop decision');
-	assertKnown(DECISION_STATUSES, decision.status, 'decision status');
-	assertKnown(MECHANISMS, decision.mechanism, 'Interop mechanism');
-	assertKnown(AUTHORING_MODES, decision.authoring, 'Interop authoring mode');
+	const decisionRecord = readExactDataRecord(decision, DECISION_KEYS, 'Interop decision');
+	const status = decisionRecord.status;
+	const mechanism = decisionRecord.mechanism;
+	const authoring = decisionRecord.authoring;
+	assertKnown(DECISION_STATUSES, status, 'decision status');
+	assertKnown(MECHANISMS, mechanism, 'Interop mechanism');
+	assertKnown(AUTHORING_MODES, authoring, 'Interop authoring mode');
 
-	const claims = [...new Set(decision.claims.map(claim => {
+	const claimValues = decisionRecord.claims;
+	if (!Array.isArray(claimValues)) throw new Error('Interop decision claims must be an array');
+	const claims = [...new Set(claimValues.map(claim => {
 		assertKnown(CLAIMS, claim, 'Interop safety claim');
 		return claim;
 	}))].sort(compareText);
 
+	const obligationValues = decisionRecord.obligations;
+	if (!Array.isArray(obligationValues)) throw new Error('Interop decision obligations must be an array');
 	const obligationsByKey = new Map<string, InteropObligationIR>();
-	for (const obligation of decision.obligations) {
-		assertExactRecordKeys(obligation, OBLIGATION_KEYS, 'Interop obligation');
-		assertKnown(OBLIGATION_KINDS, obligation.kind, 'Interop obligation kind');
-		assertKnown(OBLIGATION_STAGES, obligation.stage, 'Interop obligation stage');
-		assertKnown(OBLIGATION_STATUSES, obligation.status, 'Interop obligation status');
-		const key = `${obligation.kind}\0${obligation.stage}`;
+	for (const obligation of obligationValues) {
+		const obligationRecord = readExactDataRecord(obligation, OBLIGATION_KEYS, 'Interop obligation');
+		const kind = obligationRecord.kind;
+		const stage = obligationRecord.stage;
+		const obligationStatus = obligationRecord.status;
+		assertKnown(OBLIGATION_KINDS, kind, 'Interop obligation kind');
+		assertKnown(OBLIGATION_STAGES, stage, 'Interop obligation stage');
+		assertKnown(OBLIGATION_STATUSES, obligationStatus, 'Interop obligation status');
+		const key = `${kind}\0${stage}`;
 		const previous = obligationsByKey.get(key);
-		if (previous !== undefined && previous.status !== obligation.status) {
-			throw new Error(`Conflicting Interop obligation state for ${obligation.kind} at ${obligation.stage}`);
+		if (previous !== undefined && previous.status !== obligationStatus) {
+			throw new Error(`Conflicting Interop obligation state for ${kind} at ${stage}`);
 		}
 		obligationsByKey.set(key, {
-			kind: obligation.kind,
-			stage: obligation.stage,
-			status: obligation.status,
+			kind,
+			stage,
+			status: obligationStatus,
 		});
 	}
 	const obligations = [...obligationsByKey.values()].sort((left, right) => compareText(
@@ -85,17 +95,17 @@ export function canonicalizeInteropDecision(decision: InteropDecisionIR): Intero
 	));
 
 	const hasPendingObligation = obligations.some(obligation => obligation.status === 'pending');
-	if (decision.status === 'resolved' && hasPendingObligation) {
+	if (status === 'resolved' && hasPendingObligation) {
 		throw new Error('Resolved Interop decision cannot retain pending obligations');
 	}
-	if (decision.status === 'obligation-pending' && !hasPendingObligation) {
+	if (status === 'obligation-pending' && !hasPendingObligation) {
 		throw new Error('obligation-pending Interop decision requires at least one pending obligation');
 	}
 
 	return {
-		status: decision.status,
-		mechanism: decision.mechanism,
-		authoring: decision.authoring,
+		status,
+		mechanism,
+		authoring,
 		claims,
 		obligations,
 	};
@@ -114,7 +124,7 @@ export function isResolvedDirectInteropDecision(decision: InteropDecisionIR): bo
 	}
 }
 
-function assertExactRecordKeys(value: unknown, expected: readonly string[], description: string): void {
+function readExactDataRecord(value: unknown, expected: readonly string[], description: string): Readonly<Record<string, unknown>> {
 	if (value === null || typeof value !== 'object' || Array.isArray(value)) {
 		throw new Error(`${description} must be a plain record`);
 	}
@@ -131,10 +141,19 @@ function assertExactRecordKeys(value: unknown, expected: readonly string[], desc
 		const missing = canonicalExpected.find(key => !actualSet.has(key));
 		throw new Error(`Missing ${description} field: ${String(missing)}`);
 	}
+
+	const snapshot: Record<string, unknown> = {};
+	for (const key of canonicalExpected) {
+		const descriptor = Object.getOwnPropertyDescriptor(value, key);
+		if (descriptor === undefined) throw new Error(`Missing ${description} field: ${key}`);
+		if (!('value' in descriptor)) throw new Error(`${description} field ${key} must be a data property`);
+		snapshot[key] = descriptor.value;
+	}
+	return snapshot;
 }
 
-function assertKnown<T extends string>(known: ReadonlySet<T>, value: T, description: string): void {
-	if (!known.has(value)) throw new Error(`Unknown ${description}: ${String(value)}`);
+function assertKnown<T extends string>(known: ReadonlySet<T>, value: unknown, description: string): asserts value is T {
+	if (!known.has(value as T)) throw new Error(`Unknown ${description}: ${String(value)}`);
 }
 
 function compareText(left: string, right: string): number {
