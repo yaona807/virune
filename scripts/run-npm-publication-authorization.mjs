@@ -57,6 +57,19 @@ export async function runNpmPublicationAuthorization({
 	return report;
 }
 
+export async function runNpmPublicationAuthorizationCli(argumentsList, { outputPath = DEFAULT_OUTPUT } = {}) {
+	if (outputPath !== null) await rm(outputPath, { force: true });
+	const parsed = parseNpmPublicationAuthorizationArguments(argumentsList);
+	return runNpmPublicationAuthorization({
+		reviewedCommit: parsed.reviewedCommit,
+		releaseVersion: parsed.releaseVersion,
+		evidenceSetId: parsed.evidenceSetId,
+		...(parsed.publicationManifestPath === undefined ? {} : { publicationManifestPath: resolve(parsed.publicationManifestPath) }),
+		...(parsed.evidencePath === undefined ? {} : { evidencePath: resolve(parsed.evidencePath) }),
+		outputPath,
+	});
+}
+
 export function parseNpmPublicationAuthorizationArguments(argumentsList) {
 	const args = array(argumentsList, '$.arguments');
 	const parsed = {};
@@ -147,13 +160,6 @@ function compareText(left, right) {
 
 const entry = process.argv[1] === undefined ? undefined : resolve(process.argv[1]);
 if (entry === fileURLToPath(import.meta.url)) {
-	const parsed = parseNpmPublicationAuthorizationArguments(process.argv.slice(2));
-	const report = await runNpmPublicationAuthorization({
-		reviewedCommit: parsed.reviewedCommit,
-		releaseVersion: parsed.releaseVersion,
-		evidenceSetId: parsed.evidenceSetId,
-		...(parsed.publicationManifestPath === undefined ? {} : { publicationManifestPath: resolve(parsed.publicationManifestPath) }),
-		...(parsed.evidencePath === undefined ? {} : { evidencePath: resolve(parsed.evidencePath) }),
-	});
+	const report = await runNpmPublicationAuthorizationCli(process.argv.slice(2));
 	process.stdout.write(`Authorized npm publication for ${report.version} at ${report.reviewedCommit}.\n`);
 }
