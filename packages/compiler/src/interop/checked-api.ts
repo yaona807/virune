@@ -19,10 +19,12 @@ import {
 } from '../project/project.js';
 import { IncrementalProjectBuilder as BaseIncrementalProjectBuilder } from '../project/incremental.js';
 import type { SourceFile } from '../source.js';
-import { invalidateCheckedSemantic, registerCheckedSemantic } from './check-session.js';
-import { invalidateCheckedSourceIdentity, registerCheckedSourceIdentity } from './source-identity.js';
+import { invalidateCheckedSemantic, isCurrentCheckedSemantic, registerCheckedSemantic } from './check-session.js';
+import { invalidateCheckedSourceIdentity, isCurrentCheckedSourceIdentity, registerCheckedSourceIdentity } from './source-identity.js';
 
-const currentModulesByCache = new WeakMap<ProjectBuildCache, ReadonlySet<A.ModuleNode>>();
+type CheckedModuleMap = ReadonlyMap<A.ModuleNode, SemanticModel>;
+
+const currentModulesByCache = new WeakMap<ProjectBuildCache, CheckedModuleMap>();
 const activeCaches = new WeakSet<ProjectBuildCache>();
 const activeCheckedModules = new WeakSet<A.ModuleNode>();
 
@@ -36,26 +38,34 @@ function registerCheckedModule(
 	semantic: SemanticModel,
 	diagnostics: readonly Diagnostic[],
 ): void {
-	registerCheckedSemantic(module, semantic, diagnostics);
 	try {
-		registerCheckedSourceIdentity(module);
+		registerCheckedSourceIdentity(module, semantic);
+		registerCheckedSemantic(module, semantic, diagnostics);
 	} catch (error) {
 		invalidateCheckedModule(module);
 		throw error;
 	}
 }
 
-function checkedModules(result: ProjectBuildResult): ReadonlySet<A.ModuleNode> {
-	const modules = new Set<A.ModuleNode>();
+function checkedModules(result: ProjectBuildResult): CheckedModuleMap {
+	const modules = new Map<A.ModuleNode, SemanticModel>();
 	for (const module of result.modules) {
-		if (module.ast !== undefined && module.semantic !== undefined) modules.add(module.ast);
+		if (module.ast !== undefined && module.semantic !== undefined) modules.set(module.ast, module.semantic);
 	}
 	return modules;
 }
 
-function invalidateModules(modules: ReadonlySet<A.ModuleNode> | undefined): void {
+function invalidateModules(modules: CheckedModuleMap | undefined): void {
 	if (modules === undefined) return;
-	for (const module of modules) invalidateCheckedModule(module);
+	for (const module of modules.keys()) invalidateCheckedModule(module);
+}
+
+function reusableModulesAreCurrent(modules: CheckedModuleMap | undefined): boolean {
+	if (modules === undefined) return true;
+	for (const [module, semantic] of modules) {
+		if (!isCurrentCheckedSemantic(module, semantic) || !isCurrentCheckedSourceIdentity(module)) return false;
+	}
+	return true;
 }
 
 function registerCompileResult(result: CompileResult): CompileResult {
@@ -82,8 +92,16 @@ function registerProjectResult(result: ProjectBuildResult): ProjectBuildResult {
 
 function beginCachedBuild(cache: ProjectBuildCache): void {
 	if (activeCaches.has(cache)) throw new Error('Concurrent experimental project builds cannot share one ProjectBuildCache');
+	const current = currentModulesByCache.get(cache);
+	if (!reusableModulesAreCurrent(current)) {
+		invalidateModules(current);
+		currentModulesByCache.delete(cache);
+		cache.clear();
+		throw new Error('Cannot reuse experimental project cache after its checked result was mutated');
+	}
 	activeCaches.add(cache);
-	invalidateModules(currentModulesByCache.get(cache));
+	currentModulesByCache.delete(cache);
+	invalidateModules(current);
 }
 
 /** Experimental compiler entry point with ephemeral checked-AST session binding. */
@@ -139,6 +157,12 @@ export async function buildProject(
 		registerProjectResult(result);
 		if (cache !== undefined) currentModulesByCache.set(cache, checkedModules(result));
 		return result;
+	} catch (error) {
+		if (cache !== undefined) {
+			currentModulesByCache.delete(cache);
+			cache.clear();
+		}
+		throw error;
 	} finally {
 		if (cache !== undefined) activeCaches.delete(cache);
 	}
@@ -146,12 +170,19 @@ export async function buildProject(
 
 /** Stateful experimental project compiler that registers each returned checked module. */
 export class IncrementalProjectBuilder extends BaseIncrementalProjectBuilder {
-	readonly #currentModules = new Set<A.ModuleNode>();
+	readonly #currentModules = new Map<A.ModuleNode, SemanticModel>();
 	#building = false;
 
 	#invalidateCurrentModules(): void {
 		invalidateModules(this.#currentModules);
 		this.#currentModules.clear();
+	}
+
+	#assertReusableCurrentModules(): void {
+		if (reusableModulesAreCurrent(this.#currentModules)) return;
+		this.#invalidateCurrentModules();
+		super.clear();
+		throw new Error('Cannot reuse experimental incremental builder after its checked result was mutated');
 	}
 
 	public override async build(
@@ -160,11 +191,16 @@ export class IncrementalProjectBuilder extends BaseIncrementalProjectBuilder {
 	): Promise<ProjectBuildResult> {
 		if (this.#building) throw new Error('Concurrent experimental builds cannot share one IncrementalProjectBuilder');
 		this.#building = true;
-		this.#invalidateCurrentModules();
 		try {
+			this.#assertReusableCurrentModules();
+			this.#invalidateCurrentModules();
 			const result = registerProjectResult(await super.build(rootDirectory, options));
-			for (const module of checkedModules(result)) this.#currentModules.add(module);
+			for (const [module, semantic] of checkedModules(result)) this.#currentModules.set(module, semantic);
 			return result;
+		} catch (error) {
+			this.#invalidateCurrentModules();
+			super.clear();
+			throw error;
 		} finally {
 			this.#building = false;
 		}
