@@ -40,7 +40,7 @@ npm run virune -- --version
 
 ## Governance
 
-Virune is currently maintained by [`@yaona807`](https://github.com/yaona807). Changes and proposals are generally developed publicly through Issues and Pull Requests, and final project decisions are made by the maintainer. Security reports follow [`SECURITY.md`](SECURITY.md).
+Virune is currently maintained by [`@yaona807`](https://github.com/yaona807). There is currently no steering committee or voting process. Changes and proposals are generally developed publicly through Issues and Pull Requests, and final project decisions are made by the maintainer. Security reports follow [`SECURITY.md`](SECURITY.md).
 
 ## Releases
 
