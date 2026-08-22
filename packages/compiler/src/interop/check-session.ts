@@ -7,6 +7,7 @@ import type {
 	ForeignTypeSnapshot,
 	ForeignUsage,
 	ForeignUsageIR,
+	InteropSemanticModel,
 	ModuleResolutionWitness,
 	StableForeignTypeSnapshot,
 } from './types.js';
@@ -14,6 +15,8 @@ import type {
 interface CheckedSession {
 	readonly checkerWitness: object;
 	readonly moduleState: string;
+	readonly interop: InteropSemanticModel;
+	readonly semanticDiagnostics: readonly Diagnostic[];
 	readonly evidenceState: string;
 	readonly diagnostics: readonly Diagnostic[];
 	readonly diagnosticsState: string;
@@ -38,11 +41,15 @@ export function registerCheckedSemantic(
 	if (currentCheckedBuiltinWitness(module.span) !== checkerWitness) {
 		throw new Error('Cannot re-register checked semantic after its checker witness has changed');
 	}
+	const interop = semantic.interop;
+	const semanticDiagnostics = semantic.diagnostics.items;
 	const registeredDiagnostics = Object.freeze([...diagnostics]);
-	const session = Object.freeze({
+	const session: CheckedSession = Object.freeze({
 		checkerWitness,
 		moduleState: structuralState(module),
-		evidenceState: checkedEvidenceState(semantic),
+		interop,
+		semanticDiagnostics,
+		evidenceState: checkedEvidenceState(interop, semanticDiagnostics),
 		diagnostics: registeredDiagnostics,
 		diagnosticsState: structuralState(registeredDiagnostics),
 	});
@@ -61,8 +68,9 @@ export function isCurrentCheckedSemantic(module: A.ModuleNode, semantic: Semanti
 	if (checkedScopeWitness(semantic.globalScope) !== session.checkerWitness) return false;
 	if (currentCheckedBuiltinWitness(module.span) !== session.checkerWitness) return false;
 	try {
+		if (semantic.interop !== session.interop || semantic.diagnostics.items !== session.semanticDiagnostics) return false;
 		return session.moduleState === structuralState(module)
-			&& session.evidenceState === checkedEvidenceState(semantic)
+			&& session.evidenceState === checkedEvidenceState(session.interop, session.semanticDiagnostics)
 			&& session.diagnosticsState === structuralState(session.diagnostics);
 	} catch {
 		return false;
@@ -78,10 +86,19 @@ export function currentCheckedDiagnostics(
 	return sessionBySemantic.get(semantic)?.diagnostics;
 }
 
-function checkedEvidenceState(semantic: SemanticModel): string {
+/** Return the exact checked Interop evidence object registered for this semantic session. */
+export function currentCheckedInterop(
+	module: A.ModuleNode,
+	semantic: SemanticModel,
+): InteropSemanticModel | undefined {
+	if (!isCurrentCheckedSemantic(module, semantic)) return undefined;
+	return sessionBySemantic.get(semantic)?.interop;
+}
+
+function checkedEvidenceState(interop: InteropSemanticModel, diagnostics: readonly Diagnostic[]): string {
 	return structuralState({
-		diagnostics: semantic.diagnostics.items,
-		interop: checkedInteropEvidence(semantic),
+		diagnostics,
+		interop: checkedInteropEvidence(interop),
 	});
 }
 
@@ -90,75 +107,144 @@ function checkedEvidenceState(semantic: SemanticModel): string {
  * Provider-private/navigation metadata is deliberately not enumerated: it is
  * neither stable evidence nor a session truth source.
  */
-function checkedInteropEvidence(semantic: SemanticModel): unknown {
+function checkedInteropEvidence(interop: InteropSemanticModel): unknown {
+	const usages = readDenseDataArray(ownDataProperty(interop, 'usages', 'checked Interop evidence'), 'checked Interop usages');
+	const usageIR = readDenseDataArray(ownDataProperty(interop, 'usageIR', 'checked Interop evidence'), 'checked Interop usage IR');
+	const moduleWitnesses = readDenseDataArray(ownDataProperty(interop, 'moduleWitnesses', 'checked Interop evidence'), 'checked Interop module witnesses');
 	return {
-		usages: semantic.interop.usages
-			.filter(usage => usage.kind !== 'import')
+		usages: usages
+			.filter(usage => ownDataProperty(usage, 'kind', 'checked Interop usage') !== 'import')
 			.map(checkedUsageEvidence),
-		usageIR: semantic.interop.usageIR.map(checkedUsageEvidence),
-		moduleWitnesses: semantic.interop.moduleWitnesses.map(checkedModuleWitnessEvidence),
-		requiresJavaScriptInitialization: semantic.interop.requiresJavaScriptInitialization,
+		usageIR: usageIR.map(checkedUsageEvidence),
+		moduleWitnesses: moduleWitnesses.map(checkedModuleWitnessEvidence),
+		requiresJavaScriptInitialization: ownDataProperty(interop, 'requiresJavaScriptInitialization', 'checked Interop evidence'),
 	};
 }
 
-function checkedUsageEvidence(usage: ForeignUsage | ForeignUsageIR): unknown {
+function checkedUsageEvidence(usage: ForeignUsage | ForeignUsageIR | unknown): unknown {
+	const kind = ownDataProperty(usage, 'kind', 'checked Interop usage');
+	const nodeId = ownDataProperty(usage, 'nodeId', 'checked Interop usage');
+	const span = ownDataProperty(usage, 'span', 'checked Interop usage');
 	const anchor = {
-		kind: usage.kind,
-		nodeId: usage.nodeId,
-		span: checkedSpanEvidence(usage.span),
+		kind,
+		nodeId,
+		span: checkedSpanEvidence(span),
 	};
-	if (usage.kind === 'import') return anchor;
+	if (kind === 'import') return anchor;
+	const foreignType = ownDataProperty(usage, 'foreignType', 'checked Interop usage');
+	const bridge = kind === 'bridge' ? ownOptionalDataProperty(usage, 'bridge', 'checked Interop usage') : undefined;
 	return {
 		...anchor,
-		foreignType: checkedForeignTypeEvidence(usage.foreignType),
-		...(usage.kind === 'call' ? { receiverMode: usage.receiverMode, mayReject: usage.mayReject } : {}),
-		...(usage.kind === 'await' ? { mayReject: usage.mayReject } : {}),
-		...(usage.kind === 'bridge' ? {
-			bridge: usage.bridge === undefined ? undefined : {
-				kind: usage.bridge.kind,
-				bridge: usage.bridge.bridge,
+		foreignType: checkedForeignTypeEvidence(foreignType),
+		...(kind === 'call' ? {
+			receiverMode: ownOptionalDataProperty(usage, 'receiverMode', 'checked Interop usage'),
+			mayReject: ownOptionalDataProperty(usage, 'mayReject', 'checked Interop usage'),
+		} : {}),
+		...(kind === 'await' ? { mayReject: ownOptionalDataProperty(usage, 'mayReject', 'checked Interop usage') } : {}),
+		...(kind === 'bridge' ? {
+			bridge: bridge === undefined ? undefined : {
+				kind: ownDataProperty(bridge, 'kind', 'checked Interop bridge'),
+				bridge: ownDataProperty(bridge, 'bridge', 'checked Interop bridge'),
 			},
 		} : {}),
 	};
 }
 
-function checkedForeignTypeEvidence(snapshot: ForeignTypeSnapshot | StableForeignTypeSnapshot): unknown {
+function checkedForeignTypeEvidence(snapshot: ForeignTypeSnapshot | StableForeignTypeSnapshot | unknown): unknown {
+	const origin = ownOptionalDataProperty(snapshot, 'origin', 'checked foreign type');
 	return {
-		category: snapshot.category,
-		primitive: snapshot.primitive,
-		mustUse: snapshot.mustUse,
-		origin: snapshot.origin === undefined ? undefined : checkedOriginEvidence(snapshot.origin),
+		category: ownDataProperty(snapshot, 'category', 'checked foreign type'),
+		primitive: ownOptionalDataProperty(snapshot, 'primitive', 'checked foreign type'),
+		mustUse: ownOptionalDataProperty(snapshot, 'mustUse', 'checked foreign type'),
+		origin: origin === undefined ? undefined : checkedOriginEvidence(origin),
 	};
 }
 
-function checkedOriginEvidence(origin: ForeignOrigin): unknown {
+function checkedOriginEvidence(origin: ForeignOrigin | unknown): unknown {
 	return {
-		moduleSpecifier: origin.moduleSpecifier,
-		packageName: origin.packageName,
-		packageVersion: origin.packageVersion,
-		exportName: origin.exportName,
+		moduleSpecifier: ownDataProperty(origin, 'moduleSpecifier', 'checked foreign origin'),
+		packageName: ownOptionalDataProperty(origin, 'packageName', 'checked foreign origin'),
+		packageVersion: ownOptionalDataProperty(origin, 'packageVersion', 'checked foreign origin'),
+		exportName: ownOptionalDataProperty(origin, 'exportName', 'checked foreign origin'),
 	};
 }
 
-function checkedModuleWitnessEvidence(witness: ModuleResolutionWitness): unknown {
+function checkedModuleWitnessEvidence(witness: ModuleResolutionWitness | unknown): unknown {
+	const conditionValues = readDenseDataArray(ownDataProperty(witness, 'conditions', 'checked module witness'), 'checked module witness conditions');
+	const conditions = [...new Set(conditionValues.map(condition => {
+		if (typeof condition !== 'string') throw new Error('checked module witness condition must be a string');
+		return condition;
+	}))].sort(compareText);
 	return {
-		moduleSpecifier: witness.moduleSpecifier,
-		packageName: witness.packageName,
-		packageVersion: witness.packageVersion,
-		runtimeEntry: witness.runtimeEntry,
-		runtimeFormat: witness.runtimeFormat,
-		conditions: [...new Set(witness.conditions)].sort(compareText),
-		platform: witness.platform,
-		packageJsonHash: witness.packageJsonHash,
+		moduleSpecifier: ownDataProperty(witness, 'moduleSpecifier', 'checked module witness'),
+		packageName: ownOptionalDataProperty(witness, 'packageName', 'checked module witness'),
+		packageVersion: ownOptionalDataProperty(witness, 'packageVersion', 'checked module witness'),
+		runtimeEntry: ownOptionalDataProperty(witness, 'runtimeEntry', 'checked module witness'),
+		runtimeFormat: ownOptionalDataProperty(witness, 'runtimeFormat', 'checked module witness'),
+		conditions,
+		platform: ownDataProperty(witness, 'platform', 'checked module witness'),
+		packageJsonHash: ownOptionalDataProperty(witness, 'packageJsonHash', 'checked module witness'),
 	};
 }
 
-function checkedSpanEvidence(span: ForeignUsage['span']): unknown {
+function checkedSpanEvidence(span: ForeignUsage['span'] | unknown): unknown {
+	const start = ownDataProperty(span, 'start', 'checked source span');
+	const end = ownDataProperty(span, 'end', 'checked source span');
 	return {
-		fileId: span.fileId,
-		start: { offset: span.start.offset, line: span.start.line, column: span.start.column },
-		end: { offset: span.end.offset, line: span.end.line, column: span.end.column },
+		fileId: ownDataProperty(span, 'fileId', 'checked source span'),
+		start: {
+			offset: ownDataProperty(start, 'offset', 'checked source position'),
+			line: ownDataProperty(start, 'line', 'checked source position'),
+			column: ownDataProperty(start, 'column', 'checked source position'),
+		},
+		end: {
+			offset: ownDataProperty(end, 'offset', 'checked source position'),
+			line: ownDataProperty(end, 'line', 'checked source position'),
+			column: ownDataProperty(end, 'column', 'checked source position'),
+		},
 	};
+}
+
+function ownDataProperty(value: unknown, key: string, description: string): unknown {
+	if (value === null || typeof value !== 'object') throw new Error(`${description} must be an object`);
+	const descriptor = Object.getOwnPropertyDescriptor(value, key);
+	if (descriptor === undefined) throw new Error(`${description} is missing field ${key}`);
+	if (!('value' in descriptor)) throw new Error(`${description} field ${key} must be a data property`);
+	return descriptor.value;
+}
+
+function ownOptionalDataProperty(value: unknown, key: string, description: string): unknown {
+	if (value === null || typeof value !== 'object') throw new Error(`${description} must be an object`);
+	const descriptor = Object.getOwnPropertyDescriptor(value, key);
+	if (descriptor === undefined) return undefined;
+	if (!('value' in descriptor)) throw new Error(`${description} field ${key} must be a data property`);
+	return descriptor.value;
+}
+
+function readDenseDataArray(value: unknown, description: string): readonly unknown[] {
+	if (!Array.isArray(value)) throw new Error(`${description} must be an array`);
+	const keys = Reflect.ownKeys(value);
+	const symbolKey = keys.find((key): key is symbol => typeof key === 'symbol');
+	if (symbolKey !== undefined) throw new Error(`Unknown ${description} field: ${String(symbolKey)}`);
+	const lengthDescriptor = Object.getOwnPropertyDescriptor(value, 'length');
+	if (lengthDescriptor === undefined || !('value' in lengthDescriptor) || typeof lengthDescriptor.value !== 'number' || !Number.isSafeInteger(lengthDescriptor.value) || lengthDescriptor.value < 0) {
+		throw new Error(`${description} has an invalid length`);
+	}
+	const length = lengthDescriptor.value;
+	const indexKeys = (keys as string[]).filter(key => key !== 'length');
+	if (indexKeys.length !== length) throw new Error(`${description} must be a dense array without extra fields`);
+	const indexes = indexKeys.map(key => {
+		const index = Number(key);
+		if (!Number.isSafeInteger(index) || index < 0 || index >= length || String(index) !== key) throw new Error(`Unknown ${description} field: ${key}`);
+		return index;
+	}).sort((left, right) => left - right);
+	if (indexes.some((index, position) => index !== position)) throw new Error(`${description} must be a dense array without extra fields`);
+	return indexes.map(index => {
+		const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
+		if (descriptor === undefined) throw new Error(`${description} is missing index ${index}`);
+		if (!('value' in descriptor)) throw new Error(`${description} field ${index} must be a data property`);
+		return descriptor.value;
+	});
 }
 
 function structuralState(value: unknown): string {
@@ -188,11 +274,20 @@ function encodeStructuralValue(value: unknown, seen: Map<object, number>): strin
 	seen.set(value, id);
 
 	if (Array.isArray(value)) {
-		return `array:${id}:[${value.map(item => encodeStructuralValue(item, seen)).join(',')}]`;
+		const items = readDenseDataArray(value, 'checked structural array');
+		return `array:${id}:[${items.map(item => encodeStructuralValue(item, seen)).join(',')}]`;
 	}
-	const record = value as Record<string, unknown>;
-	const keys = Object.keys(record).sort();
-	return `object:${id}:{${keys.map(key => `${JSON.stringify(key)}=${encodeStructuralValue(record[key], seen)}`).join(',')}}`;
+	const keys = Reflect.ownKeys(value);
+	const symbolKey = keys.find((key): key is symbol => typeof key === 'symbol');
+	if (symbolKey !== undefined) throw new Error(`checked structural object contains symbol field ${String(symbolKey)}`);
+	const stringKeys = (keys as string[]).sort(compareText);
+	const fields = stringKeys.map(key => {
+		const descriptor = Object.getOwnPropertyDescriptor(value, key);
+		if (descriptor === undefined) throw new Error(`checked structural object is missing field ${key}`);
+		if (!('value' in descriptor)) throw new Error(`checked structural object field ${key} must be a data property`);
+		return `${JSON.stringify(key)}=${encodeStructuralValue(descriptor.value, seen)}`;
+	});
+	return `object:${id}:{${fields.join(',')}}`;
 }
 
 function compareText(left: string, right: string): number {
