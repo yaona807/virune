@@ -26,37 +26,17 @@
 
 このリポジトリは、Viruneそのものを開発・保守するための正本です。コンパイラー、Runtime、標準ライブラリ、CLI、エディタ連携、セルフホスティング実装、テスト、CI、規範仕様を管理します。
 
-言語としての厳密な動作は[`spec/`](spec/README_ja.md)を参照してください。Viruneの開発へ参加する場合は[`CONTRIBUTING_ja.md`](CONTRIBUTING_ja.md)から始めてください。
+言語としての厳密な動作は[`spec/`](spec/README_ja.md)を参照してください。Viruneの開発へ参加する場合は[`CONTRIBUTING_ja.md`](CONTRIBUTING_ja.md)から始めてください。リポジトリ構成、変更の進め方、テストの選び方もそちらにまとめています。
 
 ## ソースから動かす
 
-必要なNode.jsのバージョンは`package.json`の`engines`を正本とします。現在の環境で次を実行します。
+必要なNode.jsのバージョンは`package.json`の`engines`を正本とします。リポジトリを取得済みの場合は次を実行します。
 
 ```bash
-# リポジトリを取得済みの場合
 npm run bootstrap
 npm run build
 npm run virune -- --version
 ```
-
-初めて変更する場合の手順、テストの選び方、Pull Requestの条件は[`CONTRIBUTING_ja.md`](CONTRIBUTING_ja.md)にまとめています。
-
-## 主なディレクトリ
-
-| パス | 役割 |
-|---|---|
-| `packages/compiler` | Lexer、Parser、型検査、プロジェクト処理、コード生成、Compiler API |
-| `packages/runtime` | 生成コードが利用するRuntime |
-| `packages/stdlib` | 標準ライブラリ |
-| `packages/js-interop` | JavaScript／TypeScript連携 |
-| `packages/cli` | `virune` CLI |
-| `packages/language-server` | Language Server |
-| `packages/vscode` | VS Code拡張 |
-| `spec` | 規範的な言語仕様とRuntime ABI |
-| `conformance` | 仕様への適合を確認するテストデータ |
-| `integration` | 複数コンポーネントをまたぐ統合テスト |
-| `selfhost` | Viruneで実装したセルフホスト用コンパイラー |
-| `scripts` | ビルド、検証、Release、CIで使うリポジトリ管理スクリプト |
 
 ## Release
 
