@@ -53,7 +53,7 @@ npm run test:core
 | `packages/runtime` | 生成コードが使うランタイムと公開ABI |
 | `packages/stdlib` | 標準ライブラリ |
 | `packages/formatter` | フォーマッター |
-| `packages/js-interop` | JavaScript／TypeScript相互運用、バインディング、Adapter検証 |
+| `packages/js-interop` | JavaScript／TypeScript相互運用、バインディング、Adapterの検証 |
 | `packages/cli` | `virune` CLI |
 | `packages/language-server` | Language Server |
 | `packages/vscode` | VS Code拡張 |
@@ -163,7 +163,7 @@ Hostへ残す主な責務は次のとおりです。
 - パッケージ作成、リリース、attestation（成果物の出所を示す証明）
 - ブートストラップ処理の組み立てとロールバックの選択
 
-HostとKernelの境界は、バージョン付きで検証でき、データだけで表現できる契約にします。コールバック、任意のJavaScript関数、クラスのインスタンス、TypeScript AST node、ファイルハンドルなど、オブジェクトの同一性や実行環境に依存する値をKernelとの契約へ持ち込まないでください。
+HostとKernelの境界は、バージョン付きで検証でき、データだけで表現できる契約にします。コールバック、任意のJavaScript関数、クラスのインスタンス、TypeScriptのASTノード、ファイルハンドルなど、オブジェクトの同一性や実行環境に依存する値をKernelとの契約へ持ち込まないでください。
 
 まず既存の言語機能、内部アルゴリズム、データ契約で解決できないかを検討します。それでもKernel側へ置くべきでなければ、責務はHost側に残します。セルフホスティングだけのために新しい構文や公開APIを追加しません。
 
