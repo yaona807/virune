@@ -112,21 +112,30 @@ test('the resolved Git tag commit is the reviewed source even without an expecte
 	assert.throws(() => resolveReviewedCommit(tag, tagCommit, 'b'.repeat(40)), /points to .* expected/u);
 });
 
-test('missing reviewed npm policy falls back only for legacy Registry-ineligible versions', async () => {
+test('legacy Registry-ineligible versions do not depend on a tag-local npm policy', async () => {
 	const fallbackPolicy = {
 		firstStableRegistryRelease: '1.1.0',
 		distTagPolicy: { stable: 'latest', prerelease: 'next', nightly: null },
 	};
-	const missingPolicy = async () => { throw new Error('reviewed policy missing'); };
+	let reads = 0;
+	const shouldNotRead = async () => { reads += 1; throw new Error('unexpected reviewed policy read'); };
 	assert.equal(await readReviewedNpmPublicationPolicy('a'.repeat(40), version, {
-		readReviewed: missingPolicy,
+		readReviewed: shouldNotRead,
 		fallbackPolicy,
 	}), fallbackPolicy);
+	assert.equal(reads, 0);
+});
+
+test('Registry-eligible versions fail closed on missing, unreadable or malformed reviewed policy', async () => {
+	const fallbackPolicy = {
+		firstStableRegistryRelease: '1.1.0',
+		distTagPolicy: { stable: 'latest', prerelease: 'next', nightly: null },
+	};
 	await assert.rejects(() => readReviewedNpmPublicationPolicy('a'.repeat(40), registryVersion, {
-		readReviewed: missingPolicy,
+		readReviewed: async () => { throw new Error('reviewed policy unavailable'); },
 		fallbackPolicy,
-	}), /reviewed policy missing/u);
-	await assert.rejects(() => readReviewedNpmPublicationPolicy('a'.repeat(40), version, {
+	}), /reviewed policy unavailable/u);
+	await assert.rejects(() => readReviewedNpmPublicationPolicy('a'.repeat(40), registryVersion, {
 		readReviewed: async () => Buffer.from('{ malformed'),
 		fallbackPolicy,
 	}), /Reviewed npm publication policy is malformed/u);
@@ -203,7 +212,7 @@ async function writeDownloadedReleaseFixture(directory, {
 			bomFormat: 'CycloneDX',
 			specVersion: '1.6',
 			serialNumber: 'urn:uuid:00000000-0000-5000-8000-000000000000',
-			metadata: { component: { version, licenses: [{ license: { id: sbomLicense } }] },
+			metadata: { component: { version, licenses: [{ license: { id: sbomLicense } }] } },
 			components: [],
 		}, null, 2)}\n`)],
 	]);
