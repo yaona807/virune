@@ -9,6 +9,12 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/yaona807/virune/actions/workflows/ci.yml"><img src="https://github.com/yaona807/virune/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI"></a>
+  <a href="https://github.com/yaona807/virune/releases"><img src="https://img.shields.io/github/v/release/yaona807/virune?display_name=tag&sort=semver" alt="Latest release"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/yaona807/virune" alt="License"></a>
+</p>
+
+<p align="center">
   <a href="spec/README_ja.md">言語仕様</a> ·
   <a href="CONTRIBUTING_ja.md">開発に参加する</a> ·
   <a href="COMPATIBILITY_ja.md">互換性方針</a> ·
