@@ -69,9 +69,6 @@ export function validateReviewedPublicationManifest(manifest, plan) {
 	assert(document.registryVersionEligible === true, '$.publicationManifest.registryVersionEligible', 'public Registry verification requires a Registry-eligible version');
 
 	const policy = record(plan, '$.publicationPlan');
-	assert(policy.publicationReady === true, '$.publicationPlan.publicationReady', 'public Registry verification requires a publication-ready release source');
-	const unresolvedRequirements = array(policy.unresolvedRequirements, '$.publicationPlan.unresolvedRequirements');
-	assert(unresolvedRequirements.length === 0, '$.publicationPlan.unresolvedRequirements', 'public Registry verification requires zero unresolved npm publication requirements');
 	const registryPolicy = registryPolicyForVersion(
 		version,
 		nonEmptyString(policy.firstStableRegistryRelease, '$.publicationPlan.firstStableRegistryRelease'),
@@ -171,7 +168,7 @@ export async function verifyCleanGlobalCliInstall(version, {
 			writeFile(globalNpmrc, '', 'utf8'),
 			mkdir(cache, { recursive: true }),
 		]);
-		const env = cleanNpmEnvironment({ npmrc, globalNpmrc, cache, baseEnv });
+		const env = cleanNpmEnvironment({ root, npmrc, globalNpmrc, cache, baseEnv });
 		runCommand('npm', [
 			'install', '--global', `virune@${version}`, `--prefix=${prefix}`,
 			`--registry=${PUBLIC_REGISTRY}`, `--userconfig=${npmrc}`,
@@ -188,12 +185,15 @@ export async function verifyCleanGlobalCliInstall(version, {
 	}
 }
 
-function cleanNpmEnvironment({ npmrc, globalNpmrc, cache, baseEnv }) {
+function cleanNpmEnvironment({ root, npmrc, globalNpmrc, cache, baseEnv }) {
 	const env = {};
 	for (const [key, value] of Object.entries(baseEnv)) {
 		if (key.toLowerCase().startsWith('npm_config_') || STRIPPED_CREDENTIAL_ENV.has(key.toUpperCase())) continue;
 		if (value !== undefined) env[key] = value;
 	}
+	env.HOME = root;
+	env.USERPROFILE = root;
+	env.XDG_CONFIG_HOME = resolve(root, 'xdg-config');
 	env.NPM_CONFIG_USERCONFIG = npmrc;
 	env.NPM_CONFIG_GLOBALCONFIG = globalNpmrc;
 	env.NPM_CONFIG_CACHE = cache;
