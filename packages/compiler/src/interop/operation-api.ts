@@ -1,6 +1,7 @@
 import type * as A from '../ast/nodes.js';
 import type { SemanticModel } from '../checker/checker.js';
 import type { Diagnostic } from '../diagnostics/diagnostic.js';
+import { readDenseOwnDataArray, someArrayByIndex } from './array-safety.js';
 import type { InteropSemanticModel } from './types.js';
 import { currentCheckedDiagnostics, currentCheckedInterop } from './check-session.js';
 import { externalOperationSequence as externalOperationSequenceFromEvidence, type ExternalOperationIR } from './operation.js';
@@ -19,7 +20,7 @@ export function externalOperationSequence(input: {
 	readonly semantic: SemanticModel;
 }): readonly ExternalOperationIR[] {
 	const evidence = assertCheckedAstEvidence(input.module, input.semantic);
-	if (input.semantic.diagnostics.items.some(diagnostic => diagnostic.severity === 'error')) return [];
+	if (someArrayByIndex(input.semantic.diagnostics.items, diagnostic => diagnostic.severity === 'error')) return [];
 	return externalOperationSequenceFromEvidence({
 		module: input.module,
 		interop: evidence.interop,
@@ -43,18 +44,27 @@ function assertCheckedAstEvidence(
 		if (value === null || typeof value !== 'object' || seen.has(value)) return;
 		seen.add(value);
 		if (Array.isArray(value)) {
-			for (const item of value) visit(item);
+			const items = readDenseOwnDataArray(value, 'checked AST array');
+			for (let index = 0; index < items.length; index++) visit(items[index]);
 			return;
 		}
 		const record = value as Record<string, unknown>;
 		if (typeof record.id === 'number' && Number.isSafeInteger(record.id)) {
 			inferredByNode.set(record.id, record.inferredTypeId);
 		}
-		for (const child of Object.values(record)) visit(child);
+		const keys = Reflect.ownKeys(record);
+		for (let index = 0; index < keys.length; index++) {
+			const key = keys[index]!;
+			if (typeof key === 'symbol') throw new Error(`Checked AST contains symbol field ${String(key)}`);
+			const descriptor = Object.getOwnPropertyDescriptor(record, key);
+			if (descriptor === undefined || !('value' in descriptor)) throw new Error(`Checked AST field ${key} must be a data property`);
+			visit(descriptor.value);
+		}
 	};
 	visit(module);
 
-	for (const usage of interop.usageIR) {
+	for (let index = 0; index < interop.usageIR.length; index++) {
+		const usage = interop.usageIR[index]!;
 		if (usage.kind === 'import') continue;
 		const inferredTypeId = inferredByNode.get(usage.nodeId);
 		if (typeof inferredTypeId !== 'number' || !Number.isSafeInteger(inferredTypeId)) {
