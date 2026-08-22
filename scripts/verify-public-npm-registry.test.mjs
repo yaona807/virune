@@ -152,11 +152,28 @@ function refreshReleaseBinding(current, commit = reviewedCommit) {
 	current.publicReleaseReport = publicReleaseReportFor(current.publicationManifest, commit);
 }
 
+function writeGeneratedProject(projectRoot, generatedVersion, generatedScripts) {
+	mkdirSync(projectRoot, { recursive: true });
+	writeFileSync(resolve(projectRoot, 'package.json'), `${JSON.stringify({
+		name: 'generated-project',
+		private: true,
+		type: 'module',
+		scripts: generatedScripts,
+		dependencies: {
+			'@virune/runtime': generatedVersion,
+			'@virune/stdlib': generatedVersion,
+		},
+		devDependencies: { virune: generatedVersion },
+	}, null, 2)}\n`);
+}
+
 function successfulRunCommand(expectedVersion = version, {
 	inspectInstall,
+	inspectExec,
 	generatedVersion = version,
 	generatedScripts = canonicalGeneratedScripts,
 	mutateGeneratedPackageOnInstall = false,
+	failExec = false,
 } = {}) {
 	return (command, args, options = {}) => {
 		if (command === 'npm') {
@@ -170,6 +187,20 @@ function successfulRunCommand(expectedVersion = version, {
 				mkdirSync(resolve(prefix, 'bin'), { recursive: true });
 				writeFileSync(resolve(prefix, 'bin/virune'), '#!/bin/sh\n');
 				return { status: 0, stdout: '', stderr: '' };
+			}
+			if (args[0] === 'exec') {
+				if (failExec) throw new Error('npm exec failed');
+				assert(args.includes('--yes'));
+				assert(args.includes(`--registry=${registry}`));
+				assert(args.includes('--replace-registry-host=never'));
+				const separator = args.indexOf('--');
+				assert(separator >= 0);
+				assert.equal(args[separator + 1], `virune@${version}`);
+				assert.equal(args[separator + 2], 'init');
+				assert.equal(typeof args[separator + 3], 'string');
+				inspectExec?.(args, options);
+				writeGeneratedProject(resolve(args[separator + 3]), generatedVersion, generatedScripts);
+				return { status: 0, stdout: 'Initialized Virune project\n', stderr: '' };
 			}
 			if (args[0] === 'install') {
 				assert(args.includes(`--registry=${registry}`));
@@ -186,19 +217,7 @@ function successfulRunCommand(expectedVersion = version, {
 		}
 		if (args.length === 1 && args[0] === '--version') return { status: 0, stdout: `virune ${expectedVersion}\n`, stderr: '' };
 		if (args[0] === 'init') {
-			const projectRoot = resolve(args[1]);
-			mkdirSync(projectRoot, { recursive: true });
-			writeFileSync(resolve(projectRoot, 'package.json'), `${JSON.stringify({
-				name: 'generated-project',
-				private: true,
-				type: 'module',
-				scripts: generatedScripts,
-				dependencies: {
-					'@virune/runtime': generatedVersion,
-					'@virune/stdlib': generatedVersion,
-				},
-				devDependencies: { virune: generatedVersion },
-			}, null, 2)}\n`);
+			writeGeneratedProject(resolve(args[1]), generatedVersion, generatedScripts);
 			return { status: 0, stdout: 'Initialized Virune project\n', stderr: '' };
 		}
 		throw new Error(`Unexpected command ${command} ${args.join(' ')}`);
@@ -238,6 +257,17 @@ test('verifies exact reviewed package bytes, tags and clean CLI consumer workflo
 	});
 	assert.deepEqual(report.installation.generatedProject.devDependencies, { virune: version });
 	assert.deepEqual(report.installation.generatedProject.commands, ['npm install', 'npm run check', 'npm run build', 'npm run start']);
+	assert.deepEqual(report.installation.npx, {
+		package: `virune@${version}`,
+		registry,
+		acquisition: 'npm-exec',
+		nonInteractive: true,
+		generatedProject: {
+			scripts: canonicalGeneratedScripts,
+			dependencies: { '@virune/runtime': version, '@virune/stdlib': version },
+			devDependencies: { virune: version },
+		},
+	});
 });
 
 test('loads npm publication policy from the exact reviewed Git commit when not injected', async () => {
@@ -409,6 +439,44 @@ test('clean global install uses isolated npm state and an allowlisted process en
 	});
 });
 
+test('exact-version npm exec acquisition is noninteractive, public-Registry-bound, and cache-isolated', async () => {
+	let observed = false;
+	let globalCache;
+	let globalPrefix;
+	await verifyCleanGlobalCliInstall(version, {
+		platform: 'linux',
+		baseEnv: { PATH: '/usr/bin' },
+		runCommand: successfulRunCommand(version, {
+			inspectInstall: (args, options) => {
+				globalCache = options.env.NPM_CONFIG_CACHE;
+				globalPrefix = args.find(argument => argument.startsWith('--prefix='))?.slice('--prefix='.length);
+				assert.equal(globalCache, resolve(options.cwd, 'npm-cache'));
+				assert.equal(typeof globalPrefix, 'string');
+			},
+			inspectExec: (args, options) => {
+				observed = true;
+				assert.equal(args[0], 'exec');
+				assert(args.includes('--yes'));
+				assert(args.includes(`--registry=${registry}`));
+				assert(args.includes('--replace-registry-host=never'));
+				assert(args.some(argument => argument.startsWith('--userconfig=')));
+				const separator = args.indexOf('--');
+				assert.equal(args[separator + 1], `virune@${version}`);
+				assert.equal(args[separator + 2], 'init');
+				assert(!args.some(argument => /(?:@latest|@next|\^|~)/u.test(argument)));
+				assert.equal(options.env.NPM_CONFIG_REGISTRY, registry);
+				assert.equal(options.env.NPM_CONFIG_REPLACE_REGISTRY_HOST, 'never');
+				assert.equal(options.env.NPM_CONFIG_CACHE, resolve(options.cwd, 'npm-exec-cache'));
+				assert.notEqual(options.env.NPM_CONFIG_CACHE, globalCache);
+				assert.equal(options.env.PATH, '/usr/bin');
+				assert(!options.env.PATH.split(':').includes(resolve(globalPrefix, 'bin')));
+				assert.equal(options.cwd, options.env.HOME);
+			},
+		}),
+	});
+	assert.equal(observed, true);
+});
+
 test('generated project smoke rejects dependency, script, and package.json drift', async () => {
 	await assert.rejects(
 		() => verifyCleanGlobalCliInstall(version, {
@@ -435,10 +503,14 @@ test('generated project smoke rejects dependency, script, and package.json drift
 	);
 });
 
-test('clean global install rejects command failure and CLI version mismatch', async () => {
+test('clean global install rejects command failure, npm exec failure, and CLI version mismatch', async () => {
 	await assert.rejects(
 		() => verifyCleanGlobalCliInstall(version, { runCommand: () => { throw new Error('install failed'); }, platform: 'linux' }),
 		/install failed/u,
+	);
+	await assert.rejects(
+		() => verifyCleanGlobalCliInstall(version, { runCommand: successfulRunCommand(version, { failExec: true }), platform: 'linux' }),
+		/npm exec failed/u,
 	);
 	await assert.rejects(
 		() => verifyCleanGlobalCliInstall(version, { runCommand: successfulRunCommand('1.1.0-rc.2'), platform: 'linux' }),
