@@ -2,28 +2,36 @@
 
 日本語: [CONTRIBUTING_ja.md](CONTRIBUTING_ja.md)
 
-This document is the entry point for developers changing Virune itself. A first-time contributor should be able to get from environment setup to a Pull Request from here.
+Contributions to Virune are welcome.
 
-## 1. Before you start
+This document covers the basic workflow from development setup through implementation, testing, and opening a Pull Request.
 
-Follow the [Code of Conduct](CODE_OF_CONDUCT.md) for project interactions. Do not disclose security issues in public Issues; report them according to the [Security Policy](SECURITY.md).
+## Before you start
 
-Small typo fixes and obvious bug fixes may be submitted without opening an Issue first. Discuss the following changes in an Issue before implementation so that purpose, scope, compatibility, and safety impact are clear:
+Follow the [Code of Conduct](CODE_OF_CONDUCT.md) for project interactions.
+
+Do not disclose security issues in public Issues. Report them according to the [Security Policy](SECURITY.md).
+
+Typos and small bug fixes may be submitted without opening an Issue first.
+
+For changes with a larger impact, discuss the purpose and scope in an Issue before implementation. This includes:
 
 - large features or design changes
-- Language Specification changes
-- public Compiler API changes
-- Runtime ABI or Interop ABI changes
-- changes that affect compatibility policy
-- changes to release or CI safety boundaries
+- changes to language syntax or type rules
+- changes to the Compiler API used by external tools
+- changes to how generated code connects to the Runtime or JavaScript interop
+- changes that affect compatibility for existing users
+- changes that affect CI or release safety
 
-For larger efforts, separate the Issue that tracks several implementation changes from the Issue that completes one implementation change. A Pull Request should normally reference its implementation Issue, and its purpose and completion criteria must still be understandable from the Pull Request itself. Do not treat an Issue as complete merely because a Pull Request was merged. Close it only after the required criteria have been verified on the current `main` branch.
+When a large feature is split across several Pull Requests, it may be useful to separate an Issue that tracks the overall work from Issues for individual implementation changes.
 
-If you are unsure, open an Issue before investing in a large implementation.
+If a change addresses an existing Issue, reference that Issue from the Pull Request.
 
-## 2. Set up the development environment
+## Development setup
 
-The `engines` field in the root `package.json` is authoritative for the required Node.js version. Use an npm version supported by that Node.js release.
+The required Node.js version is listed in the `engines` field of the root `package.json`.
+
+Clone the repository and run:
 
 ```bash
 git clone https://github.com/yaona807/virune.git
@@ -32,203 +40,275 @@ npm run bootstrap
 npm run build
 ```
 
-`npm run bootstrap` runs `npm ci` against the public npm Registry and prepares development dependencies exactly as recorded in the lockfile. Use this command before inventing a separate setup path.
+`npm run bootstrap` installs the development dependencies according to the lockfile.
 
-For a minimal smoke check, run:
+After setup, verify that the CLI starts:
 
 ```bash
 npm run virune -- --version
+```
+
+Run the main compiler and Runtime tests with:
+
+```bash
 npm run test:core
 ```
 
-When you need a command that is not shown here, use the current `package.json` `scripts` as the source of truth rather than an old document or Pull Request.
+For other development commands and tests, check the `scripts` field in the root `package.json`.
 
-## 3. Find the right area
+## Repository structure
 
-The main areas are:
+The main directories are:
 
-| Path | Primary responsibility |
+| Path | Primary role |
 |---|---|
-| `packages/compiler` | Lexer, Parser, type checking, project processing, code generation, Compiler API |
-| `packages/runtime` | Runtime used by generated code and its public ABI |
-| `packages/stdlib` | Standard library |
-| `packages/formatter` | Formatter |
-| `packages/js-interop` | JavaScript/TypeScript interop, bindings, Adapter validation |
-| `packages/cli` | `virune` CLI |
-| `packages/language-server` | Language Server |
+| `packages/compiler` | Compiler that parses Virune code, checks types, and generates JavaScript |
+| `packages/runtime` | Runtime used by generated JavaScript |
+| `packages/stdlib` | Standard library available to Virune programs |
+| `packages/formatter` | Virune code formatter |
+| `packages/js-interop` | JavaScript / TypeScript library interop |
+| `packages/cli` | `virune` command |
+| `packages/language-server` | Language Server for editor completion and diagnostics |
 | `packages/vscode` | VS Code extension |
-| `spec` | Normative Language Specification and Runtime ABI |
-| `conformance` | Test data for specification conformance |
-| `integration` | Tests crossing component boundaries |
+| `spec` | Virune Language Specification and Runtime ABI |
+| `conformance` | Tests that check behavior against the Language Specification |
+| `integration` | Tests that exercise multiple components together |
 | `selfhost` | Self-hosted compiler implemented in Virune |
-| `.github` | Machine-readable CI, release, and Self-hosting policies and GitHub Actions workflows |
-| `scripts` | Repository-owned build, validation, CI, and release tooling |
-
-Do not duplicate the same rule in several places. Current behavior belongs in code and tests, normative contracts in `spec/`, machine decisions in JSON and workflows, and implementation-specific plans in Issues and Pull Requests.
+| `.github` | GitHub Actions, CI, release, and related configuration |
+| `scripts` | Build and validation scripts |
 
 ### Compiler flow
 
-When changing the compiler as a whole, first identify the stage that owns the behavior. At a high level:
+When changing the compiler, it helps to identify which stage owns the behavior you want to change.
+
+At a high level:
 
 ```text
-source code
+Virune source code
   ↓
 Lexer / Parser
   ↓
 AST
   ↓
-project / module graph
+name resolution / type checking
   ↓
-declaration collection / name resolution
+HIR / MIR
   ↓
-type / effect / control-flow / FFI checks
-  ↓
-HIR / MIR lowering
-  ↓
-ES2022 / Source Map output
+JavaScript / Source Map
 ```
 
-The Lexer and Parser handle syntax and source positions. The Checker validates meaning such as types, effects, and control flow. Lowering and code generation transform validated results into output that obeys the Runtime ABI and Interop ABI.
+The AST represents the structure of parsed source code.
 
-Keep internal AST, HIR, MIR, arenas, and semantic tables out of the Stable Compiler API.
+After names and types are checked, the compiler transforms the program into internal intermediate representations called HIR and MIR before generating JavaScript.
 
-## 4. Make a change
+AST, HIR, MIR, and similar internal representations are not exposed directly through the Stable Compiler API.
 
-A normal change follows this sequence:
+## Making a change
 
-1. Check the target Issue, related Pull Requests, and current `main`.
-2. Create a branch from current `main`.
-3. Implement one logical purpose.
-4. Run tests close to the changed code.
-5. Add or update a regression test when behavior changes.
-6. Update the Language Specification, API/ABI snapshots, or machine-readable policy in the same change when required.
-7. Run the necessary repository-wide validation.
-8. Open a Draft Pull Request and inspect the complete diff and validation evidence.
-9. Fix findings from CI and review, then validate the new head again.
+A typical change follows this workflow:
 
-Do not mix unrelated formatting, renaming, or refactoring into the same Pull Request.
+1. Check related Issues and Pull Requests.
+2. Create a working branch from the latest `main`.
+3. Implement the change and run tests close to the changed code.
+4. When behavior changes, add a regression test when appropriate.
+5. If the change affects the Language Specification or public API / ABI, update the related specification or snapshot as part of the same change.
+6. Run the necessary tests and open a Pull Request.
 
-Start independent work from current `main`. Stack Pull Requests only when the child cannot be implemented or meaningfully validated against `main` alone because of a real source-code or test dependency. The maximum stack depth is two open levels: one parent and one child. Do not stack merely to run CI, avoid a conflict, or express work order.
+If CI or review finds a problem, fix it and rerun the tests affected by the change.
 
-For ordinary fixes, append commits instead of rewriting the branch. Do not force-push merely because `main` advanced or because work-in-progress commits could be collapsed. If a parent Pull Request was squash-merged and the remaining history is genuinely difficult to reconcile safely with a normal rebase or merge, consider a clean reconstruction from current `main`. Do not create a Pull Request whose only purpose is ancestry repair.
+Avoid mixing unrelated formatting, refactoring, or renaming into the same Pull Request.
 
-## 5. Choose validation
+### Stacked Pull Requests
 
-Start with validation close to the change, then expand to the required full validation. The exact command list in `package.json` is authoritative.
+A Pull Request may be stacked when its change depends on another Pull Request.
 
-Common entry points are:
+Changes that can be implemented and tested independently should each start from `main`.
 
-| Change | Primary validation |
+Stacks should normally be limited to two levels: one parent Pull Request and one child Pull Request.
+
+After the parent is merged, change the child Pull Request base to `main` and bring in the latest `main` when needed.
+
+## Testing
+
+Start with tests close to the code you changed, then expand the validation scope as needed.
+
+Common commands are:
+
+| Change | Main command |
 |---|---|
-| TypeScript type/build changes | `npm run check` |
-| General Compiler or Runtime changes | `npm run test:core` |
-| Normative specification | `npm run spec:check` |
-| Stable Compiler API | `npm run api:check` |
-| Public ABI | `npm run abi:check` |
-| Repository-wide validation | `npm run verify` |
+| Check TypeScript types or the build | `npm run check` |
+| Change the compiler or Runtime | `npm run test:core` |
+| Change language syntax or type rules | `npm run spec:check` |
+| Change the external Compiler API | `npm run api:check` |
+| Change the public Runtime or Interop interface | `npm run abi:check` |
+| Run broad repository validation | `npm run verify` |
 
-For areas not covered by this table, inspect `package.json` and existing tests near the changed code first. Never add an exception path solely to pass a test, and never add logic tailored to one fixture.
+Other tests may be required depending on the change. Available commands are listed in the `scripts` field of `package.json`.
 
-For a bug fix, add a regression test that fails before the fix and passes after it whenever practical. Beyond the normal case, check malformed input, missing or duplicate data, stale state, boundaries, partial failure, cleanup, and determinism when they are relevant.
+For bug fixes, add a regression test that fails before the fix and passes after it whenever practical.
 
-## 6. Change the Language Specification
+Depending on the change, also consider invalid input, boundary values, missing or duplicate data, partial failure, and cleanup behavior.
 
-[`spec/`](spec/README.md) is authoritative for Virune language behavior.
+For operations that must be deterministic, check that execution order or environment does not change the result for the same input.
 
-Do not change only the Parser or Checker and defer the specification. When behavior requires a specification change, discuss the reason and compatibility impact in an Issue, then update specification, implementation, and tests in the same Pull Request.
+Do not special-case a particular input only to make a test pass, and do not weaken safety checks or existing validation for that purpose.
 
-If specification, implementation, and tests disagree, do not choose whichever interpretation is convenient. Resolve the contradiction before treating any behavior as correct.
+## Changes with a larger impact
 
-## 7. Change a public API or ABI
+Read the relevant section below when your change touches one of these areas.
 
-The machine-readable baseline for the Stable Compiler API is `packages/compiler/api/stable-api.snapshot.json` together with the public entry points. Validate it with `npm run api:check`.
+### Language Specification
 
-For public Runtime, Interop, and standard-library ABI, inspect `packages/public-abi.snapshot.json` and [`spec/runtime-abi.md`](spec/runtime-abi.md), then run `npm run abi:check`.
+Virune syntax and type rules are documented under [`spec/`](spec/README.md).
 
-Updating a snapshot does not authorize an incompatible change. Evaluate changes to Stable contracts according to [`COMPATIBILITY.md`](COMPATIBILITY.md).
+Examples of Language Specification changes include:
 
-## 8. Change Self-hosting
+- adding new syntax
+- changing the meaning of existing syntax
+- changing type-checking rules
+- changing language-defined behavior such as `Option` or `Result`
 
-Do not change the Virune language, Compiler API, Runtime ABI, Interop ABI, or public standard library merely to make Self-hosting easier.
+For these changes, update the relevant specification in the same Pull Request as the implementation and tests.
 
-Only move a **deterministic Compiler Kernel whose inputs and outputs can be represented as explicit data and do not depend on the external environment** into Virune. Keep environment-dependent work and orchestration in the JavaScript/TypeScript Host.
+If the specification, implementation, and tests disagree, do not simply change one to match another. Check the relevant Issue and existing specification, clarify the intended behavior, and then fix the inconsistency.
 
-Responsibilities that remain in the Host include:
+### Compiler API
 
-- CLI and process lifecycle
-- filesystem access, path resolution, environment variables, and cryptographic hashing
-- source-file discovery and reading
-- TypeScript declaration and JavaScript binding analysis
-- VS Code and Language Server transport
-- packaging, release, and attestation
-- bootstrap orchestration and rollback selection
+The Virune compiler exposes an API that external tools can use in addition to the CLI. This is the Compiler API.
 
-The Host/Kernel boundary must be a versioned, verifiable, data-only contract. Do not put callbacks, arbitrary JavaScript functions, class instances, TypeScript AST nodes, file handles, or other values that depend on object identity or the execution environment into that contract.
+Public functions and types are also recorded in `packages/compiler/api/stable-api.snapshot.json`. This file is used to detect unintended changes to the public API.
 
-First try existing language features, internal algorithms, and data contracts. If the work still does not belong in the Kernel, leave the responsibility in the Host. Do not add language syntax or public API surface solely for Self-hosting.
+After changing the Compiler API, run:
 
-Current Self-hosting state, promotion conditions, seeds, corpora, and similar values are defined by JSON under `.github/self-hosting/`, `selfhost/`, repository scripts, and tests. Promotion to the Production Compiler is allowed only when the machine-readable policy requirements are satisfied for the same candidate commit.
+```bash
+npm run api:check
+```
 
-For diagnosis, use existing `selfhost:*` entry points from `package.json` first. A diagnostic that is repeatedly needed should become a permanent repository-owned command instead of living only inside GitHub Actions.
+Removing a public function or changing its parameters or return type can break existing tools that use the API.
 
-Temporary workflows, scripts, and diagnostic paths are exceptional. Record why existing paths are insufficient, the removal condition, and the responsible Pull Request in `.github/self-hosting/temporary-artifacts.json`. A temporary path must not weaken or bypass an existing gate, and both the artifact and its registry entry must be removed before the Pull Request is made ready for review.
+For that reason, when `api:check` fails, do not update the snapshot only to make the check pass.
 
-## 9. Handle CI failures
+If a public API change is intentional, read the [Compatibility Policy](COMPATIBILITY.md) and use an Issue to document why the change is needed and how it affects existing users.
 
-A successful CI result is evidence for the **exact commit** on which it ran. After the head changes, do not reuse success from an older head as evidence for the current change.
+### Runtime ABI / Interop ABI
 
-Classify the failure before acting:
+Generated Virune JavaScript calls functions provided by the Runtime. JavaScript library interop also depends on agreed formats for passing values across the boundary.
 
-- **Implementation or repository failure**: fix the cause and validate the new head.
-- **Infrastructure failure such as GitHub Actions, a runner, or external Action retrieval**: retry the same head only after confirming the repository code did not cause the failure.
-- **Unknown cause**: inspect logs and the failing boundary instead of rerunning by guesswork.
+The rules used to connect these components are called ABIs.
 
-Do not repeatedly rerun the same head until it turns green. Diagnostics that are needed repeatedly belong in repository-owned commands or permanent validation, not in temporary workflows.
+Virune mainly has:
 
-## 10. Change release behavior
+- the Runtime ABI between generated code and the Runtime
+- the Interop ABI between Virune and JavaScript interop
 
-Passing ordinary CI does not authorize a stable release.
+Changing these rules can break previously generated code or existing interop code.
 
-The exact release conditions are defined by `.github/stable-release-gate.json`, `.github/release/`, release workflows, and verification scripts. Published artifacts must match the reviewed artifact identity, including the required filename, bytes, hashes, and source commit.
+For changes to a public ABI, check `packages/public-abi.snapshot.json` and [`spec/runtime-abi.md`](spec/runtime-abi.md), then run:
 
-Do not overwrite an existing published artifact through the normal release path. Recovery must begin by observing the public state again, must not republish an already-correct artifact, and must never treat an unknown state as safe.
+```bash
+npm run abi:check
+```
 
-## 11. Change documentation
+If the change affects compatibility for existing users, also review the [Compatibility Policy](COMPATIBILITY.md).
 
-Keep permanent Markdown in this repository to the minimum needed. Add a new permanent document only when all of the following are true:
+### Self-hosting
 
-1. The information cannot be recovered safely from code, tests, schemas, or workflows.
-2. It is a long-lived contract rather than temporary explanation for one Issue or Pull Request.
-3. It does not fit naturally into an existing document.
-4. Its independent maintenance cost is justified.
+Virune includes a Self-hosting system in which parts of the Virune compiler are implemented in Virune itself.
 
-For paired Japanese and English documents, **finish the Japanese version first**. Remove unnatural Japanese, unnecessary English mixing, and ambiguous wording before using that meaning to write the English version. Do not write English first and then translate it literally into Japanese.
+This does not mean every compiler responsibility should move into Virune.
 
-Do not copy the same rule into several documents. Use relative links to the canonical source.
+Work such as lexing, parsing, and type checking can be implemented on the Virune side when it can take explicit inputs and return explicit results.
 
-## 12. Pull Requests and review
+Environment-dependent work remains on the JavaScript / TypeScript side, including:
 
-Keep each Pull Request to one logical change. Its description should identify the related Issue, changed boundaries, boundaries intentionally left unchanged, and validation performed. Keep unfinished or unvalidated work as Draft.
+- file I/O
+- path resolution
+- processes and environment variables
+- TypeScript declaration analysis
+- CLI and editor communication
+- packaging and release operations
 
-For design, implementation, Pull Request readiness, and merge decisions, review the change from the perspective of trying to break it rather than defend it:
+Moving this boundary only to make Self-hosting easier would make the language or public API more complex. Do not change the Virune Language Specification, Compiler API, Runtime ABI, Interop ABI, or public standard library solely for Self-hosting convenience.
 
-1. Recheck requirements, Acceptance Criteria, and invariants.
-2. Review the complete current diff.
-3. Fix every actionable finding.
-4. Run the focused validation required by the fix.
-5. Review the updated diff again from the beginning.
-6. Repeat until a complete pass finds no new actionable issue.
+For the current Self-hosting implementation and validation, check `.github/self-hosting/`, `selfhost/`, and the related scripts and tests.
 
-CI success and the number of review passes are not stop conditions.
+Do not bypass existing Self-hosting checks.
 
-Before merge, verify at least the current head, formal CI, final diff, unresolved review threads, Acceptance Criteria, and any remaining TODO or temporary path. If the head changes, repeat the required CI and final review.
+### Release changes
 
-A Pull Request that changes Japanese documentation must not be merged until the maintainer explicitly approves the Japanese diff at the final head. Any later head change requires another review.
+Most code changes do not need this section.
 
-Use squash merge by default. When completion criteria require post-merge evidence, verify them on `main` before closing the Issue.
+Changes to release conditions or publishing behavior can affect release-specific validation in addition to normal CI.
 
-## 13. License
+Relevant configuration and code include:
+
+- `.github/stable-release-gate.json`
+- `.github/release/`
+- release-related GitHub Actions workflows
+- release verification scripts
+
+Do not weaken or bypass release checks.
+
+Do not overwrite an already-published release artifact with different contents.
+
+## CI
+
+GitHub Actions run according to the contents of each Pull Request.
+
+A CI result applies to the commit on which that CI run executed. If code changes after CI runs, make sure the required checks also succeed on the updated commit.
+
+When CI fails, inspect the logs first.
+
+If the cause is code or tests, fix the problem.
+
+If the failure is confirmed to be temporary infrastructure trouble, such as GitHub Actions or a runner problem, rerunning the same commit is acceptable.
+
+Avoid repeatedly rerunning a failure until it turns green without first identifying the cause.
+
+## Documentation changes
+
+We keep permanently maintained documentation to the minimum needed.
+
+Before adding a new Markdown file, check whether the information belongs in an existing README, CONTRIBUTING, COMPATIBILITY document, or under `spec/`.
+
+Explanations needed only for one Issue or Pull Request should stay in that Issue or Pull Request.
+
+Paired Japanese and English documents should contain the same rules and meaning.
+
+Prefer natural writing in each language over literal translation.
+
+When possible, link to the relevant document instead of copying the same explanation into several places.
+
+## Pull Requests
+
+Keep each Pull Request focused on one purpose when possible.
+
+Depending on the change, include the following in the description:
+
+- what changed
+- related Issue
+- why the change is needed
+- tests that were run
+- compatibility or safety impact, when relevant
+
+Use a Draft Pull Request when implementation or required validation is still in progress.
+
+During review, check that the change behaves as intended, has the necessary tests, and does not break existing compatibility.
+
+Also check error and partial-failure handling, unrelated changes, and leftover debugging code.
+
+After making a fix, rerun tests affected by that change.
+
+Before merge, make sure required CI has passed, review comments are resolved, and the diff contains no unintended changes.
+
+Virune uses squash merge by default.
+
+Do not close a related Issue only because its Pull Request was merged. Close it after the required change is present on `main` and the Issue's requirements are satisfied.
+
+## License
 
 Virune is distributed under the [Apache License 2.0](LICENSE).
 
-Unless explicitly stated otherwise, code and documentation submitted for inclusion in Virune are provided under the Apache License 2.0 terms. If a contribution includes third-party code, text, images, or other material, confirm that the project may use it and preserve all required notices.
+Unless explicitly stated otherwise, code and documentation submitted for inclusion in Virune are provided under the Apache License 2.0 terms.
+
+If a contribution includes third-party code, text, images, or other material, confirm that its license allows the project to use it and preserve any required notices.
