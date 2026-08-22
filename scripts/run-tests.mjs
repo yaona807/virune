@@ -75,6 +75,13 @@ const groups = platformSmoke ? platformGroups : [
 				'scripts/verify-npm-publication-identity-boundaries.test.mjs',
 			],
 		},
+		{
+			name: 'public npm Registry verification policy',
+			files: [
+				'scripts/verify-public-npm-registry.test.mjs',
+				'scripts/verify-public-npm-registry-channel.test.mjs',
+			],
+		},
 		{ name: 'repository license policy', files: ['scripts/verify-repository-license-policy.test.mjs'] },
 		{ name: 'release license artifact policy', files: ['scripts/verify-release-license-artifacts.test.mjs'] },
 		{
