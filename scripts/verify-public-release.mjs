@@ -75,11 +75,18 @@ export function resolveReviewedCommit(tag, tagCommit, expectedCommit) {
 
 export async function readReviewedNpmPublicationPolicy(reviewedCommit, version, {
 	sourceRoot = repositoryRoot,
+	reviewedExists = reviewedFileExists,
 	readReviewed = readReviewedFile,
 	fallbackPolicy = NPM_PUBLICATION_POLICY,
 } = {}) {
-	const fallbackVersionPolicy = registryPolicyForVersion(version, fallbackPolicy.firstStableRegistryRelease, fallbackPolicy.distTagPolicy);
-	if (!fallbackVersionPolicy.registryVersionEligible) return fallbackPolicy;
+	const hasReviewedPolicy = await reviewedExists(NPM_PUBLICATION_POLICY_PATH, { sourceRoot, reviewedCommit });
+	if (!hasReviewedPolicy) {
+		const fallbackVersionPolicy = registryPolicyForVersion(version, fallbackPolicy.firstStableRegistryRelease, fallbackPolicy.distTagPolicy);
+		if (fallbackVersionPolicy.registryVersionEligible) {
+			throw new Error(`Reviewed npm publication policy is missing at ${reviewedCommit}.`);
+		}
+		return fallbackPolicy;
+	}
 	const source = await readReviewed(NPM_PUBLICATION_POLICY_PATH, { sourceRoot, reviewedCommit });
 	try {
 		return JSON.parse(Buffer.from(source).toString('utf8'));
@@ -159,6 +166,23 @@ export function parseChecksums(source) {
 		output.set(match[2], match[1]);
 	}
 	return output;
+}
+
+export function reviewedFileExists(file, { sourceRoot, reviewedCommit }) {
+	if (reviewedCommit === undefined || !/^[0-9a-f]{40}$/u.test(reviewedCommit)) throw new Error('reviewedCommit must be a full commit SHA.');
+	const result = spawnSync('git', ['ls-tree', '--name-only', '--full-tree', reviewedCommit, '--', file], {
+		cwd: sourceRoot,
+		encoding: 'utf8',
+		maxBuffer: 16 * 1024 * 1024,
+	});
+	if (result.error !== undefined) throw new Error(`Failed to inspect reviewed ${file} from ${reviewedCommit}: ${result.error.message}`);
+	if ((result.status ?? 1) !== 0) {
+		throw new Error(`Failed to inspect reviewed ${file} from ${reviewedCommit}: ${(result.stderr ?? '').trim()}`);
+	}
+	const entries = result.stdout.trim() === '' ? [] : result.stdout.trim().split(/\r?\n/u);
+	if (entries.length === 0) return false;
+	if (entries.length === 1 && entries[0] === file) return true;
+	throw new Error(`Unexpected reviewed file listing for ${file} at ${reviewedCommit}.`);
 }
 
 async function readReviewedFile(file, { sourceRoot, reviewedCommit }) {
