@@ -10,9 +10,15 @@ import { parseChecksums, validateDownloadedRelease, validateReleaseRecord } from
 
 const repositoryRoot = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const version = '1.0.0-rc.1';
+const registryVersion = '1.1.0-rc.1';
 const requiredNames = [
-	'LICENSE', 'MANIFEST.json', 'NOTICE', 'PUBLICATION-MANIFEST.json', 'README.md', 'README_ja.md', 'RELEASE-MANIFEST.json', 'SBOM.cdx.json', 'SHA256SUMS', 'THIRD_PARTY_NOTICES.md', 'THIRD_PARTY_NOTICES_ja.md', 'package.json',
-	`virune-${version}.tgz`, `virune-npm-${version}.tgz`, `virune-compiler-${version}.tgz`, `virune-formatter-${version}.tgz`, `virune-js-interop-${version}.tgz`, `virune-runtime-${version}.tgz`, `virune-stdlib-${version}.tgz`, `virune-vscode-${version}.vsix`,
+	'LICENSE', 'MANIFEST.json', 'NOTICE', 'README.md', 'README_ja.md', 'RELEASE-MANIFEST.json', 'SBOM.cdx.json', 'SHA256SUMS', 'THIRD_PARTY_NOTICES.md', 'THIRD_PARTY_NOTICES_ja.md', 'package.json',
+	`virune-${version}.tgz`, `virune-compiler-${version}.tgz`, `virune-formatter-${version}.tgz`, `virune-js-interop-${version}.tgz`, `virune-runtime-${version}.tgz`, `virune-stdlib-${version}.tgz`, `virune-vscode-${version}.vsix`,
+];
+const registryRequiredNames = [
+	'LICENSE', 'MANIFEST.json', 'NOTICE', 'README.md', 'README_ja.md', 'RELEASE-MANIFEST.json', 'SBOM.cdx.json', 'SHA256SUMS', 'THIRD_PARTY_NOTICES.md', 'THIRD_PARTY_NOTICES_ja.md', 'package.json',
+	`virune-${registryVersion}.tgz`, `virune-compiler-${registryVersion}.tgz`, `virune-formatter-${registryVersion}.tgz`, `virune-js-interop-${registryVersion}.tgz`, `virune-runtime-${registryVersion}.tgz`, `virune-stdlib-${registryVersion}.tgz`, `virune-vscode-${registryVersion}.vsix`,
+	'PUBLICATION-MANIFEST.json', `virune-npm-${registryVersion}.tgz`,
 ];
 const reviewedLegalFiles = ['LICENSE', 'NOTICE', 'THIRD_PARTY_NOTICES.md', 'THIRD_PARTY_NOTICES_ja.md'];
 
@@ -37,21 +43,30 @@ test('rejects drafts, stable releases and incomplete candidates', () => {
 		() => validateReleaseRecord({ tag_name: `v${version}`, draft: false, prerelease: true, assets: requiredNames.filter(name => name !== 'NOTICE').map(name => ({ name })) }, { tag: `v${version}`, version }),
 		/Release is missing NOTICE/u,
 	);
+});
+
+test('requires npm publication identity assets for registry-eligible prereleases', () => {
+	assert.doesNotThrow(() => validateReleaseRecord({
+		tag_name: `v${registryVersion}`,
+		draft: false,
+		prerelease: true,
+		assets: registryRequiredNames.map(name => ({ name })),
+	}, { tag: `v${registryVersion}`, version: registryVersion }));
 	assert.throws(
-		() => validateReleaseRecord({ tag_name: `v${version}`, draft: false, prerelease: true, assets: requiredNames.filter(name => name !== 'PUBLICATION-MANIFEST.json').map(name => ({ name })) }, { tag: `v${version}`, version }),
+		() => validateReleaseRecord({ tag_name: `v${registryVersion}`, draft: false, prerelease: true, assets: registryRequiredNames.filter(name => name !== 'PUBLICATION-MANIFEST.json').map(name => ({ name })) }, { tag: `v${registryVersion}`, version: registryVersion }),
 		/Release is missing PUBLICATION-MANIFEST\.json/u,
 	);
 	assert.throws(
-		() => validateReleaseRecord({ tag_name: `v${version}`, draft: false, prerelease: true, assets: requiredNames.filter(name => name !== `virune-npm-${version}.tgz`).map(name => ({ name })) }, { tag: `v${version}`, version }),
-		new RegExp(`Release is missing virune-npm-${version.replaceAll('.', '\\.')}\\.tgz`, 'u'),
+		() => validateReleaseRecord({ tag_name: `v${registryVersion}`, draft: false, prerelease: true, assets: registryRequiredNames.filter(name => name !== `virune-npm-${registryVersion}.tgz`).map(name => ({ name })) }, { tag: `v${registryVersion}`, version: registryVersion }),
+		new RegExp(`Release is missing virune-npm-${registryVersion.replaceAll('.', '\\.')}\\.tgz`, 'u'),
 	);
 });
 
 test('duplicate or unknown assets cannot substitute for missing npm publication identity evidence', () => {
-	const incomplete = requiredNames.filter(name => name !== 'PUBLICATION-MANIFEST.json').map(name => ({ name }));
+	const incomplete = registryRequiredNames.filter(name => name !== 'PUBLICATION-MANIFEST.json').map(name => ({ name }));
 	incomplete.push({ name: 'LICENSE' }, { name: 'unexpected-extra-asset.txt' });
 	assert.throws(
-		() => validateReleaseRecord({ tag_name: `v${version}`, draft: false, prerelease: true, assets: incomplete }, { tag: `v${version}`, version }),
+		() => validateReleaseRecord({ tag_name: `v${registryVersion}`, draft: false, prerelease: true, assets: incomplete }, { tag: `v${registryVersion}`, version: registryVersion }),
 		/Release is missing PUBLICATION-MANIFEST\.json/u,
 	);
 });
