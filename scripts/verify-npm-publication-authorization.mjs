@@ -4,6 +4,10 @@ import {
 	NPM_PUBLICATION_PRE_WRITE_REQUIREMENTS,
 	validateNpmPublicationAuthorizationContract,
 } from './npm-publication-authorization-contract.mjs';
+import {
+	bundledCliReleaseAssetName,
+	registryReleaseAssetNameForPackage,
+} from './verify-npm-publication-identity.mjs';
 import { registryPolicyForVersion } from './npm-publication-version-policy.mjs';
 
 export function evaluateNpmPublicationAuthorization({
@@ -87,7 +91,7 @@ export function validatePublicationManifestForAuthorization(bytes, { version, di
 	assert(manifest.version === version, '$.publicationManifest.version', `expected ${version}`);
 	assert(manifest.githubReleaseTag === `v${version}`, '$.publicationManifest.githubReleaseTag', `expected v${version}`);
 	assert(manifest.publishSource === 'reviewed-release-registry-candidate-tarball', '$.publicationManifest.publishSource', 'unexpected publication source');
-	assert(manifest.bundledCliReleaseAsset === `virune-${version}.tgz`, '$.publicationManifest.bundledCliReleaseAsset', 'unexpected bundled CLI release asset');
+	assert(manifest.bundledCliReleaseAsset === bundledCliReleaseAssetName(version), '$.publicationManifest.bundledCliReleaseAsset', 'unexpected bundled CLI release asset');
 	assert(manifest.publicationReady === true, '$.publicationManifest.publicationReady', 'reviewed publication manifest must declare publicationReady:true');
 	assert(manifest.registryVersionEligible === true, '$.publicationManifest.registryVersionEligible', 'reviewed publication manifest must be Registry-eligible');
 	assert(manifest.distTag === distTag, '$.publicationManifest.distTag', `expected ${String(distTag)}`);
@@ -101,6 +105,7 @@ export function validatePublicationManifestForAuthorization(bytes, { version, di
 		assertExactKeys(pkg, ['registryName', 'releaseAsset', 'sha256', 'bytes'], `$.publicationManifest.packages[${index}]`);
 		const registryName = nonEmptyString(pkg.registryName, `$.publicationManifest.packages[${index}].registryName`);
 		const releaseAsset = nonEmptyString(pkg.releaseAsset, `$.publicationManifest.packages[${index}].releaseAsset`);
+		assert(releaseAsset === registryReleaseAssetNameForPackage(registryName, version), `$.publicationManifest.packages[${index}].releaseAsset`, 'candidate filename drift');
 		const sha256 = nonEmptyString(pkg.sha256, `$.publicationManifest.packages[${index}].sha256`);
 		assert(/^[0-9a-f]{64}$/u.test(sha256), `$.publicationManifest.packages[${index}].sha256`, 'expected lowercase SHA-256');
 		assert(Number.isSafeInteger(pkg.bytes) && pkg.bytes > 0, `$.publicationManifest.packages[${index}].bytes`, 'expected positive safe integer byte size');
