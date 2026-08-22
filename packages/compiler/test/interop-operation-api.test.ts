@@ -116,9 +116,10 @@ test('invalid sidecar projection fails closed without changing checker acceptanc
 		[],
 		'External Operation projection must not create new checker diagnostics',
 	);
-	assert.ok(checked.semantic);
+	const semantic = checked.semantic;
+	assert.ok(semantic);
 	assert.throws(
-		() => externalOperationSequence(checked.semantic),
+		() => externalOperationSequence(semantic),
 		/evidence is unavailable for this checked SemanticModel/u,
 	);
 });
