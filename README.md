@@ -96,7 +96,7 @@ enum DashboardError {
 async fn showDashboard(
     userId: String
 ) -> Result<Unit, DashboardError> uses Network, Task, Console {
-    let values = await (parallel try {
+    let values = (await parallel try {
         user: loadUser(userId),
         orders: loadOrders(userId),
     })?
@@ -157,6 +157,7 @@ After installation, create and run a project with:
 ```bash
 virune init hello-virune
 cd hello-virune
+npm install
 virune run
 ```
 
