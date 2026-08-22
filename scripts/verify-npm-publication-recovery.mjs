@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { validateNpmPublicationAuthorizationContract } from './npm-publication-authorization-contract.mjs';
 
 const POLICY_PATH = '.github/release/npm-publication-recovery-v1.json';
 const PUBLICATION_PLAN_PATH = '.github/release/npm-publication-v1.json';
@@ -49,6 +50,7 @@ const FORBIDDEN_RECOVERY = [
 export function verifyNpmPublicationRecoveryPolicy(root = process.cwd()) {
 	const policy = readJson(resolve(root, POLICY_PATH));
 	const plan = readJson(resolve(root, PUBLICATION_PLAN_PATH));
+	const authorization = validateNpmPublicationAuthorizationContract(plan.authorization, '$publicationPlan.authorization');
 	assertExactKeys(policy, ['schemaVersion', 'observation', 'writePreconditions', 'packageVersionPhase', 'distTagPhase', 'completion'], '$');
 	assert(policy.schemaVersion === 1, '$.schemaVersion', 'expected schemaVersion 1');
 
@@ -65,8 +67,16 @@ export function verifyNpmPublicationRecoveryPolicy(root = process.cwd()) {
 	assert(observation.unknownAuthorizesWrites === false, '$.observation.unknownAuthorizesWrites', 'unknown Registry state must not authorize writes');
 
 	const preconditions = record(policy.writePreconditions, '$.writePreconditions');
-	assertExactKeys(preconditions, ['publicationGateReadyRequired', 'exactReviewedReleaseIdentityRequired'], '$.writePreconditions');
+	assertExactKeys(preconditions, [
+		'publicationGateReadyRequired',
+		'publicationGateEvidenceKind',
+		'publicationGateEvidenceSetFreshRequired',
+		'exactReviewedReleaseIdentityRequired',
+	], '$.writePreconditions');
 	assert(preconditions.publicationGateReadyRequired === true, '$.writePreconditions.publicationGateReadyRequired', 'publication gate readiness is required before recovery writes');
+	assert(preconditions.publicationGateEvidenceKind === authorization.reportKind, '$.writePreconditions.publicationGateEvidenceKind', `expected canonical authorization report ${authorization.reportKind}`);
+	assert(preconditions.publicationGateEvidenceSetFreshRequired === true, '$.writePreconditions.publicationGateEvidenceSetFreshRequired', 'recovery must regenerate authorization evidence for the current execution');
+	assert(authorization.evidenceSetBindingRequired === true, '$publicationPlan.authorization.evidenceSetBindingRequired', 'authorization report must bind a fresh evidence set');
 	assert(preconditions.exactReviewedReleaseIdentityRequired === true, '$.writePreconditions.exactReviewedReleaseIdentityRequired', 'recovery writes must use the exact reviewed release identity');
 
 	const packagePhase = record(policy.packageVersionPhase, '$.packageVersionPhase');
@@ -125,7 +135,6 @@ export function verifyNpmPublicationRecoveryPolicy(root = process.cwd()) {
 	assertExactKeys(completion, ['publicRegistryVerificationRequired'], '$.completion');
 	assert(completion.publicRegistryVerificationRequired === true, '$.completion.publicRegistryVerificationRequired', 'public Registry verification is required before completion');
 	assert(plan.publicVerificationRequired === true, '$publicationPlan.publicVerificationRequired', 'publication plan must continue requiring public verification');
-	assert(plan.publicationReady === false, '$publicationPlan.publicationReady', 'recovery policy must not enable npm publication');
 	assert(!array(plan.unresolvedRequirements, '$publicationPlan.unresolvedRequirements').includes('recovery-policy'), '$publicationPlan.unresolvedRequirements', 'recovery-policy blocker must be removed once this contract is canonical');
 
 	return policy;
