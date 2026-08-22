@@ -19,8 +19,6 @@ export async function runNpmPublicationAuthorization({
 	publicationManifestPath = DEFAULT_PUBLICATION_MANIFEST,
 	evidenceDocument,
 	evidencePath = DEFAULT_EVIDENCE,
-	publicationPlan,
-	reviewedRootManifest,
 	sourceRoot = repositoryRoot,
 	outputPath = DEFAULT_OUTPUT,
 } = {}) {
@@ -29,8 +27,8 @@ export async function runNpmPublicationAuthorization({
 	const execution = evidenceSetIdentity(evidenceSetId, '$.evidenceSetId');
 	if (outputPath !== null) await rm(outputPath, { force: true });
 
-	const plan = publicationPlan ?? readReviewedJson(commit, PUBLICATION_PLAN_PATH, { sourceRoot });
-	const rootManifest = reviewedRootManifest ?? readReviewedJson(commit, ROOT_MANIFEST_PATH, { sourceRoot });
+	const plan = readReviewedJson(commit, PUBLICATION_PLAN_PATH, { sourceRoot });
+	const rootManifest = readReviewedJson(commit, ROOT_MANIFEST_PATH, { sourceRoot });
 	assert(rootManifest.version === version, '$.releaseVersion', `reviewed ${ROOT_MANIFEST_PATH} version is ${String(rootManifest.version)}, expected ${version}`);
 
 	const manifestBytes = publicationManifestBytes === undefined
