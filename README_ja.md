@@ -24,13 +24,13 @@
 
 ## このリポジトリについて
 
-このリポジトリは、Viruneそのものを開発・保守するための正本です。コンパイラー、Runtime、標準ライブラリ、CLI、エディタ連携、セルフホスティング実装、テスト、CI、規範仕様を管理します。
+このリポジトリは、Virune本体の開発と保守に使う正本です。コンパイラー、ランタイム、標準ライブラリ、CLI、エディタ連携、セルフホスティング、テスト、CI、規範仕様をここで管理します。
 
-言語としての厳密な動作は[`spec/`](spec/README_ja.md)を参照してください。Viruneの開発へ参加する場合は[`CONTRIBUTING_ja.md`](CONTRIBUTING_ja.md)から始めてください。リポジトリ構成、変更の進め方、テストの選び方もそちらにまとめています。
+言語として何が正しいかは[`spec/`](spec/README_ja.md)を参照してください。Viruneの開発に参加する場合は[`CONTRIBUTING_ja.md`](CONTRIBUTING_ja.md)から始めてください。リポジトリ構成、変更の進め方、テストの選び方もそちらにまとめています。
 
 ## クイックスタート
 
-`virune init`で作成したプロジェクトには、利用するViruneのバージョンに対応したREADMEとセットアップ手順が含まれます。リポジトリを取得済みの場合は、ルート`package.json`の`engines`が要求するNode.jsを使用し、次を実行します。
+`virune init`で作成したプロジェクトには、利用するViruneのバージョンに対応したREADMEとセットアップ手順が含まれます。このリポジトリ自体を動かす場合は、ルート`package.json`の`engines`が要求するNode.jsを使って次を実行します。
 
 ```bash
 npm run bootstrap
@@ -40,11 +40,11 @@ npm run virune -- --version
 
 ## 運営
 
-Viruneは現在、[`@yaona807`](https://github.com/yaona807)がメンテナンスしています。現在、運営委員会や投票制度は設けていません。変更や提案は原則としてIssueやPull Requestを通じて公開して進め、プロジェクトの最終判断はメンテナーが行います。セキュリティ問題は[`SECURITY_ja.md`](SECURITY_ja.md)に従って報告してください。
+Viruneは現在、[`@yaona807`](https://github.com/yaona807)がメンテナンスしています。運営委員会や投票制度は設けていません。変更や提案は原則としてIssueやPull Requestを通じて公開して進め、最終判断はメンテナーが行います。セキュリティ上の問題は[`SECURITY_ja.md`](SECURITY_ja.md)に従って報告してください。
 
 ## リリース
 
-公開済みの成果物は[GitHub Releases](https://github.com/yaona807/virune/releases)で確認できます。GitHub Releasesはstable、prerelease、nightlyのすべてで公式かつ変更しない配布経路として維持します。リリースの可否はリポジトリ内の機械可読ポリシーとCIで判定し、READMEには個別バージョンの手順を重複して持ちません。
+公開済みの成果物は[GitHub Releases](https://github.com/yaona807/virune/releases)で確認できます。GitHub Releasesは、安定版・プレリリース・ナイトリーのすべてで公式の配布先として扱い、公開済みの成果物は後から差し替えません。リリースできるかどうかは、リポジトリ内の機械可読なポリシーとCIで判定します。READMEには個別バージョンの手順を重複して持ちません。
 
 ## ライセンス
 
