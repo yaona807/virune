@@ -115,7 +115,11 @@ export function isSelfhostRequiredGatePath(path) {
 }
 
 export function buildChangedPathDiffArguments(base, head) {
-	return ['diff', '--name-only', '--no-renames', `${base}...${head}`];
+	return ['diff', '--name-only', '--no-renames', '-z', `${base}...${head}`];
+}
+
+export function parseGitChangedPaths(output) {
+	return output.split('\0').filter(path => path.length > 0);
 }
 
 async function main() {
@@ -137,7 +141,7 @@ async function main() {
 		if (result.error !== undefined || result.status !== 0) {
 			throw new Error(`Unable to classify changed files: ${result.stderr || result.error?.message}`);
 		}
-		classification = classifyChangedPaths(result.stdout.split(/\r?\n/u));
+		classification = classifyChangedPaths(parseGitChangedPaths(result.stdout));
 	}
 
 	const payload = `${JSON.stringify(classification, null, '\t')}\n`;
