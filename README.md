@@ -27,7 +27,7 @@
 
 One of the biggest strengths of JavaScript and TypeScript is the ecosystem that has grown around them. Virune is not trying to discard that ecosystem and build a separate world.
 
-At the same time, JavaScript brings concepts such as `null` and `undefined`, dynamic external values, exceptions, and Promises that applications need to account for. TypeScript makes these values much safer to work with, but it does not replace JavaScript's runtime model.
+At the same time, JavaScript brings concepts such as `null` and `undefined`, dynamic external values, exceptions, and Promises that applications need to account for. TypeScript lets developers work with many JavaScript values and APIs through static types while preserving compatibility, but it does not replace JavaScript's runtime model.
 
 Virune therefore focuses on **handling the complexity required at JavaScript boundaries without spreading more of it than necessary into ordinary code**. It also tries to make recoverable failure, effects, and concurrency behavior visible from code wherever practical.
 
