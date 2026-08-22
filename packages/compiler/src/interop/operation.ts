@@ -118,6 +118,8 @@ export type ExternalOperationIR =
 	| ExternalAwaitOperationIR
 	| ExternalBridgeForeignPrimitiveOperationIR;
 
+const SET_HAS = Set.prototype.has;
+const REFLECT_APPLY = Reflect.apply;
 const FOREIGN_CATEGORIES = new Set<StableForeignTypeSnapshot['category']>([
 	'primitive', 'literal', 'object', 'function', 'constructor', 'promise', 'array', 'tuple', 'union', 'unknown', 'any',
 ]);
@@ -418,7 +420,7 @@ function collectAstNodeAnchors(module: A.ModuleNode): ReadonlyMap<NodeId, AstNod
 		if (isNodeId(id) && typeof kind === 'string' && isSourceSpan(span)) {
 			if (result.has(id)) throw new Error(`Duplicate AST node id ${id} in External operation source binding`);
 			const foreignBridgeValue = ownDataValue(record, 'foreignBridge');
-			const foreignBridge = typeof foreignBridgeValue === 'string' && BRIDGES.has(foreignBridgeValue as PrimitiveBridgeKind)
+			const foreignBridge = typeof foreignBridgeValue === 'string' && safeSetHas(BRIDGES, foreignBridgeValue as PrimitiveBridgeKind)
 				? foreignBridgeValue as PrimitiveBridgeKind
 				: undefined;
 			result.set(id, shadowMissingOwnFields({
@@ -665,8 +667,12 @@ function ownDataValue(value: object, key: string): unknown {
 	return descriptor !== undefined && 'value' in descriptor ? descriptor.value : undefined;
 }
 
+function safeSetHas<T>(known: ReadonlySet<T>, value: T): boolean {
+	return REFLECT_APPLY(SET_HAS, known, [value]) as boolean;
+}
+
 function assertKnown<T extends string>(known: ReadonlySet<T>, value: T, description: string): void {
-	if (!known.has(value)) throw new Error(`Unknown ${description}: ${String(value)}`);
+	if (!safeSetHas(known, value)) throw new Error(`Unknown ${description}: ${String(value)}`);
 }
 
 function compareText(left: string, right: string): number {
