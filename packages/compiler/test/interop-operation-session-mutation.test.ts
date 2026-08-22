@@ -49,6 +49,21 @@ function provider(): JsInteropProvider {
 	};
 }
 
+function checkedPropertyRead() {
+	return compileSource({
+		id: 1,
+		path: '/virtual/semantic-mutation.virune',
+		text: [
+			'import js { value } from "./library.js"',
+			'',
+			'fn main() -> Unit uses JavaScript {',
+			'\tdiscard value.field',
+			'}',
+			'',
+		].join('\n'),
+	}, { emit: false, jsInteropProvider: provider() });
+}
+
 function operations(result: ReturnType<typeof compileSource>): readonly string[] {
 	assert.ok(result.ast);
 	assert.ok(result.semantic);
@@ -79,24 +94,65 @@ test('post-check AST mutation cannot remove one of multiple runtime ModuleLoad o
 });
 
 test('post-check semantic mutation cannot remove current non-import operation evidence', () => {
-	const checked = compileSource({
-		id: 1,
-		path: '/virtual/semantic-mutation.virune',
-		text: [
-			'import js { value } from "./library.js"',
-			'',
-			'fn main() -> Unit uses JavaScript {',
-			'\tdiscard value.field',
-			'}',
-			'',
-		].join('\n'),
-	}, { emit: false, jsInteropProvider: provider() });
+	const checked = checkedPropertyRead();
 	assert.deepEqual(checked.diagnostics.filter(item => item.severity === 'error'), []);
 	assert.deepEqual(operations(checked), ['module-load', 'read-property']);
 	assert.ok(checked.semantic);
 
 	(checked.semantic.interop.usages as unknown as { length: number }).length = 1;
 	(checked.semantic.interop.usageIR as unknown as { length: number }).length = 1;
+	assert.throws(
+		() => operations(checked),
+		/not from the current checked AST semantic session/u,
+	);
+});
+
+test('custom usage-array iteration cannot hide post-check evidence', () => {
+	const checked = checkedPropertyRead();
+	assert.deepEqual(checked.diagnostics.filter(item => item.severity === 'error'), []);
+	assert.deepEqual(operations(checked), ['module-load', 'read-property']);
+	assert.ok(checked.semantic);
+
+	Object.defineProperty(checked.semantic.interop.usageIR, Symbol.iterator, {
+		configurable: true,
+		value: function* emptyIterator() {},
+	});
+	assert.throws(
+		() => operations(checked),
+		/not from the current checked AST semantic session/u,
+	);
+});
+
+test('custom usage-array methods cannot substitute fingerprint evidence', () => {
+	const checked = checkedPropertyRead();
+	assert.deepEqual(checked.diagnostics.filter(item => item.severity === 'error'), []);
+	assert.deepEqual(operations(checked), ['module-load', 'read-property']);
+	assert.ok(checked.semantic);
+
+	Object.defineProperty(checked.semantic.interop.usages, 'filter', {
+		configurable: true,
+		value: () => [],
+	});
+	assert.throws(
+		() => operations(checked),
+		/not from the current checked AST semantic session/u,
+	);
+});
+
+test('accessor-backed operation-relevant evidence cannot change after session registration', () => {
+	const checked = checkedPropertyRead();
+	assert.deepEqual(checked.diagnostics.filter(item => item.severity === 'error'), []);
+	assert.deepEqual(operations(checked), ['module-load', 'read-property']);
+	assert.ok(checked.semantic);
+	const usage = checked.semantic.interop.usageIR.find(item => item.kind === 'property');
+	assert.ok(usage);
+	const foreignType = usage.foreignType;
+
+	Object.defineProperty(usage, 'foreignType', {
+		configurable: true,
+		enumerable: true,
+		get: () => foreignType,
+	});
 	assert.throws(
 		() => operations(checked),
 		/not from the current checked AST semantic session/u,
