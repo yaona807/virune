@@ -9,7 +9,8 @@ import { registryPolicyForVersion } from './verify-npm-publication-identity.mjs'
 const repositoryRoot = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const EXPECTED_LICENSE = 'Apache-2.0';
 const REVIEWED_LEGAL_FILES = ['LICENSE', 'NOTICE', 'THIRD_PARTY_NOTICES.md', 'THIRD_PARTY_NOTICES_ja.md'];
-const NPM_PUBLICATION_POLICY = JSON.parse(await readFile(new URL('../.github/release/npm-publication-v1.json', import.meta.url), 'utf8'));
+const NPM_PUBLICATION_POLICY_PATH = '.github/release/npm-publication-v1.json';
+const NPM_PUBLICATION_POLICY = JSON.parse(await readFile(new URL(`../${NPM_PUBLICATION_POLICY_PATH}`, import.meta.url), 'utf8'));
 
 export async function verifyPublicRelease({
 	version,
@@ -30,7 +31,7 @@ export async function verifyPublicRelease({
 	const release = await waitForRelease({ repository, tag, token, attempts: waitAttempts, intervalMs: waitIntervalMs, fetchImpl });
 	const tagRef = await fetchJson(`https://api.github.com/repos/${repository}/git/ref/tags/${encodeURIComponent(tag)}`, { token, fetchImpl });
 	const reviewedCommit = resolveReviewedCommit(tag, tagRef?.object?.sha, expectedCommit);
-	const npmPublicationPolicy = JSON.parse((await readReviewedFile('.github/release/npm-publication-v1.json', { sourceRoot: repositoryRoot, reviewedCommit })).toString('utf8'));
+	const npmPublicationPolicy = await readReviewedNpmPublicationPolicy(reviewedCommit, version);
 	validateReleaseRecord(release, { tag, version, npmPublicationPolicy });
 	for (const asset of release.assets) {
 		const response = await fetchImpl(asset.browser_download_url, { headers: requestHeaders(token) });
@@ -70,6 +71,26 @@ export function resolveReviewedCommit(tag, tagCommit, expectedCommit) {
 	if (typeof tagCommit !== 'string' || !/^[0-9a-f]{40}$/u.test(tagCommit)) throw new Error(`Tag ${tag} did not resolve to a commit SHA.`);
 	if (expectedCommit !== undefined && tagCommit !== expectedCommit) throw new Error(`Tag ${tag} points to ${tagCommit}, expected ${expectedCommit}.`);
 	return tagCommit;
+}
+
+export async function readReviewedNpmPublicationPolicy(reviewedCommit, version, {
+	sourceRoot = repositoryRoot,
+	readReviewed = readReviewedFile,
+	fallbackPolicy = NPM_PUBLICATION_POLICY,
+} = {}) {
+	let source;
+	try {
+		source = await readReviewed(NPM_PUBLICATION_POLICY_PATH, { sourceRoot, reviewedCommit });
+	} catch (error) {
+		const legacyPolicy = registryPolicyForVersion(version, fallbackPolicy.firstStableRegistryRelease, fallbackPolicy.distTagPolicy);
+		if (legacyPolicy.registryVersionEligible) throw error;
+		return fallbackPolicy;
+	}
+	try {
+		return JSON.parse(Buffer.from(source).toString('utf8'));
+	} catch (error) {
+		throw new Error(`Reviewed npm publication policy is malformed at ${reviewedCommit}: ${error instanceof Error ? error.message : String(error)}`);
+	}
 }
 
 export function validateReleaseRecord(release, { tag, version, npmPublicationPolicy = NPM_PUBLICATION_POLICY }) {
