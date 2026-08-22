@@ -15,6 +15,7 @@ import {
 	runNpmPublicationPrewriteGate,
 	runNpmPublicationPrewriteGateCli,
 	validateAuthorizationReport,
+	validateGeneratedStableReleaseEvidence,
 	validateStableReleaseEvidence,
 } from './run-npm-publication-prewrite-gate.mjs';
 
@@ -62,7 +63,6 @@ function stableBytes(report = stableReleaseReport()) {
 
 function finalize(overrides = {}) {
 	return finalizeNpmPublicationPrewriteGate({
-		stableReleaseReport: stableReleaseReport(),
 		stableReleaseEvidenceBytes: stableBytes(),
 		authorizationReport: authorizationReport(),
 		reviewedCommit,
@@ -78,20 +78,26 @@ test('existing GitHub stable release gate does not acquire an unconditional npm 
 	assert.equal(policy.requirements.some(requirement => requirement.id.includes('prewrite') || requirement.id.includes('pre-write')), false);
 });
 
-test('valid finalized release and canonical authorization can reach the mutation boundary exactly once', async () => {
-	let calls = 0;
+test('valid finalized release and canonical authorization persist before reaching mutation exactly once', async () => {
+	const order = [];
 	let received;
+	let persisted;
 	const report = await finalize({
+		persist: async value => {
+			order.push('persist');
+			persisted = value;
+		},
 		mutation: async value => {
-			calls += 1;
+			order.push('mutation');
 			received = value;
 		},
 	});
-	assert.equal(calls, 1);
+	assert.deepEqual(order, ['persist', 'mutation']);
 	assert.equal(report.publicationReady, true);
 	assert.equal(report.reviewedCommit, reviewedCommit);
 	assert.equal(report.evidenceSetId, evidenceSetId);
 	assert.equal(report.version, releaseVersion);
+	assert.deepEqual(persisted, report);
 	assert.deepEqual(received.prewriteGate, report);
 	assert.equal(received.authorization.kind, NPM_PUBLICATION_AUTHORIZATION_REPORT_KIND);
 	assert.deepEqual(report.stableReleaseEvidence, {
@@ -100,7 +106,13 @@ test('valid finalized release and canonical authorization can reach the mutation
 	});
 });
 
-test('stable release evidence identity and pass state fail closed before mutation', async () => {
+test('mutation cannot run without persisted pre-write gate evidence', async () => {
+	let calls = 0;
+	await assert.rejects(() => finalize({ mutation: async () => { calls += 1; } }), /requires persisted pre-write gate evidence/u);
+	assert.equal(calls, 0);
+});
+
+test('stable release evidence identity and pass state fail closed before persistence or mutation', async () => {
 	const mutations = [
 		report => { report.schemaVersion = 2; },
 		report => { report.version = '1.1.0-rc.2'; },
@@ -119,17 +131,27 @@ test('stable release evidence identity and pass state fail closed before mutatio
 	for (const mutate of mutations) {
 		const stable = stableReleaseReport();
 		mutate(stable);
-		let calls = 0;
+		let persisted = 0;
+		let mutationsCalled = 0;
 		await assert.rejects(() => finalize({
-			stableReleaseReport: stable,
 			stableReleaseEvidenceBytes: stableBytes(stable),
-			mutation: async () => { calls += 1; },
+			persist: async () => { persisted += 1; },
+			mutation: async () => { mutationsCalled += 1; },
 		}));
-		assert.equal(calls, 0);
+		assert.equal(persisted, 0);
+		assert.equal(mutationsCalled, 0);
 	}
 });
 
-test('authorization report drift fails closed before mutation', async () => {
+test('fresh stable gate bytes must match the exact report generated in the same execution', () => {
+	const generated = stableReleaseReport();
+	const persisted = structuredClone(generated);
+	persisted.checks.pop();
+	assert.throws(() => validateGeneratedStableReleaseEvidence(persisted, generated, { reviewedCommit, releaseVersion }), /differs from the report generated/u);
+	assert.doesNotThrow(() => validateGeneratedStableReleaseEvidence(structuredClone(generated), generated, { reviewedCommit, releaseVersion }));
+});
+
+test('authorization report drift fails closed before persistence or mutation', async () => {
 	const mutations = [
 		report => { report.schemaVersion = 2; },
 		report => { report.kind = 'other'; },
@@ -147,12 +169,15 @@ test('authorization report drift fails closed before mutation', async () => {
 	for (const mutate of mutations) {
 		const authorization = authorizationReport();
 		mutate(authorization);
-		let calls = 0;
+		let persisted = 0;
+		let mutationsCalled = 0;
 		await assert.rejects(() => finalize({
 			authorizationReport: authorization,
-			mutation: async () => { calls += 1; },
+			persist: async () => { persisted += 1; },
+			mutation: async () => { mutationsCalled += 1; },
 		}));
-		assert.equal(calls, 0);
+		assert.equal(persisted, 0);
+		assert.equal(mutationsCalled, 0);
 	}
 });
 
