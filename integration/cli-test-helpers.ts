@@ -10,7 +10,11 @@ const cli = join(repositoryRoot, 'packages/cli/dist/src/entry.js');
 const temporaryRoot = join(repositoryRoot, '.test-tmp');
 
 export async function runCli(args: readonly string[], cwd = repositoryRoot): Promise<{ stdout: string; stderr: string }> {
-	return execute(process.execPath, [cli, ...args], { cwd, encoding: 'utf8' });
+	return runCliExecutable(cli, args, cwd);
+}
+
+export async function runCliExecutable(executable: string, args: readonly string[], cwd = repositoryRoot): Promise<{ stdout: string; stderr: string }> {
+	return execute(process.execPath, [executable, ...args], { cwd, encoding: 'utf8' });
 }
 
 export async function makeCliProject(): Promise<string> {
