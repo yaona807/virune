@@ -1,13 +1,6 @@
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import {
-	NPM_PUBLICATION_POST_WRITE_REQUIREMENTS,
-	NPM_PUBLICATION_REQUIREMENTS,
-	validateNpmPublicationAuthorizationContract,
-} from './npm-publication-authorization-contract.mjs';
-import { validateNpmPublicationPlanShape } from './npm-publication-plan-contract.mjs';
-import { registryPolicyForVersion } from './npm-publication-version-policy.mjs';
 import { verifyNpmPublicationRecoveryPolicy } from './verify-npm-publication-recovery.mjs';
 
 const PLAN_PATH = '.github/release/npm-publication-v1.json';
@@ -17,19 +10,28 @@ const BUGS_URL = 'https://github.com/yaona807/virune/issues';
 const CANONICAL_WORKSPACES = ['packages/*'];
 const RETRO_PUBLISH_BOUNDARY = '1.0.0';
 const FIRST_STABLE_REGISTRY_RELEASE = '1.1.0';
+const REQUIRED_PREPUBLICATION_BLOCKERS = [
+	'clean-registry-install-smoke',
+	'documentation-sync',
+	'generated-project-registry-smoke',
+	'package-publication-enablement',
+	'public-registry-verification',
+	'publication-gate-integration',
+	'registry-ownership',
+	'release-identity-integration',
+	'trusted-publishing',
+];
 const DEPENDENCY_SECTIONS = ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies'];
 const RUNTIME_DEPENDENCY_SECTIONS = new Set(['dependencies', 'peerDependencies', 'optionalDependencies']);
 
 export function verifyNpmPublicationPlan(root = process.cwd()) {
 	const plan = readJson(resolve(root, PLAN_PATH));
 	const rootManifest = readJson(resolve(root, 'package.json'));
-	validateNpmPublicationPlanShape(plan, '$');
 	assertExactKeys(plan, [
 		'schemaVersion',
 		'stage',
 		'publicationReady',
 		'unresolvedRequirements',
-		'authorization',
 		'forbidRegistryPublishThroughVersion',
 		'firstStableRegistryRelease',
 		'distTagPolicy',
@@ -40,26 +42,16 @@ export function verifyNpmPublicationPlan(root = process.cwd()) {
 		'excludedWorkspacePackages',
 	], '$');
 	assert(plan.schemaVersion === 1, '$.schemaVersion', 'expected schemaVersion 1');
-	const stage = oneOf(plan.stage, ['prepublication-audit', 'publication-candidate'], '$.stage');
-	assert(typeof plan.publicationReady === 'boolean', '$.publicationReady', 'expected a boolean');
-	if (stage === 'prepublication-audit') {
-		assert(plan.publicationReady === false, '$.publicationReady', 'prepublication audit must not claim publication readiness');
-	} else {
-		assert(plan.publicationReady === true, '$.publicationReady', 'publication-candidate stage requires a reviewed publicationReady:true declaration');
-	}
-	validateNpmPublicationAuthorizationContract(plan.authorization, '$.authorization');
+	assert(plan.stage === 'prepublication-audit', '$.stage', 'expected prepublication-audit stage');
+	assert(plan.publicationReady === false, '$.publicationReady', 'prepublication audit must not claim publication readiness');
 	const unresolvedRequirements = array(plan.unresolvedRequirements, '$.unresolvedRequirements')
-		.map((value, index) => nonEmptyString(value, `$.unresolvedRequirements[${index}]`));
+		.map((value, index) => nonEmptyString(value, `$.unresolvedRequirements[${index}]`))
+		.sort(compareText);
 	assertUnique(unresolvedRequirements, '$.unresolvedRequirements', 'requirement');
-	const expectedUnresolvedRequirements = stage === 'prepublication-audit'
-		? NPM_PUBLICATION_REQUIREMENTS
-		: NPM_PUBLICATION_POST_WRITE_REQUIREMENTS;
 	assert(
-		JSON.stringify(unresolvedRequirements) === JSON.stringify(expectedUnresolvedRequirements),
+		JSON.stringify(unresolvedRequirements) === JSON.stringify(REQUIRED_PREPUBLICATION_BLOCKERS),
 		'$.unresolvedRequirements',
-		stage === 'prepublication-audit'
-			? `expected unresolved prepublication requirements ${expectedUnresolvedRequirements.join(', ')}`
-			: `publication-candidate must leave only post-write completion requirements unresolved: ${expectedUnresolvedRequirements.join(', ')}`,
+		`expected unresolved prepublication requirements ${REQUIRED_PREPUBLICATION_BLOCKERS.join(', ')}`,
 	);
 	assert(plan.trustedPublishingRequired === true, '$.trustedPublishingRequired', 'must remain true');
 	assert(plan.publicVerificationRequired === true, '$.publicVerificationRequired', 'must remain true');
@@ -81,16 +73,7 @@ export function verifyNpmPublicationPlan(root = process.cwd()) {
 	assert(stableDistTag !== prereleaseDistTag, '$.distTagPolicy', 'stable and prerelease dist-tags must be distinct');
 	assert(distTagPolicy.nightly === null, '$.distTagPolicy.nightly', 'nightly releases must not be published to npm in this policy');
 	assert(rootManifest.private === true, '$root.private', 'monorepo root must remain private');
-	if (stage === 'prepublication-audit') {
-		assert(rootManifest.version === plan.forbidRegistryPublishThroughVersion, '$root.version', 'prepublication plan must be updated deliberately when the repository version advances');
-	} else {
-		const versionPolicy = registryPolicyForVersion(rootManifest.version, firstStableText, {
-			stable: stableDistTag,
-			prerelease: prereleaseDistTag,
-			nightly: null,
-		});
-		assert(versionPolicy.registryVersionEligible === true, '$root.version', 'publication-candidate release version must be Registry-eligible');
-	}
+	assert(rootManifest.version === plan.forbidRegistryPublishThroughVersion, '$root.version', 'prepublication plan must be updated deliberately when the repository version advances');
 	const rootWorkspaces = array(rootManifest.workspaces, '$root.workspaces')
 		.map((value, index) => nonEmptyString(value, `$root.workspaces[${index}]`));
 	assert(
@@ -130,13 +113,7 @@ export function verifyNpmPublicationPlan(root = process.cwd()) {
 		const manifest = readJson(resolve(root, 'packages', item.directory, 'package.json'));
 		assert(manifest.name === item.workspaceName, `$.${item.directory}.name`, `expected workspace package name ${item.workspaceName}`);
 		assert(manifest.version === rootManifest.version, `$.${item.directory}.version`, 'must match the reviewed root release version');
-		assert(
-			manifest.private === true,
-			`$.${item.directory}.private`,
-			stage === 'prepublication-audit'
-				? 'prepublication audit requires private:true until the publication-enablement change'
-				: 'reviewed publication-candidate source workspaces remain private:true; exact Registry candidate tarballs define publishability',
-		);
+		assert(manifest.private === true, `$.${item.directory}.private`, 'prepublication audit requires private:true until the publication-enablement change');
 		assert(manifest.license === reviewedLicense, `$.${item.directory}.license`, `must match reviewed root license ${reviewedLicense}`);
 		manifests.set(item.workspaceName, manifest);
 	}
@@ -160,7 +137,7 @@ export function verifyNpmPublicationPlan(root = process.cwd()) {
 		}
 		assert(hasPackageExports(manifest.exports), `$.${item.directory}.exports`, 'non-empty exports metadata is required');
 		assert(manifest.engines?.node === reviewedNodeEngine, `$.${item.directory}.engines.node`, `must match reviewed root Node engine ${reviewedNodeEngine}`);
-		assert(manifest.publishConfig === undefined, `$.${item.directory}.publishConfig`, 'publishConfig must remain absent; exact reviewed Registry candidates define publication metadata');
+		assert(manifest.publishConfig === undefined, `$.${item.directory}.publishConfig`, 'publishConfig must be introduced only in the publication-enablement change');
 		if (item.role === 'cli-dependency') {
 			assert(manifest.bin === undefined, `$.${item.directory}.bin`, 'CLI dependency packages must not expose npm executables');
 		}
@@ -195,8 +172,8 @@ export function verifyNpmPublicationPlan(root = process.cwd()) {
 
 	return {
 		schemaVersion: 1,
-		stage,
-		publicationReady: plan.publicationReady,
+		stage: plan.stage,
+		publicationReady: false,
 		unresolvedRequirements,
 		currentVersion: rootManifest.version,
 		forbidRegistryPublishThroughVersion: forbiddenThroughText,
