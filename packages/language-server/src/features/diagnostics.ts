@@ -7,6 +7,8 @@ import {
 import type { DocumentAnalysisSnapshot } from '../analysis/project-manager.js';
 import { filePathToUri, sourceSpanToRange } from '../analysis/position.js';
 
+const diagnosticCodeReference = 'https://github.com/yaona807/virune/blob/main/packages/compiler/src/diagnostics/codes.ts';
+
 export function diagnosticsForPath(snapshot: DocumentAnalysisSnapshot, path: string): readonly Diagnostic[] {
 	const target = snapshot.modulesByPath.get(path)?.source;
 	if (target === undefined) return [];
@@ -36,6 +38,7 @@ function toLspDiagnostic(
 		range: sourceSpanToRange(diagnostic.span),
 		severity: severity(diagnostic.severity),
 		code: diagnostic.code,
+		codeDescription: { href: diagnosticCodeReference },
 		source: DIAGNOSTIC_SOURCE,
 		message: diagnostic.message,
 		data: {
