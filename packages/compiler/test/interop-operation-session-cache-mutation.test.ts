@@ -190,3 +190,51 @@ test('semantic mutation during an async cached build is rejected before evidence
 	assert.deepEqual(rebuilt.diagnostics.filter(item => item.severity === 'error'), []);
 	assert.deepEqual(operationKinds(rebuilt), ['module-load', 'module-load']);
 });
+
+test('inherited toJSON cannot collapse changed cached operation evidence into the same reuse seal', async () => {
+	const previous = Object.getOwnPropertyDescriptor(Object.prototype, 'toJSON');
+	Object.defineProperty(Object.prototype, 'toJSON', {
+		configurable: true,
+		value(this: Record<string, unknown>) {
+			if (
+				Object.prototype.hasOwnProperty.call(this, 'usages')
+				&& Object.prototype.hasOwnProperty.call(this, 'usageIR')
+				&& Object.prototype.hasOwnProperty.call(this, 'moduleWitnesses')
+				&& Object.prototype.hasOwnProperty.call(this, 'requiresJavaScriptInitialization')
+			) {
+				return 'masked-operation-state';
+			}
+			return this;
+		},
+	});
+	try {
+		assert.equal(
+			JSON.stringify({ usages: [], usageIR: [], moduleWitnesses: [1], requiresJavaScriptInitialization: true }),
+			JSON.stringify({ usages: [], usageIR: [], moduleWitnesses: [], requiresJavaScriptInitialization: true }),
+			'test must prove inherited toJSON masks distinct operation evidence for the old seal design',
+		);
+		const root = resolve('virtual-operation-session-cache-inherited-to-json-project');
+		const mainPath = join(root, 'src/main.virune');
+		const cache = new ProjectBuildCache();
+		const first = await buildProject(root, { write: false, host: hostFor(mainPath), incrementalCache: cache, jsInteropProvider: provider() });
+		assert.deepEqual(first.diagnostics.filter(item => item.severity === 'error'), []);
+		assert.deepEqual(operationKinds(first), ['module-load', 'module-load']);
+		const firstMain = mainModule(first);
+
+		const gated = gatedHostFor(mainPath);
+		const pending = buildProject(root, { write: false, host: gated.host, incrementalCache: cache, jsInteropProvider: provider() });
+		await gated.entered;
+		(firstMain.semantic!.interop.moduleWitnesses as unknown as { length: number }).length = 1;
+		gated.release();
+		await assert.rejects(
+			pending,
+			/Cannot reuse checked semantic after its operation evidence changed/u,
+		);
+		const rebuilt = await buildProject(root, { write: false, host: hostFor(mainPath), incrementalCache: cache, jsInteropProvider: provider() });
+		assert.deepEqual(rebuilt.diagnostics.filter(item => item.severity === 'error'), []);
+		assert.deepEqual(operationKinds(rebuilt), ['module-load', 'module-load']);
+	} finally {
+		if (previous === undefined) delete (Object.prototype as { toJSON?: unknown }).toJSON;
+		else Object.defineProperty(Object.prototype, 'toJSON', previous);
+	}
+});
