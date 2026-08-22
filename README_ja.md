@@ -44,7 +44,7 @@ Viruneは現在、[`@yaona807`](https://github.com/yaona807)がメンテナン�
 
 ## リリース
 
-公開済みの成果物は[GitHub Releases](https://github.com/yaona807/virune/releases)で確認できます。リリースの可否はリポジトリ内の機械可読ポリシーとCIで判定し、READMEには個別バージョンの手順を重複して持ちません。
+公開済みの成果物は[GitHub Releases](https://github.com/yaona807/virune/releases)で確認できます。GitHub Releasesはstable、prerelease、nightlyのすべてで公式かつ変更しない配布経路として維持します。リリースの可否はリポジトリ内の機械可読ポリシーとCIで判定し、READMEには個別バージョンの手順を重複して持ちません。
 
 ## ライセンス
 
