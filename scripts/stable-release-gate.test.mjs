@@ -128,6 +128,36 @@ test('missing or renamed npm publication plan evidence fails closed', async t =>
 	}
 });
 
+test('malformed or duplicate stable gate checks fail closed', async t => {
+	for (const checks of [
+		[{ id: 'npm-publication-plan', command: [] }],
+		[
+			{ id: 'npm-publication-plan', command: ['node', 'scripts/verify-npm-publication-plan.mjs'] },
+			{ id: 'npm-publication-plan', command: ['node', 'scripts/verify-npm-publication-plan.mjs'] },
+		],
+	]) {
+		const root = await mkdtemp(join(tmpdir(), 'virune-release-npm-plan-invalid-'));
+		t.after(() => rm(root, { recursive: true, force: true }));
+		await mkdir(join(root, '.github'), { recursive: true });
+		await writeFile(join(root, 'package.json'), '{"version":"1.0.0"}\n');
+		await writeFile(join(root, '.github/stable-release-gate.json'), `${JSON.stringify({
+			schemaVersion: 1,
+			nightly: { workflow: 'nightly.yml', branch: 'main', maxAgeHours: 36 },
+			checks,
+			requirements: [{ id: 'npm-publication-plan', evidence: ['npm-publication-plan'] }],
+		}, null, '\t')}\n`);
+		await assert.rejects(
+			runStableReleaseGate({
+				root,
+				output: join(root, 'evidence.json'),
+				execute: async () => ({ status: 0 }),
+				fetchLatestNightly: async () => ({ passed: true }),
+			}),
+			/Invalid stable release check|Duplicate stable release check: npm-publication-plan/u,
+		);
+	}
+});
+
 test('writes evidence and rejects any failed requirement', async t => {
 	const root = await mkdtemp(join(tmpdir(), 'virune-release-gate-'));
 	t.after(() => rm(root, { recursive: true, force: true }));
