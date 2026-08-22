@@ -67,6 +67,35 @@ test('ModuleLoad stable evidence rejects absolute checkout module specifiers', (
 	);
 });
 
+test('ModuleLoad validates platform and builtin runtime-witness coherence', () => {
+	assert.throws(
+		() => externalModuleLoadOperation({
+			nodeId: 1,
+			span,
+			moduleSpecifier: './library.js',
+			witnesses: [{ ...witness('./library.js'), runtimeFormat: 'commonjs', platform: 'browser' }],
+		}),
+		/CommonJS runtime format requires the node platform/u,
+	);
+	assert.throws(
+		() => externalModuleLoadOperation({
+			nodeId: 1,
+			span,
+			moduleSpecifier: 'fs',
+			witnesses: [{ ...witness('fs'), runtimeEntry: 'node:path', runtimeFormat: 'builtin', platform: 'node' }],
+		}),
+		/builtin runtime entry must match the imported module specifier/u,
+	);
+
+	const bareBuiltin = externalModuleLoadOperation({
+		nodeId: 1,
+		span,
+		moduleSpecifier: 'fs',
+		witnesses: [{ ...witness('fs'), runtimeEntry: 'node:fs', runtimeFormat: 'builtin', platform: 'node' }],
+	});
+	assert.equal(bareBuiltin.decision.status, 'resolved');
+});
+
 test('ordinary and receiver-preserving calls retain distinct receiver semantics without stronger claims', () => {
 	const base: ForeignUsageIR = {
 		kind: 'call',
