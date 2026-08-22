@@ -137,6 +137,7 @@ export function validateGeneratedStableReleaseEvidence(persistedReport, generate
 }
 
 export function validateStableReleaseEvidence(value, { reviewedCommit, releaseVersion }) {
+	const commit = fullCommitSha(reviewedCommit, '$.stableReleaseEvidence.expectedCommit');
 	const version = releaseVersionText(releaseVersion, '$.stableReleaseEvidence.expectedVersion');
 	const report = record(value, '$.stableReleaseEvidence');
 	assertExactKeys(report, [
@@ -152,8 +153,8 @@ export function validateStableReleaseEvidence(value, { reviewedCommit, releaseVe
 	], '$.stableReleaseEvidence');
 	assert(report.schemaVersion === 1, '$.stableReleaseEvidence.schemaVersion', 'expected schemaVersion 1');
 	assert(report.version === version, '$.stableReleaseEvidence.version', `expected release version ${version}`);
-	assert(report.commit === reviewedCommit, '$.stableReleaseEvidence.commit', `expected reviewed commit ${reviewedCommit}`);
-	assert(report.expectedNightlySha === reviewedCommit, '$.stableReleaseEvidence.expectedNightlySha', `expected Nightly evidence for ${reviewedCommit}`);
+	assert(report.commit === commit, '$.stableReleaseEvidence.commit', `expected reviewed commit ${commit}`);
+	assert(report.expectedNightlySha === commit, '$.stableReleaseEvidence.expectedNightlySha', `expected Nightly evidence for ${commit}`);
 	assert(report.passed === true, '$.stableReleaseEvidence.passed', 'stable release gate must have passed');
 	validateReleaseRef(report.ref, version);
 	assert(typeof report.generatedAt === 'string' && Number.isFinite(Date.parse(report.generatedAt)), '$.stableReleaseEvidence.generatedAt', 'expected an ISO timestamp');
@@ -167,7 +168,9 @@ export function validateStableReleaseEvidence(value, { reviewedCommit, releaseVe
 }
 
 export function validateAuthorizationReport(value, { reviewedCommit, releaseVersion, evidenceSetId }) {
+	const commit = fullCommitSha(reviewedCommit, '$.authorization.expectedCommit');
 	const version = releaseVersionText(releaseVersion, '$.authorization.expectedVersion');
+	const execution = evidenceSetIdentity(evidenceSetId, '$.authorization.expectedEvidenceSetId');
 	const report = record(value, '$.authorization');
 	assertExactKeys(report, [
 		'schemaVersion',
@@ -183,8 +186,8 @@ export function validateAuthorizationReport(value, { reviewedCommit, releaseVers
 	assert(report.schemaVersion === 1, '$.authorization.schemaVersion', 'expected schemaVersion 1');
 	assert(report.kind === NPM_PUBLICATION_AUTHORIZATION_REPORT_KIND, '$.authorization.kind', `expected ${NPM_PUBLICATION_AUTHORIZATION_REPORT_KIND}`);
 	assert(report.publicationReady === true, '$.authorization.publicationReady', 'authorization must be ready');
-	assert(report.reviewedCommit === reviewedCommit, '$.authorization.reviewedCommit', `expected reviewed commit ${reviewedCommit}`);
-	assert(report.evidenceSetId === evidenceSetId, '$.authorization.evidenceSetId', `expected evidence set ${evidenceSetId}`);
+	assert(report.reviewedCommit === commit, '$.authorization.reviewedCommit', `expected reviewed commit ${commit}`);
+	assert(report.evidenceSetId === execution, '$.authorization.evidenceSetId', `expected evidence set ${execution}`);
 	assert(report.version === version, '$.authorization.version', `expected release version ${version}`);
 	const manifest = record(report.publicationManifest, '$.authorization.publicationManifest');
 	assertExactKeys(manifest, ['sha256', 'bytes'], '$.authorization.publicationManifest');
