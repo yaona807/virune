@@ -49,6 +49,9 @@ type Order = {
   id: string;
 };
 
+declare function loadUser(userId: string): Promise<User>;
+declare function loadOrders(userId: string): Promise<Order[]>;
+
 async function showDashboard(userId: string): Promise<void> {
   const [user, orders] = await Promise.all([
     loadUser(userId),
@@ -66,7 +69,7 @@ The code above still leaves some concerns to surrounding design:
 
 - Reading `nickname` means accounting for a `string`, `null`, or `undefined` caused by an absent property.
 - The type of `showDashboard` does not describe how `loadUser` or `loadOrders` may fail. TypeScript applications can introduce Result types or their own error conventions.
-- Network access and standard output are not represented in the function type.
+- Network access and console output are not represented in the function type.
 - `Promise.all()` rejects when one input rejects, but it does not automatically stop another operation that has already started. Cancellation can be designed with APIs such as `AbortController` when the underlying operation supports it.
 
 ## The same code in Virune
@@ -124,21 +127,21 @@ import js { nanoid } from "nanoid"
 
 Virune does not treat every value arriving from JavaScript as a trusted native value.
 
-TypeScript `any` is not accepted as a safe type, and `unknown` is not silently narrowed to a more convenient type. Values that cannot be safely determined remain `Unknown` until they are handled explicitly. Values involving `null` or `undefined` are also handled at the boundary and converted explicitly into Virune-side types.
+TypeScript `any` is not accepted as a safe type, and `unknown` is not silently narrowed to a more convenient type. Values that cannot be safely determined remain `Unknown` until they are handled explicitly. Values involving `null` or `undefined` are also handled at the boundary and converted into Virune-side types.
 
-More complex TypeScript APIs can be isolated behind an Adapter. Virune also cannot guarantee that an external library's implementation actually follows its type declarations.
+More complex TypeScript APIs can be isolated behind a TypeScript-side Adapter. Virune also cannot guarantee that an external library's implementation actually follows its type declarations.
 
 **The goal is not to pretend JavaScript's complexity does not exist. It is to make clear where that complexity is handled.**
 
-## Keep the language no larger than necessary
+## Keep the language as simple as practical
 
-Virune does not assume that adding more language features always produces a better language.
+Virune does not assume that more language features always produce a better language.
 
 When existing small features can be combined to express the same idea clearly, Virune avoids adding a dedicated syntax or mechanism only for that use case.
 
 For example, Virune 1.0 has no classes or inheritance. Data is expressed with `record` and `enum`, distinct value identities can use `newtype`, and reusable behavior can be composed from functions and records that contain functions.
 
-This is not about preventing advanced programs from being written. **Advanced programs should still be possible while the language itself remains as simple as practical.** If existing pieces are enough, Virune avoids adding a new concept just to provide another way to express the same thing.
+The goal is not to make advanced programs impossible. **Even when advanced behavior is needed, the language itself should remain as simple as practical.** If existing pieces are enough, Virune avoids adding a new concept just to provide another way to express the same thing.
 
 ## Quick start
 
