@@ -3,6 +3,7 @@ export function registryPolicyForVersion(version, firstStableRegistryRelease, di
 	const firstStable = parseReleaseVersion(firstStableRegistryRelease, '$.firstStableRegistryRelease');
 	assert(firstStable.channel === 'stable', '$.firstStableRegistryRelease', 'expected a stable semantic version');
 	const tags = record(distTagPolicy, '$.distTagPolicy');
+	assertExactKeys(tags, ['stable', 'prerelease', 'nightly'], '$.distTagPolicy');
 	const stableTag = nonEmptyString(tags.stable, '$.distTagPolicy.stable');
 	const prereleaseTag = nonEmptyString(tags.prerelease, '$.distTagPolicy.prerelease');
 	assert(stableTag === 'latest', '$.distTagPolicy.stable', 'stable npm publication must use latest');
@@ -45,6 +46,16 @@ function nonEmptyString(value, path) {
 	return value;
 }
 
+function assertExactKeys(value, expected, path) {
+	const actual = Object.keys(value).sort(compareText);
+	const wanted = [...expected].sort(compareText);
+	assert(JSON.stringify(actual) === JSON.stringify(wanted), path, `expected exact keys ${wanted.join(', ')}`);
+}
+
 function assert(condition, path, message) {
 	if (!condition) throw new Error(`${path}: ${message}`);
+}
+
+function compareText(left, right) {
+	return left < right ? -1 : left > right ? 1 : 0;
 }
