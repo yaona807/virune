@@ -29,10 +29,10 @@ test('CLI init, check, build and run form a complete workflow', async () => {
 	assert.match(projectReadme, /npm run check/u);
 	assert.match(projectReadme, /npm test/u);
 	assert.match(projectReadme, /npm run start/u);
-	assert.match(projectReadme, /blob\/main\/docs\/application-guide\.md/u);
-	assert.match(projectReadme, new RegExp(`blob/v${version.replaceAll('.', '\\.')}/docs/language-guide\\.md`, 'u'));
-	assert.match(projectReadme, new RegExp(`blob/v${version.replaceAll('.', '\\.')}/docs/standard-library\\.md`, 'u'));
-	assert.match(projectReadme, new RegExp(`blob/v${version.replaceAll('.', '\\.')}/docs/js-interop\\.md`, 'u'));
+	assert.doesNotMatch(projectReadme, /\/docs\//u);
+	assert.match(projectReadme, new RegExp(`blob/v${version.replaceAll('.', '\\.')}/spec/README\\.md`, 'u'));
+	assert.match(projectReadme, new RegExp(`blob/v${version.replaceAll('.', '\\.')}/spec/standard-library\\.md`, 'u'));
+	assert.match(projectReadme, new RegExp(`blob/v${version.replaceAll('.', '\\.')}/spec/js-interop\\.md`, 'u'));
 	assert.match((await runCli(['check', root])).stdout, /Checked 1 module/u);
 	assert.match((await runCli(['build', root])).stdout, /Built 1 module/u);
 	assert.match(await readFile(join(root, 'dist/main.js'), 'utf8'), /export function main/u);
@@ -78,7 +78,7 @@ test('CLI discovers unimported test modules from test.include', async () => {
 
 test('CLI formatter check detects and then fixes formatting', async () => {
 	const root = await makeCliProject();
-	await mkdir(join(root, 'src'), { recursive: true });
+	await mkdir(root, { recursive: true });
 	const file = join(root, 'src/main.virune');
 	await writeFile(file, 'pub fn main()->Unit {\nreturn Unit\n}\n');
 	await assert.rejects(runCli(['fmt', '--check', root]));
