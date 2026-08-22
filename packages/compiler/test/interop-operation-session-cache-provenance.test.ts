@@ -57,7 +57,7 @@ test('stable API cannot inject an untracked checked semantic into an otherwise t
 			includeConfigEntry: false,
 			additionalEntries: ['src/helper.virune'],
 		}),
-		/Cannot promote checked results from an unregistered project cache/u,
+		/Cannot promote parsed or checked results from an unregistered or changed project cache/u,
 		'a cache-level tracked flag must not authorize a different stable-created semantic',
 	);
 	assert.throws(
