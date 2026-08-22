@@ -16,13 +16,25 @@ Virune divides exposed surfaces into three classes:
 
 A surface is Stable only when that status is explicit. A version number, versioned path, or snapshot does not make a surface Stable by itself.
 
-Stable contracts include the normative Language Specification and public APIs, ABIs, configuration, and machine-readable formats that are explicitly declared Stable. Use each contract's canonical source to determine its exact surface.
+The main Stable public contracts currently include:
+
+- the normative Language Specification under [`spec/`](spec/README.md)
+- documented `virune.json` configuration
+- public standard-library declarations and `package.json` `exports`
+- the Stable Compiler API exported from the `@virune/compiler` root
+- Runtime ABI and Interop ABI surfaces explicitly declared Stable
+- published CLI contracts such as commands, options, and exit status
+- diagnostics, JSON formats, and other machine-readable formats explicitly declared Stable
+- Language Server and VS Code features, settings, and commands published for stable releases
+- supported environments such as Node.js and VS Code when explicitly declared supported for stable releases
 
 Additions and fixes are allowed when they preserve existing use. Intentional incompatible changes belong in a major release except for the exceptions below.
 
 ### Experimental
 
 Experimental surfaces are outside the stable compatibility guarantee. They may change or be removed in any release as evaluation continues.
+
+`@virune/compiler/experimental` is Experimental. Semantic Snapshot and Semantic Change Evidence also remain Experimental until the required evaluation is complete and they are explicitly stabilized. Completing evaluation alone does not make them Stable.
 
 Using an Experimental surface does not weaken guarantees for unrelated Stable contracts.
 
@@ -56,10 +68,10 @@ Human-facing wording, colors, layout, unpublished settings, and internal formats
 
 Before removing or incompatibly changing a Stable contract, Virune normally follows this sequence:
 
-1. Mark the contract as deprecated.
+1. Mark the contract as deprecated and reflect that status in tools or type information when practical.
 2. Provide a replacement or migration path.
 3. Publish at least one stable release that still supports the old contract while marking it deprecated.
-4. Make the incompatible change in a major release and provide the required migration guidance.
+4. Make the incompatible change in a major release and document the affected version, the before-and-after behavior, and the required migration steps.
 
 Experimental and Internal surfaces do not require this process.
 
@@ -80,7 +92,9 @@ An exceptional incompatible change must identify at least:
 - why a backward-compatible fix is not possible
 - available mitigation or migration steps
 
-Do not expand the exception to unrelated Stable contracts.
+Do not expand the exception to unrelated Stable contracts or use it to bypass the normal compatibility rules.
+
+Restoring an implementation to behavior already required by the normative Language Specification is not, by itself, a Language Specification change. If that correction is incompatible with another Stable contract, it must still satisfy this exception or wait for a major release.
 
 ## When canonical sources disagree
 
@@ -88,4 +102,4 @@ Do not expand the exception to unrelated Stable contracts.
 
 If the specification, implementation, tests, or snapshots disagree, do not choose the most convenient interpretation. Resolve the inconsistency before treating the behavior as a Stable guarantee.
 
-A snapshot update or green CI alone does not authorize an incompatible change.
+Release notes or migration guidance cannot override the Language Specification or this compatibility policy. A snapshot update or green CI alone does not authorize an incompatible change.
