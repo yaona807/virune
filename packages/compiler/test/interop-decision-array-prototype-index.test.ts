@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { isResolvedDirectInteropDecision } from '../src/interop/decision.js';
+import { canonicalizeInteropDecision } from '../src/interop/decision.js';
 
 function isPendingObligation(value: unknown): boolean {
 	if (value === null || typeof value !== 'object') return false;
@@ -24,13 +24,18 @@ test('inherited numeric Array setter cannot erase a pending obligation during ca
 		},
 	});
 	try {
-		assert.equal(isResolvedDirectInteropDecision({
-			status: 'resolved',
+		const canonical = canonicalizeInteropDecision({
+			status: 'obligation-pending',
 			mechanism: 'direct',
 			authoring: 'none',
 			claims: [],
 			obligations: [{ kind: 'runtime-resolution', stage: 'build', status: 'pending' }],
-		}), false);
+		});
+		assert.equal(canonical.status, 'obligation-pending');
+		assert.equal(canonical.obligations.length, 1);
+		assert.equal(canonical.obligations[0]?.kind, 'runtime-resolution');
+		assert.equal(canonical.obligations[0]?.stage, 'build');
+		assert.equal(canonical.obligations[0]?.status, 'pending');
 	} finally {
 		if (previous === undefined) Reflect.deleteProperty(Array.prototype, '0');
 		else Object.defineProperty(Array.prototype, '0', previous);
