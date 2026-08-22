@@ -94,6 +94,16 @@ export function validatePublicReleaseBinding(report, { reviewedCommit, publicati
 	const release = record(document.release, '$.publicReleaseReport.release');
 	assert(release.draft === false, '$.publicReleaseReport.release.draft', 'release must not be a draft');
 	assert(release.prerelease === true, '$.publicReleaseReport.release.prerelease', 'release must be a prerelease');
+	const attestations = record(document.attestations, '$.publicReleaseReport.attestations');
+	assertExactKeys(attestations, ['cyclonedx', 'provenance'], '$.publicReleaseReport.attestations');
+	assert(attestations.provenance === 'passed', '$.publicReleaseReport.attestations.provenance', 'provenance verification must have passed');
+	assert(attestations.cyclonedx === 'passed', '$.publicReleaseReport.attestations.cyclonedx', 'CycloneDX attestation verification must have passed');
+	const vsix = record(document.vsix, '$.publicReleaseReport.vsix');
+	assertExactKeys(vsix, ['activation', 'cleanInstall', 'file', 'languageServer', 'uninstall'], '$.publicReleaseReport.vsix');
+	assert(vsix.file === `virune-vscode-${releaseVersion}.vsix`, '$.publicReleaseReport.vsix.file', `expected virune-vscode-${releaseVersion}.vsix`);
+	for (const field of ['cleanInstall', 'activation', 'languageServer', 'uninstall']) {
+		assert(vsix[field] === 'passed', `$.publicReleaseReport.vsix.${field}`, 'VSIX verification must have passed');
+	}
 	const assets = array(document.assets, '$.publicReleaseReport.assets');
 	const publicationAssets = assets.filter((item, index) => {
 		const asset = record(item, `$.publicReleaseReport.assets[${index}]`);
