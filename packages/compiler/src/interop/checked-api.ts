@@ -200,7 +200,13 @@ function registerProjectResult(result: ProjectBuildResult): ProjectBuildResult {
 	}
 }
 
-function beginCachedBuild(cache: ProjectBuildCache): void {
+/**
+ * Start one cached experimental build and report whether the cache is already
+ * bound to a prior experimental result. A cache populated by the stable/base
+ * project API has no checker-time experimental snapshot, so checked entries
+ * from it must be rebuilt before they can become operation evidence.
+ */
+function beginCachedBuild(cache: ProjectBuildCache): boolean {
 	if (activeCaches.has(cache)) throw new Error('Concurrent experimental project builds cannot share one ProjectBuildCache');
 	const current = currentModulesByCache.get(cache);
 	if (!reusableModulesAreCurrent(current)) {
@@ -212,6 +218,7 @@ function beginCachedBuild(cache: ProjectBuildCache): void {
 	activeCaches.add(cache);
 	currentModulesByCache.delete(cache);
 	invalidateModules(current);
+	return current !== undefined;
 }
 
 /** Experimental compiler entry point with ephemeral checked-AST session binding. */
@@ -259,11 +266,14 @@ export async function buildProject(
 	legacyAdditionalEntries: readonly string[] = [],
 ): Promise<ProjectBuildResult> {
 	const cache = typeof optionsOrWrite === 'object' && optionsOrWrite !== null ? optionsOrWrite.incrementalCache : undefined;
-	if (cache !== undefined) beginCachedBuild(cache);
+	const cacheWasExperimentallyTracked = cache === undefined ? false : beginCachedBuild(cache);
 	try {
 		const result = typeof optionsOrWrite === 'boolean'
 			? await buildProjectBase(rootDirectory, optionsOrWrite, legacyAdditionalEntries)
 			: await buildProjectBase(rootDirectory, optionsOrWrite);
+		if (cache !== undefined && !cacheWasExperimentallyTracked && result.stats.reusedCheckedModules > 0) {
+			throw new Error('Cannot promote checked results from an unregistered project cache; retry after cache reset');
+		}
 		registerProjectResult(result);
 		if (cache !== undefined) currentModulesByCache.set(cache, checkedModules(result));
 		return result;
