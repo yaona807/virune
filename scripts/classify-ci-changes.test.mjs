@@ -92,6 +92,8 @@ test('fails closed for unknown and self-host workflow changes', () => {
 		'.github/workflows/selfhost-clean-bootstrap.yml',
 		'.github/workflows/selfhost-fixed-seed.yml',
 		'.github/workflows/selfhost-promotion-policy.yml',
+		'.github/workflows/codeql.yml\n',
+		'.github/workflows/codeql.yml ',
 	]) {
 		assert.equal(classifyChangedPaths([path]).selfhostInventoryRequired, true, path);
 	}
@@ -120,6 +122,13 @@ test('parses NUL-separated git paths without quoted newline loss', () => {
 		'packages/cli/src/main.ts',
 	]);
 	assert.equal(classifyChangedPaths(paths).selfhostInventoryRequired, true);
+});
+
+test('preserves exact repository path spelling and only removes exact duplicates', () => {
+	const result = classifyChangedPaths(['docs/guide.md', 'docs/guide.md', 'docs\\guide.md', '']);
+	assert.deepEqual(result.paths, ['docs/guide.md', 'docs\\guide.md']);
+	assert.equal(result.changedCount, 2);
+	assert.equal(result.docsOnly, false);
 });
 
 test('keeps Required Shadow narrower than compiler-wide inventory while fail-closing self-host controls', () => {
@@ -170,17 +179,6 @@ test('does not treat an empty change set as documentation-only and fails safe fo
 		selfhostRequiredGateRequired: true,
 		changedCount: 0,
 		paths: [],
-	});
-});
-
-test('normalizes separators and removes duplicate paths', () => {
-	const result = classifyChangedPaths(['docs\\guide.md', 'docs/guide.md', '']);
-	assert.deepEqual(result, {
-		docsOnly: true,
-		selfhostInventoryRequired: false,
-		selfhostRequiredGateRequired: false,
-		changedCount: 1,
-		paths: ['docs/guide.md'],
 	});
 });
 
