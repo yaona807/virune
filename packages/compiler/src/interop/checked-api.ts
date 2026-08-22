@@ -190,6 +190,13 @@ function reusableModulesAreCurrent(modules: CheckedModuleMap | undefined): boole
 	return true;
 }
 
+function hasErrors(diagnostics: readonly Diagnostic[]): boolean {
+	for (let index = 0; index < diagnostics.length; index++) {
+		if (diagnostics[index]?.severity === 'error') return true;
+	}
+	return false;
+}
+
 function trackedReusedSemanticCount(result: ProjectBuildResult, previous: CheckedModuleMap | undefined): number {
 	if (previous === undefined) return 0;
 	const trackedSemantics = new Set<SemanticModel>();
@@ -337,7 +344,7 @@ export async function buildProject(
 		registerProjectResult(result);
 		if (cache !== undefined) {
 			currentModulesByCache.set(cache, checkedModules(result));
-			if (result.modules.some(module => module.semantic === undefined)) cache.clear();
+			if (hasErrors(result.diagnostics)) cache.clear();
 		}
 		return result;
 	} catch (error) {
@@ -386,7 +393,7 @@ export class IncrementalProjectBuilder extends BaseIncrementalProjectBuilder {
 			}
 			registerProjectResult(result);
 			for (const [module, semantic] of checkedModules(result)) this.#currentModules.set(module, semantic);
-			if (result.modules.some(module => module.semantic === undefined)) super.clear();
+			if (hasErrors(result.diagnostics)) super.clear();
 			return result;
 		} catch (error) {
 			this.#invalidateCurrentModules();
