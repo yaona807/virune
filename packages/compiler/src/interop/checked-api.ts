@@ -76,8 +76,8 @@ function semanticReuseSeal(module: A.ModuleNode, semantic: SemanticModel): Seman
 
 /**
  * Encode only own data properties from compiler-owned snapshots. Reuse safety
- * must not depend on inherited toJSON/iterator/array helpers that callers can
- * replace between cache preflight and cached semantic registration.
+ * must not depend on inherited serialization/iteration/array helpers that
+ * callers can replace between cache preflight and cached semantic registration.
  */
 function reuseStructuralState(value: unknown): string {
 	return encodeReuseStructuralValue(value, new Map<object, number>());
@@ -86,20 +86,20 @@ function reuseStructuralState(value: unknown): string {
 function encodeReuseStructuralValue(value: unknown, seen: Map<object, number>): string {
 	if (value === null) return 'null';
 	if (value === undefined) return 'undefined';
-	if (typeof value === 'string') return `string:${JSON.stringify(value)}`;
+	if (typeof value === 'string') return `string:${value.length}:${value}`;
 	if (typeof value === 'boolean') return value ? 'boolean:true' : 'boolean:false';
-	if (typeof value === 'bigint') return `bigint:${value.toString(10)}`;
+	if (typeof value === 'bigint') return `bigint:${value}`;
 	if (typeof value === 'number') {
 		if (Number.isNaN(value)) return 'number:NaN';
 		if (value === Number.POSITIVE_INFINITY) return 'number:+Infinity';
 		if (value === Number.NEGATIVE_INFINITY) return 'number:-Infinity';
 		if (Object.is(value, -0)) return 'number:-0';
-		return `number:${String(value)}`;
+		return `number:${value}`;
 	}
 	if (typeof value === 'function' || typeof value === 'symbol') {
 		throw new Error('Cannot seal checked semantic evidence containing executable or symbolic values');
 	}
-	if (typeof value !== 'object') return `${typeof value}:${String(value)}`;
+	if (typeof value !== 'object') throw new Error(`Cannot seal checked semantic ${typeof value} value`);
 
 	const existing = seen.get(value);
 	if (existing !== undefined) return `reference:${existing}`;
@@ -125,7 +125,7 @@ function encodeReuseStructuralValue(value: unknown, seen: Map<object, number>): 
 			if (typeof key === 'symbol') throw new Error('Cannot seal checked semantic array with symbol fields');
 			if (key === 'length') continue;
 			const index = Number(key);
-			if (!Number.isSafeInteger(index) || index < 0 || index >= length || String(index) !== key) {
+			if (!Number.isSafeInteger(index) || index < 0 || index >= length || `${index}` !== key) {
 				throw new Error('Cannot seal checked semantic array with sparse or extra fields');
 			}
 			indexKeyCount++;
@@ -133,7 +133,7 @@ function encodeReuseStructuralValue(value: unknown, seen: Map<object, number>): 
 		if (indexKeyCount !== length) throw new Error('Cannot seal checked semantic array with sparse or extra fields');
 		let encodedItems = '';
 		for (let index = 0; index < length; index++) {
-			const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
+			const descriptor = Object.getOwnPropertyDescriptor(value, `${index}`);
 			if (descriptor === undefined || !('value' in descriptor)) throw new Error('Cannot seal checked semantic array with accessor entries');
 			if (index > 0) encodedItems += ',';
 			encodedItems += encodeReuseStructuralValue(descriptor.value, seen);
@@ -151,7 +151,7 @@ function encodeReuseStructuralValue(value: unknown, seen: Map<object, number>): 
 		const descriptor = Object.getOwnPropertyDescriptor(value, key);
 		if (descriptor === undefined || !('value' in descriptor)) throw new Error(`Cannot seal checked semantic accessor field ${key}`);
 		if (fieldIndex > 0) encodedFields += ',';
-		encodedFields += `${JSON.stringify(key)}=${encodeReuseStructuralValue(descriptor.value, seen)}`;
+		encodedFields += `${key.length}:${key}=${encodeReuseStructuralValue(descriptor.value, seen)}`;
 		fieldIndex++;
 	}
 	return `object:${id}:{${encodedFields}}`;
