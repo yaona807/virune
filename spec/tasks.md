@@ -1,6 +1,6 @@
 # Tasks and Structured Concurrency
 
-[English](tasks.md) | [日本語](tasks_ja.md)
+[日本語版](tasks_ja.md)
 
 ## `[task.future]` Futures
 Calling an async function creates an internal `Future<T>`. `Future` is not directly nameable in source. `await` is valid only in an async context.
