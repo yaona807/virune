@@ -18,7 +18,7 @@ Providerは、呼び出し先と実引数の型だけからJavaScript呼び出�
 
 CommonJSとして実行されるモジュールからの名前付きインポートは、合成された名前付きエクスポートに移植性がないため拒否します。デフォルトインポート、名前空間インポート、またはアダプターを使用します。
 
-TypeScriptの`any`は直接利用（Direct Facade）では拒否します。TypeScriptの`unknown`は型が不明な外部値として保持し、より狭い型を仮定せずにViruneの`Unknown`へ渡せます。
+TypeScriptで`any`と宣言されたインポートは、直接利用（Direct Facade）では拒否します。TypeScriptの`unknown`は型が不明な外部値として保持し、より狭い型を仮定せずにViruneの`Unknown`へ渡せます。
 
 ## 外部値（Foreign値）
 
