@@ -6,11 +6,11 @@
 
 ## 3段階の相互運用
 
-1. **Direct Facade（直接利用）**：`import js`では、型宣言されたJavaScript APIのうち保守的に扱える範囲だけを公開します。依存パッケージのソースコードは変換せず、そのまま実行します。
-2. **Compiled Adapter（事前変換アダプター）**：複雑なTypeScript APIを`*.interop.ts`へ分離し、固定されたTypeScript Providerで型検査してから、Viruneを実行する前にESMとして出力します。
+1. **直接利用（Direct Facade）**：`import js`では、型宣言されたJavaScript APIのうち保守的に扱える範囲だけを公開します。依存パッケージのソースコードは変換せず、そのまま実行します。
+2. **事前変換アダプター（Compiled Adapter）**：複雑なTypeScript APIを`*.interop.ts`へ分離し、固定されたTypeScript Providerで型検査してから、Viruneを実行する前にESMとして出力します。
 3. **`unsafe`境界**：利用可能な型宣言がないAPIや、本質的に動的なAPIに限って`unsafe extern js`を使用します。
 
-## Direct Facade
+## 直接利用（Direct Facade）
 
 Direct Facadeは、デフォルト、名前付き、名前空間、副作用のみ、名前付きの型専用インポート、プロパティ参照、関数・メソッド呼び出し、Foreignハンドルの転送、型宣言上Promise互換（Promise-like）である戻り値への`await`を対象にします。
 
@@ -20,13 +20,13 @@ CommonJSとして実行されるモジュールからの名前付きインポー
 
 TypeScriptの`any`はDirect Facadeでは拒否します。TypeScriptの`unknown`は型が不明なForeign値として保持し、より狭い型を仮定せずにViruneの`Unknown`へ渡せます。
 
-## Foreign値
+## 外部値（Foreign値）
 
-Foreign値はJavaScript側の値として扱われ、JavaScript上の同一性、プロトタイプ、メソッドのレシーバー、Promiseの挙動、モジュールバインディングの意味を維持します。別のForeign呼び出しへそのまま渡すこともできます。Viruneの算術演算、比較、パターンマッチ、コレクションの意味論、Native型（Virune側の通常の型）のメソッドを使うには、事前にNative型へBridgeしなければなりません。
+Foreign値はJavaScript側の値として扱われ、JavaScript上の同一性、プロトタイプ、メソッドのレシーバー、Promiseの挙動、モジュールバインディングの意味を維持します。別のForeign呼び出しへそのまま渡すこともできます。Viruneの算術演算、比較、パターンマッチ、コレクションの意味論、Virune側の通常の型（Native型）のメソッドを使うには、事前にNative型へBridgeしなければなりません。
 
 Foreign値をViruneの公開シグネチャへ含めてはいけません。外部ハンドルはViruneの`newtype`型を通じて公開します。
 
-## Bridge（値の変換）
+## 値の変換（Bridge）
 
 暗黙のBridgeは、実行時表現が一対一に対応するものだけです。
 
@@ -37,7 +37,7 @@ Foreign値をViruneの公開シグネチャへ含めてはいけません。外�
 - TypeScript `void` → 戻り値を破棄して`Unit`
 - TypeScript `unknown` → Virune `Unknown`
 
-JavaScript `number`から`Int`、配列から`List`、オブジェクトから`record`、`Map` / `Set`の変換、バイト変換、null許容値変換、ViruneのNative複合値からJavaScriptへの変換には、明示的なコーデックが必要です。
+JavaScript `number`から`Int`、配列から`List`、オブジェクトから`record`、`Map` / `Set`の変換、バイト変換、null許容値変換、Virune側の複合値（Native複合値）からJavaScriptへの変換には、明示的なコーデックが必要です。
 
 暗黙のプリミティブ検査に失敗した場合は`ForeignContractError`になります。通常のJavaScript例外を表す結果へは変換しません。回復可能な外部データの検証には、明示的なデコーダーを使用します。
 
@@ -49,15 +49,15 @@ Adapterの成果物は`.interop.mjs`、ソースマップ、`.virune-abi.json`�
 
 AdapterからViruneの生成物をインポートしてはいけません。JavaScriptパッケージ → TypeScript Adapter → Viruneモジュールという非循環のビルド順序を維持します。
 
-## 解決とStable IR（安定した中間表現）
+## 解決と安定した中間表現（Stable IR）
 
-型宣言の解決と実行時モジュールの解決は別々に記録します。Witness（解決証跡）には実行時側と宣言側について、パッケージの同一性、エントリーポイント、モジュール形式、条件、Providerのバージョン、ハッシュを含めます。ブラウザやバンドラーで実際に使う実行時モジュールの解決は、バンドラーの責任です。
+型宣言の解決と実行時モジュールの解決は別々に記録します。解決証跡（Witness）には実行時側と宣言側について、パッケージの同一性、エントリーポイント、モジュール形式、条件、Providerのバージョン、ハッシュを含めます。ブラウザやバンドラーで実際に使う実行時モジュールの解決は、バンドラーの責任です。
 
 TypeScriptコンパイラのオブジェクトが有効なのはProviderの解析中だけです。型検査後は、シリアライズ可能でProviderに依存しない利用記録だけを保存します。コード生成は`ts.Type`、`ts.Symbol`、TypeScript `Program`オブジェクトそのものに依存してはいけません。
 
 ## 信頼境界
 
-- ViruneのNativeコード（Virune側のコード）はViruneコンパイラが検査します。
+- Virune側のコード（Nativeコード）はViruneコンパイラが検査します。
 - Foreign値の静的な形状はTypeScript宣言から取得します。
 - プリミティブのBridgeは実行時に検査します。
 - 複合値のコーデックは、明示的に定めた上限と構造上の防御を使って検証し、データをコピーします。
