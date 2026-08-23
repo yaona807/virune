@@ -46,9 +46,9 @@ function evidence(profile, overrides = {}) {
 			fixedPointDifferenceCount: 0,
 		},
 		commands: [
-			{ name:'bootstrap', exitCode:0, stdoutSha256:'b'.repeat(64), stderrSha256:'c'.repeat(64) },
 			{ name:'install', exitCode:0, stdoutSha256:'7'.repeat(64), stderrSha256:'8'.repeat(64) },
 			{ name:'seed-verify', exitCode:0, stdoutSha256:'9'.repeat(64), stderrSha256:'a'.repeat(64) },
+			{ name:'bootstrap', exitCode:0, stdoutSha256:'b'.repeat(64), stderrSha256:'c'.repeat(64) },
 		],
 		failures: [],
 		...overrides,
@@ -94,6 +94,16 @@ test('independent baseline and perturbed runs produce one reproducibility witnes
 	assert.notEqual(result.profiles[0].evidenceSha256, result.profiles[1].evidenceSha256);
 	assert.match(result.evidenceSha256, /^[0-9a-f]{64}$/u);
 	assert.equal(result.productionEligible, false);
+});
+
+test('canonical producer command order is required and reordered evidence fails closed', () => {
+	const reordered = evidence('perturbed');
+	reordered.commands = [reordered.commands[2], reordered.commands[0], reordered.commands[1]];
+	reordered.evidenceSha256 = cleanBootstrapEvidenceSha(reordered);
+	assert.throws(
+		() => compareCleanBootstrapEvidence([evidence('baseline'), reordered]),
+		/commands\[0\]\.name must be install/u,
+	);
 });
 
 test('cross-runner comparison fails closed on repository, Seed or any bootstrap-stage digest drift', () => {
