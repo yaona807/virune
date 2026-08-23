@@ -17,7 +17,7 @@
 ## `[task.race]` Race操作
 `Task.race`は、最初に状態が確定した処理について、成功時はその値を返し、失敗時はその理由でrejectします。`Task.firstOk`は最初に成功した値を返し、すべての処理がrejectした場合は集約された失敗でrejectします。残りの処理にはキャンセルを通知し、すべての状態が確定するまで待ちます。
 
-## `[task.timeout]` 時間とretry
+## `[task.timeout]` 時間と再試行
 タイムアウトと再試行の待機時間は、有限の0以上の値で、ホストのタイマーが扱える範囲内でなければなりません。タイムアウトは`Result`を返すAPIから`TaskTimeoutError`を返します。再試行では試行番号を維持し、待機に入る前にバックオフを検証します。
 
 ## `[task.await-propagate-precedence]` awaitとResult伝播
