@@ -3,6 +3,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PROMOTION_QUALITY_COMMANDS } from './run-selfhost-promotion-quality.mjs';
+import { selectProjectPerformanceFixtureIds } from './run-selfhost-promotion-performance.mjs';
 
 export const DEFAULT_PROMOTION_OBSERVATION_OUTPUT = '.cache/selfhost-promotion-observation/observation.json';
 export const PROMOTION_OBSERVATION_REPORT_SCHEMA_VERSION = 1;
@@ -58,7 +59,7 @@ export async function assembleSelfhostPromotionObservation({
 	const subject = validateSubject(subjectSource.value, release, releaseSource.sha256, createPromotionSubjectManifest);
 	const sourceEvaluation = promotionPolicy.evaluatePromotionObservationSourceV2(source, trustedObservationSource);
 	const quality = validateQuality(qualitySource.value);
-	const performance = validatePerformance(performanceSource.value, expectedPerformanceFixtureIds(performanceCorpusSource.value));
+	const performance = validatePerformance(performanceSource.value, selectProjectPerformanceFixtureIds(performanceCorpusSource.value));
 	const evidenceById = new Map();
 	for (const item of quality) addEvidence(evidenceById, item.id, item.status, item.sha256);
 	addEvidence(evidenceById, 'performance-smoke', performance.status, domainHash('performance-smoke', performanceSource.sha256));
@@ -298,21 +299,11 @@ function exactEnvironment(value, expected, label) {
 	for (const [key, expectedValue] of expectedEntries) if (value[key] !== expectedValue) throw new Error(`${label}.${key} does not match the canonical environment`);
 }
 
-function expectedPerformanceFixtureIds(corpus) {
-	if (!isRecord(corpus) || corpus.schemaVersion !== 1 || !Array.isArray(corpus.fixtures)) throw new Error('differential corpus schema is invalid for performance evidence');
-	const ids = corpus.fixtures
-		.filter(fixture => isRecord(fixture) && Array.isArray(fixture.tags) && fixture.tags.includes('project') && (fixture.expectedDivergences ?? []).length === 0)
-		.map((fixture, index) => canonicalText(fixture.id, `differentialCorpus.fixtures[${index}].id`))
-		.sort(compareText);
-	if (ids.length === 0) throw new Error('no non-divergent project differential fixtures are available for performance evidence');
-	if (new Set(ids).size !== ids.length) throw new Error('performance fixture selection contains duplicate fixture IDs');
-	return ids;
-}
-
 function validatePerformance(value, expectedFixtureIds) {
 	if (!isRecord(value)) throw new Error('promotion performance report is invalid');
 	exactKeys(value, ['schemaVersion','claim','productionEligible','incrementalCacheClaim','editedRebuildProxy','budget','fixtureIds','samplesPerImplementation','fixtures','aggregate','status'], 'promotion performance report');
-	if (value.schemaVersion !== 1 || value.claim !== 'required-selfhost-relative-performance' || value.productionEligible !== false || value.incrementalCacheClaim !== false || value.editedRebuildProxy !== true) throw new Error('promotion performance report is invalid');
+	if (value.schemaVersion !== 1 || value.claim !== 'required-selfhost-relative-performance' || value.productionEligible !== false || typeof value.incrementalCacheClaim !== 'boolean' || typeof value.editedRebuildProxy !== 'boolean') throw new Error('promotion performance report is invalid');
+	if (value.incrementalCacheClaim === true && value.editedRebuildProxy === true) throw new Error('promotion performance report cannot claim incremental coverage from an edited-rebuild proxy');
 	if (!isRecord(value.budget)) throw new Error('promotion performance budget is malformed');
 	exactKeys(value.budget, ['coldBuildRatio','editedRebuildRatio','peakRssRatio','artifactSizeRatio','majorFixtureLatencyRatio'], 'promotion performance budget');
 	if (JSON.stringify(value.budget) !== JSON.stringify(performanceBudget)) throw new Error('promotion performance budget does not match Gate D contract');
@@ -343,10 +334,11 @@ function validatePerformance(value, expectedFixtureIds) {
 	assertPerformanceSummary(aggregateSelfhost, summarizePerformanceFixtures(validatedFixtures, 'selfhost'), 'promotion performance aggregate.selfhost');
 	const aggregateRatios = ratios(aggregateLegacy, aggregateSelfhost);
 	assertRatioRecord(value.aggregate.ratios, aggregateRatios, 'aggregate.ratios');
-	const passed = performanceSummariesWithinBudget(aggregateLegacy, aggregateSelfhost)
+	const numericBudgetsPass = performanceSummariesWithinBudget(aggregateLegacy, aggregateSelfhost)
 		&& validatedFixtures.every(record => record.majorRegression === false);
-	const expectedStatus = passed ? 'passed' : 'failed';
-	if (value.status !== expectedStatus) throw new Error('promotion performance status disagrees with measured ratios');
+	const gateDPass = value.incrementalCacheClaim === true && value.editedRebuildProxy === false && numericBudgetsPass;
+	const expectedStatus = gateDPass ? 'passed' : 'failed';
+	if (value.status !== expectedStatus) throw new Error('promotion performance status disagrees with Gate D evidence');
 	return { status: expectedStatus };
 }
 

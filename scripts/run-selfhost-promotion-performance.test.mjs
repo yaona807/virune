@@ -11,7 +11,7 @@ function sample(coldBuildMs, editedRebuildMs, peakRssKb, artifactSizeBytes) {
 
 function fixture(id, legacy, selfhost) { return { fixtureId: id, legacy, selfhost }; }
 
-test('passes ratios inside Gate D aggregate and per-fixture budgets', () => {
+test('passes measured ratio evaluation inside Gate D numeric budgets', () => {
 	const result = evaluatePromotionPerformanceSamples([
 		fixture('a', [sample(100, 80, 1000, 1000), sample(102, 82, 1010, 1000), sample(98, 78, 990, 1000)], [sample(120, 96, 1400, 1200), sample(121, 97, 1410, 1200), sample(119, 95, 1390, 1200)]),
 		fixture('b', [sample(110, 90, 1100, 1100), sample(112, 92, 1110, 1100), sample(108, 88, 1090, 1100)], [sample(132, 108, 1500, 1320), sample(133, 109, 1510, 1320), sample(131, 107, 1490, 1320)]),
@@ -21,7 +21,7 @@ test('passes ratios inside Gate D aggregate and per-fixture budgets', () => {
 	assert.ok(result.records.every(record => record.majorRegression === false));
 });
 
-test('canonical runner measures every non-divergent project fixture instead of truncating or redefining the corpus', async () => {
+test('canonical runner measures the complete project corpus but fails closed without real incremental evidence', async () => {
 	const root = await mkdtemp(join(tmpdir(), 'virune-promotion-performance-'));
 	try {
 		await mkdir(join(root, '.github', 'self-hosting'), { recursive: true });
@@ -45,8 +45,11 @@ test('canonical runner measures every non-divergent project fixture instead of t
 		assert.deepEqual(result.report.fixtureIds, expected);
 		assert.equal(result.report.fixtures.length, expected.length);
 		assert.ok(result.report.fixtureIds.includes('project-diagnostic'));
-		assert.equal(result.report.status, 'passed');
+		assert.equal(result.report.incrementalCacheClaim, false);
+		assert.equal(result.report.editedRebuildProxy, true);
+		assert.equal(result.report.status, 'failed');
 	} finally {
+		process.exitCode = 0;
 		await rm(root, { recursive: true, force: true });
 	}
 });

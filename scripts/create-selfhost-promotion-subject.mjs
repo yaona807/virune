@@ -102,12 +102,14 @@ export async function hashPackageProductSurface({ packageRoot, claim }) {
 	const packageBytes = await readFile(packageFile);
 	const packageManifest = parseJsonObject(packageBytes, `${claim}.package.json`);
 	assertNoUnboundPackageExecutionMetadata(packageManifest, claim);
+	const packageExports = canonicalStringRecord(packageManifest.exports, `${claim}.package.exports`);
+	await validatePackageExportTargets(root, packageExports, claim);
 	const packageSurface = {
 		name: canonicalText(packageManifest.name, `${claim}.package.name`),
 		version: canonicalText(packageManifest.version, `${claim}.package.version`),
 		type: canonicalText(packageManifest.type, `${claim}.package.type`),
 		engines: canonicalStringRecord(packageManifest.engines, `${claim}.package.engines`),
-		exports: canonicalStringRecord(packageManifest.exports, `${claim}.package.exports`),
+		exports: packageExports,
 		dependencies: packageManifest.dependencies === undefined
 			? {}
 			: canonicalStringRecord(packageManifest.dependencies, `${claim}.package.dependencies`),
@@ -232,6 +234,20 @@ async function collectArtifactFiles(root, directory, output) {
 		if (entry.isDirectory()) await collectArtifactFiles(root, absolutePath, output);
 		else if (entry.isFile()) { const bytes = await readFile(absolutePath); output.push({ path: portableRelative(root, absolutePath), sha256: sha256(bytes), bytes: bytes.byteLength }); }
 		else throw new Error(`artifact tree contains a non-regular entry: ${absolutePath}`);
+	}
+}
+
+async function validatePackageExportTargets(packageRoot, exports, claim) {
+	for (const [key, target] of Object.entries(exports)) {
+		if (!target.startsWith('./dist/src/') || target.includes('\\')) {
+			throw new Error(`${claim}.package.exports.${key} must target the bound ./dist/src artifact tree`);
+		}
+		const relativeTarget = target.slice(2);
+		const segments = relativeTarget.split('/');
+		if (segments.some(segment => segment.length === 0 || segment === '.' || segment === '..')) {
+			throw new Error(`${claim}.package.exports.${key} must be a canonical path inside ./dist/src`);
+		}
+		await resolveNonSymlinkInside(packageRoot, relativeTarget, `${claim}.package.exports.${key}`, 'file');
 	}
 }
 

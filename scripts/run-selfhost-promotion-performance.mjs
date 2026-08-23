@@ -26,7 +26,7 @@ export async function runSelfhostPromotionPerformance({
 	runSample = executeWorkerSample,
 } = {}) {
 	const corpus = JSON.parse(await readFile(resolve(repositoryRoot, '.github/self-hosting/differential-corpus-v1.json'), 'utf8'));
-	const fixtureIds = selectProjectFixtures(corpus);
+	const fixtureIds = selectProjectPerformanceFixtureIds(corpus);
 	const records = [];
 	for (const fixtureId of fixtureIds) {
 		const implementations = {};
@@ -41,13 +41,20 @@ export async function runSelfhostPromotionPerformance({
 	const legacyAggregate = summarizeFixtureMedians(records, 'legacy');
 	const selfhostAggregate = summarizeFixtureMedians(records, 'selfhost');
 	const aggregateRatios = compareSummaries(legacyAggregate, selfhostAggregate);
-	const passed = summariesWithinBudget(legacyAggregate, selfhostAggregate)
+	const measuredRatiosPass = summariesWithinBudget(legacyAggregate, selfhostAggregate)
 		&& records.every(record => !record.majorRegression);
+	// Gate D requires a real incremental-build comparison. The current Self-host
+	// project boundary is stateless, so the edited second compile below is only a
+	// proxy and cannot satisfy that gate. Keep the observation product-failed
+	// until an independently justified product capability can provide comparable
+	// incremental evidence; do not weaken Gate D in promotion tooling.
+	const incrementalCacheClaim = false;
+	const passed = incrementalCacheClaim && measuredRatiosPass;
 	const report = {
 		schemaVersion: PROMOTION_PERFORMANCE_SCHEMA_VERSION,
 		claim: 'required-selfhost-relative-performance',
 		productionEligible: false,
-		incrementalCacheClaim: false,
+		incrementalCacheClaim,
 		editedRebuildProxy: true,
 		budget: PROMOTION_PERFORMANCE_BUDGET,
 		fixtureIds,
@@ -85,7 +92,7 @@ export function evaluatePromotionPerformanceSamples(fixtures) {
 	};
 }
 
-function selectProjectFixtures(corpus) {
+export function selectProjectPerformanceFixtureIds(corpus) {
 	if (corpus?.schemaVersion !== 1 || !Array.isArray(corpus.fixtures)) throw new Error('differential corpus schema is invalid');
 	const ids = [];
 	for (const [index, fixture] of corpus.fixtures.entries()) {
@@ -201,7 +208,7 @@ async function runWorker(implementation, fixtureId) {
 	}
 	globalThis.gc?.();
 	const coldStart = performance.now();
-	const cold = await compile(input);
+	await compile(input);
 	const coldBuildMs = performance.now() - coldStart;
 	const editedInput = validateKernelInput({ ...input, sources: input.sources.map((source, index) => index === 0 ? { ...source, text: `${source.text}\n` } : source) });
 	globalThis.gc?.();

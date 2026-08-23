@@ -35,7 +35,7 @@ version 2の`required-selfhost`では、次を製品範囲へ含めます。
 - build済みRuntime artifactとRuntime ABI
 - build済みStandard Library artifact
 
-RuntimeとStandard Libraryのpackage surfaceでは、package名とversion、module type、Node engine contract、実行時exports、runtime dependencies、build済み`dist/src` artifact tree全体をbindします。runtimeやmodule resolutionへ影響し得るのにまだ明示的にmodel化していない`main`、`module`、`browser`、`imports`、`sideEffects`、optional／peer dependency metadata、`os`／`cpu`／`libc`制約が追加された場合はfail closedで拒否します。documentation／repository metadata、keywords、build script、development-only dependencyは製品identityへ含めませんが、それらがbuild結果へ影響した場合はbind済みartifact bytesの変化として反映されます。
+RuntimeとStandard Libraryのpackage surfaceでは、package名とversion、module type、Node engine contract、実行時exports、runtime dependencies、build済み`dist/src` artifact tree全体をbindします。実行時exportの参照先は、bind済み`dist/src` tree内の通常ファイルでなければなりません。tree外のexport、存在しない参照先、symlink参照先は、実行bytesを製品identityの外へ残さないためfail closedで拒否します。runtimeやmodule resolutionへ影響し得るのにまだ明示的にmodel化していない`main`、`module`、`browser`、`imports`、`sideEffects`、optional／peer dependency metadata、`os`／`cpu`／`libc`制約が追加された場合もfail closedで拒否します。documentation／repository metadata、keywords、build script、development-only dependencyは製品identityへ含めませんが、それらがbuild結果へ影響した場合はbind済みartifact bytesの変化として反映されます。
 
 Host componentはCompiler全体や`selfhost` directory全体をhashせず、実行・選択境界を明示した固定root集合として保持します。固定Host rootからの直接runtime importは、別の固定Host root、別componentとしてbind済みのbootstrap policy、Stage 0 project build closure、またはNode built-inのいずれかへ解決されなければなりません。現在のCompilerはLegacy adapterをstatic importしているため、Legacy adapter自体も固定Host rootとしてbindします。Promotion toolingの都合でCompilerのload構造を変更してLegacyを除外しません。新しいimportがこの境界外へ増えた場合は、未追跡dependencyとして黙って受け入れずfail closedで拒否します。
 
@@ -61,9 +61,9 @@ fixed Seed、baseline clean bootstrap、perturbed clean bootstrapは別々のjob
 - full conformanceとProject Compiler differential
 - 保存済みfuzz regressionと、固定seedによるSelf-host semantic differential fuzz
 
-performance証拠は固定project corpusでLegacyとSelf-host Project Compilerを比較し、Self-host Gate Dの比率を適用します。edited rebuildはproxyであり、incremental cacheを検証したとは扱いません。
+performance証拠は、expected divergenceのないproject corpus全体についてLegacyとSelf-host Project Compilerを比較し、Self-host Gate Dの数値比率を適用します。ただし現在のedited rebuild測定はproxyであり、incremental cache性能を証明しません。Gate Dは実際のincremental build比較を要求するため、このproxyから`performance-smoke`または`performance-budget`をpassにはしません。比較可能なincremental evidenceが得られるまではcanonical observationを`product-failed`とし、観測toolingの都合でCompilerを変更したりGate Dを弱めたりしません。
 
-各evidence recordには、実行command、必要な環境変数、stdout／stderr等のSHA-256をcanonicalな形で保存します。最終assemblerはtop-levelのstatusを信用せず、release-core／cross-runnerのself-hash、Promotion Subjectの再正規化、quality evidenceのself-hash、現在policyのrequired evidence集合、performance比率を再検証します。artifactを書き出す直前には、canonical observationを現在のblocking promotion policyへもう一度replayし、安全下限も検証します。thresholdの弱体化や未対応のblocking policy fieldなど、現在policyが不正な場合はcanonical observationを生成せずfail closedで停止します。
+各evidence recordには、実行command、必要な環境変数、stdout／stderr等のSHA-256をcanonicalな形で保存します。最終assemblerはtop-levelのstatusを信用せず、release-core／cross-runnerのself-hash、Promotion Subjectの再正規化、quality evidenceのself-hash、performance corpusとGate D claim、現在policyのrequired evidence集合、performance比率を再検証します。artifactを書き出す直前には、canonical observationを現在のblocking promotion policyへもう一度replayし、安全下限も検証します。thresholdの弱体化や未対応のblocking policy fieldなど、現在policyが不正な場合はcanonical observationを生成せずfail closedで停止します。
 
 ## failureの扱い
 

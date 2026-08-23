@@ -57,7 +57,13 @@ function rehashQualityItem(item) {
 	return { ...record, sha256: sha(JSON.stringify(record)) };
 }
 
-async function makeFixture({ qualityFailure = null, performanceStatus = 'passed', staleCommit = false } = {}) {
+async function makeFixture({
+	qualityFailure = null,
+	performanceStatus = 'passed',
+	incrementalCacheClaim = true,
+	editedRebuildProxy = false,
+	staleCommit = false,
+} = {}) {
 	const root = await mkdtemp(join(tmpdir(), 'virune-promotion-observation-'));
 	await mkdir(join(root, '.cache'), { recursive: true });
 	await mkdir(join(root, '.github', 'self-hosting'), { recursive: true });
@@ -129,7 +135,7 @@ async function makeFixture({ qualityFailure = null, performanceStatus = 'passed'
 		: { coldBuildMs: 130, editedRebuildMs: 130, peakRssKb: 1600, artifactSizeBytes: 1300 };
 	const ratio = (a,b) => Number((a/b).toFixed(6));
 	const ratios = { coldBuild: ratio(selfhost.coldBuildMs, legacy.coldBuildMs), editedRebuild: ratio(selfhost.editedRebuildMs, legacy.editedRebuildMs), peakRss: ratio(selfhost.peakRssKb, legacy.peakRssKb), artifactSize: ratio(selfhost.artifactSizeBytes, legacy.artifactSizeBytes) };
-	const performance = { schemaVersion: 1, claim: 'required-selfhost-relative-performance', productionEligible: false, incrementalCacheClaim: false, editedRebuildProxy: true, budget: { coldBuildRatio:1.25, editedRebuildRatio:1.25, peakRssRatio:1.5, artifactSizeRatio:1.25, majorFixtureLatencyRatio:1.5 }, fixtureIds:['fixture'], samplesPerImplementation:5, fixtures:[{ fixtureId:'fixture', implementations:{legacy,selfhost}, ratios, majorRegression:false }], aggregate:{legacy,selfhost,ratios}, status:performanceStatus };
+	const performance = { schemaVersion: 1, claim: 'required-selfhost-relative-performance', productionEligible: false, incrementalCacheClaim, editedRebuildProxy, budget: { coldBuildRatio:1.25, editedRebuildRatio:1.25, peakRssRatio:1.5, artifactSizeRatio:1.25, majorFixtureLatencyRatio:1.5 }, fixtureIds:['fixture'], samplesPerImplementation:5, fixtures:[{ fixtureId:'fixture', implementations:{legacy,selfhost}, ratios, majorRegression:false }], aggregate:{legacy,selfhost,ratios}, status:performanceStatus };
 	const policy = {
 		schemaVersion:1,
 		automaticPromotionAllowed:false,
@@ -345,7 +351,7 @@ test('partial or malformed versioned evidence fails closed without an observatio
 				value.aggregate.selfhost.coldBuildMs = 125.00001;
 				value.aggregate.ratios.coldBuild = 1.25;
 			},
-			expected:/promotion performance status disagrees with measured ratios/u,
+			expected:/promotion performance status disagrees with Gate D evidence/u,
 		},
 	];
 	for (const { file, mutate, expected, rehash = false } of cases) {
@@ -358,6 +364,21 @@ test('partial or malformed versioned evidence fails closed without an observatio
 			await assert.rejects(() => readFile(join(fixture.root,'observation.json'),'utf8'), /ENOENT/u);
 		} finally { await fixture.cleanup(); }
 	}
+});
+
+test('malformed performance corpus metadata is rejected again by the final assembler', async () => {
+	const fixture = await makeFixture();
+	try {
+		await writeFile(join(fixture.root,'.github','self-hosting','differential-corpus-v1.json'), JSON.stringify({
+			schemaVersion:1,
+			fixtures:[{ id:'fixture', tags:['project'], expectedDivergences:'' }],
+		}), 'utf8');
+		await assert.rejects(
+			() => assembleSelfhostPromotionObservation(options(fixture)),
+			/differential corpus fixture 0 expectedDivergences must be an array/u,
+		);
+		await assert.rejects(() => readFile(join(fixture.root,'observation.json'),'utf8'), /ENOENT/u);
+	} finally { await fixture.cleanup(); }
 });
 
 test('self-consistent cross-runner evidence from another generation or unperturbed environment fails closed', async () => {
@@ -390,6 +411,15 @@ test('known performance budget failure becomes product-failed', async () => {
 	const fixture = await makeFixture({ performanceStatus:'failed' });
 	try { assert.equal((await assembleSelfhostPromotionObservation(options(fixture))).observation.outcome,'product-failed'); }
 	finally { await fixture.cleanup(); }
+});
+
+test('edited-rebuild proxy cannot satisfy Gate D without real incremental evidence', async () => {
+	const fixture = await makeFixture({ performanceStatus:'failed', incrementalCacheClaim:false, editedRebuildProxy:true });
+	try {
+		const result = await assembleSelfhostPromotionObservation(options(fixture));
+		assert.equal(result.observation.outcome,'product-failed');
+		assert.equal(result.observation.evidence.find(item=>item.id==='performance-budget').status,'failed');
+	} finally { await fixture.cleanup(); }
 });
 
 test('weakened blocking promotion policy cannot emit a canonical observation', async () => {
@@ -439,6 +469,6 @@ test('forged subject identity and forged performance status are rejected', async
 		const performance = JSON.parse(await readFile(join(fixture.root,'performance.json'),'utf8'));
 		performance.status = 'failed';
 		await writeFile(join(fixture.root,'performance.json'),JSON.stringify(performance));
-		await assert.rejects(()=>assembleSelfhostPromotionObservation(options(fixture)),/status disagrees with measured ratios/u);
+		await assert.rejects(()=>assembleSelfhostPromotionObservation(options(fixture)),/status disagrees with Gate D evidence/u);
 	} finally { await fixture.cleanup(); }
 });
