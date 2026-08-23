@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import test from 'node:test';
@@ -15,6 +16,7 @@ import {
 	orderedPublicationCandidates,
 	validateObservedDependencyClosure,
 	validateTrustedPublishingProvenance,
+	verifyCandidateTarballAtWriteBoundary,
 	verifyTrustedPublishingToolchain,
 } from './publish-npm-release.mjs';
 
@@ -329,6 +331,48 @@ test('npm publish consumes the exact tarball and applies the canonical tag witho
 		'--ignore-scripts',
 	]);
 	assert.equal(args.some(value => value.includes('pack') || value.includes('build') || value.includes('dist-tag')), false);
+});
+
+test('npm write boundary rejects changed or symlinked reviewed tarballs', () => {
+	const root = mkdtempSync(join(tmpdir(), 'virune-npm-write-boundary-'));
+	try {
+		const tarball = resolve(root, 'candidate.tgz');
+		const reviewedBytes = Buffer.from('reviewed exact tarball bytes');
+		writeFileSync(tarball, reviewedBytes);
+		const candidate = {
+			registryName: '@virune/runtime',
+			sha256: createHash('sha256').update(reviewedBytes).digest('hex'),
+			bytes: reviewedBytes.byteLength,
+		};
+		assert.deepEqual(verifyCandidateTarballAtWriteBoundary(candidate, tarball), {
+			sha256: candidate.sha256,
+			bytes: candidate.bytes,
+		});
+
+		writeFileSync(tarball, Buffer.from('changed exact tarball bytes!'));
+		assert.throws(
+			() => verifyCandidateTarballAtWriteBoundary(candidate, tarball),
+			/tarball changed after reviewed publication identity verification/u,
+		);
+
+		const actualBytes = Buffer.from('different length');
+		writeFileSync(tarball, actualBytes);
+		assert.throws(
+			() => verifyCandidateTarballAtWriteBoundary({
+				...candidate,
+				sha256: createHash('sha256').update(actualBytes).digest('hex'),
+			}, tarball),
+			/tarball byte size changed after reviewed publication identity verification/u,
+		);
+
+		const target = resolve(root, 'target.tgz');
+		writeFileSync(target, reviewedBytes);
+		unlinkSync(tarball);
+		symlinkSync(target, tarball);
+		assert.throws(() => verifyCandidateTarballAtWriteBoundary(candidate, tarball));
+	} finally {
+		rmSync(root, { recursive: true, force: true });
+	}
 });
 
 test('verified npm provenance must bind repository, workflow and exact reviewed commit', () => {
