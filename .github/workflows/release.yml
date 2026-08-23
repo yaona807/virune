@@ -15,7 +15,7 @@ permissions:
   id-token: write
 
 concurrency:
-  group: release-${{ github.ref }}
+  group: virune-release-publication
   cancel-in-progress: false
 
 jobs:
@@ -71,6 +71,26 @@ jobs:
         with:
           subject-path: release/*
           sbom-path: release/SBOM.cdx.json
+      - name: Resolve verified npm publication eligibility
+        id: npm-publication
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import { appendFileSync } from 'node:fs';
+          import { verifyNpmPublicationIdentity } from './scripts/verify-npm-publication-identity.mjs';
+          const identity = verifyNpmPublicationIdentity();
+          appendFileSync(process.env.GITHUB_OUTPUT, `eligible=${identity.registryVersionEligible}\n`);
+          NODE
+      - name: Pin npm Trusted Publishing client
+        if: steps.npm-publication.outputs.eligible == 'true'
+        shell: bash
+        run: |
+          npm install --global npm@11.19.0 --registry=https://registry.npmjs.org/ --ignore-scripts --no-audit --no-fund
+          test "$(npm --version)" = "11.19.0"
+      - name: Publish reviewed npm Registry packages
+        if: steps.npm-publication.outputs.eligible == 'true'
+        shell: bash
+        run: node scripts/publish-npm-release.mjs --expected-commit="$GITHUB_SHA"
       - name: Create immutable GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}

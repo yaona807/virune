@@ -52,8 +52,8 @@
       },
       {
         "state": "all-exact-observed",
-        "decision": "advance-to-dist-tag-phase",
-        "writes": "no-package-version-writes"
+        "decision": "complete-package-version-publication",
+        "writes": "none"
       },
       {
         "state": "identity-mismatch",
@@ -78,18 +78,18 @@
       "unpublish-republish"
     ]
   },
-  "distTagPhase": {
-    "requiresAllPackageVersionsExact": true,
+  "distTagPolicy": {
+    "application": "npm-publish-tag",
     "canonicalStableTag": "latest",
     "canonicalPrereleaseTag": "next",
     "nightlyTag": null,
+    "dependencySafeOrderRequired": true,
+    "cliLastRequired": true,
     "targetVersionOrdering": "semver-precedence",
     "canonicalTagDowngradeAllowed": false,
-    "newerCanonicalTargetDecision": "halt-stale-recovery",
-    "unexpectedCanonicalTargetDecision": "halt-manual-investigation",
-    "partialPromotionDecision": "reobserve-and-converge-tags-only",
-    "tagConvergenceIdempotentRequired": true,
-    "packageRepublishAllowed": false
+    "separateDistTagMutationAllowed": false,
+    "traditionalTokenTagRepairAllowed": false,
+    "incompatibleExistingTagDecision": "halt-manual-investigation"
   },
   "completion": {
     "publicRegistryVerificationRequired": true

@@ -33,6 +33,53 @@ test('releases generate provenance and SBOM attestations for every asset', async
 	assert.match(source, /sbom-path: release\/SBOM\.cdx\.json/u);
 });
 
+test('normal npm publication uses verified eligibility and precedes immutable GitHub Release creation', async () => {
+	const source = await readWorkflow('release.yml');
+	assert.match(source, /id-token:\s+write/u);
+	assert.match(source, /concurrency:\n\s+group: virune-release-publication\n\s+cancel-in-progress: false/u);
+	assert.doesNotMatch(source, /group:\s+release-\$\{\{\s*github\.ref\s*\}\}/u);
+	assert.match(source, /name: Resolve verified npm publication eligibility/u);
+	assert.match(source, /import \{ verifyNpmPublicationIdentity \} from '\.\/scripts\/verify-npm-publication-identity\.mjs';/u);
+	assert.match(source, /const identity = verifyNpmPublicationIdentity\(\);/u);
+	assert.match(source, /eligible=\$\{identity\.registryVersionEligible\}/u);
+	assert.equal((source.match(/if: steps\.npm-publication\.outputs\.eligible == 'true'/gu) ?? []).length, 2);
+	assert.match(source, /npm install --global npm@11\.19\.0 --registry=https:\/\/registry\.npmjs\.org\/ --ignore-scripts --no-audit --no-fund/u);
+	assert.match(source, /test "\$\(npm --version\)" = "11\.19\.0"/u);
+	assert.match(source, /node scripts\/publish-npm-release\.mjs --expected-commit="\$GITHUB_SHA"/u);
+	assert.doesNotMatch(source, /NPM_TOKEN|NODE_AUTH_TOKEN/u);
+	assert.doesNotMatch(source, /npm\s+dist-tag/u);
+	assert.doesNotMatch(source, /registry-url:/u);
+
+	const releaseGate = source.indexOf('npm run release:gate');
+	const provenance = source.indexOf('name: Attest release build provenance');
+	const sbom = source.indexOf('name: Attest release SBOM');
+	const eligibility = source.indexOf('name: Resolve verified npm publication eligibility');
+	const npmPin = source.indexOf('name: Pin npm Trusted Publishing client');
+	const npmPublish = source.indexOf('name: Publish reviewed npm Registry packages');
+	const githubRelease = source.indexOf('name: Create immutable GitHub Release');
+	for (const [label, position] of Object.entries({ releaseGate, provenance, sbom, eligibility, npmPin, npmPublish, githubRelease })) {
+		assert.notEqual(position, -1, `missing release workflow boundary: ${label}`);
+	}
+	assert(releaseGate < provenance, 'release gate must precede release attestations');
+	assert(provenance < sbom, 'build provenance must precede SBOM attestation');
+	assert(sbom < eligibility, 'release attestations must complete before npm eligibility is derived from reviewed artifacts');
+	assert(eligibility < npmPin, 'npm-ineligible releases must be identified before the npm client network fetch');
+	assert(npmPin < npmPublish, 'the exact npm client must be selected before publication');
+	assert(npmPublish < githubRelease, 'npm publication/recovery must run before immutable GitHub Release creation');
+});
+
+test('packaged release installation guidance follows the reviewed npm publication identity', async () => {
+	const source = await readFile(resolve('scripts/package.mjs'), 'utf8');
+	assert.match(source, /const publicationIdentity = writeNpmPublicationIdentity\(\{ releaseDirectory: out \}\);/u);
+	assert.match(source, /publicationIdentity\.registryVersionEligible === true && publicationIdentity\.publicationReady === true/u);
+	assert.match(source, /The public npm Registry is the canonical package distribution for this Virune release\./u);
+	assert.match(source, /npm install --global virune@\$\{version\}/u);
+	assert.match(source, /GitHub Releases retain the reviewed release artifacts, checksums, SBOM, attestations/u);
+	assert.match(source, /public npm Registryを正式なpackage配布経路とします/u);
+	assert.match(source, /Virune is not published to the npm Registry/u);
+	assert.match(source, /Viruneはnpm Registryへ公開しません/u);
+});
+
 test('public and restored VSIX legal verification are pinned to their reviewed commits', async () => {
 	const publicWorkflow = await readWorkflow('release-public-verify.yml');
 	assert.match(publicWorkflow, /VIRUNE_REVIEWED_COMMIT: \$\{\{ steps\.request\.outputs\.expected_commit \}\}/u);

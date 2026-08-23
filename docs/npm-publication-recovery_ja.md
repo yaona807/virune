@@ -6,31 +6,37 @@
 
 すべてのrecovery判断は、planned package集合全体について **public npm Registryをfreshに観測**するところから開始します。cache済み、partial、malformed、unavailable、contradictory、その他unknownな観測結果からwriteを許可してはいけません。通常のpublication gateもreadyである必要があり、writeは`PUBLICATION-MANIFEST.json`で固定したexact reviewed release identityだけを使用します。
 
-観測したpackageを`exact`と扱えるのは、必要なidentity evidenceがすべて一致した場合だけです。package nameはpublication manifestのRegistry name、package versionはpublication manifestのversionと一致する必要があります。Registryの`dist.integrity`でdownloadしたtarballを検証し、**downloadしたtarballのSHA-256**はreview済みcandidateのSHA-256と一致させます。provenanceで結び付いた **source repository・source commit・provenance workflow** もreview済み／承認済みrelease identityと一致させます。identity evidenceが欠落または検証不能ならexact matchではなく、recovery writeを許可しません。将来のpublication/verification実装はこれらの観測値をreviewed release identityへ結び付ける必要があり、証拠が取得できない場合にこのpolicyが代替値を推測することはありません。
+観測したpackage versionを`exact`と扱えるのは、immutableなidentity evidenceがすべて一致した場合だけです。package nameはpublication manifestのRegistry name、package versionはpublication manifestのversionと一致する必要があります。Registryの`dist.integrity`でdownloadしたtarballを検証し、**downloadしたtarballのSHA-256**はreview済みcandidateのSHA-256と一致させます。provenanceで結び付いた **source repository・source commit・provenance workflow** もreview済み／承認済みrelease identityと一致させます。identity evidenceが欠落または検証不能ならexact matchではなく、recovery writeを許可しません。canonical dist-tagはmutableなRegistry stateとして別に検証し、package-version identityへ混ぜません。
 
-## Package-version phase
+## Package-version recovery
 
 一度publishされたnpm package versionは不可逆なidentityとして扱います。
 
 | 観測状態 | 判断 |
 |---|---|
-| planned package versionが1つも存在しない | 通常のpublication gateを満たした場合のみ、全review済みcandidateをpublishする。 |
+| planned package versionが1つも存在しない | 通常のpublication gateを満たした場合のみ、dependency-safeな順序でreview済みcandidateをpublishする。 |
 | **exact subset**だけが存在し、観測済みpackageがすべてreviewed identityと一致する | **未publishのreview済みcandidateだけ**を再開する。既存packageは書き直さない。 |
-| planned versionがすべて存在し一致する | package-version writeを停止し、dist-tag phaseへ進む。 |
-| bytes、version、provenance、repository/source identity、その他reviewed identityのいずれかが不一致 | **そのpackage versionの再利用を永久に禁止**する。新しいrelease versionが必要。 |
+| planned versionがすべて存在し一致する | package-version writeを行わず、別のpublic Registry verification境界へ進む。 |
+| bytes、version、provenance、repository/source identity、その他immutableなreviewed identityのいずれかが不一致 | **そのpackage versionの再利用を永久に禁止**する。新しいrelease versionが必要。 |
 | unexpectedまたはcontradictoryなRegistry状態 | manual investigationまで停止する。 |
 | unavailable、stale、partial、malformed、timeout、その他unknown | 再観測まで停止する。**unknown状態はwriteを一切許可しない**。 |
 
 unpublish→republish、review後のrebuild、同一versionで異なるbytesをpublish、別source headからのpublishはrecoveryとして禁止します。
 
-## Dist-tag phase
+## Canonical dist-tagの適用
 
-package-version publicationと **dist-tag promotion** は別phaseです。planned package versionがすべてfreshに観測され、exact reviewed identityと一致した後にだけcanonical tagをpromotionできます。
+normal pathはnpm Trusted Publishing/OIDCを使います。npmは現在、Trusted Publishingで`npm publish`と`npm stage publish`を認証しますが、別の`npm dist-tag add/rm` commandはOIDC認証対象ではありません。そのためViruneは、別のtoken-authenticated tag-promotion phaseを作らず、review済みchannel tagを **`npm publish --tag`** で直接適用します。
 
-stableは`latest`、承認済みprereleaseは`next`へ収束し、nightlyはnpmへpublishしません。recoveryでは現在のcanonical tag targetと対象releaseを **SemVer precedence** で比較し、**canonical tagを過去versionへ巻き戻さない**ことを保証します。`latest`または`next`が対象より**より新しいversionを指している場合、recoveryはstaleとして停止**し、tagをdowngradeしてはいけません。unexpectedまたはnon-canonicalなtargetもmanual investigationまで停止します。missing、より古いversion、対象version一致、またはpartial promotionの場合だけtag収束へ進めます。
+stableは`latest`、承認済みprereleaseは`next`を使用し、nightlyはnpmへpublishしません。publicationは **dependency-safeな順序** で行い、**CLIを最後**にpublishします。packageのcanonical tagが見える時点で、そのpackageが必要とするexact Virune package dependencyはすべてRegistry上に存在していなければなりません。`virune` CLIは5つのplanned dependency packageがすべてexactになるまで進めません。
 
-canonical tagがpartialにpromotionされた場合、packageをrepublishしてはいけません。freshな再観測後に**冪等なtag収束**だけを行い、**tagだけを再観測して収束**させ、planned packageすべてを意図したcanonical tag targetへ一致させます。
+release workflowが行うpublicationは、GitHub Actions標準のconcurrency機能を使ってrelease refをまたいで直列化します。initialのcomplete-set観測だけを根拠にmissing candidateをpublishせず、各writeの直前にcandidate自身とそのexact Virune package dependencyを再観測します。candidateがその間にexactになっていればprovenanceを検証してwriteをskipし、dependency・candidate・canonical tag stateがunknownまたはcontradictoryへ変化していればwriteを停止します。
+
+missing target versionをpublishする前に、現在のcanonical tag targetとreview済みtargetを **SemVer precedence** で比較します。normal pathでは **canonical tagを過去versionへ巻き戻さない** ことを必須とし、現在の`latest`または`next`がreview済みtargetと同一またはそれより新しいversionを指している場合、`npm publish --tag`より前に停止します。malformedなtargetや、観測したpackage version集合に存在しないtargetを指すtagもfail-closedで停止します。
+
+retryで既存の`name@version`をskipできるのは、immutableなpackage identityが一致し、canonical tagもreview済みversionを指している場合だけです。canonical tagが不一致または外部でdriftしていてもimmutableなpackage-version identity自体が変わるわけではありませんが、normal publication pathは停止します。recoveryでは **別の`npm dist-tag` mutationを使わない** うえ、tag修復のための **traditional token fallback** も導入しません。この状態はTrusted Publishing境界を暗黙に弱めず、明示的な外部調査対象とします。
+
+writeまたはskipがすべて終わった後、planned package集合全体をもう一度観測します。すべてのpackageが引き続きexactで、canonical tag stateもreview済みreleaseと一致していることを確認できるまでpublicationをconvergedとは扱いません。
 
 ## Completion
 
-package versionとcanonical tagが収束しても、別途 **public Registry verification** が成功するまではrelease完了ではありません。このverificationは親npm publication planのblockerとして残します。
+package versionがすべて収束しても、別途 **public Registry verification** が成功するまではrelease完了ではありません。このverificationは親npm publication planのblockerとして残し、Registry-installed consumer pathを実行します。
