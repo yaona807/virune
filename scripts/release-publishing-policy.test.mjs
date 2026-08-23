@@ -33,9 +33,14 @@ test('releases generate provenance and SBOM attestations for every asset', async
 	assert.match(source, /sbom-path: release\/SBOM\.cdx\.json/u);
 });
 
-test('normal npm publication uses the reviewed release boundary and precedes immutable GitHub Release creation', async () => {
+test('normal npm publication uses verified eligibility and precedes immutable GitHub Release creation', async () => {
 	const source = await readWorkflow('release.yml');
 	assert.match(source, /id-token:\s+write/u);
+	assert.match(source, /name: Resolve verified npm publication eligibility/u);
+	assert.match(source, /import \{ verifyNpmPublicationIdentity \} from '\.\/scripts\/verify-npm-publication-identity\.mjs';/u);
+	assert.match(source, /const identity = verifyNpmPublicationIdentity\(\);/u);
+	assert.match(source, /eligible=\$\{identity\.registryVersionEligible\}/u);
+	assert.equal((source.match(/if: steps\.npm-publication\.outputs\.eligible == 'true'/gu) ?? []).length, 2);
 	assert.match(source, /npm install --global npm@11\.19\.0 --registry=https:\/\/registry\.npmjs\.org\/ --ignore-scripts --no-audit --no-fund/u);
 	assert.match(source, /test "\$\(npm --version\)" = "11\.19\.0"/u);
 	assert.match(source, /node scripts\/publish-npm-release\.mjs --expected-commit="\$GITHUB_SHA"/u);
@@ -46,15 +51,17 @@ test('normal npm publication uses the reviewed release boundary and precedes imm
 	const releaseGate = source.indexOf('npm run release:gate');
 	const provenance = source.indexOf('name: Attest release build provenance');
 	const sbom = source.indexOf('name: Attest release SBOM');
+	const eligibility = source.indexOf('name: Resolve verified npm publication eligibility');
 	const npmPin = source.indexOf('name: Pin npm Trusted Publishing client');
 	const npmPublish = source.indexOf('name: Publish reviewed npm Registry packages');
 	const githubRelease = source.indexOf('name: Create immutable GitHub Release');
-	for (const [label, position] of Object.entries({ releaseGate, provenance, sbom, npmPin, npmPublish, githubRelease })) {
+	for (const [label, position] of Object.entries({ releaseGate, provenance, sbom, eligibility, npmPin, npmPublish, githubRelease })) {
 		assert.notEqual(position, -1, `missing release workflow boundary: ${label}`);
 	}
 	assert(releaseGate < provenance, 'release gate must precede release attestations');
 	assert(provenance < sbom, 'build provenance must precede SBOM attestation');
-	assert(sbom < npmPin, 'release attestations must complete before selecting the npm publication client');
+	assert(sbom < eligibility, 'release attestations must complete before npm eligibility is derived from reviewed artifacts');
+	assert(eligibility < npmPin, 'npm-ineligible releases must be identified before the npm client network fetch');
 	assert(npmPin < npmPublish, 'the exact npm client must be selected before publication');
 	assert(npmPublish < githubRelease, 'npm publication/recovery must run before immutable GitHub Release creation');
 });
