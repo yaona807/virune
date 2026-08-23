@@ -1,9 +1,15 @@
 import assert from 'node:assert/strict';
+import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
 import test from 'node:test';
 import {
+	NPM_INTERNAL_DEPENDENCIES,
 	NPM_PUBLICATION_ORDER,
 	assertNoTraditionalNpmCredentials,
+	assertTrustedPublishingEnvironment,
 	executePublication,
+	isolatedNpmEnvironment,
 	npmPublishArguments,
 	observeRegistryCandidate,
 	orderedPublicationCandidates,
@@ -26,6 +32,39 @@ test('publication order is the exact dependency-safe package set with CLI last',
 	assert.deepEqual(orderedPublicationCandidates(shuffled).map(item => item.registryName), NPM_PUBLICATION_ORDER);
 	assert.equal(NPM_PUBLICATION_ORDER.at(-1), 'virune');
 	assert.throws(() => orderedPublicationCandidates(candidates.slice(1)), /unexpected Registry package count/u);
+});
+
+test('publication dependency model and order match the reviewed workspace manifests', () => {
+	const manifests = new Map();
+	for (const entry of readdirSync(resolve('packages'), { withFileTypes: true })) {
+		if (!entry.isDirectory()) continue;
+		const manifestPath = resolve('packages', entry.name, 'package.json');
+		let manifest;
+		try {
+			manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+		} catch {
+			continue;
+		}
+		manifests.set(manifest.name, manifest);
+	}
+	const publicationNames = new Set(NPM_PUBLICATION_ORDER);
+	const position = new Map(NPM_PUBLICATION_ORDER.map((name, index) => [name, index]));
+	for (const name of NPM_PUBLICATION_ORDER) {
+		const manifest = manifests.get(name);
+		assert.ok(manifest, `missing workspace manifest for ${name}`);
+		const dependencies = new Set();
+		for (const section of ['dependencies', 'peerDependencies', 'optionalDependencies']) {
+			for (const dependency of Object.keys(manifest[section] ?? {})) {
+				if (publicationNames.has(dependency)) dependencies.add(dependency);
+			}
+		}
+		const actual = [...dependencies].sort();
+		const modeled = [...NPM_INTERNAL_DEPENDENCIES[name]].sort();
+		assert.deepEqual(modeled, actual, `${name} publication dependency model drifted from package.json`);
+		for (const dependency of actual) {
+			assert(position.get(dependency) < position.get(name), `${dependency} must publish before ${name}`);
+		}
+	}
 });
 
 test('exact observations must be dependency-closed before any write', () => {
@@ -68,7 +107,7 @@ test('exact subset is verified first and only missing candidates are published i
 		observe: async candidate => ({ state: state.get(candidate.registryName) }),
 		verifyProvenance: async candidate => provenance.push(candidate.registryName),
 		publish: async candidate => {
-			for (const dependency of dependenciesFor(candidate.registryName)) assert.equal(state.get(dependency), 'exact');
+			for (const dependency of NPM_INTERNAL_DEPENDENCIES[candidate.registryName]) assert.equal(state.get(dependency), 'exact');
 			publishes.push(candidate.registryName);
 			state.set(candidate.registryName, 'exact');
 		},
@@ -76,8 +115,11 @@ test('exact subset is verified first and only missing candidates are published i
 	assert.deepEqual(publishes, ['@virune/compiler', '@virune/formatter', '@virune/js-interop', 'virune']);
 	assert.deepEqual(result.skipped, ['@virune/runtime', '@virune/stdlib']);
 	assert.deepEqual(result.published, publishes);
-	assert.deepEqual(provenance.slice(0, 2), ['@virune/runtime', '@virune/stdlib']);
-	assert.deepEqual(provenance.slice(2), publishes);
+	assert.deepEqual(provenance, [
+		'@virune/runtime', '@virune/stdlib',
+		...publishes,
+		...NPM_PUBLICATION_ORDER,
+	]);
 });
 
 test('unknown post-publish observation stops before the next package write', async () => {
@@ -99,6 +141,23 @@ test('unknown post-publish observation stops before the next package write', asy
 		/post-publish Registry state unknown/u,
 	);
 	assert.deepEqual(publishes, ['@virune/runtime']);
+});
+
+test('final complete-set observation rejects Registry drift before publication completion', async () => {
+	let observations = 0;
+	await assert.rejects(
+		executePublication({ version: VERSION }, candidates, {
+			observe: async candidate => {
+				observations += 1;
+				const finalPass = observations > NPM_PUBLICATION_ORDER.length;
+				return { state: finalPass && candidate.registryName === 'virune' ? 'missing' : 'exact' };
+			},
+			verifyProvenance: async () => {},
+			publish: async () => assert.fail('all packages were initially exact'),
+		}),
+		/final complete-set Registry observation is not exact/u,
+	);
+	assert.equal(observations, NPM_PUBLICATION_ORDER.length * 2);
 });
 
 test('Registry probing treats 404 as missing but rejects contradictory and unknown states', async () => {
@@ -212,10 +271,51 @@ test('normal publication forbids traditional npm credentials and requires the at
 		{ NPM_TOKEN: 'secret' },
 		{ NODE_AUTH_TOKEN: 'secret' },
 		{ NPM_CONFIG__AUTHTOKEN: 'secret' },
+		{ npm_config__authToken: 'secret' },
 	]) assert.throws(() => assertNoTraditionalNpmCredentials(env), /traditional npm publication credentials are forbidden/u);
 	assert.equal(verifyTrustedPublishingToolchain({ nodeVersion: '24.7.0', npmVersion: '11.12.0' }), true);
 	assert.throws(() => verifyTrustedPublishingToolchain({ nodeVersion: '22.13.9', npmVersion: '11.12.0' }), /requires >=22.14.0/u);
 	assert.throws(() => verifyTrustedPublishingToolchain({ nodeVersion: '24.7.0', npmVersion: '11.11.9' }), /requires >=11.12.0/u);
+});
+
+test('Trusted Publishing environment is bound to the exact release workflow and ref', () => {
+	const env = trustedPublishingEnvironment();
+	assert.equal(assertTrustedPublishingEnvironment(env, COMMIT), true);
+	for (const mutate of [
+		value => { value.GITHUB_EVENT_NAME = 'workflow_dispatch'; },
+		value => { value.GITHUB_WORKFLOW_REF = `yaona807/virune/.github/workflows/other.yml@${value.GITHUB_REF}`; },
+		value => { value.GITHUB_WORKFLOW_REF = `yaona807/virune/.github/workflows/release.yml@refs/heads/other`; },
+		value => { value.GITHUB_REPOSITORY = 'example/fork'; },
+	]) {
+		const altered = trustedPublishingEnvironment();
+		mutate(altered);
+		assert.throws(() => assertTrustedPublishingEnvironment(altered, COMMIT));
+	}
+});
+
+test('publication npm environment removes ambient npm configuration and uses isolated public Registry state', () => {
+	const root = mkdtempSync(join(tmpdir(), 'virune-npm-publish-env-'));
+	try {
+		const env = isolatedNpmEnvironment({
+			PATH: '/usr/bin',
+			HOME: '/ambient-home',
+			XDG_CONFIG_HOME: '/ambient-xdg',
+			NPM_CONFIG_REGISTRY: 'https://example.invalid/',
+			npm_config_userconfig: '/ambient/npmrc',
+			NPM_TOKEN: '',
+		}, root);
+		assert.equal(env.PATH, '/usr/bin');
+		assert.equal(env.HOME, root);
+		assert.equal(env.XDG_CONFIG_HOME, resolve(root, 'xdg-config'));
+		assert.equal(env.NPM_CONFIG_REGISTRY, 'https://registry.npmjs.org/');
+		assert.equal(env.NPM_CONFIG_USERCONFIG, resolve(root, 'user.npmrc'));
+		assert.equal(env.NPM_CONFIG_GLOBALCONFIG, resolve(root, 'global.npmrc'));
+		assert.equal(env.NPM_CONFIG_CACHE, resolve(root, 'cache'));
+		assert.equal(Object.hasOwn(env, 'npm_config_userconfig'), false);
+		assert.equal(Object.hasOwn(env, 'NPM_TOKEN'), false);
+	} finally {
+		rmSync(root, { recursive: true, force: true });
+	}
 });
 
 test('npm publish consumes the exact tarball and applies the canonical tag without rebuild or token fallback', () => {
@@ -246,15 +346,19 @@ test('verified npm provenance must bind repository, workflow and exact reviewed 
 	}
 });
 
-function dependenciesFor(name) {
+function trustedPublishingEnvironment() {
+	const ref = 'refs/heads/release-candidate/v1.1.0-rc.1';
 	return {
-		'@virune/runtime': [],
-		'@virune/compiler': ['@virune/runtime'],
-		'@virune/formatter': ['@virune/compiler'],
-		'@virune/js-interop': ['@virune/compiler'],
-		'@virune/stdlib': ['@virune/runtime'],
-		virune: ['@virune/runtime', '@virune/compiler', '@virune/formatter', '@virune/js-interop', '@virune/stdlib'],
-	}[name];
+		GITHUB_ACTIONS: 'true',
+		GITHUB_EVENT_NAME: 'push',
+		RUNNER_ENVIRONMENT: 'github-hosted',
+		GITHUB_REPOSITORY: 'yaona807/virune',
+		GITHUB_SHA: COMMIT,
+		GITHUB_REF: ref,
+		GITHUB_WORKFLOW_REF: `yaona807/virune/.github/workflows/release.yml@${ref}`,
+		ACTIONS_ID_TOKEN_REQUEST_URL: 'https://example.invalid/oidc',
+		ACTIONS_ID_TOKEN_REQUEST_TOKEN: 'oidc-request-token',
+	};
 }
 
 function provenanceAudit(commit, mutate = () => {}) {
