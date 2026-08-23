@@ -8,7 +8,7 @@ export const DEFAULT_COMPARISON_OUTPUT = '.cache/selfhost/clean-bootstrap-reprod
 const requiredProfiles = ['baseline', 'perturbed'];
 const perturbationDimensions = ['timezone', 'locale', 'homeVariant', 'tempVariant'];
 const cleanBootstrapCommands = ['install', 'seed-verify', 'bootstrap'];
-const canonicalCleanBootstrapCommands = [...cleanBootstrapCommands];
+const canonicalCleanBootstrapCommands = [...cleanBootstrapCommands].sort(compareText);
 
 export function compareCleanBootstrapEvidence(values) {
 	if (!Array.isArray(values) || values.length !== 2) {
