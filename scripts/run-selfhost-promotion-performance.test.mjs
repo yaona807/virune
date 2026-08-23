@@ -21,11 +21,12 @@ test('passes ratios inside Gate D aggregate and per-fixture budgets', () => {
 	assert.ok(result.records.every(record => record.majorRegression === false));
 });
 
-test('canonical runner measures every non-divergent project fixture instead of truncating the corpus', async () => {
+test('canonical runner measures every non-divergent project fixture instead of truncating or redefining the corpus', async () => {
 	const root = await mkdtemp(join(tmpdir(), 'virune-promotion-performance-'));
 	try {
 		await mkdir(join(root, '.github', 'self-hosting'), { recursive: true });
 		const fixtures = Array.from({ length: 7 }, (_, index) => ({ id: `project-${index + 1}`, tags: ['project'], expectedDivergences: [] }));
+		fixtures.push({ id: 'project-diagnostic', tags: ['project', 'diagnostic'], expectedDivergences: [] });
 		fixtures.push({ id: 'not-project', tags: ['smoke'], expectedDivergences: [] });
 		fixtures.push({ id: 'expected-divergence', tags: ['project'], expectedDivergences: ['known'] });
 		await writeFile(join(root, '.github', 'self-hosting', 'differential-corpus-v1.json'), JSON.stringify({ schemaVersion: 1, fixtures }), 'utf8');
@@ -37,8 +38,13 @@ test('canonical runner measures every non-divergent project fixture instead of t
 				? sample(100, 100, 1000, 1000)
 				: sample(110, 110, 1100, 1100),
 		});
-		assert.deepEqual(result.report.fixtureIds, fixtures.slice(0, 7).map(item => item.id).sort());
-		assert.equal(result.report.fixtures.length, 7);
+		const expected = fixtures
+			.filter(item => item.tags.includes('project') && item.expectedDivergences.length === 0)
+			.map(item => item.id)
+			.sort();
+		assert.deepEqual(result.report.fixtureIds, expected);
+		assert.equal(result.report.fixtures.length, expected.length);
+		assert.ok(result.report.fixtureIds.includes('project-diagnostic'));
 		assert.equal(result.report.status, 'passed');
 	} finally {
 		await rm(root, { recursive: true, force: true });
