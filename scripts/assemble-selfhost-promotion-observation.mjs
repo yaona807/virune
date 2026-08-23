@@ -302,8 +302,7 @@ function exactEnvironment(value, expected, label) {
 function validatePerformance(value, expectedFixtureIds) {
 	if (!isRecord(value)) throw new Error('promotion performance report is invalid');
 	exactKeys(value, ['schemaVersion','claim','productionEligible','incrementalCacheClaim','editedRebuildProxy','budget','fixtureIds','samplesPerImplementation','fixtures','aggregate','status'], 'promotion performance report');
-	if (value.schemaVersion !== 1 || value.claim !== 'required-selfhost-relative-performance' || value.productionEligible !== false || typeof value.incrementalCacheClaim !== 'boolean' || typeof value.editedRebuildProxy !== 'boolean') throw new Error('promotion performance report is invalid');
-	if (value.incrementalCacheClaim === true && value.editedRebuildProxy === true) throw new Error('promotion performance report cannot claim incremental coverage from an edited-rebuild proxy');
+	if (value.schemaVersion !== 1 || value.claim !== 'required-selfhost-relative-performance' || value.productionEligible !== false || value.incrementalCacheClaim !== false || value.editedRebuildProxy !== true) throw new Error('promotion performance schema v1 must remain an edited-rebuild proxy without incremental-cache claim');
 	if (!isRecord(value.budget)) throw new Error('promotion performance budget is malformed');
 	exactKeys(value.budget, ['coldBuildRatio','editedRebuildRatio','peakRssRatio','artifactSizeRatio','majorFixtureLatencyRatio'], 'promotion performance budget');
 	if (JSON.stringify(value.budget) !== JSON.stringify(performanceBudget)) throw new Error('promotion performance budget does not match Gate D contract');
@@ -336,10 +335,8 @@ function validatePerformance(value, expectedFixtureIds) {
 	assertRatioRecord(value.aggregate.ratios, aggregateRatios, 'aggregate.ratios');
 	const numericBudgetsPass = performanceSummariesWithinBudget(aggregateLegacy, aggregateSelfhost)
 		&& validatedFixtures.every(record => record.majorRegression === false);
-	const gateDPass = value.incrementalCacheClaim === true && value.editedRebuildProxy === false && numericBudgetsPass;
-	const expectedStatus = gateDPass ? 'passed' : 'failed';
-	if (value.status !== expectedStatus) throw new Error('promotion performance status disagrees with Gate D evidence');
-	return { status: expectedStatus };
+	if (value.status !== 'failed') throw new Error('promotion performance schema v1 cannot pass Gate D without real incremental evidence');
+	return { status: 'failed', numericBudgetsPass };
 }
 
 function exactPerformanceSummary(value, label) {
