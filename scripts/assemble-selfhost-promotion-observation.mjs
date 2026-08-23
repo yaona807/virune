@@ -13,7 +13,6 @@ const runIdPattern = /^[1-9][0-9]*$/u;
 const qualityEvidenceIds = new Set(PROMOTION_QUALITY_COMMANDS.map(group => group.id));
 const performanceBudget = Object.freeze({ coldBuildRatio: 1.25, editedRebuildRatio: 1.25, peakRssRatio: 1.5, artifactSizeRatio: 1.25, majorFixtureLatencyRatio: 1.5 });
 const performanceSamplesPerImplementation = 5;
-const performanceFixtureLimit = 5;
 const releaseStepIds = Object.freeze(['seed-verify','fixed-seed-bootstrap','clean-bootstrap','legacy-rollback']);
 const trustedObservationSource = Object.freeze({ repository: 'yaona807/virune', workflow: '.github/workflows/selfhost-promotion-observation.yml', ref: 'refs/heads/main', eventName: 'schedule' });
 const root = fileURLToPath(new URL('..', import.meta.url));
@@ -304,8 +303,7 @@ function expectedPerformanceFixtureIds(corpus) {
 	const ids = corpus.fixtures
 		.filter(fixture => isRecord(fixture) && Array.isArray(fixture.tags) && fixture.tags.includes('project') && (fixture.expectedDivergences ?? []).length === 0)
 		.map((fixture, index) => canonicalText(fixture.id, `differentialCorpus.fixtures[${index}].id`))
-		.sort(compareText)
-		.slice(0, performanceFixtureLimit);
+		.sort(compareText);
 	if (ids.length === 0) throw new Error('no non-divergent project differential fixtures are available for performance evidence');
 	if (new Set(ids).size !== ids.length) throw new Error('performance fixture selection contains duplicate fixture IDs');
 	return ids;
