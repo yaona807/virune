@@ -1,5 +1,7 @@
 # Types
 
+[日本語版](types_ja.md)
+
 ## `[type.static]` Static typing
 Virune is statically typed. Every expression has a compile-time type, and the compiler rejects implicit numeric, string, nullable, foreign, and aggregate conversions.
 
