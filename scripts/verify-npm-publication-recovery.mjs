@@ -12,6 +12,7 @@ const REQUIRED_OBSERVED_IDENTITY = [
 	'source-repository',
 	'source-commit',
 	'provenance-workflow',
+	'canonical-dist-tag',
 ];
 const IDENTITY_MATCH_RULES = {
 	packageName: 'must-equal-publication-manifest-registry-name',
@@ -21,6 +22,7 @@ const IDENTITY_MATCH_RULES = {
 	sourceRepository: 'must-equal-reviewed-repository',
 	sourceCommit: 'must-equal-reviewed-release-commit',
 	provenanceWorkflow: 'must-equal-approved-publication-workflow',
+	canonicalDistTag: 'must-equal-reviewed-release-version',
 };
 const OBSERVATION_FAILURE_DECISIONS = {
 	stale: 'halt-and-reobserve',
@@ -34,7 +36,7 @@ const OBSERVATION_FAILURE_DECISIONS = {
 const EXPECTED_STATES = [
 	['none-observed', 'publish-all-reviewed-candidates', 'planned-package-versions-only'],
 	['exact-subset-observed', 'resume-missing-reviewed-candidates-only', 'missing-planned-package-versions-only'],
-	['all-exact-observed', 'advance-to-dist-tag-phase', 'no-package-version-writes'],
+	['all-exact-observed', 'complete-package-version-publication', 'none'],
 	['identity-mismatch', 'block-version-permanently', 'none'],
 	['unexpected-or-contradictory', 'halt-manual-investigation', 'none'],
 	['unknown', 'halt-and-reobserve', 'none'],
@@ -49,7 +51,7 @@ const FORBIDDEN_RECOVERY = [
 export function verifyNpmPublicationRecoveryPolicy(root = process.cwd()) {
 	const policy = readJson(resolve(root, POLICY_PATH));
 	const plan = readJson(resolve(root, PUBLICATION_PLAN_PATH));
-	assertExactKeys(policy, ['schemaVersion', 'observation', 'writePreconditions', 'packageVersionPhase', 'distTagPhase', 'completion'], '$');
+	assertExactKeys(policy, ['schemaVersion', 'observation', 'writePreconditions', 'packageVersionPhase', 'distTagPolicy', 'completion'], '$');
 	assert(policy.schemaVersion === 1, '$.schemaVersion', 'expected schemaVersion 1');
 
 	const observation = record(policy.observation, '$.observation');
@@ -95,31 +97,30 @@ export function verifyNpmPublicationRecoveryPolicy(root = process.cwd()) {
 		.map((value, index) => nonEmptyString(value, `$.packageVersionPhase.forbiddenRecovery[${index}]`));
 	assert(JSON.stringify(forbidden) === JSON.stringify(FORBIDDEN_RECOVERY), '$.packageVersionPhase.forbiddenRecovery', `expected ${FORBIDDEN_RECOVERY.join(', ')}`);
 
-	const distTags = record(policy.distTagPhase, '$.distTagPhase');
+	const distTags = record(policy.distTagPolicy, '$.distTagPolicy');
 	assertExactKeys(distTags, [
-		'requiresAllPackageVersionsExact',
+		'application',
 		'canonicalStableTag',
 		'canonicalPrereleaseTag',
 		'nightlyTag',
-		'targetVersionOrdering',
-		'canonicalTagDowngradeAllowed',
-		'newerCanonicalTargetDecision',
-		'unexpectedCanonicalTargetDecision',
-		'partialPromotionDecision',
-		'tagConvergenceIdempotentRequired',
-		'packageRepublishAllowed',
-	], '$.distTagPhase');
-	assert(distTags.requiresAllPackageVersionsExact === true, '$.distTagPhase.requiresAllPackageVersionsExact', 'all package versions must be exact before canonical tag promotion');
-	assert(distTags.canonicalStableTag === 'latest', '$.distTagPhase.canonicalStableTag', 'stable recovery must converge to latest');
-	assert(distTags.canonicalPrereleaseTag === 'next', '$.distTagPhase.canonicalPrereleaseTag', 'prerelease recovery must converge to next');
-	assert(distTags.nightlyTag === null, '$.distTagPhase.nightlyTag', 'nightly npm tag promotion must remain disabled');
-	assert(distTags.targetVersionOrdering === 'semver-precedence', '$.distTagPhase.targetVersionOrdering', 'canonical tag recovery must use SemVer precedence');
-	assert(distTags.canonicalTagDowngradeAllowed === false, '$.distTagPhase.canonicalTagDowngradeAllowed', 'canonical tag recovery must never downgrade to an older release');
-	assert(distTags.newerCanonicalTargetDecision === 'halt-stale-recovery', '$.distTagPhase.newerCanonicalTargetDecision', 'a newer canonical tag target must halt stale recovery');
-	assert(distTags.unexpectedCanonicalTargetDecision === 'halt-manual-investigation', '$.distTagPhase.unexpectedCanonicalTargetDecision', 'an unexpected canonical tag target must halt for investigation');
-	assert(distTags.partialPromotionDecision === 'reobserve-and-converge-tags-only', '$.distTagPhase.partialPromotionDecision', 'partial canonical tag promotion must converge tags only');
-	assert(distTags.tagConvergenceIdempotentRequired === true, '$.distTagPhase.tagConvergenceIdempotentRequired', 'canonical tag convergence must be idempotent');
-	assert(distTags.packageRepublishAllowed === false, '$.distTagPhase.packageRepublishAllowed', 'tag recovery must never republish package versions');
+		'dependencySafeOrderRequired',
+		'cliLastRequired',
+		'separateDistTagMutationAllowed',
+		'traditionalTokenTagRepairAllowed',
+		'incompatibleExistingTagDecision',
+	], '$.distTagPolicy');
+	assert(distTags.application === 'npm-publish-tag', '$.distTagPolicy.application', 'canonical tags must be applied by npm publish');
+	assert(distTags.canonicalStableTag === 'latest', '$.distTagPolicy.canonicalStableTag', 'stable publication must use latest');
+	assert(distTags.canonicalPrereleaseTag === 'next', '$.distTagPolicy.canonicalPrereleaseTag', 'prerelease publication must use next');
+	assert(distTags.nightlyTag === null, '$.distTagPolicy.nightlyTag', 'nightly npm publication must remain disabled');
+	assert(distTags.dependencySafeOrderRequired === true, '$.distTagPolicy.dependencySafeOrderRequired', 'dependency-safe publication order is required');
+	assert(distTags.cliLastRequired === true, '$.distTagPolicy.cliLastRequired', 'virune CLI must publish last');
+	assert(distTags.separateDistTagMutationAllowed === false, '$.distTagPolicy.separateDistTagMutationAllowed', 'normal Trusted Publishing must not require a separate dist-tag mutation');
+	assert(distTags.traditionalTokenTagRepairAllowed === false, '$.distTagPolicy.traditionalTokenTagRepairAllowed', 'normal recovery must not fall back to a traditional token for tag repair');
+	assert(distTags.incompatibleExistingTagDecision === 'halt-manual-investigation', '$.distTagPolicy.incompatibleExistingTagDecision', 'incompatible existing canonical tag state must halt');
+	assert(plan.distTagPolicy?.stable === distTags.canonicalStableTag, '$publicationPlan.distTagPolicy.stable', 'stable dist-tag policy drift');
+	assert(plan.distTagPolicy?.prerelease === distTags.canonicalPrereleaseTag, '$publicationPlan.distTagPolicy.prerelease', 'prerelease dist-tag policy drift');
+	assert(plan.distTagPolicy?.nightly === distTags.nightlyTag, '$publicationPlan.distTagPolicy.nightly', 'nightly dist-tag policy drift');
 
 	const completion = record(policy.completion, '$.completion');
 	assertExactKeys(completion, ['publicRegistryVerificationRequired'], '$.completion');
@@ -138,15 +139,14 @@ export function verifyNpmPublicationRecoveryDocumentation(policy, english, japan
 		'missing reviewed candidates only',
 		'registry `dist.integrity`',
 		'downloaded tarball SHA-256',
-		'source repository, source commit, and provenance workflow',
+		'source repository, source commit, provenance workflow, and canonical dist-tag',
 		'permanently blocks reuse of that package version',
 		'unknown state authorizes no writes',
-		'dist-tag promotion',
-		'SemVer precedence',
-		'never move a canonical tag backward',
-		'newer version, recovery is stale and must halt',
-		'idempotent tag convergence',
-		'reobserve and converge tags only',
+		'`npm publish --tag`',
+		'dependency-safe order',
+		'CLI last',
+		'does not use a separate `npm dist-tag` mutation',
+		'traditional token fallback',
 		'public Registry verification',
 	];
 	const requiredJapanese = [
@@ -155,21 +155,20 @@ export function verifyNpmPublicationRecoveryDocumentation(policy, english, japan
 		'未publishのreview済みcandidateだけ',
 		'Registryの`dist.integrity`',
 		'downloadしたtarballのSHA-256',
-		'source repository・source commit・provenance workflow',
+		'source repository・source commit・provenance workflow・canonical dist-tag',
 		'そのpackage versionの再利用を永久に禁止',
 		'unknown状態はwriteを一切許可しない',
-		'dist-tag promotion',
-		'SemVer precedence',
-		'canonical tagを過去versionへ巻き戻さない',
-		'より新しいversionを指している場合、recoveryはstaleとして停止',
-		'冪等なtag収束',
-		'tagだけを再観測して収束',
+		'`npm publish --tag`',
+		'dependency-safeな順序',
+		'CLIを最後',
+		'別の`npm dist-tag` mutationを使わない',
+		'traditional token fallback',
 		'public Registry verification',
 	];
 	for (const text of requiredEnglish) assert(english.includes(text), '$docs.en', `English recovery documentation is missing canonical phrase: ${text}`);
 	for (const text of requiredJapanese) assert(japanese.includes(text), '$docs.ja', `Japanese recovery documentation is missing canonical phrase: ${text}`);
-	assert(english.includes(policy.distTagPhase.canonicalStableTag) && english.includes(policy.distTagPhase.canonicalPrereleaseTag), '$docs.en', 'English docs must name canonical dist-tags');
-	assert(japanese.includes(policy.distTagPhase.canonicalStableTag) && japanese.includes(policy.distTagPhase.canonicalPrereleaseTag), '$docs.ja', 'Japanese docs must name canonical dist-tags');
+	assert(english.includes(policy.distTagPolicy.canonicalStableTag) && english.includes(policy.distTagPolicy.canonicalPrereleaseTag), '$docs.en', 'English docs must name canonical dist-tags');
+	assert(japanese.includes(policy.distTagPolicy.canonicalStableTag) && japanese.includes(policy.distTagPolicy.canonicalPrereleaseTag), '$docs.ja', 'Japanese docs must name canonical dist-tags');
 	return true;
 }
 
