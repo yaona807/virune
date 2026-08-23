@@ -53,7 +53,7 @@ AdapterからViruneの生成物をimportしてはいけません。JavaScriptパ
 
 型宣言の解決とRuntimeモジュールの解決は別々に記録します。WitnessにはRuntime側と宣言側について、パッケージの同一性、エントリーポイント、モジュール形式、条件、Providerのバージョン、ハッシュを含めます。ブラウザやバンドラーで実際に使うRuntimeの解決は、バンドラーの責任です。
 
-TypeScriptコンパイラのオブジェクトが有効なのはProviderの解析中だけです。型検査後は、シリアライズ可能でProviderに依存しない利用記録だけを保存します。コード生成は`ts.Type`、`ts.Symbol`、実行中のTypeScript `Program`に依存してはいけません。
+TypeScriptコンパイラのオブジェクトが有効なのはProviderの解析中だけです。型検査後は、シリアライズ可能でProviderに依存しない利用記録だけを保存します。コード生成は`ts.Type`、`ts.Symbol`、TypeScript `Program`オブジェクトそのものに依存してはいけません。
 
 ## 信頼境界
 
