@@ -28,10 +28,10 @@ test('promotion observation Host contracts pass from the repository-owned compil
 	assert.equal(result.status, 0, `promotion observation Host tests failed\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`);
 });
 
-test('Self-host load boundaries defer the excluded Legacy adapter until the Legacy path is selected', () => {
+test('promotion observation preserves the current static Legacy load boundary', () => {
 	for (const file of ['mvp-adapter.js', 'compiler-facade.js']) {
 		const source = readFileSync(new URL(`../src/selfhost/${file}`, import.meta.url), 'utf8');
-		assert.doesNotMatch(source, /from ['"]\.\/legacy-adapter\.js['"]/u, `${file} must not statically load Legacy`);
-		assert.match(source, /import\(['"]\.\/legacy-adapter\.js['"]\)/u, `${file} must load Legacy only on the Legacy path`);
+		assert.match(source, /from ['"]\.\/legacy-adapter\.js['"]/u, `${file} must retain the current static Legacy import`);
+		assert.doesNotMatch(source, /import\(['"]\.\/legacy-adapter\.js['"]\)/u, `${file} must not gain a promotion-only lazy Legacy boundary`);
 	}
 });
