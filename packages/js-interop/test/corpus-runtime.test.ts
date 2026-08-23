@@ -29,5 +29,5 @@ pub fn smoke() -> String uses JavaScript {
 	const outputPath = join(outputRoot, 'main.js');
 	await writeFile(outputPath, result.output?.code ?? '', 'utf8');
 	const module = await import(`${pathToFileURL(outputPath).href}?v=${Date.now()}`) as { smoke(): string };
-	assert.match(module.smoke(), /^[A-Za-z0-9_-]{8}:1\.18\.1:4\.18\.1$/u);
+	assert.match(module.smoke(), /^[A-Za-z0-9_-]{8}:1\.19\.0:4\.18\.1$/u);
 });

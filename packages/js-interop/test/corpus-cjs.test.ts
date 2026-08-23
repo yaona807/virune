@@ -14,7 +14,7 @@ test('corpus identifies CommonJS runtime declarations supplied by @types', () =>
 	assert.equal(lodash.witness.packageName, 'lodash');
 	assert.equal(lodash.witness.packageVersion, '4.18.1');
 	assert.equal(lodash.witness.declarationPackageName, '@types/lodash');
-	assert.equal(lodash.witness.declarationPackageVersion, '4.17.24');
+	assert.equal(lodash.witness.declarationPackageVersion, '4.17.25');
 	assert.equal(lodash.witness.runtimeFormat, 'commonjs');
 	assert.equal(lodash.witness.declarationEntry, 'index.d.ts');
 	assert.equal(JSON.stringify(lodash.witness).includes(repositoryRoot), false);
