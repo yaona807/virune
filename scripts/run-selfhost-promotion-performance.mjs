@@ -88,10 +88,13 @@ export function evaluatePromotionPerformanceSamples(fixtures) {
 function selectProjectFixtures(corpus) {
 	if (corpus?.schemaVersion !== 1 || !Array.isArray(corpus.fixtures)) throw new Error('differential corpus schema is invalid');
 	const ids = corpus.fixtures
-		.filter(fixture => Array.isArray(fixture.tags) && fixture.tags.includes('project') && (fixture.expectedDivergences ?? []).length === 0)
+		.filter(fixture => Array.isArray(fixture.tags)
+			&& fixture.tags.includes('project')
+			&& !fixture.tags.includes('diagnostic')
+			&& (fixture.expectedDivergences ?? []).length === 0)
 		.map(fixture => fixture.id)
 		.sort();
-	if (ids.length === 0) throw new Error('no non-divergent project differential fixtures are available for performance evidence');
+	if (ids.length === 0) throw new Error('no non-divergent compilable project differential fixtures are available for performance evidence');
 	return ids;
 }
 
