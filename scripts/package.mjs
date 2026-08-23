@@ -110,14 +110,6 @@ const localPackage = {
 	dependencies: { virune: `file:./${cliPackage.file}` },
 };
 writeFileSync(resolve(out, 'package.json'), `${JSON.stringify(localPackage, null, 2)}\n`);
-writeFileSync(
-	resolve(out, 'README.md'),
-	`# Virune v${version} release packages\n\nVirune is not published to the npm Registry. The CLI tarball contains its complete dependency tree and can be installed directly with npm.\n\nInstall from this directory:\n\n\`\`\`bash\nnpm install --global ./${cliPackage.file}\nvirune --version\n\`\`\`\n\nInstall from GitHub Releases:\n\n\`\`\`bash\nnpm install --global ${releaseAssetBase}/${cliPackage.file}\n\`\`\`\n\nFor a project-local installation, omit \`--global\` and add \`--save-dev\`. Node.js 24 or later is required. Verify downloaded files with \`SHA256SUMS\`, \`RELEASE-MANIFEST.json\`, and the GitHub artifact attestation before installation.\n`,
-);
-writeFileSync(
-	resolve(out, 'README_ja.md'),
-	`# Virune v${version} リリースパッケージ\n\nViruneはnpm Registryへ公開しません。CLI tarballには依存関係一式が含まれており、npmから直接インストールできます。\n\nこのディレクトリからインストールします。\n\n\`\`\`bash\nnpm install --global ./${cliPackage.file}\nvirune --version\n\`\`\`\n\nGitHub Releasesからインストールします。\n\n\`\`\`bash\nnpm install --global ${releaseAssetBase}/${cliPackage.file}\n\`\`\`\n\nプロジェクト単位で導入する場合は\`--global\`を外し、\`--save-dev\`を指定します。Node.js 24以上が必要です。インストール前に\`SHA256SUMS\`、\`RELEASE-MANIFEST.json\`、GitHub artifact attestationを使用してdownload fileを検証してください。\n`,
-);
 copyFileSync(resolve('LICENSE'), resolve(out, 'LICENSE'));
 copyFileSync(resolve('NOTICE'), resolve(out, 'NOTICE'));
 copyFileSync(resolve('THIRD_PARTY_NOTICES.md'), resolve(out, 'THIRD_PARTY_NOTICES.md'));
@@ -128,6 +120,28 @@ const packageEntries = packages.map(item => {
 	return { file: item.file, sha256: createHash('sha256').update(bytes).digest('hex'), bytes: bytes.byteLength };
 });
 writeFileSync(resolve(out, 'MANIFEST.json'), `${JSON.stringify({ schemaVersion: 1, version, packages: packageEntries }, null, 2)}\n`);
-writeNpmPublicationIdentity({ releaseDirectory: out });
+const publicationIdentity = writeNpmPublicationIdentity({ releaseDirectory: out });
+const registryDistributionEnabled = publicationIdentity.registryVersionEligible === true && publicationIdentity.publicationReady === true;
+
+if (registryDistributionEnabled) {
+	writeFileSync(
+		resolve(out, 'README.md'),
+		`# Virune v${version} release packages\n\nThe public npm Registry is the canonical package distribution for this Virune release.\n\nInstall the exact CLI version from npm:\n\n\`\`\`bash\nnpm install --global virune@${version}\nvirune --version\n\`\`\`\n\nFor a one-shot exact-version invocation:\n\n\`\`\`bash\nnpx --yes virune@${version} --version\n\`\`\`\n\nGitHub Releases retain the reviewed release artifacts, checksums, SBOM, attestations, and bundled CLI tarball for archive and verification purposes. The bundled tarball is not the canonical package installation channel for Registry-enabled releases. Node.js 24 or later is required. Verify downloaded GitHub release files with \`SHA256SUMS\`, \`RELEASE-MANIFEST.json\`, and the GitHub artifact attestation.\n`,
+	);
+	writeFileSync(
+		resolve(out, 'README_ja.md'),
+		`# Virune v${version} リリースパッケージ\n\nこのViruneリリースでは、public npm Registryを正式なpackage配布経路とします。\n\nnpmからexact versionのCLIをインストールします。\n\n\`\`\`bash\nnpm install --global virune@${version}\nvirune --version\n\`\`\`\n\nexact versionを1回だけ実行する場合は、次のようにします。\n\n\`\`\`bash\nnpx --yes virune@${version} --version\n\`\`\`\n\nGitHub Releasesには、review済みrelease artifact、checksum、SBOM、attestation、archive・検証用のbundled CLI tarballを残します。Registry-enabled releaseでは、bundled tarballを正式なpackage install経路として扱いません。Node.js 24以上が必要です。GitHub Releaseからdownloadしたfileは、\`SHA256SUMS\`、\`RELEASE-MANIFEST.json\`、GitHub artifact attestationで検証してください。\n`,
+	);
+} else {
+	writeFileSync(
+		resolve(out, 'README.md'),
+		`# Virune v${version} release packages\n\nVirune is not published to the npm Registry. The CLI tarball contains its complete dependency tree and can be installed directly with npm.\n\nInstall from this directory:\n\n\`\`\`bash\nnpm install --global ./${cliPackage.file}\nvirune --version\n\`\`\`\n\nInstall from GitHub Releases:\n\n\`\`\`bash\nnpm install --global ${releaseAssetBase}/${cliPackage.file}\n\`\`\`\n\nFor a project-local installation, omit \`--global\` and add \`--save-dev\`. Node.js 24 or later is required. Verify downloaded files with \`SHA256SUMS\`, \`RELEASE-MANIFEST.json\`, and the GitHub artifact attestation before installation.\n`,
+	);
+	writeFileSync(
+		resolve(out, 'README_ja.md'),
+		`# Virune v${version} リリースパッケージ\n\nViruneはnpm Registryへ公開しません。CLI tarballには依存関係一式が含まれており、npmから直接インストールできます。\n\nこのディレクトリからインストールします。\n\n\`\`\`bash\nnpm install --global ./${cliPackage.file}\nvirune --version\n\`\`\`\n\nGitHub Releasesからインストールします。\n\n\`\`\`bash\nnpm install --global ${releaseAssetBase}/${cliPackage.file}\n\`\`\`\n\nプロジェクト単位で導入する場合は\`--global\`を外し、\`--save-dev\`を指定します。Node.js 24以上が必要です。インストール前に\`SHA256SUMS\`、\`RELEASE-MANIFEST.json\`、GitHub artifact attestationを使用してdownload fileを検証してください。\n`,
+	);
+}
+
 writeReleaseIntegrityFiles(out, version);
 verifyReleaseLicenseArtifacts();
