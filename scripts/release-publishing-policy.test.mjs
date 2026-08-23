@@ -36,6 +36,8 @@ test('releases generate provenance and SBOM attestations for every asset', async
 test('normal npm publication uses verified eligibility and precedes immutable GitHub Release creation', async () => {
 	const source = await readWorkflow('release.yml');
 	assert.match(source, /id-token:\s+write/u);
+	assert.match(source, /concurrency:\n\s+group: virune-release-publication\n\s+cancel-in-progress: false/u);
+	assert.doesNotMatch(source, /group:\s+release-\$\{\{\s*github\.ref\s*\}\}/u);
 	assert.match(source, /name: Resolve verified npm publication eligibility/u);
 	assert.match(source, /import \{ verifyNpmPublicationIdentity \} from '\.\/scripts\/verify-npm-publication-identity\.mjs';/u);
 	assert.match(source, /const identity = verifyNpmPublicationIdentity\(\);/u);
