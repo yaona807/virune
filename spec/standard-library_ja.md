@@ -2,8 +2,8 @@
 
 [英語版](standard-library.md)
 
-## `[stdlib.bytes]` Byteとバイト列
-`Byte`は`0..255`の範囲検査を行う`newtype`整数です。`Bytes`は不変のバイト列で、JavaScriptとの境界ではコピーした`Uint8Array`として表現します。`MutableBytes`は明示的に可変なバッファです。`Bytes`との相互変換ではストレージをコピーし、不変値がエイリアス経由で変更されることを防ぎます。
+## `[stdlib.bytes]` `Byte`とバイト列
+`Byte`は`0..255`の範囲を検査する`newtype`整数です。`Bytes`は不変のバイト列で、JavaScriptとの境界ではコピーした`Uint8Array`として表現します。`MutableBytes`は明示的に可変なバッファです。`Bytes`との相互変換ではストレージをコピーし、不変値がエイリアス経由で変更されることを防ぎます。
 
 JSONでは`Bytes`をbase64文字列としてエンコードします。ファイルAPIとHTTP APIでは、`Bytes`と`HttpBody.Bytes`を使ってバイナリボディを受け渡します。
 
@@ -11,7 +11,7 @@ JSONでは`Bytes`をbase64文字列としてエンコードします。ファイ
 `Int8`、`UInt8`、`Int16`、`UInt16`、`Int32`、`UInt32`は、範囲を検査する`Int`表現を使います。`Int64`と`UInt64`は、範囲を検査する`BigInt`表現を使います。コンストラクターは`Result<_, IntegerRangeError>`を返し、値をラップしたり切り捨てたりしません。
 
 ## `[stdlib.unicode]` Unicodeテキスト
-既存のStringのインデックス参照、スライス、`String.length`はUnicodeコードポイント単位です。`String.graphemes`と`String.graphemeLength`は拡張書記素クラスタ単位です。NFC、NFD、NFKC、NFKDの正規化は明示的なAPIとして提供し、暗黙には適用しません。
+既存のStringのインデックス参照、スライス、`String.length`はUnicodeコードポイント単位です。`String.graphemes`と`String.graphemeLength`は拡張書記素クラスタ単位です。NFC、NFD、NFKC、NFKDの正規化は明示的な操作として提供し、暗黙には適用しません。
 
 ## `[collection.eq-hash]` 値で比較するコレクション
 `Map`と`Set`は、JavaScriptの同一性で比較するコレクションではなく、Viruneの値コレクションです。キーや要素の検索にはViruneの`Eq`と`Hash`を使います。不変更新では新しいコレクションを返します。JavaScriptの同一性で比較するコレクションを、通常のVirune `Map` / `Set`として公開することはありません。
