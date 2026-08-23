@@ -1,24 +1,24 @@
 # JavaScript FFI
 
-[English](ffi.md) | [日本語](ffi_ja.md)
+[英語版](ffi.md)
 
-## `[ffi.explicit]` 明示的境界
-通常のnpm／JavaScript packageは`import js`から元のJavaScriptを直接利用します。単純APIはTypeScript宣言を参照する保守的Facadeで検査し、複雑なAPIは事前compileした`*.interop.ts` Adapterへ隔離します。`extern js`はreview可能なSafe Adapter、`unsafe extern`は最後の動的境界として残します。
+## `[ffi.explicit]` 明示的な境界
+通常のnpm / JavaScriptパッケージは、`import js`から元のJavaScriptを直接利用します。単純なAPIはTypeScript宣言を参照する保守的なFacadeで検査し、複雑なAPIは事前にコンパイルした`*.interop.ts` Adapterへ分離します。`extern js`はレビュー可能なSafe Adapterとして、`unsafe extern`は最後の動的な境界として残します。
 
 ## `[ffi.safe]` Safe extern
-Safe externは`Result<T, JsError>`またはasync相当を返します。生成wrapperは同期例外とPromise rejectionを捕捉し、値を検証してVirune表現へ変換します。複雑で未検証なobjectは`Unknown`で受け取り、decodeしてください。
+Safe externは`Result<T, JsError>`またはasync相当を返します。生成したwrapperは同期例外とPromise rejectionを捕捉し、値を検証してViruneの表現へ変換します。複雑で未検証のオブジェクトは`Unknown`で受け取り、decodeしてください。
 
 ## `[ffi.unsafe]` Unsafe extern
-`unsafe extern`は検証を省略します。`ffi/`配下の`unsafe module`だけで許可します。Unsafe宣言は明示的な監査境界であり、不変性や型前提を破壊する可能性があります。
+`unsafe extern`は検証を省略します。使用できるのは`ffi/`配下の`unsafe module`だけです。Unsafe宣言は明示的な監査境界であり、不変性や型の前提を壊す可能性があります。
 
 ## `[ffi.export]` JavaScript export
-`@jsExport`はpublic functionだけに使用できます。export wrapperはJavaScript引数を検証し、record、collection、Option、Result、enumの戻り値を文書化されたJavaScript表現へ変換します。
+`@jsExport`を使用できるのは公開関数だけです。export用のwrapperはJavaScriptの引数を検証し、record、collection、Option、Result、enumの戻り値を文書化されたJavaScript表現へ変換します。
 
 ## `[ffi.binding]` 宣言生成
-`virune bind`はTypeScript宣言を保守的に変換します。`any`と未対応構文は`Unknown`になり、overloadは別名生成または手動確認が必要です。生成bindingを自動的に信頼してはいけません。
+`virune bind`はTypeScript宣言を保守的に変換します。`any`と未対応の構文は`Unknown`になり、overloadは別名の生成または手動確認が必要です。生成したbindingを自動的に信頼してはいけません。
 
-## `[ffi.bytes]` Binary値
-Safe FFIは`Bytes`として`Uint8Array`または`ArrayBuffer`を受理し、基礎dataをcopyします。JavaScriptへ渡すVirune Bytesもcopyします。JSONではBytesをbase64文字列にし、不正base64はdecode errorです。record／enum変換はVirune Runtime type IDを維持し、Map／Set変換は値比較collectionの意味論を復元します。
+## `[ffi.bytes]` バイナリ値
+Safe FFIは`Bytes`として`Uint8Array`または`ArrayBuffer`を受け取り、元のデータをコピーします。JavaScriptへ渡すViruneの`Bytes`もコピーします。JSONでは`Bytes`をbase64文字列として表し、不正なbase64はdecode errorになります。record / enum変換ではVirune Runtimeのtype IDを維持し、Map / Set変換では値で比較するコレクションの意味を復元します。
 
 ## Three-Tier Interop
-詳細な設計は[`js-interop_ja.md`](js-interop_ja.md)を参照してください。Foreign objectはcopyせずidentityとprototypeを維持し、Native複合値への変換時だけ明示Codecを使用します。
+詳しい設計は[JavaScript相互運用モデル](js-interop_ja.md)を参照してください。Foreignオブジェクトはコピーせずidentityとprototypeを維持し、Native複合値へ変換する場合だけ明示的なCodecを使用します。
