@@ -12,7 +12,6 @@ const REQUIRED_OBSERVED_IDENTITY = [
 	'source-repository',
 	'source-commit',
 	'provenance-workflow',
-	'canonical-dist-tag',
 ];
 const IDENTITY_MATCH_RULES = {
 	packageName: 'must-equal-publication-manifest-registry-name',
@@ -22,7 +21,6 @@ const IDENTITY_MATCH_RULES = {
 	sourceRepository: 'must-equal-reviewed-repository',
 	sourceCommit: 'must-equal-reviewed-release-commit',
 	provenanceWorkflow: 'must-equal-approved-publication-workflow',
-	canonicalDistTag: 'must-equal-reviewed-release-version',
 };
 const OBSERVATION_FAILURE_DECISIONS = {
 	stale: 'halt-and-reobserve',
@@ -105,6 +103,8 @@ export function verifyNpmPublicationRecoveryPolicy(root = process.cwd()) {
 		'nightlyTag',
 		'dependencySafeOrderRequired',
 		'cliLastRequired',
+		'targetVersionOrdering',
+		'canonicalTagDowngradeAllowed',
 		'separateDistTagMutationAllowed',
 		'traditionalTokenTagRepairAllowed',
 		'incompatibleExistingTagDecision',
@@ -115,6 +115,8 @@ export function verifyNpmPublicationRecoveryPolicy(root = process.cwd()) {
 	assert(distTags.nightlyTag === null, '$.distTagPolicy.nightlyTag', 'nightly npm publication must remain disabled');
 	assert(distTags.dependencySafeOrderRequired === true, '$.distTagPolicy.dependencySafeOrderRequired', 'dependency-safe publication order is required');
 	assert(distTags.cliLastRequired === true, '$.distTagPolicy.cliLastRequired', 'virune CLI must publish last');
+	assert(distTags.targetVersionOrdering === 'semver-precedence', '$.distTagPolicy.targetVersionOrdering', 'canonical tag safety must use SemVer precedence');
+	assert(distTags.canonicalTagDowngradeAllowed === false, '$.distTagPolicy.canonicalTagDowngradeAllowed', 'canonical tags must never be moved backward');
 	assert(distTags.separateDistTagMutationAllowed === false, '$.distTagPolicy.separateDistTagMutationAllowed', 'normal Trusted Publishing must not require a separate dist-tag mutation');
 	assert(distTags.traditionalTokenTagRepairAllowed === false, '$.distTagPolicy.traditionalTokenTagRepairAllowed', 'normal recovery must not fall back to a traditional token for tag repair');
 	assert(distTags.incompatibleExistingTagDecision === 'halt-manual-investigation', '$.distTagPolicy.incompatibleExistingTagDecision', 'incompatible existing canonical tag state must halt');
@@ -139,12 +141,14 @@ export function verifyNpmPublicationRecoveryDocumentation(policy, english, japan
 		'missing reviewed candidates only',
 		'registry `dist.integrity`',
 		'downloaded tarball SHA-256',
-		'source repository, source commit, provenance workflow, and canonical dist-tag',
+		'source repository, source commit, and provenance workflow',
 		'permanently blocks reuse of that package version',
 		'unknown state authorizes no writes',
 		'`npm publish --tag`',
 		'dependency-safe order',
 		'CLI last',
+		'SemVer precedence',
+		'never moves a canonical tag backward',
 		'does not use a separate `npm dist-tag` mutation',
 		'traditional token fallback',
 		'public Registry verification',
@@ -155,12 +159,14 @@ export function verifyNpmPublicationRecoveryDocumentation(policy, english, japan
 		'未publishのreview済みcandidateだけ',
 		'Registryの`dist.integrity`',
 		'downloadしたtarballのSHA-256',
-		'source repository・source commit・provenance workflow・canonical dist-tag',
+		'source repository・source commit・provenance workflow',
 		'そのpackage versionの再利用を永久に禁止',
 		'unknown状態はwriteを一切許可しない',
 		'`npm publish --tag`',
 		'dependency-safeな順序',
 		'CLIを最後',
+		'SemVer precedence',
+		'canonical tagを過去versionへ巻き戻さない',
 		'別の`npm dist-tag` mutationを使わない',
 		'traditional token fallback',
 		'public Registry verification',
