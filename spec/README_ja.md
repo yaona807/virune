@@ -11,13 +11,13 @@
 - `grammar.ebnf` — 完全な規範文法と改行正規化の契約
 - [字句構造](lexical_ja.md) — 文字コード、トークン、コメント、文の終端
 - [ドキュメントコメント](documentation_ja.md) — ドキュメントコメントの関連付け、Markdown、診断
-- [型](types_ja.md) — 型同一性、推論、ジェネリック、null許容性、effect、振る舞いの合成
+- [型](types_ja.md) — 型同一性、推論、ジェネリクス、null許容性、エフェクト、振る舞いの合成
 - [評価と制御フロー](evaluation_ja.md) — 評価順、制御フロー、エラー、後始末
-- [モジュールとパッケージ](modules_ja.md) — モジュール、import、可視性、re-export、対象プラットフォーム
+- [モジュールとパッケージ](modules_ja.md) — モジュール、インポート、可視性、再エクスポート、対象プラットフォーム
 - [実行エントリーポイント](entry-point_ja.md) — `main`シグネチャと終了動作
 - [タスクと構造化並行処理](tasks_ja.md) — 非同期実行と構造化並行処理
 - [JavaScript FFI](ffi_ja.md) — JavaScriptとの境界
 - [JavaScript相互運用モデル](js-interop_ja.md) — 規範的なJavaScript / TypeScript相互運用契約
-- [標準型と標準ライブラリ](standard-library_ja.md) — Bytes、固定幅整数、Unicode、コレクション
+- [標準型と標準ライブラリ](standard-library_ja.md) — `Bytes`、固定幅整数、Unicode、コレクション
 - [Runtime ABI v2](runtime-abi_ja.md) — 生成コードとRuntimeの間のRuntime ABI v2契約
 - `rules.json` — 仕様とテストの機械検査用対応表
