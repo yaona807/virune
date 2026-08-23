@@ -1,9 +1,10 @@
+import { createHash } from 'node:crypto';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { spawnNpmSync } from './npm-cli.mjs';
-import { verifyNpmPublicationIdentity } from './verify-npm-publication-identity.mjs';
+import { readRegularReleaseAsset, verifyNpmPublicationIdentity } from './verify-npm-publication-identity.mjs';
 import { verifyRegistryPackage } from './verify-public-npm-registry.mjs';
 
 const PUBLIC_REGISTRY = 'https://registry.npmjs.org/';
@@ -179,6 +180,14 @@ export function npmPublishArguments(tarballPath, distTag) {
 	];
 }
 
+export function verifyCandidateTarballAtWriteBoundary(candidate, tarballPath) {
+	const bytes = readRegularReleaseAsset(tarballPath, `$.publish.${candidate.registryName}.tarball`);
+	const sha256 = createHash('sha256').update(bytes).digest('hex');
+	assert(sha256 === candidate.sha256, `$.publish.${candidate.registryName}.sha256`, 'tarball changed after reviewed publication identity verification');
+	assert(bytes.byteLength === candidate.bytes, `$.publish.${candidate.registryName}.bytes`, 'tarball byte size changed after reviewed publication identity verification');
+	return { sha256, bytes: bytes.byteLength };
+}
+
 export function validateTrustedPublishingProvenance(auditReport, { registryName, version, expectedCommit }) {
 	const report = record(auditReport, '$.audit');
 	for (const field of ['invalid', 'missing']) {
@@ -271,6 +280,7 @@ async function verifyExistingNpmProvenance(registryName, version, expectedCommit
 
 function publishCandidate(candidate, _version, distTag, releaseDirectory, { runNpm, env, cwd }) {
 	const tarballPath = resolve(releaseDirectory, candidate.releaseAsset);
+	verifyCandidateTarballAtWriteBoundary(candidate, tarballPath);
 	const result = runNpm(npmPublishArguments(tarballPath, distTag), { cwd, env, encoding: 'utf8' });
 	assertCommandSuccess(result, `npm publish ${candidate.registryName}`);
 }
