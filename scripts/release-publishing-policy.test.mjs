@@ -36,7 +36,7 @@ test('releases generate provenance and SBOM attestations for every asset', async
 test('normal npm publication uses the reviewed release boundary and precedes immutable GitHub Release creation', async () => {
 	const source = await readWorkflow('release.yml');
 	assert.match(source, /id-token:\s+write/u);
-	assert.match(source, /npm install --global npm@11\.19\.0 --ignore-scripts --no-audit --no-fund/u);
+	assert.match(source, /npm install --global npm@11\.19\.0 --registry=https:\/\/registry\.npmjs\.org\/ --ignore-scripts --no-audit --no-fund/u);
 	assert.match(source, /test "\$\(npm --version\)" = "11\.19\.0"/u);
 	assert.match(source, /node scripts\/publish-npm-release\.mjs --expected-commit="\$GITHUB_SHA"/u);
 	assert.doesNotMatch(source, /NPM_TOKEN|NODE_AUTH_TOKEN/u);
