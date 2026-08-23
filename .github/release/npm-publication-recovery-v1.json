@@ -28,7 +28,8 @@
       "downloaded-tarball-sha256",
       "source-repository",
       "source-commit",
-      "provenance-workflow"
+      "provenance-workflow",
+      "canonical-dist-tag"
     ],
     "identityMatchRules": {
       "packageName": "must-equal-publication-manifest-registry-name",
@@ -37,7 +38,8 @@
       "downloadedTarballSha256": "must-equal-publication-manifest-sha256",
       "sourceRepository": "must-equal-reviewed-repository",
       "sourceCommit": "must-equal-reviewed-release-commit",
-      "provenanceWorkflow": "must-equal-approved-publication-workflow"
+      "provenanceWorkflow": "must-equal-approved-publication-workflow",
+      "canonicalDistTag": "must-equal-reviewed-release-version"
     },
     "states": [
       {
@@ -52,8 +54,8 @@
       },
       {
         "state": "all-exact-observed",
-        "decision": "advance-to-dist-tag-phase",
-        "writes": "no-package-version-writes"
+        "decision": "complete-package-version-publication",
+        "writes": "none"
       },
       {
         "state": "identity-mismatch",
@@ -78,18 +80,16 @@
       "unpublish-republish"
     ]
   },
-  "distTagPhase": {
-    "requiresAllPackageVersionsExact": true,
+  "distTagPolicy": {
+    "application": "npm-publish-tag",
     "canonicalStableTag": "latest",
     "canonicalPrereleaseTag": "next",
     "nightlyTag": null,
-    "targetVersionOrdering": "semver-precedence",
-    "canonicalTagDowngradeAllowed": false,
-    "newerCanonicalTargetDecision": "halt-stale-recovery",
-    "unexpectedCanonicalTargetDecision": "halt-manual-investigation",
-    "partialPromotionDecision": "reobserve-and-converge-tags-only",
-    "tagConvergenceIdempotentRequired": true,
-    "packageRepublishAllowed": false
+    "dependencySafeOrderRequired": true,
+    "cliLastRequired": true,
+    "separateDistTagMutationAllowed": false,
+    "traditionalTokenTagRepairAllowed": false,
+    "incompatibleExistingTagDecision": "halt-manual-investigation"
   },
   "completion": {
     "publicRegistryVerificationRequired": true
