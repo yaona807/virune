@@ -56,7 +56,6 @@ export function verifyNpmPublicationPlan(root = process.cwd()) {
 	assert(plan.trustedPublishingRequired === true, '$.trustedPublishingRequired', 'must remain true');
 	assert(plan.publicVerificationRequired === true, '$.publicVerificationRequired', 'must remain true');
 	assert(plan.sameReviewedReleaseIdentityRequired === true, '$.sameReviewedReleaseIdentityRequired', 'must remain true');
-	verifyNpmPublicationRecoveryPolicy(root);
 	const forbiddenThroughText = nonEmptyString(plan.forbidRegistryPublishThroughVersion, '$.forbidRegistryPublishThroughVersion');
 	const firstStableText = nonEmptyString(plan.firstStableRegistryRelease, '$.firstStableRegistryRelease');
 	const forbiddenThrough = semver(forbiddenThroughText, '$.forbidRegistryPublishThroughVersion');
@@ -170,6 +169,7 @@ export function verifyNpmPublicationPlan(root = process.cwd()) {
 		assert(cliManifest.dependencies?.[item.workspaceName] === rootManifest.version, `$.${cli.directory}.dependencies.${item.workspaceName}`, 'CLI must depend on every planned npm package dependency at the exact release version');
 	}
 
+	verifyNpmPublicationRecoveryPolicy(root);
 	return {
 		schemaVersion: 1,
 		stage: plan.stage,
