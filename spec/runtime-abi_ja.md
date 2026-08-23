@@ -48,7 +48,7 @@ Runtime ABI v2にはプロトコルレジストリがありません。等価性
 
 ## JavaScriptへの公開
 
-`@jsExport`のラッパーは入力値を検証し、出力値を変換します。必要な場合は末尾の省略可能な引数を渡さず、JavaScriptへ公開するNative集約値は防御的にコピーします。ForeignハンドルはForeignのまま扱い、検証済みのNative値として公開することはありません。
+`@jsExport`のラッパーは入力値を検証し、出力値を変換します。必要な場合は末尾の省略可能な引数を渡さず、JavaScriptへ公開するNative集約値は防御的にコピーします。ForeignハンドルはForeignのまま扱い、検証済みのNative値として扱うことはありません。
 
 ## 公開ABIスナップショット
 
