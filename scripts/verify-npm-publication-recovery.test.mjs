@@ -32,12 +32,11 @@ test('unknown or partial observation cannot authorize writes', () => {
 	}
 });
 
-test('exact recovery requires every reviewed identity dimension including canonical dist-tag', () => {
+test('exact recovery requires every immutable reviewed identity dimension', () => {
 	for (const mutation of [
 		identity => identity.pop(),
 		identity => { identity[2] = 'sha1-only'; },
 		identity => { [identity[4], identity[5]] = [identity[5], identity[4]]; },
-		identity => { identity[7] = 'tag-presence-only'; },
 	]) {
 		withFixture((fixture, policy) => {
 			mutation(policy.packageVersionPhase.requiredObservedIdentity);
@@ -50,13 +49,13 @@ test('exact recovery requires every reviewed identity dimension including canoni
 	}
 });
 
-test('exact recovery identity dimensions have canonical comparison rules', () => {
+test('exact recovery identity dimensions have canonical comparison rules and exclude mutable tag state', () => {
 	for (const mutation of [
 		rules => { rules.downloadedTarballSha256 = 'presence-only'; },
 		rules => { rules.registryDistIntegrity = 'trust-metadata-without-bytes'; },
 		rules => { delete rules.sourceCommit; },
 		rules => { rules.provenanceWorkflow = 'any-workflow'; },
-		rules => { rules.canonicalDistTag = 'any-tag'; },
+		rules => { rules.canonicalDistTag = 'must-equal-reviewed-release-version'; },
 	]) {
 		withFixture((fixture, policy) => {
 			mutation(policy.packageVersionPhase.identityMatchRules);
@@ -97,11 +96,13 @@ test('identity mismatch permanently blocks package-version reuse and forbidden r
 	});
 });
 
-test('canonical dist-tags are applied by npm publish with dependency-safe CLI-last ordering', () => {
+test('canonical dist-tags are applied by npm publish with dependency-safe CLI-last ordering and no downgrade', () => {
 	for (const mutation of [
 		policy => { policy.distTagPolicy.application = 'separate-dist-tag-command'; },
 		policy => { policy.distTagPolicy.dependencySafeOrderRequired = false; },
 		policy => { policy.distTagPolicy.cliLastRequired = false; },
+		policy => { policy.distTagPolicy.targetVersionOrdering = 'lexical'; },
+		policy => { policy.distTagPolicy.canonicalTagDowngradeAllowed = true; },
 		policy => { policy.distTagPolicy.separateDistTagMutationAllowed = true; },
 		policy => { policy.distTagPolicy.traditionalTokenTagRepairAllowed = true; },
 		policy => { policy.distTagPolicy.incompatibleExistingTagDecision = 'repair-with-token'; },
