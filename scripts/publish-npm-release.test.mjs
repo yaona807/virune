@@ -127,6 +127,64 @@ test('Registry probing treats 404 as missing but rejects contradictory and unkno
 		observeRegistryCandidate(candidate, VERSION, 'next', { fetchImpl: async () => response(503, {}) }),
 		/HTTP 503/u,
 	);
+
+	await assert.rejects(
+		observeRegistryCandidate(candidate, VERSION, 'next', {
+			fetchImpl: async url => response(url.includes(encodeURIComponent(VERSION)) ? 404 : 200, url.includes(encodeURIComponent(VERSION)) ? null : {
+				name: candidate.registryName,
+				'dist-tags': {},
+			}),
+		}),
+		/packument\.versions: expected an object/u,
+	);
+});
+
+test('missing target refuses stale canonical tag downgrade and malformed tag state', async () => {
+	const candidate = candidates[0];
+	const observeMissingWithPackument = packument => observeRegistryCandidate(candidate, VERSION, 'next', {
+		fetchImpl: async url => response(url.includes(encodeURIComponent(VERSION)) ? 404 : 200, url.includes(encodeURIComponent(VERSION)) ? null : {
+			name: candidate.registryName,
+			...packument,
+		}),
+	});
+
+	assert.deepEqual(await observeMissingWithPackument({
+		versions: { '1.1.0-beta.2': {} },
+		'dist-tags': { next: '1.1.0-beta.2' },
+	}), { state: 'missing' });
+
+	await assert.rejects(
+		observeMissingWithPackument({
+			versions: { '1.1.0': {} },
+			'dist-tags': { next: '1.1.0' },
+		}),
+		/canonical tag target 1\.1\.0 is not older than publication target 1\.1\.0-rc\.1/u,
+	);
+
+	await assert.rejects(
+		observeMissingWithPackument({
+			versions: { '1.0.0': {} },
+			'dist-tags': { next: '1.0.1' },
+		}),
+		/canonical tag target 1\.0\.1 is absent from packument versions/u,
+	);
+
+	await assert.rejects(
+		observeMissingWithPackument({
+			versions: { '1.0.0-nightly.20260823.1': {} },
+			'dist-tags': { next: '1.0.0-nightly.20260823.1' },
+		}),
+		/expected stable, alpha, beta, or rc Virune semantic version/u,
+	);
+
+	const stable = await observeRegistryCandidate(candidate, '1.1.0', 'latest', {
+		fetchImpl: async url => response(url.includes(encodeURIComponent('1.1.0')) ? 404 : 200, url.includes(encodeURIComponent('1.1.0')) ? null : {
+			name: candidate.registryName,
+			versions: { '1.1.0-rc.9': {} },
+			'dist-tags': { latest: '1.1.0-rc.9' },
+		}),
+	});
+	assert.deepEqual(stable, { state: 'missing' });
 });
 
 test('existing Registry package delegates exact bytes and tag verification to the canonical verifier', async () => {
