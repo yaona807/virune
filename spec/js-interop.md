@@ -1,8 +1,8 @@
 # JavaScript Interoperability Model
 
-[English](js-interop.md) | [日本語](js-interop_ja.md)
+[日本語版](js-interop_ja.md)
 
-This document defines the normative architecture of JavaScript interoperability. Low-level `extern js` rules remain in [`ffi.md`](ffi.md).
+This document defines the normative architecture of JavaScript interoperability. Low-level `extern js` rules remain in [JavaScript FFI](ffi.md).
 
 ## Three tiers
 
