@@ -15,7 +15,6 @@ export const PROMOTION_PERFORMANCE_BUDGET = Object.freeze({
 	majorFixtureLatencyRatio: 1.5,
 });
 const DEFAULT_SAMPLES = 5;
-const DEFAULT_FIXTURE_LIMIT = 5;
 const root = fileURLToPath(new URL('..', import.meta.url));
 const corpusPath = resolve(root, '.github/self-hosting/differential-corpus-v1.json');
 const selfhostModulePath = resolve(root, 'selfhost/mvp/dist/main.js');
@@ -24,11 +23,10 @@ export async function runSelfhostPromotionPerformance({
 	repositoryRoot = root,
 	output = DEFAULT_PROMOTION_PERFORMANCE_OUTPUT,
 	samples = DEFAULT_SAMPLES,
-	fixtureLimit = DEFAULT_FIXTURE_LIMIT,
 	runSample = executeWorkerSample,
 } = {}) {
 	const corpus = JSON.parse(await readFile(resolve(repositoryRoot, '.github/self-hosting/differential-corpus-v1.json'), 'utf8'));
-	const fixtureIds = selectProjectFixtures(corpus, fixtureLimit);
+	const fixtureIds = selectProjectFixtures(corpus);
 	const records = [];
 	for (const fixtureId of fixtureIds) {
 		const implementations = {};
@@ -87,14 +85,12 @@ export function evaluatePromotionPerformanceSamples(fixtures) {
 	};
 }
 
-function selectProjectFixtures(corpus, limit) {
-	if (!Number.isSafeInteger(limit) || limit <= 0) throw new Error('fixtureLimit must be a positive safe integer');
+function selectProjectFixtures(corpus) {
 	if (corpus?.schemaVersion !== 1 || !Array.isArray(corpus.fixtures)) throw new Error('differential corpus schema is invalid');
 	const ids = corpus.fixtures
 		.filter(fixture => Array.isArray(fixture.tags) && fixture.tags.includes('project') && (fixture.expectedDivergences ?? []).length === 0)
 		.map(fixture => fixture.id)
-		.sort()
-		.slice(0, limit);
+		.sort();
 	if (ids.length === 0) throw new Error('no non-divergent project differential fixtures are available for performance evidence');
 	return ids;
 }
@@ -220,7 +216,6 @@ function parseArguments(argumentsList) {
 		else if (argument.startsWith('--fixture=')) result.fixture = argument.slice('--fixture='.length);
 		else if (argument.startsWith('--output=')) result.output = argument.slice('--output='.length);
 		else if (argument.startsWith('--samples=')) result.samples = Number(argument.slice('--samples='.length));
-		else if (argument.startsWith('--fixture-limit=')) result.fixtureLimit = Number(argument.slice('--fixture-limit='.length));
 		else throw new Error(`Unknown argument: ${argument}`);
 	}
 	return result;
@@ -235,7 +230,6 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
 		const result = await runSelfhostPromotionPerformance({
 			...(options.output === undefined ? {} : { output: options.output }),
 			...(options.samples === undefined ? {} : { samples: options.samples }),
-			...(options.fixtureLimit === undefined ? {} : { fixtureLimit: options.fixtureLimit }),
 		});
 		console.log(JSON.stringify({ status: result.report.status, evidenceSha256: result.evidenceSha256 }));
 	}
