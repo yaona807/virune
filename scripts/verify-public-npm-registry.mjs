@@ -31,6 +31,7 @@ export async function verifyPublicNpmRegistry({
 	runCommand = execute,
 	platform = process.platform,
 	baseEnv = process.env,
+	bindPublicReleaseReport = false,
 } = {}) {
 	if (outputPath !== null) await rm(outputPath, { force: true });
 	const exactCommit = fullCommitSha(reviewedCommit, '$.reviewedCommit');
@@ -76,9 +77,17 @@ export async function verifyPublicNpmRegistry({
 		installation,
 		passed: true,
 	};
+	let boundReleaseReport;
+	if (bindPublicReleaseReport) {
+		assert(publicReleaseReport === undefined, '$.bindPublicReleaseReport', 'binding requires the report loaded from publicReleaseReportPath');
+		boundReleaseReport = bindPublicNpmRegistryEvidence(releaseReport, report);
+	}
 	if (outputPath !== null) {
 		await mkdir(dirname(outputPath), { recursive: true });
 		await writeFile(outputPath, `${JSON.stringify(report, null, '\t')}\n`, 'utf8');
+	}
+	if (boundReleaseReport !== undefined) {
+		await writeFile(publicReleaseReportPath, `${JSON.stringify(boundReleaseReport, null, '\t')}\n`, 'utf8');
 	}
 	return report;
 }
@@ -125,6 +134,79 @@ export function validatePublicReleaseBinding(report, { reviewedCommit, publicati
 	assert(actualSha256 === expectedSha256, '$.publicReleaseReport.assets.PUBLICATION-MANIFEST.json.sha256', 'does not match reviewed PUBLICATION-MANIFEST.json bytes');
 	assert(bytes.byteLength === asset.bytes, '$.publicReleaseReport.assets.PUBLICATION-MANIFEST.json.bytes', 'does not match reviewed PUBLICATION-MANIFEST.json byte size');
 	return { publicationManifestSha256: actualSha256, publicationManifestBytes: bytes.byteLength };
+}
+
+export function bindPublicNpmRegistryEvidence(publicReleaseReport, registryReport) {
+	const document = record(publicReleaseReport, '$.publicReleaseReport');
+	assert(document.schemaVersion === 1, '$.publicReleaseReport.schemaVersion', 'expected 1');
+	assert(document.passed === true, '$.publicReleaseReport.passed', 'public release prerequisites must have passed');
+	assert(document.npmRegistry === undefined, '$.publicReleaseReport.npmRegistry', 'stale npm Registry evidence must not already be present');
+	const publication = record(document.npmPublication, '$.publicReleaseReport.npmPublication');
+	assertExactKeys(publication, ['distTag', 'registryVersionEligible'], '$.publicReleaseReport.npmPublication');
+	assert(typeof publication.registryVersionEligible === 'boolean', '$.publicReleaseReport.npmPublication.registryVersionEligible', 'expected boolean');
+	const version = nonEmptyString(document.version, '$.publicReleaseReport.version');
+	const reviewedCommit = fullCommitSha(document.tagCommit, '$.publicReleaseReport.tagCommit');
+	assert(document.expectedCommit === reviewedCommit, '$.publicReleaseReport.expectedCommit', `expected ${reviewedCommit}`);
+
+	if (publication.registryVersionEligible === false) {
+		assert(publication.distTag === null, '$.publicReleaseReport.npmPublication.distTag', 'Registry-ineligible release must not have a dist-tag');
+		assert(registryReport === undefined || registryReport === null, '$.publicNpmRegistryReport', 'Registry-ineligible release must not bind Registry verification output');
+		return { ...document, npmRegistry: { required: false }, passed: true };
+	}
+
+	assert(publication.distTag === 'latest' || publication.distTag === 'next', '$.publicReleaseReport.npmPublication.distTag', 'expected latest or next');
+	const registryDocument = record(registryReport, '$.publicNpmRegistryReport');
+	assert(registryDocument.schemaVersion === 1, '$.publicNpmRegistryReport.schemaVersion', 'expected 1');
+	assert(registryDocument.passed === true, '$.publicNpmRegistryReport.passed', 'public npm Registry verification must have passed');
+	assert(registryDocument.registry === PUBLIC_REGISTRY, '$.publicNpmRegistryReport.registry', `expected ${PUBLIC_REGISTRY}`);
+	assert(registryDocument.version === version, '$.publicNpmRegistryReport.version', `expected ${version}`);
+	assert(registryDocument.githubReleaseTag === `v${version}`, '$.publicNpmRegistryReport.githubReleaseTag', `expected v${version}`);
+	assert(registryDocument.reviewedCommit === reviewedCommit, '$.publicNpmRegistryReport.reviewedCommit', `expected ${reviewedCommit}`);
+	assert(registryDocument.distTag === publication.distTag, '$.publicNpmRegistryReport.distTag', `expected ${publication.distTag}`);
+	const packages = array(registryDocument.packages, '$.publicNpmRegistryReport.packages');
+	assert(packages.length > 0, '$.publicNpmRegistryReport.packages', 'expected verified Registry packages');
+	const names = [];
+	for (const [index, value] of packages.entries()) {
+		const pkg = record(value, `$.publicNpmRegistryReport.packages[${index}]`);
+		const name = nonEmptyString(pkg.registryName, `$.publicNpmRegistryReport.packages[${index}].registryName`);
+		assert(pkg.version === version, `$.publicNpmRegistryReport.packages[${index}].version`, `expected ${version}`);
+		assert(pkg.distTag === publication.distTag, `$.publicNpmRegistryReport.packages[${index}].distTag`, `expected ${publication.distTag}`);
+		names.push(name);
+	}
+	assertUnique(names, '$.publicNpmRegistryReport.packages', 'registryName');
+	const installation = record(registryDocument.installation, '$.publicNpmRegistryReport.installation');
+	assert(installation.package === `virune@${version}`, '$.publicNpmRegistryReport.installation.package', `expected virune@${version}`);
+	assert(installation.registry === PUBLIC_REGISTRY, '$.publicNpmRegistryReport.installation.registry', `expected ${PUBLIC_REGISTRY}`);
+	assert(installation.versionOutput === `virune ${version}`, '$.publicNpmRegistryReport.installation.versionOutput', `expected virune ${version}`);
+	const generatedProject = record(installation.generatedProject, '$.publicNpmRegistryReport.installation.generatedProject');
+	assert(
+		JSON.stringify(generatedProject.commands) === JSON.stringify(['npm install', 'npm run check', 'npm run build', 'npm run start']),
+		'$.publicNpmRegistryReport.installation.generatedProject.commands',
+		'expected canonical generated-project consumer commands',
+	);
+	const npx = record(installation.npx, '$.publicNpmRegistryReport.installation.npx');
+	assert(npx.package === `virune@${version}`, '$.publicNpmRegistryReport.installation.npx.package', `expected virune@${version}`);
+	assert(npx.registry === PUBLIC_REGISTRY, '$.publicNpmRegistryReport.installation.npx.registry', `expected ${PUBLIC_REGISTRY}`);
+	assert(npx.acquisition === 'npm-exec', '$.publicNpmRegistryReport.installation.npx.acquisition', 'expected npm-exec');
+	assert(npx.nonInteractive === true, '$.publicNpmRegistryReport.installation.npx.nonInteractive', 'expected true');
+	const reportBytes = Buffer.from(`${JSON.stringify(registryDocument, null, '\t')}\n`, 'utf8');
+	return {
+		...document,
+		npmRegistry: {
+			required: true,
+			passed: true,
+			registry: PUBLIC_REGISTRY,
+			version,
+			reviewedCommit,
+			distTag: publication.distTag,
+			packageCount: packages.length,
+			reportSha256: createHash('sha256').update(reportBytes).digest('hex'),
+			globalCli: 'passed',
+			generatedProject: 'passed',
+			npmExec: 'passed',
+		},
+		passed: true,
+	};
 }
 
 export function validateReviewedPublicationManifest(manifest, plan) {
@@ -316,7 +398,7 @@ export async function verifyCleanGlobalCliInstall(version, {
 	}
 }
 
-function validateGeneratedProjectManifest(manifest, version) {
+export function validateGeneratedProjectManifest(manifest, version) {
 	const path = '$.installation.generatedProject.packageJson';
 	const document = record(manifest, path);
 	assertExactKeys(document, ['dependencies', 'devDependencies', 'name', 'private', 'scripts', 'type'], path);
@@ -454,11 +536,13 @@ if (entry === fileURLToPath(import.meta.url)) {
 	const publicationManifestPath = process.argv.find(argument => argument.startsWith('--publication-manifest='))?.slice('--publication-manifest='.length);
 	const publicReleaseReportPath = process.argv.find(argument => argument.startsWith('--public-release-report='))?.slice('--public-release-report='.length);
 	const outputPath = process.argv.find(argument => argument.startsWith('--output='))?.slice('--output='.length);
+	const bindPublicReleaseReport = process.argv.includes('--bind-public-release-report');
 	const report = await verifyPublicNpmRegistry({
 		reviewedCommit,
 		...(publicationManifestPath === undefined ? {} : { publicationManifestPath: resolve(publicationManifestPath) }),
 		...(publicReleaseReportPath === undefined ? {} : { publicReleaseReportPath: resolve(publicReleaseReportPath) }),
 		...(outputPath === undefined ? {} : { outputPath: resolve(outputPath) }),
+		bindPublicReleaseReport,
 	});
 	process.stdout.write(`Verified ${report.packages.length} public npm Registry packages for ${report.version}.\n`);
 }

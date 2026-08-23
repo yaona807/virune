@@ -80,6 +80,47 @@ test('packaged release installation guidance follows the reviewed npm publicatio
 	assert.match(source, /Viruneはnpm Registryへ公開しません/u);
 });
 
+test('public release verification binds required npm Registry consumer evidence before committed success', async () => {
+	const source = await readWorkflow('release-public-verify.yml');
+	assert.doesNotMatch(source, /Public prerelease verification requires a prerelease version/u);
+	assert.match(source, /node --test scripts\/verify-public-release\.test\.mjs scripts\/verify-public-npm-registry-channel\.test\.mjs/u);
+	assert.match(source, /name: Resolve public npm Registry verification requirement/u);
+	assert.match(source, /report\.npmPublication/u);
+	assert.match(source, /required=\$\{publication\.registryVersionEligible\}/u);
+	assert.match(source, /if: steps\.npm-verification\.outputs\.required == 'true'/u);
+	assert.match(source, /scripts\/verify-public-npm-registry\.mjs/u);
+	assert.match(source, /--publication-manifest=\.cache\/public-release\/PUBLICATION-MANIFEST\.json/u);
+	assert.match(source, /--public-release-report=\.cache\/public-release\/public-release-report\.json/u);
+	assert.match(source, /--bind-public-release-report/u);
+	assert.match(source, /if: steps\.npm-verification\.outputs\.required == 'false'/u);
+	assert.match(source, /bindPublicNpmRegistryEvidence/u);
+	assert.match(source, /name: Validate final public verification evidence/u);
+	assert.match(source, /report\.npmRegistry\?\.required !== required/u);
+	assert.match(source, /\.cache\/public-npm-registry\//u);
+	assert.doesNotMatch(source, /npm install --global virune/u);
+
+	const download = source.indexOf('name: Download and verify public release assets and clean CLI installation');
+	const requirement = source.indexOf('name: Resolve public npm Registry verification requirement');
+	const attestations = source.indexOf('name: Verify provenance and CycloneDX attestations');
+	const prerequisites = source.indexOf('name: Finalize GitHub Release verification prerequisites');
+	const registry = source.indexOf('name: Verify public npm Registry consumer path');
+	const notRequired = source.indexOf('name: Record npm Registry verification as not required');
+	const finalEvidence = source.indexOf('name: Validate final public verification evidence');
+	const upload = source.indexOf('name: Upload public verification evidence');
+	const commit = source.indexOf('name: Commit verification record');
+	for (const [label, position] of Object.entries({ download, requirement, attestations, prerequisites, registry, notRequired, finalEvidence, upload, commit })) {
+		assert.notEqual(position, -1, `missing public verification boundary: ${label}`);
+	}
+	assert(download < requirement, 'Registry requirement must come from the freshly downloaded exact public-release report');
+	assert(requirement < attestations, 'Registry requirement must be fixed before final prerequisite verification');
+	assert(attestations < prerequisites, 'attestation verification must finish before prerequisite evidence is finalized');
+	assert(prerequisites < registry, 'npm Registry verification must consume finalized GitHub Release prerequisites');
+	assert(prerequisites < notRequired, 'historical no-Registry evidence must consume finalized GitHub Release prerequisites');
+	assert(registry < finalEvidence && notRequired < finalEvidence, 'both Registry branches must converge before the final evidence guard');
+	assert(finalEvidence < upload, 'final evidence guard must precede artifact upload');
+	assert(upload < commit, 'only uploaded passing evidence may be committed');
+});
+
 test('public and restored VSIX legal verification are pinned to their reviewed commits', async () => {
 	const publicWorkflow = await readWorkflow('release-public-verify.yml');
 	assert.match(publicWorkflow, /VIRUNE_REVIEWED_COMMIT: \$\{\{ steps\.request\.outputs\.expected_commit \}\}/u);
