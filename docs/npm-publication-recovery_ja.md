@@ -29,6 +29,8 @@ normal pathはnpm Trusted Publishing/OIDCを使います。npmは現在、Truste
 
 stableは`latest`、承認済みprereleaseは`next`を使用し、nightlyはnpmへpublishしません。publicationは **dependency-safeな順序** で行い、**CLIを最後**にpublishします。packageのcanonical tagが見える時点で、そのpackageが必要とするexact Virune package dependencyはすべてRegistry上に存在していなければなりません。`virune` CLIは5つのplanned dependency packageがすべてexactになるまで進めません。
 
+release workflowが行うpublicationは、GitHub Actions標準のconcurrency機能を使ってrelease refをまたいで直列化します。initialのcomplete-set観測だけを根拠にmissing candidateをpublishせず、各writeの直前にcandidate自身とそのexact Virune package dependencyを再観測します。candidateがその間にexactになっていればprovenanceを検証してwriteをskipし、dependency・candidate・canonical tag stateがunknownまたはcontradictoryへ変化していればwriteを停止します。
+
 missing target versionをpublishする前に、現在のcanonical tag targetとreview済みtargetを **SemVer precedence** で比較します。normal pathでは **canonical tagを過去versionへ巻き戻さない** ことを必須とし、現在の`latest`または`next`がreview済みtargetと同一またはそれより新しいversionを指している場合、`npm publish --tag`より前に停止します。malformedなtargetや、観測したpackage version集合に存在しないtargetを指すtagもfail-closedで停止します。
 
 retryで既存の`name@version`をskipできるのは、immutableなpackage identityが一致し、canonical tagもreview済みversionを指している場合だけです。canonical tagが不一致または外部でdriftしていてもimmutableなpackage-version identity自体が変わるわけではありませんが、normal publication pathは停止します。recoveryでは **別の`npm dist-tag` mutationを使わない** うえ、tag修復のための **traditional token fallback** も導入しません。この状態はTrusted Publishing境界を暗黙に弱めず、明示的な外部調査対象とします。
