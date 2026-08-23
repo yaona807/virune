@@ -15,7 +15,7 @@ permissions:
   id-token: write
 
 concurrency:
-  group: release-${{ github.ref }}
+  group: virune-release-publication
   cancel-in-progress: false
 
 jobs:
