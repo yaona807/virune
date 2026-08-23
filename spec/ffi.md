@@ -1,6 +1,6 @@
 # JavaScript FFI
 
-[English](ffi.md) | [日本語](ffi_ja.md)
+[日本語版](ffi_ja.md)
 
 ## `[ffi.explicit]` Explicit boundary
 JavaScript and npm values enter through `extern js`. Normal imports cannot directly trust JavaScript values.
@@ -21,4 +21,4 @@ A safe extern returns `Result<T, JsError>` or an async equivalent. Generated wra
 Safe FFI accepts `Uint8Array` or `ArrayBuffer` for `Bytes` and copies the underlying data. Virune Bytes passed to JavaScript are copied. JSON represents Bytes as base64 text; invalid base64 is a decoding error. Record and enum conversion preserves Virune runtime type IDs, and Map/Set conversion restores Virune value-keyed collection semantics.
 
 ## Three-tier interop
-See [`js-interop.md`](js-interop.md). Foreign objects preserve identity and prototypes; explicit codecs are used only when values cross into native composite types.
+See [JavaScript interoperability model](js-interop.md). Foreign objects preserve identity and prototypes; explicit codecs are used only when values cross into native composite types.
