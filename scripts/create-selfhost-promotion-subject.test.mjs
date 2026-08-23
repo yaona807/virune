@@ -214,6 +214,7 @@ test('package product surface binds executable exports, engines, dependencies, a
 	try {
 		await mkdir(join(f.root, 'dist', 'src'), { recursive: true });
 		await writeFile(join(f.root, 'dist', 'src', 'index.js'), 'export const value = 1;\n', 'utf8');
+		await writeFile(join(f.root, 'dist', 'src', 'other.js'), 'export const other = 1;\n', 'utf8');
 		const packageManifest = {
 			name: '@virune/fixture',
 			version: '1.0.0',

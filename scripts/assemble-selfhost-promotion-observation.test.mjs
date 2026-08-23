@@ -57,13 +57,7 @@ function rehashQualityItem(item) {
 	return { ...record, sha256: sha(JSON.stringify(record)) };
 }
 
-async function makeFixture({
-	qualityFailure = null,
-	performanceStatus = 'passed',
-	incrementalCacheClaim = true,
-	editedRebuildProxy = false,
-	staleCommit = false,
-} = {}) {
+async function makeFixture({ qualityFailure = null, performanceWithinBudget = true, staleCommit = false } = {}) {
 	const root = await mkdtemp(join(tmpdir(), 'virune-promotion-observation-'));
 	await mkdir(join(root, '.cache'), { recursive: true });
 	await mkdir(join(root, '.github', 'self-hosting'), { recursive: true });
@@ -130,12 +124,24 @@ async function makeFixture({
 	const qualityEvidence = qualityIds.map(id => qualityItem(id, id === qualityFailure ? 'failed' : 'passed'));
 	const quality = { schemaVersion: 1, claim: 'required-selfhost-promotion-quality', productionEligible: false, status: qualityFailure === null ? 'passed' : 'failed', evidence: qualityEvidence };
 	const legacy = { coldBuildMs: 100, editedRebuildMs: 100, peakRssKb: 1000, artifactSizeBytes: 1000 };
-	const selfhost = performanceStatus === 'passed'
+	const selfhost = performanceWithinBudget
 		? { coldBuildMs: 120, editedRebuildMs: 120, peakRssKb: 1400, artifactSizeBytes: 1200 }
 		: { coldBuildMs: 130, editedRebuildMs: 130, peakRssKb: 1600, artifactSizeBytes: 1300 };
 	const ratio = (a,b) => Number((a/b).toFixed(6));
 	const ratios = { coldBuild: ratio(selfhost.coldBuildMs, legacy.coldBuildMs), editedRebuild: ratio(selfhost.editedRebuildMs, legacy.editedRebuildMs), peakRss: ratio(selfhost.peakRssKb, legacy.peakRssKb), artifactSize: ratio(selfhost.artifactSizeBytes, legacy.artifactSizeBytes) };
-	const performance = { schemaVersion: 1, claim: 'required-selfhost-relative-performance', productionEligible: false, incrementalCacheClaim, editedRebuildProxy, budget: { coldBuildRatio:1.25, editedRebuildRatio:1.25, peakRssRatio:1.5, artifactSizeRatio:1.25, majorFixtureLatencyRatio:1.5 }, fixtureIds:['fixture'], samplesPerImplementation:5, fixtures:[{ fixtureId:'fixture', implementations:{legacy,selfhost}, ratios, majorRegression:false }], aggregate:{legacy,selfhost,ratios}, status:performanceStatus };
+	const performance = {
+		schemaVersion: 1,
+		claim: 'required-selfhost-relative-performance',
+		productionEligible: false,
+		incrementalCacheClaim: false,
+		editedRebuildProxy: true,
+		budget: { coldBuildRatio:1.25, editedRebuildRatio:1.25, peakRssRatio:1.5, artifactSizeRatio:1.25, majorFixtureLatencyRatio:1.5 },
+		fixtureIds:['fixture'],
+		samplesPerImplementation:5,
+		fixtures:[{ fixtureId:'fixture', implementations:{legacy,selfhost}, ratios, majorRegression:false }],
+		aggregate:{legacy,selfhost,ratios},
+		status:'failed',
+	};
 	const policy = {
 		schemaVersion:1,
 		automaticPromotionAllowed:false,
@@ -181,16 +187,18 @@ function options(fixture, overrides = {}) {
 	};
 }
 
-test('assembles a passing canonical scheduled observation in a non-promotable report', async () => {
+test('assembles a canonical scheduled product-failed observation while Gate D incremental evidence is unavailable', async () => {
 	const fixture = await makeFixture();
 	try {
 		const result = await assembleSelfhostPromotionObservation(options(fixture));
-		assert.equal(result.observation.outcome, 'passed');
+		assert.equal(result.observation.outcome, 'product-failed');
 		assert.equal(result.observation.countsTowardPromotion, true);
 		assert.deepEqual(result.sourceEvaluation.reasons, []);
 		assert.equal(result.observation.unexplainedDifferentials, 0);
 		assert.equal(result.observation.evidence.length, requiredEvidence.length);
 		assert.deepEqual(result.observation.evidence.map(item=>item.id), [...requiredEvidence].sort());
+		assert.equal(result.observation.evidence.find(item=>item.id==='performance-smoke').status,'failed');
+		assert.equal(result.observation.evidence.find(item=>item.id==='performance-budget').status,'failed');
 		assert.equal(result.report.schemaVersion,1);
 		assert.equal(result.report.claim,'required-selfhost-promotion-observation');
 		assert.equal(result.report.productionEligible,false);
@@ -270,12 +278,7 @@ test('ambiguous browser nonzero exit cannot be forged into permanent product fai
 		const quality = JSON.parse(await readFile(join(fixture.root,'quality.json'),'utf8'));
 		const index = quality.evidence.findIndex(item => item.id === 'browser-integration');
 		const browser = qualityCommandsById.get('browser-integration');
-		const record = {
-			version:1,
-			id:'browser-integration',
-			status:'failed',
-			executions:[qualityExecution(browser.commands[0],{passed:false})],
-		};
+		const record = { version:1, id:'browser-integration', status:'failed', executions:[qualityExecution(browser.commands[0],{passed:false})] };
 		quality.evidence[index] = { ...record, sha256:sha(JSON.stringify(record)) };
 		quality.status = 'failed';
 		await writeFile(join(fixture.root,'quality.json'),JSON.stringify(quality),'utf8');
@@ -304,55 +307,16 @@ test('infrastructure-classified quality evidence cannot be converted into produc
 
 test('partial or malformed versioned evidence fails closed without an observation', async () => {
 	const cases = [
-		{
-			file:'release.json',
-			mutate:value => { value.steps.push({ ...value.steps[0], id:'future-release-step' }); },
-			expected:/release-core must contain exactly four canonical required steps/u,
-			rehash:true,
-		},
-		{
-			file:'subject.json',
-			mutate:value => { delete value.sources.releaseCoreSha256; },
-			expected:/promotion subject sources must contain exactly keys/u,
-		},
-		{
-			file:'subject.json',
-			mutate:value => { value.sources.releaseCoreSha256 = digest('9'); },
-			expected:/release-core identity disagrees/u,
-		},
-		{
-			file:'quality.json',
-			mutate:value => { value.futureStatus = 'passed'; },
-			expected:/promotion quality report must contain exactly keys/u,
-		},
-		{
-			file:'performance.json',
-			mutate:value => { value.fixtures[0].ratios.futureRatio = 1; },
-			expected:/fixtures\[0\]\.ratios must contain exactly keys/u,
-		},
-		{
-			file:'performance.json',
-			mutate:value => { value.fixtures[0].implementations.legacy.coldBuildMs = -100; },
-			expected:/implementations\.legacy\.coldBuildMs must be a positive finite number/u,
-		},
-		{
-			file:'performance.json',
-			mutate:value => {
-				value.fixtures[0].implementations.selfhost.coldBuildMs = 140;
-				value.fixtures[0].ratios.coldBuild = 1.4;
-			},
-			expected:/promotion performance aggregate\.selfhost\.coldBuildMs does not match fixture median/u,
-		},
-		{
-			file:'performance.json',
-			mutate:value => {
-				value.fixtures[0].implementations.selfhost.coldBuildMs = 125.00001;
-				value.fixtures[0].ratios.coldBuild = 1.25;
-				value.aggregate.selfhost.coldBuildMs = 125.00001;
-				value.aggregate.ratios.coldBuild = 1.25;
-			},
-			expected:/promotion performance status disagrees with Gate D evidence/u,
-		},
+		{ file:'release.json', mutate:value => { value.steps.push({ ...value.steps[0], id:'future-release-step' }); }, expected:/release-core must contain exactly four canonical required steps/u, rehash:true },
+		{ file:'subject.json', mutate:value => { delete value.sources.releaseCoreSha256; }, expected:/promotion subject sources must contain exactly keys/u },
+		{ file:'subject.json', mutate:value => { value.sources.releaseCoreSha256 = digest('9'); }, expected:/release-core identity disagrees/u },
+		{ file:'quality.json', mutate:value => { value.futureStatus = 'passed'; }, expected:/promotion quality report must contain exactly keys/u },
+		{ file:'performance.json', mutate:value => { value.fixtures[0].ratios.futureRatio = 1; }, expected:/fixtures\[0\]\.ratios must contain exactly keys/u },
+		{ file:'performance.json', mutate:value => { value.fixtures[0].implementations.legacy.coldBuildMs = -100; }, expected:/implementations\.legacy\.coldBuildMs must be a positive finite number/u },
+		{ file:'performance.json', mutate:value => { value.fixtures[0].implementations.selfhost.coldBuildMs = 140; value.fixtures[0].ratios.coldBuild = 1.4; }, expected:/promotion performance aggregate\.selfhost\.coldBuildMs does not match fixture median/u },
+		{ file:'performance.json', mutate:value => { value.incrementalCacheClaim = true; }, expected:/schema v1 must remain an edited-rebuild proxy without incremental-cache claim/u },
+		{ file:'performance.json', mutate:value => { value.editedRebuildProxy = false; }, expected:/schema v1 must remain an edited-rebuild proxy without incremental-cache claim/u },
+		{ file:'performance.json', mutate:value => { value.status = 'passed'; }, expected:/schema v1 cannot pass Gate D without real incremental evidence/u },
 	];
 	for (const { file, mutate, expected, rehash = false } of cases) {
 		const fixture = await makeFixture();
@@ -369,10 +333,7 @@ test('partial or malformed versioned evidence fails closed without an observatio
 test('malformed performance corpus metadata is rejected again by the final assembler', async () => {
 	const fixture = await makeFixture();
 	try {
-		await writeFile(join(fixture.root,'.github','self-hosting','differential-corpus-v1.json'), JSON.stringify({
-			schemaVersion:1,
-			fixtures:[{ id:'fixture', tags:['project'], expectedDivergences:'' }],
-		}), 'utf8');
+		await writeFile(join(fixture.root,'.github','self-hosting','differential-corpus-v1.json'), JSON.stringify({ schemaVersion:1, fixtures:[{ id:'fixture', tags:['project'], expectedDivergences:'' }] }), 'utf8');
 		await assert.rejects(
 			() => assembleSelfhostPromotionObservation(options(fixture)),
 			/differential corpus fixture 0 expectedDivergences must be an array/u,
@@ -383,17 +344,8 @@ test('malformed performance corpus metadata is rejected again by the final assem
 
 test('self-consistent cross-runner evidence from another generation or unperturbed environment fails closed', async () => {
 	const cases = [
-		{
-			mutate:value => { value.seed.manifestSha256 = digest('9'); },
-			expected:/cross-runner evidence generation mismatch: Seed manifest/u,
-		},
-		{
-			mutate:value => {
-				const baseline = value.profiles[0];
-				value.profiles[1] = { ...baseline, profile:'perturbed', evidenceSha256:digest('3') };
-			},
-			expected:/cross-runner environment perturbation dimensions did not actually differ/u,
-		},
+		{ mutate:value => { value.seed.manifestSha256 = digest('9'); }, expected:/cross-runner evidence generation mismatch: Seed manifest/u },
+		{ mutate:value => { const baseline = value.profiles[0]; value.profiles[1] = { ...baseline, profile:'perturbed', evidenceSha256:digest('3') }; }, expected:/cross-runner environment perturbation dimensions did not actually differ/u },
 	];
 	for (const { mutate, expected } of cases) {
 		const fixture = await makeFixture();
@@ -408,13 +360,13 @@ test('self-consistent cross-runner evidence from another generation or unperturb
 });
 
 test('known performance budget failure becomes product-failed', async () => {
-	const fixture = await makeFixture({ performanceStatus:'failed' });
+	const fixture = await makeFixture({ performanceWithinBudget:false });
 	try { assert.equal((await assembleSelfhostPromotionObservation(options(fixture))).observation.outcome,'product-failed'); }
 	finally { await fixture.cleanup(); }
 });
 
-test('edited-rebuild proxy cannot satisfy Gate D without real incremental evidence', async () => {
-	const fixture = await makeFixture({ performanceStatus:'failed', incrementalCacheClaim:false, editedRebuildProxy:true });
+test('edited-rebuild proxy cannot satisfy Gate D even when all recorded numeric budgets pass', async () => {
+	const fixture = await makeFixture();
 	try {
 		const result = await assembleSelfhostPromotionObservation(options(fixture));
 		assert.equal(result.observation.outcome,'product-failed');
@@ -467,8 +419,8 @@ test('forged subject identity and forged performance status are rejected', async
 		await assert.rejects(()=>assembleSelfhostPromotionObservation(options(fixture)),/does not match its canonical manifest/u);
 		await writeFile(join(fixture.root,'subject.json'),JSON.stringify(fixture.subject));
 		const performance = JSON.parse(await readFile(join(fixture.root,'performance.json'),'utf8'));
-		performance.status = 'failed';
+		performance.status = 'passed';
 		await writeFile(join(fixture.root,'performance.json'),JSON.stringify(performance));
-		await assert.rejects(()=>assembleSelfhostPromotionObservation(options(fixture)),/status disagrees with Gate D evidence/u);
+		await assert.rejects(()=>assembleSelfhostPromotionObservation(options(fixture)),/schema v1 cannot pass Gate D without real incremental evidence/u);
 	} finally { await fixture.cleanup(); }
 });
