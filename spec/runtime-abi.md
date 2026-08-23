@@ -1,6 +1,6 @@
 # Runtime ABI v2
 
-[日本語](runtime-abi_ja.md)
+[日本語版](runtime-abi_ja.md)
 
 Virune 1.0.0 emits ES2022 modules against Runtime ABI v2.
 
