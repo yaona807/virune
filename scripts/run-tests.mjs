@@ -53,6 +53,7 @@ const groups = platformSmoke ? platformGroups : [
 				'scripts/verify-npm-publication-plan.test.mjs',
 				'scripts/verify-npm-publication-license.test.mjs',
 				'scripts/verify-npm-publication-recovery.test.mjs',
+				'scripts/publish-npm-release.test.mjs',
 			],
 		},
 		{
