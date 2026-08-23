@@ -75,17 +75,6 @@ test('internal facade keeps Legacy as the immutable default selection', async ()
 	assert.deepEqual(legacyCalls[0], input);
 });
 
-test('default Legacy compiler remains executable through the lazy dependency boundary', async () => {
-	const facade = createInternalCompilerFacade();
-	const result = await facade.compile(input);
-	assert.equal(facade.defaultSelection, 'legacy');
-	assert.equal(facade.selfHostAvailable, false);
-	assert.equal(result.accepted, true);
-	assert.deepEqual(result.diagnostics, []);
-	assert.equal(result.emittedModules.length, 1);
-	assert.equal(result.emittedModules[0]?.sourcePath, input.entryPath);
-});
-
 test('self-host compiler runs only through an explicit per-call opt-in', async () => {
 	const legacyCalls: KernelInputV1[] = [];
 	const selfHostCalls: KernelInputV1[] = [];

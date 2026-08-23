@@ -21,6 +21,7 @@ export const REQUIRED_SELFHOST_HOST_FILES = Object.freeze([
 	'selfhost/bootstrap-stage-runner.js',
 	'selfhost/compiler-facade.js',
 	'selfhost/contract.js',
+	'selfhost/legacy-adapter.js',
 	'selfhost/mvp-adapter.js',
 	'selfhost/project-compiler-adapter.js',
 	'selfhost/source-manifest.js',
