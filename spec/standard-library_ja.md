@@ -1,17 +1,17 @@
-# 標準型・標準ライブラリ契約
+# 標準型と標準ライブラリの契約
 
-[English](standard-library.md) | [日本語](standard-library_ja.md)
+[英語版](standard-library.md)
 
-## `[stdlib.bytes]` Byteとbyte列
-`Byte`は`0..255`を検査するnewtype integerです。`Bytes`は不変byte列で、JavaScript境界ではcopyした`Uint8Array`として表現します。`MutableBytes`は明示的に可変なbufferです。`Bytes`との相互変換ではstorageをcopyし、不変値がalias経由で変更されることを防ぎます。
+## `[stdlib.bytes]` Byteとバイト列
+`Byte`は`0..255`の範囲を検査するnewtype整数です。`Bytes`は不変のバイト列で、JavaScriptとの境界ではコピーした`Uint8Array`として表現します。`MutableBytes`は明示的に可変なbufferです。`Bytes`との相互変換ではストレージをコピーし、不変値がalias経由で変更されることを防ぎます。
 
-JSONは`Bytes`をbase64文字列としてencodeします。File／HTTP APIは`Bytes`と`HttpBody.Bytes`でbinary bodyを扱います。
+JSONでは`Bytes`をbase64文字列としてencodeします。File / HTTP APIでは、`Bytes`と`HttpBody.Bytes`を使ってバイナリbodyを受け渡します。
 
 ## `[stdlib.fixed-integer]` 固定幅整数
-`Int8`、`UInt8`、`Int16`、`UInt16`、`Int32`、`UInt32`は検査付き`Int`表現です。`Int64`と`UInt64`は検査付き`BigInt`表現です。constructorは`Result<_, IntegerRangeError>`を返し、wrapやtruncateを行いません。
+`Int8`、`UInt8`、`Int16`、`UInt16`、`Int32`、`UInt32`は、範囲を検査する`Int`表現を使います。`Int64`と`UInt64`は、範囲を検査する`BigInt`表現を使います。constructorは`Result<_, IntegerRangeError>`を返し、wrapやtruncateは行いません。
 
-## `[stdlib.unicode]` Unicode text
-既存のString index、slice、`String.length`はUnicode code point単位です。`String.graphemes`と`String.graphemeLength`はextended grapheme cluster単位です。NFC、NFD、NFKC、NFKD正規化は明示的APIとして提供し、暗黙には適用しません。
+## `[stdlib.unicode]` Unicodeテキスト
+既存のString index、slice、`String.length`はUnicodeコードポイント単位です。`String.graphemes`と`String.graphemeLength`はextended grapheme cluster単位です。NFC、NFD、NFKC、NFKDの正規化は明示的なAPIとして提供し、暗黙には適用しません。
 
-## `[collection.eq-hash]` 値比較collection
-`Map`と`Set`はJavaScript identity collectionではなく、Viruneの値collectionです。key／elementの検索にはVirune `Eq`と`Hash`を使います。不変更新操作は新しいcollectionを返します。JavaScript identityを使うcollectionは通常のVirune Map／Setとして公開しません。
+## `[collection.eq-hash]` 値で比較するコレクション
+`Map`と`Set`はJavaScriptのidentity collectionではなく、Viruneの値コレクションです。キーや要素の検索にはViruneの`Eq`と`Hash`を使います。不変更新では新しいコレクションを返します。JavaScriptのidentityを使うコレクションを、通常のVirune `Map` / `Set`として公開することはありません。
