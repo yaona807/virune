@@ -85,6 +85,7 @@ export async function executePublication(identity, candidates, { observe, verify
 		if (initial.get(candidate.registryName).state === 'exact') await verifyProvenance(candidate);
 	}
 
+	const byName = new Map(candidates.map(candidate => [candidate.registryName, candidate]));
 	const published = [];
 	const skipped = [];
 	for (const candidate of candidates) {
@@ -94,6 +95,26 @@ export async function executePublication(identity, candidates, { observe, verify
 			continue;
 		}
 		assert(state.state === 'missing', `$.registry.${candidate.registryName}`, 'unexpected publication state');
+
+		for (const dependencyName of NPM_INTERNAL_DEPENDENCIES[candidate.registryName]) {
+			const dependency = byName.get(dependencyName);
+			assert(dependency !== undefined, `$.packages.${candidate.registryName}`, `missing publication candidate for dependency ${dependencyName}`);
+			const dependencyState = await observe(dependency);
+			assert(
+				dependencyState.state === 'exact',
+				`$.registry.${candidate.registryName}`,
+				`dependency ${dependencyName} is no longer exact immediately before publication`,
+			);
+		}
+
+		const beforeWrite = await observe(candidate);
+		if (beforeWrite.state === 'exact') {
+			await verifyProvenance(candidate);
+			skipped.push(candidate.registryName);
+			continue;
+		}
+		assert(beforeWrite.state === 'missing', `$.registry.${candidate.registryName}`, 'pre-write Registry state is neither exact nor missing');
+
 		await publish(candidate);
 		const after = await observe(candidate);
 		assert(after.state === 'exact', `$.registry.${candidate.registryName}`, 'publish did not converge to the exact reviewed Registry identity');
