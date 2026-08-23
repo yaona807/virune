@@ -33,6 +33,32 @@ test('releases generate provenance and SBOM attestations for every asset', async
 	assert.match(source, /sbom-path: release\/SBOM\.cdx\.json/u);
 });
 
+test('normal npm publication uses the reviewed release boundary and precedes immutable GitHub Release creation', async () => {
+	const source = await readWorkflow('release.yml');
+	assert.match(source, /id-token:\s+write/u);
+	assert.match(source, /npm install --global npm@11\.19\.0 --ignore-scripts --no-audit --no-fund/u);
+	assert.match(source, /test "\$\(npm --version\)" = "11\.19\.0"/u);
+	assert.match(source, /node scripts\/publish-npm-release\.mjs --expected-commit="\$GITHUB_SHA"/u);
+	assert.doesNotMatch(source, /NPM_TOKEN|NODE_AUTH_TOKEN/u);
+	assert.doesNotMatch(source, /npm\s+dist-tag/u);
+	assert.doesNotMatch(source, /registry-url:/u);
+
+	const releaseGate = source.indexOf('npm run release:gate');
+	const provenance = source.indexOf('name: Attest release build provenance');
+	const sbom = source.indexOf('name: Attest release SBOM');
+	const npmPin = source.indexOf('name: Pin npm Trusted Publishing client');
+	const npmPublish = source.indexOf('name: Publish reviewed npm Registry packages');
+	const githubRelease = source.indexOf('name: Create immutable GitHub Release');
+	for (const [label, position] of Object.entries({ releaseGate, provenance, sbom, npmPin, npmPublish, githubRelease })) {
+		assert.notEqual(position, -1, `missing release workflow boundary: ${label}`);
+	}
+	assert(releaseGate < provenance, 'release gate must precede release attestations');
+	assert(provenance < sbom, 'build provenance must precede SBOM attestation');
+	assert(sbom < npmPin, 'release attestations must complete before selecting the npm publication client');
+	assert(npmPin < npmPublish, 'the exact npm client must be selected before publication');
+	assert(npmPublish < githubRelease, 'npm publication/recovery must run before immutable GitHub Release creation');
+});
+
 test('public and restored VSIX legal verification are pinned to their reviewed commits', async () => {
 	const publicWorkflow = await readWorkflow('release-public-verify.yml');
 	assert.match(publicWorkflow, /VIRUNE_REVIEWED_COMMIT: \$\{\{ steps\.request\.outputs\.expected_commit \}\}/u);
