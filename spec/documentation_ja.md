@@ -31,25 +31,25 @@ Viruneでは、3種類の行コメントを区別します。
 - トップレベルの`let`と`const`宣言
 - extern blockとextern function
 
-import、test、parameter、local variable、statement、expressionには付けられません。宣言へ関連付けられていないドキュメントコメントや、対応していない対象に付けられたドキュメントコメントはコンパイルエラーです。
+import、test、パラメーター、ローカル変数、文、式には付けられません。宣言へ関連付けられていないドキュメントコメントや、対応していない対象に付けられたドキュメントコメントはコンパイルエラーです。
 
 ## `[documentation.normalization]` 本文の正規化
 
-各行からmarkerを取り除き、その直後にASCII spaceがある場合は最大1文字だけ取り除きます。残りの行はLFで連結し、先頭と末尾にある空のドキュメント行を取り除きます。コメントグループ全体のソース範囲は保持します。
+各行からマーカーを取り除き、その直後にASCII spaceがある場合は最大1文字だけ取り除きます。残りの行はLFで連結し、先頭と末尾にある空のドキュメント行を取り除きます。コメントグループ全体のソース範囲は保持します。
 
 フォーマッターは、本文が空でない`///`または`//!`の直後にASCII spaceを1文字入れます。Markdown本文の自動折り返しは行いません。
 
 ## `[documentation.markdown]` Markdown
 
-本文はCommonMark 0.31.2互換のMarkdownです。公式ツールはraw HTMLを描画しません。最初の段落を概要として、補完やシンボル向けUIで使用します。Hoverや生成ドキュメントでは全文を表示できます。
+本文はCommonMark 0.31.2互換のMarkdownです。公式ツールは生のHTMLを描画しません。最初の段落を概要として、補完やシンボル向けUIで使用します。Hoverや生成ドキュメントでは全文を表示できます。
 
-`Parameters`、`Returns`、`Errors`、`Panics`、`Safety`、`Examples`などの見出しは慣例であり、言語構文ではありません。Virune 1.0では、`@param`、`@return`、XML tag、見出し名に特別な意味を与えません。
+`Parameters`、`Returns`、`Errors`、`Panics`、`Safety`、`Examples`などの見出しは慣例であり、言語構文ではありません。Virune 1.0では、`@param`、`@return`、XMLタグ、見出し名に特別な意味を与えません。
 
 ## `[documentation.semantics]` コンパイル時の意味
 
 ドキュメントは正規化済みのテキストとしてASTに保持します。名前解決、型検査、JavaScript出力、Runtime ABI、Stable APIの互換性スナップショットには影響しません。
 
-公式のエディタツールは、Hover、補完、Signature Help、snippet、ドキュメント生成のCode Actionを通じてドキュメントを提供します。
+公式のエディタツールは、Hover、補完、Signature Help、スニペット、ドキュメント生成のCode Actionを通じてドキュメントを提供します。
 
 ## `[documentation.diagnostics]` 診断
 
