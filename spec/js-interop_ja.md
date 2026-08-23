@@ -8,7 +8,7 @@
 
 1. **Direct Facade**：`import js`で、型宣言されたJavaScript APIのうち保守的に扱える範囲だけを公開します。依存パッケージのソースコードは変換せず、そのまま実行します。
 2. **Compiled Adapter**：複雑なTypeScript APIを`*.interop.ts`へ分離し、固定されたTypeScript Providerで型検査してからESMへ出力します。
-3. **Unsafe境界**：利用可能な型宣言がないAPIや、本質的に動的なAPIだけで`unsafe extern js`を使用します。
+3. **Unsafe境界**：利用可能な型宣言がないAPIや、本質的に動的なAPIに限って`unsafe extern js`を使用します。
 
 ## Direct Facade
 
