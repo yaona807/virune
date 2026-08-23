@@ -124,15 +124,19 @@ export async function observeRegistryCandidate(candidate, version, distTag, {
 	if (metadata === null) {
 		if (packument === null) return { state: 'missing' };
 		assert(packument.name === candidate.registryName, `$.registry.${candidate.registryName}.packument.name`, `expected ${candidate.registryName}`);
-		const versions = packument.versions;
-		if (versions !== undefined) {
-			assert(versions !== null && typeof versions === 'object' && !Array.isArray(versions), `$.registry.${candidate.registryName}.packument.versions`, 'expected an object');
-			assert(!Object.hasOwn(versions, version), `$.registry.${candidate.registryName}`, 'version endpoint is missing while packument contains the target version');
-		}
-		const tags = packument['dist-tags'];
-		if (tags !== undefined) {
-			assert(tags !== null && typeof tags === 'object' && !Array.isArray(tags), `$.registry.${candidate.registryName}.dist-tags`, 'expected an object');
-			assert(tags[distTag] !== version, `$.registry.${candidate.registryName}.dist-tags.${distTag}`, 'canonical tag points to a version that the version endpoint reports missing');
+		const versions = record(packument.versions, `$.registry.${candidate.registryName}.packument.versions`);
+		assert(!Object.hasOwn(versions, version), `$.registry.${candidate.registryName}`, 'version endpoint is missing while packument contains the target version');
+		const tags = record(packument['dist-tags'], `$.registry.${candidate.registryName}.dist-tags`);
+		const canonicalTarget = tags[distTag];
+		if (canonicalTarget !== undefined) {
+			const current = parseRegistryReleaseVersion(canonicalTarget, `$.registry.${candidate.registryName}.dist-tags.${distTag}`);
+			assert(Object.hasOwn(versions, current.text), `$.registry.${candidate.registryName}.dist-tags.${distTag}`, `canonical tag target ${current.text} is absent from packument versions`);
+			const target = parseRegistryReleaseVersion(version, '$.version');
+			assert(
+				compareRegistryReleaseVersions(current, target) < 0,
+				`$.registry.${candidate.registryName}.dist-tags.${distTag}`,
+				`canonical tag target ${current.text} is not older than publication target ${target.text}; refusing a stale or contradictory tag update`,
+			);
 		}
 		return { state: 'missing' };
 	}
@@ -296,6 +300,32 @@ async function fetchOptionalJson(url, fetchImpl, label) {
 	} catch (error) {
 		throw new Error(`Public npm Registry returned malformed JSON for ${label}: ${error instanceof Error ? error.message : String(error)}`);
 	}
+}
+
+function parseRegistryReleaseVersion(value, path) {
+	const text = nonEmptyString(value, path);
+	const match = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-(alpha|beta|rc)\.(0|[1-9]\d*))?$/u.exec(text);
+	assert(match !== null, path, 'expected stable, alpha, beta, or rc Virune semantic version');
+	return {
+		text,
+		base: match.slice(1, 4).map(Number),
+		prerelease: match[4] === undefined ? null : { channel: match[4], number: Number(match[5]) },
+	};
+}
+
+function compareRegistryReleaseVersions(left, right) {
+	for (let index = 0; index < 3; index += 1) {
+		if (left.base[index] !== right.base[index]) return left.base[index] < right.base[index] ? -1 : 1;
+	}
+	if (left.prerelease === null && right.prerelease === null) return 0;
+	if (left.prerelease === null) return 1;
+	if (right.prerelease === null) return -1;
+	const channels = { alpha: 0, beta: 1, rc: 2 };
+	if (channels[left.prerelease.channel] !== channels[right.prerelease.channel]) {
+		return channels[left.prerelease.channel] < channels[right.prerelease.channel] ? -1 : 1;
+	}
+	if (left.prerelease.number === right.prerelease.number) return 0;
+	return left.prerelease.number < right.prerelease.number ? -1 : 1;
 }
 
 function assertCommandSuccess(result, label) {
