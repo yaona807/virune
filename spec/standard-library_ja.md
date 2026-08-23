@@ -14,4 +14,4 @@ JSONでは`Bytes`をbase64文字列としてエンコードします。ファイ
 既存のStringのインデックス参照、スライス、`String.length`はUnicodeコードポイント単位です。`String.graphemes`と`String.graphemeLength`は拡張書記素クラスタ単位です。NFC、NFD、NFKC、NFKDの正規化は明示的な操作として提供し、暗黙には適用しません。
 
 ## `[collection.eq-hash]` 値の等価性で比較するコレクション
-`Map`と`Set`は、JavaScriptのオブジェクト同一性ではなく、Viruneの値としてキーや要素を比較します。キーや要素の検索にはViruneの`Eq`と`Hash`を使います。不変更新では新しいコレクションを返します。JavaScriptのオブジェクト同一性を基準にしたコレクションを、通常のVirune `Map` / `Set`として公開することはありません。
+`Map`と`Set`は、JavaScript標準の同一性判定ではなく、Viruneの値としてキーや要素を比較します。キーや要素の検索にはViruneの`Eq`と`Hash`を使います。不変更新では新しいコレクションを返します。JavaScript標準の同一性判定を基準にしたコレクションを、通常のVirune `Map` / `Set`として公開することはありません。
