@@ -32,11 +32,12 @@ test('unknown or partial observation cannot authorize writes', () => {
 	}
 });
 
-test('exact recovery requires every reviewed identity dimension', () => {
+test('exact recovery requires every reviewed identity dimension including canonical dist-tag', () => {
 	for (const mutation of [
 		identity => identity.pop(),
 		identity => { identity[2] = 'sha1-only'; },
 		identity => { [identity[4], identity[5]] = [identity[5], identity[4]]; },
+		identity => { identity[7] = 'tag-presence-only'; },
 	]) {
 		withFixture((fixture, policy) => {
 			mutation(policy.packageVersionPhase.requiredObservedIdentity);
@@ -55,6 +56,7 @@ test('exact recovery identity dimensions have canonical comparison rules', () =>
 		rules => { rules.registryDistIntegrity = 'trust-metadata-without-bytes'; },
 		rules => { delete rules.sourceCommit; },
 		rules => { rules.provenanceWorkflow = 'any-workflow'; },
+		rules => { rules.canonicalDistTag = 'any-tag'; },
 	]) {
 		withFixture((fixture, policy) => {
 			mutation(policy.packageVersionPhase.identityMatchRules);
@@ -73,6 +75,15 @@ test('exact partial publication can resume only missing reviewed candidates', ()
 	});
 });
 
+test('all-exact state performs no further Registry mutation', () => {
+	withFixture((fixture, policy) => {
+		const state = policy.packageVersionPhase.states.find(item => item.state === 'all-exact-observed');
+		state.decision = 'advance-to-dist-tag-phase';
+		writeJson(resolve(fixture, '.github/release/npm-publication-recovery-v1.json'), policy);
+		assert.throws(() => verifyNpmPublicationRecoveryPolicy(fixture), /complete-package-version-publication\/none/u);
+	});
+});
+
 test('identity mismatch permanently blocks package-version reuse and forbidden recovery is immutable', () => {
 	withFixture((fixture, policy) => {
 		policy.packageVersionPhase.states.find(item => item.state === 'identity-mismatch').decision = 'retry';
@@ -86,48 +97,35 @@ test('identity mismatch permanently blocks package-version reuse and forbidden r
 	});
 });
 
-test('dist-tag recovery requires exact package state and idempotent tag-only convergence', () => {
-	withFixture((fixture, policy) => {
-		policy.distTagPhase.requiresAllPackageVersionsExact = false;
-		writeJson(resolve(fixture, '.github/release/npm-publication-recovery-v1.json'), policy);
-		assert.throws(() => verifyNpmPublicationRecoveryPolicy(fixture), /all package versions must be exact/u);
-	});
-	withFixture((fixture, policy) => {
-		policy.distTagPhase.partialPromotionDecision = 'republish-packages';
-		writeJson(resolve(fixture, '.github/release/npm-publication-recovery-v1.json'), policy);
-		assert.throws(() => verifyNpmPublicationRecoveryPolicy(fixture), /partial canonical tag promotion must converge tags only/u);
-	});
-	withFixture((fixture, policy) => {
-		policy.distTagPhase.tagConvergenceIdempotentRequired = false;
-		writeJson(resolve(fixture, '.github/release/npm-publication-recovery-v1.json'), policy);
-		assert.throws(() => verifyNpmPublicationRecoveryPolicy(fixture), /tag convergence must be idempotent/u);
-	});
-	withFixture((fixture, policy) => {
-		policy.distTagPhase.packageRepublishAllowed = true;
-		writeJson(resolve(fixture, '.github/release/npm-publication-recovery-v1.json'), policy);
-		assert.throws(() => verifyNpmPublicationRecoveryPolicy(fixture), /must never republish package versions/u);
-	});
-	withFixture((fixture, policy, plan) => {
-		policy.distTagPhase.canonicalStableTag = 'stable';
-		writeJson(resolve(fixture, '.github/release/npm-publication-recovery-v1.json'), policy);
-		assert.throws(() => verifyNpmPublicationRecoveryPolicy(fixture), /stable recovery must converge to latest/u);
-		assert.equal(plan.distTagPolicy.stable, 'latest');
-	});
-});
-
-test('dist-tag recovery cannot downgrade a newer canonical release', () => {
+test('canonical dist-tags are applied by npm publish with dependency-safe CLI-last ordering', () => {
 	for (const mutation of [
-		phase => { phase.targetVersionOrdering = 'lexical'; },
-		phase => { phase.canonicalTagDowngradeAllowed = true; },
-		phase => { phase.newerCanonicalTargetDecision = 'converge-tags'; },
-		phase => { phase.unexpectedCanonicalTargetDecision = 'converge-tags'; },
+		policy => { policy.distTagPolicy.application = 'separate-dist-tag-command'; },
+		policy => { policy.distTagPolicy.dependencySafeOrderRequired = false; },
+		policy => { policy.distTagPolicy.cliLastRequired = false; },
+		policy => { policy.distTagPolicy.separateDistTagMutationAllowed = true; },
+		policy => { policy.distTagPolicy.traditionalTokenTagRepairAllowed = true; },
+		policy => { policy.distTagPolicy.incompatibleExistingTagDecision = 'repair-with-token'; },
 	]) {
 		withFixture((fixture, policy) => {
-			mutation(policy.distTagPhase);
+			mutation(policy);
 			writeJson(resolve(fixture, '.github/release/npm-publication-recovery-v1.json'), policy);
 			assert.throws(() => verifyNpmPublicationRecoveryPolicy(fixture));
 		});
 	}
+});
+
+test('recovery canonical tags stay synchronized with the publication plan', () => {
+	withFixture((fixture, policy, plan) => {
+		policy.distTagPolicy.canonicalStableTag = 'stable';
+		writeJson(resolve(fixture, '.github/release/npm-publication-recovery-v1.json'), policy);
+		assert.throws(() => verifyNpmPublicationRecoveryPolicy(fixture), /stable publication must use latest/u);
+		assert.equal(plan.distTagPolicy.stable, 'latest');
+	});
+	withFixture((fixture, policy) => {
+		policy.distTagPolicy.canonicalPrereleaseTag = 'beta';
+		writeJson(resolve(fixture, '.github/release/npm-publication-recovery-v1.json'), policy);
+		assert.throws(() => verifyNpmPublicationRecoveryPolicy(fixture), /prerelease publication must use next/u);
+	});
 });
 
 test('recovery policy cannot claim publication readiness or remove public verification', () => {
