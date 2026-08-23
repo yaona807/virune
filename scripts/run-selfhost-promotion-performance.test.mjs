@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import test from 'node:test';
-import { evaluatePromotionPerformanceSamples, PROMOTION_PERFORMANCE_BUDGET } from './run-selfhost-promotion-performance.mjs';
+import { evaluatePromotionPerformanceSamples, PROMOTION_PERFORMANCE_BUDGET, runSelfhostPromotionPerformance } from './run-selfhost-promotion-performance.mjs';
 
 function sample(coldBuildMs, editedRebuildMs, peakRssKb, artifactSizeBytes) {
 	return { coldBuildMs, editedRebuildMs, peakRssKb, artifactSizeBytes };
@@ -16,6 +19,30 @@ test('passes ratios inside Gate D aggregate and per-fixture budgets', () => {
 	assert.equal(result.passed, true);
 	assert.ok(result.ratios.coldBuild <= PROMOTION_PERFORMANCE_BUDGET.coldBuildRatio);
 	assert.ok(result.records.every(record => record.majorRegression === false));
+});
+
+test('canonical runner measures every non-divergent project fixture instead of truncating the corpus', async () => {
+	const root = await mkdtemp(join(tmpdir(), 'virune-promotion-performance-'));
+	try {
+		await mkdir(join(root, '.github', 'self-hosting'), { recursive: true });
+		const fixtures = Array.from({ length: 7 }, (_, index) => ({ id: `project-${index + 1}`, tags: ['project'], expectedDivergences: [] }));
+		fixtures.push({ id: 'not-project', tags: ['smoke'], expectedDivergences: [] });
+		fixtures.push({ id: 'expected-divergence', tags: ['project'], expectedDivergences: ['known'] });
+		await writeFile(join(root, '.github', 'self-hosting', 'differential-corpus-v1.json'), JSON.stringify({ schemaVersion: 1, fixtures }), 'utf8');
+		const result = await runSelfhostPromotionPerformance({
+			repositoryRoot: root,
+			output: 'performance.json',
+			samples: 1,
+			runSample: async ({ implementation }) => implementation === 'legacy'
+				? sample(100, 100, 1000, 1000)
+				: sample(110, 110, 1100, 1100),
+		});
+		assert.deepEqual(result.report.fixtureIds, fixtures.slice(0, 7).map(item => item.id).sort());
+		assert.equal(result.report.fixtures.length, 7);
+		assert.equal(result.report.status, 'passed');
+	} finally {
+		await rm(root, { recursive: true, force: true });
+	}
 });
 
 test('fails when aggregate cold or edited rebuild exceeds 1.25x', () => {
