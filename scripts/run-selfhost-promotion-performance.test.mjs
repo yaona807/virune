@@ -51,6 +51,27 @@ test('canonical runner measures every non-divergent project fixture instead of t
 	}
 });
 
+test('canonical runner rejects malformed corpus metadata instead of silently narrowing performance scope', async () => {
+	const root = await mkdtemp(join(tmpdir(), 'virune-promotion-performance-malformed-'));
+	try {
+		await mkdir(join(root, '.github', 'self-hosting'), { recursive: true });
+		const base = { id: 'project-1', tags: ['project'], expectedDivergences: [] };
+		for (const malformed of [
+			{ ...base, tags: 'project' },
+			{ ...base, expectedDivergences: '' },
+			{ ...base, id: ' ' },
+		]) {
+			await writeFile(join(root, '.github', 'self-hosting', 'differential-corpus-v1.json'), JSON.stringify({ schemaVersion: 1, fixtures: [malformed] }), 'utf8');
+			await assert.rejects(
+				() => runSelfhostPromotionPerformance({ repositoryRoot: root, output: 'performance.json', samples: 1, runSample: async () => sample(100, 100, 1000, 1000) }),
+				/differential corpus fixture/u,
+			);
+		}
+	} finally {
+		await rm(root, { recursive: true, force: true });
+	}
+});
+
 test('fails when aggregate cold or edited rebuild exceeds 1.25x', () => {
 	const result = evaluatePromotionPerformanceSamples([
 		fixture('a', [sample(100, 100, 1000, 1000)], [sample(130, 126, 1000, 1000)]),
