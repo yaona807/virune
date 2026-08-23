@@ -87,11 +87,19 @@ export function evaluatePromotionPerformanceSamples(fixtures) {
 
 function selectProjectFixtures(corpus) {
 	if (corpus?.schemaVersion !== 1 || !Array.isArray(corpus.fixtures)) throw new Error('differential corpus schema is invalid');
-	const ids = corpus.fixtures
-		.filter(fixture => Array.isArray(fixture.tags) && fixture.tags.includes('project') && (fixture.expectedDivergences ?? []).length === 0)
-		.map(fixture => fixture.id)
-		.sort();
+	const ids = [];
+	for (const [index, fixture] of corpus.fixtures.entries()) {
+		if (fixture === null || typeof fixture !== 'object' || Array.isArray(fixture)) throw new Error(`differential corpus fixture ${index} must be an object`);
+		if (!Array.isArray(fixture.tags) || fixture.tags.some(tag => typeof tag !== 'string' || tag.length === 0)) throw new Error(`differential corpus fixture ${index} tags are invalid`);
+		const expectedDivergences = fixture.expectedDivergences ?? [];
+		if (!Array.isArray(expectedDivergences)) throw new Error(`differential corpus fixture ${index} expectedDivergences must be an array`);
+		if (!fixture.tags.includes('project') || expectedDivergences.length !== 0) continue;
+		if (typeof fixture.id !== 'string' || fixture.id.length === 0 || fixture.id.trim() !== fixture.id) throw new Error(`differential corpus fixture ${index} id is invalid`);
+		ids.push(fixture.id);
+	}
+	ids.sort();
 	if (ids.length === 0) throw new Error('no non-divergent project differential fixtures are available for performance evidence');
+	if (new Set(ids).size !== ids.length) throw new Error('performance fixture selection contains duplicate fixture IDs');
 	return ids;
 }
 
