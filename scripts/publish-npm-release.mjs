@@ -26,7 +26,7 @@ export const NPM_PUBLICATION_ORDER = [
 	'virune',
 ];
 
-const INTERNAL_DEPENDENCIES = {
+export const NPM_INTERNAL_DEPENDENCIES = {
 	'@virune/runtime': [],
 	'@virune/compiler': ['@virune/runtime'],
 	'@virune/formatter': ['@virune/compiler'],
@@ -99,6 +99,14 @@ export async function executePublication(identity, candidates, { observe, verify
 		await verifyProvenance(candidate);
 		published.push(candidate.registryName);
 	}
+
+	const final = new Map();
+	for (const candidate of candidates) final.set(candidate.registryName, await observe(candidate));
+	validateObservedDependencyClosure(final);
+	for (const candidate of candidates) {
+		assert(final.get(candidate.registryName).state === 'exact', `$.registry.${candidate.registryName}`, 'final complete-set Registry observation is not exact');
+		await verifyProvenance(candidate);
+	}
 	return { version: identity.version, eligible: true, published, skipped };
 }
 
@@ -152,7 +160,7 @@ export function validateObservedDependencyClosure(observations) {
 		const state = observations.get(name);
 		assert(state !== undefined, `$.registry.${name}`, 'missing complete-set observation');
 		if (state.state !== 'exact') continue;
-		for (const dependency of INTERNAL_DEPENDENCIES[name]) {
+		for (const dependency of NPM_INTERNAL_DEPENDENCIES[name]) {
 			assert(observations.get(dependency)?.state === 'exact', `$.registry.${name}`, `exact package requires exact dependency ${dependency}`);
 		}
 	}
@@ -213,7 +221,12 @@ export function assertTrustedPublishingEnvironment(env, expectedCommit) {
 	assert(env.RUNNER_ENVIRONMENT === 'github-hosted', '$env.RUNNER_ENVIRONMENT', 'npm Trusted Publishing requires the GitHub-hosted release runner');
 	assert(env.GITHUB_REPOSITORY === EXPECTED_REPOSITORY, '$env.GITHUB_REPOSITORY', `expected ${EXPECTED_REPOSITORY}`);
 	assert(env.GITHUB_SHA === expectedCommit, '$env.GITHUB_SHA', 'expected release commit must equal GitHub Actions head');
-	assert(typeof env.GITHUB_WORKFLOW_REF === 'string' && env.GITHUB_WORKFLOW_REF.includes(`/${EXPECTED_WORKFLOW}@`), '$env.GITHUB_WORKFLOW_REF', `expected ${EXPECTED_WORKFLOW}`);
+	assert(env.GITHUB_EVENT_NAME === 'push', '$env.GITHUB_EVENT_NAME', 'canonical release workflow must run from a push event');
+	const githubRef = nonEmptyString(env.GITHUB_REF, '$env.GITHUB_REF');
+	const workflowRef = nonEmptyString(env.GITHUB_WORKFLOW_REF, '$env.GITHUB_WORKFLOW_REF');
+	const expectedWorkflowPrefix = `${EXPECTED_REPOSITORY}/${EXPECTED_WORKFLOW}@`;
+	assert(workflowRef.startsWith(expectedWorkflowPrefix), '$env.GITHUB_WORKFLOW_REF', `expected ${EXPECTED_WORKFLOW}`);
+	assert(workflowRef.slice(expectedWorkflowPrefix.length) === githubRef, '$env.GITHUB_WORKFLOW_REF', 'workflow ref must equal the exact release ref');
 	nonEmptyString(env.ACTIONS_ID_TOKEN_REQUEST_URL, '$env.ACTIONS_ID_TOKEN_REQUEST_URL');
 	nonEmptyString(env.ACTIONS_ID_TOKEN_REQUEST_TOKEN, '$env.ACTIONS_ID_TOKEN_REQUEST_TOKEN');
 	return true;
@@ -268,18 +281,28 @@ function npmCliVersion(runNpm, env) {
 	return String(result.stdout ?? '').trim();
 }
 
-function isolatedNpmEnvironment(baseEnv, root) {
+export function isolatedNpmEnvironment(baseEnv, root) {
+	const env = {};
+	for (const [key, value] of Object.entries(baseEnv)) {
+		const upper = key.toUpperCase();
+		if (upper.startsWith('NPM_CONFIG_') || upper === 'NPM_TOKEN' || upper === 'NODE_AUTH_TOKEN') continue;
+		if (upper === 'HOME' || upper === 'USERPROFILE' || upper === 'XDG_CONFIG_HOME') continue;
+		if (value !== undefined) env[key] = value;
+	}
 	const userConfig = resolve(root, 'user.npmrc');
 	const globalConfig = resolve(root, 'global.npmrc');
+	const cache = resolve(root, 'cache');
 	writeFileSync(userConfig, `registry=${PUBLIC_REGISTRY}\nreplace-registry-host=never\n`);
 	writeFileSync(globalConfig, '');
-	return {
-		...baseEnv,
-		NPM_CONFIG_USERCONFIG: userConfig,
-		NPM_CONFIG_GLOBALCONFIG: globalConfig,
-		NPM_CONFIG_REGISTRY: PUBLIC_REGISTRY,
-		NPM_CONFIG_REPLACE_REGISTRY_HOST: 'never',
-	};
+	env.HOME = root;
+	env.USERPROFILE = root;
+	env.XDG_CONFIG_HOME = resolve(root, 'xdg-config');
+	env.NPM_CONFIG_USERCONFIG = userConfig;
+	env.NPM_CONFIG_GLOBALCONFIG = globalConfig;
+	env.NPM_CONFIG_CACHE = cache;
+	env.NPM_CONFIG_REGISTRY = PUBLIC_REGISTRY;
+	env.NPM_CONFIG_REPLACE_REGISTRY_HOST = 'never';
+	return env;
 }
 
 function runNpmCommand(argumentsList, options) {
