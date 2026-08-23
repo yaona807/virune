@@ -99,6 +99,53 @@ test('complete Registry observation happens before provenance checks or writes',
 	assert.equal(events.some(event => event.startsWith('provenance:')), false);
 });
 
+test('a missing candidate is reobserved immediately before write and converges to skip if it became exact', async () => {
+	const state = new Map(NPM_PUBLICATION_ORDER.map(name => [name, 'missing']));
+	let runtimeObservations = 0;
+	const publishes = [];
+	const provenance = [];
+	const result = await executePublication({ version: VERSION }, candidates, {
+		observe: async candidate => {
+			if (candidate.registryName === '@virune/runtime') {
+				runtimeObservations += 1;
+				if (runtimeObservations === 2) state.set(candidate.registryName, 'exact');
+			}
+			return { state: state.get(candidate.registryName) };
+		},
+		verifyProvenance: async candidate => provenance.push(candidate.registryName),
+		publish: async candidate => {
+			publishes.push(candidate.registryName);
+			state.set(candidate.registryName, 'exact');
+		},
+	});
+	assert.equal(publishes.includes('@virune/runtime'), false);
+	assert.deepEqual(result.skipped, ['@virune/runtime']);
+	assert.deepEqual(result.published, NPM_PUBLICATION_ORDER.slice(1));
+	assert.equal(provenance.includes('@virune/runtime'), true);
+});
+
+test('dependency drift is reobserved and blocks a dependent write', async () => {
+	const state = new Map(NPM_PUBLICATION_ORDER.map(name => [name, 'missing']));
+	state.set('@virune/runtime', 'exact');
+	let runtimeObservations = 0;
+	const publishes = [];
+	await assert.rejects(
+		executePublication({ version: VERSION }, candidates, {
+			observe: async candidate => {
+				if (candidate.registryName === '@virune/runtime') {
+					runtimeObservations += 1;
+					if (runtimeObservations === 2) state.set(candidate.registryName, 'missing');
+				}
+				return { state: state.get(candidate.registryName) };
+			},
+			verifyProvenance: async () => {},
+			publish: async candidate => publishes.push(candidate.registryName),
+		}),
+		/dependency @virune\/runtime is no longer exact immediately before publication/u,
+	);
+	assert.deepEqual(publishes, []);
+});
+
 test('exact subset is verified first and only missing candidates are published in canonical order', async () => {
 	const state = new Map(NPM_PUBLICATION_ORDER.map(name => [name, 'missing']));
 	state.set('@virune/runtime', 'exact');
@@ -127,14 +174,13 @@ test('exact subset is verified first and only missing candidates are published i
 test('unknown post-publish observation stops before the next package write', async () => {
 	const state = new Map(NPM_PUBLICATION_ORDER.map(name => [name, 'missing']));
 	const publishes = [];
-	let initialObservations = NPM_PUBLICATION_ORDER.length;
+	let observations = 0;
 	await assert.rejects(
 		executePublication({ version: VERSION }, candidates, {
 			observe: async candidate => {
-				if (initialObservations > 0) {
-					initialObservations -= 1;
-					return { state: state.get(candidate.registryName) };
-				}
+				observations += 1;
+				if (observations <= NPM_PUBLICATION_ORDER.length) return { state: state.get(candidate.registryName) };
+				if (observations === NPM_PUBLICATION_ORDER.length + 1 && candidate.registryName === '@virune/runtime') return { state: 'missing' };
 				throw new Error('post-publish Registry state unknown');
 			},
 			verifyProvenance: async () => {},
