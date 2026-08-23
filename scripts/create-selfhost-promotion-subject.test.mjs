@@ -272,18 +272,19 @@ test('required Self-host Host boundary explicitly binds semantic execution and s
 		'selfhost/bootstrap-stage-runner.js',
 		'selfhost/compiler-facade.js',
 		'selfhost/contract.js',
+		'selfhost/legacy-adapter.js',
 		'selfhost/mvp-adapter.js',
 		'selfhost/project-compiler-adapter.js',
 		'selfhost/source-manifest.js',
 		'selfhost/stage-compiler-facade.js',
 	]);
-	assert.equal(REQUIRED_SELFHOST_HOST_FILES.includes('selfhost/legacy-adapter.js'), false);
+	assert.equal(REQUIRED_SELFHOST_HOST_FILES.includes('selfhost/legacy-adapter.js'), true);
 });
 
-test('Self-host MVP module does not load the excluded Legacy adapter until the Legacy path is selected', async () => {
+test('current Self-host MVP static Legacy dependency is conservatively bound into the Host product closure', async () => {
 	const source = await readFile(new URL('../packages/compiler/dist/src/selfhost/mvp-adapter.js', import.meta.url), 'utf8');
-	assert.doesNotMatch(source, /from ['"]\.\/legacy-adapter\.js['"]/u);
-	assert.match(source, /import\(['"]\.\/legacy-adapter\.js['"]\)/u);
+	assert.match(source, /from ['"]\.\/legacy-adapter\.js['"]/u);
+	assert.doesNotMatch(source, /import\(['"]\.\/legacy-adapter\.js['"]\)/u);
 });
 
 test('fixed Host contract hashes exactly the versioned boundary file set', async () => {
