@@ -27,7 +27,7 @@ Tuple型と値は、要素の順序と各要素の型を維持します。Tuple 
 generic宣言は不変です。型引数は、呼び出し引数と明示されたcallbackの期待型から推論します。Virune 1.0にはprotocol制約、higher-kinded type、ユーザー定義variance、overload、暗黙の実装探索はありません。
 
 ## `[type.composition]` 振る舞いの合成
-再利用可能な振る舞いは、通常の関数と関数fieldを持つrecordで表現します。実装は明示的に引数として渡し、`protocol`、`impl`、`where`宣言は使いません。Dependency injection、codec、comparator、repository、test doubleも、通常の値と同じモデルで構成できます。
+再利用可能な振る舞いは、通常の関数と関数fieldを持つrecordで表現します。実装は明示的に引数として渡します。Viruneには`protocol`、`impl`、`where`宣言はありません。Dependency injection、codec、comparator、repository、test doubleも、通常の値と同じモデルで構成できます。
 
 ## `[type.capabilities]` Effect
 関数型は`uses`を使って、固定された組み込みeffectの集合を宣言できます。呼び出し元の関数は、必要な具体的effectをすべて宣言しなければなりません。利用者は新しいcapability名やeffect handlerを定義できません。
