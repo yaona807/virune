@@ -20,5 +20,5 @@ Safe externは`Result<T, JsError>`またはその非同期版を返します。�
 ## `[ffi.bytes]` バイナリ値
 Safe FFIは`Bytes`として`Uint8Array`または`ArrayBuffer`を受け取り、元のデータをコピーします。JavaScriptへ渡すViruneの`Bytes`もコピーします。JSONでは`Bytes`をbase64文字列として表し、不正なbase64はデコードエラーになります。`record` / `enum`変換ではVirune Runtimeの型IDを維持し、Map / Set変換では値をキーとするコレクションの意味を復元します。
 
-## Three-Tier Interop
+## 3段階の相互運用
 詳しい設計は[JavaScript相互運用モデル](js-interop_ja.md)を参照してください。Foreignオブジェクトはコピーせず、同一性とプロトタイプを維持します。Native複合値へ変換する場合だけ、明示的なCodecを使用します。
