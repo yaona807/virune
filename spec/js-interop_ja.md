@@ -7,7 +7,7 @@
 ## 3段階の相互運用
 
 1. **Direct Facade**：`import js`では、型宣言されたJavaScript APIのうち保守的に扱える範囲だけを公開します。依存パッケージのソースコードは変換せず、そのまま実行します。
-2. **Compiled Adapter**：複雑なTypeScript APIを`*.interop.ts`へ分離し、固定されたTypeScript Providerで型検査してからESMへ出力します。
+2. **Compiled Adapter**：複雑なTypeScript APIを`*.interop.ts`へ分離し、固定されたTypeScript Providerで型検査してから、Viruneを実行する前にESMへ出力します。
 3. **Unsafe境界**：利用可能な型宣言がないAPIや、本質的に動的なAPIに限って`unsafe extern js`を使用します。
 
 ## Direct Facade
@@ -43,7 +43,7 @@ JavaScript `number`から`Int`、配列から`List`、オブジェクトから`r
 
 ## Interop ABI v1
 
-Adapterからexportする値は、単一の非ジェネリック呼び出しシグネチャでなければなりません。コールバック引数、オーバーロード、配列、タプル、匿名の構造的オブジェクト、Adapter内だけのオブジェクト型、Intersection型、`any`、入れ子のPromise-like値はABI v1の値として扱えません。構造データは`unknown`としてexportし、Virune側でデコードします。外部パッケージの名前付きclass / objectはForeignハンドルとしてexportできます。
+Adapterからexportする値は、単一の非ジェネリック呼び出しシグネチャでなければなりません。コールバック引数、オーバーロード、配列、タプル、匿名の構造的オブジェクト、Adapter内だけのオブジェクト型、Intersection型、`any`、入れ子のPromise-like値はABI v1の値として扱えません。構造データは`unknown`としてexportし、Virune側でデコードします。外部の名前付きclass / objectはForeignハンドルとしてexportできます。
 
 Adapterの成果物は`.interop.mjs`、ソースマップ、`.virune-abi.json`です。ABIメタデータは決定的で、スキーマバージョン、ABIバージョン、固定されたTypeScript Providerのバージョン、ソースハッシュ、ABIハッシュ、正規化したexport、ソースパスを含みます。
 
