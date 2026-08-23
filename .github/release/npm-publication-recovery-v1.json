@@ -28,8 +28,7 @@
       "downloaded-tarball-sha256",
       "source-repository",
       "source-commit",
-      "provenance-workflow",
-      "canonical-dist-tag"
+      "provenance-workflow"
     ],
     "identityMatchRules": {
       "packageName": "must-equal-publication-manifest-registry-name",
@@ -38,8 +37,7 @@
       "downloadedTarballSha256": "must-equal-publication-manifest-sha256",
       "sourceRepository": "must-equal-reviewed-repository",
       "sourceCommit": "must-equal-reviewed-release-commit",
-      "provenanceWorkflow": "must-equal-approved-publication-workflow",
-      "canonicalDistTag": "must-equal-reviewed-release-version"
+      "provenanceWorkflow": "must-equal-approved-publication-workflow"
     },
     "states": [
       {
@@ -87,6 +85,8 @@
     "nightlyTag": null,
     "dependencySafeOrderRequired": true,
     "cliLastRequired": true,
+    "targetVersionOrdering": "semver-precedence",
+    "canonicalTagDowngradeAllowed": false,
     "separateDistTagMutationAllowed": false,
     "traditionalTokenTagRepairAllowed": false,
     "incompatibleExistingTagDecision": "halt-manual-investigation"
