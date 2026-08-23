@@ -22,10 +22,6 @@ const separatelyBoundImports = new Map([
 	['selfhost/bootstrap-artifact-normalizer.js', 'bootstrap-policy'],
 ]);
 const projectBuildEntry = 'project/project.js';
-const lazyLegacyImports = new Set([
-	'selfhost/compiler-facade.js\u0000./legacy-adapter.js\u0000dynamic-import',
-	'selfhost/mvp-adapter.js\u0000./legacy-adapter.js\u0000dynamic-import',
-]);
 const generatedDynamicLoadingBoundaries = new Map([
 	['selfhost/bootstrap-execution-probe.js', Object.freeze({
 		warningId: 'unsupported-dynamic-import',
@@ -111,14 +107,6 @@ export async function hashRequiredSelfhostHostContract({
 					claim: 'required-selfhost-host-project-build-v1',
 				});
 				imports.push({ importer: relativePath, specifier: item.specifier, kind: item.kind, binding: 'closure:project-build' });
-				continue;
-			}
-			if (imported === 'selfhost/legacy-adapter.js') {
-				const key = `${relativePath}\u0000${item.specifier}\u0000${item.kind}`;
-				if (!lazyLegacyImports.has(key)) {
-					throw new Error(`Host module ${relativePath} may exclude Legacy only through the versioned lazy import boundary`);
-				}
-				imports.push({ importer: relativePath, specifier: item.specifier, kind: item.kind, binding: 'excluded:lazy-legacy' });
 				continue;
 			}
 			throw new Error(`Host module ${relativePath} has unbound relative runtime import ${item.specifier} -> ${imported}`);

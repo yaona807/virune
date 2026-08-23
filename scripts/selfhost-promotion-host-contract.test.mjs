@@ -45,6 +45,8 @@ test('current required-selfhost Host contract binds the real project-build runti
 	assert.equal(paths.some(path => path.startsWith('scripts/')), false, 'promotion tooling must not become self-referential product identity');
 	assert.ok(result.manifest.imports.some(item => item.importer === 'selfhost/bootstrap-stage-runner.js' && item.binding === 'closure:project-build'));
 	assert.ok(result.manifest.imports.some(item => item.importer === 'selfhost/bootstrap-execution-probe.js' && item.binding === 'closure:project-build'));
+	assert.ok(result.manifest.imports.some(item => item.importer === 'selfhost/compiler-facade.js' && item.specifier === './legacy-adapter.js' && item.binding === 'fixed:selfhost/legacy-adapter.js'));
+	assert.ok(result.manifest.imports.some(item => item.importer === 'selfhost/mvp-adapter.js' && item.specifier === './legacy-adapter.js' && item.binding === 'fixed:selfhost/legacy-adapter.js'));
 });
 
 test('bundled runtime closure is deterministic and changes with local or package runtime bytes', async () => {
@@ -206,19 +208,18 @@ test('Host project-build import is bound transitively without absorbing unrelate
 	} finally { await f.cleanup(); }
 });
 
-test('Legacy exclusion is allowed only for the exact lazy boundary', async () => {
+test('Legacy adapter must be an explicit fixed Host root when statically imported', async () => {
 	const f = await fixture();
 	try {
 		const base = join(f.root, 'dist');
 		await mkdir(join(base, 'selfhost'), { recursive: true });
 		await writeFile(join(base, 'selfhost', 'legacy-adapter.js'), 'export const legacy = true;\n', 'utf8');
-		await writeFile(join(base, 'selfhost', 'mvp-adapter.js'), "export async function load() { return import('./legacy-adapter.js'); }\n", 'utf8');
-		const lazy = await hashRequiredSelfhostHostContract({ repositoryRoot: f.root, compilerDist: base, files: ['selfhost/mvp-adapter.js'], claim: 'fixture-host-v3' });
-		assert.ok(lazy.manifest.imports.some(item => item.binding === 'excluded:lazy-legacy'));
 		await writeFile(join(base, 'selfhost', 'mvp-adapter.js'), "import './legacy-adapter.js';\nexport const load = true;\n", 'utf8');
+		const bound = await hashRequiredSelfhostHostContract({ repositoryRoot: f.root, compilerDist: base, files: ['selfhost/mvp-adapter.js', 'selfhost/legacy-adapter.js'], claim: 'fixture-host-v3' });
+		assert.ok(bound.manifest.imports.some(item => item.importer === 'selfhost/mvp-adapter.js' && item.binding === 'fixed:selfhost/legacy-adapter.js'));
 		await assert.rejects(
 			() => hashRequiredSelfhostHostContract({ repositoryRoot: f.root, compilerDist: base, files: ['selfhost/mvp-adapter.js'], claim: 'fixture-host-v3' }),
-			/versioned lazy import boundary/u,
+			/unbound relative runtime import/u,
 		);
 	} finally { await f.cleanup(); }
 });
@@ -248,4 +249,5 @@ test('helper source itself remains readable for repository policy checks', async
 	assert.match(source, /unsupported-require-call/u);
 	assert.match(source, /mainFields: \['main'\]/u);
 	assert.match(source, /ignoreAnnotations: true/u);
+	assert.doesNotMatch(source, /excluded:lazy-legacy/u);
 });
