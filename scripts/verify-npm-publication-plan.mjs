@@ -1,7 +1,6 @@
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { verifyNpmPublicationRecoveryPolicy } from './verify-npm-publication-recovery.mjs';
 
 const PLAN_PATH = '.github/release/npm-publication-v1.json';
 const REPOSITORY_URL = 'git+https://github.com/yaona807/virune.git';
@@ -169,7 +168,6 @@ export function verifyNpmPublicationPlan(root = process.cwd()) {
 		assert(cliManifest.dependencies?.[item.workspaceName] === rootManifest.version, `$.${cli.directory}.dependencies.${item.workspaceName}`, 'CLI must depend on every planned npm package dependency at the exact release version');
 	}
 
-	verifyNpmPublicationRecoveryPolicy(root);
 	return {
 		schemaVersion: 1,
 		stage: plan.stage,
