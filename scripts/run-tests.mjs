@@ -82,6 +82,21 @@ const groups = platformSmoke ? platformGroups : [
 				'scripts/verify-public-npm-registry-channel.test.mjs',
 			],
 		},
+		{
+			name: 'Self-host promotion observation contracts',
+			files: [
+				'scripts/assemble-selfhost-promotion-observation.test.mjs',
+				'scripts/compare-selfhost-clean-bootstrap-evidence.test.mjs',
+				'scripts/create-selfhost-promotion-subject.test.mjs',
+				'scripts/create-selfhost-promotion-subject-dynamic-loading.test.mjs',
+				'scripts/create-selfhost-promotion-package-surface.test.mjs',
+				'scripts/run-selfhost-promotion-performance.test.mjs',
+				'scripts/run-selfhost-promotion-quality.test.mjs',
+				'scripts/selfhost-promotion-host-contract.test.mjs',
+				'scripts/selfhost-promotion-observation-workflow.test.mjs',
+				'scripts/selfhost-promotion-host-provenance.test.mjs',
+			],
+		},
 		{ name: 'repository license policy', files: ['scripts/verify-repository-license-policy.test.mjs'] },
 		{ name: 'release license artifact policy', files: ['scripts/verify-release-license-artifacts.test.mjs'] },
 		{

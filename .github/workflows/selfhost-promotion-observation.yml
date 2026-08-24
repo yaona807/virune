@@ -1,0 +1,337 @@
+name: Self-host promotion observation
+
+on:
+  schedule:
+    - cron: '47 18 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: selfhost-promotion-observation-${{ github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  fixed-seed:
+    name: Fixed Seed and rollback evidence
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm run build
+      - name: Verify fixed Seed
+        run: |
+          mkdir -p .cache/selfhost-promotion-observation/fixed
+          node scripts/verify-selfhost-seed.mjs --json > .cache/selfhost-promotion-observation/fixed/seed-verify.json
+      - name: Execute fixed Seed bootstrap
+        run: node scripts/run-selfhost-fixed-seed-bootstrap.mjs --output=.cache/selfhost-promotion-observation/fixed/fixed-seed-bootstrap.json
+      - name: Execute Legacy rollback smoke
+        run: node scripts/run-selfhost-rollback-smoke.mjs --output=.cache/selfhost-promotion-observation/fixed/legacy-rollback.json
+      - name: Upload fixed evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: selfhost-promotion-fixed-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .cache/selfhost-promotion-observation/fixed/*.json
+          if-no-files-found: error
+          retention-days: 30
+
+  baseline:
+    name: Clean bootstrap baseline
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: node scripts/verify-selfhost-seed.mjs --json
+      - name: Execute baseline clean bootstrap
+        run: >-
+          node scripts/run-selfhost-clean-bootstrap.mjs
+          --environment-profile=baseline
+          --working-root=.cache/selfhost/promotion-clean-bootstrap-baseline
+          --output=.cache/selfhost-promotion-observation/baseline.json
+          --json
+      - name: Upload baseline evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: selfhost-promotion-baseline-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .cache/selfhost-promotion-observation/baseline.json
+          if-no-files-found: error
+          retention-days: 30
+
+  perturbed:
+    name: Clean bootstrap perturbed
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: node scripts/verify-selfhost-seed.mjs --json
+      - name: Execute perturbed clean bootstrap
+        run: >-
+          node scripts/run-selfhost-clean-bootstrap.mjs
+          --environment-profile=perturbed
+          --working-root=.cache/selfhost/promotion-clean-bootstrap-perturbed
+          --output=.cache/selfhost-promotion-observation/perturbed.json
+          --json
+      - name: Upload perturbed evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: selfhost-promotion-perturbed-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .cache/selfhost-promotion-observation/perturbed.json
+          if-no-files-found: error
+          retention-days: 30
+
+  release-core:
+    name: Assemble release-core evidence
+    needs: [fixed-seed, baseline]
+    if: always() && needs.fixed-seed.result == 'success' && needs.baseline.result == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 24
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: selfhost-promotion-fixed-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .cache/selfhost-promotion-observation/fixed
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: selfhost-promotion-baseline-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .cache/selfhost-promotion-observation
+      - name: Assemble release core
+        run: >-
+          node scripts/assemble-selfhost-release-gate.mjs
+          --seed-verify=.cache/selfhost-promotion-observation/fixed/seed-verify.json
+          --fixed-seed-bootstrap=.cache/selfhost-promotion-observation/fixed/fixed-seed-bootstrap.json
+          --clean-bootstrap=.cache/selfhost-promotion-observation/baseline.json
+          --legacy-rollback=.cache/selfhost-promotion-observation/fixed/legacy-rollback.json
+          --output=.cache/selfhost-promotion-observation/release-core.json
+          --json
+      - name: Upload release core
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: selfhost-promotion-release-core-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .cache/selfhost-promotion-observation/release-core.json
+          if-no-files-found: error
+          retention-days: 30
+
+  compare:
+    name: Compare independent bootstrap runners
+    needs: [baseline, perturbed]
+    if: always() && needs.baseline.result == 'success' && needs.perturbed.result == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 24
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: selfhost-promotion-baseline-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .cache/selfhost-promotion-observation
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: selfhost-promotion-perturbed-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .cache/selfhost-promotion-observation
+      - name: Compare independent evidence
+        run: >-
+          node scripts/compare-selfhost-clean-bootstrap-evidence.mjs
+          --baseline=.cache/selfhost-promotion-observation/baseline.json
+          --perturbed=.cache/selfhost-promotion-observation/perturbed.json
+          --output=.cache/selfhost-promotion-observation/cross-runner.json
+          --json
+      - name: Upload cross-runner evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: selfhost-promotion-cross-runner-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .cache/selfhost-promotion-observation/cross-runner.json
+          if-no-files-found: error
+          retention-days: 30
+
+  quality:
+    name: Required self-host quality evidence
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm run build
+      - name: Install managed browser engines
+        run: npx playwright install --with-deps chromium firefox webkit
+      - name: Execute required quality evidence
+        run: node scripts/run-selfhost-promotion-quality.mjs
+      - name: Upload quality evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: selfhost-promotion-quality-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .cache/selfhost-promotion-observation/quality.json
+          if-no-files-found: error
+          retention-days: 30
+
+  performance:
+    name: Relative Self-host performance evidence
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm run build
+      - run: node packages/cli/dist/src/main.js build selfhost/mvp
+      - name: Execute relative performance budget
+        run: node scripts/run-selfhost-promotion-performance.mjs
+      - name: Upload performance evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: selfhost-promotion-performance-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .cache/selfhost-promotion-observation/performance.json
+          if-no-files-found: error
+          retention-days: 30
+
+  subject:
+    name: Build Promotion Subject identity
+    needs: release-core
+    if: always() && needs.release-core.result == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm run build
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: selfhost-promotion-release-core-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .cache/selfhost-promotion-observation
+      - name: Derive Product Artifact Closure identity
+        run: node scripts/create-selfhost-promotion-subject.mjs
+      - name: Upload Promotion Subject evidence
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: selfhost-promotion-subject-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .cache/selfhost-promotion-observation/promotion-subject.json
+          if-no-files-found: error
+          retention-days: 30
+
+  assemble:
+    name: Assemble canonical observation
+    needs: [release-core, compare, quality, performance, subject]
+    if: >-
+      always() &&
+      needs.release-core.result == 'success' &&
+      needs.compare.result == 'success' &&
+      needs.subject.result == 'success' &&
+      (needs.quality.result == 'success' || needs.quality.result == 'failure') &&
+      (needs.performance.result == 'success' || needs.performance.result == 'failure')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm run build
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: selfhost-promotion-release-core-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .cache/selfhost-promotion-observation
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: selfhost-promotion-cross-runner-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .cache/selfhost-promotion-observation
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: selfhost-promotion-quality-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .cache/selfhost-promotion-observation
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: selfhost-promotion-performance-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .cache/selfhost-promotion-observation
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: selfhost-promotion-subject-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .cache/selfhost-promotion-observation
+      - name: Assemble exact-run observation
+        env:
+          EXPECTED_COMMIT: ${{ github.sha }}
+          RUN_ID: ${{ github.run_id }}
+          EVENT_NAME: ${{ github.event_name }}
+          SOURCE_WORKFLOW_REF: ${{ github.workflow_ref }}
+          SOURCE_FORK: ${{ github.event.repository.fork }}
+        run: >-
+          node scripts/assemble-selfhost-promotion-observation.mjs
+          --expected-commit="$EXPECTED_COMMIT"
+          --run-id="$RUN_ID"
+          --event-name="$EVENT_NAME"
+          --source-workflow-ref="$SOURCE_WORKFLOW_REF"
+          --source-fork="$SOURCE_FORK"
+      - name: Upload canonical observation
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: selfhost-promotion-observation-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .cache/selfhost-promotion-observation/observation.json
+          if-no-files-found: error
+          retention-days: 30
