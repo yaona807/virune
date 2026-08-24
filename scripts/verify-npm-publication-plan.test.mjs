@@ -25,7 +25,6 @@ const runtimeDependencySections = ['dependencies', 'peerDependencies', 'optional
 test('current repository has a minimal disabled npm publication contract', () => {
 	const result = verifyNpmPublicationPlan(repositoryRoot);
 	assert.deepEqual(result, {
-		schemaVersion: 1,
 		publicationReady: false,
 		currentVersion: '1.0.0',
 		forbidRegistryPublishThroughVersion: '1.0.0',
@@ -313,6 +312,7 @@ test('publication plan cannot become ready without deliberate enablement', () =>
 
 test('descriptive progress metadata is not part of the executable publication contract', () => {
 	const removedMetadata = {
+		schemaVersion: 1,
 		stage: 'prepublication-audit',
 		unresolvedRequirements: ['trusted-publishing'],
 		trustedPublishingRequired: true,
@@ -327,7 +327,7 @@ test('descriptive progress metadata is not part of the executable publication co
 			writeJson(path, plan);
 			assert.throws(
 				() => verifyNpmPublicationPlan(root),
-				/\$: expected keys distTagPolicy, excludedWorkspacePackages, firstStableRegistryRelease, forbidRegistryPublishThroughVersion, packages, publicationReady, schemaVersion/u,
+				/\$: expected keys distTagPolicy, excludedWorkspacePackages, firstStableRegistryRelease, forbidRegistryPublishThroughVersion, packages, publicationReady/u,
 			);
 		});
 	}
