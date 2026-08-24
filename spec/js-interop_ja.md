@@ -8,7 +8,7 @@
 
 1. **直接利用（Direct Facade）**：`import js`では、型宣言されたJavaScript APIのうち保守的に扱える範囲だけを公開します。依存パッケージのソースコードは変換せず、そのまま実行します。
 2. **事前変換アダプター（Compiled Adapter）**：複雑なTypeScript APIを`*.interop.ts`へ分離し、固定されたTypeScript Providerで型検査してから、Viruneを実行する前にESMとして出力します。
-3. **`unsafe`境界**：利用可能な型宣言がないAPIや、本質的に動的なAPIに限って`unsafe extern js`を使用します。
+3. **検証を省略する`unsafe`境界**：利用可能な型宣言がないAPIや、本質的に動的なAPIに限って`unsafe extern js`を使用します。
 
 ## 直接利用（Direct Facade）
 
