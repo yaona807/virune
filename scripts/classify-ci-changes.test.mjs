@@ -6,39 +6,40 @@ import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import {
+	buildChangedPathDiffArguments,
 	classifyChangedPaths,
 	isDocumentationPath,
 	isSelfhostInventoryPath,
 	isSelfhostRequiredGatePath,
+	parseGitChangedPaths,
+	reviewedNonSelfhostInventoryWorkflowFiles,
 } from './classify-ci-changes.mjs';
 
 const repositoryRoot = resolve(fileURLToPath(new URL('..', import.meta.url)));
 
-test('classifies maintained human documentation as documentation-only', () => {
+test('classifies maintained Markdown documentation as documentation-only', () => {
 	const result = classifyChangedPaths([
 		'README.md',
-		'README_ja.md',
-		'CONTRIBUTING.md',
-		'CONTRIBUTING_ja.md',
-		'COMPATIBILITY.md',
-		'COMPATIBILITY_ja.md',
+		'docs/language-guide.md',
+		'docs/language-guide_ja.md',
 		'.github/PULL_REQUEST_TEMPLATE/self-hosting.md',
+		'.github/self-hosting-operations/README.md',
+		'.github/self-hosting-operations/README_ja.md',
 	]);
 	assert.equal(result.docsOnly, true);
 	assert.equal(result.selfhostInventoryRequired, false);
 	assert.equal(result.selfhostRequiredGateRequired, false);
-	assert.equal(result.changedCount, 7);
+	assert.equal(result.changedCount, 6);
 });
 
-test('requires the full gate for workflow, dependency, source, machine policy, specification, and legal artifact changes', () => {
+test('requires the full gate for workflow, dependency, source, schema, and executable policy changes', () => {
 	for (const path of [
 		'.github/workflows/ci.yml',
 		'.github/PULL_REQUEST_TEMPLATE/config.yml',
-		'.github/self-hosting/temporary-artifacts.json',
-		'.github/documentation-examples.json',
-		'THIRD_PARTY_NOTICES.md',
+		'.github/self-hosting-operations/schema.json',
 		'package-lock.json',
 		'packages/compiler/src/compiler.ts',
+		'docs/documentation-examples.json',
 		'scripts/classify-ci-changes.mjs',
 		'spec/grammar.ebnf',
 	]) {
@@ -65,11 +66,58 @@ test('requires self-host inventory for compiler-boundary and cross-cutting chang
 	}
 });
 
+test('skips self-host inventory for reviewed non-selfhost workflow maintenance', () => {
+	for (const path of reviewedNonSelfhostInventoryWorkflowFiles) {
+		assert.equal(classifyChangedPaths([path]).selfhostInventoryRequired, false, path);
+	}
+	assert.equal(
+		classifyChangedPaths(['.github/workflows/codeql.yml', '.github/actions-policy.json']).selfhostInventoryRequired,
+		false,
+	);
+	assert.equal(classifyChangedPaths(['.github/actions-policy.json']).selfhostInventoryRequired, false);
+});
+
+test('fails closed for unknown and self-host workflow changes', () => {
+	for (const path of [
+		'.github/workflows/new-workflow.yml',
+		'.github/workflows/nightly.yml',
+		'.github/workflows/selfhost-clean-bootstrap.yml',
+		'.github/workflows/selfhost-fixed-seed.yml',
+		'.github/workflows/selfhost-promotion-policy.yml',
+	]) {
+		assert.equal(classifyChangedPaths([path]).selfhostInventoryRequired, true, path);
+	}
+});
+
+test('keeps deleted and both sides of renamed paths visible to gate classification', () => {
+	assert.deepEqual(buildChangedPathDiffArguments('base', 'head'), [
+		'diff',
+		'--name-only',
+		'--no-renames',
+		'-z',
+		'base...head',
+	]);
+	assert.equal(classifyChangedPaths(['packages/compiler/src/deleted.ts']).selfhostInventoryRequired, true);
+	assert.equal(classifyChangedPaths(['selfhost/deleted.virune']).selfhostRequiredGateRequired, true);
+	assert.equal(
+		classifyChangedPaths(['packages/compiler/src/old.ts', 'packages/cli/src/new.ts']).selfhostInventoryRequired,
+		true,
+	);
+});
+
+test('parses NUL-separated git paths without line splitting', () => {
+	const paths = parseGitChangedPaths('packages/compiler/src/generated\nname.ts\0packages/cli/src/main.ts\0');
+	assert.deepEqual(paths, [
+		'packages/compiler/src/generated\nname.ts',
+		'packages/cli/src/main.ts',
+	]);
+	assert.equal(classifyChangedPaths(paths).selfhostInventoryRequired, true);
+});
+
 test('keeps Required Shadow narrower than compiler-wide inventory while fail-closing self-host controls', () => {
 	for (const path of [
 		'.github/self-hosting/promotion-policy-v1.json',
 		'.github/self-hosting/stage0-seed.json',
-		'.github/self-hosting/temporary-artifacts.json',
 		'.github/workflows/selfhost-clean-bootstrap.yml',
 		'.github/workflows/selfhost-fixed-seed.yml',
 		'.github/workflows/nightly.yml',
@@ -95,11 +143,10 @@ test('keeps Required Shadow narrower than compiler-wide inventory while fail-clo
 	}
 });
 
-test('skips self-host inventory for unrelated product and human documentation changes', () => {
+test('skips self-host inventory for unrelated product and documentation changes', () => {
 	for (const path of [
 		'README.md',
-		'CONTRIBUTING_ja.md',
-		'COMPATIBILITY.md',
+		'docs/language-guide.md',
 		'packages/cli/src/main.ts',
 		'packages/language-server/src/server.ts',
 		'packages/vscode/src/extension.ts',
@@ -119,31 +166,24 @@ test('does not treat an empty change set as documentation-only and fails safe fo
 });
 
 test('normalizes separators and removes duplicate paths', () => {
-	const result = classifyChangedPaths([
-		'.github\\PULL_REQUEST_TEMPLATE\\self-hosting.md',
-		'.github/PULL_REQUEST_TEMPLATE/self-hosting.md',
-		'',
-	]);
+	const result = classifyChangedPaths(['docs\\guide.md', 'docs/guide.md', '']);
 	assert.deepEqual(result, {
 		docsOnly: true,
 		selfhostInventoryRequired: false,
 		selfhostRequiredGateRequired: false,
 		changedCount: 1,
-		paths: ['.github/PULL_REQUEST_TEMPLATE/self-hosting.md'],
+		paths: ['docs/guide.md'],
 	});
 });
 
-test('limits documentation paths to the consolidated reviewed Markdown locations', () => {
+test('limits documentation paths to reviewed Markdown locations', () => {
 	assert.equal(isDocumentationPath('SECURITY.md'), true);
-	assert.equal(isDocumentationPath('SECURITY_ja.md'), true);
-	assert.equal(isDocumentationPath('COMPATIBILITY.md'), true);
-	assert.equal(isDocumentationPath('THIRD_PARTY_NOTICES.md'), false);
+	assert.equal(isDocumentationPath('docs/release-channels.md'), true);
 	assert.equal(isDocumentationPath('.github/PULL_REQUEST_TEMPLATE/self-hosting.md'), true);
-	assert.equal(isDocumentationPath('docs/release-channels.md'), false);
-	assert.equal(isDocumentationPath('.github/self-hosting-operations/README_ja.md'), false);
+	assert.equal(isDocumentationPath('.github/self-hosting-operations/README_ja.md'), true);
 	assert.equal(isDocumentationPath('.github/README.md'), false);
 	assert.equal(isDocumentationPath('.github/PULL_REQUEST_TEMPLATE/config.yml'), false);
-	assert.equal(isDocumentationPath('spec/types.md'), false);
+	assert.equal(isDocumentationPath('docs/schema.json'), false);
 });
 
 test('self-host inventory path rules are repository-owned and conservative', () => {
@@ -152,12 +192,15 @@ test('self-host inventory path rules are repository-owned and conservative', () 
 	assert.equal(isSelfhostInventoryPath('packages/compiler/test/selfhost-ready.test.ts'), true);
 	assert.equal(isSelfhostInventoryPath('packages/runtime/src/variant.ts'), true);
 	assert.equal(isSelfhostInventoryPath('scripts/run-selfhost-focused.mjs'), true);
+	assert.equal(isSelfhostInventoryPath('.github/workflows/ci.yml'), true);
+	assert.equal(isSelfhostInventoryPath('.github/workflows/new-workflow.yml'), true);
+	assert.equal(isSelfhostInventoryPath('.github/workflows/codeql.yml'), false);
+	assert.equal(isSelfhostInventoryPath('.github/actions-policy.json'), false);
 	assert.equal(isSelfhostInventoryPath('packages/vscode/src/extension.ts'), false);
 });
 
 test('Required Shadow path rules preserve Stage 3 and defer compiler-wide Stage 4', () => {
 	assert.equal(isSelfhostRequiredGatePath('.github/self-hosting/promotion-policy-v1.json'), true);
-	assert.equal(isSelfhostRequiredGatePath('.github/self-hosting/temporary-artifacts.json'), true);
 	assert.equal(isSelfhostRequiredGatePath('.github/workflows/selfhost-clean-bootstrap.yml'), true);
 	assert.equal(isSelfhostRequiredGatePath('packages/compiler/src/selfhost/bootstrap-stage-loader.ts'), true);
 	assert.equal(isSelfhostRequiredGatePath('scripts/run-selfhost-release-gate.mjs'), true);

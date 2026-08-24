@@ -71,10 +71,6 @@ function withFixture(run) {
 			resolve(root, '.github/release/npm-publication-v1.json'),
 			readFileSync(resolve(repositoryRoot, '.github/release/npm-publication-v1.json')),
 		);
-		writeFileSync(
-			resolve(root, '.github/release/npm-publication-recovery-v1.json'),
-			readFileSync(resolve(repositoryRoot, '.github/release/npm-publication-recovery-v1.json')),
-		);
 		writeFileSync(resolve(root, 'package.json'), readFileSync(resolve(repositoryRoot, 'package.json')));
 		writeFileSync(resolve(root, 'package-lock.json'), readFileSync(resolve(repositoryRoot, 'package-lock.json')));
 		for (const directory of workspaceDirectories) {

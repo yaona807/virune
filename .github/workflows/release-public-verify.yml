@@ -36,18 +36,37 @@ jobs:
           expected_commit="$(node -p 'require("./.github/release-verification-request.json").expectedCommit')"
           expected_branch="release-verification/v${version}"
           test "$GITHUB_REF_NAME" = "$expected_branch" || { echo "Expected branch $expected_branch, got $GITHUB_REF_NAME" >&2; exit 1; }
-          [[ "$version" == *-* ]] || { echo "Public prerelease verification requires a prerelease version." >&2; exit 1; }
           [[ "$expected_commit" =~ ^[0-9a-f]{40}$ ]] || { echo "expectedCommit must be a full commit SHA." >&2; exit 1; }
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "expected_commit=$expected_commit" >> "$GITHUB_OUTPUT"
       - name: Install repository dependencies
         run: npm ci
-      - name: Test public release verifier
-        run: node --test scripts/verify-public-release.test.mjs
+      - name: Test public release verifiers
+        run: node --test scripts/verify-public-release.test.mjs scripts/verify-public-npm-registry-channel.test.mjs
       - name: Download and verify public release assets and clean CLI installation
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: node scripts/verify-public-release.mjs --version=${{ steps.request.outputs.version }} --expected-commit=${{ steps.request.outputs.expected_commit }}
+      - name: Resolve public npm Registry verification requirement
+        id: npm-verification
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import { appendFileSync } from 'node:fs';
+          import { readFile } from 'node:fs/promises';
+          const report = JSON.parse(await readFile('.cache/public-release/public-release-report.json', 'utf8'));
+          const publication = report.npmPublication;
+          if (publication === null || typeof publication !== 'object' || Array.isArray(publication)) throw new Error('public release report is missing npmPublication policy evidence');
+          const keys = Object.keys(publication).sort();
+          if (JSON.stringify(keys) !== JSON.stringify(['distTag', 'registryVersionEligible'])) throw new Error('npmPublication policy evidence has unexpected fields');
+          if (typeof publication.registryVersionEligible !== 'boolean') throw new Error('npmPublication.registryVersionEligible must be boolean');
+          if (publication.registryVersionEligible) {
+            if (publication.distTag !== 'latest' && publication.distTag !== 'next') throw new Error('Registry-eligible release requires latest or next');
+          } else if (publication.distTag !== null) {
+            throw new Error('Registry-ineligible release must not have a dist-tag');
+          }
+          appendFileSync(process.env.GITHUB_OUTPUT, `required=${publication.registryVersionEligible}\n`);
+          NODE
       - name: Verify provenance and CycloneDX attestations
         env:
           GH_TOKEN: ${{ github.token }}
@@ -67,7 +86,7 @@ jobs:
           mkdir -p release
           cp ".cache/public-release/virune-vscode-${{ steps.request.outputs.version }}.vsix" release/
           xvfb-run -a node scripts/vsix-smoke.mjs
-      - name: Finalize verification report
+      - name: Finalize GitHub Release verification prerequisites
         env:
           VERSION: ${{ steps.request.outputs.version }}
         shell: bash
@@ -81,11 +100,46 @@ jobs:
           report.passed = true;
           await writeFile(path, `${JSON.stringify(report, null, '\t')}\n`);
           NODE
+      - name: Verify public npm Registry consumer path
+        if: steps.npm-verification.outputs.required == 'true'
+        run: >-
+          node scripts/verify-public-npm-registry.mjs
+          --expected-commit=${{ steps.request.outputs.expected_commit }}
+          --publication-manifest=.cache/public-release/PUBLICATION-MANIFEST.json
+          --public-release-report=.cache/public-release/public-release-report.json
+          --bind-public-release-report
+      - name: Record npm Registry verification as not required
+        if: steps.npm-verification.outputs.required == 'false'
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFile, writeFile } from 'node:fs/promises';
+          import { bindPublicNpmRegistryEvidence } from './scripts/verify-public-npm-registry.mjs';
+          const path = '.cache/public-release/public-release-report.json';
+          const report = JSON.parse(await readFile(path, 'utf8'));
+          const bound = bindPublicNpmRegistryEvidence(report);
+          await writeFile(path, `${JSON.stringify(bound, null, '\t')}\n`);
+          NODE
+      - name: Validate final public verification evidence
+        env:
+          NPM_REGISTRY_REQUIRED: ${{ steps.npm-verification.outputs.required }}
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFile } from 'node:fs/promises';
+          const report = JSON.parse(await readFile('.cache/public-release/public-release-report.json', 'utf8'));
+          const required = process.env.NPM_REGISTRY_REQUIRED === 'true';
+          if (report.passed !== true) throw new Error('final public verification report is not passing');
+          if (report.npmRegistry?.required !== required) throw new Error('final npm Registry requirement binding mismatch');
+          if (required && report.npmRegistry?.passed !== true) throw new Error('required public npm Registry verification did not pass');
+          NODE
       - name: Upload public verification evidence
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: public-release-verification-v${{ steps.request.outputs.version }}
-          path: .cache/public-release/
+          path: |
+            .cache/public-release/
+            .cache/public-npm-registry/
           if-no-files-found: error
           retention-days: 365
       - name: Commit verification record

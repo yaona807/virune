@@ -5,10 +5,11 @@ import { basename, join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { registryPolicyForVersion } from './verify-npm-publication-identity.mjs';
+import { validateGeneratedProjectManifest } from './verify-public-npm-registry.mjs';
 
 const repositoryRoot = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const EXPECTED_LICENSE = 'Apache-2.0';
-const REVIEWED_LEGAL_FILES = ['LICENSE', 'NOTICE', 'THIRD_PARTY_NOTICES.md'];
+const REVIEWED_LEGAL_FILES = ['LICENSE', 'NOTICE', 'THIRD_PARTY_NOTICES.md', 'THIRD_PARTY_NOTICES_ja.md'];
 const NPM_PUBLICATION_POLICY_PATH = '.github/release/npm-publication-v1.json';
 const NPM_PUBLICATION_POLICY = JSON.parse(await readFile(new URL(`../${NPM_PUBLICATION_POLICY_PATH}`, import.meta.url), 'utf8'));
 
@@ -23,7 +24,7 @@ export async function verifyPublicRelease({
 	fetchImpl = fetch,
 	runCommand = execute,
 } = {}) {
-	if (typeof version !== 'string' || !/^\d+\.\d+\.\d+-[0-9A-Za-z.-]+$/u.test(version)) throw new Error('A prerelease semantic version is required.');
+	if (typeof version !== 'string' || version.trim().length === 0) throw new Error('A release version is required.');
 	if (expectedCommit !== undefined && !/^[0-9a-f]{40}$/u.test(expectedCommit)) throw new Error('expectedCommit must be a full commit SHA.');
 	await rm(outputDirectory, { recursive: true, force: true });
 	await mkdir(outputDirectory, { recursive: true });
@@ -32,14 +33,19 @@ export async function verifyPublicRelease({
 	const tagRef = await fetchJson(`https://api.github.com/repos/${repository}/git/ref/tags/${encodeURIComponent(tag)}`, { token, fetchImpl });
 	const reviewedCommit = resolveReviewedCommit(tag, tagRef?.object?.sha, expectedCommit);
 	const npmPublicationPolicy = await readReviewedNpmPublicationPolicy(reviewedCommit, version);
-	validateReleaseRecord(release, { tag, version, npmPublicationPolicy });
+	const releasePolicy = validateReleaseRecord(release, { tag, version, npmPublicationPolicy });
 	for (const asset of release.assets) {
 		const response = await fetchImpl(asset.browser_download_url, { headers: requestHeaders(token) });
 		if (!response.ok) throw new Error(`Failed to download ${asset.name}: HTTP ${response.status}`);
 		await writeFile(resolve(outputDirectory, asset.name), Buffer.from(await response.arrayBuffer()));
 	}
 	const integrity = await validateDownloadedRelease(outputDirectory, version, { reviewedCommit });
-	const installation = await validatePublicInstallation({ version, repository, runCommand });
+	const installation = await validatePublicInstallation({
+		version,
+		repository,
+		runCommand,
+		registryVersionEligible: releasePolicy.registryVersionEligible,
+	});
 	const report = {
 		schemaVersion: 1,
 		version,
@@ -54,6 +60,10 @@ export async function verifyPublicRelease({
 			prerelease: release.prerelease,
 			draft: release.draft,
 			targetCommitish: release.target_commitish,
+		},
+		npmPublication: {
+			registryVersionEligible: releasePolicy.registryVersionEligible,
+			distTag: releasePolicy.distTag,
 		},
 		assets: integrity.assets,
 		manifest: integrity.manifest,
@@ -98,10 +108,17 @@ export async function readReviewedNpmPublicationPolicy(reviewedCommit, version, 
 export function validateReleaseRecord(release, { tag, version, npmPublicationPolicy = NPM_PUBLICATION_POLICY }) {
 	if (release?.tag_name !== tag) throw new Error(`Expected release tag ${tag}.`);
 	if (release.draft !== false) throw new Error('Release must not be a draft.');
-	if (release.prerelease !== true) throw new Error('Release candidate must be a prerelease.');
+	const releasePolicy = registryPolicyForVersion(version, npmPublicationPolicy.firstStableRegistryRelease, npmPublicationPolicy.distTagPolicy);
+	const expectedPrerelease = releasePolicy.channel !== 'stable';
+	if (release.prerelease !== expectedPrerelease) {
+		throw new Error(expectedPrerelease
+			? 'Prerelease version must be published as a prerelease.'
+			: 'Stable version must not be published as a prerelease.');
+	}
 	if (!Array.isArray(release.assets) || release.assets.length === 0) throw new Error('Release has no uploaded assets.');
 	const names = new Set(release.assets.map(asset => asset.name));
 	for (const required of requiredAssetNames(version, npmPublicationPolicy)) if (!names.has(required)) throw new Error(`Release is missing ${required}.`);
+	return releasePolicy;
 }
 
 export async function validateDownloadedRelease(directory, version, { sourceRoot = repositoryRoot, reviewedCommit } = {}) {
@@ -199,7 +216,23 @@ async function readReviewedFile(file, { sourceRoot, reviewedCommit }) {
 	return result.stdout;
 }
 
-async function validatePublicInstallation({ version, repository, runCommand }) {
+export function validateBundledGeneratedProject(generated, version, registryVersionEligible) {
+	if (registryVersionEligible) {
+		return {
+			...validateGeneratedProjectManifest(generated, version),
+			downstreamVerification: 'public-npm-registry-required',
+		};
+	}
+	const dependencies = [...Object.values(generated.dependencies ?? {}), ...Object.values(generated.devDependencies ?? {})];
+	for (const url of dependencies) {
+		if (typeof url !== 'string' || !url.includes(`/releases/download/v${version}/`) || !url.includes(version)) {
+			throw new Error(`Generated project contains a non-candidate dependency: ${String(url)}`);
+		}
+	}
+	return { dependencyCount: dependencies.length };
+}
+
+async function validatePublicInstallation({ version, repository, runCommand, registryVersionEligible }) {
 	const root = await mkdtemp(join(tmpdir(), 'virune-public-release-'));
 	try {
 		const prefix = resolve(root, 'prefix');
@@ -212,8 +245,13 @@ async function validatePublicInstallation({ version, repository, runCommand }) {
 		if (versionResult.stdout.trim() !== `virune ${version}`) throw new Error(`Unexpected CLI version: ${versionResult.stdout.trim()}`);
 		runCommand(executable, ['init', project], { cwd: root });
 		const generated = JSON.parse(await readFile(resolve(project, 'package.json'), 'utf8'));
-		for (const url of [...Object.values(generated.dependencies ?? {}), ...Object.values(generated.devDependencies ?? {})]) {
-			if (typeof url !== 'string' || !url.includes(`/releases/download/v${version}/`) || !url.includes(version)) throw new Error(`Generated project contains a non-candidate dependency: ${String(url)}`);
+		const generatedProject = validateBundledGeneratedProject(generated, version, registryVersionEligible);
+		if (registryVersionEligible) {
+			return {
+				cliUrl,
+				versionOutput: versionResult.stdout.trim(),
+				generatedProject,
+			};
 		}
 		runCommand('npm', ['install', '--no-audit', '--no-fund'], { cwd: project });
 		runCommand('npm', ['run', 'check'], { cwd: project });
@@ -224,7 +262,7 @@ async function validatePublicInstallation({ version, repository, runCommand }) {
 			cliUrl,
 			versionOutput: versionResult.stdout.trim(),
 			generatedProject: {
-				dependencyCount: Object.keys(generated.dependencies ?? {}).length + Object.keys(generated.devDependencies ?? {}).length,
+				...generatedProject,
 				check: 'passed', build: 'passed', run: 'passed',
 			},
 		};
@@ -260,7 +298,7 @@ function requestHeaders(token) {
 
 function requiredAssetNames(version, npmPublicationPolicy) {
 	const required = [
-		'LICENSE', 'MANIFEST.json', 'NOTICE', 'README.md', 'README_ja.md', 'RELEASE-MANIFEST.json', 'SBOM.cdx.json', 'SHA256SUMS', 'THIRD_PARTY_NOTICES.md', 'package.json',
+		'LICENSE', 'MANIFEST.json', 'NOTICE', 'README.md', 'README_ja.md', 'RELEASE-MANIFEST.json', 'SBOM.cdx.json', 'SHA256SUMS', 'THIRD_PARTY_NOTICES.md', 'THIRD_PARTY_NOTICES_ja.md', 'package.json',
 		`virune-${version}.tgz`, `virune-compiler-${version}.tgz`, `virune-formatter-${version}.tgz`, `virune-js-interop-${version}.tgz`, `virune-runtime-${version}.tgz`, `virune-stdlib-${version}.tgz`, `virune-vscode-${version}.vsix`,
 	];
 	const registryPolicy = registryPolicyForVersion(version, npmPublicationPolicy.firstStableRegistryRelease, npmPublicationPolicy.distTagPolicy);
