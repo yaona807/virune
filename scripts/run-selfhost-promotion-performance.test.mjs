@@ -11,14 +11,15 @@ function sample(coldBuildMs, editedRebuildMs, peakRssKb, artifactSizeBytes) {
 
 function fixture(id, legacy, selfhost) { return { fixtureId: id, legacy, selfhost }; }
 
-test('passes measured ratio evaluation inside Gate D numeric budgets', () => {
+test('passes recorded aggregate numeric budgets inside the explicit Gate D ratios', () => {
 	const result = evaluatePromotionPerformanceSamples([
 		fixture('a', [sample(100, 80, 1000, 1000), sample(102, 82, 1010, 1000), sample(98, 78, 990, 1000)], [sample(120, 96, 1400, 1200), sample(121, 97, 1410, 1200), sample(119, 95, 1390, 1200)]),
 		fixture('b', [sample(110, 90, 1100, 1100), sample(112, 92, 1110, 1100), sample(108, 88, 1090, 1100)], [sample(132, 108, 1500, 1320), sample(133, 109, 1510, 1320), sample(131, 107, 1490, 1320)]),
 	]);
 	assert.equal(result.passed, true);
 	assert.ok(result.ratios.coldBuild <= PROMOTION_PERFORMANCE_BUDGET.coldBuildRatio);
-	assert.ok(result.records.every(record => record.majorRegression === false));
+	assert.equal('majorFixtureLatencyRatio' in PROMOTION_PERFORMANCE_BUDGET, false);
+	assert.ok(result.records.every(record => !('majorRegression' in record)));
 });
 
 test('canonical runner measures the complete project corpus but fails closed without real incremental evidence', async () => {
@@ -48,6 +49,8 @@ test('canonical runner measures the complete project corpus but fails closed wit
 		assert.equal(result.report.incrementalCacheClaim, false);
 		assert.equal(result.report.editedRebuildProxy, true);
 		assert.equal(result.report.status, 'failed');
+		assert.equal('majorFixtureLatencyRatio' in result.report.budget, false);
+		assert.ok(result.report.fixtures.every(record => !('majorRegression' in record)));
 	} finally {
 		process.exitCode = 0;
 		await rm(root, { recursive: true, force: true });
@@ -91,22 +94,17 @@ test('does not round a just-over-budget ratio down to a pass', () => {
 	assert.equal(result.passed, false);
 });
 
-test('does not round a just-over-major-fixture ratio down to non-regression', () => {
-	const result = evaluatePromotionPerformanceSamples([
-		fixture('a', [sample(10_000_000, 10_000_000, 1000, 1000)], [sample(15_000_001, 10_000_000, 1000, 1000)]),
-	]);
-	assert.equal(result.records[0].ratios.coldBuild, 1.5);
-	assert.equal(result.records[0].majorRegression, true);
-});
-
-test('fails a major single-fixture latency regression even if another fixture masks the aggregate median', () => {
+test('retains individual fixture ratios without inventing a severe-regression threshold', () => {
 	const result = evaluatePromotionPerformanceSamples([
 		fixture('a', [sample(100, 100, 1000, 1000)], [sample(160, 160, 1000, 1000)]),
 		fixture('b', [sample(100, 100, 1000, 1000)], [sample(100, 100, 1000, 1000)]),
 		fixture('c', [sample(100, 100, 1000, 1000)], [sample(100, 100, 1000, 1000)]),
 	]);
-	assert.equal(result.passed, false);
-	assert.equal(result.records[0].majorRegression, true);
+	assert.equal(result.passed, true);
+	assert.equal(result.records[0].ratios.coldBuild, 1.6);
+	assert.equal(result.records[0].ratios.editedRebuild, 1.6);
+	assert.equal('majorRegression' in result.records[0], false);
+	assert.equal('majorFixtureLatencyRatio' in PROMOTION_PERFORMANCE_BUDGET, false);
 });
 
 test('fails peak RSS and artifact-size budget violations independently', () => {
