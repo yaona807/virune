@@ -19,28 +19,14 @@ const workspaceDirectories = [
 	'vscode',
 ];
 
-const unresolvedRequirements = [
-	'clean-registry-install-smoke',
-	'documentation-sync',
-	'generated-project-registry-smoke',
-	'package-publication-enablement',
-	'public-registry-verification',
-	'publication-gate-integration',
-	'registry-ownership',
-	'release-identity-integration',
-	'trusted-publishing',
-];
-
 const dependencySections = ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies'];
 const runtimeDependencySections = ['dependencies', 'peerDependencies', 'optionalDependencies'];
 
-test('current repository has a complete but explicitly non-ready npm prepublication plan', () => {
+test('current repository has a minimal disabled npm publication contract', () => {
 	const result = verifyNpmPublicationPlan(repositoryRoot);
 	assert.deepEqual(result, {
 		schemaVersion: 1,
-		stage: 'prepublication-audit',
 		publicationReady: false,
-		unresolvedRequirements,
 		currentVersion: '1.0.0',
 		forbidRegistryPublishThroughVersion: '1.0.0',
 		firstStableRegistryRelease: '1.1.0',
@@ -113,7 +99,7 @@ test('workspace layout changes fail until publication-plan enumeration is update
 	});
 });
 
-test('prepublication audit fails if a planned package becomes publishable early', () => {
+test('publication remains disabled while planned package manifests are private', () => {
 	withFixture(root => {
 		const path = resolve(root, 'packages/runtime/package.json');
 		const manifest = readJson(path);
@@ -121,7 +107,7 @@ test('prepublication audit fails if a planned package becomes publishable early'
 		writeJson(path, manifest);
 		assert.throws(
 			() => verifyNpmPublicationPlan(root),
-			/\.runtime\.private: prepublication audit requires private:true/u,
+			/\.runtime\.private: publication remains disabled until the publication-enablement change/u,
 		);
 	});
 });
@@ -313,7 +299,7 @@ test('publishable package metadata requires exports and a substantive unique fil
 	});
 });
 
-test('prepublication plan cannot claim readiness while required work is unresolved', () => {
+test('publication plan cannot become ready without deliberate enablement', () => {
 	withFixture(root => {
 		const path = resolve(root, '.github/release/npm-publication-v1.json');
 		const plan = readJson(path);
@@ -321,25 +307,34 @@ test('prepublication plan cannot claim readiness while required work is unresolv
 		writeJson(path, plan);
 		assert.throws(
 			() => verifyNpmPublicationPlan(root),
-			/publicationReady: prepublication audit must not claim publication readiness/u,
+			/publicationReady: must remain false until deliberate publication enablement/u,
 		);
 	});
 });
 
-test('prepublication blockers cannot be silently dropped', () => {
-	withFixture(root => {
-		const path = resolve(root, '.github/release/npm-publication-v1.json');
-		const plan = readJson(path);
-		plan.unresolvedRequirements = plan.unresolvedRequirements.filter(item => item !== 'trusted-publishing');
-		writeJson(path, plan);
-		assert.throws(
-			() => verifyNpmPublicationPlan(root),
-			/unresolvedRequirements: expected unresolved prepublication requirements/u,
-		);
-	});
+test('descriptive progress metadata is not part of the executable publication contract', () => {
+	const removedMetadata = {
+		stage: 'prepublication-audit',
+		unresolvedRequirements: ['trusted-publishing'],
+		trustedPublishingRequired: true,
+		publicVerificationRequired: true,
+		sameReviewedReleaseIdentityRequired: true,
+	};
+	for (const [key, value] of Object.entries(removedMetadata)) {
+		withFixture(root => {
+			const path = resolve(root, '.github/release/npm-publication-v1.json');
+			const plan = readJson(path);
+			plan[key] = value;
+			writeJson(path, plan);
+			assert.throws(
+				() => verifyNpmPublicationPlan(root),
+				/\$: expected keys distTagPolicy, excludedWorkspacePackages, firstStableRegistryRelease, forbidRegistryPublishThroughVersion, packages, publicationReady, schemaVersion/u,
+			);
+		});
+	}
 });
 
-test('retro-publish and first-stable npm release boundaries cannot drift during prepublication', () => {
+test('retro-publish and first-stable npm release boundaries cannot drift', () => {
 	withFixture(root => {
 		const path = resolve(root, '.github/release/npm-publication-v1.json');
 		const plan = readJson(path);
