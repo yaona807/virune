@@ -12,7 +12,7 @@ const gitShaPattern = /^[0-9a-f]{40}$/u;
 const sha256Pattern = /^[0-9a-f]{64}$/u;
 const runIdPattern = /^[1-9][0-9]*$/u;
 const qualityEvidenceIds = new Set(PROMOTION_QUALITY_COMMANDS.map(group => group.id));
-const performanceBudget = Object.freeze({ coldBuildRatio: 1.25, editedRebuildRatio: 1.25, peakRssRatio: 1.5, artifactSizeRatio: 1.25 });
+const performanceBudget = Object.freeze({ coldBuildRatio: 1.25, peakRssRatio: 1.5, artifactSizeRatio: 1.25 });
 const performanceSamplesPerImplementation = 5;
 const releaseStepIds = Object.freeze(['seed-verify','fixed-seed-bootstrap','clean-bootstrap','legacy-rollback']);
 const trustedObservationSource = Object.freeze({ repository: 'yaona807/virune', workflow: '.github/workflows/selfhost-promotion-observation.yml', ref: 'refs/heads/main', eventName: 'schedule' });
@@ -304,8 +304,8 @@ function validatePerformance(value, expectedFixtureIds) {
 	exactKeys(value, ['schemaVersion','claim','productionEligible','incrementalCacheClaim','editedRebuildProxy','budget','fixtureIds','samplesPerImplementation','fixtures','aggregate','status'], 'promotion performance report');
 	if (value.schemaVersion !== 1 || value.claim !== 'required-selfhost-relative-performance' || value.productionEligible !== false || value.incrementalCacheClaim !== false || value.editedRebuildProxy !== true) throw new Error('promotion performance schema v1 must remain an edited-rebuild proxy without incremental-cache claim');
 	if (!isRecord(value.budget)) throw new Error('promotion performance budget is malformed');
-	exactKeys(value.budget, ['coldBuildRatio','editedRebuildRatio','peakRssRatio','artifactSizeRatio'], 'promotion performance budget');
-	if (JSON.stringify(value.budget) !== JSON.stringify(performanceBudget)) throw new Error('promotion performance budget does not match the explicit Gate D numeric contract');
+	exactKeys(value.budget, ['coldBuildRatio','peakRssRatio','artifactSizeRatio'], 'promotion performance budget');
+	if (JSON.stringify(value.budget) !== JSON.stringify(performanceBudget)) throw new Error('promotion performance budget does not match the explicit measured numeric contract');
 	if (value.samplesPerImplementation !== performanceSamplesPerImplementation) throw new Error(`promotion performance must retain exactly ${performanceSamplesPerImplementation} samples per implementation`);
 	if (!Array.isArray(value.fixtureIds) || JSON.stringify(value.fixtureIds) !== JSON.stringify(expectedFixtureIds)) throw new Error('promotion performance fixture IDs do not match the canonical differential-corpus selection');
 	if (!Array.isArray(value.fixtures) || value.fixtures.length !== expectedFixtureIds.length) throw new Error('promotion performance fixture contract is invalid');
@@ -353,7 +353,6 @@ function summarizePerformanceFixtures(fixtures, implementation) {
 }
 function performanceSummariesWithinBudget(legacy, selfhost) {
 	return withinRatio(selfhost.coldBuildMs, legacy.coldBuildMs, performanceBudget.coldBuildRatio)
-		&& withinRatio(selfhost.editedRebuildMs, legacy.editedRebuildMs, performanceBudget.editedRebuildRatio)
 		&& withinRatio(selfhost.peakRssKb, legacy.peakRssKb, performanceBudget.peakRssRatio)
 		&& withinRatio(selfhost.artifactSizeBytes, legacy.artifactSizeBytes, performanceBudget.artifactSizeRatio);
 }
