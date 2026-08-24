@@ -113,7 +113,6 @@ writeFileSync(resolve(out, 'package.json'), `${JSON.stringify(localPackage, null
 copyFileSync(resolve('LICENSE'), resolve(out, 'LICENSE'));
 copyFileSync(resolve('NOTICE'), resolve(out, 'NOTICE'));
 copyFileSync(resolve('THIRD_PARTY_NOTICES.md'), resolve(out, 'THIRD_PARTY_NOTICES.md'));
-copyFileSync(resolve('THIRD_PARTY_NOTICES_ja.md'), resolve(out, 'THIRD_PARTY_NOTICES_ja.md'));
 
 const packageEntries = packages.map(item => {
 	const bytes = readFileSync(resolve(out, item.file));
