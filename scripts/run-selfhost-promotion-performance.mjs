@@ -9,7 +9,6 @@ export const PROMOTION_PERFORMANCE_SCHEMA_VERSION = 1;
 export const DEFAULT_PROMOTION_PERFORMANCE_OUTPUT = '.cache/selfhost-promotion-observation/performance.json';
 export const PROMOTION_PERFORMANCE_BUDGET = Object.freeze({
 	coldBuildRatio: 1.25,
-	editedRebuildRatio: 1.25,
 	peakRssRatio: 1.5,
 	artifactSizeRatio: 1.25,
 });
@@ -43,7 +42,8 @@ export async function runSelfhostPromotionPerformance({
 	const measuredRatiosPass = summariesWithinBudget(legacyAggregate, selfhostAggregate);
 	// Gate D requires a real incremental-build comparison. The current Self-host
 	// project boundary is stateless, so the edited second compile below is only a
-	// proxy and cannot satisfy that gate. Per-fixture ratios remain raw evidence;
+	// diagnostic proxy: its ratio is retained as raw evidence but no incremental
+	// threshold is applied to it. Per-fixture ratios are likewise raw evidence;
 	// schema v1 does not invent a numeric definition for the separate qualitative
 	// requirement that no severe individual-fixture regression be hidden by the
 	// aggregate. Keep the observation product-failed until a separately reviewed
@@ -140,7 +140,6 @@ function compareSummaries(legacy, selfhost) {
 
 function summariesWithinBudget(legacy, selfhost) {
 	return withinRatio(selfhost.coldBuildMs, legacy.coldBuildMs, PROMOTION_PERFORMANCE_BUDGET.coldBuildRatio)
-		&& withinRatio(selfhost.editedRebuildMs, legacy.editedRebuildMs, PROMOTION_PERFORMANCE_BUDGET.editedRebuildRatio)
 		&& withinRatio(selfhost.peakRssKb, legacy.peakRssKb, PROMOTION_PERFORMANCE_BUDGET.peakRssRatio)
 		&& withinRatio(selfhost.artifactSizeBytes, legacy.artifactSizeBytes, PROMOTION_PERFORMANCE_BUDGET.artifactSizeRatio);
 }
