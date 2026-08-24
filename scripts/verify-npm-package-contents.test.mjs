@@ -38,6 +38,18 @@ test('accepts a canonical planned package dry-run and returns deterministic evid
   });
 });
 
+test('derives Registry identity from workspace identity and rejects duplicated package metadata', () => {
+  withFixture(({ root, planPath }) => {
+    writeJson(planPath, {
+      packages: [{ directory: 'example', workspaceName: '@virune/example', registryName: '@virune/example' }],
+    });
+    assert.throws(
+      () => verifyNpmPackageContents(root, { packDryRun: () => structuredClone(basePack) }),
+      /\$\.packages\[0\]: expected keys directory, workspaceName/u,
+    );
+  });
+});
+
 test('canonicalizes npm pack file order before producing evidence', () => {
   withFixture(({ root }) => {
     const forward = verifyNpmPackageContents(root, { packDryRun: () => structuredClone(basePack) });
@@ -160,15 +172,16 @@ function withFixture(run) {
   const root = mkdtempSync(join(tmpdir(), 'virune-npm-package-audit-'));
   const packageRoot = resolve(root, 'packages/example');
   const manifestPath = resolve(packageRoot, 'package.json');
+  const planPath = resolve(root, '.github/release/npm-publication-v1.json');
   try {
     mkdirSync(resolve(root, '.github/release'), { recursive: true });
     mkdirSync(packageRoot, { recursive: true });
     writeJson(resolve(root, 'package.json'), { name: 'fixture-root', version: '1.0.0', private: true });
-    writeJson(resolve(root, '.github/release/npm-publication-v1.json'), {
-      packages: [{ directory: 'example', registryName: '@virune/example' }],
+    writeJson(planPath, {
+      packages: [{ directory: 'example', workspaceName: '@virune/example' }],
     });
     writeJson(manifestPath, baseManifest);
-    run({ root, packageRoot, manifestPath });
+    run({ root, packageRoot, manifestPath, planPath });
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
