@@ -11,13 +11,14 @@ function sample(coldBuildMs, editedRebuildMs, peakRssKb, artifactSizeBytes) {
 
 function fixture(id, legacy, selfhost) { return { fixtureId: id, legacy, selfhost }; }
 
-test('passes recorded aggregate numeric budgets inside the explicit Gate D ratios', () => {
+test('passes recorded aggregate numeric budgets inside the explicitly measured Gate D ratios', () => {
 	const result = evaluatePromotionPerformanceSamples([
 		fixture('a', [sample(100, 80, 1000, 1000), sample(102, 82, 1010, 1000), sample(98, 78, 990, 1000)], [sample(120, 96, 1400, 1200), sample(121, 97, 1410, 1200), sample(119, 95, 1390, 1200)]),
 		fixture('b', [sample(110, 90, 1100, 1100), sample(112, 92, 1110, 1100), sample(108, 88, 1090, 1100)], [sample(132, 108, 1500, 1320), sample(133, 109, 1510, 1320), sample(131, 107, 1490, 1320)]),
 	]);
 	assert.equal(result.passed, true);
 	assert.ok(result.ratios.coldBuild <= PROMOTION_PERFORMANCE_BUDGET.coldBuildRatio);
+	assert.equal('editedRebuildRatio' in PROMOTION_PERFORMANCE_BUDGET, false);
 	assert.equal('majorFixtureLatencyRatio' in PROMOTION_PERFORMANCE_BUDGET, false);
 	assert.ok(result.records.every(record => !('majorRegression' in record)));
 });
@@ -49,6 +50,7 @@ test('canonical runner measures the complete project corpus but fails closed wit
 		assert.equal(result.report.incrementalCacheClaim, false);
 		assert.equal(result.report.editedRebuildProxy, true);
 		assert.equal(result.report.status, 'failed');
+		assert.equal('editedRebuildRatio' in result.report.budget, false);
 		assert.equal('majorFixtureLatencyRatio' in result.report.budget, false);
 		assert.ok(result.report.fixtures.every(record => !('majorRegression' in record)));
 	} finally {
@@ -78,12 +80,12 @@ test('canonical runner rejects malformed corpus metadata instead of silently nar
 	}
 });
 
-test('fails when aggregate cold or edited rebuild exceeds 1.25x', () => {
+test('fails when aggregate cold build exceeds its explicit 1.25x budget', () => {
 	const result = evaluatePromotionPerformanceSamples([
-		fixture('a', [sample(100, 100, 1000, 1000)], [sample(130, 126, 1000, 1000)]),
+		fixture('a', [sample(100, 100, 1000, 1000)], [sample(130, 100, 1000, 1000)]),
 	]);
 	assert.equal(result.passed, false);
-	assert.ok(result.ratios.coldBuild > 1.25 || result.ratios.editedRebuild > 1.25);
+	assert.ok(result.ratios.coldBuild > 1.25);
 });
 
 test('does not round a just-over-budget ratio down to a pass', () => {
@@ -92,6 +94,15 @@ test('does not round a just-over-budget ratio down to a pass', () => {
 	]);
 	assert.equal(result.ratios.coldBuild, 1.25);
 	assert.equal(result.passed, false);
+});
+
+test('retains edited rebuild as raw diagnostic evidence without applying the incremental threshold to the proxy', () => {
+	const result = evaluatePromotionPerformanceSamples([
+		fixture('a', [sample(100, 100, 1000, 1000)], [sample(100, 160, 1000, 1000)]),
+	]);
+	assert.equal(result.passed, true);
+	assert.equal(result.records[0].ratios.editedRebuild, 1.6);
+	assert.equal('editedRebuildRatio' in PROMOTION_PERFORMANCE_BUDGET, false);
 });
 
 test('retains individual fixture ratios without inventing a severe-regression threshold', () => {
