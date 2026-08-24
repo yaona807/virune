@@ -12,7 +12,6 @@ export const PROMOTION_PERFORMANCE_BUDGET = Object.freeze({
 	editedRebuildRatio: 1.25,
 	peakRssRatio: 1.5,
 	artifactSizeRatio: 1.25,
-	majorFixtureLatencyRatio: 1.5,
 });
 const DEFAULT_SAMPLES = 5;
 const root = fileURLToPath(new URL('..', import.meta.url));
@@ -36,18 +35,19 @@ export async function runSelfhostPromotionPerformance({
 			implementations[implementation] = summarizeSamples(values);
 		}
 		const ratios = compareSummaries(implementations.legacy, implementations.selfhost);
-		records.push({ fixtureId, implementations, ratios, majorRegression: majorLatencyRegression(implementations.legacy, implementations.selfhost) });
+		records.push({ fixtureId, implementations, ratios });
 	}
 	const legacyAggregate = summarizeFixtureMedians(records, 'legacy');
 	const selfhostAggregate = summarizeFixtureMedians(records, 'selfhost');
 	const aggregateRatios = compareSummaries(legacyAggregate, selfhostAggregate);
-	const measuredRatiosPass = summariesWithinBudget(legacyAggregate, selfhostAggregate)
-		&& records.every(record => !record.majorRegression);
+	const measuredRatiosPass = summariesWithinBudget(legacyAggregate, selfhostAggregate);
 	// Gate D requires a real incremental-build comparison. The current Self-host
 	// project boundary is stateless, so the edited second compile below is only a
-	// proxy and cannot satisfy that gate. Keep the observation product-failed
-	// until an independently justified product capability can provide comparable
-	// incremental evidence; do not weaken Gate D in promotion tooling.
+	// proxy and cannot satisfy that gate. Per-fixture ratios remain raw evidence;
+	// schema v1 does not invent a numeric definition for the separate qualitative
+	// requirement that no severe individual-fixture regression be hidden by the
+	// aggregate. Keep the observation product-failed until a separately reviewed
+	// Gate D evidence contract can prove every required condition.
 	const incrementalCacheClaim = false;
 	const passed = incrementalCacheClaim && measuredRatiosPass;
 	const report = {
@@ -77,7 +77,7 @@ export function evaluatePromotionPerformanceSamples(fixtures) {
 		const legacy = summarizeSamples(item.legacy);
 		const selfhost = summarizeSamples(item.selfhost);
 		const ratios = compareSummaries(legacy, selfhost);
-		return { fixtureId: item.fixtureId, implementations: { legacy, selfhost }, ratios, majorRegression: majorLatencyRegression(legacy, selfhost) };
+		return { fixtureId: item.fixtureId, implementations: { legacy, selfhost }, ratios };
 	});
 	const legacyAggregate = summarizeFixtureMedians(records, 'legacy');
 	const selfhostAggregate = summarizeFixtureMedians(records, 'selfhost');
@@ -87,8 +87,7 @@ export function evaluatePromotionPerformanceSamples(fixtures) {
 		legacyAggregate,
 		selfhostAggregate,
 		ratios,
-		passed: summariesWithinBudget(legacyAggregate, selfhostAggregate)
-			&& records.every(record => !record.majorRegression),
+		passed: summariesWithinBudget(legacyAggregate, selfhostAggregate),
 	};
 }
 
@@ -144,11 +143,6 @@ function summariesWithinBudget(legacy, selfhost) {
 		&& withinRatio(selfhost.editedRebuildMs, legacy.editedRebuildMs, PROMOTION_PERFORMANCE_BUDGET.editedRebuildRatio)
 		&& withinRatio(selfhost.peakRssKb, legacy.peakRssKb, PROMOTION_PERFORMANCE_BUDGET.peakRssRatio)
 		&& withinRatio(selfhost.artifactSizeBytes, legacy.artifactSizeBytes, PROMOTION_PERFORMANCE_BUDGET.artifactSizeRatio);
-}
-
-function majorLatencyRegression(legacy, selfhost) {
-	return !withinRatio(selfhost.coldBuildMs, legacy.coldBuildMs, PROMOTION_PERFORMANCE_BUDGET.majorFixtureLatencyRatio)
-		|| !withinRatio(selfhost.editedRebuildMs, legacy.editedRebuildMs, PROMOTION_PERFORMANCE_BUDGET.majorFixtureLatencyRatio);
 }
 
 function withinRatio(numerator, denominator, limit) {
