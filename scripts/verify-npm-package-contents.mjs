@@ -21,7 +21,7 @@ export function verifyNpmPackageContents(root = process.cwd(), options = {}) {
 
 	for (const item of plannedPackages) {
 		const manifest = readJson(resolve(root, 'packages', item.directory, 'package.json'));
-		assert(manifest.name === item.registryName, `$.packages.${item.directory}.registryName`, `expected package name ${manifest.name}`);
+		assert(manifest.name === item.workspaceName, `$.packages.${item.directory}.workspaceName`, `expected package name ${manifest.name}`);
 		assert(manifest.version === version, `$.${item.directory}.version`, `must match root version ${version}`);
 		const packResult = normalizePackResult(packDryRun({ root, directory: item.directory }), item.directory);
 		packages.push(auditPackResult(item, manifest, packResult));
@@ -80,9 +80,12 @@ function auditPackResult(item, manifest, result) {
 
 function plannedPackage(value, path) {
 	const item = record(value, path);
+	assertExactKeys(item, ['directory', 'workspaceName'], path);
+	const workspaceName = packageName(item.workspaceName, `${path}.workspaceName`);
 	return {
 		directory: identifier(item.directory, `${path}.directory`),
-		registryName: packageName(item.registryName, `${path}.registryName`),
+		workspaceName,
+		registryName: workspaceName,
 	};
 }
 
@@ -110,6 +113,11 @@ function packageName(value, path) {
 	const name = nonEmptyString(value, path);
 	assert(/^(?:@[a-z0-9][a-z0-9._-]*\/[a-z0-9][a-z0-9._-]*|[a-z0-9][a-z0-9._-]*)$/u.test(name), path, 'invalid npm package name');
 	return name;
+}
+function assertExactKeys(value, expected, path) {
+	const actual = Object.keys(value).sort(compareText);
+	const canonicalExpected = [...expected].sort(compareText);
+	assert(JSON.stringify(actual) === JSON.stringify(canonicalExpected), path, `expected keys ${canonicalExpected.join(', ')}`);
 }
 function assertUnique(values, path, name) {
 	const seen = new Set();
