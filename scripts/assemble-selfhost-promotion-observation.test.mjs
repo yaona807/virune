@@ -135,7 +135,7 @@ async function makeFixture({ qualityFailure = null, performanceWithinBudget = tr
 		productionEligible: false,
 		incrementalCacheClaim: false,
 		editedRebuildProxy: true,
-		budget: { coldBuildRatio:1.25, editedRebuildRatio:1.25, peakRssRatio:1.5, artifactSizeRatio:1.25 },
+		budget: { coldBuildRatio:1.25, peakRssRatio:1.5, artifactSizeRatio:1.25 },
 		fixtureIds:['fixture'],
 		samplesPerImplementation:5,
 		fixtures:[{ fixtureId:'fixture', implementations:{legacy,selfhost}, ratios }],
@@ -317,6 +317,7 @@ test('partial or malformed versioned evidence fails closed without an observatio
 		{ file:'performance.json', mutate:value => { value.incrementalCacheClaim = true; }, expected:/schema v1 must remain an edited-rebuild proxy without incremental-cache claim/u },
 		{ file:'performance.json', mutate:value => { value.editedRebuildProxy = false; }, expected:/schema v1 must remain an edited-rebuild proxy without incremental-cache claim/u },
 		{ file:'performance.json', mutate:value => { value.status = 'passed'; }, expected:/schema v1 cannot pass Gate D without real incremental evidence/u },
+		{ file:'performance.json', mutate:value => { value.budget.editedRebuildRatio = 1.25; }, expected:/promotion performance budget must contain exactly keys/u },
 		{ file:'performance.json', mutate:value => { value.budget.majorFixtureLatencyRatio = 1.5; }, expected:/promotion performance budget must contain exactly keys/u },
 		{ file:'performance.json', mutate:value => { value.fixtures[0].majorRegression = false; }, expected:/promotion performance fixture 0 must contain exactly keys/u },
 	];
@@ -367,7 +368,7 @@ test('known performance budget failure becomes product-failed', async () => {
 	finally { await fixture.cleanup(); }
 });
 
-test('edited-rebuild proxy cannot satisfy Gate D even when all recorded numeric budgets pass', async () => {
+test('edited-rebuild proxy cannot satisfy Gate D even when all measured numeric budgets pass', async () => {
 	const fixture = await makeFixture();
 	try {
 		const result = await assembleSelfhostPromotionObservation(options(fixture));
