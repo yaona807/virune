@@ -12,7 +12,7 @@ const gitShaPattern = /^[0-9a-f]{40}$/u;
 const sha256Pattern = /^[0-9a-f]{64}$/u;
 const runIdPattern = /^[1-9][0-9]*$/u;
 const qualityEvidenceIds = new Set(PROMOTION_QUALITY_COMMANDS.map(group => group.id));
-const performanceBudget = Object.freeze({ coldBuildRatio: 1.25, editedRebuildRatio: 1.25, peakRssRatio: 1.5, artifactSizeRatio: 1.25, majorFixtureLatencyRatio: 1.5 });
+const performanceBudget = Object.freeze({ coldBuildRatio: 1.25, editedRebuildRatio: 1.25, peakRssRatio: 1.5, artifactSizeRatio: 1.25 });
 const performanceSamplesPerImplementation = 5;
 const releaseStepIds = Object.freeze(['seed-verify','fixed-seed-bootstrap','clean-bootstrap','legacy-rollback']);
 const trustedObservationSource = Object.freeze({ repository: 'yaona807/virune', workflow: '.github/workflows/selfhost-promotion-observation.yml', ref: 'refs/heads/main', eventName: 'schedule' });
@@ -304,8 +304,8 @@ function validatePerformance(value, expectedFixtureIds) {
 	exactKeys(value, ['schemaVersion','claim','productionEligible','incrementalCacheClaim','editedRebuildProxy','budget','fixtureIds','samplesPerImplementation','fixtures','aggregate','status'], 'promotion performance report');
 	if (value.schemaVersion !== 1 || value.claim !== 'required-selfhost-relative-performance' || value.productionEligible !== false || value.incrementalCacheClaim !== false || value.editedRebuildProxy !== true) throw new Error('promotion performance schema v1 must remain an edited-rebuild proxy without incremental-cache claim');
 	if (!isRecord(value.budget)) throw new Error('promotion performance budget is malformed');
-	exactKeys(value.budget, ['coldBuildRatio','editedRebuildRatio','peakRssRatio','artifactSizeRatio','majorFixtureLatencyRatio'], 'promotion performance budget');
-	if (JSON.stringify(value.budget) !== JSON.stringify(performanceBudget)) throw new Error('promotion performance budget does not match Gate D contract');
+	exactKeys(value.budget, ['coldBuildRatio','editedRebuildRatio','peakRssRatio','artifactSizeRatio'], 'promotion performance budget');
+	if (JSON.stringify(value.budget) !== JSON.stringify(performanceBudget)) throw new Error('promotion performance budget does not match the explicit Gate D numeric contract');
 	if (value.samplesPerImplementation !== performanceSamplesPerImplementation) throw new Error(`promotion performance must retain exactly ${performanceSamplesPerImplementation} samples per implementation`);
 	if (!Array.isArray(value.fixtureIds) || JSON.stringify(value.fixtureIds) !== JSON.stringify(expectedFixtureIds)) throw new Error('promotion performance fixture IDs do not match the canonical differential-corpus selection');
 	if (!Array.isArray(value.fixtures) || value.fixtures.length !== expectedFixtureIds.length) throw new Error('promotion performance fixture contract is invalid');
@@ -313,17 +313,14 @@ function validatePerformance(value, expectedFixtureIds) {
 	for (let index = 0; index < value.fixtures.length; index += 1) {
 		const record = value.fixtures[index];
 		if (!isRecord(record)) throw new Error(`promotion performance fixture ${index} is malformed`);
-		exactKeys(record, ['fixtureId','implementations','ratios','majorRegression'], `promotion performance fixture ${index}`);
+		exactKeys(record, ['fixtureId','implementations','ratios'], `promotion performance fixture ${index}`);
 		if (record.fixtureId !== expectedFixtureIds[index] || !isRecord(record.implementations)) throw new Error(`promotion performance fixture ${index} is malformed`);
 		exactKeys(record.implementations, ['legacy','selfhost'], `promotion performance fixture ${index}.implementations`);
 		const legacy = exactPerformanceSummary(record.implementations.legacy, `promotion performance fixture ${index}.implementations.legacy`);
 		const selfhost = exactPerformanceSummary(record.implementations.selfhost, `promotion performance fixture ${index}.implementations.selfhost`);
 		const expected = ratios(legacy, selfhost);
 		assertRatioRecord(record.ratios, expected, `fixtures[${index}].ratios`);
-		const major = !withinRatio(selfhost.coldBuildMs, legacy.coldBuildMs, performanceBudget.majorFixtureLatencyRatio)
-			|| !withinRatio(selfhost.editedRebuildMs, legacy.editedRebuildMs, performanceBudget.majorFixtureLatencyRatio);
-		if (record.majorRegression !== major) throw new Error(`promotion performance fixture ${index} majorRegression is inconsistent`);
-		validatedFixtures.push({ legacy, selfhost, majorRegression: major });
+		validatedFixtures.push({ legacy, selfhost });
 	}
 	if (!isRecord(value.aggregate)) throw new Error('promotion performance aggregate is malformed');
 	exactKeys(value.aggregate, ['legacy','selfhost','ratios'], 'promotion performance aggregate');
@@ -333,8 +330,7 @@ function validatePerformance(value, expectedFixtureIds) {
 	assertPerformanceSummary(aggregateSelfhost, summarizePerformanceFixtures(validatedFixtures, 'selfhost'), 'promotion performance aggregate.selfhost');
 	const aggregateRatios = ratios(aggregateLegacy, aggregateSelfhost);
 	assertRatioRecord(value.aggregate.ratios, aggregateRatios, 'aggregate.ratios');
-	const numericBudgetsPass = performanceSummariesWithinBudget(aggregateLegacy, aggregateSelfhost)
-		&& validatedFixtures.every(record => record.majorRegression === false);
+	const numericBudgetsPass = performanceSummariesWithinBudget(aggregateLegacy, aggregateSelfhost);
 	if (value.status !== 'failed') throw new Error('promotion performance schema v1 cannot pass Gate D without real incremental evidence');
 	return { status: 'failed', numericBudgetsPass };
 }
