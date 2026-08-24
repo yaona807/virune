@@ -16,7 +16,6 @@ export function verifyNpmPublicationPlan(root = process.cwd()) {
 	const plan = readJson(resolve(root, PLAN_PATH));
 	const rootManifest = readJson(resolve(root, 'package.json'));
 	assertExactKeys(plan, [
-		'schemaVersion',
 		'publicationReady',
 		'forbidRegistryPublishThroughVersion',
 		'firstStableRegistryRelease',
@@ -24,7 +23,6 @@ export function verifyNpmPublicationPlan(root = process.cwd()) {
 		'packages',
 		'excludedWorkspacePackages',
 	], '$');
-	assert(plan.schemaVersion === 1, '$.schemaVersion', 'expected schemaVersion 1');
 	assert(plan.publicationReady === false, '$.publicationReady', 'must remain false until deliberate publication enablement');
 	const forbiddenThroughText = nonEmptyString(plan.forbidRegistryPublishThroughVersion, '$.forbidRegistryPublishThroughVersion');
 	const firstStableText = nonEmptyString(plan.firstStableRegistryRelease, '$.firstStableRegistryRelease');
@@ -135,7 +133,6 @@ export function verifyNpmPublicationPlan(root = process.cwd()) {
 	}
 
 	return {
-		schemaVersion: plan.schemaVersion,
 		publicationReady: plan.publicationReady,
 		currentVersion: rootManifest.version,
 		forbidRegistryPublishThroughVersion: forbiddenThroughText,
