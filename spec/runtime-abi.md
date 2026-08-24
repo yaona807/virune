@@ -4,7 +4,7 @@
 
 Virune 1.0.0 emits ES2022 modules against Runtime ABI v2.
 
-## Native representation
+## Native representation (Virune-side runtime representation)
 
 - primitives use their validated JavaScript primitive representation;
 - records are null-prototype objects with enumerable fields and a non-enumerable nominal `$type` ID;
@@ -12,7 +12,7 @@ Virune 1.0.0 emits ES2022 modules against Runtime ABI v2.
 - newtypes erase to their validated underlying representation while retaining compile-time nominal identity;
 - type aliases have no runtime identity;
 - Option and Result use Runtime constructors and tags;
-- native List, Map, and Set values are immutable from Virune code.
+- Virune `List`, `Map`, and `Set` values are immutable from Virune code.
 
 ## Structural equality and hashing
 
@@ -48,7 +48,7 @@ Safe descriptors do not claim callback validation, arbitrary object-keyed JavaSc
 
 ## JavaScript exports
 
-`@jsExport` wrappers validate inbound values, convert outbound values, omit optional trailing arguments when required, and defensively copy native aggregate values exposed to JavaScript. Foreign handles remain foreign and are never presented as validated native values.
+`@jsExport` wrappers validate inbound values, convert outbound values, omit optional trailing arguments when required, and defensively copy native aggregate values exposed to JavaScript. Foreign handles remain external values and are never presented as validated native values.
 
 ## Public ABI snapshot
 
