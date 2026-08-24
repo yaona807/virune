@@ -348,7 +348,7 @@ test('non-executable top-level metadata is not part of the publication contract'
 	}
 });
 
-test('retro-publish and first-stable npm release boundaries cannot drift', () => {
+test('retro-publish boundary matches the reviewed root and precedes first stable', () => {
 	withFixture(root => {
 		const path = resolve(root, '.github/release/npm-publication-v1.json');
 		const plan = readJson(path);
@@ -356,17 +356,17 @@ test('retro-publish and first-stable npm release boundaries cannot drift', () =>
 		writeJson(path, plan);
 		assert.throws(
 			() => verifyNpmPublicationPlan(root),
-			/forbidRegistryPublishThroughVersion: expected 1\.0\.0 retro-publish boundary/u,
+			/\$root\.version: publication plan retro-publish boundary must match the reviewed root version before publication enablement/u,
 		);
 	});
 	withFixture(root => {
 		const path = resolve(root, '.github/release/npm-publication-v1.json');
 		const plan = readJson(path);
-		plan.firstStableRegistryRelease = '1.2.0';
+		plan.firstStableRegistryRelease = '1.0.0';
 		writeJson(path, plan);
 		assert.throws(
 			() => verifyNpmPublicationPlan(root),
-			/firstStableRegistryRelease: expected first stable npm release 1\.1\.0/u,
+			/firstStableRegistryRelease: must be later than the forbidden retro-publish boundary/u,
 		);
 	});
 });
