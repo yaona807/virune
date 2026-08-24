@@ -7,8 +7,6 @@ const REPOSITORY_URL = 'git+https://github.com/yaona807/virune.git';
 const HOMEPAGE = 'https://github.com/yaona807/virune#readme';
 const BUGS_URL = 'https://github.com/yaona807/virune/issues';
 const CANONICAL_WORKSPACES = ['packages/*'];
-const RETRO_PUBLISH_BOUNDARY = '1.0.0';
-const FIRST_STABLE_REGISTRY_RELEASE = '1.1.0';
 const DEPENDENCY_SECTIONS = ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies'];
 const RUNTIME_DEPENDENCY_SECTIONS = new Set(['dependencies', 'peerDependencies', 'optionalDependencies']);
 
@@ -28,8 +26,6 @@ export function verifyNpmPublicationPlan(root = process.cwd()) {
 	const firstStableText = nonEmptyString(plan.firstStableRegistryRelease, '$.firstStableRegistryRelease');
 	const forbiddenThrough = semver(forbiddenThroughText, '$.forbidRegistryPublishThroughVersion');
 	const firstStable = semver(firstStableText, '$.firstStableRegistryRelease');
-	assert(forbiddenThroughText === RETRO_PUBLISH_BOUNDARY, '$.forbidRegistryPublishThroughVersion', `expected ${RETRO_PUBLISH_BOUNDARY} retro-publish boundary`);
-	assert(firstStableText === FIRST_STABLE_REGISTRY_RELEASE, '$.firstStableRegistryRelease', `expected first stable npm release ${FIRST_STABLE_REGISTRY_RELEASE}`);
 	assert(compareSemver(firstStable, forbiddenThrough) > 0, '$.firstStableRegistryRelease', 'must be later than the forbidden retro-publish boundary');
 	const distTagPolicy = record(plan.distTagPolicy, '$.distTagPolicy');
 	assertExactKeys(distTagPolicy, ['stable', 'prerelease', 'nightly'], '$.distTagPolicy');
@@ -40,7 +36,11 @@ export function verifyNpmPublicationPlan(root = process.cwd()) {
 	assert(stableDistTag !== prereleaseDistTag, '$.distTagPolicy', 'stable and prerelease dist-tags must be distinct');
 	assert(distTagPolicy.nightly === null, '$.distTagPolicy.nightly', 'nightly releases must not be published to npm in this policy');
 	assert(rootManifest.private === true, '$root.private', 'monorepo root must remain private');
-	assert(rootManifest.version === plan.forbidRegistryPublishThroughVersion, '$root.version', 'publication plan must be updated deliberately when the repository version advances');
+	assert(
+		rootManifest.version === forbiddenThroughText,
+		'$root.version',
+		'publication plan retro-publish boundary must match the reviewed root version before publication enablement',
+	);
 	const rootWorkspaces = array(rootManifest.workspaces, '$root.workspaces')
 		.map((value, index) => nonEmptyString(value, `$root.workspaces[${index}]`));
 	assert(
