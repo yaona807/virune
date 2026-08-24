@@ -14,8 +14,15 @@ Child tasks cannot outlive the scope that created them. Detached tasks are not p
 ## `[task.parallel-try]` Parallel Result execution
 `parallel try` requires a common error type. The first `Err` triggers sibling cancellation, all children are settled, and the leftmost source `Err` is returned. A JavaScript rejection or panic is not converted to `Err` automatically.
 
-## `[task.race]` Race operations
-`Task.race` returns or rejects with the first settlement. `Task.firstOk` returns the first fulfillment and rejects with aggregate failure if all operations reject. Losers receive cancellation and are awaited to settlement.
+## `[task.race]` First-completion operations
+
+### `Task.race`
+`Task.race` uses the result of the first operation to settle. If that operation fulfills, it returns the value; if it rejects, the task rejects with that reason.
+
+### `Task.firstOk`
+`Task.firstOk` returns the first fulfilled value. If every operation rejects, it rejects with the aggregate failure.
+
+For both `Task.race` and `Task.firstOk`, operations whose results are not selected receive cancellation, and all operations are awaited to settlement.
 
 ## `[task.timeout]` Time and retry
 Timeouts and retry delays must be finite non-negative values in the host timer range. Timeout returns `TaskTimeoutError` through its Result API. Retry preserves source attempt numbering and validates backoff before sleeping.
