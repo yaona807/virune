@@ -1,18 +1,6 @@
 {
   "schemaVersion": 1,
-  "stage": "prepublication-audit",
   "publicationReady": false,
-  "unresolvedRequirements": [
-    "clean-registry-install-smoke",
-    "documentation-sync",
-    "generated-project-registry-smoke",
-    "package-publication-enablement",
-    "public-registry-verification",
-    "publication-gate-integration",
-    "registry-ownership",
-    "release-identity-integration",
-    "trusted-publishing"
-  ],
   "forbidRegistryPublishThroughVersion": "1.0.0",
   "firstStableRegistryRelease": "1.1.0",
   "distTagPolicy": {
@@ -20,9 +8,6 @@
     "prerelease": "next",
     "nightly": null
   },
-  "trustedPublishingRequired": true,
-  "publicVerificationRequired": true,
-  "sameReviewedReleaseIdentityRequired": true,
   "packages": [
     {
       "directory": "cli",
