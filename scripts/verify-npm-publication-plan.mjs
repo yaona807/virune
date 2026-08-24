@@ -61,7 +61,6 @@ export function verifyNpmPublicationPlan(root = process.cwd()) {
 		.sort((left, right) => compareText(left.directory, right.directory));
 	assertUnique(publishPackages.map(item => item.directory), '$.packages', 'directory');
 	assertUnique(publishPackages.map(item => item.workspaceName), '$.packages', 'workspaceName');
-	assertUnique(publishPackages.map(item => item.registryName), '$.packages', 'registryName');
 	assertUnique(excludedPackages.map(item => item.directory), '$.excludedWorkspacePackages', 'directory');
 	assertUnique(excludedPackages.map(item => item.workspaceName), '$.excludedWorkspacePackages', 'workspaceName');
 
@@ -91,7 +90,6 @@ export function verifyNpmPublicationPlan(root = process.cwd()) {
 	const excludedWorkspaceNames = new Set(excludedPackages.map(item => item.workspaceName));
 	for (const item of publishPackages) {
 		const manifest = manifests.get(item.workspaceName);
-		assert(item.registryName === item.workspaceName, `$.packages.${item.directory}.registryName`, 'registry package renaming is not modeled by the current release packaging path');
 		assert(manifest.repository?.type === 'git', `$.${item.directory}.repository.type`, 'expected git repository metadata');
 		assert(manifest.repository?.url === REPOSITORY_URL, `$.${item.directory}.repository.url`, 'unexpected repository URL');
 		assert(manifest.repository?.directory === `packages/${item.directory}`, `$.${item.directory}.repository.directory`, 'unexpected repository directory');
@@ -107,8 +105,8 @@ export function verifyNpmPublicationPlan(root = process.cwd()) {
 		assert(hasPackageExports(manifest.exports), `$.${item.directory}.exports`, 'non-empty exports metadata is required');
 		assert(manifest.engines?.node === reviewedNodeEngine, `$.${item.directory}.engines.node`, `must match reviewed root Node engine ${reviewedNodeEngine}`);
 		assert(manifest.publishConfig === undefined, `$.${item.directory}.publishConfig`, 'publishConfig must be introduced only in the publication-enablement change');
-		if (item.role === 'cli-dependency') {
-			assert(manifest.bin === undefined, `$.${item.directory}.bin`, 'CLI dependency packages must not expose npm executables');
+		if (item.workspaceName !== 'virune') {
+			assert(manifest.bin === undefined, `$.${item.directory}.bin`, 'non-CLI npm packages must not expose npm executables');
 		}
 		for (const section of DEPENDENCY_SECTIONS) {
 			const rawDependencies = manifest[section];
@@ -127,15 +125,12 @@ export function verifyNpmPublicationPlan(root = process.cwd()) {
 		}
 	}
 
-	const cli = publishPackages.find(item => item.role === 'cli');
-	assert(cli !== undefined, '$.packages', 'exactly one CLI publication package is required');
-	assert(publishPackages.filter(item => item.role === 'cli').length === 1, '$.packages', 'exactly one CLI publication package is required');
+	const cli = publishPackages.find(item => item.workspaceName === 'virune');
+	assert(cli !== undefined, '$.packages', 'canonical CLI publication package virune is required');
 	const cliManifest = manifests.get(cli.workspaceName);
-	assert(cli.workspaceName === 'virune', '$.packages', 'canonical CLI workspace package must be virune');
-	assert(cli.registryName === 'virune', '$.packages', 'canonical CLI registry name must be virune');
 	assertExactKeys(cliManifest.bin, ['virune'], `$.${cli.directory}.bin`);
 	assert(cliManifest.bin.virune === './dist/src/entry.js', `$.${cli.directory}.bin.virune`, 'canonical virune executable mapping is required');
-	for (const item of publishPackages.filter(item => item.role === 'cli-dependency')) {
+	for (const item of publishPackages.filter(item => item.workspaceName !== 'virune')) {
 		assert(cliManifest.dependencies?.[item.workspaceName] === rootManifest.version, `$.${cli.directory}.dependencies.${item.workspaceName}`, 'CLI must depend on every planned npm package dependency at the exact release version');
 	}
 
@@ -157,22 +152,21 @@ export function verifyNpmPublicationPlan(root = process.cwd()) {
 
 function publicationPackage(value, path) {
 	const item = record(value, path);
-	assertExactKeys(item, ['directory', 'workspaceName', 'registryName', 'role'], path);
+	assertExactKeys(item, ['directory', 'workspaceName'], path);
+	const workspaceName = packageName(item.workspaceName, `${path}.workspaceName`);
 	return {
 		directory: identifier(item.directory, `${path}.directory`),
-		workspaceName: packageName(item.workspaceName, `${path}.workspaceName`),
-		registryName: packageName(item.registryName, `${path}.registryName`),
-		role: oneOf(item.role, ['cli', 'cli-dependency'], `${path}.role`),
+		workspaceName,
+		registryName: workspaceName,
 	};
 }
 
 function excludedPackage(value, path) {
 	const item = record(value, path);
-	assertExactKeys(item, ['directory', 'workspaceName', 'reason'], path);
+	assertExactKeys(item, ['directory', 'workspaceName'], path);
 	return {
 		directory: identifier(item.directory, `${path}.directory`),
 		workspaceName: packageName(item.workspaceName, `${path}.workspaceName`),
-		reason: nonEmptyString(item.reason, `${path}.reason`),
 	};
 }
 
@@ -217,11 +211,6 @@ function identifier(value, path) {
 	const text = nonEmptyString(value, path);
 	assert(/^[a-z0-9][a-z0-9-]*$/u.test(text), path, 'invalid workspace directory');
 	return text;
-}
-
-function oneOf(value, values, path) {
-	assert(typeof value === 'string' && values.includes(value), path, `expected one of ${values.join(', ')}`);
-	return value;
 }
 
 function nonEmptyString(value, path) {
