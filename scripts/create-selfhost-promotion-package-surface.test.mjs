@@ -57,18 +57,33 @@ test('package product surface fails closed on unmodeled execution-relevant packa
 });
 
 test('package product surface rejects exports outside or escaping the bound artifact tree', async () => {
-	for (const target of ['./outside.js', './dist/src/../outside.js', './dist/src/missing.js']) {
+	for (const target of ['./outside.js', './dist/src/../outside.js']) {
 		const f = await fixture();
 		try {
 			await writeFile(join(f.root, 'outside.js'), 'export const outside = 1;\n', 'utf8');
 			await writeFile(join(f.root, 'package.json'), JSON.stringify({ ...baseManifest(), exports: { '.': target } }), 'utf8');
 			await assert.rejects(
 				() => hashPackageProductSurface({ packageRoot: f.root, claim: 'fixture-product-v1' }),
-				/(bound \.\/dist\/src artifact tree|canonical path inside \.\/dist\/src|regular non-symlink file)/u,
+				/(bound \.\/dist\/src artifact tree|canonical path inside \.\/dist\/src)/u,
 			);
 		} finally {
 			await f.cleanup();
 		}
+	}
+});
+
+test('package product surface rejects a missing export target inside the bound artifact tree', async () => {
+	const f = await fixture();
+	try {
+		await writeFile(join(f.root, 'package.json'), JSON.stringify({ ...baseManifest(), exports: { '.': './dist/src/missing.js' } }), 'utf8');
+		await assert.rejects(
+			() => hashPackageProductSurface({ packageRoot: f.root, claim: 'fixture-product-v1' }),
+			error => error instanceof Error
+				&& error.code === 'ENOENT'
+				&& /dist[\\/]src[\\/]missing\.js/u.test(error.message),
+		);
+	} finally {
+		await f.cleanup();
 	}
 });
 
