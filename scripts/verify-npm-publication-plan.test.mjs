@@ -218,6 +218,21 @@ test('every workspace package must be explicitly public or excluded', () => {
 	});
 });
 
+test('canonical virune CLI cannot be reclassified as excluded', () => {
+	withFixture(root => {
+		const path = resolve(root, '.github/release/npm-publication-v1.json');
+		const plan = readJson(path);
+		const cli = plan.packages.find(item => item.workspaceName === 'virune');
+		plan.packages = plan.packages.filter(item => item.workspaceName !== 'virune');
+		plan.excludedWorkspacePackages.push(cli);
+		writeJson(path, plan);
+		assert.throws(
+			() => verifyNpmPublicationPlan(root),
+			/canonical CLI publication package virune is required/u,
+		);
+	});
+});
+
 test('publishable package metadata remains bound to reviewed root license and Node runtime baseline', () => {
 	withFixture(root => {
 		const path = resolve(root, 'packages/runtime/package.json');
@@ -310,7 +325,7 @@ test('publication plan cannot become ready without deliberate enablement', () =>
 	});
 });
 
-test('descriptive progress metadata is not part of the executable publication contract', () => {
+test('non-executable top-level metadata is not part of the publication contract', () => {
 	const removedMetadata = {
 		schemaVersion: 1,
 		stage: 'prepublication-audit',
