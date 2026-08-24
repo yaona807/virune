@@ -90,7 +90,7 @@ function fixture({ commit = reviewedCommit } = {}) {
 	const failedTarballs = new Set();
 	const malformedJson = new Set();
 	const packages = publicationPlan.packages.map(item => {
-		const registryName = item.registryName;
+		const registryName = item.workspaceName;
 		const releaseAsset = registryReleaseAssetNameForPackage(registryName, version);
 		const bytes = Buffer.from(`registry fixture:${registryName}:${version}\n`, 'utf8');
 		const tarball = registryTarballUrl(registryName, releaseAsset);
@@ -354,7 +354,7 @@ test('publication manifest validation is exact, unique and fail closed', () => {
 });
 
 test('Registry observations reject missing, malformed, partial and stale metadata', async () => {
-	const first = publicationPlan.packages[0].registryName;
+	const first = publicationPlan.packages[0].workspaceName;
 	for (const mutate of [
 		current => current.metadata.delete(first),
 		current => current.packuments.delete(first),
@@ -378,7 +378,7 @@ test('Registry observations reject missing, malformed, partial and stale metadat
 });
 
 test('Registry tarball integrity, shasum, SHA-256 and byte-size drift fail closed', async () => {
-	const first = publicationPlan.packages[0].registryName;
+	const first = publicationPlan.packages[0].workspaceName;
 	for (const mutate of [
 		current => { current.metadata.get(first).dist.integrity = `sha512-${Buffer.alloc(64).toString('base64')}`; },
 		current => { current.metadata.get(first).dist.shasum = 'f'.repeat(40); },
