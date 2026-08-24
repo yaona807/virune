@@ -181,23 +181,32 @@ test('undeclared Virune namespace dependencies fail closed', () => {
 	});
 });
 
-test('registry package names must match current workspace package identities', () => {
-	for (const directory of ['runtime', 'cli']) {
+test('duplicated package metadata is not part of the executable publication contract', () => {
+	for (const [key, value] of [['registryName', 'virune'], ['role', 'cli']]) {
 		withFixture(root => {
 			const path = resolve(root, '.github/release/npm-publication-v1.json');
 			const plan = readJson(path);
-			const item = plan.packages.find(value => value.directory === directory);
-			item.registryName = directory === 'cli' ? '@virune/cli' : '@example/runtime';
+			plan.packages[0][key] = value;
 			writeJson(path, plan);
 			assert.throws(
 				() => verifyNpmPublicationPlan(root),
-				/registry package renaming is not modeled by the current release packaging path/u,
+				/\.packages\[0\]: expected keys directory, workspaceName/u,
 			);
 		});
 	}
+	withFixture(root => {
+		const path = resolve(root, '.github/release/npm-publication-v1.json');
+		const plan = readJson(path);
+		plan.excludedWorkspacePackages[0].reason = 'descriptive only';
+		writeJson(path, plan);
+		assert.throws(
+			() => verifyNpmPublicationPlan(root),
+			/\.excludedWorkspacePackages\[0\]: expected keys directory, workspaceName/u,
+		);
+	});
 });
 
-test('every workspace package must be explicitly public or excluded with a substantive reason', () => {
+test('every workspace package must be explicitly public or excluded', () => {
 	withFixture(root => {
 		const path = resolve(root, '.github/release/npm-publication-v1.json');
 		const plan = readJson(path);
@@ -206,16 +215,6 @@ test('every workspace package must be explicitly public or excluded with a subst
 		assert.throws(
 			() => verifyNpmPublicationPlan(root),
 			/workspace package missing from publication plan: language-server/u,
-		);
-	});
-	withFixture(root => {
-		const path = resolve(root, '.github/release/npm-publication-v1.json');
-		const plan = readJson(path);
-		plan.excludedWorkspacePackages.find(item => item.directory === 'language-server').reason = '   ';
-		writeJson(path, plan);
-		assert.throws(
-			() => verifyNpmPublicationPlan(root),
-			/excludedWorkspacePackages\[0\]\.reason: expected a non-empty non-whitespace string/u,
 		);
 	});
 });
@@ -251,7 +250,7 @@ test('only the canonical CLI package may expose the virune npm executable', () =
 		writeJson(path, manifest);
 		assert.throws(
 			() => verifyNpmPublicationPlan(root),
-			/\.runtime\.bin: CLI dependency packages must not expose npm executables/u,
+			/\.runtime\.bin: non-CLI npm packages must not expose npm executables/u,
 		);
 	});
 	withFixture(root => {
