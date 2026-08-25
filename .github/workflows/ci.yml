@@ -153,7 +153,7 @@ jobs:
       - name: Restore compiled output
         run: node scripts/run-ci-command.mjs --id restore-compiled-output -- tar -xzf .cache/compiled-output.tgz -C .
       - name: Run platform-independent unit and integration tests
-        run: node scripts/run-ci-command.mjs --id core-tests -- npm run test:core:built -- --failure-output-only --exclude-selfhost-inventory
+        run: node scripts/run-ci-command.mjs --id core-tests -- npm run test:core:built -- --failure-output-only --exclude-selfhost-inventory --unit-concurrency=4
         env:
           VIRUNE_TEST_ROLE: full
       - name: Write timing summary
