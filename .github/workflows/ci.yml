@@ -470,7 +470,10 @@ jobs:
       needs.verify.result == 'success' &&
       needs.selfhost-inventory.result == 'success' &&
       needs.quality.result == 'success' &&
-      (needs.semantic-fuzz.result == 'success' || needs.semantic-fuzz.result == 'skipped') &&
+      (
+        needs.semantic-fuzz.result == 'success' ||
+        (github.event_name != 'pull_request' && needs.semantic-fuzz.result == 'skipped')
+      ) &&
       needs.compatibility.result == 'success' &&
       needs.browser.result == 'success'
     runs-on: ubuntu-24.04
