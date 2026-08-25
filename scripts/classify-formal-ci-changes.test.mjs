@@ -5,6 +5,7 @@ import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import test from 'node:test';
+import { classifyChangedPaths } from './classify-ci-changes.mjs';
 import { formalLanes, isFormalLaneRequired, normalizeChangedPaths } from './classify-formal-ci-changes.mjs';
 
 const repositoryRoot = resolve(fileURLToPath(new URL('..', import.meta.url)));
@@ -77,6 +78,17 @@ test('unknown paths fail closed instead of being inferred not-required', () => {
 	}
 });
 
+test('preserves leading and trailing whitespace as part of the exact changed path', () => {
+	for (const path of ['docs/guide.md ', ' docs/guide.md', 'README.md ']) {
+		const classification = classifyChangedPaths([path]);
+		assert.equal(classification.docsOnly, false, path);
+		assert.deepEqual(classification.paths, [path.replaceAll('\\', '/')], path);
+		for (const lane of formalLanes) {
+			assert.equal(isFormalLaneRequired(lane, [path]), true, `${lane}: ${path}`);
+		}
+	}
+});
+
 test('empty or unresolved change input fails safe by requiring every formal lane', () => {
 	for (const lane of formalLanes) {
 		assert.equal(isFormalLaneRequired(lane, []), true, lane);
@@ -93,10 +105,10 @@ test('mixed documentation and code changes require every formal lane', () => {
 	}
 });
 
-test('normalizes separators, removes duplicates, and sorts deterministically', () => {
+test('normalizes separators, removes duplicates, and sorts deterministically without trimming filenames', () => {
 	assert.deepEqual(
-		normalizeChangedPaths(['packages\\vscode\\src\\extension.ts', '', 'README.md', 'README.md']),
-		['README.md', 'packages/vscode/src/extension.ts'],
+		normalizeChangedPaths(['packages\\vscode\\src\\extension.ts', '', 'README.md', 'README.md', 'README.md ']),
+		['README.md', 'README.md ', 'packages/vscode/src/extension.ts'],
 	);
 });
 
