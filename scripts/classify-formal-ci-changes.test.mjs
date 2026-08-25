@@ -93,12 +93,14 @@ test('each formal lane explicitly omits unrelated paths', () => {
 	}
 });
 
-test('shared classifier controls force every formal lane to run', () => {
+test('shared classifier and gate controls force every formal lane to run', () => {
 	for (const path of [
 		'scripts/classify-ci-changes.mjs',
 		'scripts/classify-ci-changes.test.mjs',
 		'scripts/classify-formal-ci-changes.mjs',
 		'scripts/classify-formal-ci-changes.test.mjs',
+		'scripts/verify-formal-ci-gate.mjs',
+		'scripts/verify-formal-ci-gate.test.mjs',
 	]) {
 		for (const lane of formalLanes) {
 			assert.equal(isFormalLaneRequired(lane, [path]), true, `${lane}: ${path}`);
