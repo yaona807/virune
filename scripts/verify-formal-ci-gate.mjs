@@ -1,3 +1,6 @@
+import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
 const VALID_NON_PR_EVENTS = new Set(['push', 'workflow_dispatch']);
 const CI_REQUIRED_SUCCESS_KEYS = Object.freeze([
 	'metadata',
@@ -126,4 +129,5 @@ function main() {
 	}
 }
 
-if (process.argv[1] !== undefined && new URL(import.meta.url).pathname === new URL(`file://${process.argv[1]}`).pathname) main();
+const entry = process.argv[1] === undefined ? undefined : resolve(process.argv[1]);
+if (entry === fileURLToPath(import.meta.url)) main();
