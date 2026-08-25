@@ -26,11 +26,11 @@ The main Stable surfaces include:
 
 - Virune syntax and behavior defined by the [Language Specification](spec/README.md)
 - documented `virune.json` configuration
-- public standard-library APIs
-- the Compiler API exported from `@virune/compiler`
+- documented public standard-library declarations and the `exports` configuration in `package.json`
+- the root public Compiler API exported from `@virune/compiler`
 - Runtime ABI and Interop ABI versions explicitly declared Stable
 - documented CLI commands and behavior
-- public diagnostic codes and JSON formats
+- public diagnostic codes and JSON formats, plus other machine-readable formats explicitly declared Stable
 - Language Server and VS Code extension capabilities, settings, and commands documented for stable releases
 - environments declared supported, such as Node.js and VS Code
 
@@ -50,6 +50,8 @@ Stable surfaces are explicitly identified through the Language Specification, pu
 
 A surface explicitly marked Experimental is not Stable even if it is publicly accessible.
 
+Updating a snapshot alone does not authorize an incompatible change.
+
 If the classification is unclear, check how the surface is documented for users before changing it.
 
 ### Diagnostic codes
@@ -60,13 +62,13 @@ For that reason, an existing diagnostic code must not later be reused for a diff
 
 Diagnostic message wording may improve over time. External tools should identify diagnostics by `source` plus `code`, or by `qualifiedCode`, rather than by message text.
 
-The current diagnostic codes and JSON structures are defined by the compiler-owned diagnostic definitions and related schemas.
+The current diagnostic codes and machine-readable structures are defined by the compiler-owned diagnostic definitions and related schemas.
 
 ## Experimental surfaces
 
 Experimental surfaces are still being evaluated for future stabilization.
 
-They may change or be removed between releases even when they are included in a stable Virune release.
+They may change or be removed in any release, even when they are included in a stable Virune release.
 
 Current examples include:
 
@@ -111,8 +113,8 @@ Examples of incompatible changes include:
 - removing an existing CLI command
 - incompatibly changing public Language Server or VS Code extension capabilities, settings, or commands
 - removing a documented `virune.json` setting, or incompatibly changing its meaning or default
-- preventing previously valid Virune code from compiling or running, or incompatibly changing its runtime meaning
-- incompatibly changing published diagnostic codes or Stable JSON formats
+- preventing a previously conforming Virune program from being parsed, type-checked, linked, or evaluated, or incompatibly changing its meaning
+- incompatibly changing Stable diagnostic codes or machine-readable formats
 - raising a minimum supported version and dropping an environment that was previously supported
 
 The connection rules between generated code and the Runtime are called the Runtime ABI. The connection rules used for Virune / JavaScript interop are called the Interop ABI.
@@ -129,18 +131,18 @@ When a Stable feature will eventually be removed or changed incompatibly, Virune
 
 The usual sequence is:
 
-1. Announce that the feature will be removed in the future.
+1. Mark the feature deprecated in public documentation and, where practical, in tooling or type metadata.
 2. Provide a supported replacement or migration path.
 3. Publish at least one stable release where the old feature still works but is marked deprecated.
-4. Remove or change the old feature in a major release.
+4. Remove or incompatibly change the old feature in a major release and provide migration guidance.
 
-Migration guidance should explain what changes, which versions are affected, and what users need to update.
+Migration guidance is prepared before release and identifies the affected versions and surface, the old and new contracts, and the required migration steps.
 
 Experimental and Internal surfaces do not require this process.
 
-A deprecated feature keeps its existing contract until removal, including type checks, ABI requirements, and existing validation. Marking a feature deprecated must not by itself change the meaning of existing programs.
+Deprecation does not justify weakening type, safety, ABI, or validation boundaries. Marking a feature deprecated must not by itself change the meaning of existing programs.
 
-## When correctness or safety takes priority
+## When correctness, safety, or security takes priority
 
 Compatibility is important, but it is not a reason to preserve behavior that is known to be incorrect or unsafe.
 
@@ -154,22 +156,20 @@ The same applies when an external platform such as Node.js reaches end of suppor
 
 An exceptional incompatible change must explain at least:
 
-- what is affected
+- which Stable contract is affected
 - how it behaved before
 - why the issue cannot reasonably be fixed while preserving compatibility
-- how users should migrate
+- what mitigation or migration path is available
 
 Unrelated Stable surfaces should remain unchanged.
+
+Fixing an implementation so that it restores behavior required by the existing Language Specification is not itself a Language Specification change. If that fix is incompatible for Stable users, it must satisfy this exception or wait for the next major release.
 
 This exception is not a way to accelerate ordinary incompatible changes.
 
 ## When specification and implementation disagree
 
-If the Language Specification, compatibility policy, implementation, and tests disagree, first determine what behavior was intended.
-
-Fixing an implementation so that it matches the existing Language Specification is not itself a Language Specification change.
-
-However, if that fix is incompatible for Stable users, it must satisfy the correctness or safety exception above or wait for the next major release.
+If the Language Specification, compatibility policy, implementation, and tests disagree, do not choose whichever interpretation is most convenient. Resolve the inconsistency before treating the behavior as a Stable guarantee.
 
 Release notes or migration guidance alone cannot override the [Language Specification](spec/README.md) or this compatibility policy.
 
