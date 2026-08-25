@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { verifyCiGate, verifyOptionalFormalGate } from './verify-formal-ci-gate.mjs';
 
-const badResults = ['failure', 'cancelled', 'skipped', 'neutral', 'stale', 'unknown', ''];
+const badResults = ['failure', 'cancelled', 'skipped', 'neutral', 'partial', 'stale', 'timed_out', 'unknown', ''];
 
 function requiredCiResults() {
 	return {
@@ -48,7 +48,7 @@ test('optional formal gate accepts only an explicit skipped not-required lane', 
 		classifyResult: 'success',
 		upstreamResult: 'skipped',
 	}), 'not-required');
-	for (const upstreamResult of ['success', 'failure', 'cancelled', 'stale', 'unknown', '']) {
+	for (const upstreamResult of ['success', 'failure', 'cancelled', 'partial', 'stale', 'timed_out', 'unknown', '']) {
 		assert.throws(() => verifyOptionalFormalGate({
 			label: 'performance',
 			required: 'false',
@@ -58,7 +58,7 @@ test('optional formal gate accepts only an explicit skipped not-required lane', 
 	}
 });
 
-test('optional required lane rejects skipped, failed, cancelled, neutral, stale, unknown, and missing results', () => {
+test('optional required lane rejects skipped, failed, cancelled, neutral, partial, stale, timed-out, unknown, and missing results', () => {
 	for (const upstreamResult of badResults) {
 		assert.throws(() => verifyOptionalFormalGate({
 			label: 'fixed Seed',
@@ -70,7 +70,7 @@ test('optional required lane rejects skipped, failed, cancelled, neutral, stale,
 });
 
 test('optional gate rejects invalid or unsuccessful classification', () => {
-	for (const classifyResult of ['failure', 'cancelled', 'skipped', 'stale', 'unknown', '']) {
+	for (const classifyResult of ['failure', 'cancelled', 'skipped', 'partial', 'stale', 'timed_out', 'unknown', '']) {
 		assert.throws(() => verifyOptionalFormalGate({
 			label: 'VSIX',
 			required: 'false',
@@ -157,7 +157,7 @@ test('CI gate rejects unexpected events and malformed classification state', () 
 		classifyResult: 'success',
 		results: requiredCiResults(),
 	}), /Invalid docs_only output/u);
-	for (const classifyResult of ['cancelled', 'stale']) {
+	for (const classifyResult of ['cancelled', 'partial', 'stale', 'timed_out']) {
 		assert.throws(() => verifyCiGate({
 			eventName: 'pull_request',
 			docsOnly: 'false',
