@@ -3,6 +3,8 @@ import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
+import './classify-formal-ci-changes.test.mjs';
+import './verify-formal-ci-gate.test.mjs';
 import { verifyWorkflows } from './verify-workflows.mjs';
 
 const CHECKOUT_SHA = '3d3c42e5aac5ba805825da76410c181273ba90b1';
