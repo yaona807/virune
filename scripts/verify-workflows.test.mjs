@@ -81,11 +81,18 @@ test('accepts an explicitly reviewed workflow permission exception', async t => 
 	await assert.doesNotReject(verifyWorkflows(root));
 });
 
-test('accepts a Draft-gated pull request workflow with both lifecycle transitions', async t => {
+test('accepts a Draft-gated pull request workflow with the complete lifecycle', async t => {
 	const root = await fixture(CHECKOUT_SHA);
 	t.after(() => rm(root, { recursive: true, force: true }));
 	await writeDraftGatedWorkflow(root, ['opened', 'synchronize', 'reopened', 'ready_for_review', 'converted_to_draft']);
 	await assert.doesNotReject(verifyWorkflows(root));
+});
+
+test('rejects a Draft-gated workflow that cannot revalidate a new Ready head', async t => {
+	const root = await fixture(CHECKOUT_SHA);
+	t.after(() => rm(root, { recursive: true, force: true }));
+	await writeDraftGatedWorkflow(root, ['opened', 'reopened', 'ready_for_review', 'converted_to_draft']);
+	await assert.rejects(verifyWorkflows(root), /must subscribe to synchronize/u);
 });
 
 test('rejects a Draft-gated workflow that cannot start formal validation when marked Ready', async t => {
