@@ -6,12 +6,15 @@ const WORKFLOW_SUFFIX = /\.ya?ml$/u;
 const USES_LINE = /^\s*(?:-\s*)?uses:\s*(.+?)\s*$/u;
 const FULL_COMMIT_SHA = /^[0-9a-f]{40}$/u;
 const PERMISSION_LINE = /^  ([a-z][a-z0-9-]*):\s*(read|write|none)\s*$/u;
+const IF_LINE = /^(\s+)if:\s*(.*?)\s*$/u;
 const PULL_REQUEST_LINE = /^  pull_request:\s*(?:#.*)?$/u;
 const PULL_REQUEST_TYPES_INLINE_LINE = /^    types:\s*\[([^\]]*)\]\s*(?:#.*)?$/u;
 const PULL_REQUEST_TYPES_BLOCK_LINE = /^    types:\s*(?:#.*)?$/u;
-const PULL_REQUEST_TYPE_ITEM_LINE = /^      -\s*(.+?)\s*(?:#.*)?$/u;
+const PULL_REQUEST_TYPE_ITEM_LINE = /^      -\s*([^#]+?)\s*(?:#.*)?$/u;
 const REQUIRED_TOP_LEVEL_KEYS = ['name', 'on', 'permissions', 'jobs'];
 const REQUIRED_DRAFT_TRANSITIONS = ['opened', 'synchronize', 'reopened', 'ready_for_review', 'converted_to_draft'];
+const BLOCK_SCALAR_MARKERS = new Set(['>', '>-', '>+', '|', '|-', '|+']);
+const PULL_REQUEST_DRAFT_REFERENCE = 'github.event.pull_request.draft';
 
 export async function verifyWorkflows(root = process.cwd()) {
 	const workflowDirectory = resolve(root, '.github/workflows');
@@ -126,11 +129,7 @@ function verifySecurityWorkflowPolicy(file, source) {
 
 function verifyDraftTransitionPolicy(file, source) {
 	const lines = source.split(/\r?\n/u);
-	const usesDraftGate = lines.some(line => {
-		const trimmed = line.trim();
-		return trimmed.length > 0 && !trimmed.startsWith('#') && trimmed.includes('github.event.pull_request.draft');
-	});
-	if (!usesDraftGate) return;
+	if (!usesPullRequestDraftGate(lines)) return;
 
 	const pullRequestIndex = findPullRequestTrigger(lines);
 	if (pullRequestIndex === -1) {
@@ -142,6 +141,27 @@ function verifyDraftTransitionPolicy(file, source) {
 			throw new Error(`${file}: a pull_request.draft gate must subscribe to ${transition}`);
 		}
 	}
+}
+
+function usesPullRequestDraftGate(lines) {
+	for (let index = 0; index < lines.length; index++) {
+		const line = lines[index];
+		const match = IF_LINE.exec(line);
+		if (match === null) continue;
+		const inlineExpression = match[2].replace(/\s+#.*$/u, '').trim();
+		if (inlineExpression.includes(PULL_REQUEST_DRAFT_REFERENCE)) return true;
+		if (!BLOCK_SCALAR_MARKERS.has(inlineExpression)) continue;
+
+		const ifIndent = match[1].length;
+		for (let expressionIndex = index + 1; expressionIndex < lines.length; expressionIndex++) {
+			const expressionLine = lines[expressionIndex];
+			const trimmed = expressionLine.trim();
+			if (trimmed.length === 0 || trimmed.startsWith('#')) continue;
+			if (leadingSpaces(expressionLine) <= ifIndent) break;
+			if (trimmed.includes(PULL_REQUEST_DRAFT_REFERENCE)) return true;
+		}
+	}
+	return false;
 }
 
 function findPullRequestTrigger(lines) {
@@ -190,6 +210,12 @@ function readPullRequestTypes(file, lines, pullRequestIndex) {
 		return new Set(values);
 	}
 	throw new Error(`${file}: a pull_request.draft gate must declare pull_request types explicitly`);
+}
+
+function leadingSpaces(value) {
+	let count = 0;
+	while (value[count] === ' ') count++;
+	return count;
 }
 
 function validActionPolicy(value) {
