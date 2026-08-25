@@ -1,5 +1,38 @@
 {
 	"schemaVersion": 1,
-	"documents": {},
+	"documents": {
+		"README.md": [
+			{
+				"index": 0,
+				"mode": "ignore",
+				"id": "dashboard-example",
+				"reason": "The overview assumes existing loadUser and loadOrders operations and intentionally omits their declarations.",
+				"sync": "exact"
+			},
+			{
+				"index": 1,
+				"mode": "ignore",
+				"id": "javascript-import",
+				"reason": "The overview demonstrates import syntax without installing nanoid as a documentation fixture dependency.",
+				"sync": "exact"
+			}
+		],
+		"README_ja.md": [
+			{
+				"index": 0,
+				"mode": "ignore",
+				"id": "dashboard-example",
+				"reason": "概要説明のため、既存のloadUserとloadOrdersの宣言を省略しています。",
+				"sync": "exact"
+			},
+			{
+				"index": 1,
+				"mode": "ignore",
+				"id": "javascript-import",
+				"reason": "概要説明のため、documentation fixtureにはnanoidをインストールしていません。",
+				"sync": "exact"
+			}
+		]
+	},
 	"inlineDocuments": []
 }
