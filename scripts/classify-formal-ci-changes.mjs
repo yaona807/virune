@@ -19,6 +19,8 @@ const sharedClassifierControls = new Set([
 	'scripts/classify-ci-changes.test.mjs',
 	'scripts/classify-formal-ci-changes.mjs',
 	'scripts/classify-formal-ci-changes.test.mjs',
+	'scripts/verify-formal-ci-gate.mjs',
+	'scripts/verify-formal-ci-gate.test.mjs',
 ]);
 
 const laneMatchers = Object.freeze({
