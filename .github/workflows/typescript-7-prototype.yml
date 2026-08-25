@@ -72,34 +72,19 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 24
       - name: Require reviewed TypeScript 7 disposition
-        shell: bash
         env:
           FORMAL_REQUIRED: ${{ needs.classify.outputs.formal_required }}
           CLASSIFY_RESULT: ${{ needs.classify.result }}
           PROTOTYPE_RESULT: ${{ needs.prototype.result }}
-        run: |
-          if [[ "$CLASSIFY_RESULT" != "success" ]]; then
-            echo "::error::TypeScript 7 classification concluded with $CLASSIFY_RESULT."
-            exit 1
-          fi
-          case "$FORMAL_REQUIRED" in
-            true)
-              if [[ "$PROTOTYPE_RESULT" != "success" ]]; then
-                echo "::error::Required TypeScript 7 validation concluded with $PROTOTYPE_RESULT."
-                exit 1
-              fi
-              echo 'Required TypeScript 7 validation passed.'
-              ;;
-            false)
-              if [[ "$PROTOTYPE_RESULT" != "skipped" ]]; then
-                echo "::error::Not-required TypeScript 7 job concluded with unexpected result $PROTOTYPE_RESULT."
-                exit 1
-              fi
-              echo 'TypeScript 7 validation is explicitly not required for these reviewed changes.'
-              ;;
-            *)
-              echo "::error::Invalid formal_required output: $FORMAL_REQUIRED."
-              exit 1
-              ;;
-          esac
+        run: >-
+          node scripts/verify-formal-ci-gate.mjs
+          --kind optional
+          --label typescript7
+          --required "$FORMAL_REQUIRED"
+          --classify-result "$CLASSIFY_RESULT"
+          --upstream-result "$PROTOTYPE_RESULT"
