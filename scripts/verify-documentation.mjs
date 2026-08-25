@@ -13,7 +13,7 @@ for (const file of markdownFiles) {
 		const english = file.replace(/_ja\.md$/u, '.md');
 		if (!await exists(english)) errors.push(`${relative(root, file)} has no English counterpart`);
 	}
-	if (!file.endsWith('_ja.md') && /\[日本語\]\([^)]*_ja\.md/u.test(source)) {
+	if (!file.endsWith('_ja.md') && linksToJapaneseCounterpart(source)) {
 		const japanese = file.replace(/\.md$/u, '_ja.md');
 		if (!await exists(japanese)) errors.push(`${relative(root, file)} links to Japanese documentation but ${relative(root, japanese)} is missing`);
 	}
@@ -24,6 +24,10 @@ await verifyVersionConsistency();
 
 if (errors.length > 0) throw new Error(`Documentation verification failed:\n${errors.map(item => `- ${item}`).join('\n')}`);
 console.log(`Verified ${markdownFiles.length} Markdown files, bilingual counterparts, relative links, minimal documentation layout, and release version consistency.`);
+
+export function linksToJapaneseCounterpart(source) {
+	return /\[日本語(?:版)?\]\([^)]*_ja\.md/u.test(source);
+}
 
 async function collectMarkdown(directory) {
 	const output = [];
