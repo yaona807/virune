@@ -15,11 +15,15 @@ test('project compiler line splitting avoids repeated whole-body scans', async (
 	assert.notEqual(end, -1);
 	const implementation = source.slice(start, end);
 
-	assert.match(implementation, /String\.isEmpty\(value\)/u);
-	assert.match(implementation, /String\.split\(value, "\\n"\)/u);
-	assert.match(implementation, /String\.endsWith\(value, "\\n"\)/u);
-	assert.match(implementation, /List\.take\(lines, List\.length\(lines\) - 1\)/u);
+	assert.match(implementation, /for character in String\.codePoints\(value\)/u);
+	assert.match(implementation, /lines = List\.append\(lines, current\)/u);
+	assert.match(implementation, /current = current \+ character/u);
+	assert.match(implementation, /if current != ""/u);
 	assert.doesNotMatch(implementation, /String\.length\(value\)/u);
 	assert.doesNotMatch(implementation, /String\.slice\(value/u);
+	assert.doesNotMatch(implementation, /String\.split\(value/u);
+	assert.doesNotMatch(implementation, /String\.endsWith\(value/u);
+	assert.doesNotMatch(implementation, /String\.isEmpty\(value\)/u);
+	assert.doesNotMatch(implementation, /List\.take\(/u);
 	assert.doesNotMatch(implementation, /\bwhile\b/u);
 });
