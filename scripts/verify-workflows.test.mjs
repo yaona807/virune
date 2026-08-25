@@ -31,6 +31,10 @@ async function writeWorkflow(root, reference, permissions, comment = '') {
 	await writeFile(join(root, '.github/workflows/test.yml'), `name: Test\n\non:\n  workflow_dispatch:\n${permissionBlock}\njobs:\n  test:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@${reference}${comment}\n`);
 }
 
+async function writeDraftGatedWorkflow(root, types) {
+	await writeFile(join(root, '.github/workflows/test.yml'), `name: Test\n\non:\n  pull_request:\n    types: [${types.join(', ')}]\n\npermissions:\n  contents: read\n\njobs:\n  test:\n    if: github.event.pull_request.draft == false\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@${CHECKOUT_SHA}\n`);
+}
+
 async function dependencyReviewFixture({
 	continueOnError = false,
 	severity = 'moderate',
@@ -75,6 +79,27 @@ test('accepts an explicitly reviewed workflow permission exception', async t => 
 	const root = await fixture(CHECKOUT_SHA, { permissions, exception: permissions });
 	t.after(() => rm(root, { recursive: true, force: true }));
 	await assert.doesNotReject(verifyWorkflows(root));
+});
+
+test('accepts a Draft-gated pull request workflow with both lifecycle transitions', async t => {
+	const root = await fixture(CHECKOUT_SHA);
+	t.after(() => rm(root, { recursive: true, force: true }));
+	await writeDraftGatedWorkflow(root, ['opened', 'synchronize', 'reopened', 'ready_for_review', 'converted_to_draft']);
+	await assert.doesNotReject(verifyWorkflows(root));
+});
+
+test('rejects a Draft-gated workflow that cannot start formal validation when marked Ready', async t => {
+	const root = await fixture(CHECKOUT_SHA);
+	t.after(() => rm(root, { recursive: true, force: true }));
+	await writeDraftGatedWorkflow(root, ['opened', 'synchronize', 'reopened', 'converted_to_draft']);
+	await assert.rejects(verifyWorkflows(root), /must subscribe to ready_for_review/u);
+});
+
+test('rejects a Draft-gated workflow that cannot react when converted back to Draft', async t => {
+	const root = await fixture(CHECKOUT_SHA);
+	t.after(() => rm(root, { recursive: true, force: true }));
+	await writeDraftGatedWorkflow(root, ['opened', 'synchronize', 'reopened', 'ready_for_review']);
+	await assert.rejects(verifyWorkflows(root), /must subscribe to converted_to_draft/u);
 });
 
 test('accepts a blocking dependency review with a complete locked-dependency audit', async t => {
@@ -129,6 +154,7 @@ test('rejects an external action without a ref', async t => {
 test('rejects a workflow without explicit permissions', async t => {
 	const root = await fixture(CHECKOUT_SHA, { permissions: null });
 	t.after(() => rm(root, { recursive: true, force: true }));
+	await writeWorkflow(root, CHECKOUT_SHA, null);
 	await assert.rejects(verifyWorkflows(root), /missing top-level permissions/u);
 });
 
