@@ -2,7 +2,11 @@ import { spawnSync } from 'node:child_process';
 import { appendFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { buildChangedPathDiffArguments, parseGitChangedPaths } from './classify-ci-changes.mjs';
+import {
+	buildChangedPathDiffArguments,
+	isDocumentationPath,
+	parseGitChangedPaths,
+} from './classify-ci-changes.mjs';
 
 const repositoryRoot = resolve(fileURLToPath(new URL('..', import.meta.url)));
 
@@ -14,83 +18,15 @@ export const formalLanes = Object.freeze([
 	'vsix',
 ]);
 
-const sharedClassifierControls = new Set([
-	'scripts/classify-ci-changes.mjs',
-	'scripts/classify-ci-changes.test.mjs',
-	'scripts/classify-formal-ci-changes.mjs',
-	'scripts/classify-formal-ci-changes.test.mjs',
-	'scripts/verify-formal-ci-gate.mjs',
-	'scripts/verify-formal-ci-gate.test.mjs',
-]);
-
-const laneMatchers = Object.freeze({
-	'browser-conformance': path =>
-		path === '.github/workflows/browser-conformance.yml'
-		|| path === 'integration/browser.test.ts'
-		|| path === 'package.json'
-		|| path === 'package-lock.json'
-		|| path.startsWith('packages/compiler/')
-		|| path.startsWith('packages/runtime/')
-		|| path.startsWith('packages/stdlib/'),
-	performance: path =>
-		path === '.github/workflows/performance.yml'
-		|| path === 'docs/performance-benchmarks.md'
-		|| path === 'package.json'
-		|| path === 'package-lock.json'
-		|| path === 'tsconfig.json'
-		|| path === 'scripts/benchmark-js-interop-heap.mjs'
-		|| path === 'scripts/benchmark-lsp-completion.mjs'
-		|| path === 'scripts/check-performance-regression.mjs'
-		|| path === 'scripts/performance-benchmark-utils.mjs'
-		|| path === 'scripts/performance-regression.test.mjs'
-		|| path.startsWith('benchmarks/performance/')
-		|| path.startsWith('packages/compiler/')
-		|| path.startsWith('packages/js-interop/')
-		|| path.startsWith('packages/language-server/'),
-	'fixed-seed': path =>
-		path === '.github/workflows/selfhost-fixed-seed.yml'
-		|| path === 'package-lock.json'
-		|| path === 'scripts/run-selfhost-fixed-seed-bootstrap.mjs'
-		|| path === 'scripts/run-selfhost-fixed-seed-bootstrap.test.mjs'
-		|| path === 'scripts/verify-selfhost-seed.mjs'
-		|| path === 'scripts/verify-selfhost-seed.test.mjs'
-		|| path.startsWith('.github/self-hosting/')
-		|| path.startsWith('packages/compiler/')
-		|| path.startsWith('selfhost/mvp/'),
-	typescript7: path =>
-		path === '.github/typescript-version-policy.json'
-		|| path === '.github/workflows/typescript-7-prototype.yml'
-		|| path === 'package.json'
-		|| path === 'scripts/probe-typescript-7.mjs'
-		|| /^docs\/adr-typescript-7-migration[^/]*\.md$/u.test(path)
-		|| /^packages\/[^/]+\/(?:package\.json|tsconfig\.json)$/u.test(path)
-		|| path.startsWith('packages/js-interop/')
-		|| path.startsWith('packages/language-server/')
-		|| path.startsWith('packages/vscode/')
-		|| /^scripts\/verify-typescript-boundary[^/]*\.mjs$/u.test(path)
-		|| /^tsconfig[^/]*\.json$/u.test(path),
-	vsix: path =>
-		path === '.github/workflows/vsix-smoke.yml'
-		|| path === 'package.json'
-		|| path === 'package-lock.json'
-		|| path === 'scripts/build-vscode.mjs'
-		|| path === 'scripts/package-vscode.mjs'
-		|| /^scripts\/vsix-smoke[^/]*\.mjs$/u.test(path)
-		|| path.startsWith('scripts/vsix-smoke-harness/')
-		|| path.startsWith('packages/vscode/')
-		|| path.startsWith('packages/language-server/'),
-});
-
 export function normalizeChangedPaths(paths) {
 	return [...new Set(paths.map(path => path.trim().replaceAll('\\', '/')).filter(Boolean))].sort();
 }
 
 export function isFormalLaneRequired(lane, paths) {
-	const matcher = laneMatchers[lane];
-	if (matcher === undefined) throw new Error(`Unknown formal CI lane: ${lane}`);
+	if (!formalLanes.includes(lane)) throw new Error(`Unknown formal CI lane: ${lane}`);
 	const normalized = normalizeChangedPaths(paths);
 	if (normalized.length === 0) return true;
-	return normalized.some(path => sharedClassifierControls.has(path) || matcher(path));
+	return !normalized.every(isDocumentationPath);
 }
 
 async function main() {
