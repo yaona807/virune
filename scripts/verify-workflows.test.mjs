@@ -47,9 +47,16 @@ async function writeDraftGatedWorkflow(root, types, {
 	} else {
 		throw new Error(`Unknown Draft workflow fixture style: ${style}`);
 	}
-	const ifSource = ifStyle === 'inline'
-		? '    if: github.event.pull_request.draft == false\n'
-		: '    if: >-\n      github.event.pull_request.draft == false\n';
+	let ifSource;
+	if (ifStyle === 'inline') {
+		ifSource = '    if: github.event.pull_request.draft == false\n';
+	} else if (ifStyle === 'block') {
+		ifSource = '    if: >-\n      github.event.pull_request.draft == false\n';
+	} else if (ifStyle === 'block-indented') {
+		ifSource = '    if: >-2\n      github.event.pull_request.draft == false\n';
+	} else {
+		throw new Error(`Unknown Draft workflow if style: ${ifStyle}`);
+	}
 	await writeFile(join(root, '.github/workflows/test.yml'), `name: Test\n\non:\n  pull_request:\n${typesSource}\npermissions:\n  contents: read\n\njobs:\n  test:\n${ifSource}    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@${CHECKOUT_SHA}\n`);
 }
 
@@ -117,6 +124,13 @@ test('accepts block lifecycle lists, item comments, and block if expressions', a
 	await assert.doesNotReject(verifyWorkflows(root));
 });
 
+test('accepts valid block scalar indentation indicators on Draft gates', async t => {
+	const root = await fixture(CHECKOUT_SHA);
+	t.after(() => rm(root, { recursive: true, force: true }));
+	await writeDraftGatedWorkflow(root, REQUIRED_DRAFT_TRANSITIONS, { ifStyle: 'block-indented' });
+	await assert.doesNotReject(verifyWorkflows(root));
+});
+
 test('does not treat an unrelated run string as a Draft gate', async t => {
 	const root = await fixture(CHECKOUT_SHA);
 	t.after(() => rm(root, { recursive: true, force: true }));
@@ -143,6 +157,22 @@ test('rejects unsupported scalar pull request lifecycle syntax instead of guessi
 	t.after(() => rm(root, { recursive: true, force: true }));
 	await writeDraftGatedWorkflow(root, ['opened'], { style: 'unsupported-scalar' });
 	await assert.rejects(verifyWorkflows(root), /must declare pull_request types explicitly/u);
+});
+
+test('rejects duplicate pull request triggers instead of depending on YAML duplicate-key behavior', async t => {
+	const root = await fixture(CHECKOUT_SHA);
+	t.after(() => rm(root, { recursive: true, force: true }));
+	const types = `[${REQUIRED_DRAFT_TRANSITIONS.join(', ')}]`;
+	await writeFile(join(root, '.github/workflows/test.yml'), `name: Test\n\non:\n  pull_request:\n    types: ${types}\n  pull_request:\n    types: ${types}\n\npermissions:\n  contents: read\n\njobs:\n  test:\n    if: github.event.pull_request.draft == false\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@${CHECKOUT_SHA}\n`);
+	await assert.rejects(verifyWorkflows(root), /duplicate pull_request triggers are not supported/u);
+});
+
+test('rejects duplicate pull request types declarations instead of choosing one', async t => {
+	const root = await fixture(CHECKOUT_SHA);
+	t.after(() => rm(root, { recursive: true, force: true }));
+	const types = `[${REQUIRED_DRAFT_TRANSITIONS.join(', ')}]`;
+	await writeFile(join(root, '.github/workflows/test.yml'), `name: Test\n\non:\n  pull_request:\n    types: ${types}\n    types: [opened]\n\npermissions:\n  contents: read\n\njobs:\n  test:\n    if: github.event.pull_request.draft == false\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@${CHECKOUT_SHA}\n`);
+	await assert.rejects(verifyWorkflows(root), /duplicate pull_request types declarations are not supported/u);
 });
 
 test('accepts a blocking dependency review with a complete locked-dependency audit', async t => {
