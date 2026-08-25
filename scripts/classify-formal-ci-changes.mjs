@@ -27,7 +27,7 @@ const reviewedRequiredDocumentation = Object.freeze({
 });
 
 export function normalizeChangedPaths(paths) {
-	return [...new Set(paths.map(path => path.replaceAll('\\', '/')).filter(path => path.length > 0))].sort();
+	return [...new Set(paths.filter(path => path.length > 0))].sort();
 }
 
 export function isFormalLaneRequired(lane, paths) {
