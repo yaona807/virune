@@ -1,8 +1,21 @@
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import { verifyCiGate, verifyOptionalFormalGate } from './verify-formal-ci-gate.mjs';
 
+const repositoryRoot = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const badResults = ['failure', 'cancelled', 'skipped', 'neutral', 'partial', 'stale', 'timed_out', 'unknown', ''];
+const providerTerminalContexts = Object.freeze([
+	['.github/workflows/ci.yml', 'Required CI gate'],
+	['.github/workflows/selfhost-clean-bootstrap.yml', 'Required self-host gate'],
+	['.github/workflows/browser-conformance.yml', 'Required browser conformance gate'],
+	['.github/workflows/performance.yml', 'Required performance gate'],
+	['.github/workflows/selfhost-fixed-seed.yml', 'Required fixed Seed gate'],
+	['.github/workflows/typescript-7-prototype.yml', 'Required TypeScript 7 gate'],
+	['.github/workflows/vsix-smoke.yml', 'Required VSIX gate'],
+]);
 
 function requiredCiResults() {
 	return {
@@ -31,6 +44,17 @@ function docsOnlyResults() {
 		releaseArtifacts: 'skipped',
 	};
 }
+
+test('provider terminal context names are unique, stable, and always evaluated', async () => {
+	for (const [path, context] of providerTerminalContexts) {
+		const source = await readFile(resolve(repositoryRoot, path), 'utf8');
+		const marker = `name: ${context}`;
+		const first = source.indexOf(marker);
+		assert.notEqual(first, -1, `${path}: missing ${context}`);
+		assert.equal(source.indexOf(marker, first + marker.length), -1, `${path}: duplicate ${context}`);
+		assert.match(source.slice(first, first + 500), /\n    if: always\(\)/u, `${path}: ${context} must use if: always()`);
+	}
+});
 
 test('optional formal gate accepts required success', () => {
 	assert.equal(verifyOptionalFormalGate({
