@@ -32,18 +32,25 @@ async function writeWorkflow(root, reference, permissions, comment = '') {
 	await writeFile(join(root, '.github/workflows/test.yml'), `name: Test\n\non:\n  workflow_dispatch:\n${permissionBlock}\njobs:\n  test:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@${reference}${comment}\n`);
 }
 
-async function writeDraftGatedWorkflow(root, types, { style = 'inline' } = {}) {
+async function writeDraftGatedWorkflow(root, types, {
+	style = 'inline',
+	ifStyle = 'inline',
+	itemComments = false,
+} = {}) {
 	let typesSource;
 	if (style === 'inline') {
 		typesSource = `    types: [${types.join(', ')}]\n`;
 	} else if (style === 'block') {
-		typesSource = `    types:\n${types.map(type => `      - ${type}`).join('\n')}\n`;
+		typesSource = `    types:\n${types.map(type => `      - ${type}${itemComments ? ' # required lifecycle event' : ''}`).join('\n')}\n`;
 	} else if (style === 'unsupported-scalar') {
 		typesSource = `    types: ${types[0] ?? ''}\n`;
 	} else {
 		throw new Error(`Unknown Draft workflow fixture style: ${style}`);
 	}
-	await writeFile(join(root, '.github/workflows/test.yml'), `name: Test\n\non:\n  pull_request:\n${typesSource}\npermissions:\n  contents: read\n\njobs:\n  test:\n    if: github.event.pull_request.draft == false\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@${CHECKOUT_SHA}\n`);
+	const ifSource = ifStyle === 'inline'
+		? '    if: github.event.pull_request.draft == false\n'
+		: '    if: >-\n      github.event.pull_request.draft == false\n';
+	await writeFile(join(root, '.github/workflows/test.yml'), `name: Test\n\non:\n  pull_request:\n${typesSource}\npermissions:\n  contents: read\n\njobs:\n  test:\n${ifSource}    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@${CHECKOUT_SHA}\n`);
 }
 
 async function dependencyReviewFixture({
@@ -99,10 +106,21 @@ test('accepts a Draft-gated pull request workflow with an inline lifecycle list'
 	await assert.doesNotReject(verifyWorkflows(root));
 });
 
-test('accepts a Draft-gated pull request workflow with a block lifecycle list', async t => {
+test('accepts block lifecycle lists, item comments, and block if expressions', async t => {
 	const root = await fixture(CHECKOUT_SHA);
 	t.after(() => rm(root, { recursive: true, force: true }));
-	await writeDraftGatedWorkflow(root, REQUIRED_DRAFT_TRANSITIONS, { style: 'block' });
+	await writeDraftGatedWorkflow(root, REQUIRED_DRAFT_TRANSITIONS, {
+		style: 'block',
+		ifStyle: 'block',
+		itemComments: true,
+	});
+	await assert.doesNotReject(verifyWorkflows(root));
+});
+
+test('does not treat an unrelated run string as a Draft gate', async t => {
+	const root = await fixture(CHECKOUT_SHA);
+	t.after(() => rm(root, { recursive: true, force: true }));
+	await writeFile(join(root, '.github/workflows/test.yml'), `name: Test\n\non:\n  workflow_dispatch:\n\npermissions:\n  contents: read\n\njobs:\n  test:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@${CHECKOUT_SHA}\n      - run: echo github.event.pull_request.draft\n`);
 	await assert.doesNotReject(verifyWorkflows(root));
 });
 
