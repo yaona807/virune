@@ -154,7 +154,6 @@ test('rejects an external action without a ref', async t => {
 test('rejects a workflow without explicit permissions', async t => {
 	const root = await fixture(CHECKOUT_SHA, { permissions: null });
 	t.after(() => rm(root, { recursive: true, force: true }));
-	await writeWorkflow(root, CHECKOUT_SHA, null);
 	await assert.rejects(verifyWorkflows(root), /missing top-level permissions/u);
 });
 
