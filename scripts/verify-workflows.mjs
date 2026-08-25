@@ -8,7 +8,7 @@ const FULL_COMMIT_SHA = /^[0-9a-f]{40}$/u;
 const PERMISSION_LINE = /^  ([a-z][a-z0-9-]*):\s*(read|write|none)\s*$/u;
 const PULL_REQUEST_TYPES_LINE = /^    types:\s*\[([^\]]*)\]\s*$/u;
 const REQUIRED_TOP_LEVEL_KEYS = ['name', 'on', 'permissions', 'jobs'];
-const REQUIRED_DRAFT_TRANSITIONS = ['ready_for_review', 'converted_to_draft'];
+const REQUIRED_DRAFT_TRANSITIONS = ['opened', 'synchronize', 'reopened', 'ready_for_review', 'converted_to_draft'];
 
 export async function verifyWorkflows(root = process.cwd()) {
 	const workflowDirectory = resolve(root, '.github/workflows');
