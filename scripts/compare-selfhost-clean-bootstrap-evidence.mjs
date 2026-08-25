@@ -6,6 +6,9 @@ import { pathToFileURL } from 'node:url';
 export const CROSS_RUNNER_REPRODUCIBILITY_SCHEMA_VERSION = 1;
 export const DEFAULT_COMPARISON_OUTPUT = '.cache/selfhost/clean-bootstrap-reproducibility.json';
 const requiredProfiles = ['baseline', 'perturbed'];
+const perturbationDimensions = ['timezone', 'locale', 'homeVariant', 'tempVariant'];
+const cleanBootstrapCommands = ['install', 'seed-verify', 'bootstrap'];
+const canonicalCleanBootstrapCommands = [...cleanBootstrapCommands].sort(compareText);
 
 export function compareCleanBootstrapEvidence(values) {
 	if (!Array.isArray(values) || values.length !== 2) {
@@ -28,8 +31,8 @@ export function compareCleanBootstrapEvidence(values) {
 	]) {
 		if (left !== right) throw new Error(`Cross-runner ${field} mismatch`);
 	}
-	if (JSON.stringify(baseline.environment) === JSON.stringify(perturbed.environment)) {
-		throw new Error('Environment profiles did not actually differ');
+	if (perturbationDimensions.every(field => baseline.environment[field] === perturbed.environment[field])) {
+		throw new Error('Environment perturbation dimensions did not actually differ');
 	}
 	const report = {
 		schemaVersion: CROSS_RUNNER_REPRODUCIBILITY_SCHEMA_VERSION,
@@ -140,34 +143,43 @@ export async function main(argumentsList = process.argv.slice(2), injected = {})
 
 function validateEvidence(value, path) {
 	const input = record(value, path);
+	exactKeys(input, ['schemaVersion','claim','productionEligible','status','passed','candidateSha256','repositoryCommit','checkedAt','workingTreeClean','dependencyMode','environment','lockfileSha256','seed','bootstrap','commands','failures','evidenceSha256'], path);
 	if (input.schemaVersion !== 2) throw new Error(`${path}.schemaVersion must be 2`);
 	if (input.claim !== 'selfhost-clean-bootstrap-fixed-point') throw new Error(`${path}.claim is invalid`);
 	if (input.productionEligible !== false) throw new Error(`${path}.productionEligible must remain false`);
 	if (input.status !== 'pass' || input.passed !== true) throw new Error(`${path} is not a passing clean-bootstrap proof`);
+	if (input.workingTreeClean !== true) throw new Error(`${path}.workingTreeClean must be true`);
 	if (input.dependencyMode !== 'offline') throw new Error(`${path}.dependencyMode must be offline`);
 	const repositoryCommit = sha1(input.repositoryCommit, `${path}.repositoryCommit`);
 	const candidateSha256 = sha256Value(input.candidateSha256, `${path}.candidateSha256`);
+	const checkedAt = timestamp(input.checkedAt, `${path}.checkedAt`);
 	const lockfileSha256 = sha256Value(input.lockfileSha256, `${path}.lockfileSha256`);
 	const evidenceSha256 = sha256Value(input.evidenceSha256, `${path}.evidenceSha256`);
 	const seedValue = record(input.seed, `${path}.seed`);
+	exactKeys(seedValue, ['manifestSha256','artifactSha256','verified'], `${path}.seed`);
 	const seed = {
 		manifestSha256: sha256Value(seedValue.manifestSha256, `${path}.seed.manifestSha256`),
 		artifactSha256: sha256Value(seedValue.artifactSha256, `${path}.seed.artifactSha256`),
+		verified: seedValue.verified,
 	};
-	if (seedValue.verified !== true) throw new Error(`${path}.seed.verified must be true`);
+	if (seed.verified !== true) throw new Error(`${path}.seed.verified must be true`);
 	const bootstrapValue = record(input.bootstrap, `${path}.bootstrap`);
+	exactKeys(bootstrapValue, ['seedSha256','stage1Sha256','stage2Sha256','stage3Sha256','fixedPointEquivalent','fixedPointDifferenceCount'], `${path}.bootstrap`);
 	const bootstrap = {
 		seedSha256: sha256Value(bootstrapValue.seedSha256, `${path}.bootstrap.seedSha256`),
 		stage1Sha256: sha256Value(bootstrapValue.stage1Sha256, `${path}.bootstrap.stage1Sha256`),
 		stage2Sha256: sha256Value(bootstrapValue.stage2Sha256, `${path}.bootstrap.stage2Sha256`),
 		stage3Sha256: sha256Value(bootstrapValue.stage3Sha256, `${path}.bootstrap.stage3Sha256`),
+		fixedPointEquivalent: bootstrapValue.fixedPointEquivalent,
+		fixedPointDifferenceCount: bootstrapValue.fixedPointDifferenceCount,
 	};
-	if (bootstrapValue.fixedPointEquivalent !== true || bootstrapValue.fixedPointDifferenceCount !== 0 || bootstrap.stage2Sha256 !== bootstrap.stage3Sha256) {
+	if (bootstrap.fixedPointEquivalent !== true || bootstrap.fixedPointDifferenceCount !== 0 || bootstrap.stage2Sha256 !== bootstrap.stage3Sha256) {
 		throw new Error(`${path} does not contain an exact Stage 2/3 fixed point`);
 	}
 	if (bootstrap.seedSha256 !== seed.artifactSha256) throw new Error(`${path}.bootstrap.seedSha256 does not match the verified Seed`);
 	if (candidateSha256 !== bootstrap.stage3Sha256) throw new Error(`${path}.candidateSha256 is not the Stage 3 digest`);
 	const environmentValue = record(input.environment, `${path}.environment`);
+	exactKeys(environmentValue, ['profile','timezone','locale','homeVariant','tempVariant'], `${path}.environment`);
 	if (!requiredProfiles.includes(environmentValue.profile)) throw new Error(`${path}.environment.profile is invalid`);
 	const environment = {
 		profile: environmentValue.profile,
@@ -176,7 +188,39 @@ function validateEvidence(value, path) {
 		homeVariant: nonEmpty(environmentValue.homeVariant, `${path}.environment.homeVariant`),
 		tempVariant: nonEmpty(environmentValue.tempVariant, `${path}.environment.tempVariant`),
 	};
-	return { repositoryCommit, candidateSha256, lockfileSha256, evidenceSha256, seed, bootstrap, environment };
+	if (!Array.isArray(input.failures) || input.failures.length !== 0) throw new Error(`${path}.failures must be an empty array for passing evidence`);
+	if (!Array.isArray(input.commands) || input.commands.length !== canonicalCleanBootstrapCommands.length) throw new Error(`${path}.commands must contain exactly the required commands`);
+	const commands = input.commands.map((command, index) => validateCommand(command, canonicalCleanBootstrapCommands[index], `${path}.commands[${index}]`));
+	const canonicalReport = {
+		version: 2,
+		candidateSha256,
+		repositoryCommit,
+		checkedAt,
+		status: 'pass',
+		failures: [],
+		workingTreeClean: true,
+		dependencyMode: 'offline',
+		environment,
+		lockfileSha256,
+		seed,
+		bootstrap,
+		commands,
+	};
+	if (sha256(JSON.stringify(canonicalReport)) !== evidenceSha256) throw new Error(`${path}.evidenceSha256 does not match canonical clean-bootstrap evidence`);
+	return { repositoryCommit, candidateSha256, lockfileSha256, evidenceSha256, seed: { manifestSha256: seed.manifestSha256, artifactSha256: seed.artifactSha256 }, bootstrap: { seedSha256: bootstrap.seedSha256, stage1Sha256: bootstrap.stage1Sha256, stage2Sha256: bootstrap.stage2Sha256, stage3Sha256: bootstrap.stage3Sha256 }, environment };
+}
+
+function validateCommand(value, expectedName, path) {
+	const command = record(value, path);
+	exactKeys(command, ['name','exitCode','stdoutSha256','stderrSha256'], path);
+	if (command.name !== expectedName) throw new Error(`${path}.name must be ${expectedName}`);
+	if (command.exitCode !== 0) throw new Error(`${path}.exitCode must be zero`);
+	return {
+		name: expectedName,
+		exitCode: 0,
+		stdoutSha256: sha256Value(command.stdoutSha256, `${path}.stdoutSha256`),
+		stderrSha256: sha256Value(command.stderrSha256, `${path}.stderrSha256`),
+	};
 }
 
 async function readJson(path) { return JSON.parse(await readFile(path, 'utf8')); }
@@ -185,8 +229,17 @@ function assertEqual(actual, expected, label) {
 		throw new Error(`Cross-runner ${label} must be ${expected.join(', ')}`);
 	}
 }
+function exactKeys(value, expected, path) {
+	const actual = Object.keys(value).sort(compareText);
+	const wanted = [...expected].sort(compareText);
+	if (JSON.stringify(actual) !== JSON.stringify(wanted)) throw new Error(`${path} must contain exactly keys ${wanted.join(', ')}`);
+}
 function record(value, path) {
 	if (value === null || typeof value !== 'object' || Array.isArray(value)) throw new Error(`${path} must be a plain object`);
+	return value;
+}
+function timestamp(value, path) {
+	if (typeof value !== 'string' || Number.isNaN(new Date(value).getTime()) || new Date(value).toISOString() !== value) throw new Error(`${path} must be a canonical UTC timestamp`);
 	return value;
 }
 function sha1(value, path) {
