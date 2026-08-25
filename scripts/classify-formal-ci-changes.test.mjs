@@ -78,11 +78,11 @@ test('unknown paths fail closed instead of being inferred not-required', () => {
 	}
 });
 
-test('preserves leading and trailing whitespace as part of the exact changed path', () => {
-	for (const path of ['docs/guide.md ', ' docs/guide.md', 'README.md ']) {
+test('preserves whitespace and literal backslashes as part of the exact changed path', () => {
+	for (const path of ['docs/guide.md ', ' docs/guide.md', 'README.md ', 'docs\\guide.md']) {
 		const classification = classifyChangedPaths([path]);
 		assert.equal(classification.docsOnly, false, path);
-		assert.deepEqual(classification.paths, [path.replaceAll('\\', '/')], path);
+		assert.deepEqual(classification.paths, [path], path);
 		for (const lane of formalLanes) {
 			assert.equal(isFormalLaneRequired(lane, [path]), true, `${lane}: ${path}`);
 		}
@@ -105,10 +105,10 @@ test('mixed documentation and code changes require every formal lane', () => {
 	}
 });
 
-test('normalizes separators, removes duplicates, and sorts deterministically without trimming filenames', () => {
+test('removes only exact duplicates and empty entries while sorting exact paths deterministically', () => {
 	assert.deepEqual(
 		normalizeChangedPaths(['packages\\vscode\\src\\extension.ts', '', 'README.md', 'README.md', 'README.md ']),
-		['README.md', 'README.md ', 'packages/vscode/src/extension.ts'],
+		['README.md', 'README.md ', 'packages\\vscode\\src\\extension.ts'],
 	);
 });
 
