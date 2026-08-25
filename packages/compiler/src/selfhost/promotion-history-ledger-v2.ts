@@ -22,7 +22,8 @@ export type PromotionHistoryProviderConclusionV2 =
 export type PromotionHistoryGapReasonV2 =
 	| 'observation-artifact-missing'
 	| 'observation-artifact-invalid'
-	| 'observation-attempt-incomplete';
+	| 'observation-attempt-incomplete'
+	| 'workflow-execution-non-successful';
 
 export interface PromotionHistoryMigrationV2 {
 	readonly sourceHistoryVersion: 1;
@@ -112,7 +113,7 @@ export type PromotionHistoryEffectiveRunV2 =
 		readonly freezeBoundary: PromotionHistoryFreezeBoundaryV2 | null;
 		readonly reason: PromotionHistoryGapReasonV2;
 		readonly providerConclusion: PromotionHistoryProviderConclusionV2 | null;
-		readonly artifactState: Exclude<PromotionHistoryArtifactStateV2, 'valid'> | null;
+		readonly artifactState: PromotionHistoryArtifactStateV2 | null;
 	};
 
 export class PromotionHistoryLedgerError extends Error {
@@ -311,12 +312,6 @@ function parseAttempt(
 	if (artifactState !== 'valid' && artifact !== null) {
 		throw new PromotionHistoryLedgerError(path, 'missing/invalid artifactState must not carry a trusted observation artifact');
 	}
-	if (artifact?.observation.outcome === 'passed' && providerConclusion !== 'success') {
-		throw new PromotionHistoryLedgerError(`${path}.providerConclusion`, 'passing observation requires a successful workflow attempt');
-	}
-	if (artifact?.observation.outcome === 'product-failed' && providerConclusion !== 'failure') {
-		throw new PromotionHistoryLedgerError(`${path}.providerConclusion`, 'product-failed observation requires a failed workflow attempt');
-	}
 	return { attempt: attemptNumber, startedAt, completedAt, providerConclusion, artifactState, artifact };
 }
 
@@ -485,9 +480,18 @@ function effectiveRun(run: PromotionHistoryRunV2, path: string): PromotionHistor
 	}
 	const latest = effectiveAttempts.at(-1)!;
 	if (latest.artifact !== null) {
+		if (latest.providerConclusion === 'success') {
+			return {
+				kind: 'observation', runId: run.runId, sequenceAt: run.sequenceAt, executionCommit: run.executionCommit,
+				freezeBoundary: run.freezeBoundary, observation: latest.artifact.observation,
+			};
+		}
 		return {
-			kind: 'observation', runId: run.runId, sequenceAt: run.sequenceAt, executionCommit: run.executionCommit,
-			freezeBoundary: run.freezeBoundary, observation: latest.artifact.observation,
+			kind: 'gap', runId: run.runId, sequenceAt: run.sequenceAt, executionCommit: run.executionCommit,
+			freezeBoundary: run.freezeBoundary,
+			reason: 'workflow-execution-non-successful',
+			providerConclusion: latest.providerConclusion,
+			artifactState: latest.artifactState,
 		};
 	}
 	if (latest.artifactState === 'valid') {
