@@ -220,7 +220,7 @@ function parseRun(
 	const executionCommit = canonicalGitSha(run.executionCommit, `${path}.executionCommit`);
 	const freezeBoundary = run.freezeBoundary === null
 		? null
-		: parseFreezeBoundary(run.freezeBoundary, `${path}.freezeBoundary`, { runId, sequenceAt });
+		: parseFreezeBoundary(run.freezeBoundary, `${path}.freezeBoundary`, { runId, sequenceAt }, seenRunIds);
 	const attempts = array(run.attempts, `${path}.attempts`).map((attempt, attemptIndex) => parseAttempt(
 		attempt,
 		`${path}.attempts[${attemptIndex}]`,
@@ -267,14 +267,15 @@ function parseFreezeBoundary(
 	value: unknown,
 	path: string,
 	current: { readonly runId: string; readonly sequenceAt: string },
+	seenRunIds: ReadonlySet<string>,
 ): PromotionHistoryFreezeBoundaryV2 {
 	const boundary = record(value, path);
 	exactKeys(boundary, ['runId', 'sequenceAt', 'executionCommit'], path);
 	const runId = canonicalRunId(boundary.runId, `${path}.runId`);
 	const sequenceAt = canonicalTimestamp(boundary.sequenceAt, `${path}.sequenceAt`);
 	const executionCommit = canonicalGitSha(boundary.executionCommit, `${path}.executionCommit`);
-	if (runId === current.runId) {
-		throw new PromotionHistoryLedgerError(`${path}.runId`, 'freeze boundary must identify a different logical run');
+	if (seenRunIds.has(runId)) {
+		throw new PromotionHistoryLedgerError(`${path}.runId`, 'freeze boundary must identify a new logical run');
 	}
 	if (compareRunKey({ runId, sequenceAt }, current) <= 0) {
 		throw new PromotionHistoryLedgerError(path, 'freeze boundary must identify a strictly later formal run');
