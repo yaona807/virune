@@ -13,7 +13,6 @@ const PULL_REQUEST_TYPES_BLOCK_LINE = /^    types:\s*(?:#.*)?$/u;
 const PULL_REQUEST_TYPE_ITEM_LINE = /^      -\s*([^#]+?)\s*(?:#.*)?$/u;
 const REQUIRED_TOP_LEVEL_KEYS = ['name', 'on', 'permissions', 'jobs'];
 const REQUIRED_DRAFT_TRANSITIONS = ['opened', 'synchronize', 'reopened', 'ready_for_review', 'converted_to_draft'];
-const BLOCK_SCALAR_MARKERS = new Set(['>', '>-', '>+', '|', '|-', '|+']);
 const PULL_REQUEST_DRAFT_REFERENCE = 'github.event.pull_request.draft';
 
 export async function verifyWorkflows(root = process.cwd()) {
@@ -131,7 +130,7 @@ function verifyDraftTransitionPolicy(file, source) {
 	const lines = source.split(/\r?\n/u);
 	if (!usesPullRequestDraftGate(lines)) return;
 
-	const pullRequestIndex = findPullRequestTrigger(lines);
+	const pullRequestIndex = findPullRequestTrigger(file, lines);
 	if (pullRequestIndex === -1) {
 		throw new Error(`${file}: a pull_request.draft gate requires a pull_request trigger`);
 	}
@@ -150,7 +149,7 @@ function usesPullRequestDraftGate(lines) {
 		if (match === null) continue;
 		const inlineExpression = match[2].replace(/\s+#.*$/u, '').trim();
 		if (inlineExpression.includes(PULL_REQUEST_DRAFT_REFERENCE)) return true;
-		if (!BLOCK_SCALAR_MARKERS.has(inlineExpression)) continue;
+		if (!inlineExpression.startsWith('>') && !inlineExpression.startsWith('|')) continue;
 
 		const ifIndent = match[1].length;
 		for (let expressionIndex = index + 1; expressionIndex < lines.length; expressionIndex++) {
@@ -164,52 +163,63 @@ function usesPullRequestDraftGate(lines) {
 	return false;
 }
 
-function findPullRequestTrigger(lines) {
+function findPullRequestTrigger(file, lines) {
 	const onIndex = lines.findIndex(line => line === 'on:');
 	if (onIndex === -1) return -1;
+	const matches = [];
 	for (let index = onIndex + 1; index < lines.length; index++) {
 		const line = lines[index];
 		const trimmed = line.trim();
 		if (trimmed.length === 0 || trimmed.startsWith('#')) continue;
 		if (!line.startsWith(' ')) break;
-		if (PULL_REQUEST_LINE.test(line)) return index;
+		if (PULL_REQUEST_LINE.test(line)) matches.push(index);
 	}
-	return -1;
+	if (matches.length > 1) throw new Error(`${file}: duplicate pull_request triggers are not supported`);
+	return matches[0] ?? -1;
 }
 
 function readPullRequestTypes(file, lines, pullRequestIndex) {
+	const declarations = [];
 	for (let index = pullRequestIndex + 1; index < lines.length; index++) {
 		const line = lines[index];
 		const trimmed = line.trim();
 		if (trimmed.length === 0 || trimmed.startsWith('#')) continue;
 		if (!line.startsWith('    ')) break;
-
 		const inlineMatch = PULL_REQUEST_TYPES_INLINE_LINE.exec(line);
-		if (inlineMatch !== null) {
-			const values = inlineMatch[1].split(',').map(value => unquote(value.trim())).filter(Boolean);
-			if (values.length === 0) throw new Error(`${file}: pull_request types must not be empty`);
-			return new Set(values);
+		if (inlineMatch !== null || PULL_REQUEST_TYPES_BLOCK_LINE.test(line)) {
+			declarations.push({ index, inlineMatch });
 		}
-		if (!PULL_REQUEST_TYPES_BLOCK_LINE.test(line)) continue;
+	}
+	if (declarations.length === 0) {
+		throw new Error(`${file}: a pull_request.draft gate must declare pull_request types explicitly`);
+	}
+	if (declarations.length > 1) {
+		throw new Error(`${file}: duplicate pull_request types declarations are not supported`);
+	}
 
-		const values = [];
-		for (let itemIndex = index + 1; itemIndex < lines.length; itemIndex++) {
-			const itemLine = lines[itemIndex];
-			const itemTrimmed = itemLine.trim();
-			if (itemTrimmed.length === 0 || itemTrimmed.startsWith('#')) continue;
-			if (!itemLine.startsWith('      ')) break;
-			const itemMatch = PULL_REQUEST_TYPE_ITEM_LINE.exec(itemLine);
-			if (itemMatch === null) {
-				throw new Error(`${file}:${itemIndex + 1}: unsupported pull_request types item syntax`);
-			}
-			const value = unquote(itemMatch[1].trim());
-			if (value.length === 0) throw new Error(`${file}:${itemIndex + 1}: pull_request type must not be empty`);
-			values.push(value);
-		}
+	const declaration = declarations[0];
+	if (declaration.inlineMatch !== null) {
+		const values = declaration.inlineMatch[1].split(',').map(value => unquote(value.trim())).filter(Boolean);
 		if (values.length === 0) throw new Error(`${file}: pull_request types must not be empty`);
 		return new Set(values);
 	}
-	throw new Error(`${file}: a pull_request.draft gate must declare pull_request types explicitly`);
+
+	const values = [];
+	for (let itemIndex = declaration.index + 1; itemIndex < lines.length; itemIndex++) {
+		const itemLine = lines[itemIndex];
+		const itemTrimmed = itemLine.trim();
+		if (itemTrimmed.length === 0 || itemTrimmed.startsWith('#')) continue;
+		if (!itemLine.startsWith('      ')) break;
+		const itemMatch = PULL_REQUEST_TYPE_ITEM_LINE.exec(itemLine);
+		if (itemMatch === null) {
+			throw new Error(`${file}:${itemIndex + 1}: unsupported pull_request types item syntax`);
+		}
+		const value = unquote(itemMatch[1].trim());
+		if (value.length === 0) throw new Error(`${file}:${itemIndex + 1}: pull_request type must not be empty`);
+		values.push(value);
+	}
+	if (values.length === 0) throw new Error(`${file}: pull_request types must not be empty`);
+	return new Set(values);
 }
 
 function leadingSpaces(value) {
