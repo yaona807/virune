@@ -4,16 +4,6 @@ on:
   pull_request:
     branches:
       - main
-    paths:
-      - '.github/workflows/selfhost-fixed-seed.yml'
-      - '.github/self-hosting/**'
-      - 'scripts/run-selfhost-fixed-seed-bootstrap.mjs'
-      - 'scripts/run-selfhost-fixed-seed-bootstrap.test.mjs'
-      - 'scripts/verify-selfhost-seed.mjs'
-      - 'scripts/verify-selfhost-seed.test.mjs'
-      - 'packages/compiler/**'
-      - 'selfhost/mvp/**'
-      - 'package-lock.json'
   push:
     branches:
       - main
@@ -35,8 +25,37 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  classify:
+    name: Classify fixed Seed impact
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      formal_required: ${{ steps.changes.outputs.formal_required }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 24
+      - name: Classify changed paths
+        id: changes
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            node scripts/classify-formal-ci-changes.mjs --lane fixed-seed --base "$BASE_SHA" --head "$HEAD_SHA"
+          else
+            node scripts/classify-formal-ci-changes.mjs --lane fixed-seed --force-full
+          fi
+
   fixed-seed-bootstrap:
     name: Fixed Seed -> Stage 1 -> Stage 2 -> Stage 3 fixed point
+    needs: classify
+    if: needs.classify.outputs.formal_required == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 180
     env:
@@ -71,3 +90,42 @@ jobs:
             .cache/ci-failures/
           if-no-files-found: warn
           retention-days: 30
+
+  required-fixed-seed-gate:
+    name: Required fixed Seed gate
+    needs: [classify, fixed-seed-bootstrap]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Require reviewed fixed Seed disposition
+        shell: bash
+        env:
+          FORMAL_REQUIRED: ${{ needs.classify.outputs.formal_required }}
+          CLASSIFY_RESULT: ${{ needs.classify.result }}
+          FIXED_SEED_RESULT: ${{ needs.fixed-seed-bootstrap.result }}
+        run: |
+          if [[ "$CLASSIFY_RESULT" != "success" ]]; then
+            echo "::error::Fixed Seed classification concluded with $CLASSIFY_RESULT."
+            exit 1
+          fi
+          case "$FORMAL_REQUIRED" in
+            true)
+              if [[ "$FIXED_SEED_RESULT" != "success" ]]; then
+                echo "::error::Required fixed Seed validation concluded with $FIXED_SEED_RESULT."
+                exit 1
+              fi
+              echo 'Required fixed Seed validation passed.'
+              ;;
+            false)
+              if [[ "$FIXED_SEED_RESULT" != "skipped" ]]; then
+                echo "::error::Not-required fixed Seed job concluded with unexpected result $FIXED_SEED_RESULT."
+                exit 1
+              fi
+              echo 'Fixed Seed validation is explicitly not required for these reviewed changes.'
+              ;;
+            *)
+              echo "::error::Invalid formal_required output: $FORMAL_REQUIRED."
+              exit 1
+              ;;
+          esac
