@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -173,6 +173,18 @@ test('rejects duplicate pull request types declarations instead of choosing one'
 	const types = `[${REQUIRED_DRAFT_TRANSITIONS.join(', ')}]`;
 	await writeFile(join(root, '.github/workflows/test.yml'), `name: Test\n\non:\n  pull_request:\n    types: ${types}\n    types: [opened]\n\npermissions:\n  contents: read\n\njobs:\n  test:\n    if: github.event.pull_request.draft == false\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@${CHECKOUT_SHA}\n`);
 	await assert.rejects(verifyWorkflows(root), /duplicate pull_request types declarations are not supported/u);
+});
+
+test('requires semantic fuzz success for pull-request release artifacts', async () => {
+	const source = await readFile(new URL('../.github/workflows/ci.yml', import.meta.url), 'utf8');
+	assert.match(
+		source,
+		/\(github\.event_name != 'pull_request' && needs\.semantic-fuzz\.result == 'skipped'\)/u,
+	);
+	assert.doesNotMatch(
+		source,
+		/needs\.semantic-fuzz\.result == 'success'\s*\|\|\s*needs\.semantic-fuzz\.result == 'skipped'/u,
+	);
 });
 
 test('accepts a blocking dependency review with a complete locked-dependency audit', async t => {
