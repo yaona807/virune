@@ -105,12 +105,11 @@ Stable Virune releases follow Semantic Versioning.
 
 Examples of incompatible changes include:
 
-- removing a public API function
-- incompatibly changing a public API name, parameters, or return value
+- removing, renaming, or incompatibly changing public APIs
 - incompatibly changing how generated JavaScript connects to the Runtime
 - incompatibly changing how values cross the Virune / JavaScript boundary
-- removing an existing standard-library API
-- removing an existing CLI command
+- removing, renaming, or incompatibly changing existing standard-library APIs
+- removing, renaming, or incompatibly changing documented CLI commands or behavior
 - incompatibly changing public Language Server or VS Code extension capabilities, settings, or commands
 - removing a documented `virune.json` setting, or incompatibly changing its meaning or default
 - preventing a previously conforming Virune program from being parsed, type-checked, linked, or evaluated, or incompatibly changing its meaning
