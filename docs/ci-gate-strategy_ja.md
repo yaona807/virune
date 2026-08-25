@@ -4,9 +4,9 @@
 
 Viruneでは、Pull Requestの検証、再現可能性の検証、Nightly、リリース前検証を分けています。通常の変更を十分に検証しながら、文書だけの変更や長時間の検証を適切な経路へ分けることが目的です。
 
-CIの構成を変更する場合も、`CI`、`Release artifacts`、`Reproducible release required check`、`Reproducible release artifacts`の名前は維持します。これらはGitHubのRulesetから参照される可能性があります。
+CIの構成を変更する場合も、`CI`、`Release artifacts`、`Reproducible release required check`、`Reproducible release artifacts`と、後述するprovider必須の終端ゲート名は維持します。これらはGitHubのRulesetから参照される可能性があります。
 
-CIの成功結果は、実際に検証したPull Requestの最新コミット（head）に対する証拠です。headが変わった場合、以前の成功結果を新しいheadの証拠として使ってはいけません。
+必須チェックの成功結果は、その実行にGitHubが対応付けたPull Requestの正確な状態に対する証拠としてだけ扱います。Pull Requestのheadが変わった場合や、base branchの移動によりmerge対象の状態が変わった場合、以前の成功結果を新しい状態の証拠として使ってはいけません。
 
 ## Pull Requestの検証
 
@@ -16,13 +16,17 @@ CIの成功結果は、実際に検証したPull Requestの最新コミット（
 
 文書だけの変更だと安全に判定できたPull Requestに限り、文書向けの検証経路を使用します。文書以外の変更が含まれる場合や、安全に判定できない場合は完全な検証を行います。
 
+変更されたrepository pathは文字列をそのまま分類します。先頭・末尾の空白やliteralのバックスラッシュはfilenameの一部であり、別pathの別名として扱いません。未知、空、その他の理由で解決できないchange setを文書だけの変更として扱いません。
+
 `main`へのpushと手動のCI実行でも、完全な検証を行います。
 
 ### 文書だけの変更
 
 文書だけの変更では、メタデータとポリシーを検証したうえで、文書内のサンプルコードをビルド・検証・実行します。その他の重い検証は省略できます。
 
-省略する場合も、必須チェックそのものを削除したり、別の名前へ変更したりしてはいけません。
+省略する場合も、必須チェックそのものを削除したり、別の名前へ変更したりしてはいけません。任意適用のformal workflowでも、重いjobを明示的に不要と判定した場合は終端ゲート自体を必ず出します。
+
+Performance benchmarkの文書とTypeScript 7 migration ADRはMarkdown文書ですが、従来どおり専用のformal validationを実行します。
 
 ### 通常の変更
 
@@ -38,11 +42,37 @@ CIの成功結果は、実際に検証したPull Requestの最新コミット（
 - Chromiumでのブラウザー検証
 - 変更範囲に応じたセルフホスティングの全言語機能インベントリ
 
+さらに、文書以外の変更を含むPull Requestでは、Browser conformance、Performance、Fixed Seed bootstrap、TypeScript 7 prototype、VSIX smokeのformal laneをすべて実行します。新しいpathや未知のpathを「安全なので省略可能」と推測しないための保守的な規則です。
+
 WindowsやmacOSなど環境固有の依存関係が必要な検証では、対象環境でコミット済みのロックファイルから`npm ci`を実行します。ビルド済みのVirune成果物は共有しますが、ネイティブ依存関係まで別環境から持ち込みません。
 
 `Release artifacts`は、必要な検証が成功した場合だけ実行します。Pull Request専用の結果差分テストはpushや手動CIでは実行しないため、その意図した省略は許可します。
 
 公開判断にはPull Requestで作成したビルド成果物を流用せず、クリーンな環境からリリース用成果物を再ビルドして検証します。
+
+## Providerで必須にする終端ゲート
+
+`main`をtargetにするPull Requestでは、repository workflowが次の安定した終端check contextを出します。
+
+- `Required CI gate`
+- `Required self-host gate`
+- `Required browser conformance gate`
+- `Required performance gate`
+- `Required fixed Seed gate`
+- `Required TypeScript 7 gate`
+- `Required VSIX gate`
+
+`main`のRulesetでは、上記7個に加えて既存の次のcontextも必須にします。
+
+- `Reproducible release artifacts`
+- `CodeQL`
+- `Diagnose dependency review API`
+
+終端ゲートが成功できるのは、必要な上流検証が成功した場合、またはreview済みの変更分類で重いlaneが明示的に不要と判定され、その上流jobが実際に`skipped`だった場合だけです。requiredな結果がmissing、failed、cancelled、partial、stale、timed out、unknownの場合はsuccessとして扱いません。
+
+Rulesetではrequired status checkをstrictに扱い、base branchの移動によってmerge対象の状態が変わった場合に古い成功結果を流用できないようにします。provider設定を変更する直前に現在値を取得し、変更後にも再取得して確認します。不一致があれば、事前に保存した値へrollbackします。
+
+これらの終端ゲートはrepository側の証拠へ追加する安全境界です。品質、security、compatibility、reproducibility、browser、performance、self-hostingの元の検証を置き換えません。
 
 ## 再現可能性の必須チェック
 
@@ -106,10 +136,10 @@ CIでラップされた各コマンドは、実行コマンド、所要時間、
 
 失敗を調べるときは次の順序で確認します。
 
-1. Pull Requestの現在のheadと、失敗したワークフロー実行が検証したコミットが一致していることを確認します。
-2. 失敗したジョブとステップを開き、ログとGitHubの注釈に表示された再現コマンドを確認します。
+1. Pull Requestの現在のheadと、baseから決まるmerge対象の状態が、失敗したworkflow実行で検証した状態と一致していることを確認します。
+2. 失敗したjobとstepを開き、ログとGitHubの注釈に表示された再現コマンドを確認します。
 3. 必要に応じてCIの証跡をダウンロードし、`.cache/ci-failures/`と`.cache/ci-timings/`を確認します。
-4. リポジトリのルートで再現コマンドを実行します。OSやNode.jsのバージョンに依存する失敗は、該当する環境でも確認します。
-5. リポジトリや実装が原因なら修正し、新しいheadで検証します。GitHub Actionsやランナーなど外部基盤が原因だと確認できた場合に限り、同じheadの再実行を使用します。
+4. repository rootで再現コマンドを実行します。OSやNode.jsのバージョンに依存する失敗は、該当する環境でも確認します。
+5. repositoryや実装が原因なら修正し、新しい状態で検証します。GitHub Actionsやrunnerなど外部基盤が原因だと確認できた場合に限り、同じ状態の再実行を使用します。
 
-古いheadの成功結果や、原因を確認していない再実行結果を現在の変更の証拠として扱ってはいけません。
+古いheadや古いmerge対象状態の成功結果、または原因を確認していない再実行結果を現在の変更の証拠として扱ってはいけません。
