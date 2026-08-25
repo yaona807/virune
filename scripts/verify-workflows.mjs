@@ -149,13 +149,15 @@ function verifyDraftTransitionPolicy(file, source) {
 }
 
 function validActionPolicy(value) {
-	return isRecord(value) && Object.keys(value).length > 0 && Object.values(value).every(references => Array.isArray(references)
+	if (!isRecord(value) || Object.keys(value).length === 0) return false;
+	return Object.values(value).every(references => Array.isArray(references)
 		&& references.length > 0
 		&& references.every(reference => typeof reference === 'string' && FULL_COMMIT_SHA.test(reference)));
 }
 
 function validPermissionPolicy(value) {
-	return isRecord(value) && validPermissionRecord(value.default) && isRecord(value.exceptions);
+	if (!isRecord(value) || !validPermissionRecord(value.default) || !isRecord(value.exceptions)) return false;
+	return Object.values(value.exceptions).every(validPermissionRecord);
 }
 
 function validPermissionRecord(value) {
