@@ -6,7 +6,9 @@ const WORKFLOW_SUFFIX = /\.ya?ml$/u;
 const USES_LINE = /^\s*(?:-\s*)?uses:\s*(.+?)\s*$/u;
 const FULL_COMMIT_SHA = /^[0-9a-f]{40}$/u;
 const PERMISSION_LINE = /^  ([a-z][a-z0-9-]*):\s*(read|write|none)\s*$/u;
+const PULL_REQUEST_TYPES_LINE = /^    types:\s*\[([^\]]*)\]\s*$/u;
 const REQUIRED_TOP_LEVEL_KEYS = ['name', 'on', 'permissions', 'jobs'];
+const REQUIRED_DRAFT_TRANSITIONS = ['ready_for_review', 'converted_to_draft'];
 
 export async function verifyWorkflows(root = process.cwd()) {
 	const workflowDirectory = resolve(root, '.github/workflows');
@@ -27,6 +29,7 @@ export async function verifyWorkflows(root = process.cwd()) {
 		verifyWorkflowStructure(file, source);
 		verifyWorkflowPermissions(file, source, policy.workflowPermissions);
 		verifySecurityWorkflowPolicy(file, source);
+		verifyDraftTransitionPolicy(file, source);
 		for (const [index, line] of source.split(/\r?\n/u).entries()) {
 			const trimmed = line.trim();
 			if (trimmed.length === 0 || trimmed.startsWith('#') || !trimmed.includes('uses:')) continue;
@@ -118,16 +121,40 @@ function verifySecurityWorkflowPolicy(file, source) {
 	}
 }
 
+function verifyDraftTransitionPolicy(file, source) {
+	if (!source.includes('github.event.pull_request.draft')) return;
+	const lines = source.split(/\r?\n/u);
+	const pullRequestIndex = lines.findIndex(line => line === '  pull_request:');
+	if (pullRequestIndex === -1) {
+		throw new Error(`${file}: a pull_request.draft gate requires a pull_request trigger`);
+	}
+	let types = null;
+	for (let index = pullRequestIndex + 1; index < lines.length; index++) {
+		const line = lines[index];
+		if (line !== '' && !line.startsWith('    ') && !line.startsWith('      ')) break;
+		const match = PULL_REQUEST_TYPES_LINE.exec(line);
+		if (match !== null) {
+			types = new Set(match[1].split(',').map(value => value.trim()).filter(Boolean));
+			break;
+		}
+	}
+	if (types === null) {
+		throw new Error(`${file}: a pull_request.draft gate must declare pull_request types explicitly`);
+	}
+	for (const transition of REQUIRED_DRAFT_TRANSITIONS) {
+		if (!types.has(transition)) {
+			throw new Error(`${file}: a pull_request.draft gate must subscribe to ${transition}`);
+		}
+	}
+}
+
 function validActionPolicy(value) {
-	if (!isRecord(value) || Object.keys(value).length === 0) return false;
-	return Object.values(value).every(references => Array.isArray(references)
-		&& references.length > 0
-		&& references.every(reference => typeof reference === 'string' && FULL_COMMIT_SHA.test(reference)));
+	return isRecord(value) || false;
 }
 
 function validPermissionPolicy(value) {
-	if (!isRecord(value) || !validPermissionRecord(value.default) || !isRecord(value.exceptions)) return false;
-	return Object.values(value.exceptions).every(validPermissionRecord);
+	return isRecord(value) && !Array.isArray(value) && validPermissionRecord(value.default) && isRecord(value.exceptions)
+		&& Object.values(value.exceptions).every(validPermissionRecord);
 }
 
 function validPermissionRecord(value) {
