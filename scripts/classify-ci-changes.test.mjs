@@ -165,15 +165,18 @@ test('does not treat an empty change set as documentation-only and fails safe fo
 	});
 });
 
-test('normalizes separators and removes duplicate paths', () => {
-	const result = classifyChangedPaths(['docs\\guide.md', 'docs/guide.md', '']);
+test('preserves exact repository paths and removes only exact duplicates and empty entries', () => {
+	const result = classifyChangedPaths(['docs\\guide.md', 'docs/guide.md', 'docs/guide.md ', 'docs/guide.md', '']);
 	assert.deepEqual(result, {
-		docsOnly: true,
+		docsOnly: false,
 		selfhostInventoryRequired: false,
 		selfhostRequiredGateRequired: false,
-		changedCount: 1,
-		paths: ['docs/guide.md'],
+		changedCount: 3,
+		paths: ['docs/guide.md', 'docs/guide.md ', 'docs\\guide.md'],
 	});
+	assert.equal(classifyChangedPaths(['docs\\guide.md']).docsOnly, false);
+	assert.equal(classifyChangedPaths([' docs/guide.md']).docsOnly, false);
+	assert.equal(classifyChangedPaths(['docs/guide.md ']).docsOnly, false);
 });
 
 test('limits documentation paths to reviewed Markdown locations', () => {
