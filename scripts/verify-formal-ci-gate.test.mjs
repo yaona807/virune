@@ -45,7 +45,21 @@ function docsOnlyResults() {
 	};
 }
 
-test('provider terminal context names are unique, stable, and always evaluated', async () => {
+function pullRequestTriggerBlock(source) {
+	const lines = source.split('\n');
+	const start = lines.findIndex(line => line === '  pull_request:');
+	if (start === -1) return undefined;
+	let end = lines.length;
+	for (let index = start + 1; index < lines.length; index++) {
+		if (/^(?:\S|  [A-Za-z0-9_-]+:)/u.test(lines[index])) {
+			end = index;
+			break;
+		}
+	}
+	return lines.slice(start, end).join('\n');
+}
+
+test('provider terminal contexts are stable, always evaluated, and not hidden by pull-request path filters', async () => {
 	for (const [path, context] of providerTerminalContexts) {
 		const source = await readFile(resolve(repositoryRoot, path), 'utf8');
 		const marker = `name: ${context}`;
@@ -53,6 +67,13 @@ test('provider terminal context names are unique, stable, and always evaluated',
 		assert.notEqual(first, -1, `${path}: missing ${context}`);
 		assert.equal(source.indexOf(marker, first + marker.length), -1, `${path}: duplicate ${context}`);
 		assert.match(source.slice(first, first + 500), /\n    if: always\(\)/u, `${path}: ${context} must use if: always()`);
+
+		const trigger = pullRequestTriggerBlock(source);
+		assert.notEqual(trigger, undefined, `${path}: missing pull_request trigger`);
+		assert.doesNotMatch(trigger, /^    paths:/mu, `${path}: required context must not use pull_request paths filtering`);
+		if (/^    branches:/mu.test(trigger)) {
+			assert.match(trigger, /main/u, `${path}: pull_request branch filter must include main`);
+		}
 	}
 });
 
