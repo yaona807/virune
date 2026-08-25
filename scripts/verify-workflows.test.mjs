@@ -8,6 +8,7 @@ import { verifyWorkflows } from './verify-workflows.mjs';
 const CHECKOUT_SHA = '3d3c42e5aac5ba805825da76410c181273ba90b1';
 const UNKNOWN_SHA = '0000000000000000000000000000000000000000';
 const DEPENDENCY_REVIEW_SHA = 'a1d282b36b6f3519aa1f3fc636f609c47dddb294';
+const REQUIRED_DRAFT_TRANSITIONS = ['opened', 'synchronize', 'reopened', 'ready_for_review', 'converted_to_draft'];
 
 async function fixture(reference, { permissions = { contents: 'read' }, exception } = {}) {
 	const root = await mkdtemp(join(tmpdir(), 'virune-workflow-policy-'));
@@ -31,8 +32,18 @@ async function writeWorkflow(root, reference, permissions, comment = '') {
 	await writeFile(join(root, '.github/workflows/test.yml'), `name: Test\n\non:\n  workflow_dispatch:\n${permissionBlock}\njobs:\n  test:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@${reference}${comment}\n`);
 }
 
-async function writeDraftGatedWorkflow(root, types) {
-	await writeFile(join(root, '.github/workflows/test.yml'), `name: Test\n\non:\n  pull_request:\n    types: [${types.join(', ')}]\n\npermissions:\n  contents: read\n\njobs:\n  test:\n    if: github.event.pull_request.draft == false\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@${CHECKOUT_SHA}\n`);
+async function writeDraftGatedWorkflow(root, types, { style = 'inline' } = {}) {
+	let typesSource;
+	if (style === 'inline') {
+		typesSource = `    types: [${types.join(', ')}]\n`;
+	} else if (style === 'block') {
+		typesSource = `    types:\n${types.map(type => `      - ${type}`).join('\n')}\n`;
+	} else if (style === 'unsupported-scalar') {
+		typesSource = `    types: ${types[0] ?? ''}\n`;
+	} else {
+		throw new Error(`Unknown Draft workflow fixture style: ${style}`);
+	}
+	await writeFile(join(root, '.github/workflows/test.yml'), `name: Test\n\non:\n  pull_request:\n${typesSource}\npermissions:\n  contents: read\n\njobs:\n  test:\n    if: github.event.pull_request.draft == false\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@${CHECKOUT_SHA}\n`);
 }
 
 async function dependencyReviewFixture({
@@ -81,32 +92,39 @@ test('accepts an explicitly reviewed workflow permission exception', async t => 
 	await assert.doesNotReject(verifyWorkflows(root));
 });
 
-test('accepts a Draft-gated pull request workflow with the complete lifecycle', async t => {
+test('accepts a Draft-gated pull request workflow with an inline lifecycle list', async t => {
 	const root = await fixture(CHECKOUT_SHA);
 	t.after(() => rm(root, { recursive: true, force: true }));
-	await writeDraftGatedWorkflow(root, ['opened', 'synchronize', 'reopened', 'ready_for_review', 'converted_to_draft']);
+	await writeDraftGatedWorkflow(root, REQUIRED_DRAFT_TRANSITIONS);
 	await assert.doesNotReject(verifyWorkflows(root));
 });
 
-test('rejects a Draft-gated workflow that cannot revalidate a new Ready head', async t => {
+test('accepts a Draft-gated pull request workflow with a block lifecycle list', async t => {
 	const root = await fixture(CHECKOUT_SHA);
 	t.after(() => rm(root, { recursive: true, force: true }));
-	await writeDraftGatedWorkflow(root, ['opened', 'reopened', 'ready_for_review', 'converted_to_draft']);
-	await assert.rejects(verifyWorkflows(root), /must subscribe to synchronize/u);
+	await writeDraftGatedWorkflow(root, REQUIRED_DRAFT_TRANSITIONS, { style: 'block' });
+	await assert.doesNotReject(verifyWorkflows(root));
 });
 
-test('rejects a Draft-gated workflow that cannot start formal validation when marked Ready', async t => {
-	const root = await fixture(CHECKOUT_SHA);
-	t.after(() => rm(root, { recursive: true, force: true }));
-	await writeDraftGatedWorkflow(root, ['opened', 'synchronize', 'reopened', 'converted_to_draft']);
-	await assert.rejects(verifyWorkflows(root), /must subscribe to ready_for_review/u);
+test('rejects a Draft-gated workflow missing any required pull request lifecycle event', async t => {
+	for (const missing of REQUIRED_DRAFT_TRANSITIONS) {
+		await t.test(`missing ${missing}`, async () => {
+			const root = await fixture(CHECKOUT_SHA);
+			try {
+				await writeDraftGatedWorkflow(root, REQUIRED_DRAFT_TRANSITIONS.filter(value => value !== missing));
+				await assert.rejects(verifyWorkflows(root), new RegExp(`must subscribe to ${missing}`, 'u'));
+			} finally {
+				await rm(root, { recursive: true, force: true });
+			}
+		});
+	}
 });
 
-test('rejects a Draft-gated workflow that cannot react when converted back to Draft', async t => {
+test('rejects unsupported scalar pull request lifecycle syntax instead of guessing', async t => {
 	const root = await fixture(CHECKOUT_SHA);
 	t.after(() => rm(root, { recursive: true, force: true }));
-	await writeDraftGatedWorkflow(root, ['opened', 'synchronize', 'reopened', 'ready_for_review']);
-	await assert.rejects(verifyWorkflows(root), /must subscribe to converted_to_draft/u);
+	await writeDraftGatedWorkflow(root, ['opened'], { style: 'unsupported-scalar' });
+	await assert.rejects(verifyWorkflows(root), /must declare pull_request types explicitly/u);
 });
 
 test('accepts a blocking dependency review with a complete locked-dependency audit', async t => {
