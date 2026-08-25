@@ -18,14 +18,24 @@ export const formalLanes = Object.freeze([
 	'vsix',
 ]);
 
+const reviewedRequiredDocumentation = Object.freeze({
+	'browser-conformance': () => false,
+	performance: path => path === 'docs/performance-benchmarks.md',
+	'fixed-seed': () => false,
+	typescript7: path => /^docs\/adr-typescript-7-migration[^/]*\.md$/u.test(path),
+	vsix: () => false,
+});
+
 export function normalizeChangedPaths(paths) {
 	return [...new Set(paths.map(path => path.trim().replaceAll('\\', '/')).filter(Boolean))].sort();
 }
 
 export function isFormalLaneRequired(lane, paths) {
-	if (!formalLanes.includes(lane)) throw new Error(`Unknown formal CI lane: ${lane}`);
+	const documentationRequiresLane = reviewedRequiredDocumentation[lane];
+	if (documentationRequiresLane === undefined) throw new Error(`Unknown formal CI lane: ${lane}`);
 	const normalized = normalizeChangedPaths(paths);
 	if (normalized.length === 0) return true;
+	if (normalized.some(documentationRequiresLane)) return true;
 	return !normalized.every(isDocumentationPath);
 }
 
