@@ -436,6 +436,16 @@ function validateRunExtension(parent: PromotionHistoryRunV2, child: PromotionHis
 			throw new PromotionHistoryLedgerError(`${path}.attempts[${index}]`, 'retained attempt is immutable');
 		}
 	}
+	if (
+		parent.freezeBoundary === null
+		&& child.freezeBoundary !== null
+		&& child.promotionEffectiveAttemptCount < parent.promotionEffectiveAttemptCount
+	) {
+		throw new PromotionHistoryLedgerError(
+			`${path}.promotionEffectiveAttemptCount`,
+			'a new freeze boundary cannot demote retained promotion-effective attempts',
+		);
+	}
 	if (parent.freezeBoundary !== null) {
 		if (JSON.stringify(parent.freezeBoundary) !== JSON.stringify(child.freezeBoundary)) {
 			throw new PromotionHistoryLedgerError(`${path}.freezeBoundary`, 'frozen boundary is immutable');
