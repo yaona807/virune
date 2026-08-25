@@ -44,10 +44,22 @@ test('formal lane set is fixed and explicit', () => {
 	]);
 });
 
-test('explicit reviewed documentation-only changes omit every optional formal lane', () => {
+test('explicit reviewed documentation-only changes omit optional formal lanes by default', () => {
 	for (const lane of formalLanes) {
 		assert.equal(isFormalLaneRequired(lane, reviewedDocumentationPaths), false, lane);
 	}
+});
+
+test('preserves previously reviewed formal triggers for performance and TypeScript migration docs', () => {
+	assert.equal(isFormalLaneRequired('performance', ['docs/performance-benchmarks.md']), true);
+	assert.equal(isFormalLaneRequired('typescript7', ['docs/adr-typescript-7-migration-boundary.md']), true);
+	assert.equal(isFormalLaneRequired('typescript7', ['docs/adr-typescript-7-migration.md']), true);
+	for (const lane of ['browser-conformance', 'fixed-seed', 'vsix']) {
+		assert.equal(isFormalLaneRequired(lane, ['docs/performance-benchmarks.md']), false, lane);
+		assert.equal(isFormalLaneRequired(lane, ['docs/adr-typescript-7-migration-boundary.md']), false, lane);
+	}
+	assert.equal(isFormalLaneRequired('performance', ['docs/adr-typescript-7-migration-boundary.md']), false);
+	assert.equal(isFormalLaneRequired('typescript7', ['docs/performance-benchmarks.md']), false);
 });
 
 test('every non-documentation change requires every optional formal lane', () => {
