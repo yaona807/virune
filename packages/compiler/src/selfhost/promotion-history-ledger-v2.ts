@@ -273,6 +273,9 @@ function parseFreezeBoundary(
 	const runId = canonicalRunId(boundary.runId, `${path}.runId`);
 	const sequenceAt = canonicalTimestamp(boundary.sequenceAt, `${path}.sequenceAt`);
 	const executionCommit = canonicalGitSha(boundary.executionCommit, `${path}.executionCommit`);
+	if (runId === current.runId) {
+		throw new PromotionHistoryLedgerError(`${path}.runId`, 'freeze boundary must identify a different logical run');
+	}
 	if (compareRunKey({ runId, sequenceAt }, current) <= 0) {
 		throw new PromotionHistoryLedgerError(path, 'freeze boundary must identify a strictly later formal run');
 	}
