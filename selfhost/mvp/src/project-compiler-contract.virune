@@ -529,12 +529,18 @@ fn runtimeImportLine() -> String {
 }
 
 fn splitLines(value: String) -> List<String> {
-	if String.isEmpty(value) {
-		return []
+	let mut lines: List<String> = []
+	let mut current = ""
+	for character in String.codePoints(value) {
+		if character == "\n" {
+			lines = List.append(lines, current)
+			current = ""
+		} else {
+			current = current + character
+		}
 	}
-	let lines = String.split(value, "\n")
-	if String.endsWith(value, "\n") {
-		return List.take(lines, List.length(lines) - 1)
+	if current != "" {
+		lines = List.append(lines, current)
 	}
 	return lines
 }
