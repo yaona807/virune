@@ -529,18 +529,12 @@ fn runtimeImportLine() -> String {
 }
 
 fn splitLines(value: String) -> List<String> {
-	let mut lines: List<String> = []
-	let mut start = 0
-	let mut index = 0
-	while index < String.length(value) {
-		if String.slice(value, index, Some(index + 1)) == "\n" {
-			lines = List.append(lines, String.slice(value, start, Some(index)))
-			start = index + 1
-		}
-		index = index + 1
+	if String.isEmpty(value) {
+		return []
 	}
-	if start < String.length(value) {
-		lines = List.append(lines, String.slice(value, start, None))
+	let lines = String.split(value, "\n")
+	if String.endsWith(value, "\n") {
+		return List.take(lines, List.length(lines) - 1)
 	}
 	return lines
 }
