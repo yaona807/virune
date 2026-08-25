@@ -263,7 +263,7 @@ test('duplicate or reordered logical runs fail closed', () => {
 	]);
 	const duplicateFirst = run('100', '2026-08-01T18:47:00.000Z', commitA, [
 		validAttempt(1, '100', commitA, '2026-08-01T18:47:01.000Z', '2026-08-01T18:50:00.000Z'),
-	], boundary('100', duplicateSecond.sequenceAt, commitB));
+	]);
 	assert.throws(() => parsePromotionHistoryLedgerV2(ledger([duplicateFirst, duplicateSecond])), /duplicate runId/u);
 
 	const early = run('100', '2026-08-01T18:47:00.000Z', commitA, [
