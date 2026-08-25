@@ -36,38 +36,9 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  classify:
-    name: Classify Fixed Seed ownership
-    if: github.event_name != 'pull_request' || github.event.action != 'converted_to_draft'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    outputs:
-      selfhost_required: ${{ steps.changes.outputs.selfhost_required_gate_required }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          fetch-depth: 0
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
-        with:
-          node-version: 24
-      - name: Classify changed paths
-        id: changes
-        shell: bash
-        env:
-          EVENT_NAME: ${{ github.event_name }}
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: |
-          if [ "$EVENT_NAME" = "pull_request" ]; then
-            node scripts/classify-ci-changes.mjs --base "$BASE_SHA" --head "$HEAD_SHA"
-          else
-            node scripts/classify-ci-changes.mjs --force-full
-          fi
-
   fixed-seed-bootstrap:
     name: Fixed Seed -> Stage 1 -> Stage 2 -> Stage 3 fixed point
-    needs: classify
-    if: needs.classify.result == 'success' && (github.event_name != 'pull_request' || (github.event.pull_request.draft == false && needs.classify.outputs.selfhost_required != 'true'))
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-24.04
     timeout-minutes: 180
     env:
