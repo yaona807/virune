@@ -5,7 +5,6 @@ on:
     - cron: '17 5 * * 3'
   workflow_dispatch:
   pull_request:
-    branches: [main]
 
 permissions:
   contents: read
