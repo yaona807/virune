@@ -6,7 +6,10 @@ const WORKFLOW_SUFFIX = /\.ya?ml$/u;
 const USES_LINE = /^\s*(?:-\s*)?uses:\s*(.+?)\s*$/u;
 const FULL_COMMIT_SHA = /^[0-9a-f]{40}$/u;
 const PERMISSION_LINE = /^  ([a-z][a-z0-9-]*):\s*(read|write|none)\s*$/u;
-const PULL_REQUEST_TYPES_LINE = /^    types:\s*\[([^\]]*)\]\s*$/u;
+const PULL_REQUEST_LINE = /^  pull_request:\s*(?:#.*)?$/u;
+const PULL_REQUEST_TYPES_INLINE_LINE = /^    types:\s*\[([^\]]*)\]\s*(?:#.*)?$/u;
+const PULL_REQUEST_TYPES_BLOCK_LINE = /^    types:\s*(?:#.*)?$/u;
+const PULL_REQUEST_TYPE_ITEM_LINE = /^      -\s*(.+?)\s*(?:#.*)?$/u;
 const REQUIRED_TOP_LEVEL_KEYS = ['name', 'on', 'permissions', 'jobs'];
 const REQUIRED_DRAFT_TRANSITIONS = ['opened', 'synchronize', 'reopened', 'ready_for_review', 'converted_to_draft'];
 
@@ -122,30 +125,71 @@ function verifySecurityWorkflowPolicy(file, source) {
 }
 
 function verifyDraftTransitionPolicy(file, source) {
-	if (!source.includes('github.event.pull_request.draft')) return;
 	const lines = source.split(/\r?\n/u);
-	const pullRequestIndex = lines.findIndex(line => line === '  pull_request:');
+	const usesDraftGate = lines.some(line => {
+		const trimmed = line.trim();
+		return trimmed.length > 0 && !trimmed.startsWith('#') && trimmed.includes('github.event.pull_request.draft');
+	});
+	if (!usesDraftGate) return;
+
+	const pullRequestIndex = findPullRequestTrigger(lines);
 	if (pullRequestIndex === -1) {
 		throw new Error(`${file}: a pull_request.draft gate requires a pull_request trigger`);
 	}
-	let types = null;
-	for (let index = pullRequestIndex + 1; index < lines.length; index++) {
-		const line = lines[index];
-		if (line !== '' && !line.startsWith('    ') && !line.startsWith('      ')) break;
-		const match = PULL_REQUEST_TYPES_LINE.exec(line);
-		if (match !== null) {
-			types = new Set(match[1].split(',').map(value => value.trim()).filter(Boolean));
-			break;
-		}
-	}
-	if (types === null) {
-		throw new Error(`${file}: a pull_request.draft gate must declare pull_request types explicitly`);
-	}
+	const types = readPullRequestTypes(file, lines, pullRequestIndex);
 	for (const transition of REQUIRED_DRAFT_TRANSITIONS) {
 		if (!types.has(transition)) {
 			throw new Error(`${file}: a pull_request.draft gate must subscribe to ${transition}`);
 		}
 	}
+}
+
+function findPullRequestTrigger(lines) {
+	const onIndex = lines.findIndex(line => line === 'on:');
+	if (onIndex === -1) return -1;
+	for (let index = onIndex + 1; index < lines.length; index++) {
+		const line = lines[index];
+		const trimmed = line.trim();
+		if (trimmed.length === 0 || trimmed.startsWith('#')) continue;
+		if (!line.startsWith(' ')) break;
+		if (PULL_REQUEST_LINE.test(line)) return index;
+	}
+	return -1;
+}
+
+function readPullRequestTypes(file, lines, pullRequestIndex) {
+	for (let index = pullRequestIndex + 1; index < lines.length; index++) {
+		const line = lines[index];
+		const trimmed = line.trim();
+		if (trimmed.length === 0 || trimmed.startsWith('#')) continue;
+		if (!line.startsWith('    ')) break;
+
+		const inlineMatch = PULL_REQUEST_TYPES_INLINE_LINE.exec(line);
+		if (inlineMatch !== null) {
+			const values = inlineMatch[1].split(',').map(value => unquote(value.trim())).filter(Boolean);
+			if (values.length === 0) throw new Error(`${file}: pull_request types must not be empty`);
+			return new Set(values);
+		}
+		if (!PULL_REQUEST_TYPES_BLOCK_LINE.test(line)) continue;
+
+		const values = [];
+		for (let itemIndex = index + 1; itemIndex < lines.length; itemIndex++) {
+			const itemLine = lines[itemIndex];
+			const itemTrimmed = itemLine.trim();
+			if (itemTrimmed.length === 0 || itemTrimmed.startsWith('#')) continue;
+			if (!itemLine.startsWith('      ')) break;
+			const itemMatch = PULL_REQUEST_TYPE_ITEM_LINE.exec(itemLine);
+			if (itemMatch === null) {
+				throw new Error(`${file}:${itemIndex + 1}: unsupported pull_request types item syntax`);
+			}
+			const value = unquote(itemMatch[1].trim());
+			if (value.length === 0) throw new Error(`${file}:${itemIndex + 1}: pull_request type must not be empty`);
+			values.push(value);
+		}
+		if (values.length === 0) throw new Error(`${file}: pull_request types must not be empty`);
+		return new Set(values);
+	}
+	throw new Error(`${file}: a pull_request.draft gate must declare pull_request types explicitly`);
 }
 
 function validActionPolicy(value) {
