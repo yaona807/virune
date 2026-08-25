@@ -3,19 +3,7 @@ name: TypeScript 7 prototype
 on:
   workflow_dispatch:
   pull_request:
-    paths:
-      - '.github/typescript-version-policy.json'
-      - '.github/workflows/typescript-7-prototype.yml'
-      - 'docs/adr-typescript-7-migration*.md'
-      - 'package.json'
-      - 'packages/*/package.json'
-      - 'packages/*/tsconfig.json'
-      - 'packages/js-interop/**'
-      - 'packages/language-server/**'
-      - 'packages/vscode/**'
-      - 'scripts/probe-typescript-7.mjs'
-      - 'scripts/verify-typescript-boundary*.mjs'
-      - 'tsconfig*.json'
+    branches: [main]
 
 permissions:
   contents: read
@@ -25,8 +13,37 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  classify:
+    name: Classify TypeScript 7 impact
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      formal_required: ${{ steps.changes.outputs.formal_required }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 24
+      - name: Classify changed paths
+        id: changes
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            node scripts/classify-formal-ci-changes.mjs --lane typescript7 --base "$BASE_SHA" --head "$HEAD_SHA"
+          else
+            node scripts/classify-formal-ci-changes.mjs --lane typescript7 --force-full
+          fi
+
   prototype:
     name: Build compiler 7 / Compiler API 6
+    needs: classify
+    if: needs.classify.outputs.formal_required == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
@@ -47,3 +64,42 @@ jobs:
           path: .cache/typescript-7-prototype/
           if-no-files-found: error
           retention-days: 30
+
+  required-typescript7-gate:
+    name: Required TypeScript 7 gate
+    needs: [classify, prototype]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Require reviewed TypeScript 7 disposition
+        shell: bash
+        env:
+          FORMAL_REQUIRED: ${{ needs.classify.outputs.formal_required }}
+          CLASSIFY_RESULT: ${{ needs.classify.result }}
+          PROTOTYPE_RESULT: ${{ needs.prototype.result }}
+        run: |
+          if [[ "$CLASSIFY_RESULT" != "success" ]]; then
+            echo "::error::TypeScript 7 classification concluded with $CLASSIFY_RESULT."
+            exit 1
+          fi
+          case "$FORMAL_REQUIRED" in
+            true)
+              if [[ "$PROTOTYPE_RESULT" != "success" ]]; then
+                echo "::error::Required TypeScript 7 validation concluded with $PROTOTYPE_RESULT."
+                exit 1
+              fi
+              echo 'Required TypeScript 7 validation passed.'
+              ;;
+            false)
+              if [[ "$PROTOTYPE_RESULT" != "skipped" ]]; then
+                echo "::error::Not-required TypeScript 7 job concluded with unexpected result $PROTOTYPE_RESULT."
+                exit 1
+              fi
+              echo 'TypeScript 7 validation is explicitly not required for these reviewed changes.'
+              ;;
+            *)
+              echo "::error::Invalid formal_required output: $FORMAL_REQUIRED."
+              exit 1
+              ;;
+          esac
