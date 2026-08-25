@@ -84,34 +84,19 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 24
       - name: Require reviewed browser conformance disposition
-        shell: bash
         env:
           FORMAL_REQUIRED: ${{ needs.classify.outputs.formal_required }}
           CLASSIFY_RESULT: ${{ needs.classify.result }}
           BROWSER_RESULT: ${{ needs.browser.result }}
-        run: |
-          if [[ "$CLASSIFY_RESULT" != "success" ]]; then
-            echo "::error::Browser conformance classification concluded with $CLASSIFY_RESULT."
-            exit 1
-          fi
-          case "$FORMAL_REQUIRED" in
-            true)
-              if [[ "$BROWSER_RESULT" != "success" ]]; then
-                echo "::error::Required browser conformance concluded with $BROWSER_RESULT."
-                exit 1
-              fi
-              echo 'Required browser conformance passed.'
-              ;;
-            false)
-              if [[ "$BROWSER_RESULT" != "skipped" ]]; then
-                echo "::error::Not-required browser conformance concluded with unexpected result $BROWSER_RESULT."
-                exit 1
-              fi
-              echo 'Browser conformance is explicitly not required for these reviewed changes.'
-              ;;
-            *)
-              echo "::error::Invalid formal_required output: $FORMAL_REQUIRED."
-              exit 1
-              ;;
-          esac
+        run: >-
+          node scripts/verify-formal-ci-gate.mjs
+          --kind optional
+          --label browser-conformance
+          --required "$FORMAL_REQUIRED"
+          --classify-result "$CLASSIFY_RESULT"
+          --upstream-result "$BROWSER_RESULT"
