@@ -9,7 +9,7 @@ import { validateGeneratedProjectManifest } from './verify-public-npm-registry.m
 
 const repositoryRoot = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const EXPECTED_LICENSE = 'Apache-2.0';
-const REVIEWED_LEGAL_FILES = ['LICENSE', 'NOTICE', 'THIRD_PARTY_NOTICES.md', 'THIRD_PARTY_NOTICES_ja.md'];
+const REVIEWED_LEGAL_FILES = ['LICENSE', 'NOTICE', 'THIRD_PARTY_NOTICES.md'];
 const NPM_PUBLICATION_POLICY_PATH = '.github/release/npm-publication-v1.json';
 const NPM_PUBLICATION_POLICY = JSON.parse(await readFile(new URL(`../${NPM_PUBLICATION_POLICY_PATH}`, import.meta.url), 'utf8'));
 
@@ -298,7 +298,7 @@ function requestHeaders(token) {
 
 function requiredAssetNames(version, npmPublicationPolicy) {
 	const required = [
-		'LICENSE', 'MANIFEST.json', 'NOTICE', 'README.md', 'README_ja.md', 'RELEASE-MANIFEST.json', 'SBOM.cdx.json', 'SHA256SUMS', 'THIRD_PARTY_NOTICES.md', 'THIRD_PARTY_NOTICES_ja.md', 'package.json',
+		'LICENSE', 'MANIFEST.json', 'NOTICE', 'README.md', 'README_ja.md', 'RELEASE-MANIFEST.json', 'SBOM.cdx.json', 'SHA256SUMS', 'THIRD_PARTY_NOTICES.md', 'package.json',
 		`virune-${version}.tgz`, `virune-compiler-${version}.tgz`, `virune-formatter-${version}.tgz`, `virune-js-interop-${version}.tgz`, `virune-runtime-${version}.tgz`, `virune-stdlib-${version}.tgz`, `virune-vscode-${version}.vsix`,
 	];
 	const registryPolicy = registryPolicyForVersion(version, npmPublicationPolicy.firstStableRegistryRelease, npmPublicationPolicy.distTagPolicy);
