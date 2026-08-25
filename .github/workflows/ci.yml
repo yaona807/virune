@@ -504,3 +504,76 @@ jobs:
             .cache/ci-failures/
           if-no-files-found: error
           retention-days: 30
+
+  required-ci-gate:
+    name: Required CI gate
+    needs: [classify, metadata, build, verify, selfhost-inventory, quality, semantic-fuzz, compatibility, browser, release-artifacts]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Require complete reviewed CI disposition
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          DOCS_ONLY: ${{ needs.classify.outputs.docs_only }}
+          CLASSIFY_RESULT: ${{ needs.classify.result }}
+          METADATA_RESULT: ${{ needs.metadata.result }}
+          BUILD_RESULT: ${{ needs.build.result }}
+          VERIFY_RESULT: ${{ needs.verify.result }}
+          SELFHOST_INVENTORY_RESULT: ${{ needs.selfhost-inventory.result }}
+          QUALITY_RESULT: ${{ needs.quality.result }}
+          SEMANTIC_FUZZ_RESULT: ${{ needs.semantic-fuzz.result }}
+          COMPATIBILITY_RESULT: ${{ needs.compatibility.result }}
+          BROWSER_RESULT: ${{ needs.browser.result }}
+          RELEASE_ARTIFACTS_RESULT: ${{ needs.release-artifacts.result }}
+        run: |
+          if [[ "$CLASSIFY_RESULT" != "success" ]]; then
+            echo "::error::CI classification concluded with $CLASSIFY_RESULT."
+            exit 1
+          fi
+          case "$DOCS_ONLY" in
+            true)
+              if [[ "$METADATA_RESULT" != "success" ]]; then
+                echo "::error::Documentation-only metadata validation concluded with $METADATA_RESULT."
+                exit 1
+              fi
+              for result in "$BUILD_RESULT" "$VERIFY_RESULT" "$SELFHOST_INVENTORY_RESULT" "$QUALITY_RESULT" "$SEMANTIC_FUZZ_RESULT" "$COMPATIBILITY_RESULT" "$BROWSER_RESULT" "$RELEASE_ARTIFACTS_RESULT"; do
+                if [[ "$result" != "skipped" ]]; then
+                  echo "::error::Documentation-only CI had an unexpected non-skipped result: $result."
+                  exit 1
+                fi
+              done
+              echo 'Documentation-only CI disposition passed.'
+              ;;
+            false)
+              for entry in \
+                "metadata=$METADATA_RESULT" \
+                "build=$BUILD_RESULT" \
+                "verify=$VERIFY_RESULT" \
+                "selfhost-inventory=$SELFHOST_INVENTORY_RESULT" \
+                "quality=$QUALITY_RESULT" \
+                "compatibility=$COMPATIBILITY_RESULT" \
+                "browser=$BROWSER_RESULT" \
+                "release-artifacts=$RELEASE_ARTIFACTS_RESULT"; do
+                if [[ "${entry#*=}" != "success" ]]; then
+                  echo "::error::Required CI upstream $entry."
+                  exit 1
+                fi
+              done
+              if [[ "$EVENT_NAME" = "pull_request" ]]; then
+                if [[ "$SEMANTIC_FUZZ_RESULT" != "success" ]]; then
+                  echo "::error::Required pull-request semantic fuzz concluded with $SEMANTIC_FUZZ_RESULT."
+                  exit 1
+                fi
+              elif [[ "$SEMANTIC_FUZZ_RESULT" != "skipped" ]]; then
+                echo "::error::Non-PR semantic fuzz concluded with unexpected result $SEMANTIC_FUZZ_RESULT."
+                exit 1
+              fi
+              echo 'Required CI disposition passed.'
+              ;;
+            *)
+              echo "::error::Invalid docs_only output: $DOCS_ONLY."
+              exit 1
+              ;;
+          esac
