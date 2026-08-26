@@ -124,7 +124,7 @@ A Pull Request may be stacked when its change depends on another Pull Request.
 
 Changes that can be implemented and tested independently should each start from `main`.
 
-Stacks should normally be limited to two levels: one parent Pull Request and one child Pull Request.
+Stacks are limited to two levels: one parent Pull Request and one child Pull Request.
 
 After the parent is merged, change the child Pull Request base to `main` and bring in the latest `main` when needed.
 
