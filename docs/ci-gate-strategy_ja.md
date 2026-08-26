@@ -62,11 +62,13 @@ WindowsやmacOSなど環境固有の依存関係が必要な検証では、対�
 - `Required TypeScript 7 gate`
 - `Required VSIX gate`
 
-`main`のRulesetでは、上記7個に加えて既存の次のcontextも必須にします。
+`main`のRulesetでは、上記7個に加えて既存の次のcontextも必須とします。
 
 - `Reproducible release artifacts`
 - `CodeQL`
 - `Diagnose dependency review API`
+
+GitHub Actionsが出す終端contextは、Rulesetでsourceを`GitHub Actions`に固定します。GitHubが新しいcheckをまだ認識していない初回rollout中だけ`Any source`を一時利用できますが、それを完了状態とは扱いません。
 
 終端ゲートが成功できるのは、必要な上流検証が成功した場合、またはreview済みの変更分類で重いlaneが明示的に不要と判定され、その上流jobが実際に`skipped`だった場合だけです。requiredな結果がmissing、failed、cancelled、partial、stale、timed out、unknownの場合はsuccessとして扱いません。
 
