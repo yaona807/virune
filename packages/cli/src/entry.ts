@@ -11,7 +11,6 @@ const packageRoot = resolve(directory, '../..');
 const manifest = JSON.parse(await readFile(join(packageRoot, 'package.json'), 'utf8')) as { version: string };
 const version = manifest.version;
 const releaseSourceBase = `https://github.com/yaona807/virune/blob/v${version}`;
-const latestApplicationGuide = 'https://github.com/yaona807/virune/blob/main/docs/application-guide.md';
 const commandArgs = process.argv.slice(2);
 const exitCode = await runMain(commandArgs);
 
@@ -38,7 +37,7 @@ function projectReadme(name: string): string {
 	const dependencyDescription = dependencySource === 'npm'
 		? `The CLI, Runtime, and standard library use exact Virune ${version} npm package versions so the generated project stays on one reviewed toolchain release.`
 		: `The CLI, Runtime, and standard library are pinned to immutable Virune ${version} GitHub Release assets so the generated project stays on one reviewed toolchain release.`;
-	return `# ${name}\n\nGenerated with Virune ${version}.\n\n## Quick start\n\n\`\`\`bash\nnpm install\nnpm run check\nnpm test\nnpm run start\n\`\`\`\n\nUse \`npm run fmt\` to format Virune source and \`npm run build\` to emit ES2022 modules.\n\n## Project structure\n\n- \`src/main.virune\` — application entry point\n- \`virune.json\` — compiler and platform configuration\n- \`package.json\` — project scripts and version-pinned Virune dependencies\n\n${dependencyDescription}\n\n## Documentation\n\n- [Quick start](${releaseSourceBase}/README.md#quick-start)\n- [Application guide (latest)](${latestApplicationGuide})\n- [Language guide](${releaseSourceBase}/docs/language-guide.md)\n- [Node.js and browser standard library](${releaseSourceBase}/docs/standard-library.md)\n- [JavaScript and TypeScript interoperability](${releaseSourceBase}/docs/js-interop.md)\n`;
+	return `# ${name}\n\nGenerated with Virune ${version}.\n\n## Quick start\n\n\`\`\`bash\nnpm install\nnpm run check\nnpm test\nnpm run start\n\`\`\`\n\nUse \`npm run fmt\` to format Virune source and \`npm run build\` to emit ES2022 modules.\n\n## Project structure\n\n- \`src/main.virune\` — application entry point\n- \`virune.json\` — compiler and platform configuration\n- \`package.json\` — project scripts and version-pinned Virune dependencies\n\n${dependencyDescription}\n\n## Documentation\n\n- [Quick start](${releaseSourceBase}/README.md#quick-start)\n- [Language specification](${releaseSourceBase}/spec/README.md)\n- [Standard library specification](${releaseSourceBase}/spec/standard-library.md)\n- [JavaScript and TypeScript interoperability](${releaseSourceBase}/spec/js-interop.md)\n`;
 }
 
 function ignoreExisting(error: unknown): void {
