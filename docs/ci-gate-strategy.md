@@ -4,9 +4,9 @@
 
 Virune separates pull-request validation, reproducibility verification, Nightly validation, and pre-release verification. The goal is to validate normal changes thoroughly while routing documentation-only changes and long-running checks through the appropriate paths.
 
-When CI responsibilities move, the names `CI`, `Release artifacts`, `Reproducible release required check`, and `Reproducible release artifacts` must remain stable. Repository rulesets may depend on these identifiers.
+When CI responsibilities move, the names `CI`, `Release artifacts`, `Reproducible release required check`, `Reproducible release artifacts`, and the provider-required terminal gates documented below must remain stable. Repository rulesets may depend on these identifiers.
 
-A successful CI result is evidence for the pull-request head commit that was actually tested. If the head changes, an older successful run must not be used as evidence for the new head.
+A successful required result is evidence only for the exact pull-request state GitHub associated with that run. If the pull-request head changes, or the base branch moves so that the merge-relevant state changes, older successful evidence must not be reused for the new state.
 
 ## Pull-request validation
 
@@ -16,13 +16,17 @@ CI classifies whether a pull request contains documentation-only changes. This d
 
 The documentation path is used only when the change can be classified safely as documentation-only. If any non-documentation change is present, or the classification cannot be made safely, the full validation path is used.
 
+Changed repository paths are classified exactly. Leading or trailing whitespace and literal backslashes are filename data, not aliases for another path. An unknown, empty, or otherwise unresolved change set is not treated as documentation-only.
+
 Pushes to `main` and manually dispatched CI runs also use the full validation path.
 
 ### Documentation-only changes
 
 Documentation-only changes validate metadata and policy, then build, validate, and execute documentation examples. The remaining expensive jobs may be skipped.
 
-Skipping those jobs must not remove required checks or change the identifiers used by repository rulesets.
+Skipping those jobs must not remove required checks or change the identifiers used by repository rulesets. Optional formal workflows still emit their terminal gate when their expensive job is explicitly not required.
+
+The performance benchmark document and TypeScript 7 migration ADRs retain their dedicated formal validation triggers even though they are Markdown documentation.
 
 ### Normal changes
 
@@ -38,11 +42,39 @@ The main validation areas include:
 - browser validation in Chromium;
 - the self-hosting full-language inventory when required by the changed paths.
 
+In addition, every non-documentation pull request runs the formal Browser conformance, Performance, Fixed Seed bootstrap, TypeScript 7 prototype, and VSIX smoke lanes. This conservative rule prevents a new or unknown repository path from being inferred as safe to omit.
+
 Checks that require operating-system-specific or native dependencies still run `npm ci` from the committed lockfile on the target environment. Built Virune output is shared, but native dependencies are not copied across platforms.
 
 `Release artifacts` runs only after the required validation has succeeded. The pull-request-only semantic-difference test is intentionally absent on push and manual CI runs, and that intentional skip is accepted.
 
 Publishing decisions do not trust a pull-request build artifact. Release artifacts are rebuilt and verified from a clean environment.
+
+## Provider-required terminal gates
+
+For pull requests targeting `main`, repository workflows expose these stable terminal check contexts:
+
+- `Required CI gate`
+- `Required self-host gate`
+- `Required browser conformance gate`
+- `Required performance gate`
+- `Required fixed Seed gate`
+- `Required TypeScript 7 gate`
+- `Required VSIX gate`
+
+The `main` ruleset must require all seven terminal contexts in addition to the existing provider-required contexts:
+
+- `Reproducible release artifacts`
+- `CodeQL`
+- `Diagnose dependency review API`
+
+Actions-owned terminal contexts must be bound to the GitHub Actions source in the ruleset. `Any source` is acceptable only as a temporary rollout state before GitHub has observed the new check; it is not the completed provider state.
+
+A terminal gate succeeds only when its required upstream validation succeeded, or when a reviewed classification explicitly says the expensive lane is not required and that upstream job is actually `skipped`. A missing, failed, cancelled, partial, stale, timed-out, or unknown required result is not success.
+
+The ruleset must use strict required-status-check handling so a base-branch movement that changes the merge-relevant state cannot reuse obsolete successful evidence. Provider settings must be read before mutation and read back after mutation; a mismatch must be rolled back to the captured prior values.
+
+These terminal gates supplement repository-side evidence. They do not replace the underlying quality, security, compatibility, reproducibility, browser, performance, or self-hosting validation.
 
 ## Required reproducibility check
 
@@ -106,10 +138,10 @@ Wrapped CI commands record the command, duration, exit status, operating system,
 
 Use this sequence when investigating a failure:
 
-1. Confirm that the pull request's current head commit matches the commit tested by the failed workflow run.
+1. Confirm that the pull request's current head and base-derived merge state match the state tested by the failed workflow run.
 2. Open the failed job and step, then inspect the log and the reproduction command shown in the GitHub annotation.
 3. Download CI evidence when needed and inspect `.cache/ci-failures/` and `.cache/ci-timings/`.
 4. Run the reproduction command from the repository root. For failures that depend on the operating system or Node.js version, also reproduce them in the relevant environment.
-5. If the repository or implementation is responsible, fix it and validate the new head. Re-run the same head only when the failure is confirmed to come from external infrastructure such as GitHub Actions or a runner.
+5. If the repository or implementation is responsible, fix it and validate the new state. Re-run the same state only when the failure is confirmed to come from external infrastructure such as GitHub Actions or a runner.
 
-Do not treat a successful run for an older head, or an unexplained retry, as evidence for the current change.
+Do not treat a successful run for an older head or merge-relevant state, or an unexplained retry, as evidence for the current change.

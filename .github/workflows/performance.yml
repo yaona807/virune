@@ -5,21 +5,6 @@ on:
     - cron: '17 3 * * 1'
   workflow_dispatch:
   pull_request:
-    paths:
-      - '.github/workflows/performance.yml'
-      - 'benchmarks/performance/**'
-      - 'docs/performance-benchmarks.md'
-      - 'package.json'
-      - 'package-lock.json'
-      - 'tsconfig.json'
-      - 'packages/compiler/**'
-      - 'packages/js-interop/**'
-      - 'packages/language-server/**'
-      - 'scripts/benchmark-js-interop-heap.mjs'
-      - 'scripts/benchmark-lsp-completion.mjs'
-      - 'scripts/check-performance-regression.mjs'
-      - 'scripts/performance-benchmark-utils.mjs'
-      - 'scripts/performance-regression.test.mjs'
 
 permissions:
   contents: read
@@ -29,8 +14,37 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  classify:
+    name: Classify performance impact
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      formal_required: ${{ steps.changes.outputs.formal_required }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 24
+      - name: Classify changed paths
+        id: changes
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            node scripts/classify-formal-ci-changes.mjs --lane performance --base "$BASE_SHA" --head "$HEAD_SHA"
+          else
+            node scripts/classify-formal-ci-changes.mjs --lane performance --force-full
+          fi
+
   benchmark:
     name: LSP and JS Interop regression
+    needs: classify
+    if: needs.classify.outputs.formal_required == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -66,3 +80,27 @@ jobs:
           path: .cache/performance/
           if-no-files-found: warn
           retention-days: 30
+
+  required-performance-gate:
+    name: Required performance gate
+    needs: [classify, benchmark]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 24
+      - name: Require reviewed performance disposition
+        env:
+          FORMAL_REQUIRED: ${{ needs.classify.outputs.formal_required }}
+          CLASSIFY_RESULT: ${{ needs.classify.result }}
+          BENCHMARK_RESULT: ${{ needs.benchmark.result }}
+        run: >-
+          node scripts/verify-formal-ci-gate.mjs
+          --kind optional
+          --label performance
+          --required "$FORMAL_REQUIRED"
+          --classify-result "$CLASSIFY_RESULT"
+          --upstream-result "$BENCHMARK_RESULT"
