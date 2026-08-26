@@ -20,26 +20,27 @@ const repositoryRoot = resolve(fileURLToPath(new URL('..', import.meta.url)));
 test('classifies maintained Markdown documentation as documentation-only', () => {
 	const result = classifyChangedPaths([
 		'README.md',
-		'docs/language-guide.md',
-		'docs/language-guide_ja.md',
+		'README_ja.md',
+		'COMPATIBILITY.md',
+		'COMPATIBILITY_ja.md',
+		'CONTRIBUTING.md',
+		'CONTRIBUTING_ja.md',
 		'.github/PULL_REQUEST_TEMPLATE/self-hosting.md',
-		'.github/self-hosting-operations/README.md',
-		'.github/self-hosting-operations/README_ja.md',
 	]);
 	assert.equal(result.docsOnly, true);
 	assert.equal(result.selfhostInventoryRequired, false);
 	assert.equal(result.selfhostRequiredGateRequired, false);
-	assert.equal(result.changedCount, 6);
+	assert.equal(result.changedCount, 7);
 });
 
 test('requires the full gate for workflow, dependency, source, schema, and executable policy changes', () => {
 	for (const path of [
 		'.github/workflows/ci.yml',
 		'.github/PULL_REQUEST_TEMPLATE/config.yml',
-		'.github/self-hosting-operations/schema.json',
+		'.github/self-hosting/promotion-policy-v1.json',
 		'package-lock.json',
 		'packages/compiler/src/compiler.ts',
-		'docs/documentation-examples.json',
+		'.github/documentation-examples.json',
 		'scripts/classify-ci-changes.mjs',
 		'spec/grammar.ebnf',
 	]) {
@@ -146,7 +147,7 @@ test('keeps Required Shadow narrower than compiler-wide inventory while fail-clo
 test('skips self-host inventory for unrelated product and documentation changes', () => {
 	for (const path of [
 		'README.md',
-		'docs/language-guide.md',
+		'COMPATIBILITY_ja.md',
 		'packages/cli/src/main.ts',
 		'packages/language-server/src/server.ts',
 		'packages/vscode/src/extension.ts',
@@ -166,24 +167,29 @@ test('does not treat an empty change set as documentation-only and fails safe fo
 });
 
 test('normalizes separators and removes duplicate paths', () => {
-	const result = classifyChangedPaths(['docs\\guide.md', 'docs/guide.md', '']);
+	const result = classifyChangedPaths([
+		'.github\\PULL_REQUEST_TEMPLATE\\self-hosting.md',
+		'.github/PULL_REQUEST_TEMPLATE/self-hosting.md',
+		'',
+	]);
 	assert.deepEqual(result, {
 		docsOnly: true,
 		selfhostInventoryRequired: false,
 		selfhostRequiredGateRequired: false,
 		changedCount: 1,
-		paths: ['docs/guide.md'],
+		paths: ['.github/PULL_REQUEST_TEMPLATE/self-hosting.md'],
 	});
 });
 
 test('limits documentation paths to reviewed Markdown locations', () => {
 	assert.equal(isDocumentationPath('SECURITY.md'), true);
-	assert.equal(isDocumentationPath('docs/release-channels.md'), true);
+	assert.equal(isDocumentationPath('SECURITY_ja.md'), true);
+	assert.equal(isDocumentationPath('COMPATIBILITY.md'), true);
 	assert.equal(isDocumentationPath('.github/PULL_REQUEST_TEMPLATE/self-hosting.md'), true);
-	assert.equal(isDocumentationPath('.github/self-hosting-operations/README_ja.md'), true);
+	assert.equal(isDocumentationPath('docs/release-channels.md'), false);
+	assert.equal(isDocumentationPath('.github/self-hosting-operations/README_ja.md'), false);
 	assert.equal(isDocumentationPath('.github/README.md'), false);
 	assert.equal(isDocumentationPath('.github/PULL_REQUEST_TEMPLATE/config.yml'), false);
-	assert.equal(isDocumentationPath('docs/schema.json'), false);
 });
 
 test('self-host inventory path rules are repository-owned and conservative', () => {
