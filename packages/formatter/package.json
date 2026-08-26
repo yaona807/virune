@@ -21,8 +21,6 @@
 	"files": [
 		"LICENSE",
 		"NOTICE",
-		"README.md",
-		"README_ja.md",
 		"dist/src"
 	],
 	"dependencies": {

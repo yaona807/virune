@@ -1,6 +1,6 @@
 # セキュリティポリシー
 
-English: [SECURITY.md](SECURITY.md)
+[英語版](SECURITY.md)
 
 ## サポート対象
 
@@ -29,7 +29,7 @@ Viruneはセキュリティサンドボックスではありません。
 
 生成されたJavaScriptは実行環境の権限で動作します。`unsafe`を使用した連携、第三者パッケージ、外部APIなどはVirune自身の安全性保証の対象外です。
 
-Viruneのコンパイラー、CLI、Visual Studio Code拡張、language server、Interopなどに起因する脆弱性は報告対象です。
+Viruneのコンパイラ、CLI、Visual Studio Code拡張、Language Server、Interopなどに起因する脆弱性は報告対象です。
 
 ## 対応
 

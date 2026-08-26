@@ -1,6 +1,6 @@
 # Standard Types and Library Contracts
 
-[English](standard-library.md) | [日本語](standard-library_ja.md)
+[日本語版](standard-library_ja.md)
 
 ## `[stdlib.bytes]` Byte and byte sequences
 `Byte` is a checked newtype integer in `0..255`. `Bytes` is an immutable byte sequence represented by a copied `Uint8Array` at JavaScript boundaries. `MutableBytes` is an explicitly mutable buffer; converting to or from `Bytes` copies storage so immutable values cannot be mutated through aliases.

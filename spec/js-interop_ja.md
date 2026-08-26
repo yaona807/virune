@@ -1,34 +1,34 @@
 # JavaScript相互運用モデル
 
-[English](js-interop.md) | [日本語](js-interop_ja.md)
+[英語版](js-interop.md)
 
-本書はJavaScript相互運用architectureの規範仕様です。低levelの`extern js`規則は[`ffi_ja.md`](ffi_ja.md)に記載します。
+この文書では、JavaScript相互運用の規範となる設計を定めます。低レベルの`extern js`規則は[JavaScript FFI](ffi_ja.md)に記載します。
 
-## Three-Tier
+## 3段階の相互運用
 
-1. **Direct Facade**：`import js`で型宣言済みJavaScript APIの保守的subsetを公開し、依存sourceは変換せず実行します。
-2. **Compiled Adapter**：複雑なTypeScript APIを`*.interop.ts`へ隔離し、固定TypeScript Providerで型検査してからESMへ出力します。
-3. **Unsafe境界**：利用可能な型宣言がないAPIや本質的に動的なAPIだけ`unsafe extern js`を使用します。
+1. **直接利用（Direct Facade）**：`import js`では、型宣言されたJavaScript APIのうち保守的に扱える範囲だけを公開します。依存パッケージのソースコードは変換せず、そのまま実行します。
+2. **事前変換アダプター（Compiled Adapter）**：複雑なTypeScript APIを`*.interop.ts`へ分離し、固定されたTypeScript Providerで型検査してから、Viruneを実行する前にESMとして出力します。
+3. **検証を省略する`unsafe`境界**：利用可能な型宣言がないAPIや、本質的に動的なAPIに限って`unsafe extern js`を使用します。
 
-## Direct Facade
+## 直接利用（Direct Facade）
 
-Direct Facadeはdefault／named／namespace／side-effect／named type-only import、property参照、function・method呼び出し、Foreign handleの転送、Promise-like戻り値への`await`を対象にします。
+直接利用（Direct Facade）は、デフォルト、名前付き、名前空間、副作用のみ、名前付きの型専用インポート、プロパティ参照、関数・メソッド呼び出し、外部ハンドル（Foreignハンドル）の転送、型宣言上Promise互換（Promise-like）である戻り値への`await`を対象にします。
 
-JavaScript callの解決にはcalleeと実引数型だけを使用します。Virune側の期待戻り値型をJavaScript overload・generic選択へ参加させてはいけません。戻り値だけに現れるgeneric parameterはTypeScriptのdefaultまたはbase constraintから確定できる場合のみ許可します。callback typing、constructor構文、構造object literal、双方向推論、曖昧なoverload、複雑なConditional／Mapped型が必要なAPIはAdapter対象です。
+Providerは、呼び出し先と実引数の型だけからJavaScript呼び出しを解決します。Virune側で期待される戻り値型を、JavaScriptのオーバーロードやジェネリックの選択に使ってはいけません。戻り値にしか現れないジェネリックパラメーターは、TypeScriptのデフォルトまたは基底制約から確定できる場合に限って解決できます。コールバックの型付け、コンストラクター構文、構造的オブジェクトリテラル、双方向推論、曖昧なオーバーロード、複雑な条件型やマップ型が必要な呼び出しでは、アダプターを使わなければなりません。
 
-CommonJS Runtimeのnamed importはportableではないため拒否します。default／namespace importまたはAdapterを使用します。
+CommonJSとして実行されるモジュールからの名前付きインポートは、合成された名前付きエクスポートに移植性がないため拒否します。デフォルトインポート、名前空間インポート、またはアダプターを使用します。
 
-TypeScript `any` importはDirect Facadeで拒否します。TypeScript `unknown`はForeign unknownとして保持し、より狭い型を仮定せずVirune `Unknown`へ移せます。
+TypeScriptで`any`と宣言されたインポートは、直接利用（Direct Facade）では拒否します。TypeScriptの`unknown`は型が不明な外部値として保持し、より狭い型を仮定せずにViruneの`Unknown`へ渡せます。
 
-## Foreign値
+## 外部値（Foreign値）
 
-Foreign値はJavaScriptのidentity、prototype、method receiver、Promise挙動、module binding semanticsを維持します。別のForeign callへそのまま渡せます。Viruneの算術、比較、pattern match、collection semantics、Native methodを使う前にNative型へBridgeする必要があります。
+外部値はJavaScript側の値として扱われ、JavaScript上の同一性、プロトタイプ、メソッドのレシーバー、Promiseの挙動、モジュールバインディングの意味を維持します。別の外部呼び出しへそのまま渡すこともできます。Viruneの算術演算、比較、パターンマッチ、コレクションの意味論、Virune側の通常の型（Native型）のメソッドを使うには、事前にNative型へBridgeしなければなりません。
 
-Foreign型をViruneのpublic signatureへ公開できません。外部handleはVirune `newtype`型で隠します。
+外部値をViruneの公開シグネチャへ含めてはいけません。外部ハンドルはViruneの`newtype`型を通じて公開します。
 
-## Bridge
+## 値の変換（Bridge）
 
-暗黙Bridgeは実行時表現が一対一のものだけです。
+暗黙のBridgeは、実行時表現が一対一に対応するものだけです。
 
 - JavaScript `boolean` → `Bool`
 - JavaScript `string` → `String`
@@ -37,28 +37,28 @@ Foreign型をViruneのpublic signatureへ公開できません。外部handleは
 - TypeScript `void` → 戻り値を破棄して`Unit`
 - TypeScript `unknown` → Virune `Unknown`
 
-JavaScript `number`から`Int`、Arrayから`List`、objectからrecord、Map／Set、byte、nullable、Native複合値からJavaScriptへの変換は明示codecを要求します。
+JavaScript `number`から`Int`、配列から`List`、オブジェクトから`record`、`Map` / `Set`の変換、バイト変換、null許容値変換、Virune側の複合値（Native複合値）からJavaScriptへの変換には、明示的なコーデックが必要です。
 
-暗黙primitive検査の失敗は`ForeignContractError`です。通常のJavaScript例外Resultへ混在させません。回復可能な外部data不整合は明示decoderで処理します。
+暗黙のプリミティブ検査に失敗した場合は`ForeignContractError`になります。通常のJavaScript例外を表す結果へは変換しません。回復可能な外部データの検証には、明示的なデコーダーを使用します。
 
 ## Interop ABI v1
 
-Adapter exportは単一の非generic call signatureでなければなりません。callback parameter、overload、Array、Tuple、匿名構造object、Adapter内だけのobject型、Intersection、`any`、nested Promise-likeをABI v1値にできません。構造dataは`unknown`でexportし、Virune側でdecodeします。外部packageの名前付きclass／objectはForeign handleとしてexportできます。
+アダプターからのエクスポートは、単一の非ジェネリック呼び出しシグネチャでなければなりません。コールバック引数、オーバーロード、配列、タプル、匿名の構造的オブジェクト、アダプター内部だけで使うオブジェクト型、交差型、`any`、入れ子のPromise互換値はABI v1の値として扱えません。構造データは`unknown`としてエクスポートし、Virune側でデコードします。外部の名前付きクラスやオブジェクトは外部ハンドルとしてエクスポートできます。
 
-Adapter成果物は`.interop.mjs`、source map、`.virune-abi.json`です。ABI metadataはdeterministicで、schema version、ABI version、固定TypeScript Provider version、source hash、ABI hash、正規化済みexport、source pathを含みます。
+アダプターの成果物は`.interop.mjs`、ソースマップ、`.virune-abi.json`です。ABIメタデータは決定的で、スキーマバージョン、ABIバージョン、固定されたTypeScript Providerのバージョン、ソースハッシュ、ABIハッシュ、正規化したエクスポート、ソースパスを含みます。
 
-AdapterからVirune生成物をimportしてはいけません。JavaScript package → TypeScript Adapter → Virune moduleという非循環build順序を維持します。
+アダプターからViruneの生成物をインポートしてはいけません。JavaScriptパッケージ → TypeScriptアダプター → Viruneモジュールという非循環のビルド順序を維持します。
 
-## ResolutionとStable IR
+## 解決と安定した中間表現（Stable IR）
 
-型宣言解決とRuntime module解決を分離して記録します。WitnessにはRuntime／宣言package identity、entry、module形式、condition、Provider version、hashを含めます。browser／bundlerの実Runtime解決はbundlerの責任です。
+型宣言の解決と実行時モジュールの解決は別々に記録します。解決証跡（Witness）には実行時側と宣言側について、パッケージの同一性、エントリーポイント、モジュール形式、条件、Providerのバージョン、ハッシュを含めます。ブラウザやバンドラーで実際に使う実行時モジュールの解決は、バンドラーの責任です。
 
-TypeScript compiler objectはProvider解析中だけ有効です。型検査後はserialize可能でProvider非依存のUsage IRだけを保存します。Codegenは`ts.Type`、`ts.Symbol`、live TypeScript `Program`へ依存してはいけません。
+TypeScriptコンパイラのオブジェクトが有効なのはProviderの解析中だけです。型検査後は、シリアライズ可能でProviderに依存しない利用記録だけを保存します。コード生成は`ts.Type`、`ts.Symbol`、TypeScript `Program`オブジェクトそのものに依存してはいけません。
 
-## Trust境界
+## 信頼境界
 
-- Virune Native codeはVirune compilerが検査します。
-- Foreignの静的形状はTypeScript宣言から取得します。
-- Primitive BridgeはRuntime検査を行います。
-- Composite codecは明示budgetと構造防御を用いて検証・copyします。
-- JavaScript実装の挙動と宣言の正確性は依存packageのtrust boundaryです。
+- Virune側のコード（Nativeコード）はViruneコンパイラが検査します。
+- 外部値の静的な形状はTypeScript宣言から取得します。
+- プリミティブのBridgeは実行時に検査します。
+- 複合値のコーデックは、明示的に定めた上限と構造上の防御を使って検証し、データをコピーします。
+- JavaScript実装の挙動と宣言の正確性は、依存パッケージ側の信頼境界です。

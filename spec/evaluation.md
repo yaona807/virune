@@ -1,6 +1,6 @@
 # Evaluation and Control Flow
 
-[English](evaluation.md) | [日本語](evaluation_ja.md)
+[日本語版](evaluation_ja.md)
 
 ## `[eval.order]` Evaluation order
 Function callee, arguments, record fields, collection elements, and binary operands are evaluated left-to-right. `&&` and `||` short-circuit. Match arms are tested top-to-bottom; only the selected guard and expression execute.

@@ -4,7 +4,7 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const defaultRepositoryRoot = resolve(fileURLToPath(new URL('..', import.meta.url)));
-const defaultRegistryPath = '.github/self-hosting-operations/temporary-artifacts.json';
+const defaultRegistryPath = '.github/self-hosting/temporary-artifacts.json';
 const temporaryDirectories = Object.freeze([
 	'.github/workflows/',
 	'.github/scripts/',

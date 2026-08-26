@@ -1,30 +1,30 @@
 # 評価と制御フロー
 
-[English](evaluation.md) | [日本語](evaluation_ja.md)
+[英語版](evaluation.md)
 
 ## `[eval.order]` 評価順
-関数callee、argument、record field、collection element、binary operandは左から右へ評価します。`&&`と`||`はshort-circuitします。match armは上から順に検査し、選択されたguardと式だけを実行します。
+関数の呼び出し先、引数、`record`のフィールド、コレクションの要素、二項演算子のオペランドは左から右へ評価します。`&&`と`||`は短絡評価します。`match`のアームは上から順に検査し、選択されたガードと式だけを実行します。
 
 ## `[eval.integer]` 整数演算
-`Int`演算はJavaScript safe integer範囲を検査します。overflow、ゼロ除算、ゼロ剰余はpanicです。整数除算は0方向へ切り捨てます。
+`Int`の演算では、JavaScriptで安全に表現できる整数の範囲を検査します。オーバーフロー、ゼロ除算、ゼロ剰余では`panic`になります。整数除算は0方向へ切り捨てます。
 
-## `[eval.match]` Pattern match
-閉じた型に対する`match`は網羅的でなければなりません。guardは網羅性へ寄与しません。到達不能armは拒否します。Virune 1.0のOR pattern alternativeは名前をbindできません。必要な場合は外側のarmまたはnested matchを使用します。
+## `[eval.match]` パターンマッチ
+閉じた型に対する`match`は網羅的でなければなりません。ガードは網羅性の判定には使いません。到達不能なアームは拒否します。Virune 1.0では、ORパターンの各選択肢で名前を束縛できません。束縛が必要な場合は、外側のアームまたは入れ子の`match`を使います。
 
 ## `[eval.return]` 関数の完了
-`Unit`以外を返す関数は、すべての到達可能経路で値を返します。`Never`は正常完了しない式を表します。到達不能文は診断します。
+`Unit`以外を返す関数は、到達可能なすべての経路で値を返さなければなりません。`Never`は正常に完了しない式を表します。到達不能な文は診断します。
 
-## `[eval.defer]` Resource cleanup
-`defer expression`は現在のfunctionまたはlambda scopeへcleanupを登録します。通常return、`?`伝播、panic後にLIFOで1回実行します。cleanupが失敗した場合、`ResourceCleanupError`がprimary failureとすべてのcleanup failureを実行順で保持します。
+## `[eval.defer]` リソースの後始末
+`defer expression`は、現在の関数またはラムダのスコープへ後始末を登録します。後始末は、通常の`return`、`?`による伝播、`panic`の後に、後入れ先出し（LIFO）の順序で1回実行します。後始末に失敗した場合、`ResourceCleanupError`は元の失敗とすべての後始末中の失敗を実行順に保持します。
 
 ## `[eval.panic]` Panic
-Panicは不変条件違反または回復不能なRuntime失敗です。通常のViruneコードはpanicをcatchしません。task、test、CLI、JavaScript export境界は報告または変換できます。
+`panic`は、不変条件への違反または回復不能なRuntimeの失敗を表します。通常のViruneコードでは`panic`を捕捉しません。タスク、テスト、CLI、JavaScriptへの公開境界では、`panic`を別の形へ変換したり報告したりできます。
 
 ## `[eval.reference]` 参照評価器
-リポジトリには純粋コア用の小さな評価器があります。これは検証oracleであり、本番Runtimeではありません。未対応のeffectful構文は拒否します。
+リポジトリには、純粋なコア部分だけを扱う、意図的に小さく保った評価器があります。これは検証用の基準であり、本番のRuntimeではありません。この評価器が対応していないエフェクトを伴う構文は拒否します。
 
 ## `[eval.loop-control]` ループ制御
-`break`は最も近い`for`／`while`を終了し、`continue`は次のiterationへ進みます。loop外ではコンパイルエラーで、function／lambda境界を越えられません。defer cleanupはiterationごとではなくfunction／lambda完了時に実行します。
+`break`は最も近い`for`または`while`を終了し、`continue`はそのループの次の反復へ進みます。どちらもループ外ではコンパイルエラーになり、関数またはラムダの境界を越えることはできません。`defer`で登録した後始末は反復ごとではなく、関数またはラムダが完了するときに実行します。
 
-## `[eval.unit-implicit-return]` Unitの暗黙return
-戻り値型が`Unit`のfunctionまたはlambdaは、明示的な`return Unit`なしでbody末尾へ到達できます。その完了値は`Unit`です。明示的な`return Unit`も引き続き有効です。非`Unit` functionでは、従来どおりすべての到達pathにreturnを要求します。
+## `[eval.unit-implicit-return]` `Unit`の暗黙返却
+戻り値型が`Unit`の関数またはラムダは、明示的な`return Unit`を書かずに本体の末尾へ到達できます。その場合の完了値は`Unit`です。明示的な`return Unit`も引き続き有効です。`Unit`以外を返す関数では、従来どおり到達可能なすべての経路で値を返す必要があります。

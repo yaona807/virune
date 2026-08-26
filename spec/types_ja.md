@@ -1,40 +1,42 @@
 # 型
 
+[英語版](types.md)
+
 ## `[type.static]` 静的型付け
-Viruneは静的型付き言語です。すべての式はコンパイル時の型を持ち、数値・文字列・nullability・Foreign値・集約値の暗黙変換を認めません。
+Viruneは静的型付き言語です。すべての式はコンパイル時の型を持ち、数値、文字列、null許容値、外部値（Foreign値）、集約値の暗黙変換は行いません。
 
 ## `[type.nominal-identity]` 名前的同一性
-record、enum、`newtype`は表記ではなくpackage・module・declarationの同一性で識別します。別moduleの同名宣言は異なる型です。import aliasとpublic re-exportは元の同一性を維持します。
+`record`、`enum`、`newtype`は、表記ではなくパッケージ、モジュール、宣言の同一性で識別します。別のモジュールにある同名の宣言は異なる型です。`import`のエイリアスと公開再エクスポートは元の同一性を維持します。
 
-## `[type.alias]` Type aliasとnewtype
-`type`は透過的aliasで、新しい型同一性を作りません。`newtype`は名前的同一性を作り、JavaScript出力では基礎表現へeraseします。直接構築は宣言module内だけで可能で、外部向けの検証付きconstructorは通常の関数として定義します。
+## `[type.alias]` 型エイリアスと`newtype`
+`type`は透過的な型エイリアスで、新しい型の同一性は作りません。`newtype`は名前的同一性を作りますが、JavaScript出力では基礎となるJavaScript表現へ消去されます。直接構築できるのは宣言したモジュール内だけです。公開する検証付きコンストラクターは通常の関数です。
 
-## `[type.tuple]` Tuple
-Tuple型と値は要素順と各要素型を維持します。Tuple patternはarityが一致しなければなりません。
+## `[type.tuple]` タプル
+タプル型と値は、要素の順序と各要素の型を維持します。タプルパターンは要素数が一致しなければなりません。
 
 ## `[type.nullability]` 値の不在
-通常のVirune値は`null`または`undefined`になりません。1段の`Option<T>`は`T?`をcanonical表記とします。Nested Optionを明示する場合は`Option<T>`を使用できます。値は常に`Some`または`None`で明示します。
+通常のVirune値は`null`または`undefined`になりません。1段の`Option<T>`は`T?`を正規表記とします。入れ子のOptionを明示する場合は`Option<T>`を使用できます。`Some`と`None`は常に明示的な値です。
 
 ## `[type.result]` 回復可能な失敗
-回復可能な失敗は`Result<T, E>`で表します。postfix `?`は、呼び出し元の戻り値型が受け取れる場合に限り`Err`または`None`を伝播します。
+回復可能な失敗は`Result<T, E>`で表します。後置の`?`は、その式を含む関数の戻り値型が伝播される値を受け取れる場合に限り、`Err`または`None`を伝播します。
 
 ## `[type.inference]` 型推論
-local値とgeneric呼び出しの型はunificationで推論します。Public API境界は明示します。数値・文字列・Option・Result・Foreign値・集約値の暗黙変換はありません。
+ローカル値とジェネリック呼び出しの型は、単一化（unification）で推論します。公開APIの境界では型を明示します。数値、文字列、Option、Result、Foreign値、集約値の暗黙変換は行いません。
 
-## `[type.generics]` Generics
-generic宣言は不変です。型引数はcall引数と明示されたcallback期待型から推論します。Virune 1.0にはprotocol制約、higher-kinded type、ユーザー定義variance、overload、暗黙implementation探索はありません。
+## `[type.generics]` ジェネリクス
+ジェネリック宣言は不変です。型引数は、呼び出し引数と明示されたコールバックの期待型から推論します。Virune 1.0には、プロトコル制約、型コンストラクターを型引数として扱う高カインド型、利用者が定義する共変・反変などの指定、オーバーロード、実装の暗黙的な探索はありません。
 
 ## `[type.composition]` 振る舞いの合成
-再利用可能な振る舞いは通常の関数と、関数fieldを持つrecordで表現します。実装は明示的に引数で渡し、`protocol`、`impl`、`where`宣言は持ちません。Dependency injection、codec、comparator、repository、test doubleを通常の値モデルだけで構成できます。
+再利用可能な振る舞いは、通常の関数と関数フィールドを持つ`record`で表現します。実装は明示的に引数として渡します。Viruneには`protocol`、`impl`、`where`宣言はありません。これにより、依存性注入、コーデック、比較器、リポジトリ、テストダブルも通常のコードと同じ値モデルに収まります。
 
-## `[type.capabilities]` Effect
-関数型は`uses`で固定の組み込みeffect集合を宣言できます。呼び出し元関数は必要な具体effectをすべて宣言します。利用者は新しいcapability名やeffect handlerを定義できません。
+## `[type.capabilities]` エフェクト
+関数型は`uses`を使って、固定された組み込みエフェクトの集合を宣言できます。その呼び出しを含む関数は、必要な具体的エフェクトをすべて宣言しなければなりません。利用者は新しいケイパビリティ名やエフェクトハンドラーを定義できません。
 
-## `[type.open-effect-nonescaping]` Open callback effect
-`uses *`は非escapeのcallback parameterだけに使用できます。callbackは直接呼び出すか、別の`uses *` callback parameterへ転送できます。record、enum、tuple、list、map、type alias、newtype、closure、戻り値、top-level値、local変数へ保存できません。これによりeffect-row型を公開せずeffect追跡を維持します。
+## `[type.open-effect-nonescaping]` オープンなコールバックエフェクト
+`uses *`を使用できるのは、外へ持ち出されないコールバック引数だけです。そのコールバックは直接呼び出すか、別の`uses *`コールバック引数へ転送できます。`record`、`enum`、タプル、リスト、マップ、型エイリアス、`newtype`、クロージャ、戻り値、トップレベルの値、ローカル変数へ保存することはできません。これにより、エフェクトの集合を型として表すエフェクト行型を公開せずに、エフェクトの追跡を維持します。
 
 ## `[type.mutation]` 可変性
-BindingとNative集約値はデフォルトで不変です。`let mut`はlocal再代入だけを許可します。record field、enum payload、Native collection、newtype値をin-place変更できません。
+一度値を割り当てた名前には、デフォルトでは別の値を再代入できません。また、Viruneの`record`、`enum`、コレクションなどの値もデフォルトでは不変です。`let mut`で許可するのはローカル変数への再代入だけです。`record`のフィールド、`enum`のペイロード、Viruneのコレクション、`newtype`値をその場で変更することはできません。
 
-## `[type.must-use]` Must-use値
-`Future`、`Result`、resource、stream、`@mustUse`宣言の値は黙って無視できません。bind、return、propagate、await、match、または`discard expression`による明示破棄が必要です。
+## `[type.must-use]` 無視できない値
+`Future`、`Result`、リソース、ストリーム、`@mustUse`を付けた宣言の値は、何もせずに無視できません。値を束縛する、`return`する、伝播する、`await`する、`match`する、または`discard expression`で明示的に破棄する必要があります。

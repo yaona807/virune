@@ -1,12 +1,12 @@
 # Lexical Structure
 
-[English](lexical.md) | [日本語](lexical_ja.md)
+[日本語版](lexical_ja.md)
 
 ## `[lexical.encoding]` UTF-8
 Virune source files are UTF-8. Identifiers use ASCII letters, digits, and underscore; an identifier cannot start with a digit. `$` is reserved for compiler-generated identifiers.
 
 ## `[lexical.comments]` Comments
-`//` starts an ordinary line comment. `///` documents the following declaration, while `//!` documents the current source module. `////` remains an ordinary line comment. Block comments are not part of Virune 1.0. See [Documentation Comments](documentation.md).
+`//` starts an ordinary line comment. `///` documents the following declaration, while `//!` documents the current source module. `////` remains an ordinary line comment. Block comments are not part of Virune 1.0. See [Documentation comments](documentation.md).
 
 ## `[lexical.statement-end]` Statement termination
 Semicolons are not tokens. A hard line break terminates a statement. Line breaks inside parentheses or brackets, after commas, and adjacent to continuation operators are soft. The canonical formatter decides the final layout.

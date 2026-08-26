@@ -1,6 +1,6 @@
 # Executable Entry Point
 
-[English](entry-point.md) | [日本語](entry-point_ja.md)
+[日本語版](entry-point_ja.md)
 
 This document defines the executable-entry contract used by `virune run`.
 

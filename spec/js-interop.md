@@ -1,14 +1,14 @@
 # JavaScript Interoperability Model
 
-[English](js-interop.md) | [日本語](js-interop_ja.md)
+[日本語版](js-interop_ja.md)
 
-This document defines the normative architecture of JavaScript interoperability. Low-level `extern js` rules remain in [`ffi.md`](ffi.md).
+This document defines the normative architecture of JavaScript interoperability. Low-level `extern js` rules remain in [JavaScript FFI](ffi.md).
 
 ## Three tiers
 
 1. **Direct facade.** `import js` exposes a conservative subset of a declared JavaScript API. Dependency source is executed unchanged.
 2. **Compiled adapter.** Complex TypeScript APIs are isolated in `*.interop.ts`, type-checked with the pinned TypeScript provider, and emitted as ESM before Virune execution.
-3. **Unsafe boundary.** `unsafe extern js` is reserved for APIs without usable declarations or with inherently dynamic behavior.
+3. **Unsafe boundary (validation bypass).** `unsafe extern js` is reserved for APIs without usable declarations or with inherently dynamic behavior.
 
 ## Direct facade
 
@@ -22,7 +22,7 @@ A TypeScript `any` import is rejected by the direct facade. TypeScript `unknown`
 
 ## Foreign values
 
-Foreign values preserve JavaScript identity, prototype, method receiver, Promise behavior, and module binding semantics. They may be forwarded to another foreign call. Virune arithmetic, comparison, pattern matching, collection semantics, and native methods require a prior bridge to a native Virune type.
+Foreign values remain JavaScript-side values and preserve JavaScript identity, prototype, method receiver, Promise behavior, and module binding semantics. They may be forwarded to another foreign call. Virune arithmetic, comparison, pattern matching, collection semantics, and native methods require a prior bridge to a native Virune type.
 
 Foreign values MUST NOT appear in public Virune signatures. External handles are exposed through a Virune `newtype` type.
 
