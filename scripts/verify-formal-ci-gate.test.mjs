@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import { readdir, readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
@@ -81,10 +81,30 @@ function branchFilterIncludesMain(trigger) {
 	return branches.includes('main');
 }
 
-test('provider terminal contexts are stable, always evaluated, and not hidden by pull-request filters', async () => {
+async function workflowSources() {
+	const directory = resolve(repositoryRoot, '.github/workflows');
+	const entries = (await readdir(directory, { withFileTypes: true }))
+		.filter(entry => entry.isFile() && /\.ya?ml$/u.test(entry.name))
+		.sort((left, right) => left.name.localeCompare(right.name));
+	const sources = new Map();
+	for (const entry of entries) {
+		const path = `.github/workflows/${entry.name}`;
+		sources.set(path, await readFile(resolve(directory, entry.name), 'utf8'));
+	}
+	return sources;
+}
+
+test('provider terminal contexts are globally unique, always evaluated, and not hidden by pull-request filters', async () => {
+	const workflows = await workflowSources();
 	for (const [path, context] of providerTerminalContexts) {
-		const source = await readFile(resolve(repositoryRoot, path), 'utf8');
 		const marker = `name: ${context}`;
+		const owners = [...workflows.entries()]
+			.filter(([, source]) => source.includes(marker))
+			.map(([workflowPath]) => workflowPath);
+		assert.deepEqual(owners, [path], `${context} must appear in exactly one workflow`);
+
+		const source = workflows.get(path);
+		assert.notEqual(source, undefined, `${path}: missing workflow source`);
 		const first = source.indexOf(marker);
 		assert.notEqual(first, -1, `${path}: missing ${context}`);
 		assert.equal(source.indexOf(marker, first + marker.length), -1, `${path}: duplicate ${context}`);
