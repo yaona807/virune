@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -143,4 +143,16 @@ test('rejects job-level permission overrides', async t => {
 	t.after(() => rm(root, { recursive: true, force: true }));
 	await writeFile(join(root, '.github/workflows/test.yml'), `name: Test\n\non:\n  workflow_dispatch:\n\npermissions:\n  contents: read\n\njobs:\n  test:\n    permissions:\n      contents: write\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@${CHECKOUT_SHA}\n`);
 	await assert.rejects(verifyWorkflows(root), /job-level permissions are not permitted/u);
+});
+
+test('requires semantic fuzz success for pull-request release artifacts', async () => {
+	const source = await readFile(new URL('../.github/workflows/ci.yml', import.meta.url), 'utf8');
+	assert.match(
+		source,
+		/\(github\.event_name != 'pull_request' && needs\.semantic-fuzz\.result == 'skipped'\)/u,
+	);
+	assert.doesNotMatch(
+		source,
+		/needs\.semantic-fuzz\.result == 'success'\s*\|\|\s*needs\.semantic-fuzz\.result == 'skipped'/u,
+	);
 });

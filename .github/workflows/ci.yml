@@ -63,6 +63,8 @@ jobs:
         run: node scripts/run-ci-command.mjs --id metadata -- npm run verify:metadata
       - name: Verify unit-test lane selection
         run: node --test scripts/run-unit-tests.test.mjs
+      - name: Verify formal CI classification and gate policy
+        run: node --test scripts/classify-formal-ci-changes.test.mjs scripts/verify-formal-ci-gate.test.mjs
       - name: Build documentation examples
         if: needs.classify.outputs.docs_only == 'true'
         run: node scripts/run-ci-command.mjs --id docs-build -- npm run check
@@ -470,7 +472,10 @@ jobs:
       needs.verify.result == 'success' &&
       needs.selfhost-inventory.result == 'success' &&
       needs.quality.result == 'success' &&
-      (needs.semantic-fuzz.result == 'success' || needs.semantic-fuzz.result == 'skipped') &&
+      (
+        needs.semantic-fuzz.result == 'success' ||
+        (github.event_name != 'pull_request' && needs.semantic-fuzz.result == 'skipped')
+      ) &&
       needs.compatibility.result == 'success' &&
       needs.browser.result == 'success'
     runs-on: ubuntu-24.04
@@ -501,3 +506,44 @@ jobs:
             .cache/ci-failures/
           if-no-files-found: error
           retention-days: 30
+
+  required-ci-gate:
+    name: Required CI gate
+    needs: [classify, metadata, build, verify, selfhost-inventory, quality, semantic-fuzz, compatibility, browser, release-artifacts]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 24
+      - name: Require complete reviewed CI disposition
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          DOCS_ONLY: ${{ needs.classify.outputs.docs_only }}
+          CLASSIFY_RESULT: ${{ needs.classify.result }}
+          METADATA_RESULT: ${{ needs.metadata.result }}
+          BUILD_RESULT: ${{ needs.build.result }}
+          VERIFY_RESULT: ${{ needs.verify.result }}
+          SELFHOST_INVENTORY_RESULT: ${{ needs.selfhost-inventory.result }}
+          QUALITY_RESULT: ${{ needs.quality.result }}
+          SEMANTIC_FUZZ_RESULT: ${{ needs.semantic-fuzz.result }}
+          COMPATIBILITY_RESULT: ${{ needs.compatibility.result }}
+          BROWSER_RESULT: ${{ needs.browser.result }}
+          RELEASE_ARTIFACTS_RESULT: ${{ needs.release-artifacts.result }}
+        run: >-
+          node scripts/verify-formal-ci-gate.mjs
+          --kind ci
+          --event-name "$EVENT_NAME"
+          --docs-only "$DOCS_ONLY"
+          --classify-result "$CLASSIFY_RESULT"
+          --metadata "$METADATA_RESULT"
+          --build "$BUILD_RESULT"
+          --verify "$VERIFY_RESULT"
+          --selfhost-inventory "$SELFHOST_INVENTORY_RESULT"
+          --quality "$QUALITY_RESULT"
+          --semantic-fuzz "$SEMANTIC_FUZZ_RESULT"
+          --compatibility "$COMPATIBILITY_RESULT"
+          --browser "$BROWSER_RESULT"
+          --release-artifacts "$RELEASE_ARTIFACTS_RESULT"
