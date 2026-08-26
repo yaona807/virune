@@ -81,7 +81,7 @@ function branchFilterIncludesMain(trigger) {
 	return branches.includes('main');
 }
 
-test('provider terminal contexts are stable, always evaluated, and not hidden by pull-request path filters', async () => {
+test('provider terminal contexts are stable, always evaluated, and not hidden by pull-request filters', async () => {
 	for (const [path, context] of providerTerminalContexts) {
 		const source = await readFile(resolve(repositoryRoot, path), 'utf8');
 		const marker = `name: ${context}`;
@@ -96,6 +96,16 @@ test('provider terminal contexts are stable, always evaluated, and not hidden by
 			trigger,
 			/^    paths(?:-ignore)?:/mu,
 			`${path}: required context must not use pull_request paths filtering`,
+		);
+		assert.doesNotMatch(
+			trigger,
+			/^    branches-ignore:/mu,
+			`${path}: required context must not exclude main through branches-ignore`,
+		);
+		assert.doesNotMatch(
+			trigger,
+			/^    types:/mu,
+			`${path}: required context must not narrow pull_request activity types`,
 		);
 		const includesMain = branchFilterIncludesMain(trigger);
 		if (includesMain !== undefined) {
