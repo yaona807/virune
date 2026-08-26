@@ -59,6 +59,28 @@ function pullRequestTriggerBlock(source) {
 	return lines.slice(start, end).join('\n');
 }
 
+function branchFilterIncludesMain(trigger) {
+	const lines = trigger.split('\n');
+	const inline = lines.find(line => /^    branches:\s*\[/u.test(line));
+	if (inline !== undefined) {
+		const match = /^    branches:\s*\[([^\]]*)\]\s*$/u.exec(inline);
+		if (match === null) return false;
+		return match[1]
+			.split(',')
+			.map(value => value.trim().replace(/^['"]|['"]$/gu, ''))
+			.includes('main');
+	}
+	const start = lines.findIndex(line => line === '    branches:');
+	if (start === -1) return undefined;
+	const branches = [];
+	for (let index = start + 1; index < lines.length; index++) {
+		const match = /^      -\s+(.+?)\s*$/u.exec(lines[index]);
+		if (match === null) break;
+		branches.push(match[1].replace(/^['"]|['"]$/gu, ''));
+	}
+	return branches.includes('main');
+}
+
 test('provider terminal contexts are stable, always evaluated, and not hidden by pull-request path filters', async () => {
 	for (const [path, context] of providerTerminalContexts) {
 		const source = await readFile(resolve(repositoryRoot, path), 'utf8');
@@ -70,9 +92,14 @@ test('provider terminal contexts are stable, always evaluated, and not hidden by
 
 		const trigger = pullRequestTriggerBlock(source);
 		assert.notEqual(trigger, undefined, `${path}: missing pull_request trigger`);
-		assert.doesNotMatch(trigger, /^    paths:/mu, `${path}: required context must not use pull_request paths filtering`);
-		if (/^    branches:/mu.test(trigger)) {
-			assert.match(trigger, /main/u, `${path}: pull_request branch filter must include main`);
+		assert.doesNotMatch(
+			trigger,
+			/^    paths(?:-ignore)?:/mu,
+			`${path}: required context must not use pull_request paths filtering`,
+		);
+		const includesMain = branchFilterIncludesMain(trigger);
+		if (includesMain !== undefined) {
+			assert.equal(includesMain, true, `${path}: pull_request branch filter must include exact main`);
 		}
 	}
 });
