@@ -62,15 +62,17 @@ For pull requests targeting `main`, repository workflows expose these stable ter
 - `Required TypeScript 7 gate`
 - `Required VSIX gate`
 
-The `main` ruleset should require all seven terminal contexts in addition to the existing provider-required contexts:
+The `main` ruleset must require all seven terminal contexts in addition to the existing provider-required contexts:
 
 - `Reproducible release artifacts`
 - `CodeQL`
 - `Diagnose dependency review API`
 
+Actions-owned terminal contexts must be bound to the GitHub Actions source in the ruleset. `Any source` is acceptable only as a temporary rollout state before GitHub has observed the new check; it is not the completed provider state.
+
 A terminal gate succeeds only when its required upstream validation succeeded, or when a reviewed classification explicitly says the expensive lane is not required and that upstream job is actually `skipped`. A missing, failed, cancelled, partial, stale, timed-out, or unknown required result is not success.
 
-The ruleset should use strict required-status-check handling so a base-branch movement that changes the merge-relevant state cannot reuse obsolete successful evidence. Provider settings must be read before mutation and read back after mutation; a mismatch must be rolled back to the captured prior values.
+The ruleset must use strict required-status-check handling so a base-branch movement that changes the merge-relevant state cannot reuse obsolete successful evidence. Provider settings must be read before mutation and read back after mutation; a mismatch must be rolled back to the captured prior values.
 
 These terminal gates supplement repository-side evidence. They do not replace the underlying quality, security, compatibility, reproducibility, browser, performance, or self-hosting validation.
 
