@@ -17,6 +17,9 @@
 ## `[module.package]` npmパッケージ
 パッケージ解決では`package.json`と、ソース宣言用の`virune`条件を持つ`exports`エントリを使用します。生成するJavaScriptは通常のESMインポート条件を使用します。プラットフォームの制約はコンパイル時に検査します。
 
+## `[module.javascript-target]` JavaScriptターゲット
+Virune 1.0のプロジェクトは`target: "es2022"`を使用し、それ以外のJavaScriptターゲットは拒否します。生成するJavaScriptはES2022 ESMです。
+
 ## プラットフォームでの実行
 
 `[platform.browser-runtime]` `platform: "browser"`を指定したプロジェクトは、ブラウザで読み込めるES2022 ESMを出力し、ブラウザ向けの標準ライブラリアダプターを利用できます。Node.js専用のインポートは拒否します。
