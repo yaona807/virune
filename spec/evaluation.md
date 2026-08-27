@@ -9,7 +9,7 @@ Function callee, arguments, record fields, collection elements, and binary opera
 `Int` arithmetic checks the JavaScript safe-integer range. Overflow, division by zero, and remainder by zero panic. Integer division truncates toward zero.
 
 ## `[eval.match]` Pattern matching
-`match` over closed types must be exhaustive. Guards do not contribute to exhaustiveness. Unreachable arms are rejected. OR-pattern alternatives cannot bind names in Virune 1.0; use a surrounding match arm or nested match when bindings are required.
+`match` over closed types must be exhaustive. Guards do not contribute to exhaustiveness. Unreachable arms are rejected. OR-pattern alternatives cannot bind names in Virune 1.0.
 
 ## `[eval.return]` Function completion
 A non-`Unit` function returns a value on every reachable path. `Never` marks expressions that do not complete normally. Unreachable statements are diagnosed.
