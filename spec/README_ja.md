@@ -2,7 +2,7 @@
 
 [英語版](README.md)
 
-このREADMEはVirune 1.0規範仕様の索引です。以下に列挙する英日対の規則を持つ文書と`grammar.ebnf`が、Virune 1.0の規範的な契約を定めます。ほかの解説文書と内容が矛盾する場合は、これらの仕様を優先します。Runtime ABIの詳細は[Runtime ABI v2](runtime-abi_ja.md)が規範です。
+このREADMEはVirune 1.0規範仕様の索引です。このディレクトリ内で安定した規則IDを宣言する英日対の文書と`grammar.ebnf`が、Virune 1.0の規範的な契約を定めます。以下の文書一覧は索引であり、手動の許可リストではありません。ほかの解説文書と内容が矛盾する場合は、これらの仕様を優先します。Runtime ABIの詳細は[Runtime ABI v2](runtime-abi_ja.md)が規範です。
 
 外部から観測できる各規則には、`[type.nominal-identity]`のような安定IDがあります。`npm run spec:check`は、英日で対になった規範文書から規則IDを検出し、適合試験の期待値またはリポジトリ管理下のテスト・検証器に付けた注記で宣言された実行可能Evidenceへ接続します。言語の挙動を変えない編集上の修正はできますが、Virune 1.0以降の振る舞いを変える場合は[互換性方針](../COMPATIBILITY_ja.md)に従います。
 
