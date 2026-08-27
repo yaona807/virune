@@ -3,7 +3,7 @@
 [日本語版](runtime-abi_ja.md)
 
 ## `[runtime.version]` Runtime ABI version
-Virune 1.0.0 emits ES2022 modules against Runtime ABI v2.
+Virune 1.0.0 generated JavaScript uses Runtime ABI v2.
 
 ## `[runtime.native-representation]` Native representation
 
@@ -23,7 +23,7 @@ Compiler-derived `Eq` and `Hash` call these fixed operations. User code cannot r
 
 ## `[runtime.debug]` Debug
 
-Compiler-derived Debug produces a stable developer representation only for supported values and is explicit opt-in.
+Compiler-derived Debug is available only when explicitly derived for a supported declaration.
 
 ## `[runtime.interop-descriptors-v2]` Interop ABI v2 descriptors
 
