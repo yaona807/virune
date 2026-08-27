@@ -211,7 +211,7 @@ function runCommand(argumentsList, failureOutput) {
 			const exitCode = code ?? 1;
 			if (capture && exitCode !== 0) {
 				await mkdir(dirname(failureOutput), { recursive: true });
-				await writeFile(failureOutput, output, 'utf8');
+				await writeFile(failureOutput, output);
 			}
 			resolve(exitCode);
 		});
