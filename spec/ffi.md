@@ -6,7 +6,7 @@
 JavaScript and npm values enter through `extern js`. Normal imports cannot directly trust JavaScript values.
 
 ## `[ffi.safe]` Safe extern
-A safe extern returns `Result<T, JsError>` or an async equivalent. Generated wrappers catch synchronous exceptions and Promise rejections, validate values, and convert them to Virune representations.
+A safe extern returns `Result<T, JsError>` or an async equivalent. Generated wrappers catch synchronous exceptions and Promise rejections, validate values, and convert them to Virune representations. Composite safe decoding uses bounded traversal and structural safeguards; inputs that cannot be validated fail closed instead of becoming native Virune values.
 
 ## `[ffi.unsafe]` Unsafe extern
 `unsafe extern` skips validation and is allowed only in an `unsafe module` under `ffi/`.
