@@ -6,6 +6,7 @@ const RULE_ID_PATTERN = /^[a-z][a-z0-9-]*(?:\.[a-z0-9-]+)+$/u;
 const RULE_HEADING_PATTERN = /^(?:#{2,6}\s+)?`\[([^\]\r\n]+)\]`(?:\s|$)/gmu;
 const ANNOTATION_PREFIX = '// @virune-rule ';
 const GRAMMAR_RULE_ID = 'grammar.complete';
+const EVIDENCE_SCRIPT_ROOTS = ['verify:metadata', 'test:core'];
 
 export async function verifySpec(root = resolve('.'), { writeReport = true } = {}) {
 	root = resolve(root);
@@ -38,7 +39,7 @@ export async function verifySpec(root = resolve('.'), { writeReport = true } = {
 	const runTestsText = await readFile(runTestsPath, 'utf8');
 	const runUnitTestsText = await readFile(runUnitTestsPath, 'utf8');
 	const packageJson = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'));
-	const packageScripts = Object.values(packageJson.scripts ?? {}).filter(value => typeof value === 'string').join('\n');
+	const packageScripts = packageJson.scripts ?? {};
 	const ruleIds = new Set(ruleOrder);
 	const evidenceByRule = new Map(ruleOrder.map(id => [id, []]));
 	const unknownEvidenceReferences = [];
@@ -92,8 +93,8 @@ export async function verifySpec(root = resolve('.'), { writeReport = true } = {
 				continue;
 			}
 			if (annotation.kind === 'verifier') {
-				if (!declarationRelative.endsWith('.mjs') || !packageScripts.includes(declarationRelative)) {
-					throw new Error(`Stale verifier evidence ${declarationRelative}:${annotation.line}: ${declarationRelative} is not executed by a repository-owned package script`);
+				if (!declarationRelative.endsWith('.mjs') || !isVerifierReachable(packageScripts, declarationRelative)) {
+					throw new Error(`Stale verifier evidence ${declarationRelative}:${annotation.line}: ${declarationRelative} is not reachable from a repository-owned checked script`);
 				}
 				evidenceByRule.get(annotation.id).push({
 					file: declarationRelative,
@@ -269,6 +270,24 @@ function addNormativeRule(id, source, ruleOrigins, ruleOrder) {
 
 function validateRuleId(id, source) {
 	if (typeof id !== 'string' || !RULE_ID_PATTERN.test(id)) throw new Error(`Invalid rule id ${String(id)} in ${source}`);
+}
+
+function isVerifierReachable(scripts, target) {
+	if (scripts === null || Array.isArray(scripts) || typeof scripts !== 'object') return false;
+	const pending = EVIDENCE_SCRIPT_ROOTS.filter(name => typeof scripts[name] === 'string');
+	const visited = new Set();
+	while (pending.length > 0) {
+		const name = pending.pop();
+		if (visited.has(name)) continue;
+		visited.add(name);
+		const command = scripts[name];
+		if (typeof command !== 'string') continue;
+		if (command.includes(target)) return true;
+		for (const match of command.matchAll(/\bnpm\s+run\s+([A-Za-z0-9:_-]+)/gu)) {
+			if (!visited.has(match[1])) pending.push(match[1]);
+		}
+	}
+	return false;
 }
 
 async function collectAnnotationFiles(root) {
