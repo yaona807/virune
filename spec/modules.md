@@ -18,7 +18,7 @@ Module dependency cycles are rejected, including type-only cycles.
 Package resolution uses `package.json` and an `exports` entry with the `virune` condition for source declarations. Generated JavaScript uses the normal ESM import condition. Platform constraints are checked at compile time.
 
 ## `[module.javascript-target]` JavaScript target
-Virune 1.0 projects use `target: "es2022"`; other JavaScript targets are rejected. Generated JavaScript is ES2022 ESM.
+The JavaScript output target for Virune 1.0 projects is ES2022, selected by `target: "es2022"`; other target values are rejected.
 
 ## Platform execution
 
