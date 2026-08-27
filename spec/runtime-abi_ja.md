@@ -3,7 +3,7 @@
 [英語版](runtime-abi.md)
 
 ## `[runtime.version]` Runtime ABIバージョン
-Virune 1.0.0は、Runtime ABI v2に従うES2022モジュールを出力します。
+Virune 1.0.0が生成するJavaScriptはRuntime ABI v2を使用します。
 
 ## `[runtime.native-representation]` Virune側の実行時表現（Native表現）
 
@@ -23,7 +23,7 @@ Virune 1.0.0は、Runtime ABI v2に従うES2022モジュールを出力します
 
 ## `[runtime.debug]` Debug
 
-コンパイラが生成するDebugは、対応している値だけを安定した開発者向け表現へ変換し、明示的に有効化した場合だけ使われます。
+コンパイラが生成するDebugは、対応している宣言で明示的に導出した場合だけ使用できます。
 
 ## `[runtime.interop-descriptors-v2]` Interop ABI v2の記述子
 
