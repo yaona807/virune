@@ -8,9 +8,9 @@ Low-level `extern js` rules are defined in [JavaScript FFI](ffi.md).
 
 `import js` exposes a conservative subset of a declared JavaScript API. Dependency source is executed unchanged. The direct facade supports default, named, namespace, side-effect, and named type-only imports; property access; function and method calls; forwarding foreign handles; and `await` on declared Promise-like results.
 
-The provider resolves calls only from the callee and actual argument types. A Virune expected return type MUST NOT participate in JavaScript overload or generic selection. Return-only generic parameters MAY resolve from a TypeScript default or base constraint. Calls requiring callback typing, constructor syntax, structural object literals, bidirectional inference, ambiguous overloads, or complex conditional/mapped types MUST use an adapter.
+The provider resolves calls only from the callee and actual argument types. A Virune expected return type MUST NOT participate in JavaScript overload or generic selection. Return-only generic parameters MAY resolve from a TypeScript default or base constraint. If the provider cannot determine one supported call from the callee and actual argument types alone, the call MUST use an adapter.
 
-Named imports from a CommonJS runtime are rejected. Use a default or namespace import, or an adapter. Runtime module resolution used by a browser or bundler remains the bundler's responsibility.
+Named imports from a CommonJS runtime are rejected. Runtime module resolution used by a browser or bundler remains the bundler's responsibility.
 
 A TypeScript `any` import is rejected by the direct facade. TypeScript `unknown` remains an unknown foreign value and can cross to Virune `Unknown` without asserting a narrower type.
 
@@ -37,7 +37,7 @@ A failed implicit primitive check raises `ForeignContractError`. It is not conve
 
 ## `[interop.abi-v1]` Interop ABI v1
 
-Complex TypeScript APIs may be isolated in `*.interop.ts`, type-checked with the pinned TypeScript provider, and emitted as ESM before Virune execution.
+An adapter is a `*.interop.ts` source file type-checked with the pinned TypeScript provider and emitted as ESM before Virune execution.
 
 An adapter export MUST be a single non-generic call signature. Callback parameters, overloads, arrays, tuples, anonymous structural objects, adapter-local object types, intersections, `any`, and nested Promise-like values are not ABI v1 values. Structural data is exported as `unknown` and decoded in Virune. Named external classes and objects may be exported as foreign handles.
 
