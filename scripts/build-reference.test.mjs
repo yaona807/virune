@@ -41,9 +41,16 @@ test('stable Reference identity is bound to the exact package tag', () => {
 test('Reference rendering escapes raw HTML instead of executing it', () => {
 	for (const source of ['<script>alert("x")</script>', '<SCRIPT>alert("x")</SCRIPT>']) {
 		const html = renderMarkdown(source, context());
-		assert.match(html, /^<p>&lt;[A-Za-z]+&gt;alert\(&quot;x&quot;\)&lt;\/[A-Za-z]+&gt;<\/p>$/u);
+		assert.match(html, /^<p>&lt;[A-Za-z]+&gt;alert\(&quot;x&quot;\)&lt;\/[A-Za-z]+&gt;<\/p>\n?$/u);
 		assert.doesNotMatch(html, /<script\b/iu);
 	}
+});
+
+test('Reference link validation remains fail closed through markdown-it', () => {
+	assert.throws(() => renderMarkdown('[unsafe](javascript:alert)', context(target => {
+		if (target.startsWith('javascript:')) throw new Error(`unsafe ${target}`);
+		return target;
+	})), /unsafe javascript:alert/u);
 });
 
 test('Reference grammar heading uses the generated locale title', () => {
