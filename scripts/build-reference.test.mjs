@@ -3,7 +3,7 @@ import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
-import { collectAnchors, hashDirectory, renderGrammar, renderMarkdown, resolveReferenceIdentity } from './build-reference.mjs';
+import { collectAnchors, hashDirectory, renderGrammar, renderMarkdown, resolveReferenceIdentity, resolveReferenceOutputDirectory } from './build-reference.mjs';
 
 const SOURCE_SHA = '0123456789abcdef0123456789abcdef01234567';
 
@@ -48,6 +48,14 @@ test('Reference rendering escapes raw HTML instead of executing it', () => {
 
 test('Reference grammar heading uses the generated locale title', () => {
 	assert.match(renderGrammar('Module = "main";\n', '規範文法'), /^<h1 id="grammar\.complete">規範文法<\/h1>\n/u);
+});
+
+test('Reference output is confined to the Reference cache', () => {
+	const root = join(tmpdir(), 'virune-reference-output-root');
+	const site = join(root, '.cache', 'reference', 'site');
+	assert.equal(resolveReferenceOutputDirectory(root, site), site);
+	assert.throws(() => resolveReferenceOutputDirectory(root, root), /must stay under/u);
+	assert.throws(() => resolveReferenceOutputDirectory(root, join(root, '.cache', 'reference-out')), /must stay under/u);
 });
 
 test('Reference rendering fails closed on a broken link', () => {
