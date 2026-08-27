@@ -49,12 +49,6 @@ Adapter output consists of `.interop.mjs`, a source map, and `.virune-abi.json`.
 
 Adapters MUST NOT import generated Virune output. This preserves an acyclic build order: JavaScript package → TypeScript adapter → Virune module.
 
-## Resolution and stable IR
-
-Type declaration resolution and runtime module resolution are recorded separately. The witness includes runtime and declaration package identities, entries, module format, conditions, provider version, and hashes. Browser/bundler runtime resolution remains the bundler's responsibility.
-
-TypeScript compiler objects are valid only during provider analysis. After type checking, Virune stores serializable provider-independent usage records. Code generation MUST NOT depend on `ts.Type`, `ts.Symbol`, or a live TypeScript `Program`.
-
 ## Trust boundary
 
 - Native Virune code is checked by the Virune compiler.
