@@ -3,7 +3,10 @@
 [日本語版](ffi_ja.md)
 
 ## `[ffi.explicit]` Explicit boundary
-JavaScript and npm values enter through `extern js`. Normal imports cannot directly trust JavaScript values. Trailing optional extern arguments whose encoded value is `undefined` are omitted from the JavaScript call.
+JavaScript and npm values enter through `extern js`. Normal imports cannot directly trust JavaScript values.
+
+## `[ffi.optional-arguments]` Optional extern arguments
+A trailing optional `extern js` argument whose boundary representation is JavaScript `undefined` is omitted from the JavaScript invocation rather than passed as an explicit `undefined` argument.
 
 ## `[ffi.safe]` Safe extern
 A safe extern returns `Result<T, JsError>` or an async equivalent. Generated wrappers catch synchronous exceptions and Promise rejections, validate values, and convert them to Virune representations. Composite safe decoding uses bounded traversal and structural safeguards; inputs that cannot be validated fail closed instead of becoming native Virune values.
