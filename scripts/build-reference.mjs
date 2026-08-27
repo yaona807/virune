@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
-import { access, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
+import { mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { dirname, join, posix, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { verifySpec } from './verify-spec.mjs';
@@ -392,8 +393,7 @@ async function collectFiles(directory) {
 }
 
 function existsSyncSafe(path) {
-	try { execFileSync(process.execPath, ['-e', 'require("node:fs").accessSync(process.argv[1])', path], { stdio: 'ignore' }); return true; }
-	catch { return false; }
+	return existsSync(path);
 }
 
 function escapeHtml(value) {
@@ -405,7 +405,7 @@ function escapeAttribute(value) {
 }
 
 function referenceStyles() {
-	return `:root{font-family:system-ui,sans-serif;line-height:1.55;color:#171717;background:#fff}body{margin:0}header{display:flex;gap:1rem;align-items:center;padding:1rem 1.25rem;border-bottom:1px solid #ddd;flex-wrap:wrap}header span{color:#666}header a{margin-left:auto}.language-switch+ a{margin-left:0}.layout{display:grid;grid-template-columns:minmax(13rem,18rem) minmax(0,1fr);max-width:90rem;margin:auto}nav{padding:1.5rem;border-right:1px solid #ddd}nav ul{list-style:none;padding:0;margin:0}nav li{margin:.35rem 0}nav a[aria-current=page]{font-weight:700}main{padding:2rem;max-width:70rem}pre{overflow:auto;background:#f6f6f6;padding:1rem;border-radius:.35rem}code{font-family:ui-monospace,monospace}table{border-collapse:collapse}th,td{border:1px solid #ccc;padding:.4rem .6rem;text-align:left}a{color:inherit}h1,h2,h3,h4,h5,h6{scroll-margin-top:1rem}@media(max-width:760px){.layout{display:block}nav{border-right:0;border-bottom:1px solid #ddd}header a{margin-left:0}}\n`;
+	return `:root{font-family:system-ui,sans-serif;line-height:1.55;color:#171717;background:#fff}body{margin:0}header{display:flex;gap:1rem;align-items:center;padding:1rem 1.25rem;border-bottom:1px solid #ddd;flex-wrap:wrap}header span{color:#666}header a{margin-left:auto}.language-switch+ a{margin-left:0}.layout{display:grid;grid-template-columns:minmax(13rem,18rem) minmax(0,1fr);max-width:90rem;margin:auto}nav{padding:1.5rem;border-right:1px solid #ddd}nav ul{list-style:none;padding:0;margin:0}nav li{margin:.35rem 0}nav a[aria-current=page]{font-weight:700}main{padding:2rem;max-width:70rem}pre{overflow:auto;background:#f6f6f6;padding:1rem;border-radius:.35rem}code{font-family:ui-monospace,monospace}table{border-collapse:collapse}th,td{border:1px solid #ccc;padding:.4rem .6rem;text-align:left}a{color:inherit}h1,h2,h3,h4,h5,h6{scroll-margin-top:1rem}@media(max-width:760px){.layout{display:block}nav{border-right:0;border-bottom:1px solid #ddd}header a{margin-left:0}.language-switch+ a{margin-left:0}}\n`;
 }
 
 function parseArguments(values) {
