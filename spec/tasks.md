@@ -28,4 +28,4 @@ For both `Task.race` and `Task.firstOk`, operations whose results are not select
 Timeouts and retry delays must be finite non-negative values in the host timer range. Timeout returns `TaskTimeoutError` through its Result API. Retry preserves source attempt numbering and validates backoff before sleeping.
 
 ## `[task.await-propagate-precedence]` Await and Result propagation
-`await operation()?` is equivalent to `(await operation())?`. The postfix propagation operator applies to the completed async result, not to the internal Future. The formatter emits the parenthesis-free form when it is unambiguous.
+`await operation()?` is equivalent to `(await operation())?`. The postfix propagation operator applies to the completed async result, not to the internal Future.
