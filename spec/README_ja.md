@@ -4,7 +4,7 @@
 
 この`spec/`ディレクトリのファイルは、Virune 1.0の規範的な言語契約を定めます。ほかの解説文書と内容が矛盾する場合は、このディレクトリの仕様を優先します。Runtime ABIの詳細は[Runtime ABI v2](runtime-abi_ja.md)が規範です。
 
-外部から観測できる各規則には、`[type.nominal-identity]`のような安定IDがあります。`rules.json`は、主要な規則と適合試験・統合試験の対応を記録します。言語の挙動を変えない編集上の修正はできますが、Virune 1.0以降の振る舞いを変える場合は[互換性方針](../COMPATIBILITY_ja.md)に従います。
+外部から観測できる各規則には、`[type.nominal-identity]`のような安定IDがあります。`npm run spec:check`は、英日で対になった規範文書から規則IDを検出し、適合試験の期待値またはリポジトリ管理下のテスト・検証器に付けた注記で宣言された実行可能Evidenceへ接続します。言語の挙動を変えない編集上の修正はできますが、Virune 1.0以降の振る舞いを変える場合は[互換性方針](../COMPATIBILITY_ja.md)に従います。
 
 ## 文書
 
@@ -20,4 +20,3 @@
 - [JavaScript相互運用モデル](js-interop_ja.md) — 規範的なJavaScript / TypeScript相互運用契約
 - [標準型と標準ライブラリ](standard-library_ja.md) — `Bytes`、固定幅整数、Unicode、コレクションの意味論
 - [Runtime ABI v2](runtime-abi_ja.md) — 生成コードとRuntimeの間のRuntime ABI v2契約
-- `rules.json` — 仕様とテストの機械検査用対応表
