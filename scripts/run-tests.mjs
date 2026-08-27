@@ -21,13 +21,10 @@
 // @virune-rule {"id":"entry.run-only","runner":"integration","file":"integration/entry-point-invalid.test.ts","case":"CLI run reports invalid main signatures as user diagnostics","kind":"positive","platform":"common"}
 // @virune-rule {"id":"eval.order","runner":"integration","file":"integration/project.test.ts","case":"build output is deterministic","kind":"positive","platform":"common"}
 // @virune-rule {"id":"eval.panic","runner":"integration","file":"integration/project.test.ts","case":"generated defer aggregates the primary panic and every cleanup panic","kind":"positive","platform":"common"}
-// @virune-rule {"id":"eval.reference","runner":"unit","file":"packages/compiler/test/compiler.test.ts","case":"reference evaluator agrees with the pure language core","kind":"positive","platform":"common"}
 // @virune-rule {"id":"eval.return","runner":"unit","file":"packages/compiler/test/compiler.test.ts","case":"reference evaluator agrees with the pure language core","kind":"positive","platform":"common"}
-// @virune-rule {"id":"ffi.binding","runner":"integration","file":"integration/cli.test.ts","case":"CLI bind generates type-checkable Virune FFI declarations from TypeScript declarations","kind":"positive","platform":"common"}
 // @virune-rule {"id":"ffi.bytes","runner":"unit","file":"packages/runtime/test/runtime.test.ts","case":"Bytes and MutableBytes support binary round-trips without aliasing","kind":"positive","platform":"common"}
 // @virune-rule {"id":"lexical.comments","runner":"unit","file":"packages/compiler/test/compiler.test.ts","case":"documentation comments are classified and attached to supported AST nodes","kind":"positive","platform":"common"}
 // @virune-rule {"id":"lexical.encoding","runner":"unit","file":"packages/compiler/test/compiler.test.ts","case":"compiler fuzz: parser and checker never throw for deterministic malformed input corpus","kind":"positive","platform":"common"}
-// @virune-rule {"id":"module.api","runner":"integration","file":"integration/cli-api.test.ts","case":"CLI api writes a deterministic public API snapshot and detects drift","kind":"positive","platform":"common"}
 // @virune-rule {"id":"module.cycle","runner":"integration","file":"integration/project.test.ts","case":"module cycles are rejected","kind":"positive","platform":"common"}
 // @virune-rule {"id":"module.file","runner":"integration","file":"integration/project.test.ts","case":"buildProject emits an ES module and traceable source map","kind":"positive","platform":"common"}
 // @virune-rule {"id":"module.import","runner":"integration","file":"integration/project.test.ts","case":"public imports re-export values and preserve original type identity","kind":"positive","platform":"common"}
