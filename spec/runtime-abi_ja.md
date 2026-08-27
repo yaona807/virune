@@ -49,3 +49,5 @@ Runtime ABI v2にはプロトコルレジストリがありません。等価性
 ## JavaScriptへの公開
 
 `@jsExport`のラッパーは入力値を検証し、出力値を変換します。必要な場合は末尾の省略可能な引数を渡さず、JavaScriptへ公開するViruneの集約値は防御的にコピーします。外部ハンドル（Foreignハンドル）は外部値のまま保持し、検証済みのNative値として扱うことはありません。
+
+StableなRuntime ABIまたはInterop ABIに破壊的変更を行う場合は、新しいバージョン付きABIパスが必要です。
