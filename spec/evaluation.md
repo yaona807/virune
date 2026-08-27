@@ -20,9 +20,6 @@ A non-`Unit` function returns a value on every reachable path. `Never` marks exp
 ## `[eval.panic]` Panic
 Panic represents a violated invariant or unrecoverable runtime failure. Normal Virune code does not catch panic. Task, test, CLI, and JavaScript export boundaries may translate or report it.
 
-## `[eval.reference]` Reference evaluator
-The repository includes a deliberately small evaluator for the pure core. It is a verification oracle, not the production runtime. Unsupported effectful constructs are rejected by that evaluator.
-
 ## `[eval.loop-control]` Loop control
 `break` exits the nearest enclosing `for` or `while`; `continue` starts its next iteration. Both are compile errors outside a loop and cannot cross a function or lambda boundary. Deferred cleanup remains scoped to function or lambda completion rather than each loop iteration.
 
