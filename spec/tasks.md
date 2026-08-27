@@ -2,8 +2,8 @@
 
 [日本語版](tasks_ja.md)
 
-## `[task.future]` Futures
-Calling an async function creates an internal `Future<T>`. `Future` is not directly nameable in source. `await` is valid only in an async context.
+## `[task.future]` Async context
+`await` is valid only in an async context.
 
 ## `[task.scope]` Structured lifetime
 Child tasks cannot outlive the scope that created them. Detached tasks are not part of Virune 1.0. Cancellation is cooperative and uses `AbortSignal`; non-cooperating JavaScript operations cannot be forcibly stopped.
