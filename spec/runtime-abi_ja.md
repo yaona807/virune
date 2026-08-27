@@ -35,6 +35,4 @@ Virune 1.0.0が生成するJavaScriptはRuntime ABI v2を使用します。
 - 境界で期待する`null` / `undefined`表現
 - コンパイル時のJSON既定値と厳格性メタデータ
 
-`record`と`enum`の記述子は、完全な名前的`typeId`（`package#module:Type`）を持ちます。再帰または未解決の記述子を、暗黙に安全な集約値として扱うことはありません。`Unknown`へフォールバックするか、Adapterを要求します。
-
-安全な記述子は、コールバックの検証、オブジェクトをキーにした任意のJavaScript `Map` / `Set`変換、TypeScriptの`Record<K, V>`変換を保証しません。
+`record`と`enum`の記述子は、完全な名前的`typeId`（`package#module:Type`）を持ちます。再帰、未解決、または未対応の記述子の形を、暗黙に安全な集約値として扱うことはありません。`Unknown`へフォールバックするか、Adapterを要求します。
