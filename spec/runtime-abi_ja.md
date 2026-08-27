@@ -23,7 +23,7 @@ Virune 1.0.0が生成するJavaScriptはRuntime ABI v2を使用します。
 
 ## `[runtime.debug]` Debug
 
-コンパイラが生成するDebugは、対応している宣言で明示的に導出した場合だけ使用できます。
+コンパイラが生成するDebugは、対応している値を安定した開発者向けのString表現へ変換し、対応している宣言で明示的に導出した場合だけ使用できます。
 
 ## `[runtime.interop-descriptors-v2]` Interop ABI v2の記述子
 
