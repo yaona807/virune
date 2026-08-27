@@ -9,7 +9,7 @@ JavaScript and npm values enter through `extern js`. Normal imports cannot direc
 A safe extern returns `Result<T, JsError>` or an async equivalent. Generated wrappers catch synchronous exceptions and Promise rejections, validate values, and convert them to Virune representations.
 
 ## `[ffi.unsafe]` Unsafe extern
-`unsafe extern` skips validation. It is allowed only in an `unsafe module` under `ffi/`. `unsafe extern` declarations are explicit audit boundaries and may violate immutability or type assumptions.
+`unsafe extern` skips validation and is allowed only in an `unsafe module` under `ffi/`.
 
 ## `[ffi.export]` JavaScript export
 `@jsExport` is valid only on public functions. Export wrappers validate JavaScript arguments and convert returned records, collections, Option, Result, and enums to documented JavaScript representations. They omit optional trailing arguments when required and defensively copy native aggregate values exposed to JavaScript. Foreign handles remain external values and are not presented as validated native values.
