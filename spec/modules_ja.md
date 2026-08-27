@@ -18,7 +18,7 @@
 パッケージ解決では`package.json`と、ソース宣言用の`virune`条件を持つ`exports`エントリを使用します。生成するJavaScriptは通常のESMインポート条件を使用します。プラットフォームの制約はコンパイル時に検査します。
 
 ## `[module.javascript-target]` JavaScriptターゲット
-Virune 1.0のプロジェクトは`target: "es2022"`を使用し、それ以外のJavaScriptターゲットは拒否します。生成するJavaScriptはES2022 ESMです。
+Virune 1.0のプロジェクトが生成するJavaScriptのターゲットはES2022で、`target: "es2022"`で指定します。それ以外のターゲット値は拒否します。
 
 ## プラットフォームでの実行
 
