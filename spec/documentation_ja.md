@@ -39,7 +39,7 @@ Viruneでは、3種類の行コメントを区別します。
 
 ## `[documentation.markdown]` Markdown
 
-本文はCommonMark 0.31.2互換のMarkdownです。
+本文はCommonMark 0.31.2互換のMarkdownです。公式ツールは生のHTMLを描画しません。
 
 ## `[documentation.semantics]` コンパイル時の意味
 
