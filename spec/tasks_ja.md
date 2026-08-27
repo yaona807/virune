@@ -2,8 +2,8 @@
 
 [英語版](tasks.md)
 
-## `[task.future]` Future
-`async`関数を呼び出すと、内部の`Future<T>`が生成されます。`Future`はソースコード上で型名として直接指定できません。`await`は`async`コンテキスト内でのみ使用できます。
+## `[task.future]` 非同期コンテキスト
+`await`は`async`コンテキスト内でのみ使用できます。
 
 ## `[task.scope]` 構造化されたライフタイム
 子タスクは、それを作成したスコープより長く生存できません。Virune 1.0には切り離されたタスク（detached task）はありません。キャンセルは`AbortSignal`を使う協調方式です。シグナルを無視するJavaScript処理を強制停止することはできません。
