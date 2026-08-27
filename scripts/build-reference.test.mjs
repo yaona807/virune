@@ -47,10 +47,11 @@ test('Reference rendering escapes raw HTML instead of executing it', () => {
 });
 
 test('Reference link validation remains fail closed through markdown-it', () => {
-	assert.throws(() => renderMarkdown('[unsafe](javascript:alert)', context(target => {
-		if (target.startsWith('javascript:')) throw new Error(`unsafe ${target}`);
-		return target;
-	})), /unsafe javascript:alert/u);
+	for (const target of ['javascript:alert', 'data:text/plain,test', 'vbscript:msgbox']) {
+		assert.throws(() => renderMarkdown(`[unsafe](${target})`, context(actual => {
+			throw new Error(`unsafe ${actual}`);
+		})), error => error instanceof Error && error.message === `unsafe ${target}`);
+	}
 });
 
 test('Reference grammar heading uses the generated locale title', () => {
