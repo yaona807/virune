@@ -6,7 +6,7 @@
 `await` is valid only in an async context.
 
 ## `[task.scope]` Structured lifetime
-Child tasks cannot outlive the scope that created them. Detached tasks are not part of Virune 1.0. Cancellation is cooperative and uses `AbortSignal`; non-cooperating JavaScript operations cannot be forcibly stopped.
+Child tasks cannot outlive the scope that created them. Cancellation is cooperative and uses `AbortSignal`; non-cooperating JavaScript operations cannot be forcibly stopped.
 
 ## `[task.parallel]` Parallel execution
 `parallel` starts all entries, cancels siblings when an entry rejects, waits until all children settle, and reports the leftmost rejection by source order. On success, it returns a record preserving source field order.
