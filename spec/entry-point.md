@@ -2,8 +2,6 @@
 
 [日本語版](entry-point_ja.md)
 
-This document defines the executable-entry contract used by `virune run`.
-
 ## Scope
 
 `[entry.run-only]` The entry-point contract is validated only for `virune run`. Library builds, `virune check`, `virune build`, API snapshots, and modules imported as dependencies do not require a `main` declaration.
@@ -21,21 +19,6 @@ This document defines the executable-entry contract used by `virune run`.
 `[entry.return]` `main` must return either `Unit` or `Result<Unit, E>` for any well-formed error type `E`.
 
 `[entry.async]` `main` may be synchronous or asynchronous. The CLI awaits the result before deciding the process exit status.
-
-The accepted forms are therefore:
-
-```virune
-pub fn main() -> Unit
-pub fn main(args: List<String>) -> Unit
-pub fn main() -> Result<Unit, E>
-pub fn main(args: List<String>) -> Result<Unit, E>
-pub async fn main() -> Unit
-pub async fn main(args: List<String>) -> Unit
-pub async fn main() -> Result<Unit, E>
-pub async fn main(args: List<String>) -> Result<Unit, E>
-```
-
-The declarations above show signatures; each declaration must have a valid Virune body.
 
 ## Exit behavior
 
