@@ -3,7 +3,7 @@ import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
-import { collectAnchors, hashDirectory, renderMarkdown, resolveReferenceIdentity } from './build-reference.mjs';
+import { collectAnchors, hashDirectory, renderGrammar, renderMarkdown, resolveReferenceIdentity } from './build-reference.mjs';
 
 const SOURCE_SHA = '0123456789abcdef0123456789abcdef01234567';
 
@@ -44,6 +44,10 @@ test('Reference rendering escapes raw HTML instead of executing it', () => {
 		assert.match(html, /^<p>&lt;[A-Za-z]+&gt;alert\(&quot;x&quot;\)&lt;\/[A-Za-z]+&gt;<\/p>$/u);
 		assert.doesNotMatch(html, /<script\b/iu);
 	}
+});
+
+test('Reference grammar heading uses the generated locale title', () => {
+	assert.match(renderGrammar('Module = "main";\n', '規範文法'), /^<h1 id="grammar\.complete">規範文法<\/h1>\n/u);
 });
 
 test('Reference rendering fails closed on a broken link', () => {
