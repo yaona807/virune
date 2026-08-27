@@ -35,21 +35,17 @@ They cannot be attached to imports, tests, parameters, local variables, statemen
 
 ## `[documentation.normalization]` Text normalization
 
-For each line, the marker is removed and at most one immediately following ASCII space is removed. The remaining lines are joined with LF. Leading and trailing empty documentation lines are removed. The source span of the complete comment group is preserved.
-
-The formatter writes a single ASCII space after a non-empty `///` or `//!` marker and does not reflow the Markdown body.
+For each line, the marker is removed and at most one immediately following ASCII space is removed. The remaining lines are joined with LF. Leading and trailing empty documentation lines are removed.
 
 ## `[documentation.markdown]` Markdown
 
-Documentation text is CommonMark 0.31.2-compatible Markdown. Raw HTML is not rendered by official tooling. The first paragraph is the summary used by completion and symbol-oriented UI; Hover and generated documentation may show the complete text.
+Documentation text is CommonMark 0.31.2-compatible Markdown.
 
 Standard headings such as `Parameters`, `Returns`, `Errors`, `Panics`, `Safety`, and `Examples` are conventions, not language syntax. Virune 1.0 does not assign special meaning to `@param`, `@return`, XML tags, or heading names.
 
 ## `[documentation.semantics]` Compilation semantics
 
-Documentation is retained in the AST as normalized text. It does not affect name resolution, type checking, JavaScript emission, Runtime ABI, or the stable API compatibility snapshot.
-
-Official editor tooling exposes documentation through Hover, completion, Signature Help, snippets, and documentation-generation Code Actions.
+Documentation does not affect name resolution, type checking, JavaScript emission, or Runtime ABI.
 
 ## `[documentation.diagnostics]` Diagnostics
 
