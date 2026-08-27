@@ -2,8 +2,6 @@
 
 [英語版](entry-point.md)
 
-この文書では、`virune run`が使用する実行エントリーポイントの契約を定めます。
-
 ## 対象範囲
 
 `[entry.run-only]` エントリーポイントの契約を検証するのは`virune run`だけです。ライブラリのビルド、`virune check`、`virune build`、APIスナップショット、依存としてインポートされるモジュールには`main`宣言は必要ありません。
@@ -21,21 +19,6 @@
 `[entry.return]` `main`は`Unit`、または正しく構成された任意のエラー型`E`を使う`Result<Unit, E>`を返さなければなりません。
 
 `[entry.async]` `main`は同期・非同期のどちらでも構いません。CLIは結果を`await`してからプロセスの終了状態を決定します。
-
-許可される形式は以下です。
-
-```virune
-pub fn main() -> Unit
-pub fn main(args: List<String>) -> Unit
-pub fn main() -> Result<Unit, E>
-pub fn main(args: List<String>) -> Result<Unit, E>
-pub async fn main() -> Unit
-pub async fn main(args: List<String>) -> Unit
-pub async fn main() -> Result<Unit, E>
-pub async fn main(args: List<String>) -> Result<Unit, E>
-```
-
-上記はシグネチャの例です。各宣言には有効なViruneの関数本体が必要です。
 
 ## 終了動作
 
