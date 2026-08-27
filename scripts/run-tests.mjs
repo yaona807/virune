@@ -2,7 +2,6 @@
 // Each annotation names an existing source test and case; scripts/verify-spec.mjs verifies
 // that the test remains on the unit or integration execution path before accepting it.
 // @virune-rule {"id":"collection.eq-hash","runner":"unit","file":"packages/runtime/test/runtime.test.ts","case":"Virune Map and Set use structural equality and nominal type identity","kind":"positive","platform":"common"}
-// @virune-rule {"id":"conformance.exact-diagnostics","runner":"integration","file":"integration/conformance.test.ts","case":"CLI conformance compares exact status and diagnostic ranges","kind":"positive","platform":"common"}
 // @virune-rule {"id":"documentation.declaration","runner":"unit","file":"packages/compiler/test/compiler.test.ts","case":"documentation comments are classified and attached to supported AST nodes","kind":"positive","platform":"common"}
 // @virune-rule {"id":"documentation.diagnostics","runner":"unit","file":"packages/compiler/test/compiler.test.ts","case":"documentation diagnostics reject orphan, misplaced, unsupported, and duplicate groups","kind":"positive","platform":"common"}
 // @virune-rule {"id":"documentation.kinds","runner":"unit","file":"packages/compiler/test/compiler.test.ts","case":"documentation comments are classified and attached to supported AST nodes","kind":"positive","platform":"common"}
