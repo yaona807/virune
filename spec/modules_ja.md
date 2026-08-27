@@ -17,9 +17,6 @@
 ## `[module.package]` npmパッケージ
 パッケージ解決では`package.json`と、ソース宣言用の`virune`条件を持つ`exports`エントリを使用します。生成するJavaScriptは通常のESMインポート条件を使用します。プラットフォームの制約はコンパイル時に検査します。
 
-## `[module.api]` 公開APIスナップショット
-`virune api`は、決定的な公開インターフェースのスナップショットを生成します。`virune api --check`はスナップショットとの差異がある場合に失敗します。ソース、Runtime ABI、動作、フォーマッターの互換性はそれぞれ別に管理します。
-
 ## プラットフォームでの実行
 
-`[platform.browser-runtime]` `platform: "browser"`を指定したプロジェクトは、ブラウザで読み込めるES2022 ESMを出力し、ブラウザ向けの標準ライブラリアダプターを利用できます。Node.js専用のインポートは拒否します。リリース適合試験では、生成したモジュールを実際のChromiumで実行し、Runtime ABIのインポート、DOM操作、非同期モジュール読み込み、バイナリ値を確認します。
+`[platform.browser-runtime]` `platform: "browser"`を指定したプロジェクトは、ブラウザで読み込めるES2022 ESMを出力し、ブラウザ向けの標準ライブラリアダプターを利用できます。Node.js専用のインポートは拒否します。
