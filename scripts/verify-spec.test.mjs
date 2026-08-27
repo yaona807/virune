@@ -47,6 +47,36 @@ test('compile-error conformance expectation is executable negative evidence', as
 	assert.deepEqual(report.unmappedRules, []);
 });
 
+test('checked-script verifier is executable evidence', async t => {
+	const root = await createFixture(t, {
+		packageScripts: {
+			'verify:metadata': 'npm run spec:check',
+			'spec:check': 'node scripts/check-type-one.mjs',
+		},
+		extraFiles: {
+			'scripts/check-type-one.mjs': `// ${'@virune-rule'} type.one\n`,
+		},
+	});
+	const report = await verifySpec(root, { writeReport: false });
+	assert.equal(report.rulesWithExecutableEvidence, 1);
+	assert.equal(report.rules[0].evidence[0].source, 'verifier');
+});
+
+test('verifier outside checked script graph fails closed', async t => {
+	const root = await createFixture(t, {
+		packageScripts: {
+			'verify:metadata': 'npm run spec:check',
+			'spec:check': 'node scripts/other-check.mjs',
+			'unused:check': 'node scripts/check-type-one.mjs',
+		},
+		extraFiles: {
+			'scripts/check-type-one.mjs': `// ${'@virune-rule'} type.one\n`,
+			'scripts/other-check.mjs': '// no evidence\n',
+		},
+	});
+	await assert.rejects(() => verifySpec(root, { writeReport: false }), /Stale verifier evidence[\s\S]*not reachable from a repository-owned checked script/u);
+});
+
 test('missing executable evidence fails closed', async t => {
 	const root = await createFixture(t);
 	await assert.rejects(() => verifySpec(root, { writeReport: false }), /Normative rules without executable evidence:[\s\S]*type\.one/u);
@@ -144,9 +174,10 @@ async function createFixture(t, options = {}) {
 	const runnerEntries = (options.runnerEntries ?? []).map(value => `// executes ${value}`).join('\n');
 	await write(root, 'scripts/run-tests.mjs', `${annotationText}${annotationText.length > 0 ? '\n' : ''}${runnerEntries}\n`);
 	await write(root, 'scripts/run-unit-tests.mjs', "collectTests(join('packages', entry.name, 'dist', 'test'), files)\nentry.name.endsWith('.test.js')\n");
-	await write(root, 'package.json', `${JSON.stringify({ scripts: {} }, null, 2)}\n`);
+	await write(root, 'package.json', `${JSON.stringify({ scripts: options.packageScripts ?? {} }, null, 2)}\n`);
 	for (const [path, content] of Object.entries(options.testFiles ?? {})) await write(root, path, content);
 	for (const [path, content] of Object.entries(options.conformance ?? {})) await write(root, path, content);
+	for (const [path, content] of Object.entries(options.extraFiles ?? {})) await write(root, path, content);
 	return root;
 }
 
