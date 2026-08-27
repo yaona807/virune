@@ -6,7 +6,7 @@
 JavaScriptやnpmの値は`extern js`を通じてViruneへ入ります。通常のインポートでJavaScriptの値を直接信頼することはできません。
 
 ## `[ffi.safe]` 安全な`extern`
-安全な`extern`は`Result<T, JsError>`またはその非同期版を返します。生成したラッパーは同期例外とPromiseの拒否を捕捉し、値を検証してViruneの表現へ変換します。
+安全な`extern`は`Result<T, JsError>`またはその非同期版を返します。生成したラッパーは同期例外とPromiseの拒否を捕捉し、値を検証してViruneの表現へ変換します。複合値を安全にデコードするときは走査量を制限し、構造上の安全性を検査します。検証できない入力をVirune側の通常の値（Native値）へ昇格させず、失敗として扱います。
 
 ## `[ffi.unsafe]` 検証を省略する`unsafe extern`
 `unsafe extern`は検証を省略し、`ffi/`配下で`unsafe module`として宣言されたモジュールでのみ使用できます。
