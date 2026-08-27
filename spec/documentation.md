@@ -12,7 +12,7 @@ Virune distinguishes three line-comment forms:
 //! Documentation for the current source module
 ```
 
-`///` means exactly three slash characters followed by any character other than `/`. `////` is an ordinary line comment. Virune 1.0 has no block-comment or block-documentation syntax.
+`///` means exactly three slash characters followed by any character other than `/`. `////` is an ordinary line comment.
 
 ## `[documentation.module]` Module documentation
 
@@ -40,8 +40,6 @@ For each line, the marker is removed and at most one immediately following ASCII
 ## `[documentation.markdown]` Markdown
 
 Documentation text is CommonMark 0.31.2-compatible Markdown.
-
-Standard headings such as `Parameters`, `Returns`, `Errors`, `Panics`, `Safety`, and `Examples` are conventions, not language syntax. Virune 1.0 does not assign special meaning to `@param`, `@return`, XML tags, or heading names.
 
 ## `[documentation.semantics]` Compilation semantics
 
