@@ -35,21 +35,17 @@ Viruneでは、3種類の行コメントを区別します。
 
 ## `[documentation.normalization]` 本文の正規化
 
-各行からマーカーを取り除き、その直後にASCIIスペースがある場合は最大1文字だけ取り除きます。残りの行をLFで連結し、先頭と末尾にある空のドキュメント行を取り除きます。コメントグループ全体のソース上の範囲は保持します。
-
-フォーマッターは、本文が空でない`///`または`//!`の直後にASCIIスペースを1文字入れます。Markdown本文の自動折り返しは行いません。
+各行からマーカーを取り除き、その直後にASCIIスペースがある場合は最大1文字だけ取り除きます。残りの行をLFで連結し、先頭と末尾にある空のドキュメント行を取り除きます。
 
 ## `[documentation.markdown]` Markdown
 
-本文はCommonMark 0.31.2互換のMarkdownです。公式ツールは生のHTMLを描画しません。最初の段落は、補完やシンボル表示向けUIで使う概要です。Hoverや生成ドキュメントでは全文を表示できます。
+本文はCommonMark 0.31.2互換のMarkdownです。
 
 `Parameters`、`Returns`、`Errors`、`Panics`、`Safety`、`Examples`などの見出しは慣例であり、言語構文ではありません。Virune 1.0では、`@param`、`@return`、XMLタグ、見出し名に特別な意味を与えません。
 
 ## `[documentation.semantics]` コンパイル時の意味
 
-ドキュメントは正規化済みのテキストとしてASTに保持します。名前解決、型検査、JavaScript出力、Runtime ABI、Stable APIの互換性スナップショットには影響しません。
-
-公式のエディタツールは、Hover、補完、Signature Help、スニペット、ドキュメント生成のCode Actionを通じてドキュメントを提供します。
+ドキュメントは、名前解決、型検査、JavaScript出力、Runtime ABIには影響しません。
 
 ## `[documentation.diagnostics]` 診断
 
