@@ -4,7 +4,7 @@
 
 ## Scope
 
-`[entry.run-only]` The entry-point contract is validated only for `virune run`. Library builds, `virune check`, `virune build`, API snapshots, and modules imported as dependencies do not require a `main` declaration.
+`[entry.run-only]` The entry-point contract is validated only for `virune run`.
 
 `[entry.module]` The configured `entry` file in `virune.json` is the only module searched for the executable entry point.
 
@@ -28,4 +28,4 @@
 
 ## Browser modules
 
-`[entry.browser]` Browser-target builds do not automatically invoke `main`. Browser applications expose functions through `@jsExport` or import the generated ESM from a JavaScript bootstrap module. The `main` contract remains specific to `virune run`.
+`[entry.browser]` Browser-target builds do not automatically invoke `main`.
