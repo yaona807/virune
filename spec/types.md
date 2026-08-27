@@ -27,7 +27,7 @@ Local value and generic call types are inferred by unification. Public API bound
 Generic declarations are invariant. Type arguments are inferred from call arguments and explicit expected callback types.
 
 ## `[type.capabilities]` Effects
-Function types may include a fixed built-in effect set declared with `uses`. Calls require the enclosing function to declare every concrete required effect. Users cannot declare new capability names or effect handlers.
+Function types may include a fixed built-in effect set declared with `uses`. Calls require the enclosing function to declare every concrete required effect.
 
 ## `[type.open-effect-nonescaping]` Open callback effects
 `uses *` is limited to non-escaping callback parameters. Such a callback may be called directly or forwarded to another `uses *` callback parameter. It cannot be stored in a record, enum, tuple, list, map, alias, newtype, closure, return value, top-level value, or local variable.
