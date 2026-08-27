@@ -5,7 +5,6 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { verifyNpmPublicationPlan } from './verify-npm-publication-plan.mjs';
-import { verifyReleaseChannelDocumentation } from './verify-release-channel.mjs';
 
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const workspaceDirectories = [
@@ -59,45 +58,6 @@ test('current repository has a complete but explicitly non-ready npm prepublicat
 		],
 		excludedWorkspacePackages: ['@virune/language-server', 'virune-vscode'],
 	});
-});
-
-test('release-channel documentation is bound to the canonical npm publication policy', () => {
-	const publicationPlan = verifyNpmPublicationPlan(repositoryRoot);
-	const english = readFileSync(resolve(repositoryRoot, 'docs/release-channels.md'), 'utf8');
-	const japanese = readFileSync(resolve(repositoryRoot, 'docs/release-channels_ja.md'), 'utf8');
-	assert.doesNotThrow(() => verifyReleaseChannelDocumentation(publicationPlan, english, japanese));
-	assert.throws(
-		() => verifyReleaseChannelDocumentation(
-			publicationPlan,
-			english.replace('stable uses `latest`', 'stable uses `stable`'),
-			japanese,
-		),
-		/English release-channel documentation does not match the canonical npm publication plan/u,
-	);
-	assert.throws(
-		() => verifyReleaseChannelDocumentation(
-			publicationPlan,
-			english,
-			japanese.replace('stableは`latest`', 'stableは`stable`'),
-		),
-		/Japanese release-channel documentation does not match the canonical npm publication plan/u,
-	);
-	assert.throws(
-		() => verifyReleaseChannelDocumentation(
-			publicationPlan,
-			`${english}\nVirune packages are not published to the npm Registry and do not use npm Registry dist-tags.\n`,
-			japanese,
-		),
-		/English release-channel documentation contains the superseded GitHub-only npm policy/u,
-	);
-	assert.throws(
-		() => verifyReleaseChannelDocumentation(
-			publicationPlan,
-			english,
-			`${japanese}\nViruneパッケージをnpm Registryへ公開せず、npm Registryのdist-tagも使用しません。\n`,
-		),
-		/Japanese release-channel documentation contains the superseded GitHub-only npm policy/u,
-	);
 });
 
 test('workspace layout changes fail until publication-plan enumeration is updated', () => {

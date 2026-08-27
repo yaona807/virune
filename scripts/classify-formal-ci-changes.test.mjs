@@ -13,9 +13,17 @@ const repositoryRoot = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const reviewedDocumentationPaths = Object.freeze([
 	'README.md',
 	'README_ja.md',
-	'docs/language-guide.md',
-	'docs/language-guide_ja.md',
+	'CONTRIBUTING.md',
+	'COMPATIBILITY_ja.md',
+	'SECURITY.md',
+	'CODE_OF_CONDUCT_ja.md',
 	'.github/PULL_REQUEST_TEMPLATE/self-hosting.md',
+]);
+
+const removedDocumentationPaths = Object.freeze([
+	'docs/language-guide.md',
+	'docs/performance-benchmarks.md',
+	'docs/adr-typescript-7-migration.md',
 	'.github/self-hosting-operations/README.md',
 ]);
 
@@ -51,16 +59,13 @@ test('explicit reviewed documentation-only changes omit optional formal lanes by
 	}
 });
 
-test('preserves previously reviewed formal triggers for performance and TypeScript migration docs', () => {
-	assert.equal(isFormalLaneRequired('performance', ['docs/performance-benchmarks.md']), true);
-	assert.equal(isFormalLaneRequired('typescript7', ['docs/adr-typescript-7-migration-boundary.md']), true);
-	assert.equal(isFormalLaneRequired('typescript7', ['docs/adr-typescript-7-migration.md']), true);
-	for (const lane of ['browser-conformance', 'fixed-seed', 'vsix']) {
-		assert.equal(isFormalLaneRequired(lane, ['docs/performance-benchmarks.md']), false, lane);
-		assert.equal(isFormalLaneRequired(lane, ['docs/adr-typescript-7-migration-boundary.md']), false, lane);
+test('removed documentation paths no longer retain formal-lane exemptions', () => {
+	for (const path of removedDocumentationPaths) {
+		assert.equal(classifyChangedPaths([path]).docsOnly, false, path);
+		for (const lane of formalLanes) {
+			assert.equal(isFormalLaneRequired(lane, [path]), true, `${lane}: ${path}`);
+		}
 	}
-	assert.equal(isFormalLaneRequired('performance', ['docs/adr-typescript-7-migration-boundary.md']), false);
-	assert.equal(isFormalLaneRequired('typescript7', ['docs/performance-benchmarks.md']), false);
 });
 
 test('every non-documentation change requires every optional formal lane', () => {

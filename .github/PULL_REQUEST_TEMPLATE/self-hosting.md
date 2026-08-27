@@ -28,7 +28,7 @@ Refs #
 - Why a stack is required: `not applicable`
 - Overlapping paths with the parent: `none`
 
-<!-- Normal maximum: parent + child. A third open level requires explicit justification. -->
+<!-- Maximum: parent + child. Do not open a third level. -->
 
 ## Intended changed boundaries
 
@@ -79,13 +79,13 @@ Evidence or run identifiers: `none`
 - [ ] This PR has one reviewable intent.
 - [ ] The Implementation Issue and any Tracking/parent references use the repository-wide work-item contract.
 - [ ] The dependency and stack position are accurate.
-- [ ] The normal stack depth is at most two open levels, or the exception is justified.
+- [ ] The stack depth is at most two open levels.
 - [ ] No ancestry-only or zero-change repair PR is required.
 - [ ] Repository-owned diagnostics were used before introducing a temporary execution path.
 - [ ] Required quality, compatibility, security, and reproducibility gates are not weakened or bypassed.
 - [ ] Any cited formal CI evidence belongs to the actual current PR head.
 - [ ] Temporary artifacts have an explicit removal trigger and are excluded from merge.
-- [ ] English and Japanese operational documentation are synchronized when applicable.
+- [ ] English and Japanese documentation are synchronized when applicable.
 - [ ] The PR description identifies the evidence needed to close any superseded diagnostic-only PR.
 
-See `.github/self-hosting-operations/README.md` and `README_ja.md` for the complete policy.
+See `CONTRIBUTING.md` and `CONTRIBUTING_ja.md` for the repository-wide workflow and Self-hosting constraints.

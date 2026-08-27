@@ -23,8 +23,6 @@
 	"files": [
 		"LICENSE",
 		"NOTICE",
-		"README.md",
-		"README_ja.md",
 		"dist/src",
 		"schema/diagnostics-v1.schema.json"
 	],

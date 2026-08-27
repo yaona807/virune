@@ -1,6 +1,6 @@
 # Modules and Packages
 
-[English](modules.md) | [日本語](modules_ja.md)
+[日本語版](modules_ja.md)
 
 ## `[module.file]` File modules
 Each `.virune` file is one module. Relative imports include the `.virune` extension and are resolved exactly; directory indexes and extension inference are not performed.

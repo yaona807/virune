@@ -1,6 +1,6 @@
 # Documentation Comments
 
-[English](documentation.md) | [日本語](documentation_ja.md)
+[日本語版](documentation_ja.md)
 
 ## `[documentation.kinds]` Comment kinds
 

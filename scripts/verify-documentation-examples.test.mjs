@@ -1,11 +1,16 @@
 import assert from 'node:assert/strict';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
 import {
 	buildDocumentExamples,
 	collectViruneFences,
 	parseInlineDirective,
 	verifyCounterpartDrift,
+	verifyDocumentationExamples,
 } from './verify-documentation-examples.mjs';
+
+const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
 test('parses run directives and escaped output expectations', () => {
 	assert.deepEqual(parseInlineDirective('run id="hello" stdout="Hello\\n" stderr="" exit=0'), {
@@ -64,4 +69,14 @@ test('detects exact counterpart drift and permits localized structural strings',
 		['docs/example.md', english],
 		['docs/example_ja.md', drifted],
 	])), /have drifted/u);
+});
+
+test('repository manifest keeps root README Virune fences under validation', async () => {
+	const result = await verifyDocumentationExamples(repositoryRoot, { execute: false });
+	const english = result.documents.get('README.md');
+	const japanese = result.documents.get('README_ja.md');
+	assert.ok(english, 'README.md must remain in the documentation-example manifest');
+	assert.ok(japanese, 'README_ja.md must remain in the documentation-example manifest');
+	assert.ok(english.fences.length > 0, 'README.md must retain covered Virune fences');
+	assert.equal(japanese.fences.length, english.fences.length, 'README counterparts must cover the same number of Virune fences');
 });
