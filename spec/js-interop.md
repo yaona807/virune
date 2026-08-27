@@ -16,7 +16,7 @@ The direct facade supports default, named, namespace, side-effect, and named typ
 
 The provider resolves calls only from the callee and actual argument types. A Virune expected return type MUST NOT participate in JavaScript overload or generic selection. Return-only generic parameters MAY resolve from a TypeScript default or base constraint. Calls requiring callback typing, constructor syntax, structural object literals, bidirectional inference, ambiguous overloads, or complex conditional/mapped types MUST use an adapter.
 
-Named imports from a CommonJS runtime are rejected because synthetic named exports are not portable. Use a default or namespace import, or an adapter.
+Named imports from a CommonJS runtime are rejected because synthetic named exports are not portable. Use a default or namespace import, or an adapter. Runtime module resolution used by a browser or bundler remains the bundler's responsibility.
 
 A TypeScript `any` import is rejected by the direct facade. TypeScript `unknown` remains an unknown foreign value and can cross to Virune `Unknown` without asserting a narrower type.
 
