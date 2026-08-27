@@ -3,6 +3,7 @@ name: Reference check
 on:
   pull_request:
     paths:
+      - 'package.json'
       - 'spec/**'
       - 'scripts/build-reference.mjs'
       - 'scripts/build-reference.test.mjs'
@@ -13,6 +14,7 @@ on:
     branches:
       - main
     paths:
+      - 'package.json'
       - 'spec/**'
       - 'scripts/build-reference.mjs'
       - 'scripts/build-reference.test.mjs'
