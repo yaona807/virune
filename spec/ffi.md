@@ -6,7 +6,7 @@
 JavaScript and npm values enter through `extern js`. Normal imports cannot directly trust JavaScript values.
 
 ## `[ffi.optional-arguments]` Optional extern arguments
-A trailing optional `extern js` argument whose boundary representation is JavaScript `undefined` is omitted from the JavaScript invocation rather than passed as an explicit `undefined` argument.
+When trailing optional `extern js` arguments have JavaScript boundary representation `undefined`, the longest trailing suffix of those arguments is omitted from the invocation. An `undefined` value before a later argument is preserved so JavaScript argument positions do not change.
 
 ## `[ffi.safe]` Safe extern
 A safe extern returns `Result<T, JsError>` or an async equivalent. Generated wrappers catch synchronous exceptions and Promise rejections, validate values, and convert them to Virune representations. Composite safe decoding uses bounded traversal and structural safeguards; inputs that cannot be validated fail closed instead of becoming native Virune values.
