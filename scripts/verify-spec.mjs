@@ -334,8 +334,9 @@ function sameArray(left, right) {
 }
 
 function compareEvidence(left, right) {
-	return `${left.file}\u0000${left.case ?? ''}\u0000${left.kind}\u0000${left.platform}\u0000${left.source}`
-		.localeCompare(`${right.file}\u0000${right.case ?? ''}\u0000${right.kind}\u0000${right.platform}\u0000${right.source}`);
+	const leftKey = `${left.file}\u0000${left.case ?? ''}\u0000${left.kind}\u0000${left.platform}\u0000${left.source}`;
+	const rightKey = `${right.file}\u0000${right.case ?? ''}\u0000${right.kind}\u0000${right.platform}\u0000${right.source}`;
+	return leftKey < rightKey ? -1 : leftKey > rightKey ? 1 : 0;
 }
 
 async function exists(path) {
