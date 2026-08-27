@@ -23,7 +23,7 @@ Compiler-derived `Eq` and `Hash` call these fixed operations. User code cannot r
 
 ## `[runtime.debug]` Debug
 
-Compiler-derived Debug is available only when explicitly derived for a supported declaration.
+Compiler-derived Debug produces a stable developer-facing String representation for supported values and is available only when explicitly derived for a supported declaration.
 
 ## `[runtime.interop-descriptors-v2]` Interop ABI v2 descriptors
 
