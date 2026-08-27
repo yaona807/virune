@@ -1,3 +1,45 @@
+// Specification evidence is declared beside the repository-owned runner that executes it.
+// Each annotation names an existing source test and case; scripts/verify-spec.mjs verifies
+// that the test remains on the unit or integration execution path before accepting it.
+// @virune-rule {"id":"collection.eq-hash","runner":"unit","file":"packages/runtime/test/runtime.test.ts","case":"Virune Map and Set use structural equality and nominal type identity","kind":"positive","platform":"common"}
+// @virune-rule {"id":"documentation.declaration","runner":"unit","file":"packages/compiler/test/compiler.test.ts","case":"documentation comments are classified and attached to supported AST nodes","kind":"positive","platform":"common"}
+// @virune-rule {"id":"documentation.diagnostics","runner":"unit","file":"packages/compiler/test/compiler.test.ts","case":"documentation diagnostics reject orphan, misplaced, unsupported, and duplicate groups","kind":"positive","platform":"common"}
+// @virune-rule {"id":"documentation.kinds","runner":"unit","file":"packages/compiler/test/compiler.test.ts","case":"documentation comments are classified and attached to supported AST nodes","kind":"positive","platform":"common"}
+// @virune-rule {"id":"documentation.markdown","runner":"unit","file":"packages/language-server/test/features.test.ts","case":"Hover escapes raw HTML outside fenced documentation code blocks","kind":"positive","platform":"common"}
+// @virune-rule {"id":"documentation.module","runner":"unit","file":"packages/compiler/test/compiler.test.ts","case":"documentation diagnostics reject orphan, misplaced, unsupported, and duplicate groups","kind":"positive","platform":"common"}
+// @virune-rule {"id":"documentation.normalization","runner":"unit","file":"packages/formatter/test/formatter.test.ts","case":"formatter normalizes and preserves documentation comment markers","kind":"positive","platform":"common"}
+// @virune-rule {"id":"documentation.semantics","runner":"unit","file":"packages/compiler/test/compiler.test.ts","case":"ordinary comments break documentation association and documentation never changes emitted JavaScript","kind":"positive","platform":"common"}
+// @virune-rule {"id":"entry.async","runner":"integration","file":"integration/cli-api.test.ts","case":"CLI run creates a task context for async main without user arguments","kind":"positive","platform":"common"}
+// @virune-rule {"id":"entry.browser","runner":"integration","file":"integration/browser.test.ts","case":"browser target executes emitted ESM in Chromium","kind":"positive","platform":"browser"}
+// @virune-rule {"id":"entry.diagnostic","runner":"integration","file":"integration/entry-point-invalid.test.ts","case":"CLI run reports invalid main signatures as user diagnostics","kind":"positive","platform":"common"}
+// @virune-rule {"id":"entry.exit","runner":"integration","file":"integration/entry-point-runtime.test.ts","case":"CLI run accepts args and Result<Unit, E>, and converts panic to exit code 1 without an internal stack","kind":"positive","platform":"common"}
+// @virune-rule {"id":"entry.main","runner":"integration","file":"integration/entry-point-invalid.test.ts","case":"CLI run reports invalid main signatures as user diagnostics","kind":"positive","platform":"common"}
+// @virune-rule {"id":"entry.module","runner":"integration","file":"integration/entry-point-invalid.test.ts","case":"CLI run reports invalid main signatures as user diagnostics","kind":"positive","platform":"common"}
+// @virune-rule {"id":"entry.non-generic","runner":"integration","file":"integration/entry-point-invalid.test.ts","case":"CLI run reports invalid main signatures as user diagnostics","kind":"positive","platform":"common"}
+// @virune-rule {"id":"entry.parameters","runner":"integration","file":"integration/entry-point-runtime.test.ts","case":"CLI run accepts args and Result<Unit, E>, and converts panic to exit code 1 without an internal stack","kind":"positive","platform":"common"}
+// @virune-rule {"id":"entry.return","runner":"integration","file":"integration/entry-point-runtime.test.ts","case":"CLI run accepts args and Result<Unit, E>, and converts panic to exit code 1 without an internal stack","kind":"positive","platform":"common"}
+// @virune-rule {"id":"entry.run-only","runner":"integration","file":"integration/entry-point-invalid.test.ts","case":"CLI run reports invalid main signatures as user diagnostics","kind":"positive","platform":"common"}
+// @virune-rule {"id":"eval.order","runner":"integration","file":"integration/project.test.ts","case":"build output is deterministic","kind":"positive","platform":"common"}
+// @virune-rule {"id":"eval.panic","runner":"integration","file":"integration/project.test.ts","case":"generated defer aggregates the primary panic and every cleanup panic","kind":"positive","platform":"common"}
+// @virune-rule {"id":"eval.reference","runner":"unit","file":"packages/compiler/test/compiler.test.ts","case":"reference evaluator agrees with the pure language core","kind":"positive","platform":"common"}
+// @virune-rule {"id":"eval.return","runner":"unit","file":"packages/compiler/test/compiler.test.ts","case":"reference evaluator agrees with the pure language core","kind":"positive","platform":"common"}
+// @virune-rule {"id":"ffi.binding","runner":"integration","file":"integration/cli.test.ts","case":"CLI bind generates type-checkable Virune FFI declarations from TypeScript declarations","kind":"positive","platform":"common"}
+// @virune-rule {"id":"ffi.bytes","runner":"unit","file":"packages/runtime/test/runtime.test.ts","case":"Bytes and MutableBytes support binary round-trips without aliasing","kind":"positive","platform":"common"}
+// @virune-rule {"id":"lexical.comments","runner":"unit","file":"packages/compiler/test/compiler.test.ts","case":"documentation comments are classified and attached to supported AST nodes","kind":"positive","platform":"common"}
+// @virune-rule {"id":"lexical.encoding","runner":"unit","file":"packages/compiler/test/compiler.test.ts","case":"compiler fuzz: parser and checker never throw for deterministic malformed input corpus","kind":"positive","platform":"common"}
+// @virune-rule {"id":"module.api","runner":"integration","file":"integration/cli-api.test.ts","case":"CLI api writes a deterministic public API snapshot and detects drift","kind":"positive","platform":"common"}
+// @virune-rule {"id":"module.cycle","runner":"integration","file":"integration/project.test.ts","case":"module cycles are rejected","kind":"positive","platform":"common"}
+// @virune-rule {"id":"module.file","runner":"integration","file":"integration/project.test.ts","case":"buildProject emits an ES module and traceable source map","kind":"positive","platform":"common"}
+// @virune-rule {"id":"module.import","runner":"integration","file":"integration/project.test.ts","case":"public imports re-export values and preserve original type identity","kind":"positive","platform":"common"}
+// @virune-rule {"id":"module.package","runner":"integration","file":"integration/project.test.ts","case":"npm package subpaths use virune declarations for checking and JavaScript exports at runtime","kind":"positive","platform":"common"}
+// @virune-rule {"id":"module.visibility","runner":"integration","file":"integration/project.test.ts","case":"public API cannot expose a private nominal type","kind":"positive","platform":"common"}
+// @virune-rule {"id":"platform.browser-runtime","runner":"integration","file":"integration/browser.test.ts","case":"browser target executes emitted ESM in Chromium","kind":"positive","platform":"browser"}
+// @virune-rule {"id":"task.parallel","runner":"unit","file":"packages/runtime/test/runtime.test.ts","case":"Task.parallel cancels siblings, waits for settlement, and reports the leftmost rejection","kind":"positive","platform":"common"}
+// @virune-rule {"id":"task.race","runner":"unit","file":"packages/runtime/test/runtime.test.ts","case":"Task.race observes first settlement while Task.firstOk observes first fulfillment","kind":"positive","platform":"common"}
+// @virune-rule {"id":"task.scope","runner":"unit","file":"packages/runtime/test/runtime.test.ts","case":"Task.mapParallel cancels siblings and waits for their cleanup","kind":"positive","platform":"common"}
+// @virune-rule {"id":"task.timeout","runner":"unit","file":"packages/runtime/test/runtime.test.ts","case":"Task.timeout cancels and settles the child before returning","kind":"positive","platform":"common"}
+// @virune-rule {"id":"type.nominal-identity","runner":"integration","file":"integration/project.test.ts","case":"same-named records from different modules remain nominally distinct","kind":"positive","platform":"common"}
+
 import { spawn } from 'node:child_process';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
@@ -48,6 +90,7 @@ const groups = platformSmoke ? platformGroups : [
 		},
 		{ name: 'documentation layout policy', files: ['scripts/verify-documentation.test.mjs'] },
 		{ name: 'documentation example policy', files: ['scripts/verify-documentation-examples.test.mjs'] },
+		{ name: 'spec contract policy', files: ['scripts/verify-spec.test.mjs'] },
 		{
 			name: 'npm publication plan policy',
 			files: [
