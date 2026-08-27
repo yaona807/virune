@@ -26,9 +26,6 @@ Local value and generic call types are inferred by unification. Public API bound
 ## `[type.generics]` Generics
 Generic declarations are invariant. Type arguments are inferred from call arguments and explicit expected callback types.
 
-## `[type.composition]` Behaviour composition
-Reusable behaviour is represented with ordinary functions and records containing function fields. Implementations are passed explicitly.
-
 ## `[type.capabilities]` Effects
 Function types may include a fixed built-in effect set declared with `uses`. Calls require the enclosing function to declare every concrete required effect. Users cannot declare new capability names or effect handlers.
 
