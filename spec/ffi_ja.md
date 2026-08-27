@@ -9,7 +9,7 @@ JavaScriptやnpmの値は`extern js`を通じてViruneへ入ります。通常�
 安全な`extern`は`Result<T, JsError>`またはその非同期版を返します。生成したラッパーは同期例外とPromiseの拒否を捕捉し、値を検証してViruneの表現へ変換します。
 
 ## `[ffi.unsafe]` 検証を省略する`unsafe extern`
-`unsafe extern`は検証を省略します。使用できるのは、`ffi/`配下で`unsafe module`として宣言されたモジュールだけです。`unsafe extern`宣言は明示的な監査境界であり、不変性や型に関する前提を壊す可能性があります。
+`unsafe extern`は検証を省略し、`ffi/`配下で`unsafe module`として宣言されたモジュールでのみ使用できます。
 
 ## `[ffi.export]` JavaScriptへの公開
 `@jsExport`を使用できるのは公開関数だけです。公開用のラッパーはJavaScriptの引数を検証し、戻り値の`record`、コレクション、`Option`、`Result`、`enum`を文書化されたJavaScript表現へ変換します。必要な場合は末尾の省略可能な引数を渡さず、JavaScriptへ公開するViruneの集約値は防御的にコピーします。外部ハンドル（Foreignハンドル）は外部値のまま保持し、検証済みのNative値として扱いません。
