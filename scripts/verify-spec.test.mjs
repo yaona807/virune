@@ -59,6 +59,15 @@ test('malformed normative rule ID fails closed', async t => {
 	await assert.rejects(() => verifySpec(root, { writeReport: false }), /Invalid rule id Type\.one/u);
 });
 
+test('partial evidence annotation fails closed', async t => {
+	const root = await createFixture(t, {
+		annotations: [{ id: 'type.one', runner: 'integration', file: 'integration/example.test.ts' }],
+		runnerEntries: ['integration/dist/example.test.js'],
+		testFiles: { 'integration/example.test.ts': "test('works', () => {});\n" },
+	});
+	await assert.rejects(() => verifySpec(root, { writeReport: false }), /Partial @virune-rule annotation/u);
+});
+
 test('stale evidence file fails closed', async t => {
 	const root = await createFixture(t, {
 		annotations: [testEvidence('type.one', 'integration/missing.test.ts', 'works')],
