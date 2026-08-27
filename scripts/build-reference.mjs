@@ -50,7 +50,7 @@ export async function buildReference(root = resolve('.'), options = {}) {
 		const outputPath = join(outputDirectory, ...page.outputPath.split('/'));
 		await mkdir(dirname(outputPath), { recursive: true });
 		const content = page.sourcePath === 'spec/grammar.ebnf'
-			? renderGrammar(await readFile(join(root, 'spec/grammar.ebnf'), 'utf8'))
+			? renderGrammar(await readFile(join(root, 'spec/grammar.ebnf'), 'utf8'), page.title)
 			: renderMarkdown(page.source, {
 				sourcePath: page.sourcePath,
 				outputPath: page.outputPath,
@@ -263,8 +263,8 @@ function verifyRuleAnchors(report, pageBySource, grammarByLocale) {
 	}
 }
 
-function renderGrammar(source) {
-	return `<h1 id="grammar.complete">Normative grammar</h1>\n<pre><code>${escapeHtml(source.replace(/\r\n?/gu, '\n'))}</code></pre>`;
+export function renderGrammar(source, title) {
+	return `<h1 id="grammar.complete">${escapeHtml(title)}</h1>\n<pre><code>${escapeHtml(source.replace(/\r\n?/gu, '\n'))}</code></pre>`;
 }
 
 function renderPage({ page, pages, content, counterpart, identity, repositoryUrl }) {
