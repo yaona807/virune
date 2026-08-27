@@ -19,6 +19,20 @@ test('spec evidence graph accepts a repository-run integration test', async t =>
 	assert.equal(report.executableEvidenceCoveragePercent, 100);
 });
 
+test('inline normative rule declarations are discovered', async t => {
+	const inline = '# Entry\n\n`[type.one]` The rule is declared inline.\n';
+	const root = await createFixture(t, {
+		english: inline,
+		japanese: '# エントリー\n\n`[type.one]` 規則を行頭で宣言する。\n',
+		annotations: [testEvidence('type.one', 'integration/example.test.ts', 'works')],
+		runnerEntries: ['integration/dist/example.test.js'],
+		testFiles: { 'integration/example.test.ts': "test('works', () => {});\n" },
+	});
+	const report = await verifySpec(root, { writeReport: false });
+	assert.equal(report.normativeRuleCount, 1);
+	assert.deepEqual(report.unmappedRules, []);
+});
+
 test('compile-error conformance expectation is executable negative evidence', async t => {
 	const root = await createFixture(t, {
 		runnerEntries: ['integration/dist/conformance.test.js'],
