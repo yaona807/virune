@@ -3,7 +3,7 @@ import { dirname, join, relative, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 const RULE_ID_PATTERN = /^[a-z][a-z0-9-]*(?:\.[a-z0-9-]+)+$/u;
-const RULE_HEADING_PATTERN = /^#{2,6}\s+`\[([^\]\r\n]+)\]`(?:\s|$)/gmu;
+const RULE_HEADING_PATTERN = /^(?:#{2,6}\s+)?`\[([^\]\r\n]+)\]`(?:\s|$)/gmu;
 const ANNOTATION_PREFIX = '// @virune-rule ';
 const GRAMMAR_RULE_ID = 'grammar.complete';
 
