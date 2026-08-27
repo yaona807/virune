@@ -118,6 +118,8 @@ Examples of incompatible changes include:
 
 The connection rules between generated code and the Runtime are called the Runtime ABI. The connection rules used for Virune / JavaScript interop are called the Interop ABI.
 
+An incompatible change to a Stable Runtime ABI or Interop ABI requires a new versioned ABI path and migration guidance.
+
 Prereleases may contain incompatible changes while a release is still being prepared.
 
 Nightly builds are development snapshots and do not carry compatibility guarantees between builds.

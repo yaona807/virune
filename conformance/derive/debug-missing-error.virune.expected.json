@@ -10,5 +10,8 @@
       "endLine": 6,
       "endColumn": 27
     }
+  ],
+  "rules": [
+    "runtime.debug"
   ]
 }

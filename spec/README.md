@@ -2,7 +2,7 @@
 
 [日本語版](README_ja.md)
 
-The files in this `spec/` directory define the normative language contract for Virune 1.0. If explanatory documentation elsewhere conflicts with this directory, this specification takes precedence. [Runtime ABI v2](runtime-abi.md) is normative for Runtime ABI details.
+This README is the index for the Virune 1.0 normative specification. The paired English/Japanese documents in this directory that declare stable rule IDs, together with `grammar.ebnf`, define the normative Virune 1.0 contracts. The document list below is an index, not a manual allowlist. If explanatory documentation elsewhere conflicts with those contracts, the specification takes precedence. [Runtime ABI v2](runtime-abi.md) is normative for Runtime ABI details.
 
 Each externally observable rule has a stable ID such as `[type.nominal-identity]`. `npm run spec:check` discovers rule IDs from the paired English/Japanese normative documents and binds them to executable evidence declared by conformance expectations or repository-owned test/verifier annotations. Editorial corrections that do not change language behavior may be made, but behavioral changes after Virune 1.0 must follow the [compatibility policy](../COMPATIBILITY.md).
 

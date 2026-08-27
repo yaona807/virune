@@ -24,19 +24,16 @@ Recoverable failure uses `Result<T, E>`. The postfix `?` propagates `Err` or `No
 Local value and generic call types are inferred by unification. Public API boundaries remain explicit. Virune performs no implicit numeric, string, option, result, foreign, or aggregate conversion.
 
 ## `[type.generics]` Generics
-Generic declarations are invariant. Type arguments are inferred from call arguments and explicit expected callback types. Virune 1.0 has no protocol constraints, higher-kinded types that accept type constructors as type arguments, user-defined variance, overloads, or implicit implementation search.
-
-## `[type.composition]` Behaviour composition
-Reusable behaviour is represented with ordinary functions and records containing function fields. Implementations are passed explicitly; the language has no `protocol`, `impl`, or `where` declarations. This keeps dependency injection, codecs, comparators, repositories, and test doubles within the same value model as normal code.
+Generic declarations are invariant. Type arguments are inferred from call arguments and explicit expected callback types.
 
 ## `[type.capabilities]` Effects
-Function types may include a fixed built-in effect set declared with `uses`. Calls require the enclosing function to declare every concrete required effect. Users cannot declare new capability names or effect handlers.
+Function types may include a fixed built-in effect set declared with `uses`. Calls require the enclosing function to declare every concrete required effect.
 
 ## `[type.open-effect-nonescaping]` Open callback effects
-`uses *` is limited to non-escaping callback parameters. Such a callback may be called directly or forwarded to another `uses *` callback parameter. It cannot be stored in a record, enum, tuple, list, map, alias, newtype, closure, return value, top-level value, or local variable. This preserves effect tracking without exposing effect-row types, which represent effect sets in the type system.
+`uses *` is limited to non-escaping callback parameters. Such a callback may be called directly or forwarded to another `uses *` callback parameter. It cannot be stored in a record, enum, tuple, list, map, alias, newtype, closure, return value, top-level value, or local variable.
 
 ## `[type.mutation]` Mutation
 Bindings cannot be reassigned by default. Virune aggregate values such as records, enums, and collections are also immutable by default. `let mut` permits local reassignment only. Record fields, enum payloads, Virune collections, and newtype values are not mutated in place.
 
 ## `[type.must-use]` Must-use values
-`Future`, `Result`, resources, streams, and declarations annotated `@mustUse` cannot be silently ignored. A program must bind, return, propagate, await, match, or explicitly discard the value with `discard expression`.
+Asynchronous call results, `Result` values, resources, streams, and values from declarations annotated `@mustUse` cannot be silently ignored. A program must bind, return, propagate, await, match, or explicitly discard the value with `discard expression`.

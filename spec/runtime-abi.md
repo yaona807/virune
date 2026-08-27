@@ -2,9 +2,10 @@
 
 [日本語版](runtime-abi_ja.md)
 
-Virune 1.0.0 emits ES2022 modules against Runtime ABI v2.
+## `[runtime.version]` Runtime ABI version
+Virune 1.0.0 generated JavaScript uses Runtime ABI v2.
 
-## Native representation (Virune-side runtime representation)
+## `[runtime.native-representation]` Native representation
 
 - primitives use their validated JavaScript primitive representation;
 - records are null-prototype objects with enumerable fields and a non-enumerable nominal `$type` ID;
@@ -14,25 +15,17 @@ Virune 1.0.0 emits ES2022 modules against Runtime ABI v2.
 - Option and Result use Runtime constructors and tags;
 - Virune `List`, `Map`, and `Set` values are immutable from Virune code.
 
-## Structural equality and hashing
+## `[runtime.eq-hash]` Structural equality and hashing
 
-Runtime ABI v2 has no protocol registry. Equality and hashing are fixed structural operations for supported immutable types. Nominal aggregate IDs participate in equality so equally shaped values from different declarations are not interchangeable. Functions, resources, foreign handles, and unsupported mutable values are not structurally comparable or hashable.
+Equality and hashing are fixed structural operations for supported immutable types. Nominal aggregate IDs participate in equality so equally shaped values from different declarations are not interchangeable. Functions, resources, foreign handles, and unsupported mutable values are not structurally comparable or hashable.
 
 Compiler-derived `Eq` and `Hash` call these fixed operations. User code cannot replace them.
 
-## Debug
+## `[runtime.debug]` Debug
 
-Compiler-derived Debug produces a stable developer representation only for supported values. It is explicit opt-in and is not generated automatically for TypeScript bindings.
+Compiler-derived Debug produces a stable developer-facing String representation for supported values and is available only when explicitly derived for a supported declaration.
 
-## Cleanup
-
-`defer` registers cleanup in the current function/task scope. Cleanup executes in LIFO order on normal return, early return, `?` propagation, panic, and asynchronous completion. Primary and cleanup failures are retained according to the Runtime error aggregation contract.
-
-## Structured concurrency
-
-Every task belongs to a scope. `parallel` and `parallel try` start children in the current scope, cancel siblings when required, wait for all children to settle, and preserve deterministic source-order failure selection. The Runtime does not expose detached tasks through normal Virune APIs.
-
-## Interop ABI v2 descriptors
+## `[runtime.interop-descriptors-v2]` Interop ABI v2 descriptors
 
 Descriptors cover validated primitives, options, results, bytes, supported collections, records, enums, type aliases, and newtypes. Record fields may include:
 
@@ -42,18 +35,4 @@ Descriptors cover validated primitives, options, results, bytes, supported colle
 - the null/undefined representation expected at the boundary;
 - compile-time JSON defaults and strictness metadata.
 
-Record and enum descriptors carry the complete nominal `typeId` (`package#module:Type`). Recursive or unresolved descriptors do not silently become safe aggregates; they fall back to `Unknown` or require an adapter.
-
-Safe descriptors do not claim callback validation, arbitrary object-keyed JavaScript Map/Set conversion, or TypeScript `Record<K, V>` conversion.
-
-## JavaScript exports
-
-`@jsExport` wrappers validate inbound values, convert outbound values, omit optional trailing arguments when required, and defensively copy native aggregate values exposed to JavaScript. Foreign handles remain external values and are never presented as validated native values.
-
-## Public ABI snapshot
-
-The reviewed snapshot at `packages/public-abi.snapshot.json` records package export maps and public declaration surfaces for Runtime v2, Interop v2, and Stdlib entry points. It also records every Runtime v2 symbol imported by generated JavaScript.
-
-Run `npm run abi:check` to verify compatibility. Public symbol removal, rename, signature changes, package export-map changes, or an emitter reference outside the Runtime v2 surface fail CI. Additive changes are reported separately but still require review and an intentional snapshot update with `npm run abi:update`.
-
-Breaking changes require a new versioned ABI path and migration documentation; updating the snapshot alone does not make a breaking change compatible.
+Record and enum descriptors carry the complete nominal `typeId` (`package#module:Type`). Recursive, unresolved, or unsupported descriptor shapes do not silently become safe aggregates; they fall back to `Unknown` or require an adapter.

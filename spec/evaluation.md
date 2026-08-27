@@ -9,7 +9,7 @@ Function callee, arguments, record fields, collection elements, and binary opera
 `Int` arithmetic checks the JavaScript safe-integer range. Overflow, division by zero, and remainder by zero panic. Integer division truncates toward zero.
 
 ## `[eval.match]` Pattern matching
-`match` over closed types must be exhaustive. Guards do not contribute to exhaustiveness. Unreachable arms are rejected. OR-pattern alternatives cannot bind names in Virune 1.0; use a surrounding match arm or nested match when bindings are required.
+`match` over closed types must be exhaustive. Guards do not contribute to exhaustiveness. Unreachable arms are rejected. OR-pattern alternatives cannot bind names in Virune 1.0.
 
 ## `[eval.return]` Function completion
 A non-`Unit` function returns a value on every reachable path. `Never` marks expressions that do not complete normally. Unreachable statements are diagnosed.
@@ -19,9 +19,6 @@ A non-`Unit` function returns a value on every reachable path. `Never` marks exp
 
 ## `[eval.panic]` Panic
 Panic represents a violated invariant or unrecoverable runtime failure. Normal Virune code does not catch panic. Task, test, CLI, and JavaScript export boundaries may translate or report it.
-
-## `[eval.reference]` Reference evaluator
-The repository includes a deliberately small evaluator for the pure core. It is a verification oracle, not the production runtime. Unsupported effectful constructs are rejected by that evaluator.
 
 ## `[eval.loop-control]` Loop control
 `break` exits the nearest enclosing `for` or `while`; `continue` starts its next iteration. Both are compile errors outside a loop and cannot cross a function or lambda boundary. Deferred cleanup remains scoped to function or lambda completion rather than each loop iteration.

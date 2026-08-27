@@ -2,11 +2,9 @@
 
 [日本語版](entry-point_ja.md)
 
-This document defines the executable-entry contract used by `virune run`.
-
 ## Scope
 
-`[entry.run-only]` The entry-point contract is validated only for `virune run`. Library builds, `virune check`, `virune build`, API snapshots, and modules imported as dependencies do not require a `main` declaration.
+`[entry.run-only]` The entry-point contract is validated only for `virune run`.
 
 `[entry.module]` The configured `entry` file in `virune.json` is the only module searched for the executable entry point.
 
@@ -22,21 +20,6 @@ This document defines the executable-entry contract used by `virune run`.
 
 `[entry.async]` `main` may be synchronous or asynchronous. The CLI awaits the result before deciding the process exit status.
 
-The accepted forms are therefore:
-
-```virune
-pub fn main() -> Unit
-pub fn main(args: List<String>) -> Unit
-pub fn main() -> Result<Unit, E>
-pub fn main(args: List<String>) -> Result<Unit, E>
-pub async fn main() -> Unit
-pub async fn main(args: List<String>) -> Unit
-pub async fn main() -> Result<Unit, E>
-pub async fn main(args: List<String>) -> Result<Unit, E>
-```
-
-The declarations above show signatures; each declaration must have a valid Virune body.
-
 ## Exit behavior
 
 `[entry.exit]` Returning `Unit` or `Ok(Unit)` exits with status 0. Returning `Err(error)` writes the error value to standard error and exits with status 1. A panic or rejected asynchronous entry writes a user-facing message to standard error and exits with status 1.
@@ -45,4 +28,4 @@ The declarations above show signatures; each declaration must have a valid Virun
 
 ## Browser modules
 
-`[entry.browser]` Browser-target builds do not automatically invoke `main`. Browser applications expose functions through `@jsExport` or import the generated ESM from a JavaScript bootstrap module. The `main` contract remains specific to `virune run`.
+`[entry.browser]` Browser-target builds do not automatically invoke `main`.
