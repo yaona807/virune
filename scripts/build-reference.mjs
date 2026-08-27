@@ -4,13 +4,25 @@ import { existsSync } from 'node:fs';
 import { mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { dirname, isAbsolute, join, posix, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import MarkdownIt from 'markdown-it';
 import { verifySpec } from './verify-spec.mjs';
 
 const RULE_ID_PATTERN = /^[a-z][a-z0-9-]*(?:\.[a-z0-9-]+)+$/u;
-const RULE_TOKEN_PATTERN = /^`\[([^\]\r\n]+)\]`(?:\s|$)/u;
 const SHA_PATTERN = /^[0-9a-f]{40}$/u;
-const FENCE_PATTERN = /^```([A-Za-z0-9_-]*)\s*$/u;
-const TABLE_SEPARATOR_PATTERN = /^\|(?:\s*:?-{3,}:?\s*\|)+\s*$/u;
+
+const markdown = new MarkdownIt('commonmark', {
+	html: false,
+	xhtmlOut: false,
+	breaks: false,
+	linkify: false,
+	typographer: false,
+});
+markdown.enable('table');
+// Virune owns link validation. Keep markdown-it from silently downgrading an
+// unsafe or broken link into plain text before the fail-closed resolver sees it.
+markdown.validateLink = () => true;
+markdown.normalizeLink = value => value;
+markdown.normalizeLinkText = value => value;
 
 export async function buildReference(root = resolve('.'), options = {}) {
 	root = resolve(root);
@@ -55,7 +67,6 @@ export async function buildReference(root = resolve('.'), options = {}) {
 			: renderMarkdown(page.source, {
 				sourcePath: page.sourcePath,
 				outputPath: page.outputPath,
-				anchors: page.anchors,
 				resolveLink: target => resolveReferenceLink({
 					root,
 					page,
@@ -117,102 +128,30 @@ export function resolveReferenceIdentity({ mode, packageVersion, languageVersion
 }
 
 export function renderMarkdown(source, context) {
-	const lines = source.replace(/\r\n?/gu, '\n').split('\n');
-	const output = [];
-	let index = 0;
-	while (index < lines.length) {
-		const line = lines[index];
-		if (line.trim() === '') { index++; continue; }
-
-		const fence = FENCE_PATTERN.exec(line);
-		if (fence !== null) {
-			const body = [];
-			index++;
-			while (index < lines.length && lines[index] !== '```') body.push(lines[index++]);
-			if (index >= lines.length) throw new Error(`${context.sourcePath}: unclosed fenced code block`);
-			index++;
-			const language = fence[1] === '' ? '' : ` class="language-${escapeAttribute(fence[1])}"`;
-			output.push(`<pre><code${language}>${escapeHtml(body.join('\n'))}</code></pre>`);
-			continue;
-		}
-
-		const heading = /^(#{1,6})\s+(.+?)\s*$/u.exec(line);
-		if (heading !== null) {
-			const level = heading[1].length;
-			const ruleId = extractRuleToken(heading[2]);
-			const anchor = ruleId ?? slugifyHeading(heading[2]);
-			output.push(`<h${level} id="${escapeAttribute(anchor)}">${renderInline(heading[2], context)}</h${level}>`);
-			index++;
-			continue;
-		}
-
-		if (line.startsWith('|') && index + 1 < lines.length && TABLE_SEPARATOR_PATTERN.test(lines[index + 1])) {
-			const header = parseTableRow(line, context.sourcePath);
-			index += 2;
-			const rows = [];
-			while (index < lines.length && lines[index].startsWith('|') && lines[index].trim() !== '') {
-				const row = parseTableRow(lines[index], context.sourcePath);
-				if (row.length !== header.length) throw new Error(`${context.sourcePath}: table row width differs from header`);
-				rows.push(row);
-				index++;
-			}
-			output.push(`<table><thead><tr>${header.map(cell => `<th>${renderInline(cell, context)}</th>`).join('')}</tr></thead><tbody>${rows.map(row => `<tr>${row.map(cell => `<td>${renderInline(cell, context)}</td>`).join('')}</tr>`).join('')}</tbody></table>`);
-			continue;
-		}
-
-		const unordered = /^-\s+(.+)$/u.exec(line);
-		if (unordered !== null) {
-			const items = [];
-			while (index < lines.length) {
-				const item = /^-\s+(.+)$/u.exec(lines[index]);
-				if (item === null) break;
-				items.push(item[1]); index++;
-			}
-			output.push(`<ul>${items.map(item => `<li>${renderInline(item, context)}</li>`).join('')}</ul>`);
-			continue;
-		}
-
-		const ordered = /^\d+\.\s+(.+)$/u.exec(line);
-		if (ordered !== null) {
-			const items = [];
-			while (index < lines.length) {
-				const item = /^\d+\.\s+(.+)$/u.exec(lines[index]);
-				if (item === null) break;
-				items.push(item[1]); index++;
-			}
-			output.push(`<ol>${items.map(item => `<li>${renderInline(item, context)}</li>`).join('')}</ol>`);
-			continue;
-		}
-
-		if (/^\s/u.test(line)) throw new Error(`${context.sourcePath}:${index + 1}: unsupported indented Markdown block`);
-		if (/^(?:>|---$|\*\*\*$)/u.test(line)) throw new Error(`${context.sourcePath}:${index + 1}: unsupported Markdown block syntax`);
-
-		const paragraph = [];
-		while (index < lines.length && lines[index].trim() !== '' && !startsBlock(lines, index)) paragraph.push(lines[index++]);
-		if (paragraph.length === 0) throw new Error(`${context.sourcePath}:${index + 1}: unable to render Markdown`);
-		const text = paragraph.join(' ');
-		const ruleId = extractRuleToken(text);
-		const id = ruleId === null ? '' : ` id="${escapeAttribute(ruleId)}"`;
-		output.push(`<p${id}>${renderInline(text, context)}</p>`);
-	}
-	return output.join('\n');
+	const tokens = parseMarkdown(source);
+	applyReferenceAnchors(tokens, context.sourcePath);
+	rewriteReferenceLinks(tokens, context);
+	return markdown.renderer.render(tokens, markdown.options, {});
 }
 
 export function collectAnchors(source, sourcePath = '<markdown>') {
+	const tokens = parseMarkdown(source);
 	const anchors = new Set();
-	const lines = source.replace(/\r\n?/gu, '\n').split('\n');
-	let fenced = false;
-	for (const [index, line] of lines.entries()) {
-		if (FENCE_PATTERN.test(line)) { fenced = !fenced; continue; }
-		if (fenced) continue;
-		const heading = /^(#{1,6})\s+(.+?)\s*$/u.exec(line);
-		const ruleId = heading === null ? extractRuleToken(line) : extractRuleToken(heading[2]);
-		const anchor = ruleId ?? (heading === null ? null : slugifyHeading(heading[2]));
+	for (let index = 0; index < tokens.length; index++) {
+		const token = tokens[index];
+		if (token.type !== 'heading_open' && token.type !== 'paragraph_open') continue;
+		const inline = tokens[index + 1];
+		if (inline?.type !== 'inline') continue;
+		const ruleId = extractRuleId(inline);
+		const anchor = ruleId ?? (token.type === 'heading_open' ? slugifyHeading(inline) : null);
 		if (anchor === null) continue;
-		if (anchors.has(anchor)) throw new Error(`${sourcePath}:${index + 1}: duplicate anchor ${anchor}`);
+		if (anchors.has(anchor)) {
+			const line = token.map?.[0];
+			const location = line === undefined ? sourcePath : `${sourcePath}:${line + 1}`;
+			throw new Error(`${location}: duplicate anchor ${anchor}`);
+		}
 		anchors.add(anchor);
 	}
-	if (fenced) throw new Error(`${sourcePath}: unclosed fenced code block`);
 	return anchors;
 }
 
@@ -254,9 +193,18 @@ async function discoverPages(root) {
 async function makeMarkdownPage(root, name, locale, outputPath, counterpartName) {
 	const sourcePath = `spec/${name}`;
 	const source = await readFile(join(root, 'spec', name), 'utf8');
-	const titleMatch = /^#\s+(.+?)\s*$/mu.exec(source);
-	if (titleMatch === null) throw new Error(`${sourcePath}: missing H1 title`);
-	return { locale, sourcePath, counterpartSourcePath: `spec/${counterpartName}`, outputPath, title: stripInlineMarkup(titleMatch[1]) };
+	const tokens = parseMarkdown(source);
+	let title = null;
+	for (let index = 0; index < tokens.length; index++) {
+		if (tokens[index].type !== 'heading_open' || tokens[index].tag !== 'h1') continue;
+		const inline = tokens[index + 1];
+		if (inline?.type === 'inline') {
+			title = inlinePlainText(inline);
+			break;
+		}
+	}
+	if (title === null || title.length === 0) throw new Error(`${sourcePath}: missing H1 title`);
+	return { locale, sourcePath, counterpartSourcePath: `spec/${counterpartName}`, outputPath, title };
 }
 
 function verifyRuleAnchors(report, pageBySource, grammarByLocale) {
@@ -292,29 +240,43 @@ function renderPage({ page, pages, content, counterpart, identity, repositoryUrl
 	return `<!doctype html>\n<html lang="${language}">\n<head>\n<meta charset="utf-8">\n<meta name="viewport" content="width=device-width,initial-scale=1">\n<title>${escapeHtml(page.title)} · Virune Reference</title>\n<link rel="stylesheet" href="${escapeAttribute(relativeOutputLink(page.outputPath, 'assets/reference.css'))}">\n</head>\n<body>\n<header><strong>Virune Language Reference</strong><span>${escapeHtml(identityLabel)}</span>${counterpartLink}<a href="${escapeAttribute(sourceUrl)}">Source</a></header>\n<div class="layout"><nav aria-label="Reference navigation"><ul>${nav}</ul></nav><main>${content}</main></div>\n</body>\n</html>\n`;
 }
 
-function renderInline(text, context) {
-	let output = '';
-	let rest = text;
-	while (rest.length > 0) {
-		const code = /^`([^`]+)`/u.exec(rest);
-		if (code !== null) { output += `<code>${escapeHtml(code[1])}</code>`; rest = rest.slice(code[0].length); continue; }
-		const link = /^\[([^\]]+)\]\(([^)]+)\)/u.exec(rest);
-		if (link !== null) {
-			const href = context.resolveLink(link[2].trim());
-			output += `<a href="${escapeAttribute(href)}">${renderInlineLabel(link[1])}</a>`;
-			rest = rest.slice(link[0].length); continue;
-		}
-		const strong = /^\*\*([^*]+)\*\*/u.exec(rest);
-		if (strong !== null) { output += `<strong>${escapeHtml(strong[1])}</strong>`; rest = rest.slice(strong[0].length); continue; }
-		const emphasis = /^\*([^*]+)\*/u.exec(rest);
-		if (emphasis !== null) { output += `<em>${escapeHtml(emphasis[1])}</em>`; rest = rest.slice(emphasis[0].length); continue; }
-		output += escapeHtml(rest[0]); rest = rest.slice(1);
-	}
-	return output;
+function parseMarkdown(source) {
+	return markdown.parse(source.replace(/\r\n?/gu, '\n'), {});
 }
 
-function renderInlineLabel(text) {
-	return text.replace(/`([^`]+)`/gu, (_, value) => `<code>${escapeHtml(value)}</code>`).split(/(<code>.*?<\/code>)/gu).map(part => part.startsWith('<code>') ? part : escapeHtml(part)).join('');
+function applyReferenceAnchors(tokens, sourcePath) {
+	const observed = new Set();
+	for (let index = 0; index < tokens.length; index++) {
+		const token = tokens[index];
+		if (token.type !== 'heading_open' && token.type !== 'paragraph_open') continue;
+		const inline = tokens[index + 1];
+		if (inline?.type !== 'inline') continue;
+		const ruleId = extractRuleId(inline);
+		const anchor = ruleId ?? (token.type === 'heading_open' ? slugifyHeading(inline) : null);
+		if (anchor === null) continue;
+		if (observed.has(anchor)) {
+			const line = token.map?.[0];
+			const location = line === undefined ? sourcePath : `${sourcePath}:${line + 1}`;
+			throw new Error(`${location}: duplicate anchor ${anchor}`);
+		}
+		observed.add(anchor);
+		token.attrSet('id', anchor);
+	}
+}
+
+function rewriteReferenceLinks(tokens, context) {
+	for (const token of tokens) {
+		if (token.type === 'link_open') {
+			const href = token.attrGet('href');
+			if (href === null) throw new Error(`${context.sourcePath}: Markdown link is missing href`);
+			token.attrSet('href', context.resolveLink(href));
+		} else if (token.type === 'image') {
+			const source = token.attrGet('src');
+			if (source === null) throw new Error(`${context.sourcePath}: Markdown image is missing src`);
+			token.attrSet('src', context.resolveLink(source));
+		}
+		if (Array.isArray(token.children)) rewriteReferenceLinks(token.children, context);
+	}
 }
 
 function resolveReferenceLink({ root, page, target, pageBySource, grammarByLocale, repositoryUrl, sourceSha }) {
@@ -342,38 +304,40 @@ function resolveReferenceLink({ root, page, target, pageBySource, grammarByLocal
 	}
 	if (resolvedSource.startsWith('spec/')) throw new Error(`${page.sourcePath}: unknown Reference source ${target}`);
 	const absolute = join(root, ...resolvedSource.split('/'));
-	if (!existsSyncSafe(absolute)) throw new Error(`${page.sourcePath}: broken repository link ${target}`);
+	if (!existsSync(absolute)) throw new Error(`${page.sourcePath}: broken repository link ${target}`);
 	if (fragment !== '') throw new Error(`${page.sourcePath}: cannot verify anchor outside Reference sources ${target}`);
 	return `${repositoryUrl}/blob/${sourceSha}/${resolvedSource}`;
 }
 
-function startsBlock(lines, index) {
-	const line = lines[index];
-	if (FENCE_PATTERN.test(line) || /^(#{1,6})\s+/u.test(line) || /^-\s+/u.test(line) || /^\d+\.\s+/u.test(line)) return true;
-	return line.startsWith('|') && index + 1 < lines.length && TABLE_SEPARATOR_PATTERN.test(lines[index + 1]);
-}
-
-function parseTableRow(line, sourcePath) {
-	if (!line.startsWith('|') || !line.trimEnd().endsWith('|')) throw new Error(`${sourcePath}: malformed Markdown table row`);
-	return line.trim().slice(1, -1).split('|').map(cell => cell.trim());
-}
-
-function extractRuleToken(text) {
-	const match = RULE_TOKEN_PATTERN.exec(text);
+function extractRuleId(inline) {
+	const first = inline.children?.[0];
+	if (first?.type !== 'code_inline') return null;
+	const match = /^\[([^\]\r\n]+)\]$/u.exec(first.content);
 	if (match === null) return null;
 	if (!RULE_ID_PATTERN.test(match[1])) throw new Error(`Invalid rule ID in Reference source: ${match[1]}`);
 	return match[1];
 }
 
-function slugifyHeading(text) {
-	const plain = stripInlineMarkup(text).normalize('NFKC').toLowerCase();
+function slugifyHeading(inline) {
+	const plain = inlinePlainText(inline).normalize('NFKC').toLowerCase();
 	const slug = plain.replace(/[^\p{Letter}\p{Number}]+/gu, '-').replace(/^-+|-+$/gu, '');
-	if (slug === '') throw new Error(`Unable to derive heading anchor from ${text}`);
+	if (slug === '') throw new Error(`Unable to derive heading anchor from ${inline.content}`);
 	return slug;
 }
 
-function stripInlineMarkup(text) {
-	return text.replace(/`([^`]+)`/gu, '$1').replace(/\[([^\]]+)\]\([^)]+\)/gu, '$1').replace(/\*\*([^*]+)\*\*/gu, '$1').replace(/\*([^*]+)\*/gu, '$1');
+function inlinePlainText(inline) {
+	return plainTextFromTokens(inline.children ?? []);
+}
+
+function plainTextFromTokens(tokens) {
+	let output = '';
+	for (const token of tokens) {
+		if (token.type === 'text' || token.type === 'code_inline') output += token.content;
+		else if (token.type === 'softbreak' || token.type === 'hardbreak') output += ' ';
+		else if (token.type === 'image') output += token.content;
+		else if (Array.isArray(token.children)) output += plainTextFromTokens(token.children);
+	}
+	return output;
 }
 
 function relativeOutputLink(from, to) {
@@ -400,10 +364,6 @@ async function collectFiles(directory) {
 		else if (entry.isFile()) output.push(path);
 	}
 	return output.sort();
-}
-
-function existsSyncSafe(path) {
-	return existsSync(path);
 }
 
 function escapeHtml(value) {
