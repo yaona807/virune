@@ -4,7 +4,7 @@
 
 ## 対象範囲
 
-`[entry.run-only]` エントリーポイントの契約を検証するのは`virune run`だけです。ライブラリのビルド、`virune check`、`virune build`、APIスナップショット、依存としてインポートされるモジュールには`main`宣言は必要ありません。
+`[entry.run-only]` エントリーポイントの契約を検証するのは`virune run`だけです。
 
 `[entry.module]` 実行エントリーポイントを探すのは、`virune.json`の`entry`で指定したファイルだけです。
 
@@ -28,4 +28,4 @@
 
 ## ブラウザモジュール
 
-`[entry.browser]` ブラウザ向けのビルドでは`main`を自動実行しません。ブラウザアプリケーションは`@jsExport`で関数を公開するか、JavaScriptのブートストラップモジュールから生成したESMをインポートします。`main`の契約は`virune run`専用です。
+`[entry.browser]` ブラウザ向けのビルドでは`main`を自動実行しません。
