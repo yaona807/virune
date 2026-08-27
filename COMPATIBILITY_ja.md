@@ -120,6 +120,8 @@ Viruneの安定版ではSemantic Versioningを使います。
 
 上記のうち、生成コードとRuntimeの接続ルールをRuntime ABI、ViruneとJavaScript相互運用の接続ルールをInterop ABIと呼んでいます。
 
+StableなRuntime ABIまたはInterop ABIを互換性なく変更する場合は、新しいバージョン付きABIパスと移行案内が必要です。
+
 プレリリースでは、安定版になる前の調整として非互換変更を行う場合があります。
 
 Nightly版は開発中の状態を提供するため、リリース間の互換性は保証しません。
