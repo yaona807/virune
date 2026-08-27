@@ -39,9 +39,11 @@ test('stable Reference identity is bound to the exact package tag', () => {
 });
 
 test('Reference rendering escapes raw HTML instead of executing it', () => {
-	const html = renderMarkdown('<script>alert("x")</script>', context());
-	assert.equal(html, '<p>&lt;script&gt;alert(&quot;x&quot;)&lt;/script&gt;</p>');
-	assert.doesNotMatch(html, /<script>/u);
+	for (const source of ['<script>alert("x")</script>', '<SCRIPT>alert("x")</SCRIPT>']) {
+		const html = renderMarkdown(source, context());
+		assert.match(html, /^<p>&lt;[A-Za-z]+&gt;alert\(&quot;x&quot;\)&lt;\/[A-Za-z]+&gt;<\/p>$/u);
+		assert.doesNotMatch(html, /<script\b/iu);
+	}
 });
 
 test('Reference rendering fails closed on a broken link', () => {
