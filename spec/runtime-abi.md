@@ -35,6 +35,4 @@ Descriptors cover validated primitives, options, results, bytes, supported colle
 - the null/undefined representation expected at the boundary;
 - compile-time JSON defaults and strictness metadata.
 
-Record and enum descriptors carry the complete nominal `typeId` (`package#module:Type`). Recursive or unresolved descriptors do not silently become safe aggregates; they fall back to `Unknown` or require an adapter.
-
-Safe descriptors do not claim callback validation, arbitrary object-keyed JavaScript Map/Set conversion, or TypeScript `Record<K, V>` conversion.
+Record and enum descriptors carry the complete nominal `typeId` (`package#module:Type`). Recursive, unresolved, or unsupported descriptor shapes do not silently become safe aggregates; they fall back to `Unknown` or require an adapter.
