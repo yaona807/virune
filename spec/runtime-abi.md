@@ -49,3 +49,5 @@ Safe descriptors do not claim callback validation, arbitrary object-keyed JavaSc
 ## JavaScript exports
 
 `@jsExport` wrappers validate inbound values, convert outbound values, omit optional trailing arguments when required, and defensively copy native aggregate values exposed to JavaScript. Foreign handles remain external values and are never presented as validated native values.
+
+Breaking changes to a Stable Runtime or Interop ABI require a new versioned ABI path.
