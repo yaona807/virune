@@ -32,6 +32,7 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: 24
+          cache: npm
       - name: Resolve Stable Reference identity
         id: identity
         env:
@@ -74,6 +75,9 @@ jobs:
           echo "stable=true" >> "$GITHUB_OUTPUT"
           echo "tag=$expected" >> "$GITHUB_OUTPUT"
           echo "source_sha=$source_sha" >> "$GITHUB_OUTPUT"
+      - name: Install dependencies
+        if: steps.identity.outputs.stable == 'true'
+        run: npm ci
       - name: Test Reference boundary handling
         if: steps.identity.outputs.stable == 'true'
         run: node --test scripts/build-reference.test.mjs
