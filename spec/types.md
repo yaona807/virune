@@ -36,4 +36,4 @@ Function types may include a fixed built-in effect set declared with `uses`. Cal
 Bindings cannot be reassigned by default. Virune aggregate values such as records, enums, and collections are also immutable by default. `let mut` permits local reassignment only. Record fields, enum payloads, Virune collections, and newtype values are not mutated in place.
 
 ## `[type.must-use]` Must-use values
-`Future`, `Result`, resources, streams, and declarations annotated `@mustUse` cannot be silently ignored. A program must bind, return, propagate, await, match, or explicitly discard the value with `discard expression`.
+Asynchronous call results, `Result` values, resources, streams, and values from declarations annotated `@mustUse` cannot be silently ignored. A program must bind, return, propagate, await, match, or explicitly discard the value with `discard expression`.
