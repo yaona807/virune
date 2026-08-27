@@ -17,6 +17,9 @@ Module dependency cycles are rejected, including type-only cycles.
 ## `[module.package]` npm packages
 Package resolution uses `package.json` and an `exports` entry with the `virune` condition for source declarations. Generated JavaScript uses the normal ESM import condition. Platform constraints are checked at compile time.
 
+## `[module.javascript-target]` JavaScript target
+Virune 1.0 projects use `target: "es2022"`; other JavaScript targets are rejected. Generated JavaScript is ES2022 ESM.
+
 ## Platform execution
 
 `[platform.browser-runtime]` A project configured with `platform: "browser"` emits browser-loadable ES2022 ESM and may use browser standard-library adapters while Node-only imports are rejected.
