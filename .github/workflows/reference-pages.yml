@@ -1,9 +1,11 @@
 name: Reference Pages
 
 on:
-  release:
+  workflow_run:
+    workflows:
+      - Release
     types:
-      - published
+      - completed
   workflow_dispatch:
 
 permissions:
@@ -20,13 +22,13 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     env:
-      REFERENCE_TAG: ${{ github.event.release.tag_name || github.ref_name }}
+      REFERENCE_SOURCE_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
     outputs:
       stable: ${{ steps.identity.outputs.stable }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          ref: ${{ env.REFERENCE_TAG }}
+          ref: ${{ env.REFERENCE_SOURCE_SHA }}
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: 24
@@ -36,28 +38,41 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
+          if [[ "$GITHUB_EVENT_NAME" == "workflow_run" && "${{ github.event.workflow_run.conclusion }}" != "success" ]]; then
+            echo "stable=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" && "$GITHUB_REF_TYPE" != "tag" ]]; then
             echo "stable=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
+
           version="$(node -p 'require("./package.json").version')"
           if [[ "$version" == *-* ]]; then
             echo "stable=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           expected="v${version}"
-          test "$REFERENCE_TAG" = "$expected" || { echo "Expected tag $expected, got $REFERENCE_TAG" >&2; exit 1; }
+          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
+            test "$GITHUB_REF_NAME" = "$expected" || { echo "Expected tag $expected, got $GITHUB_REF_NAME" >&2; exit 1; }
+          fi
+
           IFS=$'\t' read -r published_tag draft prerelease < <(
-            gh api "repos/$GITHUB_REPOSITORY/releases/tags/$REFERENCE_TAG" --jq '[.tag_name, .draft, .prerelease] | @tsv'
+            gh api "repos/$GITHUB_REPOSITORY/releases/tags/$expected" --jq '[.tag_name, .draft, .prerelease] | @tsv'
           )
-          test "$published_tag" = "$REFERENCE_TAG" || { echo "Published release tag mismatch." >&2; exit 1; }
+          test "$published_tag" = "$expected" || { echo "Published release tag mismatch." >&2; exit 1; }
           if [[ "$draft" != "false" || "$prerelease" != "false" ]]; then
             echo "stable=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
+
           source_sha="$(git rev-parse HEAD)"
+          test "$source_sha" = "$REFERENCE_SOURCE_SHA" || { echo "Checked-out source SHA does not match triggering workflow identity." >&2; exit 1; }
+          tag_sha="$(gh api "repos/$GITHUB_REPOSITORY/commits/$expected" --jq .sha)"
+          test "$tag_sha" = "$source_sha" || { echo "Stable release tag $expected does not identify source $source_sha." >&2; exit 1; }
+
           echo "stable=true" >> "$GITHUB_OUTPUT"
-          echo "tag=$REFERENCE_TAG" >> "$GITHUB_OUTPUT"
+          echo "tag=$expected" >> "$GITHUB_OUTPUT"
           echo "source_sha=$source_sha" >> "$GITHUB_OUTPUT"
       - name: Test Reference boundary handling
         if: steps.identity.outputs.stable == 'true'
