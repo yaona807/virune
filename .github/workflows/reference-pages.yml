@@ -1,9 +1,9 @@
 name: Reference Pages
 
 on:
-  push:
-    tags:
-      - 'v*'
+  release:
+    types:
+      - published
   workflow_dispatch:
 
 permissions:
@@ -19,37 +19,58 @@ jobs:
   build:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    env:
+      REFERENCE_TAG: ${{ github.event.release.tag_name || github.ref_name }}
     outputs:
       stable: ${{ steps.identity.outputs.stable }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ env.REFERENCE_TAG }}
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: 24
       - name: Resolve Stable Reference identity
         id: identity
+        env:
+          GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
+          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" && "$GITHUB_REF_TYPE" != "tag" ]]; then
+            echo "stable=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           version="$(node -p 'require("./package.json").version')"
-          if [[ "$GITHUB_REF_TYPE" != "tag" || "$version" == *-* ]]; then
+          if [[ "$version" == *-* ]]; then
             echo "stable=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           expected="v${version}"
-          test "$GITHUB_REF_NAME" = "$expected" || { echo "Expected tag $expected, got $GITHUB_REF_NAME" >&2; exit 1; }
+          test "$REFERENCE_TAG" = "$expected" || { echo "Expected tag $expected, got $REFERENCE_TAG" >&2; exit 1; }
+          IFS=$'\t' read -r published_tag draft prerelease < <(
+            gh api "repos/$GITHUB_REPOSITORY/releases/tags/$REFERENCE_TAG" --jq '[.tag_name, .draft, .prerelease] | @tsv'
+          )
+          test "$published_tag" = "$REFERENCE_TAG" || { echo "Published release tag mismatch." >&2; exit 1; }
+          if [[ "$draft" != "false" || "$prerelease" != "false" ]]; then
+            echo "stable=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          source_sha="$(git rev-parse HEAD)"
           echo "stable=true" >> "$GITHUB_OUTPUT"
+          echo "tag=$REFERENCE_TAG" >> "$GITHUB_OUTPUT"
+          echo "source_sha=$source_sha" >> "$GITHUB_OUTPUT"
       - name: Test Reference boundary handling
         if: steps.identity.outputs.stable == 'true'
         run: node --test scripts/build-reference.test.mjs
       - name: Verify deterministic Stable Reference projection
         if: steps.identity.outputs.stable == 'true'
-        run: node scripts/build-reference.mjs --check --mode=stable --release-tag="$GITHUB_REF_NAME" --source-sha="$GITHUB_SHA"
+        run: node scripts/build-reference.mjs --check --mode=stable --release-tag="${{ steps.identity.outputs.tag }}" --source-sha="${{ steps.identity.outputs.source_sha }}"
       - name: Configure GitHub Pages
         if: steps.identity.outputs.stable == 'true'
         uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
       - name: Build Stable Reference
         if: steps.identity.outputs.stable == 'true'
-        run: node scripts/build-reference.mjs --mode=stable --release-tag="$GITHUB_REF_NAME" --source-sha="$GITHUB_SHA" --output=.cache/reference/site
+        run: node scripts/build-reference.mjs --mode=stable --release-tag="${{ steps.identity.outputs.tag }}" --source-sha="${{ steps.identity.outputs.source_sha }}" --output=.cache/reference/site
       - name: Upload Reference Pages artifact
         if: steps.identity.outputs.stable == 'true'
         uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
