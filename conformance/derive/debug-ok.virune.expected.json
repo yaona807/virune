@@ -1,5 +1,8 @@
 {
   "schemaVersion": 1,
   "status": "compile-success",
-  "diagnostics": []
+  "diagnostics": [],
+  "rules": [
+    "runtime.debug"
+  ]
 }
