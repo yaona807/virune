@@ -22,7 +22,7 @@ Compiler-derived `Eq` and `Hash` call these fixed operations. User code cannot r
 
 ## Debug
 
-Compiler-derived Debug produces a stable developer representation only for supported values. It is explicit opt-in and is not generated automatically for TypeScript bindings.
+Compiler-derived Debug produces a stable developer representation only for supported values and is explicit opt-in.
 
 ## Cleanup
 
