@@ -28,4 +28,4 @@
 タイムアウトと再試行の待機時間は、有限の0以上の値で、ホストのタイマーが扱える範囲内でなければなりません。タイムアウトは`Result`を返すAPIから`TaskTimeoutError`を返します。再試行では元の試行番号付けを維持し、待機に入る前にバックオフを検証します。
 
 ## `[task.await-propagate-precedence]` `await`と`Result`伝播
-`await operation()?`は`(await operation())?`と同じ意味です。後置の伝播演算子は内部の`Future`ではなく、非同期処理の完了結果へ適用します。フォーマッターは、曖昧さがない場合に括弧なしの形式を出力します。
+`await operation()?`は`(await operation())?`と同じ意味です。後置の伝播演算子は内部の`Future`ではなく、非同期処理の完了結果へ適用します。
