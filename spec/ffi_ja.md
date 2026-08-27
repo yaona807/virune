@@ -6,7 +6,7 @@
 JavaScriptやnpmの値は`extern js`を通じてViruneへ入ります。通常のインポートでJavaScriptの値を直接信頼することはできません。
 
 ## `[ffi.optional-arguments]` 省略可能な`extern`引数
-`extern js`の末尾の省略可能引数について、境界表現がJavaScriptの`undefined`になる場合、その引数は明示的な`undefined`として渡さず、JavaScript呼び出しから省略します。
+`extern js`の末尾に並ぶ省略可能引数のうち、JavaScript境界表現が`undefined`になる連続した末尾部分は、呼び出しから省略します。後続の引数がある位置の`undefined`は、JavaScriptの引数位置を変えないため保持します。
 
 ## `[ffi.safe]` 安全な`extern`
 安全な`extern`は`Result<T, JsError>`またはその非同期版を返します。生成したラッパーは同期例外とPromiseの拒否を捕捉し、値を検証してViruneの表現へ変換します。複合値を安全にデコードするときは走査量を制限し、構造上の安全性を検査します。検証できない入力をVirune側の通常の値（Native値）へ昇格させず、失敗として扱います。
