@@ -39,7 +39,7 @@ For each line, the marker is removed and at most one immediately following ASCII
 
 ## `[documentation.markdown]` Markdown
 
-Documentation text is CommonMark 0.31.2-compatible Markdown.
+Documentation text is CommonMark 0.31.2-compatible Markdown. Official tooling does not render raw HTML.
 
 ## `[documentation.semantics]` Compilation semantics
 
