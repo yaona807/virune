@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
-import { dirname, join, posix, relative, resolve } from 'node:path';
+import { dirname, isAbsolute, join, posix, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { verifySpec } from './verify-spec.mjs';
 
@@ -14,7 +14,7 @@ const TABLE_SEPARATOR_PATTERN = /^\|(?:\s*:?-{3,}:?\s*\|)+\s*$/u;
 
 export async function buildReference(root = resolve('.'), options = {}) {
 	root = resolve(root);
-	const outputDirectory = resolve(options.outputDirectory ?? join(root, '.cache/reference/site'));
+	const outputDirectory = resolveReferenceOutputDirectory(root, options.outputDirectory);
 	const sourceSha = options.sourceSha ?? resolveGitSha(root);
 	if (!SHA_PATTERN.test(sourceSha)) throw new Error(`Reference source SHA must be a full commit SHA: ${sourceSha}`);
 
@@ -84,6 +84,16 @@ export async function buildReference(root = resolve('.'), options = {}) {
 	await writeFile(join(outputDirectory, 'reference-manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
 	const outputHash = await hashDirectory(outputDirectory);
 	return { ...identity, outputDirectory, outputHash, pageCount: pages.length };
+}
+
+export function resolveReferenceOutputDirectory(root, value) {
+	const cacheRoot = resolve(root, '.cache/reference');
+	const outputDirectory = resolve(value ?? join(cacheRoot, 'site'));
+	const fromCache = relative(cacheRoot, outputDirectory);
+	if (fromCache === '..' || fromCache.startsWith(`..${sep}`) || isAbsolute(fromCache)) {
+		throw new Error(`Reference output must stay under ${cacheRoot}: ${outputDirectory}`);
+	}
+	return outputDirectory;
 }
 
 export function resolveReferenceIdentity({ mode, packageVersion, languageVersion, releaseTag, sourceSha }) {
