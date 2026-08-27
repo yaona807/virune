@@ -14,9 +14,6 @@ JavaScriptやnpmの値は`extern js`を通じてViruneへ入ります。通常�
 ## `[ffi.export]` JavaScriptへの公開
 `@jsExport`を使用できるのは公開関数だけです。公開用のラッパーはJavaScriptの引数を検証し、戻り値の`record`、コレクション、`Option`、`Result`、`enum`を文書化されたJavaScript表現へ変換します。
 
-## `[ffi.binding]` 宣言生成
-`virune bind`はTypeScript宣言ファイルを保守的に変換します。`any`と未対応の構文は`Unknown`になり、オーバーロードは別名の生成または手動確認が必要です。生成したバインディングは自動的には信頼されません。
-
 ## `[ffi.bytes]` バイナリ値
 安全なFFIは`Bytes`として`Uint8Array`または`ArrayBuffer`を受け取り、元のデータをコピーします。JavaScriptへ渡すViruneの`Bytes`もコピーします。JSONでは`Bytes`をbase64文字列として表し、不正なbase64はデコードエラーになります。`record`と`enum`の変換ではVirune Runtimeの型IDを維持し、`Map` / `Set`の変換ではViruneの値をキーとするコレクションの意味を復元します。
 
