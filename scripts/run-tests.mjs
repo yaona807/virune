@@ -23,6 +23,15 @@
 // @virune-rule {"id":"eval.panic","runner":"integration","file":"integration/project.test.ts","case":"generated defer aggregates the primary panic and every cleanup panic","kind":"positive","platform":"common"}
 // @virune-rule {"id":"eval.return","runner":"unit","file":"packages/compiler/test/compiler.test.ts","case":"reference evaluator agrees with the pure language core","kind":"positive","platform":"common"}
 // @virune-rule {"id":"ffi.bytes","runner":"unit","file":"packages/runtime/test/runtime.test.ts","case":"Bytes and MutableBytes support binary round-trips without aliasing","kind":"positive","platform":"common"}
+// @virune-rule {"id":"ffi.export","runner":"integration","file":"integration/project.test.ts","case":"derived JSON decoder and encoder round-trip external data","kind":"positive","platform":"common"}
+// @virune-rule {"id":"ffi.export","runner":"integration","file":"integration/project.test.ts","case":"public enums expose qualified variants across modules","kind":"positive","platform":"common"}
+// @virune-rule {"id":"interop.abi-v1","runner":"unit","file":"packages/js-interop/test/adapter.test.ts","case":"adapter build emits ESM and versioned ABI metadata","kind":"positive","platform":"common"}
+// @virune-rule {"id":"interop.abi-v1","runner":"unit","file":"packages/js-interop/test/adapter.test.ts","case":"adapter ABI rejects generics and callbacks","kind":"negative","platform":"common"}
+// @virune-rule {"id":"interop.bridges","runner":"unit","file":"packages/js-interop/test/interop.test.ts","case":"compiler emits direct JavaScript import and checked primitive bridge","kind":"positive","platform":"common"}
+// @virune-rule {"id":"interop.direct","runner":"unit","file":"packages/js-interop/test/usage-resolution.test.ts","case":"compiler routes JavaScript calls through whole-usage TypeScript resolution without expected-type backflow","kind":"positive","platform":"common"}
+// @virune-rule {"id":"interop.direct","runner":"unit","file":"packages/js-interop/test/corpus-rejection.test.ts","case":"named imports from CommonJS packages are rejected conservatively","kind":"negative","platform":"node"}
+// @virune-rule {"id":"interop.foreign-values","runner":"unit","file":"packages/js-interop/test/usage-resolution.test.ts","case":"resolves complete TypeScript call usages with literal, generic, rest, and fixed-session evidence","kind":"positive","platform":"common"}
+// @virune-rule {"id":"interop.foreign-values","runner":"unit","file":"packages/js-interop/test/boundary.test.ts","case":"rejects JavaScript re-exports and foreign types in public Virune APIs","kind":"negative","platform":"common"}
 // @virune-rule {"id":"lexical.comments","runner":"unit","file":"packages/compiler/test/compiler.test.ts","case":"documentation comments are classified and attached to supported AST nodes","kind":"positive","platform":"common"}
 // @virune-rule {"id":"lexical.encoding","runner":"unit","file":"packages/compiler/test/compiler.test.ts","case":"compiler fuzz: parser and checker never throw for deterministic malformed input corpus","kind":"positive","platform":"common"}
 // @virune-rule {"id":"module.cycle","runner":"integration","file":"integration/project.test.ts","case":"module cycles are rejected","kind":"positive","platform":"common"}
@@ -31,6 +40,11 @@
 // @virune-rule {"id":"module.package","runner":"integration","file":"integration/project.test.ts","case":"npm package subpaths use virune declarations for checking and JavaScript exports at runtime","kind":"positive","platform":"common"}
 // @virune-rule {"id":"module.visibility","runner":"integration","file":"integration/project.test.ts","case":"public API cannot expose a private nominal type","kind":"positive","platform":"common"}
 // @virune-rule {"id":"platform.browser-runtime","runner":"integration","file":"integration/browser.test.ts","case":"browser target executes emitted ESM in Chromium","kind":"positive","platform":"browser"}
+// @virune-rule {"id":"runtime.eq-hash","runner":"unit","file":"packages/runtime/test/runtime.test.ts","case":"Virune Map and Set use structural equality and nominal type identity","kind":"positive","platform":"common"}
+// @virune-rule {"id":"runtime.interop-descriptors-v2","runner":"unit","file":"packages/runtime/test/runtime.test.ts","case":"FFI optional property metadata distinguishes missing and omitted values","kind":"positive","platform":"common"}
+// @virune-rule {"id":"runtime.interop-descriptors-v2","runner":"unit","file":"packages/runtime/test/runtime.test.ts","case":"JSON and FFI preserve Bytes, collection semantics, and nominal runtime type IDs","kind":"positive","platform":"common"}
+// @virune-rule {"id":"runtime.native-representation","runner":"unit","file":"packages/runtime/test/runtime.test.ts","case":"FFI conversion handles Option and records","kind":"positive","platform":"common"}
+// @virune-rule {"id":"runtime.native-representation","runner":"unit","file":"packages/runtime/test/runtime.test.ts","case":"JSON and FFI preserve Bytes, collection semantics, and nominal runtime type IDs","kind":"positive","platform":"common"}
 // @virune-rule {"id":"task.parallel","runner":"unit","file":"packages/runtime/test/runtime.test.ts","case":"Task.parallel cancels siblings, waits for settlement, and reports the leftmost rejection","kind":"positive","platform":"common"}
 // @virune-rule {"id":"task.race","runner":"unit","file":"packages/runtime/test/runtime.test.ts","case":"Task.race observes first settlement while Task.firstOk observes first fulfillment","kind":"positive","platform":"common"}
 // @virune-rule {"id":"task.scope","runner":"unit","file":"packages/runtime/test/runtime.test.ts","case":"Task.mapParallel cancels siblings and waits for their cleanup","kind":"positive","platform":"common"}
@@ -197,7 +211,7 @@ function runCommand(argumentsList, failureOutput) {
 			const exitCode = code ?? 1;
 			if (capture && exitCode !== 0) {
 				await mkdir(dirname(failureOutput), { recursive: true });
-				await writeFile(failureOutput, output);
+				await writeFile(failureOutput, output, 'utf8');
 			}
 			resolve(exitCode);
 		});
