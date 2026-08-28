@@ -638,15 +638,20 @@ export class TypeChecker {
 		const minimum = resolution.minimumArgumentCount ?? Math.max(0, resolution.parameterCount - resolution.optionalParameterCount);
 		if (expression.arguments.length < minimum || (!resolution.rest && expression.arguments.length > resolution.parameterCount)) this.diagnostics.error('L4205', `JavaScript call expects ${minimum}${resolution.rest ? '+' : `..${resolution.parameterCount}`} arguments, received ${expression.arguments.length}`, expression.span);
 		for (const evidence of callableEvidence) {
-			const argument = expression.arguments[evidence.index]!;
-			const boundary = callableBoundaries[evidence.index]!;
+			const argument = expression.arguments.at(evidence.index);
+			const boundary = callableBoundaries.at(evidence.index);
+			const beforeUsageIndex = foreignUsageCountsAfterArgument.at(evidence.index);
+			if (argument === undefined || boundary === undefined || beforeUsageIndex === undefined) {
+				this.diagnostics.error('L4204', `Cannot prove generated callback boundary for JavaScript call ${callee.display}; use a TypeScript interop adapter`, expression.span);
+				return this.arena.error;
+			}
 			this.requireEffects(boundary.effects, argument.span);
 			this.#callableProjections.push({
 				callNodeId: expression.id,
 				argumentIndex: evidence.index,
 				nodeId: argument.id,
 				span: argument.span,
-				beforeUsageIndex: foreignUsageCountsAfterArgument[evidence.index]!,
+				beforeUsageIndex,
 				descriptor: boundary,
 			});
 		}
@@ -700,7 +705,8 @@ export class TypeChecker {
 			const item = raw[position];
 			if (!isRecord(item) || !hasExactEnumerableKeys(item, ['index', 'target'])) return undefined;
 			const index = item.index;
-			if (typeof index !== 'number' || !Number.isSafeInteger(index) || index !== expectedIndexes[position]) return undefined;
+			const expectedIndex = expectedIndexes.at(position);
+			if (typeof index !== 'number' || !Number.isSafeInteger(index) || index < 0 || expectedIndex === undefined || index !== expectedIndex) return undefined;
 			const target = item.target;
 			if (!isRecord(target) || !hasExactEnumerableKeys(target, ['parameters', 'result']) || !Array.isArray(target.parameters)) return undefined;
 			const parameters: ContextualCallablePrimitiveKind[] = [];
@@ -709,7 +715,7 @@ export class TypeChecker {
 				parameters.push(parameter);
 			}
 			const contextualResult = canonicalContextualCallableResult(target.result);
-			const boundary = boundaries[index];
+			const boundary = boundaries.at(index);
 			if (contextualResult === undefined || boundary === undefined || !this.callableBoundaryMatchesContext(boundary, parameters, contextualResult)) return undefined;
 			result.push(Object.freeze({ index, target: Object.freeze({ parameters: Object.freeze(parameters), result: contextualResult }) }));
 		}
