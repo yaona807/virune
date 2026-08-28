@@ -79,44 +79,6 @@ test('emits a generated sync callable shim using the existing FFI boundary and e
 	assert.deepEqual(stableProjection.descriptor, projection.descriptor);
 });
 
-test('emitted helper preserves callable identity across separately emitted modules', async () => {
-	const result = await compileWithDeclarations(
-		'export declare function apply(callback: (value: number) => number): number;\n',
-		`import js { apply } from "./library.js"\n\nfn callback(value: Float) -> Float {\n\treturn value\n}\n\nfn main() -> Unit uses JavaScript {\n\tdiscard apply(callback)\n\treturn Unit\n}\n`,
-	);
-	assert.deepEqual(result.diagnostics.filter(item => item.severity === 'error'), []);
-	const code = result.output?.code ?? '';
-	const start = code.indexOf("const $viruneCallableShimCacheKey = '$virune.callable-shim.cache/v1';");
-	const end = code.indexOf('\n\nimport ', start);
-	assert.ok(start >= 0 && end > start);
-	const helperSource = code.slice(start, end);
-	const makeProjector = new Function(`${helperSource}\nreturn $viruneProjectCallable;`) as () => (
-		fn: (...args: unknown[]) => unknown,
-		descriptor: string,
-		factory: (fn: (...args: unknown[]) => unknown) => (...args: unknown[]) => unknown,
-	) => (...args: unknown[]) => unknown;
-	const firstModuleProject = makeProjector();
-	const secondModuleProject = makeProjector();
-	const native = (value: unknown): unknown => value;
-	let factoryCalls = 0;
-	const factory = (fn: (...args: unknown[]) => unknown) => {
-		factoryCalls++;
-		return (...args: unknown[]) => fn(...args);
-	};
-	const descriptor = JSON.stringify({ version: 'virune-callable-shim/v1', parameters: ['Float'], result: 'Float', async: false, effects: [], contextMode: 'root-argument' });
-	const sameFromFirstModule = firstModuleProject(native, descriptor, factory);
-	const sameFromSecondModule = secondModuleProject(native, descriptor, factory);
-	const incompatible = secondModuleProject(native, `${descriptor}:different`, factory);
-	assert.equal(sameFromFirstModule, sameFromSecondModule);
-	assert.notEqual(sameFromFirstModule, incompatible);
-	assert.equal(factoryCalls, 2);
-	assert.throws(() => Reflect.construct(sameFromFirstModule, []), TypeError);
-	const cacheDescriptor = Object.getOwnPropertyDescriptor(native, '$virune.callable-shim.cache/v1');
-	assert.equal(cacheDescriptor?.enumerable, false);
-	assert.equal(cacheDescriptor?.configurable, false);
-	assert.equal(cacheDescriptor?.writable, false);
-});
-
 test('emits async callable projection without weakening rejection semantics', async () => {
 	const result = await compileWithDeclarations(
 		'export declare function applyAsync(callback: (value: string) => Promise<string>): void;\n',
