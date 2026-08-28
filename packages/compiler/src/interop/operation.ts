@@ -2,10 +2,13 @@ import type * as A from '../ast/nodes.js';
 import type { Diagnostic } from '../diagnostics/diagnostic.js';
 import type { NodeId, SourceSpan } from '../source.js';
 import type {
+	CallableProjectionEvidence,
 	ForeignOrigin,
 	ForeignUsageIR,
 	InteropSemanticModel,
 	ModuleResolutionWitness,
+	NativeCallableBoundaryDescriptor,
+	NativeCallablePrimitiveKind,
 	PrimitiveBridgeKind,
 	StableForeignTypeSnapshot,
 } from './types.js';
@@ -59,6 +62,13 @@ export interface ExternalSourceSpan {
 	readonly end: ExternalSourcePosition;
 }
 
+export interface ExternalCallableProjectionIR {
+	readonly argumentIndex: number;
+	/** Insertion index in the returned External Operation sequence. Lower indexes execute before the projection; this index and later execute after it. */
+	readonly beforeOperationIndex: number;
+	readonly descriptor: NativeCallableBoundaryDescriptor;
+}
+
 interface ExternalOperationBase {
 	readonly kind: ExternalOperationKind;
 	readonly nodeId: NodeId;
@@ -84,6 +94,7 @@ export interface ExternalCallOperationIR extends ExternalOperationBase {
 	readonly result: ExternalForeignValueShape;
 	readonly receiverMode: 'none' | 'preserve-this';
 	readonly mayReject: boolean;
+	readonly callableProjections?: readonly ExternalCallableProjectionIR[];
 }
 
 export interface ExternalAwaitOperationIR extends ExternalOperationBase {
@@ -112,6 +123,7 @@ const FOREIGN_CATEGORIES: readonly StableForeignTypeSnapshot['category'][] = [
 const FOREIGN_PRIMITIVES: readonly NonNullable<StableForeignTypeSnapshot['primitive']>[] = [
 	'boolean', 'string', 'number', 'bigint', 'void', 'undefined', 'null',
 ];
+const CALLABLE_PRIMITIVES: readonly NativeCallablePrimitiveKind[] = ['Bool', 'Int', 'Float', 'BigInt', 'String', 'Unit'];
 const BRIDGES: readonly PrimitiveBridgeKind[] = ['string', 'bool', 'float', 'bigint', 'unit', 'unknown'];
 const RUNTIME_FORMATS: readonly NonNullable<ModuleResolutionWitness['runtimeFormat']>[] = ['esm', 'commonjs', 'builtin', 'bundler', 'unknown'];
 const PLATFORMS: readonly ModuleResolutionWitness['platform'][] = ['node', 'browser', 'neutral'];
@@ -147,16 +159,41 @@ export function buildExternalOperationSequence(input: {
 	}
 	if (witnessIndex !== input.interop.moduleWitnesses.length) throw new Error('External operation evidence contains unconsumed module witnesses');
 
-	for (const usage of input.interop.usageIR) {
-		const operation = externalOperationFromUsage(usage);
+	const callableProjections = groupCallableProjections(input.interop.callableProjections ?? []);
+	const operationIndexAtUsageBoundary: number[] = [operations.length];
+	for (let usageIndex = 0; usageIndex < input.interop.usageIR.length; usageIndex++) {
+		const usage = input.interop.usageIR[usageIndex]!;
+		const projections = callableProjections.get(usage.nodeId) ?? [];
+		if (usage.kind === 'call' && projections.some(projection => projection.beforeUsageIndex > usageIndex)) {
+			throw new Error('External callable projection usage order cannot extend beyond its outer call');
+		}
+		if (usage.kind !== 'call' && projections.length !== 0) throw new Error('External callable projection evidence must attach to a call usage');
+		const stableProjections = usage.kind === 'call'
+			? canonicalCallableProjections(projections, usage.nodeId, operationIndexAtUsageBoundary)
+			: [];
+		const operation = externalOperationFromUsageWithCallables(usage, stableProjections);
 		if (operation !== undefined) operations.push(operation);
+		operationIndexAtUsageBoundary[usageIndex + 1] = operations.length;
+		if (usage.kind === 'call') callableProjections.delete(usage.nodeId);
 	}
+	if (callableProjections.size !== 0) throw new Error('External callable projection evidence does not correspond to a completed call usage');
 	return Object.freeze(operations);
 }
 
 /** Import usages are declaration metadata; one ModuleLoad is emitted per runtime import declaration. */
 export function externalOperationFromUsage(usage: ForeignUsageIR): ExternalOperationIR | undefined {
-	if (usage.kind === 'import') return undefined;
+	return externalOperationFromUsageWithCallables(usage, []);
+}
+
+function externalOperationFromUsageWithCallables(
+	usage: ForeignUsageIR,
+	callableProjections: readonly ExternalCallableProjectionIR[],
+): ExternalOperationIR | undefined {
+	if (usage.kind === 'import') {
+		if (callableProjections.length !== 0) throw new Error('External callable projection evidence cannot attach to an import usage');
+		return undefined;
+	}
+	if (usage.kind !== 'call' && callableProjections.length !== 0) throw new Error('External callable projection evidence must attach to a call usage');
 	const anchor = canonicalOperationAnchor(usage.nodeId, usage.span);
 	switch (usage.kind) {
 		case 'property':
@@ -170,6 +207,7 @@ export function externalOperationFromUsage(usage: ForeignUsageIR): ExternalOpera
 		case 'call': {
 			if (usage.receiverMode !== 'none' && usage.receiverMode !== 'preserve-this') throw new Error('External Call operation requires a known receiver mode');
 			if (typeof usage.mayReject !== 'boolean') throw new Error('External Call operation requires explicit rejection semantics');
+			const receiverClaims: readonly InteropSafetyClaim[] = usage.receiverMode === 'preserve-this' ? ['receiver-preserved'] : [];
 			return freezeOperation({
 				kind: 'call',
 				...anchor,
@@ -177,7 +215,8 @@ export function externalOperationFromUsage(usage: ForeignUsageIR): ExternalOpera
 				result: canonicalForeignType(usage.foreignType),
 				receiverMode: usage.receiverMode,
 				mayReject: usage.mayReject,
-				decision: directDecision(usage.receiverMode === 'preserve-this' ? ['receiver-preserved'] : []),
+				...(callableProjections.length === 0 ? {} : { callableProjections }),
+				decision: callableProjections.length === 0 ? directDecision(receiverClaims) : callableShimDecision(receiverClaims),
 			});
 		}
 		case 'await':
@@ -243,6 +282,16 @@ function directDecision(claims: readonly InteropSafetyClaim[] = []): InteropDeci
 	return canonicalizeInteropDecision({ status: 'resolved', mechanism: 'direct', authoring: 'none', claims, obligations: [] });
 }
 
+function callableShimDecision(claims: readonly InteropSafetyClaim[]): InteropDecisionIR {
+	return canonicalizeInteropDecision({
+		status: 'resolved',
+		mechanism: 'callable-shim',
+		authoring: 'generated',
+		claims: [...claims, 'type-boundary-safe'],
+		obligations: [],
+	});
+}
+
 function unresolvedDirectDecision(): InteropDecisionIR {
 	return canonicalizeInteropDecision({ status: 'unresolved', mechanism: 'direct', authoring: 'none', claims: [], obligations: [] });
 }
@@ -261,6 +310,80 @@ function runtimeResolutionDecision(witness: ExternalRuntimeResolutionWitness): I
 		});
 	}
 	return unresolvedDirectDecision();
+}
+
+function groupCallableProjections(projections: readonly CallableProjectionEvidence[]): Map<NodeId, CallableProjectionEvidence[]> {
+	const grouped = new Map<NodeId, CallableProjectionEvidence[]>();
+	for (const projection of projections) {
+		if (!Number.isSafeInteger(projection.callNodeId)) throw new Error('External callable projection call node id must be a safe integer');
+		const current = grouped.get(projection.callNodeId) ?? [];
+		current.push(projection);
+		grouped.set(projection.callNodeId, current);
+	}
+	return grouped;
+}
+
+function canonicalCallableProjections(
+	projections: readonly CallableProjectionEvidence[],
+	callNodeId: NodeId,
+	operationIndexAtUsageBoundary: readonly number[],
+): readonly ExternalCallableProjectionIR[] {
+	const seenArguments = new Set<number>();
+	const ordered = projections.map(projection => {
+		if (projection.callNodeId !== callNodeId) throw new Error('External callable projection is attached to the wrong call node');
+		if (!Number.isSafeInteger(projection.argumentIndex) || projection.argumentIndex < 0) throw new Error('External callable projection argument index must be a non-negative safe integer');
+		if (!Number.isSafeInteger(projection.beforeUsageIndex) || projection.beforeUsageIndex < 0) throw new Error('External callable projection usage index must be a non-negative safe integer');
+		if (seenArguments.has(projection.argumentIndex)) throw new Error('External callable projection argument index must be unique within a call');
+		seenArguments.add(projection.argumentIndex);
+		const beforeOperationIndex = operationIndexAtUsageBoundary[projection.beforeUsageIndex];
+		if (typeof beforeOperationIndex !== 'number' || !Number.isSafeInteger(beforeOperationIndex) || beforeOperationIndex < 0) {
+			throw new Error('External callable projection usage boundary is not represented in the stable operation sequence');
+		}
+		return Object.freeze({
+			argumentIndex: projection.argumentIndex,
+			beforeUsageIndex: projection.beforeUsageIndex,
+			beforeOperationIndex,
+			descriptor: canonicalCallableDescriptor(projection.descriptor),
+		});
+	});
+	ordered.sort((left, right) => left.argumentIndex - right.argumentIndex);
+	for (let index = 1; index < ordered.length; index++) {
+		const current = ordered[index]!;
+		const previous = ordered[index - 1]!;
+		if (current.beforeUsageIndex < previous.beforeUsageIndex || current.beforeOperationIndex < previous.beforeOperationIndex) {
+			throw new Error('External callable projection usage order must follow argument evaluation order');
+		}
+	}
+	return Object.freeze(ordered.map(projection => Object.freeze({
+		argumentIndex: projection.argumentIndex,
+		beforeOperationIndex: projection.beforeOperationIndex,
+		descriptor: projection.descriptor,
+	})));
+}
+
+function canonicalCallableDescriptor(descriptor: NativeCallableBoundaryDescriptor): NativeCallableBoundaryDescriptor {
+	if (descriptor.version !== 'virune-callable-shim/v1') throw new Error('Unknown native callable boundary descriptor version');
+	if (!Array.isArray(descriptor.parameters)) throw new Error('Native callable boundary parameters must be an array');
+	const parameters = descriptor.parameters.map(parameter => {
+		assertKnown(CALLABLE_PRIMITIVES, parameter, 'native callable primitive');
+		return parameter;
+	});
+	assertKnown(CALLABLE_PRIMITIVES, descriptor.result, 'native callable result primitive');
+	if (typeof descriptor.async !== 'boolean') throw new Error('Native callable boundary async flag must be boolean');
+	if (descriptor.contextMode !== 'root-argument') throw new Error('Native callable boundary requires external-root invocation');
+	if (!Array.isArray(descriptor.effects)) throw new Error('Native callable boundary effects must be an array');
+	const effects = descriptor.effects.map(effect => stableProviderText(effect, 'native callable effect'));
+	if (effects.includes('*')) throw new Error('Open effects cannot become stable native callable boundary evidence');
+	const canonicalEffects = [...new Set(effects)].sort(compareText);
+	if (canonicalEffects.length !== effects.length || canonicalEffects.some((effect, index) => effect !== effects[index])) throw new Error('Native callable boundary effects must be unique and canonically ordered');
+	return Object.freeze({
+		version: 'virune-callable-shim/v1',
+		parameters: Object.freeze(parameters),
+		result: descriptor.result,
+		async: descriptor.async,
+		effects: Object.freeze(canonicalEffects),
+		contextMode: 'root-argument',
+	});
 }
 
 function canonicalForeignType(snapshot: StableForeignTypeSnapshot): ExternalForeignValueShape {

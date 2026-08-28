@@ -309,8 +309,8 @@ function moduleInterfaceHash(moduleInterface: ModuleInterface | undefined): stri
 function publicSignatureAst(declaration: A.Declaration): unknown {
 	switch (declaration.kind) {
 		case 'FunctionDeclaration': {
-			const { body: _body, expressionBody: _expressionBody, attributes: _attributes, ...signature } = declaration;
-			return signature;
+			const { body: _body, expressionBody: _expressionBody, attributes, ...signature } = declaration;
+			return attributes.some(attribute => attribute.name === 'jsExport') ? { ...signature, jsExport: true } : signature;
 		}
 		case 'TopLevelLetDeclaration': {
 			const { value: _value, attributes: _attributes, ...signature } = declaration;
@@ -636,7 +636,7 @@ function cloneValueSignature(declaration: A.Declaration, localName: string, rena
 		id,
 		name: localName,
 		public: false,
-		attributes: [],
+		attributes: declaration.attributes.filter(attribute => attribute.name === 'jsExport'),
 		parameters: declaration.parameters.map(parameter => ({ ...parameter, type: cloneTypeReference(parameter.type, rename, next) })),
 		...(declaration.returnType === undefined ? {} : { returnType: cloneTypeReference(declaration.returnType, rename, next) }),
 		effects: declaration.effects,
