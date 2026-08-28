@@ -335,7 +335,7 @@ function canonicalCallableProjections(
 		if (!Number.isSafeInteger(projection.beforeUsageIndex) || projection.beforeUsageIndex < 0) throw new Error('External callable projection usage index must be a non-negative safe integer');
 		if (seenArguments.has(projection.argumentIndex)) throw new Error('External callable projection argument index must be unique within a call');
 		seenArguments.add(projection.argumentIndex);
-		const beforeOperationIndex = operationIndexAtUsageBoundary[projection.beforeUsageIndex];
+		const beforeOperationIndex = operationIndexAtUsageBoundary.at(projection.beforeUsageIndex);
 		if (typeof beforeOperationIndex !== 'number' || !Number.isSafeInteger(beforeOperationIndex) || beforeOperationIndex < 0) {
 			throw new Error('External callable projection usage boundary is not represented in the stable operation sequence');
 		}
