@@ -190,6 +190,22 @@ fn preserve(config: Config) {
 	if (updateStatement?.kind === 'DiscardStatement') assert.equal(updateStatement.expression.kind, 'RecordUpdateExpression');
 });
 
+test('malformed contextual aggregate and index syntax fail as parser diagnostics without AST crashes', () => {
+	for (const text of [
+		'fn bad() {\n\tdiscard { value 1 }\n}\n',
+		'fn bad(target: Unknown) {\n\tdiscard target[0\n}\n',
+		'fn bad(target: Unknown) {\n\ttarget[0 = 1\n}\n',
+	]) {
+		let result: ReturnType<typeof compileSource> | undefined;
+		assert.doesNotThrow(() => { result = compileSource(source(text), { emit: false }); });
+		assert.ok(result);
+		const codes = errorCodes(result);
+		assert.ok(codes.includes('L0002'));
+		assert.ok(!codes.includes('L9001'));
+		assert.equal(result.ast, undefined);
+	}
+});
+
 // @virune-rule {"id":"eval.contextual-source-forms","runner":"unit","file":"packages/compiler/test/contextual-source-forms.test.ts","case":"invalid assignment targets are semantic errors and never crash AST construction","kind":"negative","platform":"common"}
 test('invalid assignment targets are semantic errors and never crash AST construction', () => {
 	for (const text of [
