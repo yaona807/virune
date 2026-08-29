@@ -126,7 +126,7 @@ export type ContextualCallableResult =
 	| { readonly kind: 'value'; readonly value: ContextualCallablePrimitiveKind }
 	| { readonly kind: 'promise'; readonly value: ContextualCallablePrimitiveKind | 'void' };
 
-/** Selected TypeScript callback facts for one native-callable argument. */
+/** Selected TypeScript callback facts for one native-callable argument or object entry. */
 export interface InteropCallableArgumentResolution {
 	readonly index: number;
 	readonly target: {
@@ -156,6 +156,7 @@ export interface ForeignWriteResolution {
 
 export interface ForeignObjectResolution {
 	readonly accepted: true;
+	readonly callableEntries?: readonly InteropCallableArgumentResolution[];
 }
 
 export interface JsInteropProvider {
@@ -208,6 +209,17 @@ export interface CallableProjectionEvidence {
 	readonly descriptor: NativeCallableBoundaryDescriptor;
 }
 
+/** Ordering evidence for a callable projection performed while evaluating a contextual External object entry. */
+export interface ObjectCallableProjectionEvidence {
+	readonly objectNodeId: NodeId;
+	readonly entryIndex: number;
+	readonly property: string;
+	readonly nodeId: NodeId;
+	readonly span: SourceSpan;
+	readonly beforeUsageIndex: number;
+	readonly descriptor: NativeCallableBoundaryDescriptor;
+}
+
 export interface ForeignUsage {
 	readonly kind: 'import' | 'property' | 'index' | 'write-property' | 'write-index' | 'object' | 'call' | 'construct' | 'await' | 'bridge';
 	readonly nodeId: NodeId;
@@ -247,6 +259,7 @@ export interface InteropSemanticModel {
 	/** Serializable provider-independent records consumed by downstream tools. */
 	readonly usageIR: readonly ForeignUsageIR[];
 	readonly callableProjections?: readonly CallableProjectionEvidence[];
+	readonly objectCallableProjections?: readonly ObjectCallableProjectionEvidence[];
 	readonly moduleWitnesses: readonly ModuleResolutionWitness[];
 	readonly requiresJavaScriptInitialization: boolean;
 }
