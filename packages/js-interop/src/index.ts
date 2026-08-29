@@ -6,16 +6,21 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { Script } from 'node:vm';
 import ts from 'typescript';
 import type {
+	ContextualCallablePrimitiveKind,
+	ContextualCallableResult,
 	ForeignCallResolution,
 	ForeignPrimitiveKind,
 	ForeignTypeRef,
 	ForeignTypeSnapshot,
 	InteropArgumentType,
+	InteropCallableArgumentResolution,
 	InteropCallUsage,
 	JsImportRequest,
 	JsImportResolution,
 	JsInteropProvider,
 	ModuleResolutionWitness,
+	NativeCallablePrimitiveKind,
+	NativeCallableTypeTemplate,
 } from '@virune/compiler/experimental';
 
 export interface TypeScriptInteropProviderOptions {
@@ -189,6 +194,7 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 		const callee = this.lookupType(reference);
 		if (callee === undefined) return undefined;
 		const workspace = callee.workspace;
+		if (usage.arguments.some(argument => argument.kind === 'native-callable') && this.#compilerOptions.strictNullChecks !== true) return undefined;
 		const calleeFlags = callee.type.getFlags();
 		if ((calleeFlags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) !== 0 || callee.type.getCallSignatures().length === 0) return undefined;
 
@@ -251,6 +257,14 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 				argumentExpressions.push(name);
 				continue;
 			}
+			if (argument.kind === 'native-callable') {
+				const sourceType = renderNativeCallableType(argument.callable);
+				if (sourceType === undefined) return undefined;
+				const name = `__viruneArg${index}`;
+				declarations.push(`declare const ${name}: ${sourceType};`);
+				argumentExpressions.push(name);
+				continue;
+			}
 			const literal = argument.literal === undefined ? undefined : renderInteropLiteral(argument.primitive, argument.literal);
 			if (argument.literal !== undefined && literal === undefined) return undefined;
 			if (literal !== undefined) {
@@ -304,6 +318,18 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 		const selectedGeneric = (signature.declaration?.typeParameters?.length ?? 0) > 0;
 		if (selectedGeneric && (result.getFlags() & ts.TypeFlags.Unknown) !== 0) return undefined;
 		const parameters = signature.getParameters();
+		const callableArguments: InteropCallableArgumentResolution[] = [];
+		for (let index = 0; index < usage.arguments.length; index++) {
+			const argument = usage.arguments[index]!;
+			if (argument.kind !== 'native-callable') continue;
+			const callArgument = call.arguments[index];
+			const parameter = parameters[index];
+			if (callArgument === undefined || parameter === undefined) return undefined;
+			const contextual = checker.getTypeOfSymbolAtLocation(parameter, callArgument);
+			const target = contextualCallableShape(contextual, checker, callArgument);
+			if (target === undefined) return undefined;
+			callableArguments.push({ index, target });
+		}
 		const { minimum, optional, rest } = signatureArity(parameters);
 		const resultProjection: UsageProjection = {
 			typeExpression: `(typeof import(${JSON.stringify(`./${virtualFileName}`)}))["__viruneResult"]`,
@@ -318,6 +344,7 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 			rest,
 			mayReject: resultSnapshot.category === 'promise',
 			receiverMode: usage.target.kind === 'member' ? 'preserve-this' : 'none',
+			...(callableArguments.length === 0 ? {} : { callableArguments: Object.freeze(callableArguments) }),
 		};
 	}
 
@@ -404,7 +431,7 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 	}
 
 	private argumentCompatible(argument: InteropArgumentType, parameter: ts.Type, checker: ts.TypeChecker): boolean {
-		if (argument.kind === 'unknown') return false;
+		if (argument.kind === 'unknown' || argument.kind === 'native-callable') return false;
 		const parameterFlags = parameter.getFlags();
 		if (argument.kind === 'foreign') {
 			const source = this.requireType(argument.type);
@@ -761,6 +788,97 @@ function typescriptPrimitiveName(primitive: Extract<InteropArgumentType, { reado
 			: primitive === 'BigInt' ? 'bigint'
 				: primitive === 'Unit' ? 'undefined'
 					: 'number';
+}
+
+function renderNativeCallableType(callable: NativeCallableTypeTemplate): string | undefined {
+	const parameters: string[] = [];
+	for (let index = 0; index < callable.parameters.length; index++) {
+		const primitive = typescriptCallbackParameterName(callable.parameters[index]!);
+		if (primitive === undefined) return undefined;
+		parameters.push(`$arg${index}: ${primitive}`);
+	}
+	const result = typescriptCallableResultName(callable.result);
+	if (result === undefined || typeof callable.async !== 'boolean') return undefined;
+	return `(${parameters.join(', ')}) => ${callable.async ? `Promise<${result}>` : result}`;
+}
+
+function typescriptCallbackParameterName(primitive: NativeCallablePrimitiveKind): string | undefined {
+	if (primitive === 'Int') return undefined;
+	return typescriptCallableResultName(primitive);
+}
+
+function typescriptCallableResultName(primitive: NativeCallablePrimitiveKind): string | undefined {
+	return primitive === 'Bool' ? 'boolean'
+		: primitive === 'String' ? 'string'
+			: primitive === 'BigInt' ? 'bigint'
+				: primitive === 'Unit' ? 'undefined'
+					: primitive === 'Int' || primitive === 'Float' ? 'number'
+						: undefined;
+}
+
+function contextualCallableSignature(type: ts.Type, checker: ts.TypeChecker): ts.Signature | undefined {
+	const flags = type.getFlags();
+	if ((flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown | ts.TypeFlags.TypeParameter)) !== 0) return undefined;
+	if (type.getConstructSignatures().length !== 0) return undefined;
+	const signatures = type.getCallSignatures();
+	if (signatures.length !== 1) return undefined;
+	const requiredProperties = checker.getPropertiesOfType(type).filter(property => (property.flags & ts.SymbolFlags.Optional) === 0);
+	if (requiredProperties.length !== 0) return undefined;
+	const signature = signatures[0]!;
+	if (signature.thisParameter !== undefined || (signature.getTypeParameters()?.length ?? 0) !== 0) return undefined;
+	const parameters = signature.getParameters();
+	const declaration = signature.declaration;
+	if (declaration === undefined || declaration.parameters.length !== parameters.length) return undefined;
+	for (const parameter of declaration.parameters) {
+		if (!ts.isParameter(parameter) || parameter.questionToken !== undefined || parameter.initializer !== undefined || parameter.dotDotDotToken !== undefined) return undefined;
+	}
+	return signature;
+}
+
+function contextualCallableShape(
+	type: ts.Type,
+	checker: ts.TypeChecker,
+	location: ts.Node,
+): InteropCallableArgumentResolution['target'] | undefined {
+	const signature = contextualCallableSignature(type, checker);
+	if (signature === undefined) return undefined;
+	const parameters = signature.getParameters();
+	const parameterTypes: ContextualCallablePrimitiveKind[] = [];
+	for (const parameter of parameters) {
+		const parameterType = checker.getTypeOfSymbolAtLocation(parameter, location);
+		const primitive = contextualPrimitiveKind(parameterType);
+		if (primitive === undefined) return undefined;
+		parameterTypes.push(primitive);
+	}
+	const resultType = checker.getReturnTypeOfSignature(signature);
+	const result = contextualCallbackResult(resultType, checker);
+	if (result === undefined) return undefined;
+	return Object.freeze({ parameters: Object.freeze(parameterTypes), result });
+}
+
+function contextualPrimitiveKind(type: ts.Type): ContextualCallablePrimitiveKind | undefined {
+	const flags = type.getFlags();
+	if ((flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown | ts.TypeFlags.TypeParameter | ts.TypeFlags.Union | ts.TypeFlags.Intersection)) !== 0) return undefined;
+	if ((flags & ts.TypeFlags.BooleanLike) !== 0) return 'boolean';
+	if ((flags & ts.TypeFlags.StringLike) !== 0) return 'string';
+	if ((flags & ts.TypeFlags.NumberLike) !== 0) return 'number';
+	if ((flags & ts.TypeFlags.BigIntLike) !== 0) return 'bigint';
+	if ((flags & ts.TypeFlags.Undefined) !== 0) return 'undefined';
+	return undefined;
+}
+
+function contextualCallbackResult(type: ts.Type, checker: ts.TypeChecker): ContextualCallableResult | undefined {
+	const flags = type.getFlags();
+	if ((flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown | ts.TypeFlags.TypeParameter)) !== 0) return undefined;
+	if ((flags & ts.TypeFlags.Void) !== 0) return Object.freeze({ kind: 'void' });
+	const awaited = checker.getAwaitedType(type);
+	if (awaited !== undefined && awaited !== type) {
+		if ((awaited.getFlags() & ts.TypeFlags.Void) !== 0) return Object.freeze({ kind: 'promise', value: 'void' });
+		const value = contextualPrimitiveKind(awaited);
+		return value === undefined ? undefined : Object.freeze({ kind: 'promise', value });
+	}
+	const value = contextualPrimitiveKind(type);
+	return value === undefined ? undefined : Object.freeze({ kind: 'value', value });
 }
 
 function renderInteropLiteral(primitive: Extract<InteropArgumentType, { readonly kind: 'native-primitive' }>['primitive'], literal: NonNullable<Extract<InteropArgumentType, { readonly kind: 'native-primitive' }>['literal']>): string | undefined {

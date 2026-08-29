@@ -10,9 +10,25 @@ Low-level `extern js` rules are defined in [JavaScript FFI](ffi.md).
 
 The provider resolves calls only from the callee and actual argument types. A Virune expected return type MUST NOT participate in JavaScript overload or generic selection. Return-only generic parameters MAY resolve from a TypeScript default or base constraint. If the provider cannot determine one supported call from the callee and actual argument types alone, the call MUST use an adapter.
 
+A native Virune callable MAY satisfy a supported JavaScript callback position only through the generated callable boundary defined below. Its raw runtime function MUST NOT be passed directly to JavaScript.
+
 Named imports from a CommonJS runtime are rejected. Runtime module resolution used by a browser or bundler remains the bundler's responsibility.
 
 A TypeScript `any` import is rejected by the direct facade. TypeScript `unknown` remains an unknown foreign value and can cross to Virune `Unknown` without asserting a narrower type.
+
+### Generated callable boundaries
+
+A generated callable boundary is available only when the pinned provider selects one whole JavaScript call usage and proves a supported contextual callback shape for the callable argument. Missing, stale, malformed, ambiguous, unresolved, `any`, `unknown`, construct-only, unresolved generic, explicit-`this`, optional/rest-parameter, or required callable-object-property evidence MUST fail closed and require an adapter. The Virune compiler MUST NOT recreate general TypeScript assignability rules.
+
+The initial subset accepts concrete named, non-generic Virune functions that are not `@jsExport`, use only supported primitive parameters and results or `Unit`, and have a concrete effect set. `uses *`, native composite values, and erased `Unknown` values MUST NOT cross this boundary. A TypeScript `number` callback parameter does not prove a Virune `Int` input boundary; a Virune `Int` result MAY be projected to TypeScript `number`.
+
+The compiler owns a canonical, provider-independent descriptor containing its version, native parameter/result kinds, async mode, concrete effects, and external-root invocation mode. The generated JavaScript function MUST validate inbound arguments with the existing Safe FFI validation rules, invoke the native function with a fresh root task context, encode the result with the existing Safe FFI encoding rules, preserve synchronous throw and asynchronous rejection behavior, and preserve JavaScript argument evaluation order.
+
+TypeScript `void` does not grant Virune discard semantics. A synchronous `() => void` target accepts only a synchronous Virune callback returning `Unit`; an async `Promise<void>` target accepts only an async Virune callback returning `Unit`.
+
+Callable identity is the pair of native function identity and canonical boundary descriptor. Repeated projection of the same function under the same descriptor MUST return the same JavaScript function object, while a different descriptor MUST NOT alias it. The versioned cache is a non-enumerable compiler-internal property on the native function; this mechanism MUST NOT add a public project helper, origin export, Runtime ABI entry point, or FFI ABI entry point.
+
+Stable projection evidence MUST identify the generated `callable-shim` mechanism, the canonical descriptor, Virune-owned safety claims and obligations, the callback argument index, and its insertion index in the External Operation sequence. Checker-internal usage indexes MUST NOT become part of the stable contract.
 
 ## `[interop.foreign-values]` Foreign values
 

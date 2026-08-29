@@ -1,8 +1,9 @@
 import type * as A from '../ast/nodes.js';
 import type { SemanticModel } from '../checker/checker.js';
+import type { NativeCallableBoundaryDescriptor, NativeCallablePrimitiveKind } from '../interop/types.js';
 import type { HirModule } from '../hir/lower.js';
 import type { SourceFile, SymbolId, TypeId } from '../source.js';
-import { escapeTemplate, panicEmitter, safeName } from './helpers.js';
+import { escapeTemplate, javascriptStringLiteral, panicEmitter, safeName } from './helpers.js';
 import { runtimeImportLines } from './runtime-imports.js';
 import { SourceWriter } from './writer.js';
 
@@ -49,6 +50,26 @@ export class JavaScriptEmitter {
 
 	private emitHeader(module: A.ModuleNode): void {
 		for (const line of runtimeImportLines(module)) this.#writer.line(line);
+		if ((this.#semantic.interop.callableProjections?.length ?? 0) > 0) {
+			this.#writer.line("const $viruneCallableShimCacheKey = '$virune.callable-shim.cache/v1';");
+			this.#writer.line('const $viruneCallableShimObject = ({}).constructor;');
+			this.#writer.line('function $viruneProjectCallable($fn, $descriptor, $factory) {');
+			this.#writer.indent(() => {
+				this.#writer.line('let $cache = $viruneCallableShimObject.getOwnPropertyDescriptor($fn, $viruneCallableShimCacheKey)?.value;');
+				this.#writer.line('if ($cache === undefined) {');
+				this.#writer.indent(() => {
+					this.#writer.line('$cache = [];');
+					this.#writer.line('$viruneCallableShimObject.defineProperty($fn, $viruneCallableShimCacheKey, { value: $cache, enumerable: false, configurable: false, writable: false });');
+				});
+				this.#writer.line('}');
+				this.#writer.line('for (const $entry of $cache) if ($entry[0] === $descriptor) return $entry[1];');
+				this.#writer.line('const $shim = $factory($fn);');
+				this.#writer.line('$cache.push([$descriptor, $shim]);');
+				this.#writer.line('return $shim;');
+			});
+			this.#writer.line('}');
+			this.#writer.line();
+		}
 	}
 
 	private outputMapName(): string { return `${this.#source.path.split(/[\\/]/u).at(-1)?.replace(/\.virune$/u, '.js') ?? 'module.js'}.map`; }
@@ -371,7 +392,11 @@ export class JavaScriptEmitter {
 	}
 
 	private call(expression: A.CallExpression, contextName: string): string {
-		const args = expression.arguments.map(argument => this.expression(argument, contextName));
+		const args = expression.arguments.map((argument, index) => {
+			const raw = this.expression(argument, contextName);
+			const projection = this.#semantic.interop.callableProjections?.find(item => item.callNodeId === expression.id && item.argumentIndex === index);
+			return projection === undefined ? raw : this.callableProjection(raw, projection.descriptor);
+		});
 		if (expression.callee.kind === 'FieldExpression' && expression.callee.target.kind === 'IdentifierExpression' && expression.callee.target.name === 'Json') {
 			if (expression.callee.field === 'parse') return `parseJson(${args[0] ?? '""'})`;
 			if (expression.callee.field === 'decode') {
@@ -388,6 +413,27 @@ export class JavaScriptEmitter {
 		if (expression.foreignCall !== true && this.acceptsTaskContext(expression.callee)) args.push(contextName);
 		if (callee === '$viruneExpect') return `(${args[0] ?? 'false'} ? undefined : panic('Expectation failed'))`;
 		return `${callee}(${args.join(', ')})`;
+	}
+
+	private callableProjection(callable: string, descriptor: NativeCallableBoundaryDescriptor): string {
+		const rawParameters = descriptor.parameters.map((_, index) => `$raw${index}`);
+		const validated = descriptor.parameters.map((parameter, index) => `validateFfiValue(${rawParameters[index]}, ${this.callableFfiDescriptor(parameter)}, ${javascriptStringLiteral(`$[${index}]`)})`);
+		const invocation = `$fn(${[...validated, 'rootTaskContext()'].join(', ')})`;
+		const result = descriptor.async ? `await ${invocation}` : invocation;
+		const wrapper = `${descriptor.async ? 'async ' : ''}(${rawParameters.join(', ')}) => { return encodeFfiValue(${result}, ${this.callableFfiDescriptor(descriptor.result)}); }`;
+		const descriptorKey = JSON.stringify(descriptor);
+		return `$viruneProjectCallable(${callable}, ${javascriptStringLiteral(descriptorKey)}, $fn => (${wrapper}))`;
+	}
+
+	private callableFfiDescriptor(primitive: NativeCallablePrimitiveKind): string {
+		switch (primitive) {
+			case 'Bool': return `{ kind: 'bool' }`;
+			case 'Int': return `{ kind: 'int' }`;
+			case 'Float': return `{ kind: 'float' }`;
+			case 'BigInt': return `{ kind: 'bigint' }`;
+			case 'String': return `{ kind: 'string' }`;
+			case 'Unit': return `{ kind: 'undefined' }`;
+		}
 	}
 
 	private field(expression: A.FieldExpression, contextName: string): string {

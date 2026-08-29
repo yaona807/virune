@@ -2,7 +2,21 @@ import type * as A from '../ast/nodes.js';
 import { analyzeControlFlow } from '../analysis/control-flow.js';
 import { DiagnosticBag } from '../diagnostics/diagnostic.js';
 import { Scope, SymbolFactory, type SymbolInfo } from '../binder/symbols.js';
-import type { ForeignTypeSnapshot, InteropArgumentType, InteropCallTarget, InteropLiteralValue, InteropSemanticModel, JsImportKind, JsInteropProvider, PrimitiveBridgeKind } from '../interop/types.js';
+import type {
+	ContextualCallablePrimitiveKind,
+	ContextualCallableResult,
+	ForeignTypeSnapshot,
+	InteropArgumentType,
+	InteropCallTarget,
+	InteropCallableArgumentResolution,
+	InteropLiteralValue,
+	InteropSemanticModel,
+	JsImportKind,
+	JsInteropProvider,
+	NativeCallableBoundaryDescriptor,
+	NativeCallablePrimitiveKind,
+	PrimitiveBridgeKind,
+} from '../interop/types.js';
 import type { SourceSpan, SymbolId, TypeId } from '../source.js';
 import { TypeArena, type Type } from '../types/types.js';
 import { builtinMember } from './builtin-members.js';
@@ -60,6 +74,7 @@ export class TypeChecker {
 	readonly #jsInteropProvider: JsInteropProvider | undefined;
 	readonly #containingFile: string;
 	readonly #interopUsages: import('../interop/types.js').ForeignUsage[] = [];
+	readonly #callableProjections: import('../interop/types.js').CallableProjectionEvidence[] = [];
 	readonly #moduleWitnesses: import('../interop/types.js').ModuleResolutionWitness[] = [];
 	#requiresJavaScriptInitialization = false;
 
@@ -80,7 +95,7 @@ export class TypeChecker {
 		this.finalizeTypes();
 		this.registerValues(module);
 		for (const declaration of module.declarations) this.checkDeclaration(declaration);
-		return { arena: this.arena, diagnostics: this.diagnostics, globalScope: this.globalScope, symbols: this.#symbols, namedTypes: this.#namedTypes, interop: { usages: this.#interopUsages, usageIR: this.#interopUsages.map(stableForeignUsage), moduleWitnesses: this.#moduleWitnesses, requiresJavaScriptInitialization: this.#requiresJavaScriptInitialization } };
+		return { arena: this.arena, diagnostics: this.diagnostics, globalScope: this.globalScope, symbols: this.#symbols, namedTypes: this.#namedTypes, interop: { usages: this.#interopUsages, usageIR: this.#interopUsages.map(stableForeignUsage), callableProjections: this.#callableProjections, moduleWitnesses: this.#moduleWitnesses, requiresJavaScriptInitialization: this.#requiresJavaScriptInitialization } };
 	}
 
 	private registerForeignImports(module: A.ModuleNode): void {
@@ -589,8 +604,18 @@ export class TypeChecker {
 		expression.foreignCall = true;
 		this.requireEffects(['JavaScript'], expression.span);
 		if (expression.typeArguments.length > 0) this.diagnostics.error('L4203', 'Explicit Virune type arguments are not supported for JavaScript calls; use a TypeScript interop adapter', expression.span);
-		const argumentTypes = expression.arguments.map(argument => this.checkExpression(argument, scope));
-		const interopArguments = argumentTypes.map((typeId, index) => this.interopArgumentType(typeId, expression.arguments[index]!, expression.arguments[index]!.span));
+		const argumentTypes: TypeId[] = [];
+		const foreignUsageCountsAfterArgument: number[] = [];
+		for (const argument of expression.arguments) {
+			argumentTypes.push(this.checkExpression(argument, scope));
+			foreignUsageCountsAfterArgument.push(this.#interopUsages.length);
+		}
+		const callableBoundaries = argumentTypes.map((typeId, index) => this.nativeCallableBoundary(typeId, expression.arguments[index]!));
+		const interopArguments = argumentTypes.map((typeId, index): InteropArgumentType => {
+			const boundary = callableBoundaries[index];
+			if (boundary !== undefined) return { kind: 'native-callable', callable: { parameters: boundary.parameters, result: boundary.result, async: boundary.async } };
+			return this.interopArgumentType(typeId, expression.arguments[index]!, expression.arguments[index]!.span);
+		});
 		let target: InteropCallTarget = { kind: 'value' };
 		if (expression.callee.kind === 'FieldExpression') {
 			const receiverTypeId = expression.callee.target.inferredTypeId;
@@ -605,10 +630,109 @@ export class TypeChecker {
 			this.diagnostics.error('L4204', `Cannot resolve JavaScript call for ${callee.display}; use a TypeScript interop adapter`, expression.span);
 			return this.arena.error;
 		}
+		const callableEvidence = this.validateCallableArgumentEvidence(resolution.callableArguments, interopArguments, callableBoundaries);
+		if (callableEvidence === undefined) {
+			this.diagnostics.error('L4204', `Cannot prove generated callback boundary for JavaScript call ${callee.display}; use a TypeScript interop adapter`, expression.span);
+			return this.arena.error;
+		}
 		const minimum = resolution.minimumArgumentCount ?? Math.max(0, resolution.parameterCount - resolution.optionalParameterCount);
 		if (expression.arguments.length < minimum || (!resolution.rest && expression.arguments.length > resolution.parameterCount)) this.diagnostics.error('L4205', `JavaScript call expects ${minimum}${resolution.rest ? '+' : `..${resolution.parameterCount}`} arguments, received ${expression.arguments.length}`, expression.span);
+		for (const evidence of callableEvidence) {
+			const argument = expression.arguments.at(evidence.index);
+			const boundary = callableBoundaries.at(evidence.index);
+			const beforeUsageIndex = foreignUsageCountsAfterArgument.at(evidence.index);
+			if (argument === undefined || boundary === undefined || beforeUsageIndex === undefined) {
+				this.diagnostics.error('L4204', `Cannot prove generated callback boundary for JavaScript call ${callee.display}; use a TypeScript interop adapter`, expression.span);
+				return this.arena.error;
+			}
+			this.requireEffects(boundary.effects, argument.span);
+			this.#callableProjections.push({
+				callNodeId: expression.id,
+				argumentIndex: evidence.index,
+				nodeId: argument.id,
+				span: argument.span,
+				beforeUsageIndex,
+				descriptor: boundary,
+			});
+		}
 		this.#interopUsages.push({ kind: 'call', nodeId: expression.id, span: expression.span, foreignType: resolution.result, receiverMode: resolution.receiverMode, mayReject: resolution.mayReject });
 		return this.arena.foreign(resolution.result);
+	}
+
+	private nativeCallableBoundary(typeId: TypeId, expression: A.Expression): NativeCallableBoundaryDescriptor | undefined {
+		const type = this.arena.get(typeId);
+		if (type.kind !== 'function' || type.typeParameters.length !== 0 || type.effects.some(effect => effect === '*' || !this.#effects.has(effect))) return undefined;
+		if (expression.kind !== 'IdentifierExpression' || expression.symbolId === undefined) return undefined;
+		const symbol = this.#symbols.get(expression.symbolId);
+		const declaration = symbol?.declaration;
+		if (symbol?.kind !== 'function' || declaration?.kind !== 'FunctionDeclaration') return undefined;
+		const functionDeclaration = declaration as A.FunctionDeclaration;
+		if (functionDeclaration.typeParameters.length !== 0 || functionDeclaration.attributes.some(attribute => attribute.name === 'jsExport')) return undefined;
+		const parameters: NativeCallablePrimitiveKind[] = [];
+		for (const parameter of type.parameters) {
+			const primitive = this.nativeCallablePrimitive(parameter);
+			if (primitive === undefined) return undefined;
+			parameters.push(primitive);
+		}
+		const result = this.nativeCallablePrimitive(type.result);
+		if (result === undefined) return undefined;
+		return Object.freeze({
+			version: 'virune-callable-shim/v1',
+			parameters: Object.freeze(parameters),
+			result,
+			async: type.async,
+			effects: Object.freeze([...new Set(type.effects)].sort(compareText)),
+			contextMode: 'root-argument',
+		});
+	}
+
+	private nativeCallablePrimitive(typeId: TypeId): NativeCallablePrimitiveKind | undefined {
+		const type = this.arena.get(typeId);
+		if (type.kind !== 'primitive') return undefined;
+		return ['Bool', 'Int', 'Float', 'BigInt', 'String', 'Unit'].includes(type.name) ? type.name as NativeCallablePrimitiveKind : undefined;
+	}
+
+	private validateCallableArgumentEvidence(
+		raw: unknown,
+		interopArguments: readonly InteropArgumentType[],
+		boundaries: readonly (NativeCallableBoundaryDescriptor | undefined)[],
+	): readonly InteropCallableArgumentResolution[] | undefined {
+		const expectedIndexes = interopArguments.flatMap((argument, index) => argument.kind === 'native-callable' ? [index] : []);
+		if (expectedIndexes.length === 0) return raw === undefined || Array.isArray(raw) && raw.length === 0 ? [] : undefined;
+		if (!Array.isArray(raw) || raw.length !== expectedIndexes.length) return undefined;
+		const result: InteropCallableArgumentResolution[] = [];
+		for (let position = 0; position < raw.length; position++) {
+			const item = raw[position];
+			if (!isRecord(item) || !hasExactEnumerableKeys(item, ['index', 'target'])) return undefined;
+			const index = item.index;
+			const expectedIndex = expectedIndexes.at(position);
+			if (typeof index !== 'number' || !Number.isSafeInteger(index) || index < 0 || expectedIndex === undefined || index !== expectedIndex) return undefined;
+			const target = item.target;
+			if (!isRecord(target) || !hasExactEnumerableKeys(target, ['parameters', 'result']) || !Array.isArray(target.parameters)) return undefined;
+			const parameters: ContextualCallablePrimitiveKind[] = [];
+			for (const parameter of target.parameters) {
+				if (!isContextualCallablePrimitive(parameter)) return undefined;
+				parameters.push(parameter);
+			}
+			const contextualResult = canonicalContextualCallableResult(target.result);
+			const boundary = boundaries.at(index);
+			if (contextualResult === undefined || boundary === undefined || !this.callableBoundaryMatchesContext(boundary, parameters, contextualResult)) return undefined;
+			result.push(Object.freeze({ index, target: Object.freeze({ parameters: Object.freeze(parameters), result: contextualResult }) }));
+		}
+		return Object.freeze(result);
+	}
+
+	private callableBoundaryMatchesContext(
+		boundary: NativeCallableBoundaryDescriptor,
+		parameters: readonly ContextualCallablePrimitiveKind[],
+		result: ContextualCallableResult,
+	): boolean {
+		if (boundary.parameters.length !== parameters.length) return false;
+		if (boundary.parameters.some((parameter, index) => !callableParameterMatchesContext(parameter, parameters[index]!))) return false;
+		if (result.kind === 'void') return !boundary.async && boundary.result === 'Unit';
+		if (boundary.async !== (result.kind === 'promise')) return false;
+		if (boundary.result === 'Unit') return result.value === 'undefined' || result.kind === 'promise' && result.value === 'void';
+		return callablePrimitiveExternalName(boundary.result) === result.value;
 	}
 
 	private interopArgumentType(typeId: TypeId, expression: A.Expression, span: SourceSpan): InteropArgumentType {
@@ -1208,6 +1332,54 @@ export class TypeChecker {
 
 	private unify(pattern: TypeId, actual: TypeId, substitutions: Map<string, TypeId>): void { this.#types.unify(pattern, actual, substitutions); }
 	private substitute(typeId: TypeId, substitutions: ReadonlyMap<string, TypeId>): TypeId { return this.#types.substitute(typeId, substitutions); }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function hasExactEnumerableKeys(value: Record<string, unknown>, expected: readonly string[]): boolean {
+	const actual = Object.keys(value).sort(compareText);
+	const canonicalExpected = [...expected].sort(compareText);
+	return actual.length === canonicalExpected.length && actual.every((key, index) => key === canonicalExpected[index]);
+}
+
+function isContextualCallablePrimitive(value: unknown): value is ContextualCallablePrimitiveKind {
+	return typeof value === 'string' && ['boolean', 'string', 'number', 'bigint', 'undefined'].includes(value);
+}
+
+function canonicalContextualCallableResult(value: unknown): ContextualCallableResult | undefined {
+	if (!isRecord(value) || typeof value.kind !== 'string') return undefined;
+	if (value.kind === 'void') return hasExactEnumerableKeys(value, ['kind']) ? Object.freeze({ kind: 'void' }) : undefined;
+	if (value.kind !== 'value' && value.kind !== 'promise') return undefined;
+	if (!hasExactEnumerableKeys(value, ['kind', 'value'])) return undefined;
+	if (value.kind === 'promise' && value.value === 'void') return Object.freeze({ kind: 'promise', value: 'void' });
+	if (!isContextualCallablePrimitive(value.value)) return undefined;
+	return value.kind === 'value'
+		? Object.freeze({ kind: 'value', value: value.value })
+		: Object.freeze({ kind: 'promise', value: value.value });
+}
+
+function callableParameterMatchesContext(native: NativeCallablePrimitiveKind, target: ContextualCallablePrimitiveKind): boolean {
+	return native === 'Bool' ? target === 'boolean'
+		: native === 'String' ? target === 'string'
+			: native === 'Float' ? target === 'number'
+				: native === 'BigInt' ? target === 'bigint'
+					: native === 'Unit' ? target === 'undefined'
+						: false;
+}
+
+function callablePrimitiveExternalName(native: NativeCallablePrimitiveKind): ContextualCallablePrimitiveKind | undefined {
+	return native === 'Bool' ? 'boolean'
+		: native === 'String' ? 'string'
+			: native === 'Int' || native === 'Float' ? 'number'
+				: native === 'BigInt' ? 'bigint'
+					: native === 'Unit' ? 'undefined'
+						: undefined;
+}
+
+function compareText(left: string, right: string): number {
+	return left < right ? -1 : left > right ? 1 : 0;
 }
 
 function stableForeignUsage(usage: import('../interop/types.js').ForeignUsage): import('../interop/types.js').ForeignUsageIR {

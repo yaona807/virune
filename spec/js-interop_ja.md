@@ -10,9 +10,25 @@
 
 Providerは、呼び出し先と実引数の型だけからJavaScript呼び出しを解決します。Virune側で期待される戻り値型を、JavaScriptのオーバーロードやジェネリックの選択に使ってはいけません。戻り値にしか現れないジェネリックパラメーターは、TypeScriptのデフォルトまたは基底制約から確定できる場合に限って解決できます。呼び出し先と実引数の型だけから対応している呼び出しを1つに確定できない場合は、アダプターを使わなければなりません。
 
+Virune側の関数を対応しているJavaScriptのコールバック位置へ渡せるのは、後述する生成コールバック境界を経由する場合だけです。Virune関数の生の実行時表現をJavaScriptへ直接渡してはいけません。
+
 CommonJSとして実行されるモジュールからの名前付きインポートは拒否します。ブラウザやバンドラーで実際に使う実行時モジュールの解決は、バンドラーの責任です。
 
 TypeScriptで`any`と宣言されたインポートは、直接利用では拒否します。TypeScriptの`unknown`は型が不明な外部値として保持し、より狭い型を仮定せずにViruneの`Unknown`へ渡せます。
+
+### 生成コールバック境界
+
+生成コールバック境界を使えるのは、固定したProviderがJavaScript呼び出し全体を1つに確定し、その実引数に対応するコールバック型を安全に扱えると証明できた場合だけです。証拠が欠落、古い、不正、曖昧、未解決、`any`、`unknown`、コンストラクター専用、未解決ジェネリック、明示的な`this`付き、任意引数・可変長引数付き、または必須プロパティを持つcallable objectである場合は安全側に失敗し、アダプターを要求しなければなりません。ViruneコンパイラーでTypeScript一般の代入互換性を再実装してはいけません。
+
+最初に対応するのは、名前付きで非ジェネリック、かつ`@jsExport`ではないVirune関数のうち、引数と戻り値が対応プリミティブ型または`Unit`だけで構成され、effect集合が具体的に確定しているものです。`uses *`、Virune側の複合値、`Unknown`へ型消去された値をこの境界から渡してはいけません。TypeScriptの`number`引数だけではViruneの`Int`入力を保証できないため拒否しますが、Viruneの`Int`戻り値はTypeScriptの`number`へ変換できます。
+
+コンパイラーは、バージョン、Virune側の引数・戻り値の種類、非同期かどうか、具体的なeffect、外部からの新規呼び出しとして実行することを含む、Providerに依存しない正規化済みdescriptorを所有します。生成するJavaScript関数は、既存Safe FFIの検証規則で入力を検査し、新しいroot task contextでVirune関数を呼び、既存Safe FFIの変換規則で戻り値をJavaScriptへ変換しなければなりません。また、同期例外と非同期rejectの挙動、およびJavaScriptの実引数評価順序を維持しなければなりません。
+
+TypeScriptの`void`は、Viruneの戻り値を自由に破棄してよいという意味にはなりません。同期の`() => void`へ渡せるのは同期で`Unit`を返すVirune関数だけで、非同期の`Promise<void>`へ渡せるのは非同期で`Unit`を返すVirune関数だけです。
+
+生成したJavaScript関数の同一性は、Virune関数自体の同一性と正規化済み境界descriptorの組で決まります。同じ関数を同じdescriptorで繰り返し変換した場合は同じJavaScript関数オブジェクトを返し、同じ関数でもdescriptorが異なる場合は同じJavaScript関数オブジェクトを共有してはいけません。バージョン付きcacheはVirune関数上の列挙されないコンパイラー内部プロパティとして保持します。この仕組みのために公開project helper、origin export、Runtime ABI entry point、FFI ABI entry pointを追加してはいけません。
+
+安定したprojection evidenceには、生成された`callable-shim`であること、正規化済みdescriptor、Virune側が保証する安全性と未解決の義務、コールバックの実引数index、External Operation列での挿入indexを含めなければなりません。checker内部だけで使うusage indexを安定したcontractへ含めてはいけません。
 
 ## `[interop.foreign-values]` 外部値（Foreign値）
 
