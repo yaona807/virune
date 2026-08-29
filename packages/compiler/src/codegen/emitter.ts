@@ -3,7 +3,7 @@ import type { SemanticModel } from '../checker/checker.js';
 import type { NativeCallableBoundaryDescriptor, NativeCallablePrimitiveKind } from '../interop/types.js';
 import type { HirModule } from '../hir/lower.js';
 import type { SourceFile, SymbolId, TypeId } from '../source.js';
-import { escapeTemplate, panicEmitter, safeName } from './helpers.js';
+import { escapeTemplate, javascriptStringLiteral, panicEmitter, safeName } from './helpers.js';
 import { runtimeImportLines } from './runtime-imports.js';
 import { SourceWriter } from './writer.js';
 
@@ -417,11 +417,12 @@ export class JavaScriptEmitter {
 
 	private callableProjection(callable: string, descriptor: NativeCallableBoundaryDescriptor): string {
 		const rawParameters = descriptor.parameters.map((_, index) => `$raw${index}`);
-		const validated = descriptor.parameters.map((parameter, index) => `validateFfiValue(${rawParameters[index]}, ${this.callableFfiDescriptor(parameter)}, ${JSON.stringify(`$[${index}]`)})`);
+		const validated = descriptor.parameters.map((parameter, index) => `validateFfiValue(${rawParameters[index]}, ${this.callableFfiDescriptor(parameter)}, ${javascriptStringLiteral(`$[${index}]`)})`);
 		const invocation = `$fn(${[...validated, 'rootTaskContext()'].join(', ')})`;
 		const result = descriptor.async ? `await ${invocation}` : invocation;
 		const wrapper = `${descriptor.async ? 'async ' : ''}(${rawParameters.join(', ')}) => { return encodeFfiValue(${result}, ${this.callableFfiDescriptor(descriptor.result)}); }`;
-		return `$viruneProjectCallable(${callable}, ${JSON.stringify(JSON.stringify(descriptor))}, $fn => (${wrapper}))`;
+		const descriptorKey = JSON.stringify(descriptor);
+		return `$viruneProjectCallable(${callable}, ${javascriptStringLiteral(descriptorKey)}, $fn => (${wrapper}))`;
 	}
 
 	private callableFfiDescriptor(primitive: NativeCallablePrimitiveKind): string {
