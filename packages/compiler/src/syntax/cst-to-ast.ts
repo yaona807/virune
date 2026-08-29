@@ -167,7 +167,7 @@ export class AstBuilder extends baseCstVisitorConstructor {
 		if (target.kind === 'IdentifierExpression') return { id: this.id(), kind: 'AssignmentStatement', span, name: target.name, value };
 		if (target.kind === 'FieldExpression') return { id: this.id(), kind: 'MemberAssignmentStatement', span, target: target.target, field: target.field, value };
 		if (target.kind === 'IndexExpression') return { id: this.id(), kind: 'IndexAssignmentStatement', span, target: target.target, index: target.index, value };
-		throw new Error(`Invalid assignment target ${target.kind}`);
+		return { id: this.id(), kind: 'AssignmentStatement', span, name: '', value, invalidTarget: target };
 	}
 	public deferStatement(ctx: Ctx): A.DeferStatement { return { id: this.id(), kind: 'DeferStatement', span: nodeSpan(this.#fileId, this.currentNode(ctx)), expression: this.visitNode(firstNode(ctx, 'expression')) }; }
 	public expressionStatement(ctx: Ctx): A.ExpressionStatement { return { id: this.id(), kind: 'ExpressionStatement', span: nodeSpan(this.#fileId, this.currentNode(ctx)), expression: this.visitNode(firstNode(ctx, 'expression')) }; }
