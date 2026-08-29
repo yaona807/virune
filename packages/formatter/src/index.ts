@@ -338,7 +338,7 @@ function expressionText(expression: Expression): readonly [string, number] {
 
 function printRecordEntries(name: string, entries: readonly RecordEntryNode[]): string {
 	if (entries.length === 0) return `${name}${name.length > 0 ? ' ' : ''}{}`;
-	return `${name}${name.length > 0 ? ' ' : ''}{\n${entries.map(entry => `\t${entry.name}: ${printExpression(entry.value)},`).join('\n')}\n}`;
+	return `${name}${name.length > 0 ? ' ' : ''}{\n${entries.map(entry => `\t${entry.name}: ${printExpression(entry.value).replaceAll('\n', '\n\t')},`).join('\n')}\n}`;
 }
 function printMatch(target: Expression, arms: readonly MatchArmNode[]): string { return `match ${printExpression(target)} {\n${arms.map(arm => `\t${printPattern(arm.pattern)}${arm.guard === undefined ? '' : ` if ${printExpression(arm.guard)}`} => ${printExpression(arm.expression)}`).join('\n')}\n}`; }
 function printParallel(tryMode: boolean, entries: readonly { readonly name: string; readonly value: Expression }[]): string { return `parallel${tryMode ? ' try' : ''} {\n${entries.map(entry => `\t${entry.name}: ${printExpression(entry.value)},`).join('\n')}\n}`; }
