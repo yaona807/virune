@@ -263,7 +263,13 @@ export class JavaScriptEmitter {
 				this.#writer.indent(() => this.emitBlock(statement.body)); this.#writer.line('}'); break;
 			}
 			case 'WhileStatement': this.#writer.line(`while (${this.expression(statement.condition)}) {`); this.#writer.indent(() => this.emitBlock(statement.body)); this.#writer.line('}'); break;
-			case 'AssignmentStatement': this.#writer.line(`${this.nameOf(statement.targetSymbolId, statement.name)} = ${this.expression(statement.value)};`); break;
+			case 'AssignmentStatement':
+				if (statement.invalidTarget !== undefined) throw new Error('Invalid assignment target reached JavaScript emission');
+				this.#writer.line(`${this.nameOf(statement.targetSymbolId, statement.name)} = ${this.expression(statement.value)};`);
+				break;
+			case 'MemberAssignmentStatement':
+			case 'IndexAssignmentStatement':
+				throw new Error('Unproven writable facet reached JavaScript emission');
 			case 'DeferStatement': { const stack = this.#deferStacks.at(-1); if (stack === undefined) throw new Error('defer emitted outside deferred block'); this.#writer.line(`${stack}.push(${this.#currentAsync ? 'async ' : ''}() => ${this.expression(statement.expression)});`); break; }
 			case 'BreakStatement': this.#writer.line('break;'); break;
 			case 'ContinueStatement': this.#writer.line('continue;'); break;
@@ -298,6 +304,7 @@ export class JavaScriptEmitter {
 			case 'WildcardExpression': return 'undefined';
 			case 'CallExpression': return this.call(expression, contextName);
 			case 'FieldExpression': return this.field(expression, contextName);
+			case 'IndexExpression': return panicEmitter('IndexExpression reached emission without a checked index facet');
 			case 'BinaryExpression': return this.binary(expression, contextName);
 			case 'UnaryExpression': return expression.operator === '-' && expression.inferredTypeId === this.#semantic.arena.int ? `intNegate(${this.expression(expression.operand, contextName)})` : `(${expression.operator}${this.expression(expression.operand, contextName)})`;
 			case 'PipelineExpression': return panicEmitter('PipelineExpression should be lowered before emission');
@@ -305,6 +312,7 @@ export class JavaScriptEmitter {
 			case 'AwaitExpression': return `(await ${this.expression(expression.operand, contextName)})`;
 			case 'RecordExpression': { const type = expression.inferredTypeId === undefined ? undefined : this.#semantic.arena.get(expression.inferredTypeId); const typeId = type?.kind === 'named' ? type.definitionId : expression.name; return `makeRecord({ ${expression.entries.map(entry => `${safeName(entry.name)}: ${this.expression(entry.value, contextName)}`).join(', ')} }, ${JSON.stringify(typeId)})`; }
 			case 'RecordUpdateExpression': return `updateRecord(${this.expression(expression.base, contextName)}, { ${expression.entries.map(entry => `${safeName(entry.name)}: ${this.expression(entry.value, contextName)}`).join(', ')} })`;
+			case 'ContextualAggregateExpression': return panicEmitter('ContextualAggregateExpression reached emission without a checked aggregate facet');
 			case 'ListExpression': return `[${expression.items.map(item => this.expression(item, contextName)).join(', ')}]`;
 			case 'TupleExpression': return `[${expression.items.map(item => this.expression(item, contextName)).join(', ')}]`;
 			case 'ConditionalExpression': return `(${this.expression(expression.condition, contextName)} ? ${this.expression(expression.thenExpression, contextName)} : ${this.expression(expression.elseExpression, contextName)})`;
@@ -342,7 +350,12 @@ export class JavaScriptEmitter {
 		switch (statement.kind) {
 			case 'LetStatement': return [`${prefix}${statement.mutable ? 'let' : 'const'} ${this.nameOf(statement.symbolId, statement.name)} = ${this.expression(statement.value, contextName)};`];
 			case 'ReturnStatement': return [`${prefix}${statement.value === undefined ? 'return undefined;' : `return ${this.expression(statement.value, contextName)};`}`];
-			case 'AssignmentStatement': return [`${prefix}${this.nameOf(statement.targetSymbolId, statement.name)} = ${this.expression(statement.value, contextName)};`];
+			case 'AssignmentStatement':
+				if (statement.invalidTarget !== undefined) throw new Error('Invalid assignment target reached JavaScript emission');
+				return [`${prefix}${this.nameOf(statement.targetSymbolId, statement.name)} = ${this.expression(statement.value, contextName)};`];
+			case 'MemberAssignmentStatement':
+			case 'IndexAssignmentStatement':
+				throw new Error('Unproven writable facet reached JavaScript emission');
 			case 'BreakStatement': return [`${prefix}break;`];
 			case 'ContinueStatement': return [`${prefix}continue;`];
 			case 'DiscardStatement': return [`${prefix}void ${this.expression(statement.expression, contextName)};`];
