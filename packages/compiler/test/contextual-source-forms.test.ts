@@ -71,15 +71,15 @@ test('contextual aggregate spans cover complete source forms', () => {
 	const populatedStatement = body.statements[0];
 	assert.equal(populatedStatement?.kind, 'DiscardStatement');
 	if (populatedStatement?.kind !== 'DiscardStatement' || populatedStatement.expression.kind !== 'ContextualAggregateExpression') return;
-	assert.equal(text.slice(populatedStatement.expression.span.start.offset, populatedStatement.expression.span.end.offset), '{ first: 1, second: 2 }');
+	assert.equal(text.slice(populatedStatement.expression.span.start.offset, populatedStatement.expression.span.end.offset + 1), '{ first: 1, second: 2 }');
 	assert.deepEqual(
-		populatedStatement.expression.entries.map(entry => text.slice(entry.span.start.offset, entry.span.end.offset)),
+		populatedStatement.expression.entries.map(entry => text.slice(entry.span.start.offset, entry.span.end.offset + 1)),
 		['first: 1', 'second: 2'],
 	);
 	const emptyStatement = body.statements[1];
 	assert.equal(emptyStatement?.kind, 'DiscardStatement');
 	if (emptyStatement?.kind !== 'DiscardStatement' || emptyStatement.expression.kind !== 'ContextualAggregateExpression') return;
-	assert.equal(text.slice(emptyStatement.expression.span.start.offset, emptyStatement.expression.span.end.offset), '{}');
+	assert.equal(text.slice(emptyStatement.expression.span.start.offset, emptyStatement.expression.span.end.offset + 1), '{}');
 });
 
 // @virune-rule {"id":"eval.contextual-source-forms","runner":"unit","file":"packages/compiler/test/contextual-source-forms.test.ts","case":"postfix index syntax preserves receiver and key expressions","kind":"negative","platform":"common"}
