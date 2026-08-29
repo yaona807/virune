@@ -9,12 +9,16 @@ import type {
 	ContextualCallablePrimitiveKind,
 	ContextualCallableResult,
 	ForeignCallResolution,
+	ForeignIndexResolution,
 	ForeignPrimitiveKind,
 	ForeignTypeRef,
 	ForeignTypeSnapshot,
+	ForeignWriteResolution,
 	InteropArgumentType,
 	InteropCallableArgumentResolution,
 	InteropCallUsage,
+	InteropIndexUsage,
+	InteropWriteUsage,
 	JsImportRequest,
 	JsImportResolution,
 	JsInteropProvider,
@@ -70,6 +74,21 @@ interface ProbeWorkspace {
 	readonly virtualFiles: Map<string, VirtualProbeFile>;
 	readonly languageService: ts.LanguageService;
 	projectVersion: number;
+}
+
+interface UsageProbeContext {
+	readonly stored: StoredType;
+	readonly workspace: ProbeWorkspace;
+	readonly directory: string;
+	readonly imports: Set<string>;
+	readonly declarations: string[];
+	readonly target: string;
+}
+
+interface UsageProbeResult {
+	readonly checker: ts.TypeChecker;
+	readonly initializer: ts.Expression;
+	readonly virtualFileName: string;
 }
 
 interface RuntimePackageJson {
@@ -188,6 +207,135 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 			stored.workspace,
 			usageProjection,
 		);
+	}
+
+	public resolveIndexUsage(reference: ForeignTypeRef, usage: InteropIndexUsage): ForeignIndexResolution | undefined {
+		const context = this.createUsageProbeContext(reference);
+		if (context === undefined) return undefined;
+		const index = this.renderUsageValue(usage.index, 0, context, false);
+		if (index === undefined) return undefined;
+		const probe = this.runUsageProbe(context, `${context.target}[${index}]`);
+		if (probe === undefined) return undefined;
+		const result = probe.checker.getTypeAtLocation(probe.initializer);
+		if ((result.getFlags() & (ts.TypeFlags.Any | ts.TypeFlags.Unknown | ts.TypeFlags.Never)) !== 0) return undefined;
+		const resultProjection: UsageProjection = {
+			typeExpression: `(typeof import(${JSON.stringify(`./${probe.virtualFileName}`)}))["__viruneResult"]`,
+			directory: context.directory,
+		};
+		return { result: this.store(result, probe.checker, probe.initializer, context.stored.origin, context.workspace, resultProjection) };
+	}
+
+	public resolveWriteUsage(reference: ForeignTypeRef, usage: InteropWriteUsage): ForeignWriteResolution | undefined {
+		const context = this.createUsageProbeContext(reference);
+		if (context === undefined) return undefined;
+		let left: string;
+		let value: string | undefined;
+		if (usage.kind === 'property') {
+			left = `${context.target}[${JSON.stringify(usage.property)}]`;
+			value = this.renderUsageValue(usage.value, 0, context, false);
+		} else {
+			const index = this.renderUsageValue(usage.index, 0, context, false);
+			value = this.renderUsageValue(usage.value, 1, context, false);
+			if (index === undefined) return undefined;
+			left = `${context.target}[${index}]`;
+		}
+		if (value === undefined) return undefined;
+		const probe = this.runUsageProbe(context, `${left} = ${value}`);
+		if (probe === undefined || !ts.isBinaryExpression(probe.initializer) || probe.initializer.operatorToken.kind !== ts.SyntaxKind.EqualsToken) return undefined;
+		const destination = probe.checker.getTypeAtLocation(probe.initializer.left);
+		if ((destination.getFlags() & (ts.TypeFlags.Any | ts.TypeFlags.Unknown | ts.TypeFlags.Never)) !== 0) return undefined;
+		return { accepted: true };
+	}
+
+	public resolveConstructUsage(reference: ForeignTypeRef, usage: InteropCallUsage): ForeignCallResolution | undefined {
+		const stored = this.lookupType(reference);
+		if (stored === undefined) return undefined;
+		const flags = stored.type.getFlags();
+		if ((flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) !== 0) return undefined;
+		if (stored.type.getCallSignatures().length !== 0 || stored.type.getConstructSignatures().length === 0) return undefined;
+		return this.resolveSignature(reference, usage.arguments, true);
+	}
+
+	private createUsageProbeContext(reference: ForeignTypeRef): UsageProbeContext | undefined {
+		const stored = this.lookupType(reference);
+		if (stored === undefined || stored.usageProjection === undefined) return undefined;
+		const flags = stored.type.getFlags();
+		if ((flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) !== 0) return undefined;
+		const imports = new Set<string>();
+		if (stored.usageProjection.declaration !== undefined) imports.add(stored.usageProjection.declaration);
+		const declarations = ['export {};'];
+		let target: string;
+		if (stored.usageProjection.valueExpression !== undefined) target = stored.usageProjection.valueExpression;
+		else {
+			declarations.push(`declare const __viruneTarget: ${stored.usageProjection.typeExpression};`);
+			target = '__viruneTarget';
+		}
+		return {
+			stored,
+			workspace: stored.workspace,
+			directory: stored.usageProjection.directory,
+			imports,
+			declarations,
+			target,
+		};
+	}
+
+	private renderUsageValue(argument: InteropArgumentType, index: number, context: UsageProbeContext, allowNativeCallable: boolean): string | undefined {
+		if (argument.kind === 'unknown') return undefined;
+		if (argument.kind === 'foreign') {
+			const source = this.lookupType(argument.type);
+			if (source === undefined || source.workspace !== context.workspace || source.usageProjection === undefined || source.usageProjection.directory !== context.directory) return undefined;
+			if (source.usageProjection.declaration !== undefined) context.imports.add(source.usageProjection.declaration);
+			const sourceType = foreignTypeRequiresUnknownProjection(source.type, source.checker, source.location) ? 'unknown' : source.usageProjection.typeExpression;
+			const name = `__viruneValue${index}`;
+			context.declarations.push(`declare const ${name}: ${sourceType};`);
+			return name;
+		}
+		if (argument.kind === 'native-callable') {
+			if (!allowNativeCallable) return undefined;
+			const sourceType = renderNativeCallableType(argument.callable);
+			if (sourceType === undefined) return undefined;
+			const name = `__viruneValue${index}`;
+			context.declarations.push(`declare const ${name}: ${sourceType};`);
+			return name;
+		}
+		const literal = argument.literal === undefined ? undefined : renderInteropLiteral(argument.primitive, argument.literal);
+		if (argument.literal !== undefined && literal === undefined) return undefined;
+		if (literal !== undefined) return literal;
+		if (argument.primitive === 'Unit') return 'undefined';
+		const name = `__viruneValue${index}`;
+		context.declarations.push(`declare const ${name}: ${typescriptPrimitiveName(argument.primitive)};`);
+		return name;
+	}
+
+	private runUsageProbe(context: UsageProbeContext, expression: string): UsageProbeResult | undefined {
+		const importText = [...context.imports].sort().join('\n');
+		const sourceText = `${importText.length === 0 ? '' : `${importText}\n`}${context.declarations.join('\n')}\nexport const __viruneResult = ${expression};\n`;
+		const extension = context.workspace.platform === 'node' ? 'mts' : 'ts';
+		const virtualFileName = `.virune-interop-operation-${context.workspace.platform}-${hash(sourceText)}.${extension}`;
+		const virtualPath = join(context.directory, virtualFileName);
+		const virtualKey = canonicalFilePath(virtualPath);
+		const existing = context.workspace.virtualFiles.get(virtualKey);
+		if (existing === undefined) {
+			context.workspace.virtualFiles.set(virtualKey, { path: virtualPath, text: sourceText, version: 1 });
+			context.workspace.projectVersion++;
+		} else if (existing.text !== sourceText) return undefined;
+		const program = context.workspace.languageService.getProgram();
+		if (program === undefined) return undefined;
+		const diagnostics = [
+			...context.workspace.languageService.getCompilerOptionsDiagnostics(),
+			...context.workspace.languageService.getSyntacticDiagnostics(virtualPath),
+			...context.workspace.languageService.getSemanticDiagnostics(virtualPath),
+		];
+		if (diagnostics.some(item => item.category === ts.DiagnosticCategory.Error)) return undefined;
+		const sourceFile = program.getSourceFile(virtualPath)
+			?? program.getSourceFiles().find(item => canonicalFilePath(item.fileName) === virtualKey);
+		const declaration = sourceFile?.statements
+			.filter(ts.isVariableStatement)
+			.flatMap(statement => [...statement.declarationList.declarations])
+			.find(item => ts.isIdentifier(item.name) && item.name.text === '__viruneResult');
+		if (declaration?.initializer === undefined) return undefined;
+		return { checker: program.getTypeChecker(), initializer: declaration.initializer, virtualFileName };
 	}
 
 	private resolveCallUsageInternal(reference: ForeignTypeRef, usage: InteropCallUsage): ForeignCallResolution | undefined {
