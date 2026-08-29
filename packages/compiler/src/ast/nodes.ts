@@ -62,8 +62,8 @@ export interface BreakStatement extends AstNode { readonly kind: 'BreakStatement
 export interface ContinueStatement extends AstNode { readonly kind: 'ContinueStatement'; }
 export interface DiscardStatement extends AstNode { readonly kind: 'DiscardStatement'; readonly expression: Expression; }
 export interface AssignmentStatement extends AstNode { readonly kind: 'AssignmentStatement'; readonly name: string; readonly value: Expression; readonly invalidTarget?: Expression; targetSymbolId?: SymbolId; }
-export interface MemberAssignmentStatement extends AstNode { readonly kind: 'MemberAssignmentStatement'; readonly target: Expression; readonly field: string; readonly value: Expression; }
-export interface IndexAssignmentStatement extends AstNode { readonly kind: 'IndexAssignmentStatement'; readonly target: Expression; readonly index: Expression; readonly value: Expression; }
+export interface MemberAssignmentStatement extends AstNode { readonly kind: 'MemberAssignmentStatement'; readonly target: Expression; readonly field: string; readonly value: Expression; foreignWrite?: true; }
+export interface IndexAssignmentStatement extends AstNode { readonly kind: 'IndexAssignmentStatement'; readonly target: Expression; readonly index: Expression; readonly value: Expression; foreignWrite?: true; }
 export interface DeferStatement extends AstNode { readonly kind: 'DeferStatement'; readonly expression: Expression; }
 export interface ExpressionStatement extends AstNode { readonly kind: 'ExpressionStatement'; readonly expression: Expression; }
 
@@ -72,9 +72,9 @@ export interface ExpressionBase extends AstNode { inferredTypeId?: TypeId; forei
 export interface LiteralExpression extends ExpressionBase { readonly kind: 'LiteralExpression'; readonly literalKind: 'String' | 'Int' | 'Float' | 'BigInt' | 'Bool'; readonly value: string | number | bigint | boolean; }
 export interface IdentifierExpression extends ExpressionBase { readonly kind: 'IdentifierExpression'; readonly name: string; symbolId?: SymbolId; }
 export interface WildcardExpression extends ExpressionBase { readonly kind: 'WildcardExpression'; }
-export interface CallExpression extends ExpressionBase { readonly kind: 'CallExpression'; readonly callee: Expression; readonly typeArguments: readonly TypeReferenceNode[]; readonly arguments: readonly Expression[]; foreignCall?: true; }
+export interface CallExpression extends ExpressionBase { readonly kind: 'CallExpression'; readonly callee: Expression; readonly typeArguments: readonly TypeReferenceNode[]; readonly arguments: readonly Expression[]; foreignCall?: true; foreignConstruct?: true; }
 export interface FieldExpression extends ExpressionBase { readonly kind: 'FieldExpression'; readonly target: Expression; readonly field: string; }
-export interface IndexExpression extends ExpressionBase { readonly kind: 'IndexExpression'; readonly target: Expression; readonly index: Expression; }
+export interface IndexExpression extends ExpressionBase { readonly kind: 'IndexExpression'; readonly target: Expression; readonly index: Expression; foreignIndex?: true; }
 export interface BinaryExpression extends ExpressionBase { readonly kind: 'BinaryExpression'; readonly operator: string; readonly left: Expression; readonly right: Expression; }
 export interface UnaryExpression extends ExpressionBase { readonly kind: 'UnaryExpression'; readonly operator: '!' | '-'; readonly operand: Expression; }
 export interface PipelineExpression extends ExpressionBase { readonly kind: 'PipelineExpression'; readonly left: Expression; readonly right: Expression; }
