@@ -51,8 +51,12 @@ class MirBuilder {
 				this.push(current, statement, 'let', statement.value.inferredTypeId);
 				return current;
 			case 'AssignmentStatement':
+				if (statement.invalidTarget !== undefined) throw new Error('Invalid assignment target reached MIR lowering');
 				this.push(current, statement, 'assign', statement.value.inferredTypeId);
 				return current;
+			case 'MemberAssignmentStatement':
+			case 'IndexAssignmentStatement':
+				throw new Error('Unproven writable facet reached MIR lowering');
 			case 'ExpressionStatement':
 			case 'DiscardStatement':
 				this.push(current, statement, 'evaluate', statement.expression.inferredTypeId);

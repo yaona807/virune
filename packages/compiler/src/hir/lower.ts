@@ -16,12 +16,14 @@ function lowerExpression(expression: A.Expression): A.Expression {
 		}
 		case 'CallExpression': return { ...expression, callee: lowerExpression(expression.callee), arguments: expression.arguments.map(lowerExpression) };
 		case 'FieldExpression': return { ...expression, target: lowerExpression(expression.target) };
+		case 'IndexExpression': return { ...expression, target: lowerExpression(expression.target), index: lowerExpression(expression.index) };
 		case 'BinaryExpression': return { ...expression, left: lowerExpression(expression.left), right: lowerExpression(expression.right) };
 		case 'UnaryExpression': return { ...expression, operand: lowerExpression(expression.operand) };
 		case 'TryExpression': return { ...expression, operand: lowerExpression(expression.operand) };
 		case 'AwaitExpression': return { ...expression, operand: lowerExpression(expression.operand) };
 		case 'RecordExpression': return { ...expression, entries: expression.entries.map(entry => ({ ...entry, value: lowerExpression(entry.value) })) };
 		case 'RecordUpdateExpression': return { ...expression, base: lowerExpression(expression.base), entries: expression.entries.map(entry => ({ ...entry, value: lowerExpression(entry.value) })) };
+		case 'ContextualAggregateExpression': return { ...expression, entries: expression.entries.map(entry => ({ ...entry, value: lowerExpression(entry.value) })) };
 		case 'ListExpression': return { ...expression, items: expression.items.map(lowerExpression) };
 		case 'TupleExpression': return { ...expression, items: expression.items.map(lowerExpression) };
 		case 'ConditionalExpression': return { ...expression, condition: lowerExpression(expression.condition), thenExpression: lowerExpression(expression.thenExpression), elseExpression: lowerExpression(expression.elseExpression) };
@@ -39,7 +41,9 @@ function lowerStatement(statement: A.Statement): A.Statement {
 		case 'IfStatement': return { ...statement, condition: lowerExpression(statement.condition), thenBlock: lowerBlock(statement.thenBlock), ...(statement.elseBranch === undefined ? {} : { elseBranch: statement.elseBranch.kind === 'BlockStatement' ? lowerBlock(statement.elseBranch) : lowerStatement(statement.elseBranch) as A.IfStatement }) };
 		case 'ForStatement': return { ...statement, iterable: lowerExpression(statement.iterable), body: lowerBlock(statement.body) };
 		case 'WhileStatement': return { ...statement, condition: lowerExpression(statement.condition), body: lowerBlock(statement.body) };
-		case 'AssignmentStatement': return { ...statement, value: lowerExpression(statement.value) };
+		case 'AssignmentStatement': return { ...statement, ...(statement.invalidTarget === undefined ? {} : { invalidTarget: lowerExpression(statement.invalidTarget) }), value: lowerExpression(statement.value) };
+		case 'MemberAssignmentStatement': return { ...statement, target: lowerExpression(statement.target), value: lowerExpression(statement.value) };
+		case 'IndexAssignmentStatement': return { ...statement, target: lowerExpression(statement.target), index: lowerExpression(statement.index), value: lowerExpression(statement.value) };
 		case 'DiscardStatement': return { ...statement, expression: lowerExpression(statement.expression) };
 		case 'ExpressionStatement': return { ...statement, expression: lowerExpression(statement.expression) };
 		case 'BreakStatement': case 'ContinueStatement': return statement;
