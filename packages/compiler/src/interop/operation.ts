@@ -21,7 +21,11 @@ import {
 export type ExternalOperationKind =
 	| 'module-load'
 	| 'read-property'
+	| 'read-index'
+	| 'write-property'
+	| 'write-index'
 	| 'call'
+	| 'construct'
 	| 'await'
 	| 'bridge-foreign-primitive';
 export type ExternalOperationEffect = 'JavaScript';
@@ -88,12 +92,38 @@ export interface ExternalReadPropertyOperationIR extends ExternalOperationBase {
 	readonly result: ExternalForeignValueShape;
 }
 
+export interface ExternalReadIndexOperationIR extends ExternalOperationBase {
+	readonly kind: 'read-index';
+	readonly effect: ExternalOperationEffect;
+	readonly result: ExternalForeignValueShape;
+}
+
+export interface ExternalWritePropertyOperationIR extends ExternalOperationBase {
+	readonly kind: 'write-property';
+	readonly effect: ExternalOperationEffect;
+	readonly target: ExternalForeignValueShape;
+	readonly property: string;
+}
+
+export interface ExternalWriteIndexOperationIR extends ExternalOperationBase {
+	readonly kind: 'write-index';
+	readonly effect: ExternalOperationEffect;
+	readonly target: ExternalForeignValueShape;
+}
+
 export interface ExternalCallOperationIR extends ExternalOperationBase {
 	readonly kind: 'call';
 	readonly effect: ExternalOperationEffect;
 	readonly result: ExternalForeignValueShape;
 	readonly receiverMode: 'none' | 'preserve-this';
 	readonly mayReject: boolean;
+	readonly callableProjections?: readonly ExternalCallableProjectionIR[];
+}
+
+export interface ExternalConstructOperationIR extends ExternalOperationBase {
+	readonly kind: 'construct';
+	readonly effect: ExternalOperationEffect;
+	readonly result: ExternalForeignValueShape;
 	readonly callableProjections?: readonly ExternalCallableProjectionIR[];
 }
 
@@ -113,7 +143,11 @@ export interface ExternalBridgeForeignPrimitiveOperationIR extends ExternalOpera
 export type ExternalOperationIR =
 	| ExternalModuleLoadOperationIR
 	| ExternalReadPropertyOperationIR
+	| ExternalReadIndexOperationIR
+	| ExternalWritePropertyOperationIR
+	| ExternalWriteIndexOperationIR
 	| ExternalCallOperationIR
+	| ExternalConstructOperationIR
 	| ExternalAwaitOperationIR
 	| ExternalBridgeForeignPrimitiveOperationIR;
 
@@ -164,19 +198,20 @@ export function buildExternalOperationSequence(input: {
 	for (let usageIndex = 0; usageIndex < input.interop.usageIR.length; usageIndex++) {
 		const usage = input.interop.usageIR[usageIndex]!;
 		const projections = callableProjections.get(usage.nodeId) ?? [];
-		if (usage.kind === 'call' && projections.some(projection => projection.beforeUsageIndex > usageIndex)) {
-			throw new Error('External callable projection usage order cannot extend beyond its outer call');
+		const invocation = usage.kind === 'call' || usage.kind === 'construct';
+		if (invocation && projections.some(projection => projection.beforeUsageIndex > usageIndex)) {
+			throw new Error('External callable projection usage order cannot extend beyond its outer invocation');
 		}
-		if (usage.kind !== 'call' && projections.length !== 0) throw new Error('External callable projection evidence must attach to a call usage');
-		const stableProjections = usage.kind === 'call'
+		if (!invocation && projections.length !== 0) throw new Error('External callable projection evidence must attach to a call or construct usage');
+		const stableProjections = invocation
 			? canonicalCallableProjections(projections, usage.nodeId, operationIndexAtUsageBoundary)
 			: [];
 		const operation = externalOperationFromUsageWithCallables(usage, stableProjections);
 		if (operation !== undefined) operations.push(operation);
 		operationIndexAtUsageBoundary[usageIndex + 1] = operations.length;
-		if (usage.kind === 'call') callableProjections.delete(usage.nodeId);
+		if (invocation) callableProjections.delete(usage.nodeId);
 	}
-	if (callableProjections.size !== 0) throw new Error('External callable projection evidence does not correspond to a completed call usage');
+	if (callableProjections.size !== 0) throw new Error('External callable projection evidence does not correspond to a completed call or construct usage');
 	return Object.freeze(operations);
 }
 
@@ -193,7 +228,7 @@ function externalOperationFromUsageWithCallables(
 		if (callableProjections.length !== 0) throw new Error('External callable projection evidence cannot attach to an import usage');
 		return undefined;
 	}
-	if (usage.kind !== 'call' && callableProjections.length !== 0) throw new Error('External callable projection evidence must attach to a call usage');
+	if (usage.kind !== 'call' && usage.kind !== 'construct' && callableProjections.length !== 0) throw new Error('External callable projection evidence must attach to a call or construct usage');
 	const anchor = canonicalOperationAnchor(usage.nodeId, usage.span);
 	switch (usage.kind) {
 		case 'property':
@@ -202,6 +237,32 @@ function externalOperationFromUsageWithCallables(
 				...anchor,
 				effect: 'JavaScript',
 				result: canonicalForeignType(usage.foreignType),
+				decision: directDecision(),
+			});
+		case 'index':
+			return freezeOperation({
+				kind: 'read-index',
+				...anchor,
+				effect: 'JavaScript',
+				result: canonicalForeignType(usage.foreignType),
+				decision: directDecision(),
+			});
+		case 'write-property':
+			if (usage.property === undefined) throw new Error('External WriteProperty operation requires a property name');
+			return freezeOperation({
+				kind: 'write-property',
+				...anchor,
+				effect: 'JavaScript',
+				target: canonicalForeignType(usage.foreignType),
+				property: stableProviderText(usage.property, 'write property name'),
+				decision: directDecision(),
+			});
+		case 'write-index':
+			return freezeOperation({
+				kind: 'write-index',
+				...anchor,
+				effect: 'JavaScript',
+				target: canonicalForeignType(usage.foreignType),
 				decision: directDecision(),
 			});
 		case 'call': {
@@ -219,6 +280,16 @@ function externalOperationFromUsageWithCallables(
 				decision: callableProjections.length === 0 ? directDecision(receiverClaims) : callableShimDecision(receiverClaims),
 			});
 		}
+		case 'construct':
+			if (usage.receiverMode !== 'none') throw new Error('External Construct operation requires receiver mode none');
+			return freezeOperation({
+				kind: 'construct',
+				...anchor,
+				effect: 'JavaScript',
+				result: canonicalForeignType(usage.foreignType),
+				...(callableProjections.length === 0 ? {} : { callableProjections }),
+				decision: callableProjections.length === 0 ? directDecision() : callableShimDecision([]),
+			});
 		case 'await':
 			if (typeof usage.mayReject !== 'boolean') throw new Error('External Await operation requires explicit rejection semantics');
 			return freezeOperation({
