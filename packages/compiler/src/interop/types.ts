@@ -112,6 +112,15 @@ export type InteropWriteUsage =
 	| { readonly kind: 'property'; readonly property: string; readonly value: InteropArgumentType }
 	| { readonly kind: 'index'; readonly index: InteropArgumentType; readonly value: InteropArgumentType };
 
+export interface InteropObjectEntryUsage {
+	readonly property: string;
+	readonly value: InteropArgumentType;
+}
+
+export interface InteropObjectUsage {
+	readonly entries: readonly InteropObjectEntryUsage[];
+}
+
 export type ContextualCallableResult =
 	| { readonly kind: 'void' }
 	| { readonly kind: 'value'; readonly value: ContextualCallablePrimitiveKind }
@@ -145,6 +154,10 @@ export interface ForeignWriteResolution {
 	readonly accepted: true;
 }
 
+export interface ForeignObjectResolution {
+	readonly accepted: true;
+}
+
 export interface JsInteropProvider {
 	readonly id: string;
 	readonly version: string;
@@ -159,6 +172,8 @@ export interface JsInteropProvider {
 	resolveIndexUsage?(type: ForeignTypeRef, usage: InteropIndexUsage): ForeignIndexResolution | undefined;
 	/** Whole-usage writable-facet resolver. Unknown/readonly/inaccessible evidence must return undefined. */
 	resolveWriteUsage?(type: ForeignTypeRef, usage: InteropWriteUsage): ForeignWriteResolution | undefined;
+	/** Contextual object resolver. Missing/excess/readonly/unknown/ambiguous evidence must return undefined. */
+	resolveObjectUsage?(type: ForeignTypeRef, usage: InteropObjectUsage): ForeignObjectResolution | undefined;
 	resolveCall(type: ForeignTypeRef, argumentsList: readonly InteropArgumentType[]): ForeignCallResolution | undefined;
 	resolveConstruct(type: ForeignTypeRef, argumentsList: readonly InteropArgumentType[]): ForeignCallResolution | undefined;
 	getAwaitedType(type: ForeignTypeRef): ForeignTypeSnapshot | undefined;
@@ -194,7 +209,7 @@ export interface CallableProjectionEvidence {
 }
 
 export interface ForeignUsage {
-	readonly kind: 'import' | 'property' | 'index' | 'write-property' | 'write-index' | 'call' | 'construct' | 'await' | 'bridge';
+	readonly kind: 'import' | 'property' | 'index' | 'write-property' | 'write-index' | 'object' | 'call' | 'construct' | 'await' | 'bridge';
 	readonly nodeId: NodeId;
 	readonly span: SourceSpan;
 	readonly foreignType: ForeignTypeSnapshot;
