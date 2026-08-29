@@ -61,7 +61,7 @@ export interface WhileStatement extends AstNode { readonly kind: 'WhileStatement
 export interface BreakStatement extends AstNode { readonly kind: 'BreakStatement'; }
 export interface ContinueStatement extends AstNode { readonly kind: 'ContinueStatement'; }
 export interface DiscardStatement extends AstNode { readonly kind: 'DiscardStatement'; readonly expression: Expression; }
-export interface AssignmentStatement extends AstNode { readonly kind: 'AssignmentStatement'; readonly name: string; readonly value: Expression; targetSymbolId?: SymbolId; }
+export interface AssignmentStatement extends AstNode { readonly kind: 'AssignmentStatement'; readonly name: string; readonly value: Expression; readonly invalidTarget?: Expression; targetSymbolId?: SymbolId; }
 export interface MemberAssignmentStatement extends AstNode { readonly kind: 'MemberAssignmentStatement'; readonly target: Expression; readonly field: string; readonly value: Expression; }
 export interface IndexAssignmentStatement extends AstNode { readonly kind: 'IndexAssignmentStatement'; readonly target: Expression; readonly index: Expression; readonly value: Expression; }
 export interface DeferStatement extends AstNode { readonly kind: 'DeferStatement'; readonly expression: Expression; }
