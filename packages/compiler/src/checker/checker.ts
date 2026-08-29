@@ -555,17 +555,54 @@ export class TypeChecker {
 				else { statement.targetSymbolId = target.id; const valueType = this.checkExpression(statement.value, scope, target.typeId); if (this.containsOpenEffect(valueType)) this.diagnostics.error('L2113', 'uses * callbacks are non-escaping and cannot be assigned', statement.span); if (!this.isAssignable(valueType, target.typeId)) this.typeMismatch(valueType, target.typeId, statement.value.span); }
 				break;
 			}
-			case 'MemberAssignmentStatement':
-				this.checkExpression(statement.target, scope);
-				this.checkExpression(statement.value, scope);
-				this.diagnostics.error('L2119', 'Member assignment requires a proven writable facet', statement.span);
+			case 'MemberAssignmentStatement': {
+				const targetTypeId = this.checkExpression(statement.target, scope);
+				const valueTypeId = this.checkExpression(statement.value, scope);
+				const targetType = this.arena.get(targetTypeId);
+				if (targetType.kind !== 'foreign') {
+					this.diagnostics.error('L2119', 'Member assignment requires a proven writable facet', statement.span);
+					break;
+				}
+				this.requireEffects(['JavaScript'], statement.span);
+				const provider = this.currentInteropProvider(targetType.snapshot);
+				const value = this.interopArgumentType(valueTypeId, statement.value, statement.value.span);
+				let resolution: import('../interop/types.js').ForeignWriteResolution | undefined;
+				if (provider !== undefined && value.kind !== 'unknown' && provider.resolveWriteUsage !== undefined) {
+					try { resolution = provider.resolveWriteUsage(targetType.ref, { kind: 'property', property: statement.field, value }); } catch { resolution = undefined; }
+				}
+				if (!this.isAcceptedForeignWriteResolution(resolution)) {
+					this.diagnostics.error('L2119', 'Member assignment requires a proven writable facet', statement.span);
+					break;
+				}
+				statement.foreignWrite = true;
+				this.#interopUsages.push({ kind: 'write-property', nodeId: statement.id, span: statement.span, foreignType: targetType.snapshot, property: statement.field });
 				break;
-			case 'IndexAssignmentStatement':
-				this.checkExpression(statement.target, scope);
-				this.checkExpression(statement.index, scope);
-				this.checkExpression(statement.value, scope);
-				this.diagnostics.error('L2120', 'Index assignment requires a proven writable facet', statement.span);
+			}
+			case 'IndexAssignmentStatement': {
+				const targetTypeId = this.checkExpression(statement.target, scope);
+				const indexTypeId = this.checkExpression(statement.index, scope);
+				const valueTypeId = this.checkExpression(statement.value, scope);
+				const targetType = this.arena.get(targetTypeId);
+				if (targetType.kind !== 'foreign') {
+					this.diagnostics.error('L2120', 'Index assignment requires a proven writable facet', statement.span);
+					break;
+				}
+				this.requireEffects(['JavaScript'], statement.span);
+				const provider = this.currentInteropProvider(targetType.snapshot);
+				const index = this.interopArgumentType(indexTypeId, statement.index, statement.index.span);
+				const value = this.interopArgumentType(valueTypeId, statement.value, statement.value.span);
+				let resolution: import('../interop/types.js').ForeignWriteResolution | undefined;
+				if (provider !== undefined && index.kind !== 'unknown' && value.kind !== 'unknown' && provider.resolveWriteUsage !== undefined) {
+					try { resolution = provider.resolveWriteUsage(targetType.ref, { kind: 'index', index, value }); } catch { resolution = undefined; }
+				}
+				if (!this.isAcceptedForeignWriteResolution(resolution)) {
+					this.diagnostics.error('L2120', 'Index assignment requires a proven writable facet', statement.span);
+					break;
+				}
+				statement.foreignWrite = true;
+				this.#interopUsages.push({ kind: 'write-index', nodeId: statement.id, span: statement.span, foreignType: targetType.snapshot });
 				break;
+			}
 			case 'DeferStatement': {
 					if (this.#currentFunction === undefined) this.diagnostics.error('L2070', 'defer can be used only inside a function or test', statement.span);
 					const deferredType = this.checkExpression(statement.expression, scope);
@@ -595,12 +632,7 @@ export class TypeChecker {
 			case 'WildcardExpression': this.diagnostics.error('L2011', 'Wildcard can only be used in patterns or pipeline placeholders', expression.span); typeId = this.arena.error; break;
 			case 'CallExpression': typeId = this.checkCall(expression, scope, expected); break;
 			case 'FieldExpression': typeId = this.checkField(expression, scope); break;
-			case 'IndexExpression':
-				this.checkExpression(expression.target, scope);
-				this.checkExpression(expression.index, scope);
-				this.diagnostics.error('L2121', 'Index access requires a proven index facet', expression.span);
-				typeId = this.arena.error;
-				break;
+			case 'IndexExpression': typeId = this.checkForeignIndex(expression, scope); break;
 			case 'BinaryExpression': typeId = this.checkBinary(expression, scope); break;
 			case 'UnaryExpression': typeId = this.checkUnary(expression, scope); break;
 			case 'PipelineExpression': typeId = this.checkPipeline(expression, scope); break;
@@ -634,8 +666,31 @@ export class TypeChecker {
 		expression.inferredTypeId = typeId; return typeId;
 	}
 
+	private checkForeignIndex(expression: A.IndexExpression, scope: Scope): TypeId {
+		const targetTypeId = this.checkExpression(expression.target, scope);
+		const indexTypeId = this.checkExpression(expression.index, scope);
+		const targetType = this.arena.get(targetTypeId);
+		if (targetType.kind !== 'foreign') {
+			this.diagnostics.error('L2121', 'Index access requires a proven index facet', expression.span);
+			return this.arena.error;
+		}
+		this.requireEffects(['JavaScript'], expression.span);
+		const provider = this.currentInteropProvider(targetType.snapshot);
+		const index = this.interopArgumentType(indexTypeId, expression.index, expression.index.span);
+		let resolution: import('../interop/types.js').ForeignIndexResolution | undefined;
+		if (provider !== undefined && index.kind !== 'unknown' && provider.resolveIndexUsage !== undefined) {
+			try { resolution = provider.resolveIndexUsage(targetType.ref, { index }); } catch { resolution = undefined; }
+		}
+		if (provider === undefined || !this.isCurrentForeignSnapshot(resolution?.result, provider, false)) {
+			this.diagnostics.error('L2121', 'Index access requires a proven index facet', expression.span);
+			return this.arena.error;
+		}
+		expression.foreignIndex = true;
+		this.#interopUsages.push({ kind: 'index', nodeId: expression.id, span: expression.span, foreignType: resolution.result });
+		return this.arena.foreign(resolution.result);
+	}
+
 	private checkForeignCall(expression: A.CallExpression, scope: Scope, callee: ForeignTypeSnapshot): TypeId {
-		expression.foreignCall = true;
 		this.requireEffects(['JavaScript'], expression.span);
 		if (expression.typeArguments.length > 0) this.diagnostics.error('L4203', 'Explicit Virune type arguments are not supported for JavaScript calls; use a TypeScript interop adapter', expression.span);
 		const argumentTypes: TypeId[] = [];
@@ -656,27 +711,56 @@ export class TypeChecker {
 			const receiver = receiverTypeId === undefined ? undefined : this.arena.get(receiverTypeId);
 			if (receiver?.kind === 'foreign') target = { kind: 'member', receiver: receiver.ref, property: expression.callee.field };
 		}
-		const provider = this.#jsInteropProvider;
-		const resolution = provider?.resolveCallUsage !== undefined
-			? provider.resolveCallUsage(callee.ref, { target, arguments: interopArguments })
-			: provider?.resolveCall(callee.ref, interopArguments);
-		if (resolution === undefined) {
+		const provider = this.currentInteropProvider(callee);
+		if (provider === undefined) {
 			this.diagnostics.error('L4204', `Cannot resolve JavaScript call for ${callee.display}; use a TypeScript interop adapter`, expression.span);
+			return this.arena.error;
+		}
+		const usage = { target, arguments: interopArguments } as const;
+		let resolution: import('../interop/types.js').ForeignCallResolution | undefined;
+		let invocationKind: 'call' | 'construct' = 'call';
+		try {
+			resolution = provider.resolveCallUsage !== undefined
+				? provider.resolveCallUsage(callee.ref, usage)
+				: provider.resolveCall(callee.ref, interopArguments);
+		} catch {
+			this.diagnostics.error('L4204', `Cannot resolve JavaScript call for ${callee.display}; use a TypeScript interop adapter`, expression.span);
+			return this.arena.error;
+		}
+		if (resolution !== undefined) {
+			if (!this.isValidForeignInvocationResolution(resolution, provider, false)) {
+				this.diagnostics.error('L4204', `Cannot prove JavaScript call for ${callee.display}; use a TypeScript interop adapter`, expression.span);
+				return this.arena.error;
+			}
+		} else if (provider.resolveConstructUsage !== undefined) {
+			let constructResolution: import('../interop/types.js').ForeignCallResolution | undefined;
+			try { constructResolution = provider.resolveConstructUsage(callee.ref, usage); } catch { constructResolution = undefined; }
+			if (constructResolution !== undefined) {
+				if (!this.isValidForeignInvocationResolution(constructResolution, provider, true)) {
+					this.diagnostics.error('L4204', `Cannot prove JavaScript construct for ${callee.display}; use a TypeScript interop adapter`, expression.span);
+					return this.arena.error;
+				}
+				resolution = constructResolution;
+				invocationKind = 'construct';
+			}
+		}
+		if (resolution === undefined) {
+			this.diagnostics.error('L4204', `Cannot resolve JavaScript call or construct for ${callee.display}; use a TypeScript interop adapter`, expression.span);
 			return this.arena.error;
 		}
 		const callableEvidence = this.validateCallableArgumentEvidence(resolution.callableArguments, interopArguments, callableBoundaries);
 		if (callableEvidence === undefined) {
-			this.diagnostics.error('L4204', `Cannot prove generated callback boundary for JavaScript call ${callee.display}; use a TypeScript interop adapter`, expression.span);
+			this.diagnostics.error('L4204', `Cannot prove generated callback boundary for JavaScript ${invocationKind} ${callee.display}; use a TypeScript interop adapter`, expression.span);
 			return this.arena.error;
 		}
 		const minimum = resolution.minimumArgumentCount ?? Math.max(0, resolution.parameterCount - resolution.optionalParameterCount);
-		if (expression.arguments.length < minimum || (!resolution.rest && expression.arguments.length > resolution.parameterCount)) this.diagnostics.error('L4205', `JavaScript call expects ${minimum}${resolution.rest ? '+' : `..${resolution.parameterCount}`} arguments, received ${expression.arguments.length}`, expression.span);
+		if (expression.arguments.length < minimum || (!resolution.rest && expression.arguments.length > resolution.parameterCount)) this.diagnostics.error('L4205', `JavaScript ${invocationKind} expects ${minimum}${resolution.rest ? '+' : `..${resolution.parameterCount}`} arguments, received ${expression.arguments.length}`, expression.span);
 		for (const evidence of callableEvidence) {
 			const argument = expression.arguments.at(evidence.index);
 			const boundary = callableBoundaries.at(evidence.index);
 			const beforeUsageIndex = foreignUsageCountsAfterArgument.at(evidence.index);
 			if (argument === undefined || boundary === undefined || beforeUsageIndex === undefined) {
-				this.diagnostics.error('L4204', `Cannot prove generated callback boundary for JavaScript call ${callee.display}; use a TypeScript interop adapter`, expression.span);
+				this.diagnostics.error('L4204', `Cannot prove generated callback boundary for JavaScript ${invocationKind} ${callee.display}; use a TypeScript interop adapter`, expression.span);
 				return this.arena.error;
 			}
 			this.requireEffects(boundary.effects, argument.span);
@@ -689,8 +773,40 @@ export class TypeChecker {
 				descriptor: boundary,
 			});
 		}
-		this.#interopUsages.push({ kind: 'call', nodeId: expression.id, span: expression.span, foreignType: resolution.result, receiverMode: resolution.receiverMode, mayReject: resolution.mayReject });
+		if (invocationKind === 'call') expression.foreignCall = true;
+		else expression.foreignConstruct = true;
+		this.#interopUsages.push({ kind: invocationKind, nodeId: expression.id, span: expression.span, foreignType: resolution.result, ...(invocationKind === 'call' ? { receiverMode: resolution.receiverMode, mayReject: resolution.mayReject } : {}) });
 		return this.arena.foreign(resolution.result);
+	}
+
+	private currentInteropProvider(snapshot: ForeignTypeSnapshot): JsInteropProvider | undefined {
+		const provider = this.#jsInteropProvider;
+		if (provider === undefined || !isRecord(snapshot) || !isRecord(snapshot.ref)) return undefined;
+		return snapshot.ref.providerId === provider.id && snapshot.ref.generation === provider.generation ? provider : undefined;
+	}
+
+	private isCurrentForeignSnapshot(snapshot: ForeignTypeSnapshot | undefined, provider: JsInteropProvider, allowUnknown: boolean): snapshot is ForeignTypeSnapshot {
+		if (snapshot === undefined || !isRecord(snapshot) || !isRecord(snapshot.ref)) return false;
+		if (snapshot.ref.providerId !== provider.id || snapshot.ref.generation !== provider.generation || typeof snapshot.ref.id !== 'string' || snapshot.ref.id.length === 0) return false;
+		if (typeof snapshot.display !== 'string' || snapshot.display.length === 0) return false;
+		const categories: readonly ForeignTypeSnapshot['category'][] = allowUnknown
+			? ['primitive', 'literal', 'object', 'function', 'constructor', 'promise', 'array', 'tuple', 'union', 'unknown']
+			: ['primitive', 'literal', 'object', 'function', 'constructor', 'promise', 'array', 'tuple', 'union'];
+		return categories.includes(snapshot.category);
+	}
+
+	private isValidForeignInvocationResolution(resolution: import('../interop/types.js').ForeignCallResolution, provider: JsInteropProvider, construct: boolean): boolean {
+		if (!isRecord(resolution) || !this.isCurrentForeignSnapshot(resolution.result, provider, !construct)) return false;
+		if (!Number.isSafeInteger(resolution.parameterCount) || resolution.parameterCount < 0) return false;
+		if (!Number.isSafeInteger(resolution.optionalParameterCount) || resolution.optionalParameterCount < 0 || resolution.optionalParameterCount > resolution.parameterCount) return false;
+		if (resolution.minimumArgumentCount !== undefined && (!Number.isSafeInteger(resolution.minimumArgumentCount) || resolution.minimumArgumentCount < 0 || resolution.minimumArgumentCount > resolution.parameterCount)) return false;
+		if (typeof resolution.rest !== 'boolean' || typeof resolution.mayReject !== 'boolean') return false;
+		if (resolution.receiverMode !== 'none' && resolution.receiverMode !== 'preserve-this') return false;
+		return !construct || resolution.receiverMode === 'none';
+	}
+
+	private isAcceptedForeignWriteResolution(resolution: import('../interop/types.js').ForeignWriteResolution | undefined): boolean {
+		return resolution !== undefined && isRecord(resolution) && hasExactEnumerableKeys(resolution, ['accepted']) && resolution.accepted === true;
 	}
 
 	private nativeCallableBoundary(typeId: TypeId, expression: A.Expression): NativeCallableBoundaryDescriptor | undefined {
@@ -1434,6 +1550,7 @@ function stableForeignUsage(usage: import('../interop/types.js').ForeignUsage): 
 		...(usage.moduleWitness === undefined ? {} : { moduleWitness: usage.moduleWitness }),
 		...(usage.receiverMode === undefined ? {} : { receiverMode: usage.receiverMode }),
 		...(usage.mayReject === undefined ? {} : { mayReject: usage.mayReject }),
+		...(usage.property === undefined ? {} : { property: usage.property }),
 		...(usage.bridge === undefined ? {} : { bridge: usage.bridge }),
 	};
 }
