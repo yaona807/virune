@@ -104,6 +104,14 @@ export interface InteropCallUsage {
 	readonly arguments: readonly InteropArgumentType[];
 }
 
+export interface InteropIndexUsage {
+	readonly index: InteropArgumentType;
+}
+
+export type InteropWriteUsage =
+	| { readonly kind: 'property'; readonly property: string; readonly value: InteropArgumentType }
+	| { readonly kind: 'index'; readonly index: InteropArgumentType; readonly value: InteropArgumentType };
+
 export type ContextualCallableResult =
 	| { readonly kind: 'void' }
 	| { readonly kind: 'value'; readonly value: ContextualCallablePrimitiveKind }
@@ -129,6 +137,14 @@ export interface ForeignCallResolution {
 	readonly callableArguments?: readonly InteropCallableArgumentResolution[];
 }
 
+export interface ForeignIndexResolution {
+	readonly result: ForeignTypeSnapshot;
+}
+
+export interface ForeignWriteResolution {
+	readonly accepted: true;
+}
+
 export interface JsInteropProvider {
 	readonly id: string;
 	readonly version: string;
@@ -137,6 +153,12 @@ export interface JsInteropProvider {
 	getProperty(type: ForeignTypeRef, name: string): ForeignTypeSnapshot | undefined;
 	/** Whole-usage resolver. When implemented, callers must not fall back to resolveCall after it returns undefined. */
 	resolveCallUsage?(type: ForeignTypeRef, usage: InteropCallUsage): ForeignCallResolution | undefined;
+	/** Whole-usage construct resolver. A call-like source is constructable only when call usage is not also valid. */
+	resolveConstructUsage?(type: ForeignTypeRef, usage: InteropCallUsage): ForeignCallResolution | undefined;
+	/** Whole-usage index resolver. Unknown/unsupported receiver or key evidence must return undefined. */
+	resolveIndexUsage?(type: ForeignTypeRef, usage: InteropIndexUsage): ForeignIndexResolution | undefined;
+	/** Whole-usage writable-facet resolver. Unknown/readonly/inaccessible evidence must return undefined. */
+	resolveWriteUsage?(type: ForeignTypeRef, usage: InteropWriteUsage): ForeignWriteResolution | undefined;
 	resolveCall(type: ForeignTypeRef, argumentsList: readonly InteropArgumentType[]): ForeignCallResolution | undefined;
 	resolveConstruct(type: ForeignTypeRef, argumentsList: readonly InteropArgumentType[]): ForeignCallResolution | undefined;
 	getAwaitedType(type: ForeignTypeRef): ForeignTypeSnapshot | undefined;
@@ -172,7 +194,7 @@ export interface CallableProjectionEvidence {
 }
 
 export interface ForeignUsage {
-	readonly kind: 'import' | 'property' | 'call' | 'await' | 'bridge';
+	readonly kind: 'import' | 'property' | 'index' | 'write-property' | 'write-index' | 'call' | 'construct' | 'await' | 'bridge';
 	readonly nodeId: NodeId;
 	readonly span: SourceSpan;
 	readonly foreignType: ForeignTypeSnapshot;
@@ -180,6 +202,7 @@ export interface ForeignUsage {
 	readonly moduleWitness?: ModuleResolutionWitness;
 	readonly receiverMode?: 'none' | 'preserve-this';
 	readonly mayReject?: boolean;
+	readonly property?: string;
 	readonly bridge?: PrimitiveBridgePlan;
 }
 
@@ -200,6 +223,7 @@ export interface ForeignUsageIR {
 	readonly moduleWitness?: ModuleResolutionWitness;
 	readonly receiverMode?: 'none' | 'preserve-this';
 	readonly mayReject?: boolean;
+	readonly property?: string;
 	readonly bridge?: PrimitiveBridgePlan;
 }
 
