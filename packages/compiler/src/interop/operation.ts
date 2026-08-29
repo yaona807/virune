@@ -24,6 +24,7 @@ export type ExternalOperationKind =
 	| 'read-index'
 	| 'write-property'
 	| 'write-index'
+	| 'build-external-object'
 	| 'call'
 	| 'construct'
 	| 'await'
@@ -111,6 +112,11 @@ export interface ExternalWriteIndexOperationIR extends ExternalOperationBase {
 	readonly target: ExternalForeignValueShape;
 }
 
+export interface ExternalBuildObjectOperationIR extends ExternalOperationBase {
+	readonly kind: 'build-external-object';
+	readonly result: ExternalForeignValueShape;
+}
+
 export interface ExternalCallOperationIR extends ExternalOperationBase {
 	readonly kind: 'call';
 	readonly effect: ExternalOperationEffect;
@@ -146,6 +152,7 @@ export type ExternalOperationIR =
 	| ExternalReadIndexOperationIR
 	| ExternalWritePropertyOperationIR
 	| ExternalWriteIndexOperationIR
+	| ExternalBuildObjectOperationIR
 	| ExternalCallOperationIR
 	| ExternalConstructOperationIR
 	| ExternalAwaitOperationIR
@@ -263,6 +270,13 @@ function externalOperationFromUsageWithCallables(
 				...anchor,
 				effect: 'JavaScript',
 				target: canonicalForeignType(usage.foreignType),
+				decision: directDecision(),
+			});
+		case 'object':
+			return freezeOperation({
+				kind: 'build-external-object',
+				...anchor,
+				result: canonicalForeignType(usage.foreignType),
 				decision: directDecision(),
 			});
 		case 'call': {
