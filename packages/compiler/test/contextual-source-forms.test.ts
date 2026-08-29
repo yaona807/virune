@@ -119,6 +119,18 @@ test('identifier assignment preserves the pre-existing assignment span contract'
 	assert.deepEqual(immutable.span, statement.value.span);
 });
 
+test('assignment lookahead has no token-count cutoff', () => {
+	const chain = Array.from({ length: 80 }, (_, index) => `.field${index}`).join('');
+	const { result, body } = functionBody(`fn write(target: Unknown) {
+	target${chain}.value = 1
+}
+`);
+	assert.equal(body.statements[0]?.kind, 'MemberAssignmentStatement');
+	const codes = errorCodes(result);
+	assert.ok(codes.includes('L2119'));
+	assert.ok(!codes.includes('L0002'), 'long assignment targets must not be reclassified as expression statements');
+});
+
 // @virune-rule {"id":"eval.contextual-source-forms","runner":"unit","file":"packages/compiler/test/contextual-source-forms.test.ts","case":"invalid assignment targets are semantic errors and never crash AST construction","kind":"negative","platform":"common"}
 test('invalid assignment targets are semantic errors and never crash AST construction', () => {
 	for (const text of [

@@ -806,9 +806,9 @@ export class ViruneParser extends CstParser {
 		let parenDepth = 0;
 		let bracketDepth = 0;
 		let braceDepth = 0;
-		for (let offset = 1; offset < 128; offset++) {
+		for (let offset = 1; ; offset++) {
 			const token = this.tokenAt(offset);
-			if (token === undefined) return false;
+			if (token === undefined || token.tokenType.name === 'EOF') return false;
 			if (token.tokenType === NewLine && parenDepth === 0 && bracketDepth === 0 && braceDepth === 0) return false;
 			if (token.tokenType === Equals && parenDepth === 0 && bracketDepth === 0 && braceDepth === 0) return true;
 			if (token.tokenType === LParen) parenDepth++;
@@ -819,7 +819,6 @@ export class ViruneParser extends CstParser {
 			else if (token.tokenType === RBrace) braceDepth--;
 			if (parenDepth < 0 || bracketDepth < 0 || braceDepth < 0) return false;
 		}
-		return false;
 	}
 	private isFunctionStart(): boolean {
 		return this.tokenAt(1)?.tokenType === KwFn || this.tokenAt(1)?.tokenType === KwAsync || this.publicFollowIs(KwFn) || (this.publicFollowIs(KwAsync) && this.tokenAt(3)?.tokenType === KwFn);
