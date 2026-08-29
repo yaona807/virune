@@ -360,7 +360,7 @@ export class ViruneParser extends CstParser {
 				{ ALT: () => $.SUBRULE($.continueStatement) },
 				{ ALT: () => $.SUBRULE($.discardStatement) },
 				{ ALT: () => $.SUBRULE($.deferStatement) },
-				{ GATE: () => this.LA(1).tokenType === Identifier && this.LA(2).tokenType === Equals, ALT: () => $.SUBRULE($.assignmentStatement) },
+				{ GATE: () => this.isAssignmentStart(), ALT: () => $.SUBRULE($.assignmentStatement) },
 				{ ALT: () => $.SUBRULE($.expressionStatement) },
 			]);
 		});
@@ -425,7 +425,7 @@ export class ViruneParser extends CstParser {
 		});
 
 		$.RULE('assignmentStatement', () => {
-			$.CONSUME(Identifier);
+			$.SUBRULE($.postfixExpression);
 			$.CONSUME(Equals);
 			$.SUBRULE($.expression);
 			$.SUBRULE($.lineEnd);
@@ -487,16 +487,23 @@ export class ViruneParser extends CstParser {
 		$.RULE('postfixExpression', () => {
 			$.SUBRULE($.primaryExpression);
 			$.MANY({
-				GATE: () => this.isCallSuffixStart() || [Dot, Question, KwWith].includes(this.LA(1).tokenType),
+				GATE: () => this.isCallSuffixStart() || [Dot, LBracket, Question, KwWith].includes(this.LA(1).tokenType),
 				DEF: () => {
 					$.OR([
 						{ GATE: () => this.isCallSuffixStart(), ALT: () => $.SUBRULE($.callSuffix) },
 						{ ALT: () => { $.CONSUME(Dot); $.CONSUME(IdentifierName); } },
+						{ ALT: () => $.SUBRULE($.indexSuffix) },
 						{ ALT: () => $.CONSUME(Question) },
 						{ ALT: () => { $.CONSUME(KwWith); $.SUBRULE($.recordFieldBlock); } },
 					]);
 				},
 			});
+		});
+
+		$.RULE('indexSuffix', () => {
+			$.CONSUME(LBracket);
+			$.SUBRULE($.expression);
+			$.CONSUME(RBracket);
 		});
 
 		$.RULE('callSuffix', () => {
@@ -535,6 +542,7 @@ export class ViruneParser extends CstParser {
 				{ ALT: () => $.SUBRULE($.matchExpression) },
 				{ ALT: () => $.SUBRULE($.lambdaExpression) },
 				{ ALT: () => $.SUBRULE($.parallelExpression) },
+				{ ALT: () => $.SUBRULE($.contextualAggregateExpression) },
 			]);
 		});
 
@@ -557,6 +565,22 @@ export class ViruneParser extends CstParser {
 		$.RULE('recordEntry', () => {
 			$.CONSUME(Identifier);
 			$.OPTION(() => { $.CONSUME(Colon); $.SUBRULE($.expression); });
+		});
+
+		$.RULE('contextualAggregateExpression', () => {
+			$.CONSUME(LBrace);
+			$.MANY(() => $.CONSUME(NewLine));
+			$.OPTION(() => {
+				$.SUBRULE($.contextualAggregateEntry);
+				$.MANY2(() => { $.CONSUME(Comma); $.MANY3(() => $.CONSUME2(NewLine)); $.OPTION2(() => $.SUBRULE2($.contextualAggregateEntry)); });
+			});
+			$.CONSUME(RBrace);
+		});
+
+		$.RULE('contextualAggregateEntry', () => {
+			$.CONSUME(IdentifierName);
+			$.CONSUME(Colon);
+			$.SUBRULE($.expression);
 		});
 
 		$.RULE('listExpression', () => {
@@ -778,6 +802,25 @@ export class ViruneParser extends CstParser {
 		}
 		return false;
 	}
+	private isAssignmentStart(): boolean {
+		let parenDepth = 0;
+		let bracketDepth = 0;
+		let braceDepth = 0;
+		for (let offset = 1; offset < 128; offset++) {
+			const token = this.tokenAt(offset);
+			if (token === undefined) return false;
+			if (token.tokenType === NewLine && parenDepth === 0 && bracketDepth === 0 && braceDepth === 0) return false;
+			if (token.tokenType === Equals && parenDepth === 0 && bracketDepth === 0 && braceDepth === 0) return true;
+			if (token.tokenType === LParen) parenDepth++;
+			else if (token.tokenType === RParen) parenDepth--;
+			else if (token.tokenType === LBracket) bracketDepth++;
+			else if (token.tokenType === RBracket) bracketDepth--;
+			else if (token.tokenType === LBrace) braceDepth++;
+			else if (token.tokenType === RBrace) braceDepth--;
+			if (parenDepth < 0 || bracketDepth < 0 || braceDepth < 0) return false;
+		}
+		return false;
+	}
 	private isFunctionStart(): boolean {
 		return this.tokenAt(1)?.tokenType === KwFn || this.tokenAt(1)?.tokenType === KwAsync || this.publicFollowIs(KwFn) || (this.publicFollowIs(KwAsync) && this.tokenAt(3)?.tokenType === KwFn);
 	}
@@ -836,6 +879,7 @@ export class ViruneParser extends CstParser {
 	public multiplicativeExpression!: () => CstNode;
 	public unaryExpression!: () => CstNode;
 	public postfixExpression!: () => CstNode;
+	public indexSuffix!: () => CstNode;
 	public callSuffix!: () => CstNode;
 	public typeArguments!: () => CstNode;
 	public argumentList!: () => CstNode;
@@ -843,6 +887,8 @@ export class ViruneParser extends CstParser {
 	public recordExpression!: () => CstNode;
 	public recordFieldBlock!: () => CstNode;
 	public recordEntry!: () => CstNode;
+	public contextualAggregateExpression!: () => CstNode;
+	public contextualAggregateEntry!: () => CstNode;
 	public listExpression!: () => CstNode;
 	public parenthesizedOrTupleExpression!: () => CstNode;
 	public conditionalExpression!: () => CstNode;
