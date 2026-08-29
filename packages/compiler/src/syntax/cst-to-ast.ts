@@ -164,7 +164,7 @@ export class AstBuilder extends baseCstVisitorConstructor {
 		const target = this.visitNode<A.Expression>(firstNode(ctx, 'postfixExpression'));
 		const value = this.visitNode<A.Expression>(firstNode(ctx, 'expression'));
 		const span = nodeSpan(this.#fileId, this.currentNode(ctx));
-		if (target.kind === 'IdentifierExpression') return { id: this.id(), kind: 'AssignmentStatement', span, name: target.name, value };
+		if (target.kind === 'IdentifierExpression') return { id: this.id(), kind: 'AssignmentStatement', span: value.span, name: target.name, value };
 		if (target.kind === 'FieldExpression') return { id: this.id(), kind: 'MemberAssignmentStatement', span, target: target.target, field: target.field, value };
 		if (target.kind === 'IndexExpression') return { id: this.id(), kind: 'IndexAssignmentStatement', span, target: target.target, index: target.index, value };
 		return { id: this.id(), kind: 'AssignmentStatement', span, name: '', value, invalidTarget: target };

@@ -4,6 +4,10 @@ import { compileSource } from '../src/compiler.js';
 
 const source = (text: string) => ({ id: 1, path: 'test.virune', text });
 
+function errorCodes(result: ReturnType<typeof compileSource>): string[] {
+	return result.diagnostics.filter(item => item.severity === 'error').map(item => item.code);
+}
+
 function functionBody(text: string) {
 	const result = compileSource(source(text), { emit: false });
 	const declaration = result.ast?.declarations.find(item => item.kind === 'FunctionDeclaration');
@@ -29,7 +33,7 @@ test('contextual aggregate syntax is distinct from named native record construct
 	if (statement.expression.kind !== 'ContextualAggregateExpression') return;
 	assert.deepEqual(statement.expression.entries.map(entry => entry.name), ['timeout', 'retry', '__proto__']);
 	assert.equal(statement.expression.entries[1]?.value.kind, 'ContextualAggregateExpression');
-	assert.ok(contextual.result.diagnostics.some(item => item.severity === 'error'), 'unresolved contextual aggregate must fail closed until a semantic facet accepts it');
+	assert.ok(errorCodes(contextual.result).includes('L2122'), 'unresolved contextual aggregate must fail closed until a semantic facet accepts it');
 
 	const nativeRecord = functionBody(`record Config {
 	timeout: Int
@@ -43,7 +47,17 @@ fn build() -> Config {
 	assert.equal(returnStatement?.kind, 'ReturnStatement');
 	if (returnStatement?.kind !== 'ReturnStatement') return;
 	assert.equal(returnStatement.value?.kind, 'RecordExpression');
-	assert.deepEqual(nativeRecord.result.diagnostics.filter(item => item.severity === 'error'), []);
+	assert.deepEqual(errorCodes(nativeRecord.result), []);
+});
+
+test('duplicate contextual aggregate fields are diagnosed without weakening fail-closed semantics', () => {
+	const { result } = functionBody(`fn build() {
+	discard { retry: 1, retry: 2 }
+}
+`);
+	const codes = errorCodes(result);
+	assert.ok(codes.includes('L2025'));
+	assert.ok(codes.includes('L2122'));
 });
 
 test('postfix index syntax preserves receiver and key expressions', () => {
@@ -58,7 +72,7 @@ test('postfix index syntax preserves receiver and key expressions', () => {
 	if (statement.expression.kind !== 'IndexExpression') return;
 	assert.equal(statement.expression.target.kind, 'IdentifierExpression');
 	assert.equal(statement.expression.index.kind, 'IdentifierExpression');
-	assert.ok(result.diagnostics.some(item => item.severity === 'error'), 'indexing without a proven index facet must fail closed');
+	assert.ok(errorCodes(result).includes('L2121'), 'indexing without a proven index facet must fail closed');
 });
 
 test('member and index assignment have explicit AST targets while identifier assignment stays unchanged', () => {
@@ -82,10 +96,27 @@ test('member and index assignment have explicit AST targets while identifier ass
 		assert.equal(index.target.kind, 'IdentifierExpression');
 		assert.equal(index.index.kind, 'IdentifierExpression');
 	}
-	assert.ok(result.diagnostics.some(item => item.severity === 'error'), 'member/index assignment without a writable facet must fail closed');
+	const codes = errorCodes(result);
+	assert.ok(codes.includes('L2119'), 'member assignment without a writable facet must fail closed');
+	assert.ok(codes.includes('L2120'), 'index assignment without a writable facet must fail closed');
 });
 
-test('invalid assignment targets are syntax errors and never crash AST construction', () => {
+test('identifier assignment preserves the pre-existing assignment span contract', () => {
+	const { result, body } = functionBody(`fn write() {
+	let local = 1
+	local = 2
+}
+`);
+	const statement = body.statements[1];
+	assert.equal(statement?.kind, 'AssignmentStatement');
+	if (statement?.kind !== 'AssignmentStatement') return;
+	assert.deepEqual(statement.span, statement.value.span);
+	const immutable = result.diagnostics.find(item => item.code === 'L2010');
+	assert.ok(immutable);
+	assert.deepEqual(immutable.span, statement.value.span);
+});
+
+test('invalid assignment targets are semantic errors and never crash AST construction', () => {
 	for (const text of [
 		'fn bad() {\n\tmake() = 1\n}\n',
 		'fn bad() {\n\ttrue = 1\n}\n',
@@ -93,7 +124,9 @@ test('invalid assignment targets are syntax errors and never crash AST construct
 	]) {
 		let result: ReturnType<typeof compileSource> | undefined;
 		assert.doesNotThrow(() => { result = compileSource(source(text), { emit: false }); });
-		assert.ok(result?.diagnostics.some(item => item.severity === 'error'));
+		assert.ok(result);
+		assert.ok(errorCodes(result).includes('L2118'));
+		assert.ok(!errorCodes(result).includes('L9001'), 'invalid assignment targets must not fail AST construction');
 	}
 });
 

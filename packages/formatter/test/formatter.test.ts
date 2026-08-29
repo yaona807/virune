@@ -186,3 +186,23 @@ fn value() -> Int => 1
 		'LineComment',
 	]);
 });
+
+test('formatter preserves contextual aggregate, index, and assignable source forms', () => {
+	const input = `fn update(target: Unknown, key: String) {
+	discard { retry: { count: 3 }, __proto__: 1 }
+	discard target[key].name
+	target.value = 1
+	target[key] = 2
+}
+`;
+	const first = formatSource(input);
+	assert.deepEqual(first.errors, []);
+	assert.match(first.text, /discard \{\n\t\tretry: \{\n\t\t\tcount: 3,/u);
+	assert.match(first.text, /__proto__: 1,/u);
+	assert.match(first.text, /discard target\[key\]\.name/u);
+	assert.match(first.text, /target\.value = 1/u);
+	assert.match(first.text, /target\[key\] = 2/u);
+	const second = formatSource(first.text);
+	assert.deepEqual(second.errors, []);
+	assert.equal(second.text, first.text);
+});
