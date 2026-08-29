@@ -131,6 +131,44 @@ test('assignment lookahead has no token-count cutoff', () => {
 	assert.ok(!codes.includes('L0002'), 'long assignment targets must not be reclassified as expression statements');
 });
 
+test('assignment detection stops at the current line', () => {
+	const { result, body } = functionBody(`fn write(target: Unknown) {
+	target.value
+	target.value = 1
+}
+`);
+	assert.equal(body.statements[0]?.kind, 'ExpressionStatement');
+	assert.equal(body.statements[1]?.kind, 'MemberAssignmentStatement');
+	assert.ok(!errorCodes(result).includes('L0002'), 'an equals token on the next line must not reclassify the previous expression statement');
+});
+
+test('existing block list-pattern and record-update syntax retain their AST forms', () => {
+	const { result, body } = functionBody(`record Config {
+	value: Int
+}
+
+fn preserve(config: Config) {
+	let values = [1, 2]
+	discard match values {
+		[first, ...rest] => first
+	}
+	discard config with { value: 2 }
+}
+`);
+	assert.ok(!errorCodes(result).includes('L0002'));
+	assert.equal(body.statements[0]?.kind, 'LetStatement');
+	const values = body.statements[0];
+	if (values?.kind === 'LetStatement') assert.equal(values.value.kind, 'ListExpression');
+	const matchStatement = body.statements[1];
+	assert.equal(matchStatement?.kind, 'DiscardStatement');
+	if (matchStatement?.kind === 'DiscardStatement' && matchStatement.expression.kind === 'MatchExpression') {
+		assert.equal(matchStatement.expression.arms[0]?.pattern.kind, 'ListPattern');
+	}
+	const updateStatement = body.statements[2];
+	assert.equal(updateStatement?.kind, 'DiscardStatement');
+	if (updateStatement?.kind === 'DiscardStatement') assert.equal(updateStatement.expression.kind, 'RecordUpdateExpression');
+});
+
 // @virune-rule {"id":"eval.contextual-source-forms","runner":"unit","file":"packages/compiler/test/contextual-source-forms.test.ts","case":"invalid assignment targets are semantic errors and never crash AST construction","kind":"negative","platform":"common"}
 test('invalid assignment targets are semantic errors and never crash AST construction', () => {
 	for (const text of [
