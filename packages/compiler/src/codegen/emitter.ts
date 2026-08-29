@@ -268,8 +268,13 @@ export class JavaScriptEmitter {
 				this.#writer.line(`${this.nameOf(statement.targetSymbolId, statement.name)} = ${this.expression(statement.value)};`);
 				break;
 			case 'MemberAssignmentStatement':
+				if (statement.foreignWrite !== true) throw new Error('Unproven writable facet reached JavaScript emission');
+				this.#writer.line(`${this.expression(statement.target)}[${JSON.stringify(statement.field)}] = ${this.expression(statement.value)};`);
+				break;
 			case 'IndexAssignmentStatement':
-				throw new Error('Unproven writable facet reached JavaScript emission');
+				if (statement.foreignWrite !== true) throw new Error('Unproven writable facet reached JavaScript emission');
+				this.#writer.line(`${this.expression(statement.target)}[${this.expression(statement.index)}] = ${this.expression(statement.value)};`);
+				break;
 			case 'DeferStatement': { const stack = this.#deferStacks.at(-1); if (stack === undefined) throw new Error('defer emitted outside deferred block'); this.#writer.line(`${stack}.push(${this.#currentAsync ? 'async ' : ''}() => ${this.expression(statement.expression)});`); break; }
 			case 'BreakStatement': this.#writer.line('break;'); break;
 			case 'ContinueStatement': this.#writer.line('continue;'); break;
@@ -304,7 +309,9 @@ export class JavaScriptEmitter {
 			case 'WildcardExpression': return 'undefined';
 			case 'CallExpression': return this.call(expression, contextName);
 			case 'FieldExpression': return this.field(expression, contextName);
-			case 'IndexExpression': return panicEmitter('IndexExpression reached emission without a checked index facet');
+			case 'IndexExpression':
+				if (expression.foreignIndex !== true) return panicEmitter('IndexExpression reached emission without a checked index facet');
+				return `${this.expression(expression.target, contextName)}[${this.expression(expression.index, contextName)}]`;
 			case 'BinaryExpression': return this.binary(expression, contextName);
 			case 'UnaryExpression': return expression.operator === '-' && expression.inferredTypeId === this.#semantic.arena.int ? `intNegate(${this.expression(expression.operand, contextName)})` : `(${expression.operator}${this.expression(expression.operand, contextName)})`;
 			case 'PipelineExpression': return panicEmitter('PipelineExpression should be lowered before emission');
@@ -354,8 +361,11 @@ export class JavaScriptEmitter {
 				if (statement.invalidTarget !== undefined) throw new Error('Invalid assignment target reached JavaScript emission');
 				return [`${prefix}${this.nameOf(statement.targetSymbolId, statement.name)} = ${this.expression(statement.value, contextName)};`];
 			case 'MemberAssignmentStatement':
+				if (statement.foreignWrite !== true) throw new Error('Unproven writable facet reached JavaScript emission');
+				return [`${prefix}${this.expression(statement.target, contextName)}[${JSON.stringify(statement.field)}] = ${this.expression(statement.value, contextName)};`];
 			case 'IndexAssignmentStatement':
-				throw new Error('Unproven writable facet reached JavaScript emission');
+				if (statement.foreignWrite !== true) throw new Error('Unproven writable facet reached JavaScript emission');
+				return [`${prefix}${this.expression(statement.target, contextName)}[${this.expression(statement.index, contextName)}] = ${this.expression(statement.value, contextName)};`];
 			case 'BreakStatement': return [`${prefix}break;`];
 			case 'ContinueStatement': return [`${prefix}continue;`];
 			case 'DiscardStatement': return [`${prefix}void ${this.expression(statement.expression, contextName)};`];
@@ -423,6 +433,7 @@ export class JavaScriptEmitter {
 			}
 		}
 		const callee = this.expression(expression.callee, contextName);
+		if (expression.foreignConstruct === true) return `Reflect.construct(${callee}, [${args.join(', ')}])`;
 		if (expression.foreignCall !== true && this.acceptsTaskContext(expression.callee)) args.push(contextName);
 		if (callee === '$viruneExpect') return `(${args[0] ?? 'false'} ? undefined : panic('Expectation failed'))`;
 		return `${callee}(${args.join(', ')})`;
