@@ -17,6 +17,7 @@ function functionBody(text: string) {
 	return { result, body: declaration.body };
 }
 
+// @virune-rule {"id":"eval.contextual-source-forms","runner":"unit","file":"packages/compiler/test/contextual-source-forms.test.ts","case":"contextual aggregate syntax is distinct from named native record construction","kind":"negative","platform":"common"}
 test('contextual aggregate syntax is distinct from named native record construction', () => {
 	const contextual = functionBody(`fn build() {
 	discard {
@@ -60,6 +61,7 @@ test('duplicate contextual aggregate fields are diagnosed without weakening fail
 	assert.ok(codes.includes('L2122'));
 });
 
+// @virune-rule {"id":"eval.contextual-source-forms","runner":"unit","file":"packages/compiler/test/contextual-source-forms.test.ts","case":"postfix index syntax preserves receiver and key expressions","kind":"negative","platform":"common"}
 test('postfix index syntax preserves receiver and key expressions', () => {
 	const { result, body } = functionBody(`fn read(row: Unknown, key: String) {
 	discard row[key]
@@ -75,6 +77,7 @@ test('postfix index syntax preserves receiver and key expressions', () => {
 	assert.ok(errorCodes(result).includes('L2121'), 'indexing without a proven index facet must fail closed');
 });
 
+// @virune-rule {"id":"eval.contextual-source-forms","runner":"unit","file":"packages/compiler/test/contextual-source-forms.test.ts","case":"member and index assignment have explicit AST targets while identifier assignment stays unchanged","kind":"negative","platform":"common"}
 test('member and index assignment have explicit AST targets while identifier assignment stays unchanged', () => {
 	const { result, body } = functionBody(`fn write(target: Unknown, key: String) {
 	let mut local = 1
@@ -116,6 +119,7 @@ test('identifier assignment preserves the pre-existing assignment span contract'
 	assert.deepEqual(immutable.span, statement.value.span);
 });
 
+// @virune-rule {"id":"eval.contextual-source-forms","runner":"unit","file":"packages/compiler/test/contextual-source-forms.test.ts","case":"invalid assignment targets are semantic errors and never crash AST construction","kind":"negative","platform":"common"}
 test('invalid assignment targets are semantic errors and never crash AST construction', () => {
 	for (const text of [
 		'fn bad() {\n\tmake() = 1\n}\n',
@@ -130,6 +134,7 @@ test('invalid assignment targets are semantic errors and never crash AST constru
 	}
 });
 
+// @virune-rule {"id":"eval.contextual-source-forms","runner":"unit","file":"packages/compiler/test/contextual-source-forms.test.ts","case":"postfix chains keep their syntactic evaluation order","kind":"positive","platform":"common"}
 test('postfix chains keep their syntactic evaluation order', () => {
 	const { body } = functionBody(`fn read(target: Unknown, key: String) {
 	discard target.items[key].name
