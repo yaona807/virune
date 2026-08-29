@@ -86,7 +86,7 @@ BreakStatement          = "break" LineEnd ;
 ContinueStatement       = "continue" LineEnd ;
 DiscardStatement        = "discard" Expression LineEnd ;
 DeferStatement          = "defer" Expression LineEnd ;
-AssignmentStatement     = Identifier "=" Expression LineEnd ;
+AssignmentStatement     = PostfixExpression "=" Expression LineEnd ;
 ExpressionStatement     = Expression LineEnd ;
 LineEnd                 = NewLine { NewLine } ;
 
@@ -99,9 +99,10 @@ ComparisonExpression    = AdditiveExpression { ( "<" | "<=" | ">" | ">=" ) Addit
 AdditiveExpression      = MultiplicativeExpression { ( "+" | "-" ) MultiplicativeExpression } ;
 MultiplicativeExpression= UnaryExpression { ( "*" | "/" | "%" ) UnaryExpression } ;
 UnaryExpression         = ( "!" | "-" | "await" ) UnaryExpression | PostfixExpression ;
-PostfixExpression       = PrimaryExpression { CallSuffix | FieldSuffix | TrySuffix | RecordUpdateSuffix } ;
+PostfixExpression       = PrimaryExpression { CallSuffix | FieldSuffix | IndexSuffix | TrySuffix | RecordUpdateSuffix } ;
 CallSuffix              = [ TypeArguments ] "(" [ ArgumentList ] ")" ;
 FieldSuffix             = "." IdentifierName ;
+IndexSuffix             = "[" Expression "]" ;
 TrySuffix               = "?" ;
 RecordUpdateSuffix      = "with" RecordFieldBlock ;
 TypeArguments           = "<" TypeReference { "," TypeReference } ">" ;
@@ -115,6 +116,7 @@ PrimaryExpression       = StringLiteral
                         | "false"
                         | "_"
                         | RecordExpression
+                        | ContextualAggregateExpression
                         | Identifier
                         | ListExpression
                         | ParenthesizedOrTupleExpression
@@ -125,6 +127,9 @@ PrimaryExpression       = StringLiteral
 RecordExpression        = Identifier RecordFieldBlock ;
 RecordFieldBlock        = "{" NewLine* [ RecordEntry { "," NewLine* [ RecordEntry ] } ] "}" ;
 RecordEntry             = Identifier [ ":" Expression ] ;
+ContextualAggregateExpression
+                        = "{" NewLine* [ ContextualAggregateEntry { "," NewLine* [ ContextualAggregateEntry ] } ] "}" ;
+ContextualAggregateEntry= IdentifierName ":" Expression ;
 ListExpression          = "[" NewLine* [ Expression { "," NewLine* [ Expression ] } ] "]" ;
 ParenthesizedOrTupleExpression
                         = "(" Expression [ "," Expression { "," Expression } ] ")" ;

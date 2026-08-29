@@ -287,7 +287,9 @@ function printStatement(printer: Printer, statement: Statement): void {
 		case 'BreakStatement': printer.line('break'); break;
 		case 'ContinueStatement': printer.line('continue'); break;
 		case 'DiscardStatement': printer.line(`discard ${printExpression(statement.expression)}`); break;
-		case 'AssignmentStatement': printer.line(`${statement.name} = ${printExpression(statement.value)}`); break;
+		case 'AssignmentStatement': printer.line(`${statement.invalidTarget === undefined ? statement.name : printExpression(statement.invalidTarget)} = ${printExpression(statement.value)}`); break;
+		case 'MemberAssignmentStatement': printer.line(`${printExpression(statement.target, 90)}.${statement.field} = ${printExpression(statement.value)}`); break;
+		case 'IndexAssignmentStatement': printer.line(`${printExpression(statement.target, 90)}[${printExpression(statement.index)}] = ${printExpression(statement.value)}`); break;
 		case 'ExpressionStatement': printer.line(printExpression(statement.expression)); break;
 		case 'DeferStatement': printer.line(`defer ${printExpression(statement.expression)}`); break;
 	}
@@ -312,6 +314,7 @@ function expressionText(expression: Expression): readonly [string, number] {
 		case 'WildcardExpression': return ['_', 100];
 		case 'CallExpression': return [`${printExpression(expression.callee, 90)}${expression.typeArguments.length === 0 ? '' : `<${expression.typeArguments.map(printType).join(', ')}>`}${printDelimited(expression.arguments.map(item => printExpression(item)), '(', ')')}`, 90];
 		case 'FieldExpression': return [`${printExpression(expression.target, 90)}.${expression.field}`, 90];
+		case 'IndexExpression': return [`${printExpression(expression.target, 90)}[${printExpression(expression.index)}]`, 90];
 		case 'TryExpression': return expression.operand.kind === 'AwaitExpression' ? [`await ${printExpression(expression.operand.operand, 80)}?`, 80] : [`${printExpression(expression.operand, 90)}?`, 90];
 		case 'AwaitExpression': return [`await ${printExpression(expression.operand, 80)}`, 80];
 		case 'UnaryExpression': return [`${expression.operator}${printExpression(expression.operand, 80)}`, 80];
@@ -319,6 +322,7 @@ function expressionText(expression: Expression): readonly [string, number] {
 		case 'PipelineExpression': return [`${printExpression(expression.left, 10)} |> ${printExpression(expression.right, 11)}`, 10];
 		case 'RecordExpression': return [printRecordEntries(expression.name, expression.entries), 100];
 		case 'RecordUpdateExpression': return [`${printExpression(expression.base, 90)} with ${printRecordEntries('', expression.entries).trimStart()}`, 90];
+		case 'ContextualAggregateExpression': return [printRecordEntries('', expression.entries), 100];
 		case 'ListExpression': return [`[${expression.items.map(item => printExpression(item)).join(', ')}]`, 100];
 		case 'TupleExpression': return [`(${expression.items.map(item => printExpression(item)).join(', ')})`, 100];
 		case 'ConditionalExpression': return [`if ${printExpression(expression.condition)} then ${printExpression(expression.thenExpression)} else ${printExpression(expression.elseExpression)}`, 5];
@@ -334,7 +338,7 @@ function expressionText(expression: Expression): readonly [string, number] {
 
 function printRecordEntries(name: string, entries: readonly RecordEntryNode[]): string {
 	if (entries.length === 0) return `${name}${name.length > 0 ? ' ' : ''}{}`;
-	return `${name}${name.length > 0 ? ' ' : ''}{\n${entries.map(entry => `\t${entry.name}: ${printExpression(entry.value)},`).join('\n')}\n}`;
+	return `${name}${name.length > 0 ? ' ' : ''}{\n${entries.map(entry => `\t${entry.name}: ${printExpression(entry.value).replaceAll('\n', '\n\t')},`).join('\n')}\n}`;
 }
 function printMatch(target: Expression, arms: readonly MatchArmNode[]): string { return `match ${printExpression(target)} {\n${arms.map(arm => `\t${printPattern(arm.pattern)}${arm.guard === undefined ? '' : ` if ${printExpression(arm.guard)}`} => ${printExpression(arm.expression)}`).join('\n')}\n}`; }
 function printParallel(tryMode: boolean, entries: readonly { readonly name: string; readonly value: Expression }[]): string { return `parallel${tryMode ? ' try' : ''} {\n${entries.map(entry => `\t${entry.name}: ${printExpression(entry.value)},`).join('\n')}\n}`; }

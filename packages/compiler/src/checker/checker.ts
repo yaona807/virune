@@ -543,12 +543,29 @@ export class TypeChecker {
 			case 'ContinueStatement': if (this.#loopDepth === 0) this.diagnostics.error('L2096', 'continue can be used only inside a loop', statement.span); break;
 			case 'DiscardStatement': this.checkExpression(statement.expression, scope); break;
 			case 'AssignmentStatement': {
+				if (statement.invalidTarget !== undefined) {
+					this.checkExpression(statement.invalidTarget, scope);
+					this.checkExpression(statement.value, scope);
+					this.diagnostics.error('L2118', 'Invalid assignment target; expected a mutable name, member, or index target', statement.span);
+					break;
+				}
 				const target = scope.lookup(statement.name);
 				if (target === undefined) this.diagnostics.error('L1009', `Unknown name ${statement.name}`, statement.span);
 				else if (!target.mutable) this.diagnostics.error('L2010', `Cannot assign to immutable name ${statement.name}`, statement.span);
 				else { statement.targetSymbolId = target.id; const valueType = this.checkExpression(statement.value, scope, target.typeId); if (this.containsOpenEffect(valueType)) this.diagnostics.error('L2113', 'uses * callbacks are non-escaping and cannot be assigned', statement.span); if (!this.isAssignable(valueType, target.typeId)) this.typeMismatch(valueType, target.typeId, statement.value.span); }
 				break;
 			}
+			case 'MemberAssignmentStatement':
+				this.checkExpression(statement.target, scope);
+				this.checkExpression(statement.value, scope);
+				this.diagnostics.error('L2119', 'Member assignment requires a proven writable facet', statement.span);
+				break;
+			case 'IndexAssignmentStatement':
+				this.checkExpression(statement.target, scope);
+				this.checkExpression(statement.index, scope);
+				this.checkExpression(statement.value, scope);
+				this.diagnostics.error('L2120', 'Index assignment requires a proven writable facet', statement.span);
+				break;
 			case 'DeferStatement': {
 					if (this.#currentFunction === undefined) this.diagnostics.error('L2070', 'defer can be used only inside a function or test', statement.span);
 					const deferredType = this.checkExpression(statement.expression, scope);
@@ -578,6 +595,12 @@ export class TypeChecker {
 			case 'WildcardExpression': this.diagnostics.error('L2011', 'Wildcard can only be used in patterns or pipeline placeholders', expression.span); typeId = this.arena.error; break;
 			case 'CallExpression': typeId = this.checkCall(expression, scope, expected); break;
 			case 'FieldExpression': typeId = this.checkField(expression, scope); break;
+			case 'IndexExpression':
+				this.checkExpression(expression.target, scope);
+				this.checkExpression(expression.index, scope);
+				this.diagnostics.error('L2121', 'Index access requires a proven index facet', expression.span);
+				typeId = this.arena.error;
+				break;
 			case 'BinaryExpression': typeId = this.checkBinary(expression, scope); break;
 			case 'UnaryExpression': typeId = this.checkUnary(expression, scope); break;
 			case 'PipelineExpression': typeId = this.checkPipeline(expression, scope); break;
@@ -585,6 +608,17 @@ export class TypeChecker {
 			case 'AwaitExpression': typeId = this.checkAwait(expression, scope); break;
 			case 'RecordExpression': typeId = this.checkRecord(expression, scope, expected); break;
 			case 'RecordUpdateExpression': typeId = this.checkRecordUpdate(expression, scope); break;
+			case 'ContextualAggregateExpression': {
+				const supplied = new Set<string>();
+				for (const entry of expression.entries) {
+					if (supplied.has(entry.name)) this.diagnostics.error('L2025', `Duplicate contextual aggregate field ${entry.name}`, entry.span);
+					supplied.add(entry.name);
+					this.checkExpression(entry.value, scope);
+				}
+				this.diagnostics.error('L2122', 'Contextual aggregate requires a supported expected aggregate facet', expression.span);
+				typeId = this.arena.error;
+				break;
+			}
 			case 'ListExpression': typeId = this.checkList(expression, scope, expected); break;
 			case 'TupleExpression': typeId = this.arena.tuple(expression.items.map(item => this.checkExpression(item, scope))); break;
 			case 'ConditionalExpression': {

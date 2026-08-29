@@ -160,7 +160,15 @@ export class AstBuilder extends baseCstVisitorConstructor {
 	public breakStatement(ctx: Ctx): A.BreakStatement { return { id: this.id(), kind: 'BreakStatement', span: nodeSpan(this.#fileId, this.currentNode(ctx)) }; }
 	public continueStatement(ctx: Ctx): A.ContinueStatement { return { id: this.id(), kind: 'ContinueStatement', span: nodeSpan(this.#fileId, this.currentNode(ctx)) }; }
 	public discardStatement(ctx: Ctx): A.DiscardStatement { return { id: this.id(), kind: 'DiscardStatement', span: nodeSpan(this.#fileId, this.currentNode(ctx)), expression: this.visitNode(firstNode(ctx, 'expression')) }; }
-	public assignmentStatement(ctx: Ctx): A.AssignmentStatement { return { id: this.id(), kind: 'AssignmentStatement', span: nodeSpan(this.#fileId, this.currentNode(ctx)), name: tokenText(ctx, 'Identifier'), value: this.visitNode(firstNode(ctx, 'expression')) }; }
+	public assignmentStatement(ctx: Ctx): A.AssignmentStatement | A.MemberAssignmentStatement | A.IndexAssignmentStatement {
+		const target = this.visitNode<A.Expression>(firstNode(ctx, 'postfixExpression'));
+		const value = this.visitNode<A.Expression>(firstNode(ctx, 'expression'));
+		const span = nodeSpan(this.#fileId, this.currentNode(ctx));
+		if (target.kind === 'IdentifierExpression') return { id: this.id(), kind: 'AssignmentStatement', span: value.span, name: target.name, value };
+		if (target.kind === 'FieldExpression') return { id: this.id(), kind: 'MemberAssignmentStatement', span, target: target.target, field: target.field, value };
+		if (target.kind === 'IndexExpression') return { id: this.id(), kind: 'IndexAssignmentStatement', span, target: target.target, index: target.index, value };
+		return { id: this.id(), kind: 'AssignmentStatement', span, name: '', value, invalidTarget: target };
+	}
 	public deferStatement(ctx: Ctx): A.DeferStatement { return { id: this.id(), kind: 'DeferStatement', span: nodeSpan(this.#fileId, this.currentNode(ctx)), expression: this.visitNode(firstNode(ctx, 'expression')) }; }
 	public expressionStatement(ctx: Ctx): A.ExpressionStatement { return { id: this.id(), kind: 'ExpressionStatement', span: nodeSpan(this.#fileId, this.currentNode(ctx)), expression: this.visitNode(firstNode(ctx, 'expression')) }; }
 	public lineEnd(): undefined { return undefined; }
@@ -190,10 +198,11 @@ export class AstBuilder extends baseCstVisitorConstructor {
 
 	public postfixExpression(ctx: Ctx): A.Expression {
 		let result = this.visitNode<A.Expression>(firstNode(ctx, 'primaryExpression'));
-		type Event = { offset: number; kind: 'call' | 'field' | 'try' | 'update'; node?: CstNode; token?: IToken };
+		type Event = { offset: number; kind: 'call' | 'field' | 'index' | 'try' | 'update'; node?: CstNode; token?: IToken };
 		const events: Event[] = [];
 		for (const node of nodes(ctx, 'callSuffix')) events.push({ offset: node.location?.startOffset ?? 0, kind: 'call', node });
 		for (const token of tokens(ctx, 'Dot')) events.push({ offset: token.startOffset, kind: 'field', token });
+		for (const node of nodes(ctx, 'indexSuffix')) events.push({ offset: node.location?.startOffset ?? 0, kind: 'index', node });
 		for (const token of tokens(ctx, 'Question')) events.push({ offset: token.startOffset, kind: 'try', token });
 		for (const token of tokens(ctx, 'KwWith')) events.push({ offset: token.startOffset, kind: 'update', token });
 		const updateNodes = nodes(ctx, 'recordFieldBlock');
@@ -209,6 +218,10 @@ export class AstBuilder extends baseCstVisitorConstructor {
 			} else if (event.kind === 'field') {
 				const field = fieldTokens.find(token => token.startOffset > event.offset);
 				result = { id: this.id(), kind: 'FieldExpression', span: this.mergeSpan(result.span, tokenSpan(this.#fileId, field)), target: result, field: field?.image ?? '' };
+			} else if (event.kind === 'index') {
+				const suffix = event.node!;
+				const index = this.visitNode<A.Expression>(firstNode(suffix.children as Ctx, 'expression'));
+				result = { id: this.id(), kind: 'IndexExpression', span: this.mergeSpan(result.span, nodeSpan(this.#fileId, suffix)), target: result, index };
 			} else if (event.kind === 'try') {
 				result = { id: this.id(), kind: 'TryExpression', span: this.mergeSpan(result.span, tokenSpan(this.#fileId, event.token)), operand: result };
 			} else {
@@ -219,11 +232,12 @@ export class AstBuilder extends baseCstVisitorConstructor {
 		return result;
 	}
 
+	public indexSuffix(ctx: Ctx): A.Expression { return this.visitNode(firstNode(ctx, 'expression')); }
 	public typeArguments(ctx: Ctx): A.TypeReferenceNode[] { return this.visitNodes(nodes(ctx, 'typeReference')); }
 
 	public argumentList(ctx: Ctx): A.Expression[] { return this.visitNodes(nodes(ctx, 'expression')); }
 	public primaryExpression(ctx: Ctx): A.Expression {
-		for (const name of ['recordExpression', 'listExpression', 'parenthesizedOrTupleExpression', 'conditionalExpression', 'matchExpression', 'lambdaExpression', 'parallelExpression']) {
+		for (const name of ['recordExpression', 'contextualAggregateExpression', 'listExpression', 'parenthesizedOrTupleExpression', 'conditionalExpression', 'matchExpression', 'lambdaExpression', 'parallelExpression']) {
 			const child = firstNode(ctx, name); if (child !== undefined) return this.visitNode(child);
 		}
 		const token = Object.values(ctx).flat().filter(isToken).sort((a, b) => a.startOffset - b.startOffset)[0];
@@ -235,6 +249,8 @@ export class AstBuilder extends baseCstVisitorConstructor {
 	public recordExpression(ctx: Ctx): A.RecordExpression { const typeArguments = firstNode(ctx, 'typeArguments'); return { id: this.id(), kind: 'RecordExpression', span: nodeSpan(this.#fileId, this.currentNode(ctx)), name: tokenText(ctx, 'Identifier'), typeArguments: typeArguments === undefined ? [] : this.visitNode<A.TypeReferenceNode[]>(typeArguments), entries: this.visitNode<A.RecordEntryNode[]>(firstNode(ctx, 'recordFieldBlock')) }; }
 	public recordFieldBlock(ctx: Ctx): A.RecordEntryNode[] { return this.visitNodes(nodes(ctx, 'recordEntry')); }
 	public recordEntry(ctx: Ctx): A.RecordEntryNode { const name = tokenText(ctx, 'Identifier'); const expression = firstNode(ctx, 'expression'); return { name, value: expression === undefined ? { id: this.id(), kind: 'IdentifierExpression', span: tokenSpan(this.#fileId, firstToken(ctx, 'Identifier')), name } : this.visitNode(expression), span: nodeSpan(this.#fileId, this.currentNode(ctx)) }; }
+	public contextualAggregateExpression(ctx: Ctx): A.ContextualAggregateExpression { return { id: this.id(), kind: 'ContextualAggregateExpression', span: contextSpan(this.#fileId, ctx), entries: this.visitNodes(nodes(ctx, 'contextualAggregateEntry')) }; }
+	public contextualAggregateEntry(ctx: Ctx): A.ContextualAggregateEntryNode { return { name: tokenText(ctx, 'IdentifierName'), value: this.visitNode(firstNode(ctx, 'expression')), span: contextSpan(this.#fileId, ctx) }; }
 	public listExpression(ctx: Ctx): A.ListExpression { return { id: this.id(), kind: 'ListExpression', span: nodeSpan(this.#fileId, this.currentNode(ctx)), items: this.visitNodes(nodes(ctx, 'expression')) }; }
 	public parenthesizedOrTupleExpression(ctx: Ctx): A.Expression { const values = this.visitNodes<A.Expression>(nodes(ctx, 'expression')); return values.length === 1 ? values[0] as A.Expression : { id: this.id(), kind: 'TupleExpression', span: nodeSpan(this.#fileId, this.currentNode(ctx)), items: values }; }
 	public conditionalExpression(ctx: Ctx): A.ConditionalExpression { const expressions = this.visitNodes<A.Expression>(nodes(ctx, 'expression')); return { id: this.id(), kind: 'ConditionalExpression', span: nodeSpan(this.#fileId, this.currentNode(ctx)), condition: expressions[0]!, thenExpression: expressions[1]!, elseExpression: expressions[2]! }; }

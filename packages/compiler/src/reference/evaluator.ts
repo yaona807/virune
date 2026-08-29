@@ -72,6 +72,9 @@ function evaluateStatement(statement: Statement, environment: Environment, invok
 	switch (statement.kind) {
 		case 'LetStatement': environment.set(statement.name, evaluateExpression(statement.value, environment, invoke)); return;
 		case 'AssignmentStatement': assign(statement, environment, invoke); return;
+		case 'MemberAssignmentStatement':
+		case 'IndexAssignmentStatement':
+			throw new ReferenceEvaluationError(`${statement.kind} is outside the pure reference subset`);
 		case 'ReturnStatement': throw new ReturnSignal(statement.value === undefined ? undefined : evaluateExpression(statement.value, environment, invoke));
 		case 'ExpressionStatement': evaluateExpression(statement.expression, environment, invoke); return;
 		case 'IfStatement': {
@@ -104,6 +107,7 @@ function evaluateStatement(statement: Statement, environment: Environment, invok
 }
 
 function assign(statement: AssignmentStatement, environment: Environment, invoke: (name: string, args: readonly unknown[]) => unknown): void {
+	if (statement.invalidTarget !== undefined) throw new ReferenceEvaluationError('Invalid assignment target is outside the pure reference subset');
 	if (!environment.has(statement.name)) throw new ReferenceEvaluationError(`Unknown variable ${statement.name}`);
 	environment.set(statement.name, evaluateExpression(statement.value, environment, invoke));
 }
@@ -158,6 +162,8 @@ function evaluateExpression(expression: Expression, environment: Environment, in
 			const rewritten = { ...expression.right, arguments: [expression.left, ...expression.right.arguments] };
 			return evaluateExpression(rewritten, environment, invoke);
 		}
+		case 'IndexExpression':
+		case 'ContextualAggregateExpression':
 		case 'LambdaExpression':
 		case 'TryExpression':
 		case 'AwaitExpression':
