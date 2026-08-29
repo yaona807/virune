@@ -84,7 +84,7 @@ export interface RecordEntryNode { readonly name: string; readonly value: Expres
 export interface RecordExpression extends ExpressionBase { readonly kind: 'RecordExpression'; readonly name: string; readonly typeArguments: readonly TypeReferenceNode[]; readonly entries: readonly RecordEntryNode[]; symbolId?: SymbolId; }
 export interface RecordUpdateExpression extends ExpressionBase { readonly kind: 'RecordUpdateExpression'; readonly base: Expression; readonly entries: readonly RecordEntryNode[]; }
 export interface ContextualAggregateEntryNode { readonly name: string; readonly value: Expression; readonly span: SourceSpan; }
-export interface ContextualAggregateExpression extends ExpressionBase { readonly kind: 'ContextualAggregateExpression'; readonly entries: readonly ContextualAggregateEntryNode[]; }
+export interface ContextualAggregateExpression extends ExpressionBase { readonly kind: 'ContextualAggregateExpression'; readonly entries: readonly ContextualAggregateEntryNode[]; foreignObject?: true; }
 export interface ListExpression extends ExpressionBase { readonly kind: 'ListExpression'; readonly items: readonly Expression[]; }
 export interface TupleExpression extends ExpressionBase { readonly kind: 'TupleExpression'; readonly items: readonly Expression[]; }
 export interface ConditionalExpression extends ExpressionBase { readonly kind: 'ConditionalExpression'; readonly condition: Expression; readonly thenExpression: Expression; readonly elseExpression: Expression; }
