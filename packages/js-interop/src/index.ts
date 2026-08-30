@@ -634,7 +634,7 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 		const errors = diagnostics.filter(item => item.category === ts.DiagnosticCategory.Error);
 		if (errors.length > 0) throw new Error(errors.map(item => ts.flattenDiagnosticMessageText(item.messageText, '\n')).join('; '));
 		const sourceFile = program.getSourceFile(virtualPath)
-			?? program.getSourceFiles().find(item => canonicalFilePath(item.fileName) === virtualKey);
+			?? program.getSourceFiles().find(item => canonicalFilePath(item.fileName) === virtualFileKey);
 		if (sourceFile === undefined) throw new Error('TypeScript interop probe was not created');
 		const checker = program.getTypeChecker();
 		const expression = sourceFile.statements.find(ts.isExpressionStatement)?.expression;
