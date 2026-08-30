@@ -77,6 +77,26 @@ fn main() -> Unit uses JavaScript {
 	assert.ok(unresolved.includes('L4204'));
 });
 
+test('readonly contextual External properties preserve TypeScript initialization semantics', async () => {
+	const accepted = await errorCodesFor(`import js { consume } from "./library.js"
+
+fn main() -> Unit uses JavaScript {
+	discard consume({ mode: "strict" })
+	return Unit
+}
+`, `export declare function consume(value: { readonly mode: 'strict' }): boolean;\n`);
+	assert.deepEqual(accepted, []);
+
+	const invalid = await errorCodesFor(`import js { consume } from "./library.js"
+
+fn main() -> Unit uses JavaScript {
+	discard consume({ mode: "loose" })
+	return Unit
+}
+`, `export declare function consume(value: { readonly mode: 'strict' }): boolean;\n`);
+	assert.ok(invalid.includes('L4204'));
+});
+
 test('generic External construct fails closed when its inferred result retains an unresolved type argument', async () => {
 	const codes = await errorCodesFor(`import js { Box } from "./library.js"
 
