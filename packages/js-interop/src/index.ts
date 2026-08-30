@@ -243,6 +243,16 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 			left = `${context.target}.${safeTsName(usage.property)}`;
 			value = this.renderUsageValue(usage.value, context, false, true);
 		} else {
+			const literalKey = usage.index.kind === 'native-primitive' && usage.index.literal?.kind === 'String'
+				? usage.index.literal.value
+				: undefined;
+			if (literalKey !== undefined) {
+				const property = context.stored.checker.getPropertyOfType(context.stored.type, literalKey);
+				if (property?.declarations?.some(declaration => {
+					const modifiers = ts.getCombinedModifierFlags(declaration);
+					return (modifiers & (ts.ModifierFlags.Private | ts.ModifierFlags.Protected)) !== 0;
+				}) === true) return undefined;
+			}
 			const index = this.renderUsageValue(usage.index, context, false, false);
 			value = this.renderUsageValue(usage.value, context, false, true);
 			if (index === undefined) return undefined;
@@ -774,7 +784,7 @@ function primitiveKind(type: ts.Type): ForeignPrimitiveKind | undefined {
 	if ((flags & (ts.TypeFlags.String | ts.TypeFlags.StringLiteral)) !== 0) return 'string';
 	if ((flags & (ts.TypeFlags.Boolean | ts.TypeFlags.BooleanLiteral)) !== 0) return 'boolean';
 	if ((flags & (ts.TypeFlags.Number | ts.TypeFlags.NumberLiteral)) !== 0) return 'number';
-	if ((flags & (ts.TypeFlags.BigInt | ts.TypeFlags.BigIntLiteral)) !== 0) return 'bigint';
+	if ((flags & ts.TypeFlags.BigIntLike) !== 0) return 'bigint';
 	if ((flags & ts.TypeFlags.Void) !== 0) return 'void';
 	if ((flags & ts.TypeFlags.Undefined) !== 0) return 'undefined';
 	if ((flags & ts.TypeFlags.Null) !== 0) return 'null';
