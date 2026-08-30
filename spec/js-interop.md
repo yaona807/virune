@@ -16,6 +16,20 @@ Named imports from a CommonJS runtime are rejected. Runtime module resolution us
 
 A TypeScript `any` import is rejected by the direct facade. TypeScript `unknown` remains an unknown foreign value and can cross to Virune `Unknown` without asserting a narrower type.
 
+### Contextual External operations
+
+A bare contextual aggregate `{ field: value }` MAY become a plain JavaScript data object only when the pinned provider proves the complete object usage against an expected External structural type. The expected type MAY come from a named type-only JavaScript import without creating a runtime import. Nested contextual aggregates and supported native callable entries are checked in the same TypeScript usage. Missing, extra, incompatible, stale, partial, malformed, `any`, or `unknown` evidence MUST fail closed. Native Virune records, lists, tuples, and other composite values do not implicitly become JavaScript objects.
+
+Contextual object entries evaluate from left to right exactly once. Property spellings are emitted as computed data properties, so names such as `__proto__` remain ordinary own data properties rather than changing the object prototype. A native callable entry uses the generated callable boundary below; its raw Virune function representation MUST NOT leak into the JavaScript object.
+
+`value[index]` is available only when TypeScript proves the indexed access for the actual receiver and index value. The receiver and index evaluate once in JavaScript order and the result remains a foreign value until an allowed bridge is applied. Unsupported index kinds, unresolved access, and `any` or `unknown` evidence MUST fail closed.
+
+External property and index assignment are available only when TypeScript accepts the corresponding assignment to the declared target. Readonly or otherwise inaccessible writes MUST fail closed. Emission preserves ordinary JavaScript reference semantics and evaluation order: receiver before value for property assignment, and receiver before index before value for index assignment. Setters, proxy traps, and synchronous exceptions therefore retain their JavaScript behavior.
+
+Ordinary call syntax MAY be emitted as construction only when call resolution does not succeed and the provider proves a construct usage from the callee and actual arguments. A value that is both callable and constructable is ambiguous and MUST NOT be guessed as a constructor. Private or inaccessible constructors, unresolved generic results, malformed or stale evidence, and unsupported constructor selections MUST fail closed. Supported overload and generic constructor selection is delegated to TypeScript using actual arguments only. Emission uses JavaScript construction semantics and preserves argument order and constructor exceptions.
+
+Successful contextual object, index, write, and construct decisions MUST be represented by provider-independent External Operation evidence. Provider handles and generation data are checker-local proof inputs and MUST NOT become stable operation output. The compiler MUST validate that evidence is current, complete, structurally canonical, and attached to the matching usage before enabling emission; it MUST NOT recreate general TypeScript assignability rules.
+
 ### Generated callable boundaries
 
 A generated callable boundary is available only when the pinned provider selects one whole JavaScript call usage and proves a supported contextual callback shape for the callable argument. Missing, stale, malformed, ambiguous, unresolved, `any`, `unknown`, construct-only, unresolved generic, explicit-`this`, optional/rest-parameter, or required callable-object-property evidence MUST fail closed and require an adapter. The Virune compiler MUST NOT recreate general TypeScript assignability rules.
