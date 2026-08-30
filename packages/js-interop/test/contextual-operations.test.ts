@@ -31,6 +31,14 @@ async function writeProject(root: string, source: string, librarySource: string,
 	await writeFile(join(root, 'src/library.d.ts'), declarations, 'utf8');
 }
 
+async function errorCodesFor(source: string, librarySource: string, declarations: string): Promise<string[]> {
+	const root = await projectRoot();
+	await writeProject(root, source, librarySource, declarations);
+	const provider = new TypeScriptInteropProvider({ projectRoot: root });
+	const result = await buildProject(root, { write: false, jsInteropProvider: provider });
+	return result.diagnostics.filter(item => item.severity === 'error').map(item => item.code);
+}
+
 test('contextual External object/index/write/construct operations execute with JavaScript semantics', async () => {
 	const root = await projectRoot();
 	const librarySource = `
@@ -122,4 +130,98 @@ pub fn constructValue() -> Float uses JavaScript {
 	assert.equal(module.indexedReceiver(), 'Px');
 	assert.equal(module.writeAndRead(), 'changed:ok');
 	assert.equal(module.constructValue(), 3.5);
+});
+
+test('contextual External objects reject missing, extra, and incompatible properties', async () => {
+	const librarySource = 'export function consume(value) { return value; }\n';
+	const declarations = "export declare function consume(value: { mode: 'strict'; nested: { count: 3 } }): unknown;\n";
+	for (const aggregate of [
+		'{ mode: "strict" }',
+		'{ mode: "strict", nested: { count: 3 }, extra: 1 }',
+		'{ mode: "strict", nested: { count: "three" } }',
+	]) {
+		const codes = await errorCodesFor(`import js { consume } from "./library.js"
+
+fn main() -> Unit uses JavaScript {
+	discard consume(${aggregate})
+	return Unit
+}
+`, librarySource, declarations);
+		assert.ok(codes.includes('L4204'), `invalid contextual object must fail closed: ${aggregate}`);
+	}
+});
+
+test('readonly External property and index writes fail closed', async () => {
+	const codes = await errorCodesFor(`import js { state } from "./library.js"
+
+fn main() -> Unit uses JavaScript {
+	state.name = "changed"
+	state["extra"] = "value"
+	return Unit
+}
+`, 'export const state = { name: "old" };\n', `export declare const state: {
+	readonly name: string;
+	readonly [key: string]: string;
+};
+`);
+	assert.ok(codes.includes('L2119'));
+	assert.ok(codes.includes('L2120'));
+});
+
+test('ambiguous, inaccessible, and unresolved constructors fail closed', async () => {
+	const codes = await errorCodesFor(`import js { both, PrivateCtor, unresolved } from "./library.js"
+
+fn main() -> Unit uses JavaScript {
+	discard both(1.0)
+	discard PrivateCtor(1.0)
+	discard unresolved()
+	return Unit
+}
+`, `
+export const both = function(value) { return value; };
+export class PrivateCtor { constructor(value) { this.value = value; } }
+export const unresolved = class {};
+`, `
+interface Both {
+	(value: number): number;
+	new (value: number): { value: number };
+}
+export declare const both: Both;
+export declare class PrivateCtor { private constructor(value: number); }
+export declare const unresolved: { new <T>(): T };
+`);
+	assert.ok(codes.filter(code => code === 'L4204').length >= 3);
+});
+
+test('native aggregates and unknown/any evidence cannot become Direct External operations', async () => {
+	const recordCodes = await errorCodesFor(`record Config {
+	mode: String
+}
+
+import js { consume } from "./library.js"
+
+fn main() -> Unit uses JavaScript {
+	discard consume(Config { mode: "strict" })
+	return Unit
+}
+`, 'export function consume(value) { return value; }\n', 'export declare function consume(value: { mode: string }): unknown;\n');
+	assert.ok(recordCodes.includes('L4206'));
+
+	const unknownCodes = await errorCodesFor(`import js { uncertain } from "./library.js"
+
+fn main() -> Unit uses JavaScript {
+	discard uncertain["key"]
+	return Unit
+}
+`, 'export const uncertain = {};\n', 'export declare const uncertain: unknown;\n');
+	assert.ok(unknownCodes.includes('L2121'));
+
+	const anyCodes = await errorCodesFor(`import js { unsafeValue } from "./library.js"
+
+fn main() -> Unit uses JavaScript {
+	discard unsafeValue
+	return Unit
+}
+`, 'export const unsafeValue = {};\n', 'export declare const unsafeValue: any;\n');
+	assert.ok(anyCodes.includes('L4212'));
 });
