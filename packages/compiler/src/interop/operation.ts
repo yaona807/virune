@@ -9,6 +9,7 @@ import type {
 	ModuleResolutionWitness,
 	NativeCallableBoundaryDescriptor,
 	NativeCallablePrimitiveKind,
+	ObjectCallableProjectionEvidence,
 	PrimitiveBridgeKind,
 	StableForeignTypeSnapshot,
 } from './types.js';
@@ -74,6 +75,14 @@ export interface ExternalCallableProjectionIR {
 	readonly descriptor: NativeCallableBoundaryDescriptor;
 }
 
+export interface ExternalObjectCallableProjectionIR {
+	readonly entryIndex: number;
+	readonly property: string;
+	/** Insertion index in the returned External Operation sequence. Lower indexes execute before the projection; this index and later execute after it. */
+	readonly beforeOperationIndex: number;
+	readonly descriptor: NativeCallableBoundaryDescriptor;
+}
+
 interface ExternalOperationBase {
 	readonly kind: ExternalOperationKind;
 	readonly nodeId: NodeId;
@@ -115,6 +124,7 @@ export interface ExternalWriteIndexOperationIR extends ExternalOperationBase {
 export interface ExternalBuildObjectOperationIR extends ExternalOperationBase {
 	readonly kind: 'build-external-object';
 	readonly result: ExternalForeignValueShape;
+	readonly callableProjections?: readonly ExternalObjectCallableProjectionIR[];
 }
 
 export interface ExternalCallOperationIR extends ExternalOperationBase {
@@ -201,41 +211,55 @@ export function buildExternalOperationSequence(input: {
 	if (witnessIndex !== input.interop.moduleWitnesses.length) throw new Error('External operation evidence contains unconsumed module witnesses');
 
 	const callableProjections = groupCallableProjections(input.interop.callableProjections ?? []);
+	const objectCallableProjections = groupObjectCallableProjections(input.interop.objectCallableProjections ?? []);
 	const operationIndexAtUsageBoundary: number[] = [operations.length];
 	for (let usageIndex = 0; usageIndex < input.interop.usageIR.length; usageIndex++) {
 		const usage = input.interop.usageIR[usageIndex]!;
 		const projections = callableProjections.get(usage.nodeId) ?? [];
+		const objectProjections = objectCallableProjections.get(usage.nodeId) ?? [];
 		const invocation = usage.kind === 'call' || usage.kind === 'construct';
+		const objectBuild = usage.kind === 'object';
 		if (invocation && projections.some(projection => projection.beforeUsageIndex > usageIndex)) {
 			throw new Error('External callable projection usage order cannot extend beyond its outer invocation');
 		}
 		if (!invocation && projections.length !== 0) throw new Error('External callable projection evidence must attach to a call or construct usage');
+		if (objectBuild && objectProjections.some(projection => projection.beforeUsageIndex > usageIndex)) {
+			throw new Error('External object callable projection usage order cannot extend beyond its object construction');
+		}
+		if (!objectBuild && objectProjections.length !== 0) throw new Error('External object callable projection evidence must attach to a contextual object usage');
 		const stableProjections = invocation
 			? canonicalCallableProjections(projections, usage.nodeId, operationIndexAtUsageBoundary)
 			: [];
-		const operation = externalOperationFromUsageWithCallables(usage, stableProjections);
+		const stableObjectProjections = objectBuild
+			? canonicalObjectCallableProjections(objectProjections, usage.nodeId, operationIndexAtUsageBoundary)
+			: [];
+		const operation = externalOperationFromUsageWithCallables(usage, stableProjections, stableObjectProjections);
 		if (operation !== undefined) operations.push(operation);
 		operationIndexAtUsageBoundary[usageIndex + 1] = operations.length;
 		if (invocation) callableProjections.delete(usage.nodeId);
+		if (objectBuild) objectCallableProjections.delete(usage.nodeId);
 	}
 	if (callableProjections.size !== 0) throw new Error('External callable projection evidence does not correspond to a completed call or construct usage');
+	if (objectCallableProjections.size !== 0) throw new Error('External object callable projection evidence does not correspond to a completed contextual object usage');
 	return Object.freeze(operations);
 }
 
 /** Import usages are declaration metadata; one ModuleLoad is emitted per runtime import declaration. */
 export function externalOperationFromUsage(usage: ForeignUsageIR): ExternalOperationIR | undefined {
-	return externalOperationFromUsageWithCallables(usage, []);
+	return externalOperationFromUsageWithCallables(usage, [], []);
 }
 
 function externalOperationFromUsageWithCallables(
 	usage: ForeignUsageIR,
 	callableProjections: readonly ExternalCallableProjectionIR[],
+	objectCallableProjections: readonly ExternalObjectCallableProjectionIR[],
 ): ExternalOperationIR | undefined {
 	if (usage.kind === 'import') {
-		if (callableProjections.length !== 0) throw new Error('External callable projection evidence cannot attach to an import usage');
+		if (callableProjections.length !== 0 || objectCallableProjections.length !== 0) throw new Error('External callable projection evidence cannot attach to an import usage');
 		return undefined;
 	}
 	if (usage.kind !== 'call' && usage.kind !== 'construct' && callableProjections.length !== 0) throw new Error('External callable projection evidence must attach to a call or construct usage');
+	if (usage.kind !== 'object' && objectCallableProjections.length !== 0) throw new Error('External object callable projection evidence must attach to a contextual object usage');
 	const anchor = canonicalOperationAnchor(usage.nodeId, usage.span);
 	switch (usage.kind) {
 		case 'property':
@@ -277,7 +301,8 @@ function externalOperationFromUsageWithCallables(
 				kind: 'build-external-object',
 				...anchor,
 				result: canonicalForeignType(usage.foreignType),
-				decision: directDecision(),
+				...(objectCallableProjections.length === 0 ? {} : { callableProjections: objectCallableProjections }),
+				decision: objectCallableProjections.length === 0 ? directDecision() : callableShimDecision([]),
 			});
 		case 'call': {
 			if (usage.receiverMode !== 'none' && usage.receiverMode !== 'preserve-this') throw new Error('External Call operation requires a known receiver mode');
@@ -408,6 +433,17 @@ function groupCallableProjections(projections: readonly CallableProjectionEviden
 	return grouped;
 }
 
+function groupObjectCallableProjections(projections: readonly ObjectCallableProjectionEvidence[]): Map<NodeId, ObjectCallableProjectionEvidence[]> {
+	const grouped = new Map<NodeId, ObjectCallableProjectionEvidence[]>();
+	for (const projection of projections) {
+		if (!Number.isSafeInteger(projection.objectNodeId)) throw new Error('External object callable projection object node id must be a safe integer');
+		const current = grouped.get(projection.objectNodeId) ?? [];
+		current.push(projection);
+		grouped.set(projection.objectNodeId, current);
+	}
+	return grouped;
+}
+
 function canonicalCallableProjections(
 	projections: readonly CallableProjectionEvidence[],
 	callNodeId: NodeId,
@@ -441,6 +477,46 @@ function canonicalCallableProjections(
 	}
 	return Object.freeze(ordered.map(projection => Object.freeze({
 		argumentIndex: projection.argumentIndex,
+		beforeOperationIndex: projection.beforeOperationIndex,
+		descriptor: projection.descriptor,
+	})));
+}
+
+function canonicalObjectCallableProjections(
+	projections: readonly ObjectCallableProjectionEvidence[],
+	objectNodeId: NodeId,
+	operationIndexAtUsageBoundary: readonly number[],
+): readonly ExternalObjectCallableProjectionIR[] {
+	const seenEntries = new Set<number>();
+	const ordered = projections.map(projection => {
+		if (projection.objectNodeId !== objectNodeId) throw new Error('External object callable projection is attached to the wrong object node');
+		if (!Number.isSafeInteger(projection.entryIndex) || projection.entryIndex < 0) throw new Error('External object callable projection entry index must be a non-negative safe integer');
+		if (!Number.isSafeInteger(projection.beforeUsageIndex) || projection.beforeUsageIndex < 0) throw new Error('External object callable projection usage index must be a non-negative safe integer');
+		if (seenEntries.has(projection.entryIndex)) throw new Error('External object callable projection entry index must be unique within an object');
+		seenEntries.add(projection.entryIndex);
+		const beforeOperationIndex = operationIndexAtUsageBoundary.at(projection.beforeUsageIndex);
+		if (typeof beforeOperationIndex !== 'number' || !Number.isSafeInteger(beforeOperationIndex) || beforeOperationIndex < 0) {
+			throw new Error('External object callable projection usage boundary is not represented in the stable operation sequence');
+		}
+		return Object.freeze({
+			entryIndex: projection.entryIndex,
+			property: stableProviderText(projection.property, 'contextual object property'),
+			beforeUsageIndex: projection.beforeUsageIndex,
+			beforeOperationIndex,
+			descriptor: canonicalCallableDescriptor(projection.descriptor),
+		});
+	});
+	ordered.sort((left, right) => left.entryIndex - right.entryIndex);
+	for (let index = 1; index < ordered.length; index++) {
+		const current = ordered[index]!;
+		const previous = ordered[index - 1]!;
+		if (current.beforeUsageIndex < previous.beforeUsageIndex || current.beforeOperationIndex < previous.beforeOperationIndex) {
+			throw new Error('External object callable projection usage order must follow entry evaluation order');
+		}
+	}
+	return Object.freeze(ordered.map(projection => Object.freeze({
+		entryIndex: projection.entryIndex,
+		property: projection.property,
 		beforeOperationIndex: projection.beforeOperationIndex,
 		descriptor: projection.descriptor,
 	})));
