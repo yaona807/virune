@@ -368,55 +368,44 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 	}
 
 	private resolveInvocationUsage(reference: ForeignTypeRef, usage: InteropCallUsage, construct: boolean): ForeignCallResolution | undefined {
-		const callee = this.lookupType(reference);
-		if (callee === undefined || callee.usageProjection === undefined) return undefined;
-		const flags = callee.type.getFlags();
-		if ((flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) !== 0) return undefined;
-		const callCount = callee.type.getCallSignatures().length;
-		const constructCount = callee.type.getConstructSignatures().length;
-		if (construct ? constructCount === 0 || callCount !== 0 : callCount === 0 || constructCount !== 0) return undefined;
-		if (usage.arguments.some(interopArgumentContainsNativeCallable) && this.#compilerOptions.strictNullChecks !== true) return undefined;
-
-		const workspace = callee.workspace;
-		const context: UsageProbeContext = {
-			stored: callee,
-			workspace,
-			directory: callee.usageProjection.directory,
-			imports: new Set<string>(),
-			declarations: ['export {};'],
-			target: '',
-			nextValueId: 0,
-		};
-		const includeProjection = (projection: UsageProjection): void => {
-			if (projection.declaration !== undefined) context.imports.add(projection.declaration);
-		};
-		let receiverMode: 'none' | 'preserve-this' = 'none';
-		if (usage.target.kind === 'member' || usage.target.kind === 'indexed-member') {
-			const receiver = this.lookupType(usage.target.receiver);
-			if (receiver === undefined || receiver.workspace !== workspace || receiver.usageProjection === undefined || receiver.usageProjection.directory !== context.directory || (receiver.type.getFlags() & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) !== 0) return undefined;
-			includeProjection(receiver.usageProjection);
-			const receiverText = receiver.usageProjection.valueExpression ?? '__viruneReceiver';
-			if (receiver.usageProjection.valueExpression === undefined) context.declarations.push(`declare const __viruneReceiver: ${receiver.usageProjection.typeExpression};`);
+		const stored = this.lookupType(reference);
+		if (stored === undefined || (stored.type.getFlags() & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) !== 0) return undefined;
+		const callSignatures = stored.type.getCallSignatures();
+		const constructSignatures = stored.type.getConstructSignatures();
+		if (construct) {
+			if (constructSignatures.length === 0 || callSignatures.length !== 0) return undefined;
+		} else if (callSignatures.length === 0 || constructSignatures.length !== 0) return undefined;
+		if (usage.arguments.some(argument => argument.kind === 'native-callable') && this.#compilerOptions.strictNullChecks !== true) return undefined;
+		const context = this.createUsageProbeContext(reference);
+		if (context === undefined) return undefined;
+		if (!construct) {
 			if (usage.target.kind === 'member') {
+				const receiver = this.lookupType(usage.target.receiver);
+				if (receiver === undefined || receiver.workspace !== context.workspace || receiver.usageProjection === undefined || receiver.usageProjection.directory !== context.directory) return undefined;
+				if ((receiver.type.getFlags() & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) !== 0) return undefined;
+				if (receiver.usageProjection.declaration !== undefined) context.imports.add(receiver.usageProjection.declaration);
 				const property = JSON.stringify(usage.target.property);
-				const expectedProjection = `(${receiver.usageProjection.typeExpression})[${property}]`;
-				if (callee.usageProjection.typeExpression !== expectedProjection) return undefined;
-				context.target = `${receiverText}[${property}]`;
-			} else {
+				const expectedType = `(${receiver.usageProjection.typeExpression})[${property}]`;
+				if (stored.usageProjection?.typeExpression !== expectedType) return undefined;
+				if (receiver.usageProjection.valueExpression !== undefined) context.target = `(${receiver.usageProjection.valueExpression})[${property}]`;
+				else {
+					context.declarations.push(`declare const __viruneReceiver: ${receiver.usageProjection.typeExpression};`);
+					context.target = `__viruneReceiver[${property}]`;
+				}
+			} else if (usage.target.kind === 'index') {
+				const receiver = this.lookupType(usage.target.receiver);
+				if (receiver === undefined || receiver.workspace !== context.workspace || receiver.usageProjection === undefined || receiver.usageProjection.directory !== context.directory) return undefined;
+				if ((receiver.type.getFlags() & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) !== 0) return undefined;
+				if (receiver.usageProjection.declaration !== undefined) context.imports.add(receiver.usageProjection.declaration);
 				const index = this.renderUsageValue(usage.target.index, context, false, false);
 				if (index === undefined) return undefined;
-				context.target = `${receiverText}[${index}]`;
-			}
-			receiverMode = 'preserve-this';
-		} else {
-			includeProjection(callee.usageProjection);
-			if (callee.usageProjection.valueExpression !== undefined) context.target = callee.usageProjection.valueExpression;
-			else {
-				context.declarations.push(`declare const __viruneCallee: ${callee.usageProjection.typeExpression};`);
-				context.target = '__viruneCallee';
+				if (receiver.usageProjection.valueExpression !== undefined) context.target = `(${receiver.usageProjection.valueExpression})[${index}]`;
+				else {
+					context.declarations.push(`declare const __viruneReceiver: ${receiver.usageProjection.typeExpression};`);
+					context.target = `__viruneReceiver[${index}]`;
+				}
 			}
 		}
-
 		const argumentExpressions: string[] = [];
 		for (const argument of usage.arguments) {
 			const rendered = this.renderUsageValue(argument, context, true, true);
@@ -436,7 +425,11 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 		if ((result.getFlags() & (ts.TypeFlags.Any | (construct ? ts.TypeFlags.Unknown : ts.TypeFlags.Never))) !== 0) return undefined;
 		const selectedGeneric = (signature.declaration?.typeParameters?.length ?? 0) > 0;
 		if (selectedGeneric && (result.getFlags() & (ts.TypeFlags.Unknown | ts.TypeFlags.TypeParameter)) !== 0) return undefined;
-		const invocationArguments = invocation.arguments ?? ts.factory.createNodeArray<ts.Expression>();
+		const invocationArguments = ts.isCallExpression(invocation)
+			? invocation.arguments
+			: ts.isNewExpression(invocation)
+				? invocation.arguments ?? ts.factory.createNodeArray<ts.Expression>()
+				: ts.factory.createNodeArray<ts.Expression>();
 		const parameters = signature.getParameters();
 		const callableArguments: InteropCallableArgumentResolution[] = [];
 		const objectArguments: InteropObjectArgumentResolution[] = [];
@@ -453,7 +446,7 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 			} else if (argument.kind === 'contextual-object') {
 				const literal = unwrapObjectLiteral(node);
 				if (literal === undefined) return undefined;
-				const object = this.objectResolutionFromLiteral(literal, argument.object, probe.checker, workspace);
+				const object = this.objectResolutionFromLiteral(literal, argument.object, probe.checker, context.workspace);
 				if (object === undefined) return undefined;
 				objectArguments.push({ index, object });
 			}
@@ -463,7 +456,7 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 			typeExpression: `(typeof import(${JSON.stringify(`./${probe.virtualFileName}`)}))["__viruneResult"]`,
 			directory: context.directory,
 		};
-		const resultSnapshot = this.store(result, probe.checker, invocation, callee.origin, workspace, resultProjection);
+		const resultSnapshot = this.store(result, probe.checker, invocation, stored.origin, context.workspace, resultProjection);
 		return {
 			result: resultSnapshot,
 			parameterCount: parameters.length,
@@ -471,7 +464,7 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 			minimumArgumentCount: minimum,
 			rest,
 			mayReject: resultSnapshot.category === 'promise',
-			receiverMode: construct ? 'none' : receiverMode,
+			receiverMode: !construct && usage.target.kind !== 'value' ? 'preserve-this' : 'none',
 			...(callableArguments.length === 0 ? {} : { callableArguments: Object.freeze(callableArguments) }),
 			...(objectArguments.length === 0 ? {} : { objectArguments: Object.freeze(objectArguments) }),
 		};
@@ -479,34 +472,29 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 
 	private objectResolutionFromLiteral(literal: ts.ObjectLiteralExpression, usage: InteropObjectUsage, checker: ts.TypeChecker, workspace: ProbeWorkspace): ForeignObjectResolution | undefined {
 		if (literal.properties.length !== usage.entries.length) return undefined;
-		const contextual = checker.getContextualType(literal);
-		if (contextual === undefined || (contextual.getFlags() & (ts.TypeFlags.Any | ts.TypeFlags.Unknown | ts.TypeFlags.Never | ts.TypeFlags.TypeParameter)) !== 0) return undefined;
-		const resultType = checker.getTypeAtLocation(literal);
-		if ((resultType.getFlags() & (ts.TypeFlags.Any | ts.TypeFlags.Unknown | ts.TypeFlags.Never | ts.TypeFlags.TypeParameter)) !== 0) return undefined;
-		const entries: NonNullable<ForeignObjectResolution['entries']>[number][] = [];
+		const entries = [] as { readonly property: string; readonly target: ForeignTypeSnapshot; readonly callable?: InteropCallableArgumentResolution['target']; readonly object?: ForeignObjectResolution }[];
 		for (let index = 0; index < usage.entries.length; index++) {
-			const source = usage.entries[index]!;
+			const usageEntry = usage.entries[index]!;
 			const property = literal.properties[index];
-			if (property === undefined || !ts.isPropertyAssignment(property) || !contextualPropertyWritable(contextual, source.property, checker)) return undefined;
-			const expected = contextualMemberType(contextual, source.property, checker, property.initializer);
-			if (expected === undefined || (expected.getFlags() & (ts.TypeFlags.Any | ts.TypeFlags.Unknown | ts.TypeFlags.Never | ts.TypeFlags.TypeParameter)) !== 0) return undefined;
-			if (source.value.kind === 'native-callable') {
-				const callable = contextualCallableShape(expected, checker, property.initializer);
+			if (property === undefined || !ts.isPropertyAssignment(property) || !ts.isComputedPropertyName(property.name) || !ts.isStringLiteral(property.name.expression) || property.name.expression.text !== usageEntry.property) return undefined;
+			const contextual = checker.getContextualType(property.initializer);
+			if (contextual === undefined || (contextual.getFlags() & (ts.TypeFlags.Any | ts.TypeFlags.Unknown | ts.TypeFlags.Never | ts.TypeFlags.TypeParameter)) !== 0) return undefined;
+			const target = this.store(contextual, checker, property.initializer, undefined, workspace);
+			if (usageEntry.value.kind === 'native-callable') {
+				const callable = contextualCallableShape(contextual, checker, property.initializer);
 				if (callable === undefined) return undefined;
-				entries.push(Object.freeze({ index, property: source.property, callable }));
-				continue;
-			}
-			if (source.value.kind === 'contextual-object') {
+				entries.push({ property: usageEntry.property, target, callable });
+			} else if (usageEntry.value.kind === 'contextual-object') {
 				const nestedLiteral = unwrapObjectLiteral(property.initializer);
 				if (nestedLiteral === undefined) return undefined;
-				const object = this.objectResolutionFromLiteral(nestedLiteral, source.value.object, checker, workspace);
+				const object = this.objectResolutionFromLiteral(nestedLiteral, usageEntry.value.object, checker, workspace);
 				if (object === undefined) return undefined;
-				entries.push(Object.freeze({ index, property: source.property, object }));
-				continue;
-			}
-			entries.push(Object.freeze({ index, property: source.property }));
+				entries.push({ property: usageEntry.property, target, object });
+			} else entries.push({ property: usageEntry.property, target });
 		}
-		return Object.freeze({ result: this.store(resultType, checker, literal, undefined, workspace), entries: Object.freeze(entries) });
+		const result = checker.getTypeAtLocation(literal);
+		if ((result.getFlags() & (ts.TypeFlags.Any | ts.TypeFlags.Unknown | ts.TypeFlags.Never | ts.TypeFlags.TypeParameter)) !== 0) return undefined;
+		return { result: this.store(result, checker, literal, undefined, workspace), entries: Object.freeze(entries) };
 	}
 
 	public resolveCall(reference: ForeignTypeRef, argumentsList: readonly InteropArgumentType[]): ForeignCallResolution | undefined {
@@ -773,40 +761,8 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 
 function unwrapObjectLiteral(expression: ts.Expression): ts.ObjectLiteralExpression | undefined {
 	let current = expression;
-	while (ts.isParenthesizedExpression(current) || ts.isSatisfiesExpression(current) || ts.isAsExpression(current) || ts.isTypeAssertionExpression(current)) current = current.expression;
+	while (ts.isParenthesizedExpression(current) || ts.isSatisfiesExpression(current)) current = current.expression;
 	return ts.isObjectLiteralExpression(current) ? current : undefined;
-}
-
-function interopArgumentContainsNativeCallable(argument: InteropArgumentType): boolean {
-	if (argument.kind === 'native-callable') return true;
-	return argument.kind === 'contextual-object' && argument.object.entries.some(entry => interopArgumentContainsNativeCallable(entry.value));
-}
-
-function contextualMemberType(type: ts.Type, property: string, checker: ts.TypeChecker, location: ts.Node): ts.Type | undefined {
-	if (type.isUnionOrIntersection()) {
-		const members = type.types.map(item => contextualMemberType(item, property, checker, location));
-		if (members.some(item => item === undefined)) return undefined;
-		const first = members[0];
-		return first !== undefined && members.every(item => checker.typeToString(item!, location, ts.TypeFormatFlags.NoTruncation) === checker.typeToString(first, location, ts.TypeFormatFlags.NoTruncation)) ? first : undefined;
-	}
-	const symbol = checker.getPropertyOfType(type, property);
-	if (symbol !== undefined) {
-		const declaration = symbol.valueDeclaration ?? symbol.declarations?.[0] ?? location;
-		return checker.getTypeOfSymbolAtLocation(symbol, declaration);
-	}
-	const key = checker.getStringLiteralType(property);
-	const matches = checker.getIndexInfosOfType(type).filter(info => checker.isTypeAssignableTo(key, info.keyType));
-	if (matches.length !== 1) return undefined;
-	return matches[0]!.type;
-}
-
-function contextualPropertyWritable(type: ts.Type, property: string, checker: ts.TypeChecker): boolean {
-	if (type.isUnionOrIntersection()) return type.types.every(item => contextualPropertyWritable(item, property, checker));
-	const symbol = checker.getPropertyOfType(type, property);
-	if (symbol !== undefined) return !(symbol.declarations ?? []).some(declaration => ts.canHaveModifiers(declaration) && ts.getModifiers(declaration)?.some(modifier => modifier.kind === ts.SyntaxKind.ReadonlyKeyword));
-	const key = checker.getStringLiteralType(property);
-	const matches = checker.getIndexInfosOfType(type).filter(info => checker.isTypeAssignableTo(key, info.keyType));
-	return matches.length > 0 && matches.every(info => info.isReadonly !== true);
 }
 
 function canonicalFilePath(fileName: string): string {
@@ -1114,7 +1070,9 @@ function normalizedCustomConditions(configured: readonly string[] | undefined): 
 function witnessConditionsForPlatform(platform: JsImportRequest['platform']): string[] {
 	return platform === 'node'
 		? ['types', ...nodeDefaultImportConditions]
-		: platform === 'browser' ? ['types', 'import', 'browser'] : ['types', 'import'];
+		: platform === 'browser'
+			? ['types', 'import', 'browser']
+			: ['types', 'import'];
 }
 
 function findPackageInfo(resolvedFile: string | undefined): { readonly name?: string; readonly version?: string; readonly packageJsonPath?: string; readonly type?: string } {
@@ -1197,6 +1155,7 @@ function resolveRuntimeModule(request: JsImportRequest, nodeImportConditions: Re
 	if (specifier.startsWith('node:')) return { format: 'unknown' };
 	if (request.platform === 'browser') return { format: 'bundler' };
 	if (request.platform !== 'node') return { format: 'unknown' };
+
 	const runtimePath = resolveNodeRuntimePath(specifier, request.containingFile, nodeImportConditions);
 	if (runtimePath === undefined) return { format: 'unknown' };
 	return runtimeModuleFromPath(runtimePath);
@@ -1208,9 +1167,12 @@ function resolveNodeRuntimePath(specifier: string, containingFile: string, nodeI
 			const url = specifier.startsWith('file:') ? new URL(specifier) : new URL(specifier, pathToFileURL(containingFile));
 			if (url.protocol !== 'file:' || url.search.length > 0 || url.hash.length > 0) return undefined;
 			return existingRuntimeFile(fileURLToPath(url));
-		} catch { return undefined; }
+		} catch {
+			return undefined;
+		}
 	}
 	if (specifier.startsWith('#')) return undefined;
+
 	const parsed = parsePackageSpecifier(specifier);
 	if (parsed === undefined) return undefined;
 	const packageRoot = findNodePackageRoot(parsed.packageName, containingFile);
@@ -1232,11 +1194,17 @@ function resolveLegacyPackageRuntimePath(packageRoot: string, packageJson: Runti
 		const url = new URL(target, packageUrl);
 		if (url.protocol !== 'file:' || url.search.length > 0 || url.hash.length > 0) return undefined;
 		return existingRuntimeFile(fileURLToPath(url));
-	} catch { return undefined; }
+	} catch {
+		return undefined;
+	}
 }
 
 function existingRuntimeFile(path: string): string | undefined {
-	try { return existsSync(path) && statSync(path).isFile() ? path : undefined; } catch { return undefined; }
+	try {
+		return existsSync(path) && statSync(path).isFile() ? path : undefined;
+	} catch {
+		return undefined;
+	}
 }
 
 function runtimeModuleFromPath(path: string): { readonly entry: string; readonly path: string; readonly format: ModuleResolutionWitness['runtimeFormat'] } {
@@ -1280,7 +1248,9 @@ function canParseAsCommonJs(path: string): boolean {
 		const source = readFileSync(path, 'utf8').replace(/^\uFEFF?#![^\r\n]*(?:\r?\n|$)/u, '');
 		new Script(`(function (exports, require, module, __filename, __dirname) {\n${source}\n});`, { filename: path });
 		return true;
-	} catch { return false; }
+	} catch {
+		return false;
+	}
 }
 
 function parsePackageSpecifier(specifier: string): { readonly packageName: string; readonly subpath: string } | undefined {
@@ -1307,6 +1277,7 @@ function findNodePackageRoot(packageName: string, containingFile: string): strin
 		const selfPackage = readRuntimePackageJson(selfPackageJson);
 		if (selfPackage?.name === packageName && selfPackage.exports !== undefined) return dirname(selfPackageJson);
 	}
+
 	let current = dirname(resolve(containingFile));
 	const packageSegments = packageName.split('/');
 	while (true) {
@@ -1339,7 +1310,9 @@ function readRuntimePackageJson(packageJsonPath: string): RuntimePackageJson | u
 			...(typeof value.main === 'string' ? { main: value.main } : {}),
 			...(Object.hasOwn(value, 'exports') ? { exports: value.exports } : {}),
 		};
-	} catch { return undefined; }
+	} catch {
+		return undefined;
+	}
 }
 
 function resolvePackageExports(exportsValue: unknown, subpath: string, packageRoot: string, nodeImportConditions: ReadonlySet<string>): PackageTargetResolution {
@@ -1349,7 +1322,9 @@ function resolvePackageExports(exportsValue: unknown, subpath: string, packageRo
 		const dotKeys = keys.filter(key => key.startsWith('.'));
 		if (dotKeys.length > 0 && dotKeys.length !== keys.length) return invalidPackageTarget;
 		if (dotKeys.length === keys.length && keys.length > 0) {
-			if (Object.hasOwn(exportsValue, subpath) && !subpath.includes('*')) return resolvePackageTarget(exportsValue[subpath], packageRoot, undefined, nodeImportConditions);
+			if (Object.hasOwn(exportsValue, subpath) && !subpath.includes('*')) {
+				return resolvePackageTarget(exportsValue[subpath], packageRoot, undefined, nodeImportConditions);
+			}
 			const patterns = keys.filter(key => key.includes('*') && key.split('*').length === 2).sort(comparePackagePatternKeys);
 			for (const pattern of patterns) {
 				const match = packagePatternMatch(pattern, subpath);
@@ -1370,13 +1345,18 @@ function resolvePackageTarget(target: unknown, packageRoot: string, patternMatch
 		let invalidFallback = false;
 		for (const item of target) {
 			const resolved = resolvePackageTarget(item, packageRoot, patternMatch, nodeImportConditions);
-			if (resolved === invalidPackageTarget) { invalidFallback = true; continue; }
+			if (resolved === invalidPackageTarget) {
+				invalidFallback = true;
+				continue;
+			}
 			if (resolved !== undefined) return resolved;
 		}
 		return invalidFallback ? invalidPackageTarget : null;
 	}
 	if (!isRecord(target)) return invalidPackageTarget;
-	for (const key of Object.keys(target)) if (/^(0|[1-9]\d*)$/u.test(key)) return invalidPackageTarget;
+	for (const key of Object.keys(target)) {
+		if (/^(0|[1-9]\d*)$/u.test(key)) return invalidPackageTarget;
+	}
 	for (const [condition, value] of Object.entries(target)) {
 		if (condition !== 'default' && !nodeImportConditions.has(condition)) continue;
 		const resolved = resolvePackageTarget(value, packageRoot, patternMatch, nodeImportConditions);
@@ -1401,7 +1381,9 @@ function resolvePackageTargetString(target: string, packageRoot: string, pattern
 		const locator = relative(resolve(packageRoot), candidate).replaceAll('\\', '/');
 		if (locator.length === 0 || locator === '..' || locator.startsWith('../') || locator.startsWith('/')) return invalidPackageTarget;
 		return candidate;
-	} catch { return invalidPackageTarget; }
+	} catch {
+		return invalidPackageTarget;
+	}
 }
 
 function validPackagePathSegments(value: string, allowLeadingDot: boolean): boolean {
