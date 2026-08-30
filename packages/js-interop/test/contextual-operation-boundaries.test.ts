@@ -77,24 +77,42 @@ fn main() -> Unit uses JavaScript {
 	assert.ok(unresolved.includes('L4204'));
 });
 
-test('readonly contextual External properties preserve TypeScript initialization semantics', async () => {
-	const accepted = await errorCodesFor(`import js { consume } from "./library.js"
+test('readonly contextual External properties fail closed', async () => {
+	const direct = await errorCodesFor(`import js { consume } from "./library.js"
 
 fn main() -> Unit uses JavaScript {
 	discard consume({ mode: "strict" })
 	return Unit
 }
 `, `export declare function consume(value: { readonly mode: 'strict' }): boolean;\n`);
-	assert.deepEqual(accepted, []);
+	assert.ok(direct.includes('L4204'));
 
-	const invalid = await errorCodesFor(`import js { consume } from "./library.js"
+	const nested = await errorCodesFor(`import js { consume } from "./library.js"
 
 fn main() -> Unit uses JavaScript {
-	discard consume({ mode: "loose" })
+	discard consume({ options: { mode: "strict" } })
 	return Unit
 }
-`, `export declare function consume(value: { readonly mode: 'strict' }): boolean;\n`);
-	assert.ok(invalid.includes('L4204'));
+`, `export declare function consume(value: { options: { readonly mode: 'strict' } }): boolean;\n`);
+	assert.ok(nested.includes('L4204'));
+
+	const readonlyIndex = await errorCodesFor(`import js { consume } from "./library.js"
+
+fn main() -> Unit uses JavaScript {
+	discard consume({ mode: "strict" })
+	return Unit
+}
+`, `export declare function consume(value: { readonly [key: string]: 'strict' }): boolean;\n`);
+	assert.ok(readonlyIndex.includes('L4204'));
+
+	const writableIndex = await errorCodesFor(`import js { consume } from "./library.js"
+
+fn main() -> Unit uses JavaScript {
+	discard consume({ mode: "strict" })
+	return Unit
+}
+`, `export declare function consume(value: { [key: string]: 'strict' }): boolean;\n`);
+	assert.deepEqual(writableIndex, []);
 });
 
 test('generic External construct fails closed when its inferred result retains an unresolved type argument', async () => {
