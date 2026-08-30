@@ -50,7 +50,7 @@ export class JavaScriptEmitter {
 
 	private emitHeader(module: A.ModuleNode): void {
 		for (const line of runtimeImportLines(module)) this.#writer.line(line);
-		if ((this.#semantic.interop.callableProjections?.length ?? 0) > 0) {
+		if ((this.#semantic.interop.callableProjections?.length ?? 0) > 0 || (this.#semantic.interop.objectCallableProjections?.length ?? 0) > 0) {
 			this.#writer.line("const $viruneCallableShimCacheKey = '$virune.callable-shim.cache/v1';");
 			this.#writer.line('const $viruneCallableShimObject = ({}).constructor;');
 			this.#writer.line('function $viruneProjectCallable($fn, $descriptor, $factory) {');
@@ -319,7 +319,7 @@ export class JavaScriptEmitter {
 			case 'AwaitExpression': return `(await ${this.expression(expression.operand, contextName)})`;
 			case 'RecordExpression': { const type = expression.inferredTypeId === undefined ? undefined : this.#semantic.arena.get(expression.inferredTypeId); const typeId = type?.kind === 'named' ? type.definitionId : expression.name; return `makeRecord({ ${expression.entries.map(entry => `${safeName(entry.name)}: ${this.expression(entry.value, contextName)}`).join(', ')} }, ${JSON.stringify(typeId)})`; }
 			case 'RecordUpdateExpression': return `updateRecord(${this.expression(expression.base, contextName)}, { ${expression.entries.map(entry => `${safeName(entry.name)}: ${this.expression(entry.value, contextName)}`).join(', ')} })`;
-			case 'ContextualAggregateExpression': return panicEmitter('ContextualAggregateExpression reached emission without a checked aggregate facet');
+			case 'ContextualAggregateExpression': return this.contextualAggregate(expression, contextName);
 			case 'ListExpression': return `[${expression.items.map(item => this.expression(item, contextName)).join(', ')}]`;
 			case 'TupleExpression': return `[${expression.items.map(item => this.expression(item, contextName)).join(', ')}]`;
 			case 'ConditionalExpression': return `(${this.expression(expression.condition, contextName)} ? ${this.expression(expression.thenExpression, contextName)} : ${this.expression(expression.elseExpression, contextName)})`;
@@ -327,6 +327,17 @@ export class JavaScriptEmitter {
 			case 'LambdaExpression': return this.lambdaExpression(expression, contextName);
 			case 'ParallelExpression': return this.parallelExpression(expression, contextName);
 		}
+	}
+
+	private contextualAggregate(expression: A.ContextualAggregateExpression, contextName: string): string {
+		if (expression.foreignObject !== true) return panicEmitter('ContextualAggregateExpression reached emission without a checked aggregate facet');
+		const entries = expression.entries.map((entry, index) => {
+			const raw = this.expression(entry.value, contextName);
+			const projection = this.#semantic.interop.objectCallableProjections?.find(item => item.objectNodeId === expression.id && item.entryIndex === index && item.property === entry.name);
+			const value = projection === undefined ? raw : this.callableProjection(raw, projection.descriptor);
+			return `[${JSON.stringify(entry.name)}]: ${value}`;
+		});
+		return `({ ${entries.join(', ')} })`;
 	}
 
 	private lambdaExpression(expression: A.LambdaExpression, outerContextName: string): string {
