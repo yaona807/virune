@@ -89,15 +89,26 @@ export interface NativeCallableTypeTemplate {
 	readonly async: boolean;
 }
 
+export interface InteropObjectEntryUsage {
+	readonly property: string;
+	readonly value: InteropArgumentType;
+}
+
+export interface InteropObjectUsage {
+	readonly entries: readonly InteropObjectEntryUsage[];
+}
+
 export type InteropArgumentType =
 	| { readonly kind: 'foreign'; readonly type: ForeignTypeRef }
 	| { readonly kind: 'native-primitive'; readonly primitive: NativeCallablePrimitiveKind; readonly literal?: InteropLiteralValue }
 	| { readonly kind: 'native-callable'; readonly callable: NativeCallableTypeTemplate }
+	| { readonly kind: 'contextual-object'; readonly object: InteropObjectUsage }
 	| { readonly kind: 'unknown' };
 
 export type InteropCallTarget =
 	| { readonly kind: 'value' }
-	| { readonly kind: 'member'; readonly receiver: ForeignTypeRef; readonly property: string };
+	| { readonly kind: 'member'; readonly receiver: ForeignTypeRef; readonly property: string }
+	| { readonly kind: 'indexed-member'; readonly receiver: ForeignTypeRef; readonly index: InteropArgumentType };
 
 export interface InteropCallUsage {
 	readonly target: InteropCallTarget;
@@ -112,27 +123,36 @@ export type InteropWriteUsage =
 	| { readonly kind: 'property'; readonly property: string; readonly value: InteropArgumentType }
 	| { readonly kind: 'index'; readonly index: InteropArgumentType; readonly value: InteropArgumentType };
 
-export interface InteropObjectEntryUsage {
-	readonly property: string;
-	readonly value: InteropArgumentType;
-}
-
-export interface InteropObjectUsage {
-	readonly entries: readonly InteropObjectEntryUsage[];
-}
-
 export type ContextualCallableResult =
 	| { readonly kind: 'void' }
 	| { readonly kind: 'value'; readonly value: ContextualCallablePrimitiveKind }
 	| { readonly kind: 'promise'; readonly value: ContextualCallablePrimitiveKind | 'void' };
 
-/** Selected TypeScript callback facts for one native-callable argument or object entry. */
+/** Selected TypeScript callback facts for one native-callable argument or contextual object entry. */
 export interface InteropCallableArgumentResolution {
 	readonly index: number;
 	readonly target: {
 		readonly parameters: readonly ContextualCallablePrimitiveKind[];
 		readonly result: ContextualCallableResult;
 	};
+}
+
+export interface ForeignObjectEntryResolution {
+	readonly index: number;
+	readonly property: string;
+	readonly callable?: InteropCallableArgumentResolution['target'];
+	readonly object?: ForeignObjectResolution;
+}
+
+/** Whole-object contextual proof from one fixed provider snapshot. Entries retain source order. */
+export interface ForeignObjectResolution {
+	readonly result: ForeignTypeSnapshot;
+	readonly entries: readonly ForeignObjectEntryResolution[];
+}
+
+export interface InteropObjectArgumentResolution {
+	readonly index: number;
+	readonly object: ForeignObjectResolution;
 }
 
 export interface ForeignCallResolution {
@@ -144,6 +164,7 @@ export interface ForeignCallResolution {
 	readonly mayReject: boolean;
 	readonly receiverMode: 'none' | 'preserve-this';
 	readonly callableArguments?: readonly InteropCallableArgumentResolution[];
+	readonly objectArguments?: readonly InteropObjectArgumentResolution[];
 }
 
 export interface ForeignIndexResolution {
@@ -152,11 +173,7 @@ export interface ForeignIndexResolution {
 
 export interface ForeignWriteResolution {
 	readonly accepted: true;
-}
-
-export interface ForeignObjectResolution {
-	readonly accepted: true;
-	readonly callableEntries?: readonly InteropCallableArgumentResolution[];
+	readonly objectValue?: ForeignObjectResolution;
 }
 
 export interface JsInteropProvider {
@@ -173,7 +190,7 @@ export interface JsInteropProvider {
 	resolveIndexUsage?(type: ForeignTypeRef, usage: InteropIndexUsage): ForeignIndexResolution | undefined;
 	/** Whole-usage writable-facet resolver. Unknown/readonly/inaccessible evidence must return undefined. */
 	resolveWriteUsage?(type: ForeignTypeRef, usage: InteropWriteUsage): ForeignWriteResolution | undefined;
-	/** Contextual object resolver. Missing/excess/readonly/unknown/ambiguous evidence must return undefined. */
+	/** Contextual object resolver for an already-known External expected type. */
 	resolveObjectUsage?(type: ForeignTypeRef, usage: InteropObjectUsage): ForeignObjectResolution | undefined;
 	resolveCall(type: ForeignTypeRef, argumentsList: readonly InteropArgumentType[]): ForeignCallResolution | undefined;
 	resolveConstruct(type: ForeignTypeRef, argumentsList: readonly InteropArgumentType[]): ForeignCallResolution | undefined;
