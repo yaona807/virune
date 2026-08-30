@@ -154,3 +154,51 @@ fn main() -> Unit uses JavaScript {
 	assert.ok(result.diagnostics.some(item => item.code === 'L4204'));
 	assert.equal(result.semantic?.interop.usages.some(item => item.kind === 'construct'), false);
 });
+
+test('contradictory receiver evidence cannot prove a JavaScript call', async () => {
+	const { root, provider } = await fixture(`
+export declare const receiver: { method(value: number): number };
+export declare function direct(value: number): number;
+`);
+	const wholeUsageProvider: JsInteropProvider = provider;
+	const wrapped = providerWithOverrides(provider, {
+		resolveCallUsage: (reference, usage) => {
+			const resolution = wholeUsageProvider.resolveCallUsage?.(reference, usage);
+			if (resolution === undefined) return undefined;
+			return {
+				...resolution,
+				receiverMode: usage.target.kind === 'value' ? 'preserve-this' : 'none',
+			};
+		},
+	});
+	const result = compile(root, `import js { receiver, direct } from "./library.js"
+
+fn main() -> Unit uses JavaScript {
+	discard receiver.method(1.0)
+	discard direct(1.0)
+	return Unit
+}
+`, wrapped);
+	assert.equal(result.diagnostics.filter(item => item.code === 'L4204').length, 2);
+	assert.equal(result.semantic?.interop.usages.some(item => item.kind === 'call'), false);
+});
+
+test('contradictory minimum arity evidence cannot prove a JavaScript call', async () => {
+	const { root, provider } = await fixture('export declare function consume(value: number): number;\n');
+	const wholeUsageProvider: JsInteropProvider = provider;
+	const wrapped = providerWithOverrides(provider, {
+		resolveCallUsage: (reference, usage) => {
+			const resolution = wholeUsageProvider.resolveCallUsage?.(reference, usage);
+			return resolution === undefined ? undefined : { ...resolution, minimumArgumentCount: 0 };
+		},
+	});
+	const result = compile(root, `import js { consume } from "./library.js"
+
+fn main() -> Unit uses JavaScript {
+	discard consume(1.0)
+	return Unit
+}
+`, wrapped);
+	assert.ok(result.diagnostics.some(item => item.code === 'L4204'));
+	assert.equal(result.semantic?.interop.usages.some(item => item.kind === 'call'), false);
+});
