@@ -132,6 +132,25 @@ pub fn constructValue() -> Float uses JavaScript {
 	assert.equal(module.constructValue(), 3.5);
 });
 
+test('contextual object proven against an expected External type keeps that expected type', async () => {
+	const root = await projectRoot();
+	await writeProject(root, `import js type { Config } from "./library.js"
+
+fn build() -> Config uses JavaScript {
+	return { mode: "strict", nested: { count: 3 } }
+}
+`, 'export const unused = 1;\n', `export interface Config {
+	mode: 'strict';
+	nested: { count: 3 };
+}
+`);
+	const provider = new TypeScriptInteropProvider({ projectRoot: root });
+	const result = await buildProject(root, { write: false, jsInteropProvider: provider });
+	assert.deepEqual(result.diagnostics.filter(item => item.severity === 'error'), []);
+	const mainModule = result.modules.find(item => item.source.path.endsWith('main.virune'));
+	assert.ok(mainModule?.semantic?.interop.usageIR.some(item => item.kind === 'object'));
+});
+
 test('contextual External objects reject missing, extra, and incompatible properties', async () => {
 	const librarySource = 'export function consume(value) { return value; }\n';
 	const declarations = "export declare function consume(value: { mode: 'strict'; nested: { count: 3 } }): unknown;\n";
@@ -194,11 +213,11 @@ export declare const unresolved: { new <T>(): T };
 });
 
 test('native aggregates and unknown/any evidence cannot become Direct External operations', async () => {
-	const recordCodes = await errorCodesFor(`record Config {
+	const recordCodes = await errorCodesFor(`import js { consume } from "./library.js"
+
+record Config {
 	mode: String
 }
-
-import js { consume } from "./library.js"
 
 fn main() -> Unit uses JavaScript {
 	discard consume(Config { mode: "strict" })
