@@ -481,6 +481,7 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 	}
 
 	private objectResolutionFromLiteral(literal: ts.ObjectLiteralExpression, usage: InteropObjectUsage, checker: ts.TypeChecker, workspace: ProbeWorkspace): ForeignObjectResolution | undefined {
+		if (!contextualObjectFieldsAreWritable(literal, usage, checker)) return undefined;
 		if (literal.properties.length !== usage.entries.length) return undefined;
 		const entries: { readonly index: number; readonly property: string; readonly callable?: InteropCallableArgumentResolution['target']; readonly object?: ForeignObjectResolution }[] = [];
 		for (let index = 0; index < usage.entries.length; index++) {
@@ -633,7 +634,7 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 		const errors = diagnostics.filter(item => item.category === ts.DiagnosticCategory.Error);
 		if (errors.length > 0) throw new Error(errors.map(item => ts.flattenDiagnosticMessageText(item.messageText, '\n')).join('; '));
 		const sourceFile = program.getSourceFile(virtualPath)
-			?? program.getSourceFiles().find(item => canonicalFilePath(item.fileName) === virtualFileKey);
+			?? program.getSourceFiles().find(item => canonicalFilePath(item.fileName) === virtualKey);
 		if (sourceFile === undefined) throw new Error('TypeScript interop probe was not created');
 		const checker = program.getTypeChecker();
 		const expression = sourceFile.statements.find(ts.isExpressionStatement)?.expression;
