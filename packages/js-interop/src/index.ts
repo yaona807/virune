@@ -920,13 +920,20 @@ function interopProbeFileName(request: JsImportRequest): string {
 }
 
 function usageProjectionForImport(request: JsImportRequest): UsageProjection | undefined {
-	if (request.kind === 'side-effect' || request.kind === 'type-only') return undefined;
+	if (request.kind === 'side-effect') return undefined;
 	const moduleText = JSON.stringify(request.moduleSpecifier);
 	const binding = `__viruneImport_${hash(`${request.moduleSpecifier}:${request.kind}:${request.importedName ?? ''}`).slice(0, 16)}`;
+	if (request.kind === 'type-only') {
+		if (request.importedName === undefined) return undefined;
+		return {
+			typeExpression: binding,
+			directory: dirname(request.containingFile),
+			declaration: `import type { ${safeTsName(request.importedName)} as ${binding} } from ${moduleText};`,
+		};
+	}
 	const declaration = request.kind === 'named'
 		? `import { ${safeTsName(request.importedName ?? '')} as ${binding} } from ${moduleText};`
-		: request.kind === 'default'
-			? `import ${binding} from ${moduleText};`
+		: request.kind === 'default' ? `import ${binding} from ${moduleText};`
 			: `import * as ${binding} from ${moduleText};`;
 	return {
 		typeExpression: `typeof ${binding}`,
