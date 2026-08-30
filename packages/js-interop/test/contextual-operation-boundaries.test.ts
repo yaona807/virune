@@ -87,3 +87,23 @@ fn main() -> Unit uses JavaScript {
 `, `export declare class Box<T> { constructor(); readonly value: T }\n`);
 	assert.ok(codes.includes('L4204'));
 });
+
+test('generic External calls reject only unresolved inference that escapes through the result type', async () => {
+	const irrelevant = await errorCodesFor(`import js { consume } from "./library.js"
+
+fn main() -> Unit uses JavaScript {
+	discard consume()
+	return Unit
+}
+`, `export declare function consume<T>(): number;\n`);
+	assert.deepEqual(irrelevant, []);
+
+	const concrete = await errorCodesFor(`import js { consume } from "./library.js"
+
+fn main() -> Unit uses JavaScript {
+	discard consume("ok")
+	return Unit
+}
+`, `export declare function consume<T>(value: T): { readonly value: T; readonly metadata: unknown };\n`);
+	assert.deepEqual(concrete, []);
+});

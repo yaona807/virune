@@ -433,10 +433,7 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 		if (signature === undefined) return undefined;
 		const result = probe.checker.getReturnTypeOfSignature(signature);
 		if ((result.getFlags() & (ts.TypeFlags.Any | (construct ? ts.TypeFlags.Unknown : ts.TypeFlags.Never))) !== 0) return undefined;
-		const declaration = signature.declaration;
-		const selectedGeneric = (declaration?.typeParameters?.length ?? 0) > 0
-			|| declaration !== undefined && ts.isConstructorDeclaration(declaration) && (declaration.parent.typeParameters?.length ?? 0) > 0;
-		if (selectedGeneric && typeContainsUnresolvedGenericResult(result, probe.checker, invocation)) return undefined;
+		if (!resolvedGenericResultIsConcrete(signature, probe.checker, invocation)) return undefined;
 		const invocationArguments = ts.isCallExpression(invocation)
 			? invocation.arguments
 			: ts.isNewExpression(invocation)
@@ -903,6 +900,83 @@ function foreignTypeRequiresUnknownProjection(
 			const declaration = property.valueDeclaration ?? property.declarations?.[0] ?? location;
 			const propertyType = checker.getTypeOfSymbolAtLocation(property, declaration);
 			if (foreignTypeRequiresUnknownProjection(propertyType, checker, declaration, seen, budget, depth + 1)) return true;
+		}
+		return false;
+	} catch {
+		return true;
+	}
+}
+
+function resolvedGenericResultIsConcrete(signature: ts.Signature, checker: ts.TypeChecker, location: ts.Node): boolean {
+	try {
+		const declaration = signature.declaration;
+		if (declaration === undefined) return (signature.getTypeParameters()?.length ?? 0) === 0;
+		const original = checker.getSignatureFromDeclaration(declaration);
+		if (original === undefined) return false;
+		const typeParameters = original.getTypeParameters() ?? [];
+		if (typeParameters.length === 0) return true;
+		const originalResult = checker.getReturnTypeOfSignature(original);
+		const inferredArguments = checker.getTypeArgumentsForResolvedSignature(signature);
+		for (let index = 0; index < typeParameters.length; index++) {
+			const typeParameter = typeParameters[index]!;
+			if (!typeParameterOccursInResult(originalResult, typeParameter, checker, location)) continue;
+			const inferred = inferredArguments?.[index];
+			if (inferred === undefined || typeContainsUnresolvedGenericResult(inferred, checker, location)) return false;
+		}
+		return true;
+	} catch {
+		return false;
+	}
+}
+
+function typeParameterOccursInResult(
+	type: ts.Type,
+	target: ts.Type,
+	checker: ts.TypeChecker,
+	location: ts.Node,
+	seen = new Set<ts.Type>(),
+	budget: { remaining: number } = { remaining: 256 },
+	depth = 0,
+): boolean {
+	try {
+		if (type === target) return true;
+		if (budget.remaining-- <= 0 || depth > 16) return true;
+		if (seen.has(type)) return false;
+		seen.add(type);
+		if (type.isUnionOrIntersection() && type.types.some(item => typeParameterOccursInResult(item, target, checker, location, seen, budget, depth + 1))) return true;
+		const flags = type.getFlags();
+		if ((flags & ts.TypeFlags.Object) === 0) return false;
+		const objectType = type as ts.ObjectType;
+		if ((objectType.objectFlags & ts.ObjectFlags.Reference) !== 0) {
+			const typeArguments = checker.getTypeArguments(type as ts.TypeReference);
+			if (typeArguments.some(item => typeParameterOccursInResult(item, target, checker, location, seen, budget, depth + 1))) return true;
+		}
+		for (const signature of [
+			...checker.getSignaturesOfType(type, ts.SignatureKind.Call),
+			...checker.getSignaturesOfType(type, ts.SignatureKind.Construct),
+		]) {
+			const signatureLocation = signature.declaration ?? location;
+			const thisParameter = signature.thisParameter;
+			if (thisParameter !== undefined) {
+				const declaration = thisParameter.valueDeclaration ?? thisParameter.declarations?.[0] ?? signatureLocation;
+				const thisType = checker.getTypeOfSymbolAtLocation(thisParameter, declaration);
+				if (typeParameterOccursInResult(thisType, target, checker, declaration, seen, budget, depth + 1)) return true;
+			}
+			for (const parameter of signature.getParameters()) {
+				const declaration = parameter.valueDeclaration ?? parameter.declarations?.[0];
+				if (declaration === undefined) return true;
+				const parameterType = checker.getTypeOfSymbolAtLocation(parameter, declaration);
+				if (typeParameterOccursInResult(parameterType, target, checker, declaration, seen, budget, depth + 1)) return true;
+			}
+			if (typeParameterOccursInResult(checker.getReturnTypeOfSignature(signature), target, checker, signatureLocation, seen, budget, depth + 1)) return true;
+		}
+		for (const indexInfo of checker.getIndexInfosOfType(type)) {
+			if (typeParameterOccursInResult(indexInfo.type, target, checker, location, seen, budget, depth + 1)) return true;
+		}
+		for (const property of checker.getPropertiesOfType(type)) {
+			const declaration = property.valueDeclaration ?? property.declarations?.[0] ?? location;
+			const propertyType = checker.getTypeOfSymbolAtLocation(property, declaration);
+			if (typeParameterOccursInResult(propertyType, target, checker, declaration, seen, budget, depth + 1)) return true;
 		}
 		return false;
 	} catch {
