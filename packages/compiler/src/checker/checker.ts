@@ -964,8 +964,6 @@ export class TypeChecker {
 				objectNodeId: projection.owner.expression.id,
 				entryIndex: projection.entryIndex,
 				property: projection.property,
-				nodeId: projection.prepared.expression.id,
-				span: projection.prepared.expression.span,
 				beforeUsageIndex: this.adjustedUsageIndex(projection.prepared.point, pendingObjects),
 				descriptor: projection.descriptor,
 			});

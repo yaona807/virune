@@ -108,15 +108,15 @@ fn main() -> Unit uses JavaScript {
 	assert.ok(codes.includes('L4204'));
 });
 
-test('whole-usage generic calls require concrete TypeScript inference', async () => {
-	const unresolved = await errorCodesFor(`import js { consume } from "./library.js"
+test('ordinary generic External calls preserve TypeScript-valid result compatibility', async () => {
+	const ordinary = await errorCodesFor(`import js { consume } from "./library.js"
 
 fn main() -> Unit uses JavaScript {
 	discard consume()
 	return Unit
 }
 `, `export declare function consume<T>(): number;\n`);
-	assert.ok(unresolved.includes('L4204'));
+	assert.deepEqual(ordinary, []);
 
 	const concrete = await errorCodesFor(`import js { consume } from "./library.js"
 

@@ -231,8 +231,6 @@ export interface ObjectCallableProjectionEvidence {
 	readonly objectNodeId: NodeId;
 	readonly entryIndex: number;
 	readonly property: string;
-	readonly nodeId: NodeId;
-	readonly span: SourceSpan;
 	readonly beforeUsageIndex: number;
 	readonly descriptor: NativeCallableBoundaryDescriptor;
 }
