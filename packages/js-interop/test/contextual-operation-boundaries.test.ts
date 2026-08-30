@@ -54,7 +54,7 @@ export declare const box: Box;
 	assert.equal(codes.filter(code => code === 'L2119').length, 2);
 });
 
-test('contextual External generic object succeeds only when TypeScript supplies a concrete contextual constraint', async () => {
+test('contextual External generic object succeeds only when TypeScript supplies concrete contextual evidence', async () => {
 	const resolved = await errorCodesFor(`import js { consume } from "./library.js"
 
 fn main() -> Unit uses JavaScript {
@@ -70,6 +70,6 @@ fn main() -> Unit uses JavaScript {
 	discard consume({ mode: "strict" })
 	return Unit
 }
-`, `export declare function consume<T>(value: T): boolean;\n`);
+`, `export declare function consume<T>(value: { mode: NoInfer<T> }): boolean;\n`);
 	assert.ok(unresolved.includes('L4204'));
 });
