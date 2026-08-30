@@ -240,7 +240,7 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 		let left: string;
 		let value: string | undefined;
 		if (usage.kind === 'property') {
-			left = `${context.target}[${JSON.stringify(usage.property)}]`;
+			left = `${context.target}.${safeTsName(usage.property)}`;
 			value = this.renderUsageValue(usage.value, context, false, true);
 		} else {
 			const index = this.renderUsageValue(usage.index, context, false, false);
