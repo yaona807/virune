@@ -697,7 +697,7 @@ export class TypeChecker {
 	private checkContextualAggregate(expression: A.ContextualAggregateExpression, scope: Scope, expected: TypeId | undefined): TypeId {
 		const prepared = this.prepareContextualObject(expression, scope);
 		const expectedType = expected === undefined ? undefined : this.arena.get(expected);
-		if (expectedType?.kind === 'foreign') {
+		if (expected !== undefined && expectedType?.kind === 'foreign') {
 			const provider = this.currentInteropProvider(expectedType.snapshot);
 			let resolution: import('../interop/types.js').ForeignObjectResolution | undefined;
 			if (provider?.resolveObjectUsage !== undefined) {
@@ -706,7 +706,7 @@ export class TypeChecker {
 			const validated = provider === undefined ? undefined : this.validateContextualObjectEvidence(resolution, prepared, provider);
 			if (validated !== undefined) {
 				this.commitContextualObjects([validated]);
-				return this.arena.foreign(validated.resolution.result);
+				return expected;
 			}
 		}
 		this.diagnostics.error('L2122', 'Contextual aggregate requires a supported expected aggregate facet', expression.span);
@@ -887,8 +887,9 @@ export class TypeChecker {
 	): ValidatedContextualObject | undefined {
 		if (!isRecord(raw) || !hasExactEnumerableKeys(raw, ['entries', 'result']) || !Array.isArray(raw.entries)) return undefined;
 		const result = raw.result;
-		if (!this.isCurrentForeignSnapshot(result as ForeignTypeSnapshot | undefined, provider, false) || raw.entries.length !== prepared.entries.length) return undefined;
+		if (!this.isCurrentForeignSnapshot(result, provider, false) || raw.entries.length !== prepared.entries.length) return undefined;
 		const nested: (ValidatedContextualObject | undefined)[] = [];
+		const entries: import('../interop/types.js').ForeignObjectEntryResolution[] = [];
 		for (let index = 0; index < prepared.entries.length; index++) {
 			const entry = raw.entries[index];
 			const preparedEntry = prepared.entries[index]!;
@@ -905,18 +906,21 @@ export class TypeChecker {
 				}
 				const contextualResult = canonicalContextualCallableResult(callable.result);
 				if (contextualResult === undefined || !this.callableBoundaryMatchesContext(preparedEntry.boundary, parameters, contextualResult)) return undefined;
+				entries.push({ index, property, callable: Object.freeze({ parameters: Object.freeze(parameters), result: contextualResult }) });
 				nested.push(undefined);
 			} else if (preparedEntry.object !== undefined) {
 				if (!hasExactEnumerableKeys(entry, ['index', 'object', 'property'])) return undefined;
 				const child = this.validateContextualObjectEvidence(entry.object, preparedEntry.object, provider);
 				if (child === undefined) return undefined;
+				entries.push({ index, property, object: child.resolution });
 				nested.push(child);
 			} else {
 				if (!hasExactEnumerableKeys(entry, ['index', 'property'])) return undefined;
+				entries.push({ index, property });
 				nested.push(undefined);
 			}
 		}
-		return { prepared, resolution: { result: result as ForeignTypeSnapshot, entries: raw.entries as import('../interop/types.js').ForeignObjectResolution['entries'] }, nested: Object.freeze(nested) };
+		return { prepared, resolution: { result, entries: Object.freeze(entries) }, nested: Object.freeze(nested) };
 	}
 
 	private validateWriteEvidence(
@@ -980,14 +984,28 @@ export class TypeChecker {
 		return snapshot.ref.providerId === provider.id && snapshot.ref.generation === provider.generation ? provider : undefined;
 	}
 
-	private isCurrentForeignSnapshot(snapshot: ForeignTypeSnapshot | undefined, provider: JsInteropProvider, allowUnknown: boolean): snapshot is ForeignTypeSnapshot {
-		if (snapshot === undefined || !isRecord(snapshot) || !isRecord(snapshot.ref)) return false;
+	private isCurrentForeignSnapshot(snapshot: unknown, provider: JsInteropProvider, allowUnknown: boolean): snapshot is ForeignTypeSnapshot {
+		if (!isRecord(snapshot) || !isRecord(snapshot.ref)) return false;
 		if (snapshot.ref.providerId !== provider.id || snapshot.ref.generation !== provider.generation || typeof snapshot.ref.id !== 'string' || snapshot.ref.id.length === 0) return false;
-		if (typeof snapshot.display !== 'string' || snapshot.display.length === 0) return false;
-		const categories: readonly ForeignTypeSnapshot['category'][] = allowUnknown
+		if (!Number.isSafeInteger(snapshot.ref.generation) || typeof snapshot.display !== 'string' || snapshot.display.length === 0) return false;
+		const categories: readonly string[] = allowUnknown
 			? ['primitive', 'literal', 'object', 'function', 'constructor', 'promise', 'array', 'tuple', 'union', 'unknown']
 			: ['primitive', 'literal', 'object', 'function', 'constructor', 'promise', 'array', 'tuple', 'union'];
-		return categories.includes(snapshot.category);
+		if (typeof snapshot.category !== 'string' || !categories.includes(snapshot.category)) return false;
+		const primitives: readonly string[] = ['boolean', 'string', 'number', 'bigint', 'void', 'undefined', 'null'];
+		if (snapshot.primitive !== undefined && (typeof snapshot.primitive !== 'string' || !primitives.includes(snapshot.primitive))) return false;
+		if (snapshot.category === 'primitive' && snapshot.primitive === undefined) return false;
+		if (snapshot.primitive !== undefined && snapshot.category !== 'primitive' && snapshot.category !== 'literal') return false;
+		if (snapshot.mustUse !== undefined && typeof snapshot.mustUse !== 'boolean') return false;
+		if (snapshot.origin !== undefined) {
+			if (!isRecord(snapshot.origin) || typeof snapshot.origin.moduleSpecifier !== 'string' || snapshot.origin.moduleSpecifier.length === 0) return false;
+			for (const field of ['packageName', 'packageVersion', 'declarationPath', 'exportName']) {
+				const value = snapshot.origin[field];
+				if (value !== undefined && typeof value !== 'string') return false;
+			}
+		}
+		if (snapshot.navigation !== undefined && (!isRecord(snapshot.navigation) || typeof snapshot.navigation.declarationPath !== 'string')) return false;
+		return true;
 	}
 
 	private isValidForeignInvocationResolution(resolution: import('../interop/types.js').ForeignCallResolution, provider: JsInteropProvider, construct: boolean): boolean {
