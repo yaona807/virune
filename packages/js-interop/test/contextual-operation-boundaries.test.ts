@@ -113,6 +113,15 @@ fn main() -> Unit uses JavaScript {
 }
 `, `export declare function consume(value: { [key: string]: 'strict' }): boolean;\n`);
 	assert.deepEqual(writableIndex, []);
+
+	const writeValue = await errorCodesFor(`import js { box } from "./library.js"
+
+fn main() -> Unit uses JavaScript {
+	box.config = { mode: "strict" }
+	return Unit
+}
+`, `export declare const box: { config: { readonly mode: 'strict' } };\n`);
+	assert.ok(writeValue.includes('L2119'));
 });
 
 test('generic External construct fails closed when its inferred result retains an unresolved type argument', async () => {
