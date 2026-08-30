@@ -58,16 +58,20 @@ pub fn main() -> Unit uses JavaScript {
 	const mainModule = result.modules.find(item => item.source.path.endsWith('main.virune'));
 	assert.ok(mainModule?.semantic);
 	assert.ok(mainModule.output);
-	const normalize = (value: string): string => value.replaceAll(packageName, '<fixture-package>');
+	const normalizePackageText = (value: string): string => value.replaceAll(packageName, '<fixture-package>');
+	const operations = JSON.stringify(externalOperationSequence(mainModule.semantic), (key, value: unknown) => {
+		if (key === 'packageJsonHash') return '<fixture-package-json-hash>';
+		return typeof value === 'string' ? normalizePackageText(value) : value;
+	});
 	return {
-		code: normalize(mainModule.output.code),
-		operations: normalize(JSON.stringify(externalOperationSequence(mainModule.semantic))),
+		code: normalizePackageText(mainModule.output.code),
+		operations,
 		usageKinds: mainModule.semantic.interop.usageIR.map(item => item.kind),
 	};
 }
 
 test('equivalent External package fixtures remain behaviorally and semantically independent of package name', async () => {
 	const original = await buildEquivalentPackage('virune-fixture-alpha');
-	const renamed = await buildEquivalentPackage('virune-fixture-renamed');
+	const renamed = await buildEquivalentPackage('virune-fixture-bravo');
 	assert.deepEqual(renamed, original);
 });
