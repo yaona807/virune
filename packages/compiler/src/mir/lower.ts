@@ -56,7 +56,9 @@ class MirBuilder {
 				return current;
 			case 'MemberAssignmentStatement':
 			case 'IndexAssignmentStatement':
-				throw new Error('Unproven writable facet reached MIR lowering');
+				if (statement.foreignWrite !== true) throw new Error('Unproven writable facet reached MIR lowering');
+				this.push(current, statement, 'assign', statement.value.inferredTypeId);
+				return current;
 			case 'ExpressionStatement':
 			case 'DiscardStatement':
 				this.push(current, statement, 'evaluate', statement.expression.inferredTypeId);
