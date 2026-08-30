@@ -392,7 +392,7 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 					context.declarations.push(`declare const __viruneReceiver: ${receiver.usageProjection.typeExpression};`);
 					context.target = `__viruneReceiver[${property}]`;
 				}
-			} else if (usage.target.kind === 'index') {
+			} else if (usage.target.kind === 'indexed-member') {
 				const receiver = this.lookupType(usage.target.receiver);
 				if (receiver === undefined || receiver.workspace !== context.workspace || receiver.usageProjection === undefined || receiver.usageProjection.directory !== context.directory) return undefined;
 				if ((receiver.type.getFlags() & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) !== 0) return undefined;
@@ -472,25 +472,24 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 
 	private objectResolutionFromLiteral(literal: ts.ObjectLiteralExpression, usage: InteropObjectUsage, checker: ts.TypeChecker, workspace: ProbeWorkspace): ForeignObjectResolution | undefined {
 		if (literal.properties.length !== usage.entries.length) return undefined;
-		const entries = [] as { readonly property: string; readonly target: ForeignTypeSnapshot; readonly callable?: InteropCallableArgumentResolution['target']; readonly object?: ForeignObjectResolution }[];
+		const entries = [] as { readonly index: number; readonly property: string; readonly callable?: InteropCallableArgumentResolution['target']; readonly object?: ForeignObjectResolution }[];
 		for (let index = 0; index < usage.entries.length; index++) {
 			const usageEntry = usage.entries[index]!;
 			const property = literal.properties[index];
 			if (property === undefined || !ts.isPropertyAssignment(property) || !ts.isComputedPropertyName(property.name) || !ts.isStringLiteral(property.name.expression) || property.name.expression.text !== usageEntry.property) return undefined;
 			const contextual = checker.getContextualType(property.initializer);
 			if (contextual === undefined || (contextual.getFlags() & (ts.TypeFlags.Any | ts.TypeFlags.Unknown | ts.TypeFlags.Never | ts.TypeFlags.TypeParameter)) !== 0) return undefined;
-			const target = this.store(contextual, checker, property.initializer, undefined, workspace);
 			if (usageEntry.value.kind === 'native-callable') {
 				const callable = contextualCallableShape(contextual, checker, property.initializer);
 				if (callable === undefined) return undefined;
-				entries.push({ property: usageEntry.property, target, callable });
+				entries.push({ index, property: usageEntry.property, callable });
 			} else if (usageEntry.value.kind === 'contextual-object') {
 				const nestedLiteral = unwrapObjectLiteral(property.initializer);
 				if (nestedLiteral === undefined) return undefined;
 				const object = this.objectResolutionFromLiteral(nestedLiteral, usageEntry.value.object, checker, workspace);
 				if (object === undefined) return undefined;
-				entries.push({ property: usageEntry.property, target, object });
-			} else entries.push({ property: usageEntry.property, target });
+				entries.push({ index, property: usageEntry.property, object });
+			} else entries.push({ index, property: usageEntry.property });
 		}
 		const result = checker.getTypeAtLocation(literal);
 		if ((result.getFlags() & (ts.TypeFlags.Any | ts.TypeFlags.Unknown | ts.TypeFlags.Never | ts.TypeFlags.TypeParameter)) !== 0) return undefined;
