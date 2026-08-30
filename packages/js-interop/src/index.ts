@@ -436,10 +436,10 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 		for (let index = 0; index < usage.arguments.length; index++) {
 			const argument = usage.arguments[index]!;
 			const node = invocationArguments[index];
-			const parameter = parameters[Math.min(index, Math.max(0, parameters.length - 1))];
-			if (node === undefined || parameter === undefined) return undefined;
+			if (node === undefined) return undefined;
 			if (argument.kind === 'native-callable') {
-				const contextual = probe.checker.getTypeOfSymbolAtLocation(parameter, node);
+				const contextual = probe.checker.getContextualType(node);
+				if (contextual === undefined) return undefined;
 				const target = contextualCallableShape(contextual, probe.checker, node);
 				if (target === undefined) return undefined;
 				callableArguments.push({ index, target });
@@ -472,7 +472,7 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 
 	private objectResolutionFromLiteral(literal: ts.ObjectLiteralExpression, usage: InteropObjectUsage, checker: ts.TypeChecker, workspace: ProbeWorkspace): ForeignObjectResolution | undefined {
 		if (literal.properties.length !== usage.entries.length) return undefined;
-		const entries = [] as { readonly index: number; readonly property: string; readonly callable?: InteropCallableArgumentResolution['target']; readonly object?: ForeignObjectResolution }[];
+		const entries: { readonly index: number; readonly property: string; readonly callable?: InteropCallableArgumentResolution['target']; readonly object?: ForeignObjectResolution }[] = [];
 		for (let index = 0; index < usage.entries.length; index++) {
 			const usageEntry = usage.entries[index]!;
 			const property = literal.properties[index];
