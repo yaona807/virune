@@ -35,12 +35,14 @@ async function errorCodesFor(source: string, declarations: string): Promise<stri
 	return result.diagnostics.filter(item => item.severity === 'error').map(item => item.code);
 }
 
-test('private and protected External properties cannot be proven writable from a usage probe', async () => {
+test('private and protected External properties cannot be proven writable through member or literal-index usage', async () => {
 	const codes = await errorCodesFor(`import js { box } from "./library.js"
 
 fn main() -> Unit uses JavaScript {
 	box.secret = "changed"
 	box.hidden = "changed"
+	box["secret"] = "changed"
+	box["hidden"] = "changed"
 	return Unit
 }
 `, `
@@ -52,6 +54,7 @@ export declare class Box {
 export declare const box: Box;
 `);
 	assert.equal(codes.filter(code => code === 'L2119').length, 2);
+	assert.equal(codes.filter(code => code === 'L2120').length, 2);
 });
 
 test('contextual External generic object succeeds only when TypeScript supplies concrete contextual evidence', async () => {
