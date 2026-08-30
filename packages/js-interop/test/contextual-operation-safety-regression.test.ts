@@ -111,3 +111,31 @@ export declare function readEvents(): string;
 	const module = await import(`${pathToFileURL(join(root, 'dist/main.js')).href}?proxy-index-read`) as { proxyRead(): string };
 	assert.equal(module.proxyRead(), 'get:key');
 });
+
+test('callable-only values remain calls while protected constructors fail closed', async () => {
+	const root = await projectRoot();
+	await writeProject(root, `import js { callableOnly, ProtectedCtor } from "./library.js"
+
+fn main() -> Unit uses JavaScript {
+	discard callableOnly(1.0)
+	discard ProtectedCtor(1.0)
+	return Unit
+}
+`, `
+export function callableOnly(value) { return value + 1; }
+export class ProtectedCtor { constructor(value) { this.value = value; } }
+`, `
+export declare function callableOnly(value: number): number;
+export declare class ProtectedCtor { protected constructor(value: number); }
+`);
+	const result = await buildProject(root, {
+		write: false,
+		jsInteropProvider: new TypeScriptInteropProvider({ projectRoot: root }),
+	});
+	const errors = result.diagnostics.filter(item => item.severity === 'error');
+	assert.equal(errors.filter(item => item.code === 'L4204').length, 1);
+	const mainModule = result.modules.find(item => item.source.path.endsWith('main.virune'));
+	assert.ok(mainModule?.semantic);
+	assert.equal(mainModule.semantic.interop.usages.filter(item => item.kind === 'call').length, 1);
+	assert.equal(mainModule.semantic.interop.usages.filter(item => item.kind === 'construct').length, 0);
+});
