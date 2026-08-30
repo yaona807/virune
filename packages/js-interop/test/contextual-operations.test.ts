@@ -244,3 +244,162 @@ fn main() -> Unit uses JavaScript {
 `, 'export const unsafeValue = {};\n', 'export declare const unsafeValue: any;\n');
 	assert.ok(anyCodes.includes('L4212'));
 });
+
+test('object, property write, index write, and construct preserve JavaScript evaluation order and throws', async () => {
+	const root = await projectRoot();
+	const librarySource = `
+const events = [];
+const target = new Proxy({ name: 'old' }, {
+	set(object, key, value) {
+		events.push('set:' + String(key) + ':' + String(value));
+		object[key] = value;
+		return true;
+	},
+});
+export function resetEvents() { events.length = 0; }
+export function readEvents() { return events.join(','); }
+export function first() { events.push('first'); return 'a'; }
+export function second() { events.push('second'); return 'b'; }
+export function consumeOrder(value) { events.push('consume'); return value.first + value.second; }
+export function receiver() { events.push('receiver'); return target; }
+export function key() { events.push('key'); return 'extra'; }
+export function value() { events.push('value'); return 'v'; }
+export class Ordered {
+	constructor(firstValue, secondValue) {
+		events.push('construct:' + firstValue + ':' + secondValue);
+	}
+}
+export const throwing = { set name(value) { throw new Error('setter boom:' + value); } };
+export class Explodes { constructor() { throw new Error('construct boom'); } }
+`;
+	const declarations = `
+export declare function resetEvents(): void;
+export declare function readEvents(): string;
+export declare function first(): string;
+export declare function second(): string;
+export declare function consumeOrder(value: { first: string; second: string }): void;
+export declare function receiver(): { name: string; [key: string]: string };
+export declare function key(): string;
+export declare function value(): string;
+export declare class Ordered { constructor(firstValue: string, secondValue: string); }
+export declare const throwing: { name: string };
+export declare class Explodes { constructor(); }
+`;
+	const source = `import js { resetEvents, readEvents, first, second, consumeOrder, receiver, key, value, Ordered, throwing, Explodes } from "./library.js"
+
+@jsExport
+pub fn objectOrder() -> String uses JavaScript {
+	discard resetEvents()
+	discard consumeOrder({ first: first(), second: second() })
+	return readEvents()
+}
+
+@jsExport
+pub fn memberWriteOrder() -> String uses JavaScript {
+	discard resetEvents()
+	receiver().name = value()
+	return readEvents()
+}
+
+@jsExport
+pub fn indexWriteOrder() -> String uses JavaScript {
+	discard resetEvents()
+	receiver()[key()] = value()
+	return readEvents()
+}
+
+@jsExport
+pub fn constructOrder() -> String uses JavaScript {
+	discard resetEvents()
+	discard Ordered(first(), second())
+	return readEvents()
+}
+
+@jsExport
+pub fn setterThrows() -> Unit uses JavaScript {
+	throwing.name = "x"
+	return Unit
+}
+
+@jsExport
+pub fn constructThrows() -> Unit uses JavaScript {
+	discard Explodes()
+	return Unit
+}
+`;
+	await writeProject(root, source, librarySource, declarations);
+	const provider = new TypeScriptInteropProvider({ projectRoot: root });
+	const result = await buildProject(root, { write: true, jsInteropProvider: provider });
+	assert.deepEqual(result.diagnostics.filter(item => item.severity === 'error'), []);
+
+	await mkdir(join(root, 'dist'), { recursive: true });
+	await writeFile(join(root, 'dist/library.js'), librarySource, 'utf8');
+	const module = await import(`${pathToFileURL(join(root, 'dist/main.js')).href}?contextual-order`) as {
+		objectOrder(): string;
+		memberWriteOrder(): string;
+		indexWriteOrder(): string;
+		constructOrder(): string;
+		setterThrows(): void;
+		constructThrows(): void;
+	};
+	assert.equal(module.objectOrder(), 'first,second,consume');
+	assert.equal(module.memberWriteOrder(), 'receiver,value,set:name:v');
+	assert.equal(module.indexWriteOrder(), 'receiver,key,value,set:extra:v');
+	assert.equal(module.constructOrder(), 'first,second,construct:a:b');
+	assert.throws(() => module.setterThrows(), /setter boom:x/u);
+	assert.throws(() => module.constructThrows(), /construct boom/u);
+});
+
+test('numeric index reads use TypeScript evidence and unsupported indexes fail closed', async () => {
+	const root = await projectRoot();
+	const librarySource = 'export const numbers = [10, 20];\nexport const plain = { name: "value" };\n';
+	const declarations = 'export declare const numbers: [number, number];\nexport declare const plain: { name: string };\n';
+	await writeProject(root, `import js { numbers } from "./library.js"
+
+@jsExport
+pub fn numericIndex() -> Float uses JavaScript {
+	return numbers[1]
+}
+`, librarySource, declarations);
+	const provider = new TypeScriptInteropProvider({ projectRoot: root });
+	const result = await buildProject(root, { write: true, jsInteropProvider: provider });
+	assert.deepEqual(result.diagnostics.filter(item => item.severity === 'error'), []);
+	await writeFile(join(root, 'dist/library.js'), librarySource, 'utf8');
+	const module = await import(`${pathToFileURL(join(root, 'dist/main.js')).href}?numeric-index`) as { numericIndex(): number };
+	assert.equal(module.numericIndex(), 20);
+
+	const unsupported = await errorCodesFor(`import js { plain } from "./library.js"
+
+fn main() -> Unit uses JavaScript {
+	discard plain[0]
+	discard plain["missing"]
+	return Unit
+}
+`, librarySource, declarations);
+	assert.ok(unsupported.filter(code => code === 'L2121').length >= 2);
+});
+
+test('construct-only overload selection follows the TypeScript-selected signature', async () => {
+	const root = await projectRoot();
+	const librarySource = 'export const Overloaded = class { constructor(value) { this.value = value; } };\n';
+	const declarations = `
+interface OverloadedConstructor {
+	new (value: string): { value: string };
+	new (value: number): { value: number };
+}
+export declare const Overloaded: OverloadedConstructor;
+`;
+	await writeProject(root, `import js { Overloaded } from "./library.js"
+
+@jsExport
+pub fn overloadConstruct() -> String uses JavaScript {
+	return Overloaded("ok").value
+}
+`, librarySource, declarations);
+	const provider = new TypeScriptInteropProvider({ projectRoot: root });
+	const result = await buildProject(root, { write: true, jsInteropProvider: provider });
+	assert.deepEqual(result.diagnostics.filter(item => item.severity === 'error'), []);
+	await writeFile(join(root, 'dist/library.js'), librarySource, 'utf8');
+	const module = await import(`${pathToFileURL(join(root, 'dist/main.js')).href}?overloaded-construct`) as { overloadConstruct(): string };
+	assert.equal(module.overloadConstruct(), 'ok');
+});
