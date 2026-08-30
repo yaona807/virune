@@ -433,8 +433,10 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 		if (signature === undefined) return undefined;
 		const result = probe.checker.getReturnTypeOfSignature(signature);
 		if ((result.getFlags() & (ts.TypeFlags.Any | (construct ? ts.TypeFlags.Unknown : ts.TypeFlags.Never))) !== 0) return undefined;
-		const selectedGeneric = (signature.declaration?.typeParameters?.length ?? 0) > 0;
-		if (selectedGeneric && (result.getFlags() & (ts.TypeFlags.Unknown | ts.TypeFlags.TypeParameter)) !== 0) return undefined;
+		const declaration = signature.declaration;
+		const selectedGeneric = (declaration?.typeParameters?.length ?? 0) > 0
+			|| declaration !== undefined && ts.isConstructorDeclaration(declaration) && (declaration.parent.typeParameters?.length ?? 0) > 0;
+		if (selectedGeneric && typeContainsUnresolvedGenericResult(result, probe.checker, invocation)) return undefined;
 		const invocationArguments = ts.isCallExpression(invocation)
 			? invocation.arguments
 			: ts.isNewExpression(invocation)
@@ -901,6 +903,42 @@ function foreignTypeRequiresUnknownProjection(
 			const declaration = property.valueDeclaration ?? property.declarations?.[0] ?? location;
 			const propertyType = checker.getTypeOfSymbolAtLocation(property, declaration);
 			if (foreignTypeRequiresUnknownProjection(propertyType, checker, declaration, seen, budget, depth + 1)) return true;
+		}
+		return false;
+	} catch {
+		return true;
+	}
+}
+
+function typeContainsUnresolvedGenericResult(
+	type: ts.Type,
+	checker: ts.TypeChecker,
+	location: ts.Node,
+	seen = new Set<ts.Type>(),
+	budget: { remaining: number } = { remaining: 64 },
+	depth = 0,
+): boolean {
+	try {
+		if (budget.remaining-- <= 0 || depth > 12) return true;
+		const flags = type.getFlags();
+		if ((flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown | ts.TypeFlags.Never | ts.TypeFlags.TypeParameter)) !== 0) return true;
+		if (primitiveKind(type) !== undefined || (flags & (ts.TypeFlags.ESSymbol | ts.TypeFlags.UniqueESSymbol)) !== 0) return false;
+		if (seen.has(type)) return false;
+		seen.add(type);
+		if (type.isUnionOrIntersection()) return type.types.some(item => typeContainsUnresolvedGenericResult(item, checker, location, seen, budget, depth + 1));
+		if ((flags & ts.TypeFlags.Object) === 0) return false;
+		const objectType = type as ts.ObjectType;
+		if ((objectType.objectFlags & ts.ObjectFlags.Reference) !== 0) {
+			const typeArguments = checker.getTypeArguments(type as ts.TypeReference);
+			if (typeArguments.some(item => typeContainsUnresolvedGenericResult(item, checker, location, seen, budget, depth + 1))) return true;
+		}
+		for (const indexInfo of checker.getIndexInfosOfType(type)) {
+			if (typeContainsUnresolvedGenericResult(indexInfo.type, checker, location, seen, budget, depth + 1)) return true;
+		}
+		for (const property of checker.getPropertiesOfType(type)) {
+			const declaration = property.valueDeclaration ?? property.declarations?.[0] ?? location;
+			const propertyType = checker.getTypeOfSymbolAtLocation(property, declaration);
+			if (typeContainsUnresolvedGenericResult(propertyType, checker, declaration, seen, budget, depth + 1)) return true;
 		}
 		return false;
 	} catch {
