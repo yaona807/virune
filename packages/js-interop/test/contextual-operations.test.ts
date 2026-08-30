@@ -63,7 +63,7 @@ export class Box { constructor(value) { this.value = value; } }
 	const declarations = `
 export declare function acceptConfig(config: { mode: 'strict'; nested: { count: 3 }; __proto__: string }): boolean;
 export declare function acceptCallback(config: { transform: (value: number) => number }): boolean;
-export declare const buckets: Record<string, { prefix: string; join(value: string): string }>;
+export declare const buckets: { key: { prefix: string; join(value: string): string } };
 export declare const writable: { name: string; [key: string]: string };
 export declare function readWrites(): string;
 export declare class Box<T> { constructor(value: T); readonly value: T; }
