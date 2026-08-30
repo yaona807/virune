@@ -31,6 +31,7 @@ export type {
 	ExternalForeignOrigin,
 	ExternalForeignValueShape,
 	ExternalModuleLoadOperationIR,
+	ExternalObjectCallableProjectionIR,
 	ExternalOperationEffect,
 	ExternalOperationIR,
 	ExternalOperationKind,
