@@ -765,16 +765,17 @@ export class TypeChecker {
 		const usage = { target, arguments: interopArguments } as const;
 		let resolution: import('../interop/types.js').ForeignCallResolution | undefined;
 		let invocationKind: 'call' | 'construct' = 'call';
+		const wholeUsageResolution = provider.resolveCallUsage !== undefined;
 		try {
-			resolution = provider.resolveCallUsage !== undefined
-				? provider.resolveCallUsage(callee.ref, usage)
+			resolution = wholeUsageResolution
+				? provider.resolveCallUsage!(callee.ref, usage)
 				: provider.resolveCall(callee.ref, interopArguments);
 		} catch {
 			this.diagnostics.error('L4204', `Cannot resolve JavaScript call for ${callee.display}; use a TypeScript interop adapter`, expression.span);
 			return this.arena.error;
 		}
 		if (resolution !== undefined) {
-			if (!this.isValidForeignInvocationResolution(resolution, provider, false)) {
+			if (!this.isValidForeignInvocationResolution(resolution, provider, usage.target, false, wholeUsageResolution)) {
 				this.diagnostics.error('L4204', `Cannot prove JavaScript call for ${callee.display}; use a TypeScript interop adapter`, expression.span);
 				return this.arena.error;
 			}
@@ -782,7 +783,7 @@ export class TypeChecker {
 			let constructResolution: import('../interop/types.js').ForeignCallResolution | undefined;
 			try { constructResolution = provider.resolveConstructUsage(callee.ref, usage); } catch { constructResolution = undefined; }
 			if (constructResolution !== undefined) {
-				if (!this.isValidForeignInvocationResolution(constructResolution, provider, true)) {
+				if (!this.isValidForeignInvocationResolution(constructResolution, provider, usage.target, true, true)) {
 					this.diagnostics.error('L4204', `Cannot prove JavaScript construct for ${callee.display}; use a TypeScript interop adapter`, expression.span);
 					return this.arena.error;
 				}
@@ -1008,13 +1009,29 @@ export class TypeChecker {
 		return true;
 	}
 
-	private isValidForeignInvocationResolution(resolution: import('../interop/types.js').ForeignCallResolution, provider: JsInteropProvider, construct: boolean): boolean {
+	private isValidForeignInvocationResolution(
+		resolution: import('../interop/types.js').ForeignCallResolution,
+		provider: JsInteropProvider,
+		target: InteropCallTarget,
+		construct: boolean,
+		wholeUsage: boolean,
+	): boolean {
 		if (!isRecord(resolution) || !this.isCurrentForeignSnapshot(resolution.result, provider, !construct)) return false;
 		if (!Number.isSafeInteger(resolution.parameterCount) || resolution.parameterCount < 0) return false;
 		if (!Number.isSafeInteger(resolution.optionalParameterCount) || resolution.optionalParameterCount < 0 || resolution.optionalParameterCount > resolution.parameterCount) return false;
-		if (resolution.minimumArgumentCount !== undefined && (!Number.isSafeInteger(resolution.minimumArgumentCount) || resolution.minimumArgumentCount < 0 || resolution.minimumArgumentCount > resolution.parameterCount)) return false;
+		const arityLowerBound = Math.max(0, resolution.parameterCount - resolution.optionalParameterCount);
+		if (resolution.minimumArgumentCount !== undefined && (
+			!Number.isSafeInteger(resolution.minimumArgumentCount)
+			|| resolution.minimumArgumentCount < arityLowerBound
+			|| resolution.minimumArgumentCount > resolution.parameterCount
+		)) return false;
+		if (wholeUsage && resolution.minimumArgumentCount === undefined) return false;
 		if (typeof resolution.rest !== 'boolean' || typeof resolution.mayReject !== 'boolean') return false;
 		if (resolution.receiverMode !== 'none' && resolution.receiverMode !== 'preserve-this') return false;
+		if (wholeUsage) {
+			const expectedReceiverMode = construct || target.kind === 'value' ? 'none' : 'preserve-this';
+			if (resolution.receiverMode !== expectedReceiverMode) return false;
+		}
 		return !construct || resolution.receiverMode === 'none';
 	}
 
