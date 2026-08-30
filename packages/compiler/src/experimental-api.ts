@@ -48,6 +48,7 @@ export type {
 	ContextualCallableResult,
 	ForeignCallResolution,
 	ForeignIndexResolution,
+	ForeignObjectEntryResolution,
 	ForeignObjectResolution,
 	ForeignOrigin,
 	ForeignPrimitiveKind,
@@ -61,6 +62,7 @@ export type {
 	InteropCallUsage,
 	InteropIndexUsage,
 	InteropLiteralValue,
+	InteropObjectArgumentResolution,
 	InteropObjectEntryUsage,
 	InteropObjectUsage,
 	InteropSemanticModel,
@@ -73,6 +75,7 @@ export type {
 	NativeCallableBoundaryDescriptor,
 	NativeCallablePrimitiveKind,
 	NativeCallableTypeTemplate,
+	ObjectCallableProjectionEvidence,
 	PrimitiveBridgeKind,
 	RuntimeImportPlan,
 } from './interop/types.js';
