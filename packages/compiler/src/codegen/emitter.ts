@@ -444,7 +444,7 @@ export class JavaScriptEmitter {
 			}
 		}
 		const callee = this.expression(expression.callee, contextName);
-		if (expression.foreignConstruct === true) return `Reflect.construct(${callee}, [${args.join(', ')}])`;
+		if (expression.foreignConstruct === true) return `new (${callee})(${args.join(', ')})`;
 		if (expression.foreignCall !== true && this.acceptsTaskContext(expression.callee)) args.push(contextName);
 		if (callee === '$viruneExpect') return `(${args[0] ?? 'false'} ? undefined : panic('Expectation failed'))`;
 		return `${callee}(${args.join(', ')})`;
