@@ -76,3 +76,14 @@ fn main() -> Unit uses JavaScript {
 `, `export declare function consume<T>(value: { mode: NoInfer<T> }): boolean;\n`);
 	assert.ok(unresolved.includes('L4204'));
 });
+
+test('generic External construct fails closed when its inferred result retains an unresolved type argument', async () => {
+	const codes = await errorCodesFor(`import js { Box } from "./library.js"
+
+fn main() -> Unit uses JavaScript {
+	discard Box()
+	return Unit
+}
+`, `export declare class Box<T> { constructor(); readonly value: T }\n`);
+	assert.ok(codes.includes('L4204'));
+});
