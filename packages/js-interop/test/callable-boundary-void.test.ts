@@ -32,5 +32,5 @@ test('TypeScript Promise<void> accepts an async native Unit callback without cha
 	assert.ok(projection);
 	assert.equal(projection.descriptor.async, true);
 	assert.equal(projection.descriptor.result, 'Unit');
-	assert.match(result.output?.code ?? '', /async \(\) => \{ return encodeFfiValue\(await \$fn\(rootTaskContext\(\)\), \{ kind: 'undefined' \}\); \}/u);
+	assert.match(result.output?.code ?? '', /async \(\) => \{ try \{ return encodeFfiValue\(await \$fn\(rootTaskContext\(\)\), \{ kind: 'undefined' \}\); \} catch \(\$error\) \{ throw externalizeInteropError\(\$error\); \} \}/u);
 });
