@@ -207,10 +207,15 @@ export class JavaScriptEmitter {
 				const requiredCount = fn.parameters.length - trailingOptional;
 				return `{ const $args = [${encoded.join(', ')}]; while ($args.length > ${requiredCount} && $args[$args.length - 1] === undefined) $args.pop(); ${body.replace('$ARGS', '...$args')} }`;
 			};
+			const safeOperation = (body: string): string => {
+				if (trailingOptional === 0) return `() => ${body.replace('$ARGS', encoded.join(', '))}`;
+				const requiredCount = fn.parameters.length - trailingOptional;
+				return `() => { const $args = [${encoded.join(', ')}]; while ($args.length > ${requiredCount} && $args[$args.length - 1] === undefined) $args.pop(); return ${body.replace('$ARGS', '...$args')}; }`;
+			};
 			const rawCall = `$ffi${externIndex}[${JSON.stringify(fn.jsName)}]($ARGS)`;
 			if (declaration.unsafe) this.#writer.line(`${fn.async ? 'async ' : ''}function ${name}(${args.join(', ')}) ${invocation(`{ return ${rawCall}; }`)}`);
-			else if (fn.async) { const success = fn.returnType.name === 'Result' ? fn.returnType.arguments[0] : undefined; this.#writer.line(`async function ${name}(${args.join(', ')}) ${invocation(`{ return safeCallAsync(() => ${rawCall}, $value => $viruneValidateSafeFfiValue($value, ${this.safeFfiBoundary(this.typeDescriptor(success))}, '$')); }`)}`); }
-			else { const success = fn.returnType.name === 'Result' ? fn.returnType.arguments[0] : undefined; this.#writer.line(`function ${name}(${args.join(', ')}) ${invocation(`{ return safeCall(() => $viruneValidateSafeFfiValue(${rawCall}, ${this.safeFfiBoundary(this.typeDescriptor(success))}, '$')); }`)}`); }
+			else if (fn.async) { const success = fn.returnType.name === 'Result' ? fn.returnType.arguments[0] : undefined; this.#writer.line(`async function ${name}(${args.join(', ')}) { return safeCallAsync(${safeOperation(rawCall)}, $value => $viruneValidateSafeFfiValue($value, ${this.safeFfiBoundary(this.typeDescriptor(success))}, '$')); }`); }
+			else { const success = fn.returnType.name === 'Result' ? fn.returnType.arguments[0] : undefined; this.#writer.line(`function ${name}(${args.join(', ')}) { return safeCall(${safeOperation(`$viruneValidateSafeFfiValue(${rawCall}, ${this.safeFfiBoundary(this.typeDescriptor(success))}, '$')`)}); }`); }
 		}
 	}
 
