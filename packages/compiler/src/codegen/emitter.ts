@@ -271,11 +271,11 @@ export class JavaScriptEmitter {
 				break;
 			case 'MemberAssignmentStatement':
 				if (statement.foreignWrite !== true) throw new Error('Unproven writable facet reached JavaScript emission');
-				this.#writer.line(`${this.expression(statement.target)}[${JSON.stringify(statement.field)}] = ${this.foreignOutboundValue(statement.value)};`);
+				this.#writer.line(`${this.expression(statement.target)}[${JSON.stringify(statement.field)}] = ${this.expression(statement.value)};`);
 				break;
 			case 'IndexAssignmentStatement':
 				if (statement.foreignWrite !== true) throw new Error('Unproven writable facet reached JavaScript emission');
-				this.#writer.line(`${this.expression(statement.target)}[${this.expression(statement.index)}] = ${this.foreignOutboundValue(statement.value)};`);
+				this.#writer.line(`${this.expression(statement.target)}[${this.expression(statement.index)}] = ${this.expression(statement.value)};`);
 				break;
 			case 'DeferStatement': { const stack = this.#deferStacks.at(-1); if (stack === undefined) throw new Error('defer emitted outside deferred block'); this.#writer.line(`${stack}.push(${this.#currentAsync ? 'async ' : ''}() => ${this.expression(statement.expression)});`); break; }
 			case 'BreakStatement': this.#writer.line('break;'); break;
@@ -376,10 +376,10 @@ export class JavaScriptEmitter {
 				return [`${prefix}${this.nameOf(statement.targetSymbolId, statement.name)} = ${this.expression(statement.value, contextName)};`];
 			case 'MemberAssignmentStatement':
 				if (statement.foreignWrite !== true) throw new Error('Unproven writable facet reached JavaScript emission');
-				return [`${prefix}${this.expression(statement.target, contextName)}[${JSON.stringify(statement.field)}] = ${this.foreignOutboundValue(statement.value, contextName)};`];
+				return [`${prefix}${this.expression(statement.target, contextName)}[${JSON.stringify(statement.field)}] = ${this.expression(statement.value, contextName)};`];
 			case 'IndexAssignmentStatement':
 				if (statement.foreignWrite !== true) throw new Error('Unproven writable facet reached JavaScript emission');
-				return [`${prefix}${this.expression(statement.target, contextName)}[${this.expression(statement.index, contextName)}] = ${this.foreignOutboundValue(statement.value, contextName)};`];
+				return [`${prefix}${this.expression(statement.target, contextName)}[${this.expression(statement.index, contextName)}] = ${this.expression(statement.value, contextName)};`];
 			case 'BreakStatement': return [`${prefix}break;`];
 			case 'ContinueStatement': return [`${prefix}continue;`];
 			case 'DiscardStatement': return [`${prefix}void ${this.expression(statement.expression, contextName)};`];
@@ -428,20 +428,16 @@ export class JavaScriptEmitter {
 		return this.nameOf(expression.symbolId, expression.name);
 	}
 
-	private foreignOutboundValue(expression: A.Expression, contextName = this.#contextName): string {
-		const raw = this.expression(expression, contextName);
-		const type = expression.inferredTypeId === undefined ? undefined : this.#semantic.arena.get(expression.inferredTypeId);
-		return type?.kind === 'primitive' && type.name === 'Unknown'
-			? `encodeSafeFfiValue(${raw}, ${this.safeFfiBoundary(`{ kind: 'unknown' }`)})`
-			: raw;
-	}
-
 	private call(expression: A.CallExpression, contextName: string): string {
 		const foreignInvocation = expression.foreignCall === true || expression.foreignConstruct === true;
 		const args = expression.arguments.map((argument, index) => {
-			const raw = foreignInvocation ? this.foreignOutboundValue(argument, contextName) : this.expression(argument, contextName);
+			const raw = this.expression(argument, contextName);
+			const type = argument.inferredTypeId === undefined ? undefined : this.#semantic.arena.get(argument.inferredTypeId);
+			const guarded = foreignInvocation && type?.kind === 'primitive' && type.name === 'Unknown'
+				? `encodeSafeFfiValue(${raw}, ${this.safeFfiBoundary(`{ kind: 'unknown' }`)})`
+				: raw;
 			const projection = this.#semantic.interop.callableProjections?.find(item => item.callNodeId === expression.id && item.argumentIndex === index);
-			return projection === undefined ? raw : this.callableProjection(raw, projection.descriptor);
+			return projection === undefined ? guarded : this.callableProjection(guarded, projection.descriptor);
 		});
 		if (expression.callee.kind === 'FieldExpression' && expression.callee.target.kind === 'IdentifierExpression' && expression.callee.target.name === 'Json') {
 			if (expression.callee.field === 'parse') return `parseJson(${args[0] ?? '""'})`;
