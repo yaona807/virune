@@ -45,6 +45,33 @@ test('foreign Unknown preserves identity while native identity values fail close
 	assert.throws(() => encodeFfiValue({ token: 'fabricated' }, provenanceUnknown), ForeignContractError);
 });
 
+// @virune-rule {"id":"ffi.unknown-provenance","runner":"unit","file":"packages/runtime/test/ffi-unknown-provenance.test.ts","case":"nested Safe Unknown leaves preserve foreign identity and reject native identity values","kind":"positive","platform":"common"}
+test('nested Safe Unknown leaves preserve foreign identity and reject native identity values', () => {
+	const listBoundary = {
+		version: 'virune-safe-ffi/v1',
+		type: { kind: 'list', item: { kind: 'unknown' } },
+	} as unknown as FfiTypeDescriptor;
+	const recordBoundary = {
+		version: 'virune-safe-ffi/v1',
+		type: { kind: 'record', name: 'Payload', fields: { value: { kind: 'unknown' } } },
+	} as unknown as FfiTypeDescriptor;
+	const foreignListValue = { token: 'list' };
+	const decodedList = validateFfiValue([foreignListValue], listBoundary) as readonly unknown[];
+	assert.strictEqual(decodedList[0], foreignListValue);
+	const encodedList = encodeFfiValue(decodedList, listBoundary) as readonly unknown[];
+	assert.strictEqual(encodedList[0], foreignListValue);
+
+	const foreignRecordValue = { token: 'record' };
+	const decodedRecord = validateFfiValue({ value: foreignRecordValue }, recordBoundary) as { readonly value: unknown };
+	assert.strictEqual(decodedRecord.value, foreignRecordValue);
+	const encodedRecord = encodeFfiValue(decodedRecord, recordBoundary) as { readonly value: unknown };
+	assert.strictEqual(encodedRecord.value, foreignRecordValue);
+
+	assert.throws(() => encodeFfiValue([makeRecord({ token: 1 }, 'test:NestedNative')], listBoundary), ForeignContractError);
+	const nativeOuter = makeRecord({ value: ['native-nested-list'] }, 'Payload');
+	assert.throws(() => encodeFfiValue(nativeOuter, recordBoundary), ForeignContractError);
+});
+
 // @virune-rule {"id":"ffi.unknown-provenance","runner":"unit","file":"packages/runtime/test/ffi-unknown-provenance.test.ts","case":"legacy ABI v2 unknown remains pass through","kind":"positive","platform":"common"}
 test('legacy ABI v2 unknown remains pass through', () => {
 	const nativeRecord = makeRecord({ token: 1 }, 'test:NativeRecord');
@@ -57,7 +84,9 @@ test('malformed, fabricated, or stale provenance descriptors fail closed', () =>
 	const partial = { version: 'virune-safe-ffi/v1' } as unknown as FfiTypeDescriptor;
 	const stale = { version: 'virune-safe-ffi/v0', type: { kind: 'unknown' } } as unknown as FfiTypeDescriptor;
 	const fabricated = { version: 'virune-safe-ffi/v1', type: { kind: 'unknown' }, trusted: true } as unknown as FfiTypeDescriptor;
-	for (const descriptor of [partial, stale, fabricated]) {
+	const fabricatedInner = { version: 'virune-safe-ffi/v1', type: { kind: 'unknown', trusted: true } } as unknown as FfiTypeDescriptor;
+	const fabricatedNested = { version: 'virune-safe-ffi/v1', type: { kind: 'list', item: { kind: 'unknown', trusted: true } } } as unknown as FfiTypeDescriptor;
+	for (const descriptor of [partial, stale, fabricated, fabricatedInner, fabricatedNested]) {
 		assert.throws(() => validateFfiValue({}, descriptor), ForeignDecodeError);
 		assert.throws(() => encodeFfiValue({}, descriptor), ForeignDecodeError);
 	}
