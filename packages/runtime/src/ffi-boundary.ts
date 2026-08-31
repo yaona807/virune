@@ -29,7 +29,10 @@ function safeEnvelope(descriptor: FfiTypeDescriptor): SafeFfiEnvelope | undefine
 	const candidate = descriptor as unknown;
 	if (candidate === null || typeof candidate !== 'object') throw new ForeignDecodeError('$descriptor', 'FFI descriptor must be an object');
 	const record = candidate as Record<string, unknown>;
-	if (Object.hasOwn(record, 'kind')) return undefined;
+	if (Object.hasOwn(record, 'kind')) {
+		if (Object.hasOwn(record, 'version')) throw new ForeignDecodeError('$descriptor', 'legacy FFI descriptor must not carry Safe FFI envelope version metadata');
+		return undefined;
+	}
 	try {
 		if (
 			record.version !== 'virune-safe-ffi/v1'
