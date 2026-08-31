@@ -271,11 +271,11 @@ export class JavaScriptEmitter {
 				break;
 			case 'MemberAssignmentStatement':
 				if (statement.foreignWrite !== true) throw new Error('Unproven writable facet reached JavaScript emission');
-				this.#writer.line(`${this.expression(statement.target)}[${JSON.stringify(statement.field)}] = ${this.expression(statement.value)};`);
+				this.#writer.line(`${this.expression(statement.target)}[${JSON.stringify(statement.field)}] = ${this.foreignOutboundValue(statement.value)};`);
 				break;
 			case 'IndexAssignmentStatement':
 				if (statement.foreignWrite !== true) throw new Error('Unproven writable facet reached JavaScript emission');
-				this.#writer.line(`${this.expression(statement.target)}[${this.expression(statement.index)}] = ${this.expression(statement.value)};`);
+				this.#writer.line(`${this.expression(statement.target)}[${this.expression(statement.index)}] = ${this.foreignOutboundValue(statement.value)};`);
 				break;
 			case 'DeferStatement': { const stack = this.#deferStacks.at(-1); if (stack === undefined) throw new Error('defer emitted outside deferred block'); this.#writer.line(`${stack}.push(${this.#currentAsync ? 'async ' : ''}() => ${this.expression(statement.expression)});`); break; }
 			case 'BreakStatement': this.#writer.line('break;'); break;
@@ -376,10 +376,10 @@ export class JavaScriptEmitter {
 				return [`${prefix}${this.nameOf(statement.targetSymbolId, statement.name)} = ${this.expression(statement.value, contextName)};`];
 			case 'MemberAssignmentStatement':
 				if (statement.foreignWrite !== true) throw new Error('Unproven writable facet reached JavaScript emission');
-				return [`${prefix}${this.expression(statement.target, contextName)}[${JSON.stringify(statement.field)}] = ${this.expression(statement.value, contextName)};`];
+				return [`${prefix}${this.expression(statement.target, contextName)}[${JSON.stringify(statement.field)}] = ${this.foreignOutboundValue(statement.value, contextName)};`];
 			case 'IndexAssignmentStatement':
 				if (statement.foreignWrite !== true) throw new Error('Unproven writable facet reached JavaScript emission');
-				return [`${prefix}${this.expression(statement.target, contextName)}[${this.expression(statement.index, contextName)}] = ${this.expression(statement.value, contextName)};`];
+				return [`${prefix}${this.expression(statement.target, contextName)}[${this.expression(statement.index, contextName)}] = ${this.foreignOutboundValue(statement.value, contextName)};`];
 			case 'BreakStatement': return [`${prefix}break;`];
 			case 'ContinueStatement': return [`${prefix}continue;`];
 			case 'DiscardStatement': return [`${prefix}void ${this.expression(statement.expression, contextName)};`];
@@ -428,16 +428,20 @@ export class JavaScriptEmitter {
 		return this.nameOf(expression.symbolId, expression.name);
 	}
 
+	private foreignOutboundValue(expression: A.Expression, contextName = this.#contextName): string {
+		const raw = this.expression(expression, contextName);
+		const type = expression.inferredTypeId === undefined ? undefined : this.#semantic.arena.get(expression.inferredTypeId);
+		return type?.kind === 'primitive' && type.name === 'Unknown'
+			? `encodeSafeFfiValue(${raw}, ${this.safeFfiBoundary(`{ kind: 'unknown' }`)})`
+			: raw;
+	}
+
 	private call(expression: A.CallExpression, contextName: string): string {
 		const foreignInvocation = expression.foreignCall === true || expression.foreignConstruct === true;
 		const args = expression.arguments.map((argument, index) => {
-			const raw = this.expression(argument, contextName);
-			const type = argument.inferredTypeId === undefined ? undefined : this.#semantic.arena.get(argument.inferredTypeId);
-			const guarded = foreignInvocation && type?.kind === 'primitive' && type.name === 'Unknown'
-				? `encodeSafeFfiValue(${raw}, ${this.safeFfiBoundary(`{ kind: 'unknown' }`)})`
-				: raw;
+			const raw = foreignInvocation ? this.foreignOutboundValue(argument, contextName) : this.expression(argument, contextName);
 			const projection = this.#semantic.interop.callableProjections?.find(item => item.callNodeId === expression.id && item.argumentIndex === index);
-			return projection === undefined ? guarded : this.callableProjection(guarded, projection.descriptor);
+			return projection === undefined ? raw : this.callableProjection(raw, projection.descriptor);
 		});
 		if (expression.callee.kind === 'FieldExpression' && expression.callee.target.kind === 'IdentifierExpression' && expression.callee.target.name === 'Json') {
 			if (expression.callee.field === 'parse') return `parseJson(${args[0] ?? '""'})`;
@@ -492,7 +496,7 @@ export class JavaScriptEmitter {
 				'Set.empty': 'setEmpty', 'Set.from': 'setFrom', 'Set.add': 'setAdd', 'Set.has': 'setHas', 'Set.remove': 'setRemove', 'Set.size': 'setSize', 'Set.toList': 'setToList', 'Set.union': 'setUnion', 'Set.intersection': 'setIntersection', 'Set.difference': 'setDifference',
 				'Queue.empty': 'queueEmpty', 'Queue.enqueue': 'queueEnqueue', 'Queue.dequeue': 'queueDequeue', 'Stack.empty': 'stackEmpty', 'Stack.push': 'stackPush', 'Stack.pop': 'stackPop',
 				'String.codePoints': 'stringCodePoints', 'String.graphemes': 'stringGraphemes', 'String.graphemeLength': 'stringGraphemeLength', 'String.normalizeNfc': 'stringNormalizeNfc', 'String.normalizeNfd': 'stringNormalizeNfd', 'String.normalizeNfkc': 'stringNormalizeNfkc', 'String.normalizeNfkd': 'stringNormalizeNfkd', 'String.length': 'stringLength', 'String.trim': 'stringTrim', 'String.trimStart': 'stringTrimStart', 'String.trimEnd': 'stringTrimEnd', 'String.contains': 'stringContains', 'String.startsWith': 'stringStartsWith', 'String.endsWith': 'stringEndsWith', 'String.toLowerCase': 'stringToLowerCase', 'String.toUpperCase': 'stringToUpperCase', 'String.split': 'stringSplit', 'String.slice': 'stringSlice', 'String.join': 'stringJoin', 'String.replace': 'stringReplace', 'String.at': 'stringAt', 'String.isEmpty': 'stringIsEmpty', 'String.isNotEmpty': 'stringIsNotEmpty',
-				'ByteOrder.BigEndian': JSON.stringify('BigEndian'), 'ByteOrder.LittleEndian': JSON.stringify('LittleEndian'), 'HttpBody.Empty': "makeVariant('Empty', [], 'std:HttpBody')", 'HttpBody.Text': "(value => makeVariant('Text', [value], 'std:HttpBody'))", 'HttpBody.Bytes': "(value => makeVariant('Bytes', [value], 'std:HttpBody'))", 'Bytes.empty': 'bytesEmpty', 'Bytes.length': 'bytesLength', 'Bytes.fromUtf8': 'bytesFromUtf8', 'Bytes.toUtf8': 'bytesToUtf8', 'Bytes.fromHex': 'bytesFromHex', 'Bytes.toHex': 'bytesToHex', 'Bytes.fromBase64': 'bytesFromBase64', 'Bytes.toBase64': 'bytesToBase64', 'Bytes.concat': 'bytesConcat', 'Bytes.slice': 'bytesSlice', 'Bytes.get': 'bytesGet', 'Bytes.set': 'bytesSet', 'Bytes.readInt32': 'bytesReadInt32', 'Bytes.writeInt32': 'bytesWriteInt32', 'MutableBytes.create': 'mutableBytesCreate', 'MutableBytes.fromBytes': 'mutableBytesFromBytes', 'MutableBytes.toBytes': 'mutableBytesToBytes', 'MutableBytes.length': 'mutableBytesLength', 'MutableBytes.get': 'mutableBytesGet', 'MutableBytes.set': 'mutableBytesSet', 'MutableBytes.fill': 'mutableBytesFill', 'Byte.fromInt': 'byteCreate', 'Int8.fromInt': 'int8Create', 'Int8.toInt': 'int8ToInt', 'UInt8.fromInt': 'uint8Create', 'UInt8.toInt': 'uint8ToInt', 'Int16.fromInt': 'int16Create', 'Int16.toInt': 'int16ToInt', 'UInt16.fromInt': 'uint16Create', 'UInt16.toInt': 'uint16ToInt', 'Int32.fromInt': 'int32Create', 'Int32.toInt': 'int32ToInt', 'UInt32.fromInt': 'uint32Create', 'UInt32.toInt': 'uint32ToInt', 'Int64.fromBigInt': 'int64Create', 'Int64.toBigInt': 'int64ToBigInt', 'UInt64.fromBigInt': 'uint64Create', 'UInt64.toBigInt': 'uint64ToBigInt',
+				'ByteOrder.BigEndian': JSON.stringify('BigEndian'), 'ByteOrder.LittleEndian': JSON.stringify('LittleEndian'), 'HttpBody.Empty': "makeVariant('Empty', [], 'std:HttpBody')", 'HttpBody.Text': "(value => makeVariant('Text', [value], 'std:HttpBody'))", 'HttpBody.Bytes': "(value => makeVariant('Bytes', [value], 'std:HttpBody'))", 'Bytes.empty': 'bytesEmpty', 'Bytes.length': 'bytesLength', 'Bytes.fromUtf8': 'bytesFromUtf8', 'Bytes.toUtf8': 'bytesToUtf8', 'Bytes.fromHex': 'bytesFromHex', 'Bytes.toHex': 'bytesToHex', 'Bytes.fromBase64': 'bytesFromBase64', 'Bytes.toBase64': 'bytesToBase64', 'Bytes.concat': 'bytesConcat', 'Bytes.slice': 'bytesSlice', 'Bytes.get': 'bytesGet', 'Bytes.set': 'bytesSet', 'Bytes.readInt32': 'bytesReadInt32', 'Bytes.writeInt32': 'bytesWriteInt32', 'MutableBytes.create': 'mutableBytesCreate', 'MutableBytes.fromBytes': 'mutableBytesFromBytes', 'MutableBytes.toBytes': 'mutableBytesToBytes', 'MutableBytes.length': 'mutableBytesLength', 'MutableBytes.get': 'mutableBytesGet', 'MutableBytes.set': 'mutableBytesSet', 'MutableBytes.fill': 'mutableBytesFill', 'Byte.fromInt': 'byteCreate', 'Int8.fromInt': 'int8Create', 'Int8.toInt': 'int8ToInt', 'UInt8.fromInt': 'uint8Create', 'UInt8.toInt': 'uint8ToInt', 'Int16.fromInt': 'int16Create', 'Int16.toInt': 'int16ToInt', 'UInt16.fromInt': 'uint16Create', 'UInt16.toInt': 'uint16ToInt', 'Int32.fromInt': 'int32Create', 'Int32.toInt': 'int32ToInt', 'UInt32.fromInt': 'uint32Create', 'UInt32.toInt': 'uint32ToInt', 'Int64.fromBigInt': 'int64Create', 'Int64.toBigInt': 'UInt64.fromBigInt', 'UInt64.fromBigInt': 'uint64Create', 'UInt64.toBigInt': 'uint64ToBigInt',
 				'Debug.format': 'debugValue',
 				'Option.map': 'optionMap', 'Option.andThen': 'optionAndThen', 'Option.filter': 'optionFilter', 'Option.unwrapOr': 'optionUnwrapOr', 'Option.toResult': 'optionToResult', 'Option.collect': 'optionCollect',
 				'Result.map': 'resultMap', 'Result.mapError': 'resultMapError', 'Result.andThen': 'resultAndThen', 'Result.orElse': 'resultOrElse', 'Result.unwrapOr': 'resultUnwrapOr', 'Result.toOption': 'resultToOption', 'Result.collect': 'resultCollect', 'Result.collectErrors': 'resultCollectErrors',
