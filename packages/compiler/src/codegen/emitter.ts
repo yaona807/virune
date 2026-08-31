@@ -288,7 +288,7 @@ export class JavaScriptEmitter {
 	private emitIf(statement: A.IfStatement): void {
 		this.#writer.line(`if (${this.expression(statement.condition)}) {`); this.#writer.indent(() => this.emitBlock(statement.thenBlock));
 		if (statement.elseBranch === undefined) this.#writer.line('}');
-		else if (statement.elseBranch.kind === 'BlockStatement') { this.#writer.line('} else {'); this.#writer.indent(() => this.emitBlock(statement.elseBranch as A.IfStatement)); this.#writer.line('}'); }
+		else if (statement.elseBranch.kind === 'BlockStatement') { this.#writer.line('} else {'); this.#writer.indent(() => this.emitBlock(statement.elseBranch as A.BlockStatement)); this.#writer.line('}'); }
 		else { this.#writer.line('} else {'); this.#writer.indent(() => this.emitIf(statement.elseBranch as A.IfStatement)); this.#writer.line('}'); }
 	}
 
