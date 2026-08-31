@@ -146,7 +146,7 @@ export interface FfiRecordFieldDescriptor {
 	readonly defaultValue?: unknown;
 }
 
-/** Legacy Runtime v2 descriptor. Its `unknown` meaning remains raw pass-through for compatibility. */
+/** Runtime v2 descriptor. Its `unknown` meaning remains raw pass-through for compatibility. */
 export type FfiTypeDescriptor =
 	| { readonly kind: 'unknown' }
 	| { readonly kind: 'string' }
@@ -167,13 +167,11 @@ export type FfiTypeDescriptor =
 	| { readonly kind: 'record'; readonly name: string; readonly typeId?: string; readonly fields: Readonly<Record<string, FfiTypeDescriptor | FfiRecordFieldDescriptor>>; readonly strict?: boolean; readonly allowClassInstance?: boolean }
 	| { readonly kind: 'enum'; readonly name: string; readonly typeId?: string; readonly variants: Readonly<Record<string, readonly FfiTypeDescriptor[]>> };
 
-/** Additive Safe-boundary extension; it does not redefine the Runtime v2 `unknown` descriptor. */
-export interface FfiUnknownProvenanceDescriptor {
-	readonly kind: 'unknown-provenance';
-	readonly version: 'v1';
+/** Additive Safe-boundary envelope. The nested descriptor remains the unchanged Runtime v2 descriptor. */
+export interface SafeFfiBoundaryDescriptor {
+	readonly version: 'virune-safe-ffi/v1';
+	readonly type: FfiTypeDescriptor;
 }
-
-export type SafeFfiTypeDescriptor = FfiTypeDescriptor | FfiUnknownProvenanceDescriptor;
 
 const foreignUnknownObjects = new WeakSet<object>();
 
@@ -181,10 +179,10 @@ function isIdentityBearingValue(value: unknown): value is object {
 	return value !== null && (typeof value === 'object' || typeof value === 'function');
 }
 
-function validateUnknownProvenanceDescriptor(descriptor: FfiUnknownProvenanceDescriptor): void {
+function validateSafeBoundaryDescriptor(descriptor: SafeFfiBoundaryDescriptor): void {
 	const keys = Object.keys(descriptor).sort();
-	if (descriptor.kind !== 'unknown-provenance' || descriptor.version !== 'v1' || keys.length !== 2 || keys[0] !== 'kind' || keys[1] !== 'version') {
-		throw new ForeignDecodeError('$descriptor', 'unsupported, malformed, or incomplete unknown provenance descriptor');
+	if (descriptor.version !== 'virune-safe-ffi/v1' || keys.length !== 2 || keys[0] !== 'type' || keys[1] !== 'version' || descriptor.type === null || typeof descriptor.type !== 'object' || typeof descriptor.type.kind !== 'string') {
+		throw new ForeignDecodeError('$descriptor', 'unsupported, malformed, or incomplete Safe FFI boundary descriptor');
 	}
 }
 
@@ -223,16 +221,21 @@ interface DecodeState {
 	bytes: number;
 }
 
-/** Converts a JavaScript value returned by an FFI function into Virune's runtime representation. */
-export function validateFfiValue(value: unknown, descriptor: SafeFfiTypeDescriptor, path = '$', budget: DecodeBudget = defaultDecodeBudget): unknown {
-	return decodeValue(value, descriptor, path, 0, { budget, active: new WeakSet(), nodes: 0, bytes: 0 });
+/** Converts a JavaScript value returned by the legacy FFI contract into Virune's runtime representation. */
+export function validateFfiValue(value: unknown, descriptor: FfiTypeDescriptor, path = '$', budget: DecodeBudget = defaultDecodeBudget): unknown {
+	return decodeValue(value, descriptor, path, 0, { budget, active: new WeakSet(), nodes: 0, bytes: 0 }, false);
 }
 
-function decodeValue(value: unknown, descriptor: SafeFfiTypeDescriptor, path: string, depth: number, state: DecodeState): unknown {
+/** Converts a value through the versioned Safe boundary where every nested `unknown` is provenance-aware. */
+export function validateSafeFfiValue(value: unknown, descriptor: SafeFfiBoundaryDescriptor, path = '$', budget: DecodeBudget = defaultDecodeBudget): unknown {
+	validateSafeBoundaryDescriptor(descriptor);
+	return decodeValue(value, descriptor.type, path, 0, { budget, active: new WeakSet(), nodes: 0, bytes: 0 }, true);
+}
+
+function decodeValue(value: unknown, descriptor: FfiTypeDescriptor, path: string, depth: number, state: DecodeState, provenanceUnknown: boolean): unknown {
 	consumeNode(state, path, depth);
 	switch (descriptor.kind) {
-		case 'unknown': return value;
-		case 'unknown-provenance': validateUnknownProvenanceDescriptor(descriptor); return rememberForeignUnknown(value);
+		case 'unknown': return provenanceUnknown ? rememberForeignUnknown(value) : value;
 		case 'string': return checkForeignString(value, path);
 		case 'bool': return checkForeignBool(value, path);
 		case 'int': return checkForeignInt(value, path);
@@ -250,19 +253,19 @@ function decodeValue(value: unknown, descriptor: SafeFfiTypeDescriptor, path: st
 		case 'list': {
 			if (!Array.isArray(value)) break;
 			ensureDenseArray(value, path, state.budget.maxCollectionLength);
-			return withCycleGuard(value, path, state, () => value.map((item, index) => decodeValue(item, descriptor.item, `${path}[${index}]`, depth + 1, state)));
+			return withCycleGuard(value, path, state, () => value.map((item, index) => decodeValue(item, descriptor.item, `${path}[${index}]`, depth + 1, state, provenanceUnknown)));
 		}
 		case 'tuple': {
 			if (!Array.isArray(value) || value.length !== descriptor.items.length) break;
 			ensureDenseArray(value, path, descriptor.items.length);
-			return withCycleGuard(value, path, state, () => descriptor.items.map((item, index) => decodeValue(value[index], item, `${path}[${index}]`, depth + 1, state)));
+			return withCycleGuard(value, path, state, () => descriptor.items.map((item, index) => decodeValue(value[index], item, `${path}[${index}]`, depth + 1, state, provenanceUnknown)));
 		}
 		case 'map': {
 			if (!isMapIterable(value)) break;
 			return withCycleGuard(value as object, path, state, () => {
 				const entries = [...value];
 				checkCollectionLength(entries.length, path, state.budget.maxCollectionLength);
-				return new ViruneMap(entries.map(([key, item], index) => [decodeValue(key, descriptor.key, `${path}.key[${index}]`, depth + 1, state), decodeValue(item, descriptor.value, `${path}.value[${index}]`, depth + 1, state)]));
+				return new ViruneMap(entries.map(([key, item], index) => [decodeValue(key, descriptor.key, `${path}.key[${index}]`, depth + 1, state, provenanceUnknown), decodeValue(item, descriptor.value, `${path}.value[${index}]`, depth + 1, state, provenanceUnknown)]));
 			});
 		}
 		case 'set': {
@@ -270,17 +273,17 @@ function decodeValue(value: unknown, descriptor: SafeFfiTypeDescriptor, path: st
 			return withCycleGuard(value as object, path, state, () => {
 				const entries = [...value];
 				checkCollectionLength(entries.length, path, state.budget.maxCollectionLength);
-				return new ViruneSet(entries.map((item, index) => decodeValue(item, descriptor.item, `${path}[${index}]`, depth + 1, state)));
+				return new ViruneSet(entries.map((item, index) => decodeValue(item, descriptor.item, `${path}[${index}]`, depth + 1, state, provenanceUnknown)));
 			});
 		}
 		case 'option': {
 			const noneAs = descriptor.noneAs ?? 'nullish';
 			if ((noneAs === 'undefined' && value === undefined) || (noneAs === 'null' && value === null) || (noneAs === 'nullish' && (value === null || value === undefined))) return Object.freeze({ $tag: 'None', $values: [] });
-			return makeVariant('Some', [decodeValue(value, descriptor.value, path, depth + 1, state)], 'std:Option');
+			return makeVariant('Some', [decodeValue(value, descriptor.value, path, depth + 1, state, provenanceUnknown)], 'std:Option');
 		}
 		case 'result': {
-			if (isTaggedValue(value) && value.$tag === 'Ok' && value.$values.length === 1) return makeVariant('Ok', [decodeValue(value.$values[0], descriptor.value, `${path}.Ok`, depth + 1, state)], 'std:Result');
-			if (isTaggedValue(value) && value.$tag === 'Err' && value.$values.length === 1) return makeVariant('Err', [decodeValue(value.$values[0], descriptor.error, `${path}.Err`, depth + 1, state)], 'std:Result');
+			if (isTaggedValue(value) && value.$tag === 'Ok' && value.$values.length === 1) return makeVariant('Ok', [decodeValue(value.$values[0], descriptor.value, `${path}.Ok`, depth + 1, state, provenanceUnknown)], 'std:Result');
+			if (isTaggedValue(value) && value.$tag === 'Err' && value.$values.length === 1) return makeVariant('Err', [decodeValue(value.$values[0], descriptor.error, `${path}.Err`, depth + 1, state, provenanceUnknown)], 'std:Result');
 			break;
 		}
 		case 'record': {
@@ -301,7 +304,7 @@ function decodeValue(value: unknown, descriptor: SafeFfiTypeDescriptor, path: st
 						}
 						throw new ForeignDecodeError(`${path}.${externalName}`, 'required own data property is missing');
 					}
-					defineDataProperty(output, name, decodeValue(property.value, recordFieldType(field), `${path}.${externalName}`, depth + 1, state));
+					defineDataProperty(output, name, decodeValue(property.value, recordFieldType(field), `${path}.${externalName}`, depth + 1, state, provenanceUnknown));
 				}
 				if (descriptor.strict === true) {
 					for (const key of Reflect.ownKeys(source)) if (typeof key === 'string' && !expectedKeys.has(key)) throw new ForeignDecodeError(`${path}.${key}`, 'unexpected property');
@@ -312,36 +315,46 @@ function decodeValue(value: unknown, descriptor: SafeFfiTypeDescriptor, path: st
 		case 'enum': {
 			if (!isTaggedValue(value)) break;
 			const fields = descriptor.variants[value.$tag];
-			if (fields !== undefined && fields.length === value.$values.length) return makeVariant(value.$tag, fields.map((field, index) => decodeValue(value.$values[index], field, `${path}.${value.$tag}[${index}]`, depth + 1, state)), descriptor.typeId ?? descriptor.name);
+			if (fields !== undefined && fields.length === value.$values.length) return makeVariant(value.$tag, fields.map((field, index) => decodeValue(value.$values[index], field, `${path}.${value.$tag}[${index}]`, depth + 1, state, provenanceUnknown)), descriptor.typeId ?? descriptor.name);
 			break;
 		}
 	}
 	throw contractError(path, descriptor.kind, value);
 }
 
-/** Converts a Virune runtime value to a conventional JavaScript value before an FFI call. */
-export function encodeFfiValue(value: unknown, descriptor: SafeFfiTypeDescriptor): unknown {
+/** Converts a Virune runtime value to a conventional JavaScript value using the legacy descriptor semantics. */
+export function encodeFfiValue(value: unknown, descriptor: FfiTypeDescriptor): unknown {
+	return encodeValue(value, descriptor, false);
+}
+
+/** Converts a Virune runtime value across the versioned Safe boundary. */
+export function encodeSafeFfiValue(value: unknown, descriptor: SafeFfiBoundaryDescriptor): unknown {
+	validateSafeBoundaryDescriptor(descriptor);
+	return encodeValue(value, descriptor.type, true);
+}
+
+function encodeValue(value: unknown, descriptor: FfiTypeDescriptor, provenanceUnknown: boolean): unknown {
 	switch (descriptor.kind) {
-		case 'unknown': case 'string': case 'bool': case 'int': case 'float': case 'bigint': return value;
-		case 'unknown-provenance': validateUnknownProvenanceDescriptor(descriptor); return encodeProvenanceUnknown(value);
+		case 'unknown': return provenanceUnknown ? encodeProvenanceUnknown(value) : value;
+		case 'string': case 'bool': case 'int': case 'float': case 'bigint': return value;
 		case 'unit': return undefined;
 		case 'undefined': return undefined;
 		case 'null': return null;
 		case 'bytes': return value instanceof Uint8Array ? value.slice() : value;
-		case 'list': return Array.isArray(value) ? value.map(item => encodeFfiValue(item, descriptor.item)) : value;
-		case 'tuple': return Array.isArray(value) ? descriptor.items.map((item, index) => encodeFfiValue(value[index], item)) : value;
-		case 'map': return isMapIterable(value) ? new Map([...value].map(([key, item]) => [encodeFfiValue(key, descriptor.key), encodeFfiValue(item, descriptor.value)])) : value;
-		case 'set': return isSetIterable(value) ? new Set([...value].map(item => encodeFfiValue(item, descriptor.item))) : value;
+		case 'list': return Array.isArray(value) ? value.map(item => encodeValue(item, descriptor.item, provenanceUnknown)) : value;
+		case 'tuple': return Array.isArray(value) ? descriptor.items.map((item, index) => encodeValue(value[index], item, provenanceUnknown)) : value;
+		case 'map': return isMapIterable(value) ? new Map([...value].map(([key, item]) => [encodeValue(key, descriptor.key, provenanceUnknown), encodeValue(item, descriptor.value, provenanceUnknown)])) : value;
+		case 'set': return isSetIterable(value) ? new Set([...value].map(item => encodeValue(item, descriptor.item, provenanceUnknown))) : value;
 		case 'option': {
 			if (!isTaggedValue(value)) return value;
 			if (value.$tag === 'None') return descriptor.noneAs === 'null' ? null : undefined;
-			if (value.$tag === 'Some') return encodeFfiValue(value.$values[0], descriptor.value);
+			if (value.$tag === 'Some') return encodeValue(value.$values[0], descriptor.value, provenanceUnknown);
 			return value;
 		}
 		case 'result': {
 			if (!isTaggedValue(value)) return value;
-			if (value.$tag === 'Ok') return { $tag: 'Ok', $values: [encodeFfiValue(value.$values[0], descriptor.value)] };
-			if (value.$tag === 'Err') return { $tag: 'Err', $values: [encodeFfiValue(value.$values[0], descriptor.error)] };
+			if (value.$tag === 'Ok') return { $tag: 'Ok', $values: [encodeValue(value.$values[0], descriptor.value, provenanceUnknown)] };
+			if (value.$tag === 'Err') return { $tag: 'Err', $values: [encodeValue(value.$values[0], descriptor.error, provenanceUnknown)] };
 			return value;
 		}
 		case 'record': {
@@ -352,13 +365,13 @@ export function encodeFfiValue(value: unknown, descriptor: SafeFfiTypeDescriptor
 				const property = readOwnDataProperty(value, name, `$.${name}`);
 				if (!property.exists) continue;
 				if (metadata?.omitWhenNone === true && isTaggedValue(property.value) && property.value.$tag === 'None') continue;
-				defineDataProperty(target, metadata?.jsName ?? name, encodeFfiValue(property.value, recordFieldType(field)));
+				defineDataProperty(target, metadata?.jsName ?? name, encodeValue(property.value, recordFieldType(field), provenanceUnknown));
 			}
 			return target;
 		}
 		case 'enum': {
 			if (!isTaggedValue(value)) return value;
-			return { $tag: value.$tag, $values: (descriptor.variants[value.$tag] ?? []).map((field, index) => encodeFfiValue(value.$values[index], field)) };
+			return { $tag: value.$tag, $values: (descriptor.variants[value.$tag] ?? []).map((field, index) => encodeValue(value.$values[index], field, provenanceUnknown)) };
 		}
 	}
 }
