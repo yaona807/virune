@@ -422,7 +422,7 @@ export class JavaScriptEmitter {
 
 	private interpolatedString(value: string): string {
 		const placeholder = /(?<!\{)\{([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*)\}(?!\})/gu;
-		if (!placeholder.test(value)) return JSON.stringify(value.replaceAll('{{', '{').replaceAll('}}', '}'));
+		if (!placeholder.test(value)) return javascriptStringLiteral(value.replaceAll('{{', '{').replaceAll('}}', '}'));
 		placeholder.lastIndex = 0;
 		let result = '`'; let cursor = 0;
 		for (const match of value.matchAll(placeholder)) {
