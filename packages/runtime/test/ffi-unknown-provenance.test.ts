@@ -86,7 +86,9 @@ test('malformed, fabricated, or stale provenance descriptors fail closed', () =>
 	const fabricated = { version: 'virune-safe-ffi/v1', type: { kind: 'unknown' }, trusted: true } as unknown as FfiTypeDescriptor;
 	const fabricatedInner = { version: 'virune-safe-ffi/v1', type: { kind: 'unknown', trusted: true } } as unknown as FfiTypeDescriptor;
 	const fabricatedNested = { version: 'virune-safe-ffi/v1', type: { kind: 'list', item: { kind: 'unknown', trusted: true } } } as unknown as FfiTypeDescriptor;
-	for (const descriptor of [partial, stale, fabricated, fabricatedInner, fabricatedNested]) {
+	const hybrid = { kind: 'unknown', version: 'virune-safe-ffi/v1', type: { kind: 'unknown' } } as unknown as FfiTypeDescriptor;
+	const staleHybrid = { kind: 'unknown', version: 'virune-safe-ffi/v0', type: { kind: 'unknown' } } as unknown as FfiTypeDescriptor;
+	for (const descriptor of [partial, stale, fabricated, fabricatedInner, fabricatedNested, hybrid, staleHybrid]) {
 		assert.throws(() => validateFfiValue({}, descriptor), ForeignDecodeError);
 		assert.throws(() => encodeFfiValue({}, descriptor), ForeignDecodeError);
 	}
