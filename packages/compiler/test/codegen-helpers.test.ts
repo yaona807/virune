@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { escapeTemplate, javascriptStringLiteral } from '../src/codegen/helpers.js';
+import { escapeTemplate, javascriptStringLiteral, safeName } from '../src/codegen/helpers.js';
 
 test('javascriptStringLiteral preserves the value while escaping script-sensitive characters', () => {
 	const value = '</script>\u2028\u2029';
@@ -23,4 +23,15 @@ test('escapeTemplate preserves the cooked value while escaping script-sensitive 
 	assert.equal(escaped, '\\u003C\\u002Fscript\\u003E\\u2028\\u2029');
 	assert.equal(Function(`return \`${escaped}\`;`)(), value);
 	assert.doesNotMatch(escaped, /<\/script>/u);
+});
+
+test('safeName escapes ECMAScript strict-mode binding restrictions', () => {
+	for (const name of ['enum', 'implements', 'interface', 'package', 'private', 'protected', 'public', 'eval', 'arguments']) {
+		assert.equal(safeName(name), `$v_${name}`);
+	}
+	assert.equal(safeName('ordinary'), 'ordinary');
+});
+
+test('safeName rejects text that is not a JavaScript identifier', () => {
+	assert.throws(() => safeName('bad-name'), /Invalid JavaScript identifier/u);
 });
