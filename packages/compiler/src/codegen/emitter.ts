@@ -202,20 +202,27 @@ export class JavaScriptEmitter {
 				: `$viruneEncodeSafeFfiValue(${this.nameOf(parameter.symbolId, parameter.name)}, ${this.safeFfiBoundary(this.typeDescriptor(parameter.type))})`);
 			const optionalCount = [...fn.parameters].reverse().findIndex(parameter => !parameter.optional);
 			const trailingOptional = optionalCount < 0 ? fn.parameters.length : optionalCount;
-			const invocation = (body: string): string => {
-				if (trailingOptional === 0) return body.replace('$ARGS', encoded.join(', '));
+			const encodedArguments = encoded.join(', ');
+			const rawCall = (argumentsText: string): string => `$ffi${externIndex}[${javascriptStringLiteral(fn.jsName)}](${argumentsText})`;
+			const invocation = (resultExpression: (argumentsText: string) => string): string => {
+				if (trailingOptional === 0) return `{ return ${resultExpression(encodedArguments)}; }`;
 				const requiredCount = fn.parameters.length - trailingOptional;
-				return `{ const $args = [${encoded.join(', ')}]; while ($args.length > ${requiredCount} && $args[$args.length - 1] === undefined) $args.pop(); ${body.replace('$ARGS', '...$args')} }`;
+				return `{ const $args = [${encodedArguments}]; while ($args.length > ${requiredCount} && $args[$args.length - 1] === undefined) $args.pop(); return ${resultExpression('...$args')}; }`;
 			};
-			const safeOperation = (body: string): string => {
-				if (trailingOptional === 0) return `() => ${body.replace('$ARGS', encoded.join(', '))}`;
+			const safeOperation = (resultExpression: (argumentsText: string) => string): string => {
+				if (trailingOptional === 0) return `() => ${resultExpression(encodedArguments)}`;
 				const requiredCount = fn.parameters.length - trailingOptional;
-				return `() => { const $args = [${encoded.join(', ')}]; while ($args.length > ${requiredCount} && $args[$args.length - 1] === undefined) $args.pop(); return ${body.replace('$ARGS', '...$args')}; }`;
+				return `() => { const $args = [${encodedArguments}]; while ($args.length > ${requiredCount} && $args[$args.length - 1] === undefined) $args.pop(); return ${resultExpression('...$args')}; }`;
 			};
-			const rawCall = `$ffi${externIndex}[${JSON.stringify(fn.jsName)}]($ARGS)`;
-			if (declaration.unsafe) this.#writer.line(`${fn.async ? 'async ' : ''}function ${name}(${args.join(', ')}) ${invocation(`{ return ${rawCall}; }`)}`);
-			else if (fn.async) { const success = fn.returnType.name === 'Result' ? fn.returnType.arguments[0] : undefined; this.#writer.line(`async function ${name}(${args.join(', ')}) { return safeCallAsync(${safeOperation(rawCall)}, $value => $viruneValidateSafeFfiValue($value, ${this.safeFfiBoundary(this.typeDescriptor(success))}, '$')); }`); }
-			else { const success = fn.returnType.name === 'Result' ? fn.returnType.arguments[0] : undefined; this.#writer.line(`function ${name}(${args.join(', ')}) { return safeCall(${safeOperation(`$viruneValidateSafeFfiValue(${rawCall}, ${this.safeFfiBoundary(this.typeDescriptor(success))}, '$')`)}); }`); }
+			if (declaration.unsafe) this.#writer.line(`${fn.async ? 'async ' : ''}function ${name}(${args.join(', ')}) ${invocation(rawCall)}`);
+			else if (fn.async) {
+				const success = fn.returnType.name === 'Result' ? fn.returnType.arguments[0] : undefined;
+				this.#writer.line(`async function ${name}(${args.join(', ')}) { return safeCallAsync(${safeOperation(rawCall)}, $value => $viruneValidateSafeFfiValue($value, ${this.safeFfiBoundary(this.typeDescriptor(success))}, '$')); }`);
+			} else {
+				const success = fn.returnType.name === 'Result' ? fn.returnType.arguments[0] : undefined;
+				const validateResult = (argumentsText: string): string => `$viruneValidateSafeFfiValue(${rawCall(argumentsText)}, ${this.safeFfiBoundary(this.typeDescriptor(success))}, '$')`;
+				this.#writer.line(`function ${name}(${args.join(', ')}) { return safeCall(${safeOperation(validateResult)}); }`);
+			}
 		}
 	}
 
@@ -510,7 +517,7 @@ export class JavaScriptEmitter {
 				'Http.get': '$httpGet', 'Http.request': '$httpRequest', 'Fetch.get': '$fetchGet', 'Fetch.request': '$fetchRequest', 'Timer.sleep': '$timerSleep', 'Timer.now': '$timerNow',
 				'Storage.get': '$storageGet', 'Storage.set': '$storageSet', 'Storage.remove': '$storageRemove', 'Storage.clear': '$storageClear',
 				'Dom.getText': '$domGetText', 'Dom.setText': '$domSetText', 'Dom.setAttribute': '$domSetAttribute', 'Dom.addClass': '$domAddClass',
-				'Crypto.randomUuid': '$cryptoRandomUuid', 'Url.encodeComponent': '$urlEncodeComponent', 'Url.decodeComponent': '$urlDecodeComponent', 'Url.isValid': '$urlIsValid', 'Json.parse': 'parseJson',
+				'Crypto.randomUuid': '$cryptoRandomUuid', 'Url.encodeComponent': '$urlDecodeComponent', 'Url.decodeComponent': '$urlDecodeComponent', 'Url.isValid': '$urlIsValid', 'Json.parse': 'parseJson',
 			};
 			if (mapped[key] !== undefined) return mapped[key];
 			const symbol = expression.target.symbolId === undefined ? undefined : this.#semantic.symbols.get(expression.target.symbolId);
@@ -622,9 +629,9 @@ export class JavaScriptEmitter {
 				if (type.declarationKind === 'record' && type.fields !== undefined) {
 					const declaration = this.#moduleDeclarations.find(item => item.kind === 'RecordDeclaration' && item.name === type.name) as A.RecordDeclaration | undefined;
 					const strict = declaration?.attributes.some(attribute => attribute.name === 'json' && attribute.arguments.some(argument => argument.kind === 'IdentifierExpression' && argument.name === 'strict')) === true;
-					return `{ kind: 'record', name: ${JSON.stringify(type.name)}, typeId: ${JSON.stringify(type.definitionId)}, fields: { ${[...type.fields].map(([name, field]) => `${JSON.stringify(name)}: ${this.recordFieldDescriptor(name, this.typeDescriptorFromTypeId(field, new Set(seen)), declaration)}`).join(', ')} }${strict ? ', strict: true' : ''} }`;
+					return `{ kind: 'record', name: ${JSON.stringify(type.name)}, typeId: ${JSON.stringify(type.definitionId)}, fields: { ${[...type.fields].map(([name, field]) => `[${JSON.stringify(name)}]: ${this.recordFieldDescriptor(name, this.typeDescriptorFromTypeId(field, new Set(seen)), declaration)}`).join(', ')} }${strict ? ', strict: true' : ''} }`;
 				}
-				if (type.declarationKind === 'enum' && type.variants !== undefined) return `{ kind: 'enum', name: ${JSON.stringify(type.name)}, typeId: ${JSON.stringify(type.definitionId)}, variants: { ${[...type.variants].map(([name, values]) => `${JSON.stringify(name)}: [${values.map(value => this.typeDescriptorFromTypeId(value, new Set(seen))).join(', ')}]`).join(', ')} } }`;
+				if (type.declarationKind === 'enum' && type.variants !== undefined) return `{ kind: 'enum', name: ${JSON.stringify(type.name)}, typeId: ${JSON.stringify(type.definitionId)}, variants: { ${[...type.variants].map(([name, values]) => `[${JSON.stringify(name)}]: [${values.map(value => this.typeDescriptorFromTypeId(value, new Set(seen))).join(', ')}]`).join(', ')} } }`;
 				return `{ kind: 'unknown' }`;
 			}
 			default: return `{ kind: 'unknown' }`;
@@ -660,8 +667,8 @@ export class JavaScriptEmitter {
 				case 'Result': return `{ kind: 'result', value: ${this.typeDescriptor(type.arguments[0])}, error: ${this.typeDescriptor(type.arguments[1])} }`;
 			}
 			const declaration = this.#moduleDeclarations.find(item => 'name' in item && item.name === type.name);
-			if (declaration?.kind === 'RecordDeclaration') return `{ kind: 'record', name: ${JSON.stringify(type.name)}, typeId: ${JSON.stringify(this.declarationTypeId(declaration.symbolId, declaration.definitionId ?? `${this.#source.id}#${declaration.name}`))}, fields: { ${declaration.fields.map(field => `${JSON.stringify(field.name)}: ${this.recordFieldDescriptor(field.name, this.typeDescriptor(field.type), declaration)}`).join(', ')} } }`;
-			if (declaration?.kind === 'EnumDeclaration') return `{ kind: 'enum', name: ${JSON.stringify(type.name)}, typeId: ${JSON.stringify(this.declarationTypeId(declaration.symbolId, declaration.definitionId ?? `${this.#source.id}#${declaration.name}`))}, variants: { ${declaration.variants.map(variant => `${JSON.stringify(variant.name)}: [${variant.values.map(value => this.typeDescriptor(value)).join(', ')}]`).join(', ')} } }`;
+			if (declaration?.kind === 'RecordDeclaration') return `{ kind: 'record', name: ${JSON.stringify(type.name)}, typeId: ${JSON.stringify(this.declarationTypeId(declaration.symbolId, declaration.definitionId ?? `${this.#source.id}#${declaration.name}`))}, fields: { ${declaration.fields.map(field => `[${JSON.stringify(field.name)}]: ${this.recordFieldDescriptor(field.name, this.typeDescriptor(field.type), declaration)}`).join(', ')} } }`;
+			if (declaration?.kind === 'EnumDeclaration') return `{ kind: 'enum', name: ${JSON.stringify(type.name)}, typeId: ${JSON.stringify(this.declarationTypeId(declaration.symbolId, declaration.definitionId ?? `${this.#source.id}#${declaration.name}`))}, variants: { ${declaration.variants.map(variant => `[${JSON.stringify(variant.name)}]: [${variant.values.map(value => this.typeDescriptor(value)).join(', ')}]`).join(', ')} } }`;
 			if (declaration?.kind === 'NewtypeDeclaration') return this.typeDescriptor(declaration.underlying);
 			if (declaration?.kind === 'TypeAliasDeclaration') return this.typeDescriptor(declaration.target);
 			return `{ kind: 'unknown' }`;
