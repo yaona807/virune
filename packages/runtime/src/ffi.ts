@@ -1,7 +1,5 @@
-import { Err, Ok, VirunePanic, VirunePropagation, makeRecord, makeVariant, type Result } from './core.js';
+import { Err, Ok, makeRecord, makeVariant, type Result } from './core.js';
 import { ViruneMap, ViruneSet } from './collections.js';
-
-export type JsErrorOrigin = 'throw' | 'rejection' | 'contract' | 'decode' | 'internal';
 
 export interface JsError {
 	readonly kind: 'JsError';
@@ -9,7 +7,6 @@ export interface JsError {
 	readonly message: string;
 	readonly stack?: string;
 	readonly cause?: unknown;
-	readonly origin?: JsErrorOrigin;
 }
 
 export interface DecodeBudget {
@@ -49,41 +46,19 @@ export class ForeignDecodeError extends Error {
 	}
 }
 
-function errorOrigin(error: unknown, fallback: 'throw' | 'rejection'): JsErrorOrigin {
-	if (error instanceof ForeignContractError) return 'contract';
-	if (error instanceof ForeignDecodeError) return 'decode';
-	if (error instanceof VirunePanic || error instanceof VirunePropagation) return 'internal';
-	return fallback;
-}
-
-export function toJsError(error: unknown, fallbackOrigin: 'throw' | 'rejection' = 'throw'): JsError {
-	const origin = errorOrigin(error, fallbackOrigin);
-	if (origin === 'internal') return { kind: 'JsError', name: 'Error', message: 'Virune internal failure', origin };
+export function toJsError(error: unknown): JsError {
 	if (error instanceof Error) {
-		return { kind: 'JsError', name: error.name, message: error.message, ...(error.stack === undefined ? {} : { stack: error.stack }), ...(error.cause === undefined ? {} : { cause: error.cause }), origin };
+		return { kind: 'JsError', name: error.name, message: error.message, ...(error.stack === undefined ? {} : { stack: error.stack }), ...(error.cause === undefined ? {} : { cause: error.cause }) };
 	}
-	return { kind: 'JsError', name: 'Error', message: String(error), origin };
-}
-
-/** Converts Virune-only control/panic values to a plain JavaScript error before they cross a generated callback boundary. */
-export function externalizeInteropError(error: unknown): unknown {
-	if (error instanceof VirunePanic || error instanceof VirunePropagation) return new Error('Virune callback failed');
-	return error;
+	return { kind: 'JsError', name: 'Error', message: String(error) };
 }
 
 export function safeCall<T>(operation: () => T): Result<T, JsError> {
-	try { return Ok(operation()); } catch (error) { return Err(toJsError(error, 'throw')); }
+	try { return Ok(operation()); } catch (error) { return Err(toJsError(error)); }
 }
 
-export function safeCallAsync<T>(operation: () => PromiseLike<T>): Promise<Result<T, JsError>>;
-export function safeCallAsync<T, U>(operation: () => PromiseLike<T>, decode: (value: T) => U): Promise<Result<U, JsError>>;
-export async function safeCallAsync<T, U>(operation: () => PromiseLike<T>, decode?: (value: T) => U): Promise<Result<T | U, JsError>> {
-	let pending: PromiseLike<T>;
-	try { pending = operation(); } catch (error) { return Err(toJsError(error, 'throw')); }
-	let value: T;
-	try { value = await pending; } catch (error) { return Err(toJsError(error, 'rejection')); }
-	if (decode === undefined) return Ok(value);
-	try { return Ok(decode(value)); } catch (error) { return Err(toJsError(error, 'throw')); }
+export async function safeCallAsync<T>(operation: () => PromiseLike<T>): Promise<Result<T, JsError>> {
+	try { return Ok(await operation()); } catch (error) { return Err(toJsError(error)); }
 }
 
 export function checkForeignString(value: unknown, path = '$'): string {
@@ -146,7 +121,6 @@ export interface FfiRecordFieldDescriptor {
 	readonly defaultValue?: unknown;
 }
 
-/** Runtime v2 descriptor. Its `unknown` meaning remains raw pass-through for compatibility. */
 export type FfiTypeDescriptor =
 	| { readonly kind: 'unknown' }
 	| { readonly kind: 'string' }
@@ -166,36 +140,6 @@ export type FfiTypeDescriptor =
 	| { readonly kind: 'result'; readonly value: FfiTypeDescriptor; readonly error: FfiTypeDescriptor }
 	| { readonly kind: 'record'; readonly name: string; readonly typeId?: string; readonly fields: Readonly<Record<string, FfiTypeDescriptor | FfiRecordFieldDescriptor>>; readonly strict?: boolean; readonly allowClassInstance?: boolean }
 	| { readonly kind: 'enum'; readonly name: string; readonly typeId?: string; readonly variants: Readonly<Record<string, readonly FfiTypeDescriptor[]>> };
-
-/** Additive Safe-boundary envelope. The nested descriptor remains the unchanged Runtime v2 descriptor. */
-export interface SafeFfiBoundaryDescriptor {
-	readonly version: 'virune-safe-ffi/v1';
-	readonly type: FfiTypeDescriptor;
-}
-
-const foreignUnknownObjects = new WeakSet<object>();
-
-function isIdentityBearingValue(value: unknown): value is object {
-	return value !== null && (typeof value === 'object' || typeof value === 'function');
-}
-
-function validateSafeBoundaryDescriptor(descriptor: SafeFfiBoundaryDescriptor): void {
-	const keys = Object.keys(descriptor).sort();
-	if (descriptor.version !== 'virune-safe-ffi/v1' || keys.length !== 2 || keys[0] !== 'type' || keys[1] !== 'version' || descriptor.type === null || typeof descriptor.type !== 'object' || typeof descriptor.type.kind !== 'string') {
-		throw new ForeignDecodeError('$descriptor', 'unsupported, malformed, or incomplete Safe FFI boundary descriptor');
-	}
-}
-
-function rememberForeignUnknown(value: unknown): unknown {
-	if (isIdentityBearingValue(value)) foreignUnknownObjects.add(value);
-	return value;
-}
-
-function encodeProvenanceUnknown(value: unknown): unknown {
-	if (!isIdentityBearingValue(value)) return value;
-	if (foreignUnknownObjects.has(value)) return value;
-	throw contractError('$', 'foreign-origin Unknown or native primitive', value);
-}
 
 function recordFieldType(field: FfiTypeDescriptor | FfiRecordFieldDescriptor): FfiTypeDescriptor {
 	return 'type' in field ? field.type : field;
@@ -221,21 +165,15 @@ interface DecodeState {
 	bytes: number;
 }
 
-/** Converts a JavaScript value returned by the legacy FFI contract into Virune's runtime representation. */
+/** Converts a JavaScript value returned by an FFI function into Virune's runtime representation. */
 export function validateFfiValue(value: unknown, descriptor: FfiTypeDescriptor, path = '$', budget: DecodeBudget = defaultDecodeBudget): unknown {
-	return decodeValue(value, descriptor, path, 0, { budget, active: new WeakSet(), nodes: 0, bytes: 0 }, false);
+	return decodeValue(value, descriptor, path, 0, { budget, active: new WeakSet(), nodes: 0, bytes: 0 });
 }
 
-/** Converts a value through the versioned Safe boundary where every nested `unknown` is provenance-aware. */
-export function validateSafeFfiValue(value: unknown, descriptor: SafeFfiBoundaryDescriptor, path = '$', budget: DecodeBudget = defaultDecodeBudget): unknown {
-	validateSafeBoundaryDescriptor(descriptor);
-	return decodeValue(value, descriptor.type, path, 0, { budget, active: new WeakSet(), nodes: 0, bytes: 0 }, true);
-}
-
-function decodeValue(value: unknown, descriptor: FfiTypeDescriptor, path: string, depth: number, state: DecodeState, provenanceUnknown: boolean): unknown {
+function decodeValue(value: unknown, descriptor: FfiTypeDescriptor, path: string, depth: number, state: DecodeState): unknown {
 	consumeNode(state, path, depth);
 	switch (descriptor.kind) {
-		case 'unknown': return provenanceUnknown ? rememberForeignUnknown(value) : value;
+		case 'unknown': return value;
 		case 'string': return checkForeignString(value, path);
 		case 'bool': return checkForeignBool(value, path);
 		case 'int': return checkForeignInt(value, path);
@@ -253,19 +191,19 @@ function decodeValue(value: unknown, descriptor: FfiTypeDescriptor, path: string
 		case 'list': {
 			if (!Array.isArray(value)) break;
 			ensureDenseArray(value, path, state.budget.maxCollectionLength);
-			return withCycleGuard(value, path, state, () => value.map((item, index) => decodeValue(item, descriptor.item, `${path}[${index}]`, depth + 1, state, provenanceUnknown)));
+			return withCycleGuard(value, path, state, () => value.map((item, index) => decodeValue(item, descriptor.item, `${path}[${index}]`, depth + 1, state)));
 		}
 		case 'tuple': {
 			if (!Array.isArray(value) || value.length !== descriptor.items.length) break;
 			ensureDenseArray(value, path, descriptor.items.length);
-			return withCycleGuard(value, path, state, () => descriptor.items.map((item, index) => decodeValue(value[index], item, `${path}[${index}]`, depth + 1, state, provenanceUnknown)));
+			return withCycleGuard(value, path, state, () => descriptor.items.map((item, index) => decodeValue(value[index], item, `${path}[${index}]`, depth + 1, state)));
 		}
 		case 'map': {
 			if (!isMapIterable(value)) break;
 			return withCycleGuard(value as object, path, state, () => {
 				const entries = [...value];
 				checkCollectionLength(entries.length, path, state.budget.maxCollectionLength);
-				return new ViruneMap(entries.map(([key, item], index) => [decodeValue(key, descriptor.key, `${path}.key[${index}]`, depth + 1, state, provenanceUnknown), decodeValue(item, descriptor.value, `${path}.value[${index}]`, depth + 1, state, provenanceUnknown)]));
+				return new ViruneMap(entries.map(([key, item], index) => [decodeValue(key, descriptor.key, `${path}.key[${index}]`, depth + 1, state), decodeValue(item, descriptor.value, `${path}.value[${index}]`, depth + 1, state)]));
 			});
 		}
 		case 'set': {
@@ -273,17 +211,17 @@ function decodeValue(value: unknown, descriptor: FfiTypeDescriptor, path: string
 			return withCycleGuard(value as object, path, state, () => {
 				const entries = [...value];
 				checkCollectionLength(entries.length, path, state.budget.maxCollectionLength);
-				return new ViruneSet(entries.map((item, index) => decodeValue(item, descriptor.item, `${path}[${index}]`, depth + 1, state, provenanceUnknown)));
+				return new ViruneSet(entries.map((item, index) => decodeValue(item, descriptor.item, `${path}[${index}]`, depth + 1, state)));
 			});
 		}
 		case 'option': {
 			const noneAs = descriptor.noneAs ?? 'nullish';
 			if ((noneAs === 'undefined' && value === undefined) || (noneAs === 'null' && value === null) || (noneAs === 'nullish' && (value === null || value === undefined))) return Object.freeze({ $tag: 'None', $values: [] });
-			return makeVariant('Some', [decodeValue(value, descriptor.value, path, depth + 1, state, provenanceUnknown)], 'std:Option');
+			return makeVariant('Some', [decodeValue(value, descriptor.value, path, depth + 1, state)], 'std:Option');
 		}
 		case 'result': {
-			if (isTaggedValue(value) && value.$tag === 'Ok' && value.$values.length === 1) return makeVariant('Ok', [decodeValue(value.$values[0], descriptor.value, `${path}.Ok`, depth + 1, state, provenanceUnknown)], 'std:Result');
-			if (isTaggedValue(value) && value.$tag === 'Err' && value.$values.length === 1) return makeVariant('Err', [decodeValue(value.$values[0], descriptor.error, `${path}.Err`, depth + 1, state, provenanceUnknown)], 'std:Result');
+			if (isTaggedValue(value) && value.$tag === 'Ok' && value.$values.length === 1) return makeVariant('Ok', [decodeValue(value.$values[0], descriptor.value, `${path}.Ok`, depth + 1, state)], 'std:Result');
+			if (isTaggedValue(value) && value.$tag === 'Err' && value.$values.length === 1) return makeVariant('Err', [decodeValue(value.$values[0], descriptor.error, `${path}.Err`, depth + 1, state)], 'std:Result');
 			break;
 		}
 		case 'record': {
@@ -304,7 +242,7 @@ function decodeValue(value: unknown, descriptor: FfiTypeDescriptor, path: string
 						}
 						throw new ForeignDecodeError(`${path}.${externalName}`, 'required own data property is missing');
 					}
-					defineDataProperty(output, name, decodeValue(property.value, recordFieldType(field), `${path}.${externalName}`, depth + 1, state, provenanceUnknown));
+					defineDataProperty(output, name, decodeValue(property.value, recordFieldType(field), `${path}.${externalName}`, depth + 1, state));
 				}
 				if (descriptor.strict === true) {
 					for (const key of Reflect.ownKeys(source)) if (typeof key === 'string' && !expectedKeys.has(key)) throw new ForeignDecodeError(`${path}.${key}`, 'unexpected property');
@@ -315,46 +253,35 @@ function decodeValue(value: unknown, descriptor: FfiTypeDescriptor, path: string
 		case 'enum': {
 			if (!isTaggedValue(value)) break;
 			const fields = descriptor.variants[value.$tag];
-			if (fields !== undefined && fields.length === value.$values.length) return makeVariant(value.$tag, fields.map((field, index) => decodeValue(value.$values[index], field, `${path}.${value.$tag}[${index}]`, depth + 1, state, provenanceUnknown)), descriptor.typeId ?? descriptor.name);
+			if (fields !== undefined && fields.length === value.$values.length) return makeVariant(value.$tag, fields.map((field, index) => decodeValue(value.$values[index], field, `${path}.${value.$tag}[${index}]`, depth + 1, state)), descriptor.typeId ?? descriptor.name);
 			break;
 		}
 	}
 	throw contractError(path, descriptor.kind, value);
 }
 
-/** Converts a Virune runtime value to a conventional JavaScript value using the legacy descriptor semantics. */
+/** Converts a Virune runtime value to a conventional JavaScript value before an FFI call. */
 export function encodeFfiValue(value: unknown, descriptor: FfiTypeDescriptor): unknown {
-	return encodeValue(value, descriptor, false);
-}
-
-/** Converts a Virune runtime value across the versioned Safe boundary. */
-export function encodeSafeFfiValue(value: unknown, descriptor: SafeFfiBoundaryDescriptor): unknown {
-	validateSafeBoundaryDescriptor(descriptor);
-	return encodeValue(value, descriptor.type, true);
-}
-
-function encodeValue(value: unknown, descriptor: FfiTypeDescriptor, provenanceUnknown: boolean): unknown {
 	switch (descriptor.kind) {
-		case 'unknown': return provenanceUnknown ? encodeProvenanceUnknown(value) : value;
-		case 'string': case 'bool': case 'int': case 'float': case 'bigint': return value;
+		case 'unknown': case 'string': case 'bool': case 'int': case 'float': case 'bigint': return value;
 		case 'unit': return undefined;
 		case 'undefined': return undefined;
 		case 'null': return null;
 		case 'bytes': return value instanceof Uint8Array ? value.slice() : value;
-		case 'list': return Array.isArray(value) ? value.map(item => encodeValue(item, descriptor.item, provenanceUnknown)) : value;
-		case 'tuple': return Array.isArray(value) ? descriptor.items.map((item, index) => encodeValue(value[index], item, provenanceUnknown)) : value;
-		case 'map': return isMapIterable(value) ? new Map([...value].map(([key, item]) => [encodeValue(key, descriptor.key, provenanceUnknown), encodeValue(item, descriptor.value, provenanceUnknown)])) : value;
-		case 'set': return isSetIterable(value) ? new Set([...value].map(item => encodeValue(item, descriptor.item, provenanceUnknown))) : value;
+		case 'list': return Array.isArray(value) ? value.map(item => encodeFfiValue(item, descriptor.item)) : value;
+		case 'tuple': return Array.isArray(value) ? descriptor.items.map((item, index) => encodeFfiValue(value[index], item)) : value;
+		case 'map': return isMapIterable(value) ? new Map([...value].map(([key, item]) => [encodeFfiValue(key, descriptor.key), encodeFfiValue(item, descriptor.value)])) : value;
+		case 'set': return isSetIterable(value) ? new Set([...value].map(item => encodeFfiValue(item, descriptor.item))) : value;
 		case 'option': {
 			if (!isTaggedValue(value)) return value;
 			if (value.$tag === 'None') return descriptor.noneAs === 'null' ? null : undefined;
-			if (value.$tag === 'Some') return encodeValue(value.$values[0], descriptor.value, provenanceUnknown);
+			if (value.$tag === 'Some') return encodeFfiValue(value.$values[0], descriptor.value);
 			return value;
 		}
 		case 'result': {
 			if (!isTaggedValue(value)) return value;
-			if (value.$tag === 'Ok') return { $tag: 'Ok', $values: [encodeValue(value.$values[0], descriptor.value, provenanceUnknown)] };
-			if (value.$tag === 'Err') return { $tag: 'Err', $values: [encodeValue(value.$values[0], descriptor.error, provenanceUnknown)] };
+			if (value.$tag === 'Ok') return { $tag: 'Ok', $values: [encodeFfiValue(value.$values[0], descriptor.value)] };
+			if (value.$tag === 'Err') return { $tag: 'Err', $values: [encodeFfiValue(value.$values[0], descriptor.error)] };
 			return value;
 		}
 		case 'record': {
@@ -365,13 +292,13 @@ function encodeValue(value: unknown, descriptor: FfiTypeDescriptor, provenanceUn
 				const property = readOwnDataProperty(value, name, `$.${name}`);
 				if (!property.exists) continue;
 				if (metadata?.omitWhenNone === true && isTaggedValue(property.value) && property.value.$tag === 'None') continue;
-				defineDataProperty(target, metadata?.jsName ?? name, encodeValue(property.value, recordFieldType(field), provenanceUnknown));
+				defineDataProperty(target, metadata?.jsName ?? name, encodeFfiValue(property.value, recordFieldType(field)));
 			}
 			return target;
 		}
 		case 'enum': {
 			if (!isTaggedValue(value)) return value;
-			return { $tag: value.$tag, $values: (descriptor.variants[value.$tag] ?? []).map((field, index) => encodeValue(value.$values[index], field, provenanceUnknown)) };
+			return { $tag: value.$tag, $values: (descriptor.variants[value.$tag] ?? []).map((field, index) => encodeFfiValue(value.$values[index], field)) };
 		}
 	}
 }

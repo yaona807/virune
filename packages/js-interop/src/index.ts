@@ -307,13 +307,7 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 	}
 
 	private renderUsageValue(argument: InteropArgumentType, context: UsageProbeContext, allowNativeCallable: boolean, allowObject: boolean, depth = 0): string | undefined {
-		if (depth > 12) return undefined;
-		if (argument.kind === 'unknown') {
-			if (depth !== 0) return undefined;
-			const name = `__viruneValue${context.nextValueId++}`;
-			context.declarations.push(`declare const ${name}: unknown;`);
-			return name;
-		}
+		if (argument.kind === 'unknown' || depth > 12) return undefined;
 		if (argument.kind === 'contextual-object') {
 			if (!allowObject) return undefined;
 			const seen = new Set<string>();
