@@ -203,25 +203,25 @@ export class JavaScriptEmitter {
 			const optionalCount = [...fn.parameters].reverse().findIndex(parameter => !parameter.optional);
 			const trailingOptional = optionalCount < 0 ? fn.parameters.length : optionalCount;
 			const encodedArguments = encoded.join(', ');
-			const rawCall = (argumentsText: string): string => `$ffi${externIndex}[${javascriptStringLiteral(fn.jsName)}](${argumentsText})`;
-			const invocation = (resultExpression: (argumentsText: string) => string): string => {
-				if (trailingOptional === 0) return `{ return ${resultExpression(encodedArguments)}; }`;
-				const requiredCount = fn.parameters.length - trailingOptional;
-				return `{ const $args = [${encodedArguments}]; while ($args.length > ${requiredCount} && $args[$args.length - 1] === undefined) $args.pop(); return ${resultExpression('...$args')}; }`;
-			};
-			const safeOperation = (resultExpression: (argumentsText: string) => string): string => {
-				if (trailingOptional === 0) return `() => ${resultExpression(encodedArguments)}`;
-				const requiredCount = fn.parameters.length - trailingOptional;
-				return `() => { const $args = [${encodedArguments}]; while ($args.length > ${requiredCount} && $args[$args.length - 1] === undefined) $args.pop(); return ${resultExpression('...$args')}; }`;
-			};
-			if (declaration.unsafe) this.#writer.line(`${fn.async ? 'async ' : ''}function ${name}(${args.join(', ')}) ${invocation(rawCall)}`);
-			else if (fn.async) {
+			const requiredCount = fn.parameters.length - trailingOptional;
+			const foreignMember = `$ffi${externIndex}[${javascriptStringLiteral(fn.jsName)}]`;
+			const directCall = `${foreignMember}(${encodedArguments})`;
+			const spreadCall = `${foreignMember}(...$args)`;
+			const argumentSetup = `const $args = [${encodedArguments}]; while ($args.length > ${requiredCount} && $args[$args.length - 1] === undefined) $args.pop();`;
+			if (declaration.unsafe) {
+				const body = trailingOptional === 0 ? `{ return ${directCall}; }` : `{ ${argumentSetup} return ${spreadCall}; }`;
+				this.#writer.line(`${fn.async ? 'async ' : ''}function ${name}(${args.join(', ')}) ${body}`);
+			} else if (fn.async) {
 				const success = fn.returnType.name === 'Result' ? fn.returnType.arguments[0] : undefined;
-				this.#writer.line(`async function ${name}(${args.join(', ')}) { return safeCallAsync(${safeOperation(rawCall)}, $value => $viruneValidateSafeFfiValue($value, ${this.safeFfiBoundary(this.typeDescriptor(success))}, '$')); }`);
+				const operation = trailingOptional === 0 ? `() => ${directCall}` : `() => { ${argumentSetup} return ${spreadCall}; }`;
+				this.#writer.line(`async function ${name}(${args.join(', ')}) { return safeCallAsync(${operation}, $value => $viruneValidateSafeFfiValue($value, ${this.safeFfiBoundary(this.typeDescriptor(success))}, '$')); }`);
 			} else {
 				const success = fn.returnType.name === 'Result' ? fn.returnType.arguments[0] : undefined;
-				const validateResult = (argumentsText: string): string => `$viruneValidateSafeFfiValue(${rawCall(argumentsText)}, ${this.safeFfiBoundary(this.typeDescriptor(success))}, '$')`;
-				this.#writer.line(`function ${name}(${args.join(', ')}) { return safeCall(${safeOperation(validateResult)}); }`);
+				const descriptor = this.safeFfiBoundary(this.typeDescriptor(success));
+				const directValidated = `$viruneValidateSafeFfiValue(${directCall}, ${descriptor}, '$')`;
+				const spreadValidated = `$viruneValidateSafeFfiValue(${spreadCall}, ${descriptor}, '$')`;
+				const operation = trailingOptional === 0 ? `() => ${directValidated}` : `() => { ${argumentSetup} return ${spreadValidated}; }`;
+				this.#writer.line(`function ${name}(${args.join(', ')}) { return safeCall(${operation}); }`);
 			}
 		}
 	}
