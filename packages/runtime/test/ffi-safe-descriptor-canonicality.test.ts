@@ -31,6 +31,16 @@ test('partial Safe record field metadata fails closed', () => {
 	}
 });
 
+// @virune-rule {"id":"ffi.unknown-provenance","runner":"unit","file":"packages/runtime/test/ffi-safe-descriptor-canonicality.test.ts","case":"inherited Safe descriptor metadata cannot override an own field descriptor","kind":"negative","platform":"common"}
+test('inherited Safe descriptor metadata cannot override an own field descriptor', () => {
+	const inheritedType = Object.create({ type: { kind: 'unknown' } }) as Record<string, unknown>;
+	Object.defineProperty(inheritedType, 'kind', { value: 'string', enumerable: true, configurable: true, writable: true });
+	const descriptor = safeRecordBoundary(inheritedType);
+	const identity = { token: 'foreign' };
+	assert.throws(() => validateFfiValue({ value: identity }, descriptor), ForeignDecodeError);
+	assert.throws(() => encodeFfiValue(makeRecord({ value: identity }, 'Payload'), descriptor), ForeignDecodeError);
+});
+
 // @virune-rule {"id":"ffi.unknown-provenance","runner":"unit","file":"packages/runtime/test/ffi-safe-descriptor-canonicality.test.ts","case":"Safe record default metadata preserves an explicit undefined default","kind":"positive","platform":"common"}
 test('Safe record default metadata preserves an explicit undefined default', () => {
 	const descriptor = safeRecordBoundary({ type: { kind: 'unknown' }, hasDefault: true, defaultValue: undefined });
