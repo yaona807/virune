@@ -79,7 +79,7 @@ test('legacy ABI v2 unknown remains pass through', () => {
 	assert.strictEqual(encodeFfiValue(nativeRecord, { kind: 'unknown' }), nativeRecord);
 });
 
-// @virune-rule {"id":"ffi.unknown-provenance","runner":"unit","file":"packages/runtime/test/ffi-unknown-provenance.test.ts","case":"malformed fabricated or stale provenance descriptors fail closed","kind":"negative","platform":"common"}
+// @virune-rule {"id":"ffi.unknown-provenance","runner":"unit","file":"packages/runtime/test/ffi-unknown-provenance.test.ts","case":"malformed, fabricated, or stale provenance descriptors fail closed","kind":"negative","platform":"common"}
 test('malformed, fabricated, or stale provenance descriptors fail closed', () => {
 	const partial = { version: 'virune-safe-ffi/v1' } as unknown as FfiTypeDescriptor;
 	const stale = { version: 'virune-safe-ffi/v0', type: { kind: 'unknown' } } as unknown as FfiTypeDescriptor;
