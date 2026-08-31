@@ -1,5 +1,7 @@
-import { Err, Ok, makeRecord, makeVariant, type Result } from './core.js';
+import { Err, Ok, VirunePanic, VirunePropagation, makeRecord, makeVariant, type Result } from './core.js';
 import { ViruneMap, ViruneSet } from './collections.js';
+
+export type JsErrorOrigin = 'throw' | 'rejection' | 'contract' | 'decode' | 'internal';
 
 export interface JsError {
 	readonly kind: 'JsError';
@@ -7,6 +9,7 @@ export interface JsError {
 	readonly message: string;
 	readonly stack?: string;
 	readonly cause?: unknown;
+	readonly origin?: JsErrorOrigin;
 }
 
 export interface DecodeBudget {
@@ -46,19 +49,42 @@ export class ForeignDecodeError extends Error {
 	}
 }
 
-export function toJsError(error: unknown): JsError {
+function errorOrigin(error: unknown, fallback: 'throw' | 'rejection'): JsErrorOrigin {
+	if (error instanceof ForeignContractError) return 'contract';
+	if (error instanceof ForeignDecodeError) return 'decode';
+	if (error instanceof VirunePanic || error instanceof VirunePropagation) return 'internal';
+	return fallback;
+}
+
+export function toJsError(error: unknown, fallbackOrigin: 'throw' | 'rejection' = 'throw'): JsError {
+	const origin = errorOrigin(error, fallbackOrigin);
+	if (origin === 'internal') return { kind: 'JsError', name: 'Error', message: 'Virune internal failure', origin };
 	if (error instanceof Error) {
-		return { kind: 'JsError', name: error.name, message: error.message, ...(error.stack === undefined ? {} : { stack: error.stack }), ...(error.cause === undefined ? {} : { cause: error.cause }) };
+		return { kind: 'JsError', name: error.name, message: error.message, ...(error.stack === undefined ? {} : { stack: error.stack }), ...(error.cause === undefined ? {} : { cause: error.cause }), origin };
 	}
-	return { kind: 'JsError', name: 'Error', message: String(error) };
+	return { kind: 'JsError', name: 'Error', message: String(error), origin };
+}
+
+/** Converts Virune-only control/panic values to a plain JavaScript error before they cross a generated callback boundary. */
+export function externalizeInteropError(error: unknown): unknown {
+	if (error instanceof VirunePanic) return new Error(`Virune callback failed: ${error.message}`);
+	if (error instanceof VirunePropagation) return new Error('Virune callback terminated by internal control flow');
+	return error;
 }
 
 export function safeCall<T>(operation: () => T): Result<T, JsError> {
-	try { return Ok(operation()); } catch (error) { return Err(toJsError(error)); }
+	try { return Ok(operation()); } catch (error) { return Err(toJsError(error, 'throw')); }
 }
 
-export async function safeCallAsync<T>(operation: () => PromiseLike<T>): Promise<Result<T, JsError>> {
-	try { return Ok(await operation()); } catch (error) { return Err(toJsError(error)); }
+export function safeCallAsync<T>(operation: () => PromiseLike<T>): Promise<Result<T, JsError>>;
+export function safeCallAsync<T, U>(operation: () => PromiseLike<T>, decode: (value: T) => U): Promise<Result<U, JsError>>;
+export async function safeCallAsync<T, U>(operation: () => PromiseLike<T>, decode?: (value: T) => U): Promise<Result<T | U, JsError>> {
+	let pending: PromiseLike<T>;
+	try { pending = operation(); } catch (error) { return Err(toJsError(error, 'throw')); }
+	let value: T;
+	try { value = await pending; } catch (error) { return Err(toJsError(error, 'rejection')); }
+	if (decode === undefined) return Ok(value);
+	try { return Ok(decode(value)); } catch (error) { return Err(toJsError(error, 'throw')); }
 }
 
 export function checkForeignString(value: unknown, path = '$'): string {
@@ -123,6 +149,7 @@ export interface FfiRecordFieldDescriptor {
 
 export type FfiTypeDescriptor =
 	| { readonly kind: 'unknown' }
+	| { readonly kind: 'unknown-provenance'; readonly version: 'v1' }
 	| { readonly kind: 'string' }
 	| { readonly kind: 'bool' }
 	| { readonly kind: 'int' }
@@ -140,6 +167,27 @@ export type FfiTypeDescriptor =
 	| { readonly kind: 'result'; readonly value: FfiTypeDescriptor; readonly error: FfiTypeDescriptor }
 	| { readonly kind: 'record'; readonly name: string; readonly typeId?: string; readonly fields: Readonly<Record<string, FfiTypeDescriptor | FfiRecordFieldDescriptor>>; readonly strict?: boolean; readonly allowClassInstance?: boolean }
 	| { readonly kind: 'enum'; readonly name: string; readonly typeId?: string; readonly variants: Readonly<Record<string, readonly FfiTypeDescriptor[]>> };
+
+const foreignUnknownObjects = new WeakSet<object>();
+
+function isIdentityBearingValue(value: unknown): value is object {
+	return value !== null && (typeof value === 'object' || typeof value === 'function');
+}
+
+function validateUnknownProvenanceDescriptor(descriptor: { readonly version: 'v1' }): void {
+	if ((descriptor as { readonly version?: unknown }).version !== 'v1') throw new ForeignDecodeError('$descriptor', 'unsupported or incomplete unknown provenance descriptor');
+}
+
+function rememberForeignUnknown(value: unknown): unknown {
+	if (isIdentityBearingValue(value)) foreignUnknownObjects.add(value);
+	return value;
+}
+
+function encodeProvenanceUnknown(value: unknown): unknown {
+	if (!isIdentityBearingValue(value)) return value;
+	if (foreignUnknownObjects.has(value)) return value;
+	throw contractError('$', 'foreign-origin Unknown or native primitive', value);
+}
 
 function recordFieldType(field: FfiTypeDescriptor | FfiRecordFieldDescriptor): FfiTypeDescriptor {
 	return 'type' in field ? field.type : field;
@@ -174,6 +222,7 @@ function decodeValue(value: unknown, descriptor: FfiTypeDescriptor, path: string
 	consumeNode(state, path, depth);
 	switch (descriptor.kind) {
 		case 'unknown': return value;
+		case 'unknown-provenance': validateUnknownProvenanceDescriptor(descriptor); return rememberForeignUnknown(value);
 		case 'string': return checkForeignString(value, path);
 		case 'bool': return checkForeignBool(value, path);
 		case 'int': return checkForeignInt(value, path);
@@ -264,6 +313,7 @@ function decodeValue(value: unknown, descriptor: FfiTypeDescriptor, path: string
 export function encodeFfiValue(value: unknown, descriptor: FfiTypeDescriptor): unknown {
 	switch (descriptor.kind) {
 		case 'unknown': case 'string': case 'bool': case 'int': case 'float': case 'bigint': return value;
+		case 'unknown-provenance': validateUnknownProvenanceDescriptor(descriptor); return encodeProvenanceUnknown(value);
 		case 'unit': return undefined;
 		case 'undefined': return undefined;
 		case 'null': return null;
