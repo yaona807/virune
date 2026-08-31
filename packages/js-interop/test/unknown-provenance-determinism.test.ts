@@ -58,11 +58,11 @@ function stableResult(result: ProjectBuildResult) {
 	const operations = externalOperationSequence(module.semantic);
 	const serialized = JSON.stringify(operations);
 	assert.doesNotMatch(serialized, /\.test-tmp|virune-interop-unknown-determinism|[A-Za-z]:\\|file:\/\//u);
-	assert.match(module.output.code, /kind: 'unknown-provenance', version: 'v1'/u);
+	assert.match(module.output.code, /version: 'virune-safe-ffi\/v1', type: \{ kind: 'unknown' \}/u);
 	return { code: module.output.code, operations };
 }
 
-// @virune-rule {"id":"interop.unknown-provenance-determinism","runner":"integration","file":"packages/js-interop/test/unknown-provenance-determinism.test.ts","case":"Unknown provenance output and evidence are deterministic across build modes","kind":"positive","platform":"node"}
+// @virune-rule {"id":"ffi.unknown-provenance","runner":"integration","file":"packages/js-interop/test/unknown-provenance-determinism.test.ts","case":"Unknown provenance output and evidence are deterministic across build modes","kind":"positive","platform":"node"}
 test('Unknown provenance output and evidence are deterministic across clean, provider-cache, incremental, and equivalent-root builds', async () => {
 	const root = await createProject();
 	const sharedProvider = new TypeScriptInteropProvider({ projectRoot: root });
