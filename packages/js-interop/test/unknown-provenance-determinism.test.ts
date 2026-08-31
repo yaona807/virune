@@ -62,7 +62,7 @@ function stableResult(result: ProjectBuildResult) {
 	return { code: module.output.code, operations };
 }
 
-// @virune-rule {"id":"ffi.unknown-provenance","runner":"integration","file":"packages/js-interop/test/unknown-provenance-determinism.test.ts","case":"Unknown provenance output and evidence are deterministic across build modes","kind":"positive","platform":"node"}
+// @virune-rule {"id":"ffi.unknown-provenance","runner":"integration","file":"packages/js-interop/test/unknown-provenance-determinism.test.ts","case":"Unknown provenance output and evidence are deterministic across clean, provider-cache, incremental, and equivalent-root builds","kind":"positive","platform":"node"}
 test('Unknown provenance output and evidence are deterministic across clean, provider-cache, incremental, and equivalent-root builds', async () => {
 	const root = await createProject();
 	const sharedProvider = new TypeScriptInteropProvider({ projectRoot: root });
