@@ -58,7 +58,7 @@ function isCanonicalFfiDescriptor(value: unknown, active = new WeakSet<object>()
 			case 'list':
 				return hasExactKeys(value, ['item', 'kind']) && isCanonicalFfiDescriptor(value.item, active, depth + 1);
 			case 'tuple':
-				return hasExactKeys(value, ['items', 'kind']) && Array.isArray(value.items) && value.items.every(item => isCanonicalFfiDescriptor(item, active, depth + 1));
+				return hasExactKeys(value, ['items', 'kind']) && isCanonicalDescriptorArray(value.items, item => isCanonicalFfiDescriptor(item, active, depth + 1));
 			case 'map':
 				return hasExactKeys(value, ['key', 'kind', 'value']) && isCanonicalFfiDescriptor(value.key, active, depth + 1) && isCanonicalFfiDescriptor(value.value, active, depth + 1);
 			case 'set':
@@ -73,7 +73,7 @@ function isCanonicalFfiDescriptor(value: unknown, active = new WeakSet<object>()
 					&& isCanonicalFfiDescriptor(value.error, active, depth + 1);
 			case 'record': {
 				if (!hasKnownKeys(value, ['fields', 'kind', 'name'], ['allowClassInstance', 'strict', 'typeId'])) return false;
-				if (typeof value.name !== 'string' || value.name.length === 0 || !isRecord(value.fields)) return false;
+				if (typeof value.name !== 'string' || value.name.length === 0 || !isCanonicalDescriptorMap(value.fields)) return false;
 				if (value.typeId !== undefined && typeof value.typeId !== 'string') return false;
 				if (value.strict !== undefined && typeof value.strict !== 'boolean') return false;
 				if (value.allowClassInstance !== undefined && typeof value.allowClassInstance !== 'boolean') return false;
@@ -81,9 +81,9 @@ function isCanonicalFfiDescriptor(value: unknown, active = new WeakSet<object>()
 			}
 			case 'enum': {
 				if (!hasKnownKeys(value, ['kind', 'name', 'variants'], ['typeId'])) return false;
-				if (typeof value.name !== 'string' || value.name.length === 0 || !isRecord(value.variants)) return false;
+				if (typeof value.name !== 'string' || value.name.length === 0 || !isCanonicalDescriptorMap(value.variants)) return false;
 				if (value.typeId !== undefined && typeof value.typeId !== 'string') return false;
-				return Object.values(value.variants).every(fields => Array.isArray(fields) && fields.every(field => isCanonicalFfiDescriptor(field, active, depth + 1)));
+				return Object.values(value.variants).every(fields => isCanonicalDescriptorArray(fields, field => isCanonicalFfiDescriptor(field, active, depth + 1)));
 			}
 			default: return false;
 		}
@@ -103,6 +103,31 @@ function isCanonicalRecordField(value: unknown, active: WeakSet<object>, depth: 
 	return true;
 }
 
+function isCanonicalDescriptorArray(value: unknown, validate: (item: unknown) => boolean): value is readonly unknown[] {
+	if (!Array.isArray(value)) return false;
+	const lengthDescriptor = Object.getOwnPropertyDescriptor(value, 'length');
+	if (lengthDescriptor === undefined || !('value' in lengthDescriptor) || typeof lengthDescriptor.value !== 'number') return false;
+	const length = lengthDescriptor.value;
+	if (Reflect.ownKeys(value).length !== length + 1) return false;
+	for (let index = 0; index < length; index++) {
+		const item = Object.getOwnPropertyDescriptor(value, String(index));
+		if (item === undefined || !('value' in item) || !validate(item.value)) return false;
+	}
+	return true;
+}
+
+function isCanonicalDescriptorMap(value: unknown): value is Record<string, unknown> {
+	if (!isRecord(value)) return false;
+	const prototype = Object.getPrototypeOf(value);
+	if (prototype !== Object.prototype && prototype !== null) return false;
+	for (const key of Reflect.ownKeys(value)) {
+		if (typeof key !== 'string') return false;
+		const property = Object.getOwnPropertyDescriptor(value, key);
+		if (property === undefined || !('value' in property)) return false;
+	}
+	return true;
+}
+
 function hasExactKeys(value: Record<string, unknown>, expected: readonly string[]): boolean {
 	return hasKnownKeys(value, expected, []);
 }
@@ -111,7 +136,11 @@ function hasKnownKeys(value: Record<string, unknown>, required: readonly string[
 	const allowed = new Set([...required, ...optional]);
 	const keys = Reflect.ownKeys(value);
 	return required.every(key => Object.hasOwn(value, key))
-		&& keys.every(key => typeof key === 'string' && allowed.has(key));
+		&& keys.every(key => {
+			if (typeof key !== 'string' || !allowed.has(key)) return false;
+			const property = Object.getOwnPropertyDescriptor(value, key);
+			return property !== undefined && 'value' in property;
+		});
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -248,7 +277,7 @@ export function encodeFfiValue(value: unknown, descriptor: FfiTypeDescriptor): u
 
 function rejectionError(error: unknown): JsError {
 	const converted = legacyToJsError(error);
-	return { kind: 'JsError', name: 'PromiseRejectionError', message: converted.message };
+	return { ...converted, name: 'PromiseRejectionError' };
 }
 
 /**
