@@ -629,9 +629,9 @@ export class JavaScriptEmitter {
 				if (type.declarationKind === 'record' && type.fields !== undefined) {
 					const declaration = this.#moduleDeclarations.find(item => item.kind === 'RecordDeclaration' && item.name === type.name) as A.RecordDeclaration | undefined;
 					const strict = declaration?.attributes.some(attribute => attribute.name === 'json' && attribute.arguments.some(argument => argument.kind === 'IdentifierExpression' && argument.name === 'strict')) === true;
-					return `{ kind: 'record', name: ${JSON.stringify(type.name)}, typeId: ${JSON.stringify(type.definitionId)}, fields: { ${[...type.fields].map(([name, field]) => `[${JSON.stringify(name)}]: ${this.recordFieldDescriptor(name, this.typeDescriptorFromTypeId(field, new Set(seen)), declaration)}`).join(', ')} }${strict ? ', strict: true' : ''} }`;
+					return `{ kind: 'record', name: ${javascriptStringLiteral(type.name)}, typeId: ${javascriptStringLiteral(type.definitionId)}, fields: { ${[...type.fields].map(([name, field]) => `[${javascriptStringLiteral(name)}]: ${this.recordFieldDescriptor(name, this.typeDescriptorFromTypeId(field, new Set(seen)), declaration)}`).join(', ')} }${strict ? ', strict: true' : ''} }`;
 				}
-				if (type.declarationKind === 'enum' && type.variants !== undefined) return `{ kind: 'enum', name: ${JSON.stringify(type.name)}, typeId: ${JSON.stringify(type.definitionId)}, variants: { ${[...type.variants].map(([name, values]) => `[${JSON.stringify(name)}]: [${values.map(value => this.typeDescriptorFromTypeId(value, new Set(seen))).join(', ')}]`).join(', ')} } }`;
+				if (type.declarationKind === 'enum' && type.variants !== undefined) return `{ kind: 'enum', name: ${javascriptStringLiteral(type.name)}, typeId: ${javascriptStringLiteral(type.definitionId)}, variants: { ${[...type.variants].map(([name, values]) => `[${javascriptStringLiteral(name)}]: [${values.map(value => this.typeDescriptorFromTypeId(value, new Set(seen))).join(', ')}]`).join(', ')} } }`;
 				return `{ kind: 'unknown' }`;
 			}
 			default: return `{ kind: 'unknown' }`;
@@ -645,7 +645,7 @@ export class JavaScriptEmitter {
 		const jsOptional = field?.attributes.some(attribute => attribute.name === 'jsOptional') === true;
 		if (jsonName === undefined && jsonDefault === undefined && !jsOptional) return typeDescriptor;
 		const properties = [`type: ${typeDescriptor}`];
-		if (jsonName?.kind === 'LiteralExpression' && jsonName.literalKind === 'String') properties.push(`jsonName: ${JSON.stringify(jsonName.value)}`);
+		if (jsonName?.kind === 'LiteralExpression' && jsonName.literalKind === 'String') properties.push(`jsonName: ${javascriptStringLiteral(jsonName.value as string)}`);
 		if (jsonDefault !== undefined) properties.push(`hasDefault: true`, `defaultValue: ${this.expression(jsonDefault)}`);
 		if (jsOptional) properties.push(`missingAsNone: true`, `omitWhenNone: true`);
 		return `{ ${properties.join(', ')} }`;
@@ -667,8 +667,8 @@ export class JavaScriptEmitter {
 				case 'Result': return `{ kind: 'result', value: ${this.typeDescriptor(type.arguments[0])}, error: ${this.typeDescriptor(type.arguments[1])} }`;
 			}
 			const declaration = this.#moduleDeclarations.find(item => 'name' in item && item.name === type.name);
-			if (declaration?.kind === 'RecordDeclaration') return `{ kind: 'record', name: ${JSON.stringify(type.name)}, typeId: ${JSON.stringify(this.declarationTypeId(declaration.symbolId, declaration.definitionId ?? `${this.#source.id}#${declaration.name}`))}, fields: { ${declaration.fields.map(field => `[${JSON.stringify(field.name)}]: ${this.recordFieldDescriptor(field.name, this.typeDescriptor(field.type), declaration)}`).join(', ')} } }`;
-			if (declaration?.kind === 'EnumDeclaration') return `{ kind: 'enum', name: ${JSON.stringify(type.name)}, typeId: ${JSON.stringify(this.declarationTypeId(declaration.symbolId, declaration.definitionId ?? `${this.#source.id}#${declaration.name}`))}, variants: { ${declaration.variants.map(variant => `[${JSON.stringify(variant.name)}]: [${variant.values.map(value => this.typeDescriptor(value)).join(', ')}]`).join(', ')} } }`;
+			if (declaration?.kind === 'RecordDeclaration') return `{ kind: 'record', name: ${javascriptStringLiteral(type.name)}, typeId: ${javascriptStringLiteral(this.declarationTypeId(declaration.symbolId, declaration.definitionId ?? `${this.#source.id}#${declaration.name}`))}, fields: { ${declaration.fields.map(field => `[${javascriptStringLiteral(field.name)}]: ${this.recordFieldDescriptor(field.name, this.typeDescriptor(field.type), declaration)}`).join(', ')} } }`;
+			if (declaration?.kind === 'EnumDeclaration') return `{ kind: 'enum', name: ${javascriptStringLiteral(type.name)}, typeId: ${javascriptStringLiteral(this.declarationTypeId(declaration.symbolId, declaration.definitionId ?? `${this.#source.id}#${declaration.name}`))}, variants: { ${declaration.variants.map(variant => `[${javascriptStringLiteral(variant.name)}]: [${variant.values.map(value => this.typeDescriptor(value)).join(', ')}]`).join(', ')} } }`;
 			if (declaration?.kind === 'NewtypeDeclaration') return this.typeDescriptor(declaration.underlying);
 			if (declaration?.kind === 'TypeAliasDeclaration') return this.typeDescriptor(declaration.target);
 			return `{ kind: 'unknown' }`;
