@@ -223,12 +223,13 @@ test('compiler routes JavaScript calls through whole-usage TypeScript resolution
 	assert.deepEqual(errorCodes(broadRejected), ['L4204']);
 
 	const unknownProvider = new TypeScriptInteropProvider({ projectRoot: root });
-	const unknownRejected = compileSource({
+	const unknownAccepted = compileSource({
 		id: 3,
-		path: join(root, 'src/unknown-rejected.virune'),
+		path: join(root, 'src/unknown-accepted.virune'),
 		text: `import js { echoUnknown } from "./library.js"\n\nfn use(value: Unknown) -> Unknown uses JavaScript {\n\treturn echoUnknown(value)\n}\n`,
 	}, { platform: 'node', jsInteropProvider: unknownProvider });
-	assert.deepEqual(errorCodes(unknownRejected), ['L4204']);
+	assert.deepEqual(errorCodes(unknownAccepted), []);
+	assert.match(unknownAccepted.output?.code ?? '', /virune-safe-ffi\/v1/u);
 
 	const contextualProvider = new TypeScriptInteropProvider({ projectRoot: root });
 	const contextualRejected = compileSource({
