@@ -182,11 +182,11 @@ export class JavaScriptEmitter {
 		this.#writer.indent(() => {
 			const validated = declaration.parameters.map((parameter, index) => {
 				const local = `$arg_${safeName(parameter.name)}`;
-				this.#writer.line(`const ${local} = validateFfiValue(${rawParameters[index]}, ${this.typeDescriptor(parameter.type)}, ${JSON.stringify(`$.${parameter.name}`)});`);
+				this.#writer.line(`const ${local} = validateSafeFfiValue(${rawParameters[index]}, ${this.safeFfiBoundary(this.typeDescriptor(parameter.type))}, ${JSON.stringify(`$.${parameter.name}`)});`);
 				return local;
 			});
 			const call = `${implementationName}(${[...validated, 'rootTaskContext()'].join(', ')})`;
-			this.#writer.line(`return encodeFfiValue(${declaration.async ? `await ${call}` : call}, ${this.typeDescriptor(declaration.returnType)});`);
+			this.#writer.line(`return encodeSafeFfiValue(${declaration.async ? `await ${call}` : call}, ${this.safeFfiBoundary(this.typeDescriptor(declaration.returnType))});`);
 		});
 		this.#writer.line('}');
 	}
@@ -197,7 +197,9 @@ export class JavaScriptEmitter {
 			const name = this.nameOf(fn.symbolId, fn.name);
 			const args = fn.parameters.map(parameter => this.nameOf(parameter.symbolId, parameter.name));
 			if (fn.async) args.push('$ctx = rootTaskContext()');
-			const encoded = fn.parameters.map(parameter => `encodeFfiValue(${this.nameOf(parameter.symbolId, parameter.name)}, ${this.typeDescriptor(parameter.type)})`);
+			const encoded = fn.parameters.map(parameter => declaration.unsafe
+				? `encodeFfiValue(${this.nameOf(parameter.symbolId, parameter.name)}, ${this.typeDescriptor(parameter.type)})`
+				: `encodeSafeFfiValue(${this.nameOf(parameter.symbolId, parameter.name)}, ${this.safeFfiBoundary(this.typeDescriptor(parameter.type))})`);
 			const optionalCount = [...fn.parameters].reverse().findIndex(parameter => !parameter.optional);
 			const trailingOptional = optionalCount < 0 ? fn.parameters.length : optionalCount;
 			const invocation = (body: string): string => {
@@ -207,8 +209,8 @@ export class JavaScriptEmitter {
 			};
 			const rawCall = `$ffi${externIndex}[${JSON.stringify(fn.jsName)}]($ARGS)`;
 			if (declaration.unsafe) this.#writer.line(`${fn.async ? 'async ' : ''}function ${name}(${args.join(', ')}) ${invocation(`{ return ${rawCall}; }`)}`);
-			else if (fn.async) { const success = fn.returnType.name === 'Result' ? fn.returnType.arguments[0] : undefined; this.#writer.line(`async function ${name}(${args.join(', ')}) ${invocation(`{ return safeCallAsync(() => ${rawCall}, $value => validateFfiValue($value, ${this.typeDescriptor(success)}, '$')); }`)}`); }
-			else { const success = fn.returnType.name === 'Result' ? fn.returnType.arguments[0] : undefined; this.#writer.line(`function ${name}(${args.join(', ')}) ${invocation(`{ return safeCall(() => validateFfiValue(${rawCall}, ${this.typeDescriptor(success)}, '$')); }`)}`); }
+			else if (fn.async) { const success = fn.returnType.name === 'Result' ? fn.returnType.arguments[0] : undefined; this.#writer.line(`async function ${name}(${args.join(', ')}) ${invocation(`{ return safeCallAsync(() => ${rawCall}, $value => validateSafeFfiValue($value, ${this.safeFfiBoundary(this.typeDescriptor(success))}, '$')); }`)}`); }
+			else { const success = fn.returnType.name === 'Result' ? fn.returnType.arguments[0] : undefined; this.#writer.line(`function ${name}(${args.join(', ')}) ${invocation(`{ return safeCall(() => validateSafeFfiValue(${rawCall}, ${this.safeFfiBoundary(this.typeDescriptor(success))}, '$')); }`)}`); }
 		}
 	}
 
@@ -286,7 +288,7 @@ export class JavaScriptEmitter {
 	private emitIf(statement: A.IfStatement): void {
 		this.#writer.line(`if (${this.expression(statement.condition)}) {`); this.#writer.indent(() => this.emitBlock(statement.thenBlock));
 		if (statement.elseBranch === undefined) this.#writer.line('}');
-		else if (statement.elseBranch.kind === 'BlockStatement') { this.#writer.line('} else {'); this.#writer.indent(() => this.emitBlock(statement.elseBranch as A.BlockStatement)); this.#writer.line('}'); }
+		else if (statement.elseBranch.kind === 'BlockStatement') { this.#writer.line('} else {'); this.#writer.indent(() => this.emitBlock(statement.elseBranch as A.IfStatement)); this.#writer.line('}'); }
 		else { this.#writer.line('} else {'); this.#writer.indent(() => this.emitIf(statement.elseBranch as A.IfStatement)); this.#writer.line('}'); }
 	}
 
@@ -298,7 +300,7 @@ export class JavaScriptEmitter {
 			case 'float': return `checkForeignFloat(${raw})`;
 			case 'bigint': return `checkForeignBigInt(${raw})`;
 			case 'unit': return `(${raw}, undefined)`;
-			case 'unknown': return `validateFfiValue(${raw}, { kind: 'unknown-provenance', version: 'v1' })`;
+			case 'unknown': return `validateSafeFfiValue(${raw}, ${this.safeFfiBoundary(`{ kind: 'unknown' }`)})`;
 			default: return raw;
 		}
 	}
@@ -432,7 +434,7 @@ export class JavaScriptEmitter {
 			const raw = this.expression(argument, contextName);
 			const type = argument.inferredTypeId === undefined ? undefined : this.#semantic.arena.get(argument.inferredTypeId);
 			const guarded = foreignInvocation && type?.kind === 'primitive' && type.name === 'Unknown'
-				? `encodeFfiValue(${raw}, { kind: 'unknown-provenance', version: 'v1' })`
+				? `encodeSafeFfiValue(${raw}, ${this.safeFfiBoundary(`{ kind: 'unknown' }`)})`
 				: raw;
 			const projection = this.#semantic.interop.callableProjections?.find(item => item.callNodeId === expression.id && item.argumentIndex === index);
 			return projection === undefined ? guarded : this.callableProjection(guarded, projection.descriptor);
@@ -601,7 +603,6 @@ export class JavaScriptEmitter {
 				switch (type.name) {
 					case 'String': return `{ kind: 'string' }`; case 'Bool': return `{ kind: 'bool' }`; case 'Int': return `{ kind: 'int' }`;
 					case 'Float': return `{ kind: 'float' }`; case 'BigInt': return `{ kind: 'bigint' }`; case 'Unit': return `{ kind: 'unit' }`;
-					case 'Unknown': return `{ kind: 'unknown-provenance', version: 'v1' }`;
 					default: return `{ kind: 'unknown' }`;
 				}
 			case 'list': return `{ kind: 'list', item: ${this.typeDescriptorFromTypeId(type.element, new Set(seen))} }`;
@@ -645,7 +646,7 @@ export class JavaScriptEmitter {
 			switch (type.name) {
 				case 'String': return `{ kind: 'string' }`; case 'Bool': return `{ kind: 'bool' }`; case 'Int': return `{ kind: 'int' }`;
 				case 'Float': return `{ kind: 'float' }`; case 'BigInt': return `{ kind: 'bigint' }`; case 'Unit': return `{ kind: 'unit' }`;
-				case 'Unknown': return `{ kind: 'unknown-provenance', version: 'v1' }`;
+				case 'Unknown': return `{ kind: 'unknown' }`;
 				case 'Bytes': return `{ kind: 'bytes' }`;
 				case 'List': return `{ kind: 'list', item: ${this.typeDescriptor(type.arguments[0])} }`;
 				case 'Map': return `{ kind: 'map', key: ${this.typeDescriptor(type.arguments[0])}, value: ${this.typeDescriptor(type.arguments[1])} }`;
@@ -661,6 +662,10 @@ export class JavaScriptEmitter {
 			return `{ kind: 'unknown' }`;
 		})();
 		return type.optional ? `{ kind: 'option', value: ${base} }` : base;
+	}
+
+	private safeFfiBoundary(typeDescriptor: string): string {
+		return `{ version: 'virune-safe-ffi/v1', type: ${typeDescriptor} }`;
 	}
 
 	private declarationTypeId(symbolId: SymbolId | undefined, fallback: string): string {
