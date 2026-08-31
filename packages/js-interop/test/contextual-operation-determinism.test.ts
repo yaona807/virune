@@ -9,6 +9,7 @@ import {
 	IncrementalProjectBuilder,
 	type ProjectBuildResult,
 } from '@virune/compiler/experimental';
+import { CachedTypeScriptInteropProvider } from '../src/cached-provider.js';
 import { TypeScriptInteropProvider } from '../src/index.js';
 
 const repositoryRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..');
@@ -78,6 +79,7 @@ test('contextual External operation output and evidence are deterministic across
 	const clean = stableResult(await buildProject(root, { write: false, jsInteropProvider: sharedProvider }));
 	const reusedProvider = stableResult(await buildProject(root, { write: false, jsInteropProvider: sharedProvider }));
 	const freshProvider = stableResult(await buildProject(root, { write: false, jsInteropProvider: new TypeScriptInteropProvider({ projectRoot: root }) }));
+	const cachedProvider = stableResult(await buildProject(root, { write: false, jsInteropProvider: new CachedTypeScriptInteropProvider({ projectRoot: root }) }));
 
 	const incremental = new IncrementalProjectBuilder();
 	const incrementalProvider = new TypeScriptInteropProvider({ projectRoot: root });
@@ -93,7 +95,7 @@ test('contextual External operation output and evidence are deterministic across
 		jsInteropProvider: new TypeScriptInteropProvider({ projectRoot: equivalentRoot }),
 	}));
 
-	for (const candidate of [reusedProvider, freshProvider, incrementalFirstStable, incrementalSecondStable, equivalent]) {
+	for (const candidate of [reusedProvider, freshProvider, cachedProvider, incrementalFirstStable, incrementalSecondStable, equivalent]) {
 		assert.equal(candidate.code, clean.code);
 		assert.deepEqual(candidate.operations, clean.operations);
 	}
