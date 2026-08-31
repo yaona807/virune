@@ -33,6 +33,11 @@ fn callback(value: String) -> String {
 	return value
 }
 
+async fn closeHandle(handle: FileHandle) -> Unit uses File {
+	discard await File.close(handle)
+	return Unit
+}
+
 @jsExport
 pub fn roundTripForeign() -> Bool uses JavaScript {
 	let value: Unknown = foreignValue()
@@ -80,6 +85,14 @@ pub fn rejectCallable() -> Bool uses JavaScript {
 	let erased: Unknown = callback
 	return acceptUnknown(erased)
 }
+
+@jsExport
+pub async fn rejectFileHandle(path: String) -> Result<Bool, JsError> uses File, JavaScript {
+	let handle = (await File.open(path, "r"))?
+	defer await closeHandle(handle)
+	let erased: Unknown = handle
+	return Ok(acceptUnknown(erased))
+}
 `, 'utf8');
 	await writeFile(join(root, 'src/library.d.ts'), `export declare function foreignValue(): unknown;
 export declare function sameForeign(value: unknown): boolean;
@@ -123,6 +136,7 @@ test('emitted Safe boundary preserves foreign identity and rejects erased native
 		rejectRecord(value: { value: string }): boolean;
 		rejectList(value: string[]): boolean;
 		rejectCallable(): boolean;
+		rejectFileHandle(path: string): Promise<unknown>;
 	};
 	const library = await import(`${pathToFileURL(join(root, 'dist/library.js')).href}`) as { callCount(): number };
 
@@ -136,5 +150,8 @@ test('emitted Safe boundary preserves foreign identity and rejects erased native
 	assert.throws(() => module.rejectRecord({ value: 'native' }), isProvenanceRejection);
 	assert.throws(() => module.rejectList(['native']), isProvenanceRejection);
 	assert.throws(() => module.rejectCallable(), isProvenanceRejection);
+	const resourcePath = join(root, 'resource.txt');
+	await writeFile(resourcePath, 'resource', 'utf8');
+	await assert.rejects(module.rejectFileHandle(resourcePath), isProvenanceRejection);
 	assert.equal(library.callCount(), 5);
 });
