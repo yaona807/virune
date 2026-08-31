@@ -332,7 +332,7 @@ export class JavaScriptEmitter {
 			case 'PipelineExpression': return panicEmitter('PipelineExpression should be lowered before emission');
 			case 'TryExpression': return `propagate(${this.expression(expression.operand, contextName)})`;
 			case 'AwaitExpression': return `(await ${this.expression(expression.operand, contextName)})`;
-			case 'RecordExpression': { const type = expression.inferredTypeId === undefined ? undefined : this.#semantic.arena.get(expression.inferredTypeId); const typeId = type?.kind === 'named' ? type.definitionId : expression.name; return `makeRecord({ ${expression.entries.map(entry => `${safeName(entry.name)}: ${this.expression(entry.value, contextName)}`).join(', ')} }, ${JSON.stringify(typeId)})`; }
+			case 'RecordExpression': { const type = expression.inferredTypeId === undefined ? undefined : this.#semantic.arena.get(expression.inferredTypeId); const typeId = type?.kind === 'named' ? type.definitionId : expression.name; return `makeRecord({ ${expression.entries.map(entry => `${safeName(entry.name)}: ${this.expression(entry.value, contextName)}`).join(', ')} }, ${javascriptStringLiteral(typeId)})`; }
 			case 'RecordUpdateExpression': return `updateRecord(${this.expression(expression.base, contextName)}, { ${expression.entries.map(entry => `${safeName(entry.name)}: ${this.expression(entry.value, contextName)}`).join(', ')} })`;
 			case 'ContextualAggregateExpression': return this.contextualAggregate(expression, contextName);
 			case 'ListExpression': return `[${expression.items.map(item => this.expression(item, contextName)).join(', ')}]`;
@@ -417,7 +417,7 @@ export class JavaScriptEmitter {
 	private literal(expression: A.LiteralExpression): string {
 		if (expression.literalKind === 'String') return this.interpolatedString(expression.value as string);
 		if (expression.literalKind === 'BigInt') return `${String(expression.value)}n`;
-		return JSON.stringify(expression.value);
+		return String(expression.value);
 	}
 
 	private interpolatedString(value: string): string {
