@@ -48,14 +48,15 @@ test('legacy ABI v2 unknown remains pass through', () => {
 	assert.strictEqual(encodeFfiValue(nativeRecord, { kind: 'unknown' }), nativeRecord);
 });
 
-// @virune-rule {"id":"interop.unknown-provenance-malformed","runner":"unit","file":"packages/runtime/test/ffi-unknown-provenance.test.ts","case":"malformed or stale provenance descriptors fail closed","kind":"negative","platform":"common"}
-test('malformed or stale provenance descriptors fail closed', () => {
+// @virune-rule {"id":"interop.unknown-provenance-malformed","runner":"unit","file":"packages/runtime/test/ffi-unknown-provenance.test.ts","case":"malformed fabricated or stale provenance descriptors fail closed","kind":"negative","platform":"common"}
+test('malformed, fabricated, or stale provenance descriptors fail closed', () => {
 	const partial = { kind: 'unknown-provenance' } as unknown as FfiTypeDescriptor;
 	const stale = { kind: 'unknown-provenance', version: 'v0' } as unknown as FfiTypeDescriptor;
-	assert.throws(() => validateFfiValue({}, partial), ForeignDecodeError);
-	assert.throws(() => encodeFfiValue({}, partial), ForeignDecodeError);
-	assert.throws(() => validateFfiValue({}, stale), ForeignDecodeError);
-	assert.throws(() => encodeFfiValue({}, stale), ForeignDecodeError);
+	const fabricated = { kind: 'unknown-provenance', version: 'v1', trusted: true } as unknown as FfiTypeDescriptor;
+	for (const descriptor of [partial, stale, fabricated]) {
+		assert.throws(() => validateFfiValue({}, descriptor), ForeignDecodeError);
+		assert.throws(() => encodeFfiValue({}, descriptor), ForeignDecodeError);
+	}
 });
 
 // @virune-rule {"id":"interop.error-origin","runner":"unit","file":"packages/runtime/test/ffi-unknown-provenance.test.ts","case":"foreign execution contract decode and internal errors stay distinguishable","kind":"positive","platform":"common"}
