@@ -60,6 +60,22 @@ test('non-enumerable Safe descriptor map entries cannot bypass validation', () =
 	assert.throws(() => encodeFfiValue(value, descriptor), ForeignDecodeError);
 });
 
+// @virune-rule {"id":"ffi.unknown-provenance","runner":"unit","file":"packages/runtime/test/ffi-safe-descriptor-canonicality.test.ts","case":"custom Safe descriptor array prototypes cannot replace traversal methods","kind":"negative","platform":"common"}
+test('custom Safe descriptor array prototypes cannot replace traversal methods', () => {
+	const items = [{ kind: 'unknown' }];
+	Object.setPrototypeOf(items, {
+		map: () => [],
+		forEach: () => undefined,
+	});
+	const descriptor = {
+		version: 'virune-safe-ffi/v1',
+		type: { kind: 'tuple', items },
+	} as unknown as FfiTypeDescriptor;
+	const value = [{ token: 'foreign' }];
+	assert.throws(() => validateFfiValue(value, descriptor), ForeignDecodeError);
+	assert.throws(() => encodeFfiValue(value, descriptor), ForeignDecodeError);
+});
+
 // @virune-rule {"id":"ffi.unknown-provenance","runner":"unit","file":"packages/runtime/test/ffi-safe-descriptor-canonicality.test.ts","case":"Safe record default metadata preserves an explicit undefined default","kind":"positive","platform":"common"}
 test('Safe record default metadata preserves an explicit undefined default', () => {
 	const descriptor = safeRecordBoundary({ type: { kind: 'unknown' }, hasDefault: true, defaultValue: undefined });
