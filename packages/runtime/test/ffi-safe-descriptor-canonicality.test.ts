@@ -25,10 +25,27 @@ test('partial Safe record field metadata fails closed', () => {
 		safeRecordBoundary({ type: { kind: 'unknown' }, missingAsNone: true }),
 		safeRecordBoundary({ type: { kind: 'unknown' }, omitWhenNone: true }),
 		safeRecordBoundary({ type: { kind: 'unknown' }, missingAsNone: false, omitWhenNone: false }),
+		safeRecordBoundary({ type: { kind: 'unknown' }, jsName: undefined }),
+		safeRecordBoundary({ type: { kind: 'unknown' }, jsonName: undefined }),
 	];
 	for (const descriptor of malformed) {
 		assert.throws(() => validateFfiValue({ value: 'foreign' }, descriptor), ForeignDecodeError);
 		assert.throws(() => encodeFfiValue(makeRecord({ value: 'native' }, 'Payload'), descriptor), ForeignDecodeError);
+	}
+});
+
+// @virune-rule {"id":"ffi.unknown-provenance","runner":"unit","file":"packages/runtime/test/ffi-safe-descriptor-canonicality.test.ts","case":"undefined Safe optional descriptor metadata fails closed","kind":"negative","platform":"common"}
+test('undefined Safe optional descriptor metadata fails closed', () => {
+	const malformed = [
+		{ version: 'virune-safe-ffi/v1', type: { kind: 'option', value: { kind: 'unknown' }, noneAs: undefined } },
+		{ version: 'virune-safe-ffi/v1', type: { kind: 'record', name: 'Payload', fields: {}, typeId: undefined } },
+		{ version: 'virune-safe-ffi/v1', type: { kind: 'record', name: 'Payload', fields: {}, strict: undefined } },
+		{ version: 'virune-safe-ffi/v1', type: { kind: 'record', name: 'Payload', fields: {}, allowClassInstance: undefined } },
+		{ version: 'virune-safe-ffi/v1', type: { kind: 'enum', name: 'Payload', variants: {}, typeId: undefined } },
+	] as unknown as readonly FfiTypeDescriptor[];
+	for (const descriptor of malformed) {
+		assert.throws(() => validateFfiValue({}, descriptor), ForeignDecodeError);
+		assert.throws(() => encodeFfiValue({}, descriptor), ForeignDecodeError);
 	}
 });
 
