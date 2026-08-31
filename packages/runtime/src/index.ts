@@ -3,6 +3,7 @@ export * from './int.js';
 export * from './collections.js';
 export * from './json.js';
 export * from './task.js';
+export { encodeFfiValue, safeCallAsync, validateFfiValue } from './ffi-boundary.js';
 export * from './ffi.js';
 export * from './text.js';
 export * from './validation.js';

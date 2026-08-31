@@ -8,6 +8,16 @@ export const BASE_RUNTIME_IMPORT_LINE = "import { Err, None, Ok, Some, checkFore
 export function runtimeImportLines(module: A.ModuleNode): readonly string[] {
 	const lines: string[] = [];
 	lines.push(BASE_RUNTIME_IMPORT_LINE);
+	const hasJavaScriptBoundary = module.imports.some(item => item.sourceKind === 'javascript') || module.declarations.some(item =>
+		item.kind === 'ExternDeclaration'
+		|| item.kind === 'FunctionDeclaration' && item.attributes.some(attribute => attribute.name === 'jsExport'),
+	);
+	if (hasJavaScriptBoundary) {
+		lines.push('const $viruneEncodeSafeFfiValue = encodeFfiValue;');
+		lines.push('const $viruneValidateSafeFfiValue = validateFfiValue;');
+		lines.push('let $virunePanicConstructor;');
+		lines.push("function $viruneExternalizeInteropError($error) { if ($virunePanicConstructor === undefined) { try { panic('$virune.callback-boundary-probe'); } catch ($probe) { $virunePanicConstructor = $probe.constructor; } } if (isPropagation($error) || $error instanceof $virunePanicConstructor) return new Error('Virune callback failed'); return $error; }");
+	}
 	const builtins = collectBuiltinNamespaces(module);
 	if (builtins.has('File')) lines.push("import { closeHandle as $fileClose, openHandle as $fileOpen, readBytes as $fileReadBytes, readHandle as $fileRead, readHandleBytes as $fileReadHandleBytes, readText as $fileReadText, writeBytes as $fileWriteBytes, writeHandle as $fileWrite, writeHandleBytes as $fileWriteHandleBytes, writeText as $fileWriteText } from '@virune/stdlib/node/fs';");
 	if (builtins.has('Path')) lines.push("import { basename as $pathBasename, dirname as $pathDirname, extname as $pathExtname, isAbsolute as $pathIsAbsolute, joinParts as $pathJoin, normalize as $pathNormalize, relative as $pathRelative, resolveParts as $pathResolve } from '@virune/stdlib/node/path';");

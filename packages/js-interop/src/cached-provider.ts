@@ -1,10 +1,16 @@
 import { resolve } from 'node:path';
 import type {
 	ForeignCallResolution,
+	ForeignIndexResolution,
+	ForeignObjectResolution,
 	ForeignTypeRef,
 	ForeignTypeSnapshot,
+	ForeignWriteResolution,
 	InteropArgumentType,
 	InteropCallUsage,
+	InteropIndexUsage,
+	InteropObjectUsage,
+	InteropWriteUsage,
 	JsImportRequest,
 	JsImportResolution,
 	JsInteropProvider,
@@ -38,8 +44,44 @@ export class CachedTypeScriptInteropProvider implements JsInteropProvider {
 		this.generation = provider.generation;
 		Object.defineProperty(this, 'resolveCallUsage', {
 			value: (type: ForeignTypeRef, usage: InteropCallUsage): ForeignCallResolution | undefined => {
-				const active = this.#requireProvider() as JsInteropProvider;
+				const active: JsInteropProvider = this.#requireProvider();
 				return active.resolveCallUsage?.(type, usage);
+			},
+			enumerable: false,
+			configurable: false,
+			writable: false,
+		});
+		Object.defineProperty(this, 'resolveConstructUsage', {
+			value: (type: ForeignTypeRef, usage: InteropCallUsage): ForeignCallResolution | undefined => {
+				const active: JsInteropProvider = this.#requireProvider();
+				return active.resolveConstructUsage?.(type, usage);
+			},
+			enumerable: false,
+			configurable: false,
+			writable: false,
+		});
+		Object.defineProperty(this, 'resolveIndexUsage', {
+			value: (type: ForeignTypeRef, usage: InteropIndexUsage): ForeignIndexResolution | undefined => {
+				const active: JsInteropProvider = this.#requireProvider();
+				return active.resolveIndexUsage?.(type, usage);
+			},
+			enumerable: false,
+			configurable: false,
+			writable: false,
+		});
+		Object.defineProperty(this, 'resolveWriteUsage', {
+			value: (type: ForeignTypeRef, usage: InteropWriteUsage): ForeignWriteResolution | undefined => {
+				const active: JsInteropProvider = this.#requireProvider();
+				return active.resolveWriteUsage?.(type, usage);
+			},
+			enumerable: false,
+			configurable: false,
+			writable: false,
+		});
+		Object.defineProperty(this, 'resolveObjectUsage', {
+			value: (type: ForeignTypeRef, usage: InteropObjectUsage): ForeignObjectResolution | undefined => {
+				const active: JsInteropProvider = this.#requireProvider();
+				return active.resolveObjectUsage?.(type, usage);
 			},
 			enumerable: false,
 			configurable: false,

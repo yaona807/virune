@@ -17,7 +17,7 @@ const temporaryRoot = join(repositoryRoot, '.test-tmp');
 
 async function createProject(): Promise<string> {
 	await mkdir(temporaryRoot, { recursive: true });
-	const root = await mkdtemp(join(temporaryRoot, 'virune-interop-contextual-determinism-'));
+	const root = await mkdtemp(join(temporaryRoot, 'virune-interop-unknown-determinism-'));
 	await mkdir(join(root, 'src'), { recursive: true });
 	await writeFile(join(root, 'package.json'), '{"type":"module"}\n', 'utf8');
 	await writeFile(join(root, 'virune.json'), JSON.stringify({
@@ -31,30 +31,21 @@ async function createProject(): Promise<string> {
 		sourcesContent: false,
 	}), 'utf8');
 	await writeFile(join(root, 'src/library.js'), `
-export function consume(config) { return config; }
-export const values = { key: 'value' };
-export const state = { name: 'old' };
-export class Box { constructor(value) { this.value = value; } }
+const value = { stable: true };
+export function foreignValue() { return value; }
+export function acceptUnknown(_value) { return true; }
 `, 'utf8');
 	await writeFile(join(root, 'src/library.d.ts'), `
-export declare function consume(config: { mode: 'strict'; transform: (value: number) => number }): void;
-export declare const values: { key: string };
-export declare const state: { name: string; [key: string]: string };
-export declare class Box<T> { constructor(value: T); readonly value: T; }
+export declare function foreignValue(): unknown;
+export declare function acceptUnknown(value: unknown): boolean;
 `, 'utf8');
-	await writeFile(join(root, 'src/main.virune'), `import js { consume, values, state, Box } from "./library.js"
+	await writeFile(join(root, 'src/main.virune'), `import js { foreignValue, acceptUnknown } from "./library.js"
 
-fn callback(value: Float) -> Float {
-	return value
-}
-
-pub fn main() -> Unit uses JavaScript {
-	discard consume({ mode: "strict", transform: callback })
-	discard values["key"]
-	state.name = "changed"
-	state["extra"] = "value"
-	discard Box(1.0)
-	return Unit
+pub fn main(value: String) -> Bool uses JavaScript {
+	let foreign: Unknown = foreignValue()
+	discard acceptUnknown(foreign)
+	let erased: Unknown = value
+	return acceptUnknown(erased)
 }
 `, 'utf8');
 	return root;
@@ -65,15 +56,15 @@ function stableResult(result: ProjectBuildResult) {
 	const module = result.modules.find(item => item.source.path.endsWith('main.virune'));
 	assert.ok(module?.semantic);
 	assert.ok(module.output);
-	const serialized = JSON.stringify(externalOperationSequence(module.semantic));
-	assert.doesNotMatch(serialized, /\.test-tmp|virune-interop-contextual-determinism|[A-Za-z]:\\|file:\/\//u);
-	return {
-		code: module.output.code,
-		operations: externalOperationSequence(module.semantic),
-	};
+	const operations = externalOperationSequence(module.semantic);
+	const serialized = JSON.stringify(operations);
+	assert.doesNotMatch(serialized, /\.test-tmp|virune-interop-unknown-determinism|[A-Za-z]:\\|file:\/\//u);
+	assert.match(module.output.code, /version: 'virune-safe-ffi\/v1', type: \{ kind: 'unknown' \}/u);
+	return { code: module.output.code, operations };
 }
 
-test('contextual External operation output and evidence are deterministic across clean, provider-cache, incremental, and equivalent-root builds', async () => {
+// @virune-rule {"id":"ffi.unknown-provenance","runner":"unit","file":"packages/js-interop/test/unknown-provenance-determinism.test.ts","case":"Unknown provenance output and evidence are deterministic across clean, provider-cache, incremental, and equivalent-root builds","kind":"positive","platform":"node"}
+test('Unknown provenance output and evidence are deterministic across clean, provider-cache, incremental, and equivalent-root builds', async () => {
 	const root = await createProject();
 	const sharedProvider = new TypeScriptInteropProvider({ projectRoot: root });
 	const clean = stableResult(await buildProject(root, { write: false, jsInteropProvider: sharedProvider }));

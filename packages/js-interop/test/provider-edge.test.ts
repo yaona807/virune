@@ -23,7 +23,7 @@ test('resolves Node standard module declarations in node projects', async () => 
 	assert.equal(imported.type?.category, 'function');
 });
 
-test('rejects native Unknown outbound while preserving known primitive arguments to TypeScript unknown and any', async () => {
+test('lets whole-usage TypeScript proof route direct Unknown through the Safe boundary while approximate calls stay conservative', async () => {
 	const root = await fixtureRoot();
 	await writeFile(join(root, 'src/library.d.ts'), [
 		'export declare function parseUnknown(value: unknown): unknown;',
@@ -42,19 +42,21 @@ test('rejects native Unknown outbound while preserving known primitive arguments
 	assert.equal(provider.resolveCall(parseAny.ref, [{ kind: 'unknown' }]), undefined);
 	assert.ok(provider.resolveCall(parseAny.ref, [{ kind: 'native-primitive', primitive: 'String' }]));
 
-	const rejectedUnknown = compileSource({
+	const acceptedUnknown = compileSource({
 		id: 1,
-		path: join(root, 'src/rejected-unknown.virune'),
+		path: join(root, 'src/accepted-unknown.virune'),
 		text: `import js { parseUnknown } from "./library.js"\n\nfn roundTrip(value: Unknown) -> Unknown uses JavaScript {\n\treturn parseUnknown(value)\n}\n`,
 	}, { platform: 'node', jsInteropProvider: provider });
-	assert.deepEqual(errorCodes(rejectedUnknown), ['L4204']);
+	assert.deepEqual(errorCodes(acceptedUnknown), []);
+	assert.match(acceptedUnknown.output?.code ?? '', /virune-safe-ffi\/v1/u);
 
-	const rejectedAny = compileSource({
+	const acceptedAny = compileSource({
 		id: 2,
-		path: join(root, 'src/rejected-any.virune'),
+		path: join(root, 'src/accepted-any.virune'),
 		text: `import js { parseAny } from "./library.js"\n\nfn roundTrip(value: Unknown) -> Unknown uses JavaScript {\n\treturn parseAny(value)\n}\n`,
 	}, { platform: 'node', jsInteropProvider: provider });
-	assert.deepEqual(errorCodes(rejectedAny), ['L4204']);
+	assert.deepEqual(errorCodes(acceptedAny), []);
+	assert.match(acceptedAny.output?.code ?? '', /virune-safe-ffi\/v1/u);
 
 	const acceptedKnown = compileSource({
 		id: 3,

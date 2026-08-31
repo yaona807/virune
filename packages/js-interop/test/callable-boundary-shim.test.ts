@@ -124,7 +124,7 @@ test('emits async callable projection without weakening rejection semantics', as
 	);
 	assert.deepEqual(result.diagnostics.filter(item => item.severity === 'error'), []);
 	const code = result.output?.code ?? '';
-	assert.match(code, /async \(\$raw0\) => \{ return encodeFfiValue\(await \$fn\(/u);
+	assert.match(code, /async \(\$raw0\) => \{ try \{ return encodeFfiValue\(await \$fn\([\s\S]*?\), \{ kind: 'string' \}\); \} catch \(\$error\) \{ throw \$viruneExternalizeInteropError\(\$error\); \} \}/u);
 	assert.equal(result.semantic?.interop.callableProjections?.[0]?.descriptor.async, true);
 });
 

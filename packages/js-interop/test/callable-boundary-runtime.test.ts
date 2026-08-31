@@ -87,22 +87,22 @@ test('invalid JavaScript callback arguments are rejected by the generated shim b
 	});
 });
 
-test('sync panic crosses the callable boundary as a throw, never an encoded return value', async () => {
+test('sync panic crosses the callable boundary only as a sanitized JavaScript error', async () => {
 	const { root } = await buildRuntimeFixture(
 		`import js { invoke } from "./library.js"\n\nfn callback(value: String) -> String {\n\treturn panic("callback panic")\n}\n\n@jsExport\npub fn run() -> String uses JavaScript {\n\treturn invoke(callback)\n}\n`,
 		'export declare function invoke(callback: (value: string) => string): string;\n',
 		'export function invoke(callback) { return callback("value"); }\n',
 	);
 	const module = await import(`${pathToFileURL(join(root, 'dist/main.js')).href}?case=sync-panic`) as { run(): string };
-	assert.throws(() => module.run(), (error: unknown) => error instanceof Error && error.name === 'VirunePanic' && error.message === 'callback panic');
+	assert.throws(() => module.run(), (error: unknown) => error instanceof Error && error.name === 'Error' && error.message === 'Virune callback failed' && !('code' in error));
 });
 
-test('async callback panic remains a rejected promise across the JavaScript boundary', async () => {
+test('async callback panic remains a sanitized rejected promise across the JavaScript boundary', async () => {
 	const { root } = await buildRuntimeFixture(
 		`import js { invokeAsync } from "./library.js"\n\nasync fn callback(value: String) -> String {\n\treturn panic("async callback panic")\n}\n\n@jsExport\npub async fn runAsync() -> String uses JavaScript {\n\treturn await invokeAsync(callback)\n}\n`,
 		'export declare function invokeAsync(callback: (value: string) => Promise<string>): Promise<string>;\n',
 		'export async function invokeAsync(callback) { return await callback("value"); }\n',
 	);
 	const module = await import(`${pathToFileURL(join(root, 'dist/main.js')).href}?case=async-panic`) as { runAsync(): Promise<string> };
-	await assert.rejects(module.runAsync(), (error: unknown) => error instanceof Error && error.name === 'VirunePanic' && error.message === 'async callback panic');
+	await assert.rejects(module.runAsync(), (error: unknown) => error instanceof Error && error.name === 'Error' && error.message === 'Virune callback failed' && !('code' in error));
 });
