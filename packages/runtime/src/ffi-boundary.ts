@@ -99,7 +99,13 @@ function isCanonicalRecordField(value: unknown, active: WeakSet<object>, depth: 
 	if (!isCanonicalFfiDescriptor(value.type, active, depth)) return false;
 	if (value.jsName !== undefined && typeof value.jsName !== 'string') return false;
 	if (value.jsonName !== undefined && typeof value.jsonName !== 'string') return false;
-	for (const key of ['hasDefault', 'missingAsNone', 'omitWhenNone'] as const) if (value[key] !== undefined && typeof value[key] !== 'boolean') return false;
+	const hasDefault = Object.hasOwn(value, 'hasDefault');
+	const hasDefaultValue = Object.hasOwn(value, 'defaultValue');
+	if (hasDefault !== hasDefaultValue || hasDefault && value.hasDefault !== true) return false;
+	const missingAsNone = Object.hasOwn(value, 'missingAsNone');
+	const omitWhenNone = Object.hasOwn(value, 'omitWhenNone');
+	if (missingAsNone !== omitWhenNone) return false;
+	if (missingAsNone && (value.missingAsNone !== true || value.omitWhenNone !== true)) return false;
 	return true;
 }
 
