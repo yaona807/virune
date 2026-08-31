@@ -44,7 +44,7 @@ pub fn echo(value: ProtoVariant) -> ProtoVariant {
 	assert.doesNotMatch(code, /variants: \{ "__proto__":/u);
 });
 
-// @virune-rule {"id":"ffi.safe","runner":"unit","file":"packages/compiler/test/ffi-safe-descriptor-keys.test.ts","case":"Safe record descriptors escape script-breaking JSON field names","kind":"negative","platform":"common"}
+// @virune-rule {"id":"ffi.safe","runner":"unit","file":"packages/compiler/test/ffi-safe-descriptor-keys.test.ts","case":"Safe record descriptors escape script-breaking JSON field names","kind":"positive","platform":"common"}
 test('Safe record descriptors escape script-breaking JSON field names', () => {
 	const result = compileSource({
 		id: 1,
@@ -63,5 +63,27 @@ pub fn echo(value: ScriptPayload) -> ScriptPayload {
 	assert.deepEqual(result.diagnostics.filter(item => item.severity === 'error'), []);
 	const code = result.output?.code ?? '';
 	assert.match(code, /jsonName: "\\u003C\\u002Fscript\\u003E"/u);
+	assert.doesNotMatch(code, /<\/script>/u);
+});
+
+// @virune-rule {"id":"ffi.safe","runner":"unit","file":"packages/compiler/test/ffi-safe-descriptor-keys.test.ts","case":"Safe record descriptors escape script-breaking JSON defaults","kind":"positive","platform":"common"}
+test('Safe record descriptors escape script-breaking JSON defaults', () => {
+	const result = compileSource({
+		id: 1,
+		path: 'ffi-safe-record-default-script-break.virune',
+		text: `pub record DefaultPayload derives Json {
+	@jsonDefault("</script>")
+	value: String
+}
+
+@jsExport
+pub fn echo(value: DefaultPayload) -> DefaultPayload {
+	return value
+}
+`,
+	});
+	assert.deepEqual(result.diagnostics.filter(item => item.severity === 'error'), []);
+	const code = result.output?.code ?? '';
+	assert.match(code, /defaultValue: "\\u003C\\u002Fscript\\u003E"/u);
 	assert.doesNotMatch(code, /<\/script>/u);
 });
