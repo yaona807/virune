@@ -9,7 +9,7 @@ import { TypeScriptInteropProvider } from '../src/index.js';
 const repositoryRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..');
 const temporaryRoot = join(repositoryRoot, '.test-tmp');
 
-// @virune-rule {"id":"ffi.unknown-provenance","runner":"unit","file":"packages/js-interop/test/unknown-native-primitive-runtime.test.ts","case":"native primitives erased to Unknown cross only TypeScript-proven unknown and any boundaries","kind":"positive","platform":"node"}
+// @virune-rule {"id":"ffi.unknown-provenance","runner":"unit","file":"packages/js-interop/test/unknown-native-primitive-runtime.test.ts","case":"native primitives erased to Unknown cross TypeScript-proven unknown and any boundaries","kind":"positive","platform":"node"}
 test('native primitives erased to Unknown cross TypeScript-proven unknown and any boundaries', async () => {
 	await mkdir(temporaryRoot, { recursive: true });
 	const root = await mkdtemp(join(temporaryRoot, 'virune-interop-unknown-native-primitives-'));
