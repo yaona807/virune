@@ -13,10 +13,10 @@ export function runtimeImportLines(module: A.ModuleNode): readonly string[] {
 		|| item.kind === 'FunctionDeclaration' && item.attributes.some(attribute => attribute.name === 'jsExport'),
 	);
 	if (hasJavaScriptBoundary) {
-		lines.push('const encodeSafeFfiValue = encodeFfiValue;');
-		lines.push('const validateSafeFfiValue = validateFfiValue;');
+		lines.push('const $viruneEncodeSafeFfiValue = encodeFfiValue;');
+		lines.push('const $viruneValidateSafeFfiValue = validateFfiValue;');
 		lines.push('let $virunePanicConstructor;');
-		lines.push("function externalizeInteropError($error) { if ($virunePanicConstructor === undefined) { try { panic('$virune.callback-boundary-probe'); } catch ($probe) { $virunePanicConstructor = $probe.constructor; } } if (isPropagation($error) || $error instanceof $virunePanicConstructor) return new Error('Virune callback failed'); return $error; }");
+		lines.push("function $viruneExternalizeInteropError($error) { if ($virunePanicConstructor === undefined) { try { panic('$virune.callback-boundary-probe'); } catch ($probe) { $virunePanicConstructor = $probe.constructor; } } if (isPropagation($error) || $error instanceof $virunePanicConstructor) return new Error('Virune callback failed'); return $error; }");
 	}
 	const builtins = collectBuiltinNamespaces(module);
 	if (builtins.has('File')) lines.push("import { closeHandle as $fileClose, openHandle as $fileOpen, readBytes as $fileReadBytes, readHandle as $fileRead, readHandleBytes as $fileReadHandleBytes, readText as $fileReadText, writeBytes as $fileWriteBytes, writeHandle as $fileWrite, writeHandleBytes as $fileWriteHandleBytes, writeText as $fileWriteText } from '@virune/stdlib/node/fs';");
