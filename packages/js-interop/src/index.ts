@@ -278,8 +278,7 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 		const probe = this.runUsageProbe(context, `${rendered} satisfies ${context.stored.usageProjection.typeExpression}`);
 		if (probe === undefined) return undefined;
 		const literal = unwrapObjectLiteral(probe.initializer);
-		if (literal === undefined || !contextualObjectFieldsAreWritable(literal, usage, probe.checker)) return undefined;
-		return this.objectResolutionFromLiteral(literal, usage, probe.checker, context.workspace);
+		return literal === undefined ? undefined : this.objectResolutionFromLiteral(literal, usage, probe.checker, context.workspace);
 	}
 
 	private createUsageProbeContext(reference: ForeignTypeRef): UsageProbeContext | undefined {
@@ -481,7 +480,6 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 	}
 
 	private objectResolutionFromLiteral(literal: ts.ObjectLiteralExpression, usage: InteropObjectUsage, checker: ts.TypeChecker, workspace: ProbeWorkspace): ForeignObjectResolution | undefined {
-		if (!contextualObjectFieldsAreWritable(literal, usage, checker)) return undefined;
 		if (literal.properties.length !== usage.entries.length) return undefined;
 		const entries: { readonly index: number; readonly property: string; readonly callable?: InteropCallableArgumentResolution['target']; readonly object?: ForeignObjectResolution }[] = [];
 		for (let index = 0; index < usage.entries.length; index++) {
@@ -775,48 +773,6 @@ function unwrapObjectLiteral(expression: ts.Expression): ts.ObjectLiteralExpress
 	return ts.isObjectLiteralExpression(current) ? current : undefined;
 }
 
-function contextualObjectFieldsAreWritable(literal: ts.ObjectLiteralExpression, usage: InteropObjectUsage, checker: ts.TypeChecker): boolean {
-	try {
-		if (literal.properties.length !== usage.entries.length) return false;
-		const contextual = checker.getContextualType(literal);
-		if (contextual === undefined) return false;
-		for (let index = 0; index < usage.entries.length; index++) {
-			const usageEntry = usage.entries[index]!;
-			const property = literal.properties[index];
-			if (property === undefined || !ts.isPropertyAssignment(property)) return false;
-			if (!contextualPropertyIsWritable(contextual, usageEntry.property, checker)) return false;
-			if (usageEntry.value.kind !== 'contextual-object') continue;
-			const nested = unwrapObjectLiteral(property.initializer);
-			if (nested === undefined || !contextualObjectFieldsAreWritable(nested, usageEntry.value.object, checker)) return false;
-		}
-		return true;
-	} catch {
-		return false;
-	}
-}
-
-function contextualPropertyIsWritable(type: ts.Type, propertyName: string, checker: ts.TypeChecker): boolean {
-	const flags = type.getFlags();
-	if ((flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown | ts.TypeFlags.Never | ts.TypeFlags.TypeParameter)) !== 0) return false;
-	if (type.isUnionOrIntersection()) return type.types.every(item => contextualPropertyIsWritable(item, propertyName, checker));
-	if ((flags & ts.TypeFlags.Object) === 0) return false;
-	const objectType = type as ts.ObjectType;
-	if ((objectType.objectFlags & ts.ObjectFlags.Mapped) !== 0) return false;
-	const property = checker.getPropertyOfType(type, propertyName);
-	if (property !== undefined) {
-		const declarations = property.declarations;
-		if (declarations === undefined || declarations.length === 0) return false;
-		return declarations.every(declaration => {
-			if (ts.isGetAccessorDeclaration(declaration)) return false;
-			const modifiers = ts.getCombinedModifierFlags(declaration);
-			return (modifiers & (ts.ModifierFlags.Readonly | ts.ModifierFlags.Private | ts.ModifierFlags.Protected)) === 0;
-		});
-	}
-	const key = checker.getStringLiteralType(propertyName);
-	const indexInfos = checker.getIndexInfosOfType(type).filter(info => checker.isTypeAssignableTo(key, info.keyType));
-	return indexInfos.length === 1 && indexInfos[0]!.isReadonly === false;
-}
-
 function canonicalFilePath(fileName: string): string {
 	const normalized = resolve(fileName).replaceAll('\\', '/');
 	return ts.sys.useCaseSensitiveFileNames ? normalized : normalized.toLowerCase();
@@ -1040,7 +996,8 @@ function typeContainsUnresolvedGenericResult(
 	try {
 		if (budget.remaining-- <= 0 || depth > 12) return true;
 		const flags = type.getFlags();
-		if ((flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown | ts.TypeFlags.Never | ts.TypeFlags.TypeParameter)) !== 0) return true;
+		if ((flags & (ts.TypeFlags.Any | ts.TypeFlags.TypeParameter)) !== 0) return true;
+		if ((flags & (ts.TypeFlags.Unknown | ts.TypeFlags.Never)) !== 0) return depth === 0;
 		if (primitiveKind(type) !== undefined || (flags & (ts.TypeFlags.ESSymbol | ts.TypeFlags.UniqueESSymbol)) !== 0) return false;
 		if (seen.has(type)) return false;
 		seen.add(type);

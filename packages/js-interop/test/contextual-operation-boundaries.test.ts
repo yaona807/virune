@@ -77,7 +77,7 @@ fn main() -> Unit uses JavaScript {
 	assert.ok(unresolved.includes('L4204'));
 });
 
-test('readonly contextual External properties fail closed', async () => {
+test('readonly contextual External properties are valid initialization targets when TypeScript accepts them', async () => {
 	const direct = await errorCodesFor(`import js { consume } from "./library.js"
 
 fn main() -> Unit uses JavaScript {
@@ -85,7 +85,7 @@ fn main() -> Unit uses JavaScript {
 	return Unit
 }
 `, `export declare function consume(value: { readonly mode: 'strict' }): boolean;\n`);
-	assert.ok(direct.includes('L4204'));
+	assert.deepEqual(direct, []);
 
 	const nested = await errorCodesFor(`import js { consume } from "./library.js"
 
@@ -94,7 +94,7 @@ fn main() -> Unit uses JavaScript {
 	return Unit
 }
 `, `export declare function consume(value: { options: { readonly mode: 'strict' } }): boolean;\n`);
-	assert.ok(nested.includes('L4204'));
+	assert.deepEqual(nested, []);
 
 	const readonlyIndex = await errorCodesFor(`import js { consume } from "./library.js"
 
@@ -103,7 +103,7 @@ fn main() -> Unit uses JavaScript {
 	return Unit
 }
 `, `export declare function consume(value: { readonly [key: string]: 'strict' }): boolean;\n`);
-	assert.ok(readonlyIndex.includes('L4204'));
+	assert.deepEqual(readonlyIndex, []);
 
 	const writableIndex = await errorCodesFor(`import js { consume } from "./library.js"
 
@@ -114,14 +114,23 @@ fn main() -> Unit uses JavaScript {
 `, `export declare function consume(value: { [key: string]: 'strict' }): boolean;\n`);
 	assert.deepEqual(writableIndex, []);
 
-	const writeValue = await errorCodesFor(`import js { box } from "./library.js"
+	const writableTargetWithReadonlyValue = await errorCodesFor(`import js { box } from "./library.js"
 
 fn main() -> Unit uses JavaScript {
 	box.config = { mode: "strict" }
 	return Unit
 }
 `, `export declare const box: { config: { readonly mode: 'strict' } };\n`);
-	assert.ok(writeValue.includes('L2119'));
+	assert.deepEqual(writableTargetWithReadonlyValue, []);
+
+	const readonlyWriteTarget = await errorCodesFor(`import js { box } from "./library.js"
+
+fn main() -> Unit uses JavaScript {
+	box.config = { mode: "strict" }
+	return Unit
+}
+`, `export declare const box: { readonly config: { readonly mode: 'strict' } };\n`);
+	assert.ok(readonlyWriteTarget.includes('L2119'));
 });
 
 test('generic External construct fails closed when its inferred result retains an unresolved type argument', async () => {
@@ -133,6 +142,23 @@ fn main() -> Unit uses JavaScript {
 }
 `, `export declare class Box<T> { constructor(); readonly value: T }\n`);
 	assert.ok(codes.includes('L4204'));
+});
+
+test('generic External construct accepts a concrete inferred object type containing an unknown member', async () => {
+	const codes = await errorCodesFor(`import js { Box, source } from "./library.js"
+
+fn main() -> Unit uses JavaScript {
+	let value = source()
+	discard Box(value)
+	return Unit
+}
+`, `
+export declare function source(): { readonly metadata: unknown };
+export declare const Box: {
+	new <T>(value: T): { readonly value: T };
+};
+`);
+	assert.deepEqual(codes, []);
 });
 
 test('ordinary generic External calls preserve TypeScript-valid result compatibility', async () => {
