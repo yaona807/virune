@@ -133,7 +133,7 @@ function isCanonicalDescriptorMap(value: unknown): value is Record<string, unkno
 	for (const key of Reflect.ownKeys(value)) {
 		if (typeof key !== 'string') return false;
 		const property = Object.getOwnPropertyDescriptor(value, key);
-		if (property === undefined || !('value' in property)) return false;
+		if (property === undefined || !('value' in property) || property.enumerable !== true) return false;
 	}
 	return true;
 }
