@@ -121,11 +121,11 @@ function isProvenanceRejection(error: unknown): boolean {
 	return error.name === 'ForeignContractError' && contract.expected === 'foreign-origin Unknown or native primitive';
 }
 
-// @virune-rule {"id":"interop.unknown-provenance-runtime","runner":"integration","file":"packages/js-interop/test/unknown-provenance-runtime.test.ts","case":"emitted Safe boundary preserves foreign identity and rejects erased native identity values","kind":"positive","platform":"node"}
+// @virune-rule {"id":"ffi.unknown-provenance","runner":"integration","file":"packages/js-interop/test/unknown-provenance-runtime.test.ts","case":"emitted Safe boundary preserves foreign identity and rejects erased native identity values","kind":"positive","platform":"node"}
 test('emitted Safe boundary preserves foreign identity and rejects erased native identity values', async () => {
 	const root = await buildFixture();
 	const output = await readFile(join(root, 'dist/main.js'), 'utf8');
-	assert.match(output, /kind: 'unknown-provenance', version: 'v1'/u);
+	assert.match(output, /version: 'virune-safe-ffi\/v1', type: \{ kind: 'unknown' \}/u);
 
 	const module = await import(`${pathToFileURL(join(root, 'dist/main.js')).href}?case=unknown-provenance`) as {
 		roundTripForeign(): boolean;
