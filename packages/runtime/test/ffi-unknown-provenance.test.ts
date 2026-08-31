@@ -1,0 +1,86 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import {
+	ForeignContractError,
+	ForeignDecodeError,
+	VirunePanic,
+	encodeFfiValue,
+	makeRecord,
+	panic,
+	rootTaskContext,
+	safeCall,
+	safeCallAsync,
+	validateFfiValue,
+	type FfiTypeDescriptor,
+	type JsError,
+} from '../src/index.js';
+
+const provenanceUnknown = { kind: 'unknown-provenance', version: 'v1' } as const;
+
+function errorFrom(result: ReturnType<typeof safeCall>): JsError {
+	assert.equal(result.$tag, 'Err');
+	return result.$values[0] as JsError;
+}
+
+// @virune-rule {"id":"interop.unknown-provenance","runner":"unit","file":"packages/runtime/test/ffi-unknown-provenance.test.ts","case":"foreign Unknown preserves identity while native identity values fail closed","kind":"positive","platform":"common"}
+test('foreign Unknown preserves identity while native identity values fail closed', () => {
+	const foreign = { token: 1 };
+	const decoded = validateFfiValue(foreign, provenanceUnknown);
+	assert.strictEqual(decoded, foreign);
+	assert.strictEqual(encodeFfiValue(decoded, provenanceUnknown), foreign);
+
+	for (const primitive of ['value', true, 1.5, 7n, undefined, null] as const) {
+		assert.strictEqual(encodeFfiValue(primitive, provenanceUnknown), primitive);
+	}
+
+	const nativeRecord = makeRecord({ token: 1 }, 'test:NativeRecord');
+	assert.throws(() => encodeFfiValue(nativeRecord, provenanceUnknown), ForeignContractError);
+	assert.throws(() => encodeFfiValue(['native-list'], provenanceUnknown), ForeignContractError);
+	assert.throws(() => encodeFfiValue(() => 'native-callable', provenanceUnknown), ForeignContractError);
+	assert.throws(() => encodeFfiValue(rootTaskContext(), provenanceUnknown), ForeignContractError);
+	assert.throws(() => encodeFfiValue({ token: 'fabricated' }, provenanceUnknown), ForeignContractError);
+});
+
+// @virune-rule {"id":"interop.unknown-provenance-compat","runner":"unit","file":"packages/runtime/test/ffi-unknown-provenance.test.ts","case":"legacy ABI v2 unknown remains pass through","kind":"positive","platform":"common"}
+test('legacy ABI v2 unknown remains pass through', () => {
+	const nativeRecord = makeRecord({ token: 1 }, 'test:NativeRecord');
+	assert.strictEqual(validateFfiValue(nativeRecord, { kind: 'unknown' }), nativeRecord);
+	assert.strictEqual(encodeFfiValue(nativeRecord, { kind: 'unknown' }), nativeRecord);
+});
+
+// @virune-rule {"id":"interop.unknown-provenance-malformed","runner":"unit","file":"packages/runtime/test/ffi-unknown-provenance.test.ts","case":"malformed or stale provenance descriptors fail closed","kind":"negative","platform":"common"}
+test('malformed or stale provenance descriptors fail closed', () => {
+	const partial = { kind: 'unknown-provenance' } as unknown as FfiTypeDescriptor;
+	const stale = { kind: 'unknown-provenance', version: 'v0' } as unknown as FfiTypeDescriptor;
+	assert.throws(() => validateFfiValue({}, partial), ForeignDecodeError);
+	assert.throws(() => encodeFfiValue({}, partial), ForeignDecodeError);
+	assert.throws(() => validateFfiValue({}, stale), ForeignDecodeError);
+	assert.throws(() => encodeFfiValue({}, stale), ForeignDecodeError);
+});
+
+// @virune-rule {"id":"interop.error-origin","runner":"unit","file":"packages/runtime/test/ffi-unknown-provenance.test.ts","case":"foreign execution contract decode and internal errors stay distinguishable","kind":"positive","platform":"common"}
+test('foreign execution, contract, decode, and internal errors stay distinguishable', async () => {
+	const thrown = errorFrom(safeCall(() => { throw new Error('sync'); }));
+	assert.equal(thrown.origin, 'throw');
+	assert.equal(thrown.message, 'sync');
+
+	const rejected = await safeCallAsync(() => Promise.reject(new Error('async')));
+	assert.equal(rejected.$tag, 'Err');
+	assert.equal((rejected.$values[0] as JsError).origin, 'rejection');
+
+	const syncBeforePromise = await safeCallAsync(() => { throw new Error('before-promise'); });
+	assert.equal(syncBeforePromise.$tag, 'Err');
+	assert.equal((syncBeforePromise.$values[0] as JsError).origin, 'throw');
+
+	const contract = errorFrom(safeCall(() => validateFfiValue(1, { kind: 'string' })));
+	assert.equal(contract.origin, 'contract');
+
+	const decode = errorFrom(safeCall(() => validateFfiValue({}, { kind: 'record', name: 'Payload', fields: { value: { kind: 'string' } } })));
+	assert.equal(decode.origin, 'decode');
+
+	const internal = errorFrom(safeCall(() => panic('do-not-leak')));
+	assert.equal(internal.origin, 'internal');
+	assert.equal(internal.message, 'Virune internal failure');
+	assert.equal(internal.cause, undefined);
+	assert.notEqual(internal.name, VirunePanic.name);
+});
