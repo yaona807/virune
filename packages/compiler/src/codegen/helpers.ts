@@ -28,7 +28,13 @@ export function collectBuiltinNamespaces(module: A.ModuleNode): ReadonlySet<stri
 	return namespaces;
 }
 
-export function escapeTemplate(value: string): string { return value.replaceAll('\\', '\\\\').replaceAll('`', '\\`').replaceAll('${', '\\${'); }
+export function escapeTemplate(value: string): string {
+	return value
+		.replaceAll('\\', '\\\\')
+		.replaceAll('`', '\\`')
+		.replaceAll('${', '\\${')
+		.replace(/[<>/\u2028\u2029]/gu, character => javascriptStringEscapes[character] ?? character);
+}
 export function javascriptStringLiteral(value: string): string {
 	const serialized = JSON.stringify(value);
 	if (serialized === undefined) throw new Error('Failed to serialize JavaScript string literal');
