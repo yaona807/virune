@@ -14,9 +14,9 @@ JavaScriptやnpmの値は`extern js`を通じてViruneへ入ります。通常�
 ## `[ffi.unknown-provenance]` 安全な`Unknown`の由来
 Runtime ABI v2の既存`{ kind: 'unknown' }`型descriptorは、互換性のためraw pass-throughとして維持します。コンパイラが生成する安全な境界では、変更していないRuntime v2型descriptorの外側に、別のversioned `virune-safe-ffi/v1`境界envelopeを付けます。このSafe boundaryの内部でだけ、入れ子を含むすべての`unknown`を由来付きとして扱います。
 
-JavaScriptから安全な`Unknown`としてデコードしたidentity-bearingな値は、元のobject identityを維持します。その値を後からTypeScriptの`unknown` / `any`境界へ戻せるのは、Runtimeがforeign-originであることを実際に観測している場合だけです。Virune側で作った`record`、collection、callable、resource、capabilityなどのidentity-bearingなNative値は、`Unknown`へ型消去しただけではraw JavaScript valueとして公開できず、安全なoutbound encodingで拒否されます。一方、`String`、`Bool`、`Float`、`BigInt`などRuntime表現をそのまま安全に扱えるNative primitiveは、TypeScriptがそのusageを証明した`unknown` / `any` parameterへ渡せます。Safe boundary envelopeがmissing、stale、unsupported、partial、またはfabricatedならfail closedです。
+JavaScriptから安全な`Unknown`としてデコードしたidentity-bearingな値は、元のobject identityを維持します。その値を後からTypeScriptの`unknown` / `any`境界へ戻せるのは、Runtimeがforeign-originであることを実際に観測している場合だけです。Virune側で作った`record`、collection、callable、resource、capabilityなどのidentity-bearingなNative値は、`Unknown`へ型消去しただけではraw JavaScript valueとして公開できず、安全なoutbound encodingで拒否されます。一方、`String`、`Bool`、`Float`、`BigInt`などRuntime表現をそのまま安全に扱えるNative primitiveは、TypeScriptがそのusageを証明した`unknown` / `any` parameterへ渡せます。Safe boundary envelopeがmissing、stale、unsupported、partial、malformed、またはその他の理由でnon-canonicalならfail closedです。
 
-このprovenance保証はSafe boundaryの性質です。同一process内の敵対的改ざんへの耐性を提供する仕組みではなく、既存Runtime ABI v2の`unknown` descriptorやJSON encodingの意味も変更しません。
+Safe boundary envelopeはコンパイラ内部用metadataであり、authentication tokenではありません。provenance保証はRuntimeが実際に観測したforeign identityに基づき、同一process内の敵対的改ざんへの耐性を提供する仕組みではありません。既存Runtime ABI v2の`unknown` descriptorやJSON encodingの意味も変更しません。
 
 ## `[ffi.unsafe]` 検証を省略する`unsafe extern`
 `unsafe extern`は検証を省略し、`ffi/`配下で`unsafe module`として宣言されたモジュールでのみ使用できます。
