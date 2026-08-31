@@ -553,7 +553,7 @@ export class JavaScriptEmitter {
 				for (const field of pattern.fields) { const child = this.pattern(field.pattern, `${target}.${safeName(field.name)}`); conditions.push(child.condition); bindings.push(...child.bindings); }
 				return { condition: conditions.length === 0 ? 'true' : conditions.join(' && '), bindings };
 			}
-			case 'RangePattern': return { condition: `Number.isSafeInteger(${target}) && ${target} >= ${pattern.start} && ${target} <= ${pattern.end}` };
+			case 'RangePattern': return { condition: `Number.isSafeInteger(${target}) && ${target} >= ${pattern.start} && ${target} <= ${pattern.end}`, bindings: [] };
 			case 'ListPattern': {
 				const conditions = [`Array.isArray(${target})`, `${target}.length ${pattern.rest === undefined ? '===' : '>='} ${pattern.items.length}`];
 				const bindings: string[] = [];
