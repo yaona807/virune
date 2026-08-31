@@ -146,9 +146,9 @@ export interface FfiRecordFieldDescriptor {
 	readonly defaultValue?: unknown;
 }
 
+/** Legacy Runtime v2 descriptor. Its `unknown` meaning remains raw pass-through for compatibility. */
 export type FfiTypeDescriptor =
 	| { readonly kind: 'unknown' }
-	| { readonly kind: 'unknown-provenance'; readonly version: 'v1' }
 	| { readonly kind: 'string' }
 	| { readonly kind: 'bool' }
 	| { readonly kind: 'int' }
@@ -167,13 +167,21 @@ export type FfiTypeDescriptor =
 	| { readonly kind: 'record'; readonly name: string; readonly typeId?: string; readonly fields: Readonly<Record<string, FfiTypeDescriptor | FfiRecordFieldDescriptor>>; readonly strict?: boolean; readonly allowClassInstance?: boolean }
 	| { readonly kind: 'enum'; readonly name: string; readonly typeId?: string; readonly variants: Readonly<Record<string, readonly FfiTypeDescriptor[]>> };
 
+/** Additive Safe-boundary extension; it does not redefine the Runtime v2 `unknown` descriptor. */
+export interface FfiUnknownProvenanceDescriptor {
+	readonly kind: 'unknown-provenance';
+	readonly version: 'v1';
+}
+
+export type SafeFfiTypeDescriptor = FfiTypeDescriptor | FfiUnknownProvenanceDescriptor;
+
 const foreignUnknownObjects = new WeakSet<object>();
 
 function isIdentityBearingValue(value: unknown): value is object {
 	return value !== null && (typeof value === 'object' || typeof value === 'function');
 }
 
-function validateUnknownProvenanceDescriptor(descriptor: { readonly kind: 'unknown-provenance'; readonly version: 'v1' }): void {
+function validateUnknownProvenanceDescriptor(descriptor: FfiUnknownProvenanceDescriptor): void {
 	const keys = Object.keys(descriptor).sort();
 	if (descriptor.kind !== 'unknown-provenance' || descriptor.version !== 'v1' || keys.length !== 2 || keys[0] !== 'kind' || keys[1] !== 'version') {
 		throw new ForeignDecodeError('$descriptor', 'unsupported, malformed, or incomplete unknown provenance descriptor');
@@ -216,11 +224,11 @@ interface DecodeState {
 }
 
 /** Converts a JavaScript value returned by an FFI function into Virune's runtime representation. */
-export function validateFfiValue(value: unknown, descriptor: FfiTypeDescriptor, path = '$', budget: DecodeBudget = defaultDecodeBudget): unknown {
+export function validateFfiValue(value: unknown, descriptor: SafeFfiTypeDescriptor, path = '$', budget: DecodeBudget = defaultDecodeBudget): unknown {
 	return decodeValue(value, descriptor, path, 0, { budget, active: new WeakSet(), nodes: 0, bytes: 0 });
 }
 
-function decodeValue(value: unknown, descriptor: FfiTypeDescriptor, path: string, depth: number, state: DecodeState): unknown {
+function decodeValue(value: unknown, descriptor: SafeFfiTypeDescriptor, path: string, depth: number, state: DecodeState): unknown {
 	consumeNode(state, path, depth);
 	switch (descriptor.kind) {
 		case 'unknown': return value;
@@ -312,7 +320,7 @@ function decodeValue(value: unknown, descriptor: FfiTypeDescriptor, path: string
 }
 
 /** Converts a Virune runtime value to a conventional JavaScript value before an FFI call. */
-export function encodeFfiValue(value: unknown, descriptor: FfiTypeDescriptor): unknown {
+export function encodeFfiValue(value: unknown, descriptor: SafeFfiTypeDescriptor): unknown {
 	switch (descriptor.kind) {
 		case 'unknown': case 'string': case 'bool': case 'int': case 'float': case 'bigint': return value;
 		case 'unknown-provenance': validateUnknownProvenanceDescriptor(descriptor); return encodeProvenanceUnknown(value);
