@@ -207,7 +207,7 @@ export class JavaScriptEmitter {
 			};
 			const rawCall = `$ffi${externIndex}[${JSON.stringify(fn.jsName)}]($ARGS)`;
 			if (declaration.unsafe) this.#writer.line(`${fn.async ? 'async ' : ''}function ${name}(${args.join(', ')}) ${invocation(`{ return ${rawCall}; }`)}`);
-			else if (fn.async) { const success = fn.returnType.name === 'Result' ? fn.returnType.arguments[0] : undefined; this.#writer.line(`async function ${name}(${args.join(', ')}) ${invocation(`{ return safeCallAsync(async () => validateFfiValue(await ${rawCall}, ${this.typeDescriptor(success)}, '$')); }`)}`); }
+			else if (fn.async) { const success = fn.returnType.name === 'Result' ? fn.returnType.arguments[0] : undefined; this.#writer.line(`async function ${name}(${args.join(', ')}) ${invocation(`{ return safeCallAsync(() => ${rawCall}, $value => validateFfiValue($value, ${this.typeDescriptor(success)}, '$')); }`)}`); }
 			else { const success = fn.returnType.name === 'Result' ? fn.returnType.arguments[0] : undefined; this.#writer.line(`function ${name}(${args.join(', ')}) ${invocation(`{ return safeCall(() => validateFfiValue(${rawCall}, ${this.typeDescriptor(success)}, '$')); }`)}`); }
 		}
 	}
@@ -298,6 +298,7 @@ export class JavaScriptEmitter {
 			case 'float': return `checkForeignFloat(${raw})`;
 			case 'bigint': return `checkForeignBigInt(${raw})`;
 			case 'unit': return `(${raw}, undefined)`;
+			case 'unknown': return `validateFfiValue(${raw}, { kind: 'unknown-provenance', version: 'v1' })`;
 			default: return raw;
 		}
 	}
@@ -426,10 +427,15 @@ export class JavaScriptEmitter {
 	}
 
 	private call(expression: A.CallExpression, contextName: string): string {
+		const foreignInvocation = expression.foreignCall === true || expression.foreignConstruct === true;
 		const args = expression.arguments.map((argument, index) => {
 			const raw = this.expression(argument, contextName);
+			const type = argument.inferredTypeId === undefined ? undefined : this.#semantic.arena.get(argument.inferredTypeId);
+			const guarded = foreignInvocation && type?.kind === 'primitive' && type.name === 'Unknown'
+				? `encodeFfiValue(${raw}, { kind: 'unknown-provenance', version: 'v1' })`
+				: raw;
 			const projection = this.#semantic.interop.callableProjections?.find(item => item.callNodeId === expression.id && item.argumentIndex === index);
-			return projection === undefined ? raw : this.callableProjection(raw, projection.descriptor);
+			return projection === undefined ? guarded : this.callableProjection(guarded, projection.descriptor);
 		});
 		if (expression.callee.kind === 'FieldExpression' && expression.callee.target.kind === 'IdentifierExpression' && expression.callee.target.name === 'Json') {
 			if (expression.callee.field === 'parse') return `parseJson(${args[0] ?? '""'})`;
@@ -455,7 +461,7 @@ export class JavaScriptEmitter {
 		const validated = descriptor.parameters.map((parameter, index) => `validateFfiValue(${rawParameters[index]}, ${this.callableFfiDescriptor(parameter)}, ${javascriptStringLiteral(`$[${index}]`)})`);
 		const invocation = `$fn(${[...validated, 'rootTaskContext()'].join(', ')})`;
 		const result = descriptor.async ? `await ${invocation}` : invocation;
-		const wrapper = `${descriptor.async ? 'async ' : ''}(${rawParameters.join(', ')}) => { return encodeFfiValue(${result}, ${this.callableFfiDescriptor(descriptor.result)}); }`;
+		const wrapper = `${descriptor.async ? 'async ' : ''}(${rawParameters.join(', ')}) => { try { return encodeFfiValue(${result}, ${this.callableFfiDescriptor(descriptor.result)}); } catch ($error) { throw externalizeInteropError($error); } }`;
 		const descriptorKey = JSON.stringify(descriptor);
 		return `$viruneProjectCallable(${callable}, ${javascriptStringLiteral(descriptorKey)}, $fn => (${wrapper}))`;
 	}
@@ -547,7 +553,7 @@ export class JavaScriptEmitter {
 				for (const field of pattern.fields) { const child = this.pattern(field.pattern, `${target}.${safeName(field.name)}`); conditions.push(child.condition); bindings.push(...child.bindings); }
 				return { condition: conditions.length === 0 ? 'true' : conditions.join(' && '), bindings };
 			}
-			case 'RangePattern': return { condition: `Number.isSafeInteger(${target}) && ${target} >= ${pattern.start} && ${target} <= ${pattern.end}`, bindings: [] };
+			case 'RangePattern': return { condition: `Number.isSafeInteger(${target}) && ${target} >= ${pattern.start} && ${target} <= ${pattern.end}` };
 			case 'ListPattern': {
 				const conditions = [`Array.isArray(${target})`, `${target}.length ${pattern.rest === undefined ? '===' : '>='} ${pattern.items.length}`];
 				const bindings: string[] = [];
@@ -595,6 +601,7 @@ export class JavaScriptEmitter {
 				switch (type.name) {
 					case 'String': return `{ kind: 'string' }`; case 'Bool': return `{ kind: 'bool' }`; case 'Int': return `{ kind: 'int' }`;
 					case 'Float': return `{ kind: 'float' }`; case 'BigInt': return `{ kind: 'bigint' }`; case 'Unit': return `{ kind: 'unit' }`;
+					case 'Unknown': return `{ kind: 'unknown-provenance', version: 'v1' }`;
 					default: return `{ kind: 'unknown' }`;
 				}
 			case 'list': return `{ kind: 'list', item: ${this.typeDescriptorFromTypeId(type.element, new Set(seen))} }`;
@@ -638,7 +645,7 @@ export class JavaScriptEmitter {
 			switch (type.name) {
 				case 'String': return `{ kind: 'string' }`; case 'Bool': return `{ kind: 'bool' }`; case 'Int': return `{ kind: 'int' }`;
 				case 'Float': return `{ kind: 'float' }`; case 'BigInt': return `{ kind: 'bigint' }`; case 'Unit': return `{ kind: 'unit' }`;
-				case 'Unknown': return `{ kind: 'unknown' }`;
+				case 'Unknown': return `{ kind: 'unknown-provenance', version: 'v1' }`;
 				case 'Bytes': return `{ kind: 'bytes' }`;
 				case 'List': return `{ kind: 'list', item: ${this.typeDescriptor(type.arguments[0])} }`;
 				case 'Map': return `{ kind: 'map', key: ${this.typeDescriptor(type.arguments[0])}, value: ${this.typeDescriptor(type.arguments[1])} }`;
