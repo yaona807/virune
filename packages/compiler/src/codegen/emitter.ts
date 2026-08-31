@@ -517,7 +517,7 @@ export class JavaScriptEmitter {
 				'Http.get': '$httpGet', 'Http.request': '$httpRequest', 'Fetch.get': '$fetchGet', 'Fetch.request': '$fetchRequest', 'Timer.sleep': '$timerSleep', 'Timer.now': '$timerNow',
 				'Storage.get': '$storageGet', 'Storage.set': '$storageSet', 'Storage.remove': '$storageRemove', 'Storage.clear': '$storageClear',
 				'Dom.getText': '$domGetText', 'Dom.setText': '$domSetText', 'Dom.setAttribute': '$domSetAttribute', 'Dom.addClass': '$domAddClass',
-				'Crypto.randomUuid': '$cryptoRandomUuid', 'Url.encodeComponent': '$urlDecodeComponent', 'Url.decodeComponent': '$urlDecodeComponent', 'Url.isValid': '$urlIsValid', 'Json.parse': 'parseJson',
+				'Crypto.randomUuid': '$cryptoRandomUuid', 'Url.encodeComponent': '$urlEncodeComponent', 'Url.decodeComponent': '$urlDecodeComponent', 'Url.isValid': '$urlIsValid', 'Json.parse': 'parseJson',
 			};
 			if (mapped[key] !== undefined) return mapped[key];
 			const symbol = expression.target.symbolId === undefined ? undefined : this.#semantic.symbols.get(expression.target.symbolId);
