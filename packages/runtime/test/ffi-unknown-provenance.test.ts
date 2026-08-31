@@ -88,7 +88,15 @@ test('malformed, fabricated, or stale provenance descriptors fail closed', () =>
 	const fabricatedNested = { version: 'virune-safe-ffi/v1', type: { kind: 'list', item: { kind: 'unknown', trusted: true } } } as unknown as FfiTypeDescriptor;
 	const hybrid = { kind: 'unknown', version: 'virune-safe-ffi/v1', type: { kind: 'unknown' } } as unknown as FfiTypeDescriptor;
 	const staleHybrid = { kind: 'unknown', version: 'virune-safe-ffi/v0', type: { kind: 'unknown' } } as unknown as FfiTypeDescriptor;
-	for (const descriptor of [partial, stale, fabricated, fabricatedInner, fabricatedNested, hybrid, staleHybrid]) {
+	const sparseItems = new Array<FfiTypeDescriptor>(1);
+	const sparseTuple = { version: 'virune-safe-ffi/v1', type: { kind: 'tuple', items: sparseItems } } as unknown as FfiTypeDescriptor;
+	const decoratedItems: FfiTypeDescriptor[] = [{ kind: 'unknown' }];
+	Object.defineProperty(decoratedItems, 'trusted', { value: true, enumerable: true });
+	const decoratedTuple = { version: 'virune-safe-ffi/v1', type: { kind: 'tuple', items: decoratedItems } } as unknown as FfiTypeDescriptor;
+	const symbolFields: Record<string, FfiTypeDescriptor> = {};
+	Object.defineProperty(symbolFields, Symbol('trusted'), { value: { kind: 'unknown' }, enumerable: true });
+	const symbolRecord = { version: 'virune-safe-ffi/v1', type: { kind: 'record', name: 'Payload', fields: symbolFields } } as unknown as FfiTypeDescriptor;
+	for (const descriptor of [partial, stale, fabricated, fabricatedInner, fabricatedNested, hybrid, staleHybrid, sparseTuple, decoratedTuple, symbolRecord]) {
 		assert.throws(() => validateFfiValue({}, descriptor), ForeignDecodeError);
 		assert.throws(() => encodeFfiValue({}, descriptor), ForeignDecodeError);
 	}
@@ -110,10 +118,14 @@ test('legacy public error helpers remain compatible while generated async decode
 	assert.equal(legacyPanic.message, 'legacy-visible');
 
 	const withDecoder = safeCallAsync as unknown as SafeCallAsyncWithDecoder;
-	const rejected = await withDecoder(() => Promise.reject(new Error('async')), value => value);
+	const rejectionCause = { source: 'promise' };
+	const rejected = await withDecoder(() => Promise.reject(new Error('async', { cause: rejectionCause })), value => value);
 	assert.equal(rejected.$tag, 'Err');
-	assert.equal((rejected.$values[0] as JsError).name, 'PromiseRejectionError');
-	assert.equal((rejected.$values[0] as JsError).message, 'async');
+	const rejection = rejected.$values[0] as JsError;
+	assert.equal(rejection.name, 'PromiseRejectionError');
+	assert.equal(rejection.message, 'async');
+	assert.equal(typeof rejection.stack, 'string');
+	assert.strictEqual(rejection.cause, rejectionCause);
 
 	const syncBeforePromise = await withDecoder(() => { throw new Error('before-promise'); }, value => value);
 	assert.equal(syncBeforePromise.$tag, 'Err');
