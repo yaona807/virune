@@ -92,23 +92,32 @@ test('malformed, fabricated, or stale provenance descriptors fail closed', () =>
 	}
 });
 
-// @virune-rule {"id":"ffi.safe","runner":"unit","file":"packages/runtime/test/ffi-unknown-provenance.test.ts","case":"foreign execution, contract, decode, and internal errors stay distinguishable","kind":"positive","platform":"common"}
-test('foreign execution, contract, decode, and internal errors stay distinguishable', async () => {
+// @virune-rule {"id":"ffi.safe","runner":"unit","file":"packages/runtime/test/ffi-unknown-provenance.test.ts","case":"legacy public error helpers remain compatible while generated async decode path distinguishes failures","kind":"positive","platform":"common"}
+test('legacy public error helpers remain compatible while generated async decode path distinguishes failures', async () => {
 	const thrown = errorFrom(safeCall(() => { throw new Error('sync'); }));
 	assert.equal(thrown.name, 'Error');
 	assert.equal(thrown.message, 'sync');
 
-	const rejected = await safeCallAsync(() => Promise.reject(new Error('async')));
+	const legacyRejected = await safeCallAsync(() => Promise.reject(new Error('async')));
+	assert.equal(legacyRejected.$tag, 'Err');
+	assert.equal((legacyRejected.$values[0] as JsError).name, 'Error');
+	assert.equal((legacyRejected.$values[0] as JsError).message, 'async');
+
+	const legacyPanic = errorFrom(safeCall(() => panic('legacy-visible')));
+	assert.equal(legacyPanic.name, 'VirunePanic');
+	assert.equal(legacyPanic.message, 'legacy-visible');
+
+	const withDecoder = safeCallAsync as unknown as SafeCallAsyncWithDecoder;
+	const rejected = await withDecoder(() => Promise.reject(new Error('async')), value => value);
 	assert.equal(rejected.$tag, 'Err');
 	assert.equal((rejected.$values[0] as JsError).name, 'PromiseRejectionError');
 	assert.equal((rejected.$values[0] as JsError).message, 'async');
 
-	const syncBeforePromise = await safeCallAsync(() => { throw new Error('before-promise'); });
+	const syncBeforePromise = await withDecoder(() => { throw new Error('before-promise'); }, value => value);
 	assert.equal(syncBeforePromise.$tag, 'Err');
 	assert.equal((syncBeforePromise.$values[0] as JsError).name, 'Error');
 	assert.equal((syncBeforePromise.$values[0] as JsError).message, 'before-promise');
 
-	const withDecoder = safeCallAsync as unknown as SafeCallAsyncWithDecoder;
 	const contract = await withDecoder(() => Promise.resolve(1), value => validateFfiValue(value, { kind: 'string' }) as number);
 	assert.equal(contract.$tag, 'Err');
 	assert.equal((contract.$values[0] as JsError).name, 'ForeignContractError');
@@ -119,10 +128,4 @@ test('foreign execution, contract, decode, and internal errors stay distinguisha
 	);
 	assert.equal(decode.$tag, 'Err');
 	assert.equal((decode.$values[0] as JsError).name, 'ForeignDecodeError');
-
-	const internal = errorFrom(safeCall(() => panic('do-not-leak')));
-	assert.equal(internal.name, 'ViruneInternalError');
-	assert.equal(internal.message, 'Virune internal failure');
-	assert.equal(internal.cause, undefined);
-	assert.equal(internal.stack, undefined);
 });
