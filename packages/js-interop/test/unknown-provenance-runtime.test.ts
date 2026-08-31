@@ -37,6 +37,18 @@ fn callback(value: String) -> String {
 	return value
 }
 
+fn encodeSafeFfiValue(value: String) -> String {
+	return value
+}
+
+fn validateSafeFfiValue(value: String) -> String {
+	return value
+}
+
+fn externalizeInteropError(value: String) -> String {
+	return value
+}
+
 async fn closeHandle(handle: FileHandle) -> Unit uses File {
 	discard await File.close(handle)
 	return Unit
@@ -132,6 +144,12 @@ test('emitted Safe boundary preserves foreign identity and rejects erased native
 	const root = await buildFixture();
 	const output = await readFile(join(root, 'dist/main.js'), 'utf8');
 	assert.match(output, /version: 'virune-safe-ffi\/v1', type: \{ kind: 'unknown' \}/u);
+	assert.match(output, /const \$viruneEncodeSafeFfiValue = encodeFfiValue;/u);
+	assert.match(output, /const \$viruneValidateSafeFfiValue = validateFfiValue;/u);
+	assert.match(output, /function \$viruneExternalizeInteropError\(/u);
+	assert.doesNotMatch(output, /const encodeSafeFfiValue = encodeFfiValue;/u);
+	assert.doesNotMatch(output, /const validateSafeFfiValue = validateFfiValue;/u);
+	assert.doesNotMatch(output, /function externalizeInteropError\(/u);
 
 	const module = await import(`${pathToFileURL(join(root, 'dist/main.js')).href}?case=unknown-provenance`) as {
 		roundTripForeign(): boolean;
