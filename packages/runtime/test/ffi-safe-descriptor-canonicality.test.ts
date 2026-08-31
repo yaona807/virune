@@ -4,6 +4,7 @@ import {
 	ForeignDecodeError,
 	encodeFfiValue,
 	makeRecord,
+	makeVariant,
 	validateFfiValue,
 	type FfiTypeDescriptor,
 } from '../src/index.js';
@@ -39,6 +40,24 @@ test('inherited Safe descriptor metadata cannot override an own field descriptor
 	const identity = { token: 'foreign' };
 	assert.throws(() => validateFfiValue({ value: identity }, descriptor), ForeignDecodeError);
 	assert.throws(() => encodeFfiValue(makeRecord({ value: identity }, 'Payload'), descriptor), ForeignDecodeError);
+});
+
+// @virune-rule {"id":"ffi.unknown-provenance","runner":"unit","file":"packages/runtime/test/ffi-safe-descriptor-canonicality.test.ts","case":"non-enumerable Safe descriptor map entries cannot bypass validation","kind":"negative","platform":"common"}
+test('non-enumerable Safe descriptor map entries cannot bypass validation', () => {
+	const variants: Record<string, unknown> = {};
+	Object.defineProperty(variants, 'Hidden', {
+		value: [{ kind: 'unknown', trusted: true }],
+		enumerable: false,
+		configurable: true,
+		writable: true,
+	});
+	const descriptor = {
+		version: 'virune-safe-ffi/v1',
+		type: { kind: 'enum', name: 'Payload', variants },
+	} as unknown as FfiTypeDescriptor;
+	const value = makeVariant('Hidden', [{ token: 'foreign' }], 'Payload');
+	assert.throws(() => validateFfiValue(value, descriptor), ForeignDecodeError);
+	assert.throws(() => encodeFfiValue(value, descriptor), ForeignDecodeError);
 });
 
 // @virune-rule {"id":"ffi.unknown-provenance","runner":"unit","file":"packages/runtime/test/ffi-safe-descriptor-canonicality.test.ts","case":"Safe record default metadata preserves an explicit undefined default","kind":"positive","platform":"common"}
