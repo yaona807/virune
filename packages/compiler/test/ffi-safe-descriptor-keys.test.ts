@@ -43,3 +43,25 @@ pub fn echo(value: ProtoVariant) -> ProtoVariant {
 	assert.match(code, /variants: \{ \["__proto__"\]: \[\] \}/u);
 	assert.doesNotMatch(code, /variants: \{ "__proto__":/u);
 });
+
+// @virune-rule {"id":"ffi.safe","runner":"unit","file":"packages/compiler/test/ffi-safe-descriptor-keys.test.ts","case":"Safe record descriptors escape script-breaking JSON field names","kind":"negative","platform":"common"}
+test('Safe record descriptors escape script-breaking JSON field names', () => {
+	const result = compileSource({
+		id: 1,
+		path: 'ffi-safe-record-descriptor-script-break.virune',
+		text: `pub record ScriptPayload derives Json {
+	@jsonName("</script>")
+	value: String
+}
+
+@jsExport
+pub fn echo(value: ScriptPayload) -> ScriptPayload {
+	return value
+}
+`,
+	});
+	assert.deepEqual(result.diagnostics.filter(item => item.severity === 'error'), []);
+	const code = result.output?.code ?? '';
+	assert.match(code, /jsonName: "\\u003C\\u002Fscript\\u003E"/u);
+	assert.doesNotMatch(code, /<\/script>/u);
+});
