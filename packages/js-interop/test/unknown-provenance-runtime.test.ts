@@ -25,7 +25,11 @@ async function buildFixture() {
 	}), 'utf8');
 	await writeFile(join(root, 'src/main.virune'), `import js { foreignValue, sameForeign, acceptUnknown, acceptAny } from "./library.js"
 
-record Payload {
+extern js "./library.js" {
+	fn acceptBoundary(value: Unknown) -> Result<Bool, JsError> = "acceptUnknown"
+}
+
+pub record Payload {
 	value: String
 }
 
@@ -45,45 +49,41 @@ pub fn roundTripForeign() -> Bool uses JavaScript {
 }
 
 @jsExport
-pub fn erasedString(value: String) -> Bool uses JavaScript {
-	let erased: Unknown = value
-	return acceptUnknown(erased)
+pub fn nativeString(value: String) -> Bool uses JavaScript {
+	return acceptUnknown(value)
 }
 
 @jsExport
-pub fn erasedBool(value: Bool) -> Bool uses JavaScript {
-	let erased: Unknown = value
-	return acceptUnknown(erased)
+pub fn nativeBool(value: Bool) -> Bool uses JavaScript {
+	return acceptUnknown(value)
 }
 
 @jsExport
-pub fn erasedFloat(value: Float) -> Bool uses JavaScript {
-	let erased: Unknown = value
-	return acceptAny(erased)
+pub fn nativeFloat(value: Float) -> Bool uses JavaScript {
+	return acceptAny(value)
 }
 
 @jsExport
-pub fn erasedBigInt(value: BigInt) -> Bool uses JavaScript {
-	let erased: Unknown = value
-	return acceptAny(erased)
+pub fn nativeBigInt(value: BigInt) -> Bool uses JavaScript {
+	return acceptAny(value)
 }
 
 @jsExport
-pub fn rejectRecord(value: Payload) -> Bool uses JavaScript {
+pub fn rejectRecord(value: Payload) -> Result<Bool, JsError> uses JavaScript {
 	let erased: Unknown = value
-	return acceptUnknown(erased)
+	return acceptBoundary(erased)
 }
 
 @jsExport
-pub fn rejectList(value: List<String>) -> Bool uses JavaScript {
+pub fn rejectList(value: List<String>) -> Result<Bool, JsError> uses JavaScript {
 	let erased: Unknown = value
-	return acceptUnknown(erased)
+	return acceptBoundary(erased)
 }
 
 @jsExport
-pub fn rejectCallable() -> Bool uses JavaScript {
+pub fn rejectCallable() -> Result<Bool, JsError> uses JavaScript {
 	let erased: Unknown = callback
-	return acceptUnknown(erased)
+	return acceptBoundary(erased)
 }
 
 @jsExport
@@ -91,7 +91,7 @@ pub async fn rejectFileHandle(path: String) -> Result<Bool, JsError> uses File, 
 	let handle = (await File.open(path, "r"))?
 	defer await closeHandle(handle)
 	let erased: Unknown = handle
-	return Ok(acceptUnknown(erased))
+	return acceptBoundary(erased)
 }
 `, 'utf8');
 	await writeFile(join(root, 'src/library.d.ts'), `export declare function foreignValue(): unknown;
@@ -115,10 +115,16 @@ export function callCount() { return calls; }
 	return root;
 }
 
-function isProvenanceRejection(error: unknown): boolean {
-	if (!(error instanceof TypeError)) return false;
-	const contract = error as TypeError & { readonly expected?: unknown };
-	return error.name === 'ForeignContractError' && contract.expected === 'foreign-origin Unknown or native primitive';
+interface EncodedResult {
+	readonly $tag: string;
+	readonly $values: readonly unknown[];
+}
+
+function assertProvenanceRejection(result: EncodedResult): void {
+	assert.equal(result.$tag, 'Err');
+	const error = result.$values[0] as { readonly name?: unknown; readonly message?: unknown };
+	assert.equal(error.name, 'ForeignContractError');
+	assert.match(String(error.message), /foreign-origin Unknown or native primitive/u);
 }
 
 // @virune-rule {"id":"ffi.unknown-provenance","runner":"integration","file":"packages/js-interop/test/unknown-provenance-runtime.test.ts","case":"emitted Safe boundary preserves foreign identity and rejects erased native identity values","kind":"positive","platform":"node"}
@@ -129,29 +135,29 @@ test('emitted Safe boundary preserves foreign identity and rejects erased native
 
 	const module = await import(`${pathToFileURL(join(root, 'dist/main.js')).href}?case=unknown-provenance`) as {
 		roundTripForeign(): boolean;
-		erasedString(value: string): boolean;
-		erasedBool(value: boolean): boolean;
-		erasedFloat(value: number): boolean;
-		erasedBigInt(value: bigint): boolean;
-		rejectRecord(value: { value: string }): boolean;
-		rejectList(value: string[]): boolean;
-		rejectCallable(): boolean;
-		rejectFileHandle(path: string): Promise<unknown>;
+		nativeString(value: string): boolean;
+		nativeBool(value: boolean): boolean;
+		nativeFloat(value: number): boolean;
+		nativeBigInt(value: bigint): boolean;
+		rejectRecord(value: { value: string }): EncodedResult;
+		rejectList(value: string[]): EncodedResult;
+		rejectCallable(): EncodedResult;
+		rejectFileHandle(path: string): Promise<EncodedResult>;
 	};
 	const library = await import(`${pathToFileURL(join(root, 'dist/library.js')).href}`) as { callCount(): number };
 
 	assert.equal(module.roundTripForeign(), true);
-	assert.equal(module.erasedString('safe'), true);
-	assert.equal(module.erasedBool(true), true);
-	assert.equal(module.erasedFloat(1.5), true);
-	assert.equal(module.erasedBigInt(7n), true);
+	assert.equal(module.nativeString('safe'), true);
+	assert.equal(module.nativeBool(true), true);
+	assert.equal(module.nativeFloat(1.5), true);
+	assert.equal(module.nativeBigInt(7n), true);
 	assert.equal(library.callCount(), 5);
 
-	assert.throws(() => module.rejectRecord({ value: 'native' }), isProvenanceRejection);
-	assert.throws(() => module.rejectList(['native']), isProvenanceRejection);
-	assert.throws(() => module.rejectCallable(), isProvenanceRejection);
+	assertProvenanceRejection(module.rejectRecord({ value: 'native' }));
+	assertProvenanceRejection(module.rejectList(['native']));
+	assertProvenanceRejection(module.rejectCallable());
 	const resourcePath = join(root, 'resource.txt');
 	await writeFile(resourcePath, 'resource', 'utf8');
-	await assert.rejects(module.rejectFileHandle(resourcePath), isProvenanceRejection);
+	assertProvenanceRejection(await module.rejectFileHandle(resourcePath));
 	assert.equal(library.callCount(), 5);
 });
