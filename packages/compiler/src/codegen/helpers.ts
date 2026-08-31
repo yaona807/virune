@@ -2,8 +2,12 @@ import type * as A from '../ast/nodes.js';
 
 const jsReserved = new Set(['await', 'break', 'case', 'catch', 'class', 'const', 'continue', 'debugger', 'default', 'delete', 'do', 'else', 'export', 'extends', 'false', 'finally', 'for', 'function', 'if', 'import', 'in', 'instanceof', 'let', 'new', 'null', 'return', 'static', 'super', 'switch', 'this', 'throw', 'true', 'try', 'typeof', 'var', 'void', 'while', 'with', 'yield']);
 const javascriptStringEscapes: Readonly<Record<string, string>> = Object.freeze({ '<': '\\u003C', '>': '\\u003E', '/': '\\u002F', '\u2028': '\\u2028', '\u2029': '\\u2029' });
+const viruneIdentifier = /^[A-Za-z_][A-Za-z0-9_]*$/u;
 
-export function safeName(name: string): string { return jsReserved.has(name) ? `$v_${name}` : name; }
+export function safeName(name: string): string {
+	if (!viruneIdentifier.test(name)) throw new Error(`Invalid Virune identifier ${JSON.stringify(name)} reached JavaScript emission`);
+	return jsReserved.has(name) ? `$v_${name}` : name;
+}
 
 export function collectBuiltinNamespaces(module: A.ModuleNode): ReadonlySet<string> {
 	const namespaces = new Set<string>();
