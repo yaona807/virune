@@ -48,6 +48,8 @@ function safeEnvelope(descriptor: FfiTypeDescriptor): SafeFfiEnvelope | undefine
 
 function isCanonicalFfiDescriptor(value: unknown, active = new WeakSet<object>(), depth = 0): value is FfiTypeDescriptor {
 	if (!isRecord(value) || depth > maximumSafeDescriptorDepth || active.has(value)) return false;
+	const prototype = Object.getPrototypeOf(value);
+	if (prototype !== Object.prototype && prototype !== null) return false;
 	active.add(value);
 	try {
 		const kind = value.kind;
@@ -95,6 +97,8 @@ function isCanonicalFfiDescriptor(value: unknown, active = new WeakSet<object>()
 function isCanonicalRecordField(value: unknown, active: WeakSet<object>, depth: number): boolean {
 	if (!isRecord(value)) return false;
 	if (!Object.hasOwn(value, 'type')) return isCanonicalFfiDescriptor(value, active, depth);
+	const prototype = Object.getPrototypeOf(value);
+	if (prototype !== Object.prototype && prototype !== null) return false;
 	if (!hasKnownKeys(value, ['type'], ['defaultValue', 'hasDefault', 'jsName', 'jsonName', 'missingAsNone', 'omitWhenNone'])) return false;
 	if (!isCanonicalFfiDescriptor(value.type, active, depth)) return false;
 	if (value.jsName !== undefined && typeof value.jsName !== 'string') return false;
