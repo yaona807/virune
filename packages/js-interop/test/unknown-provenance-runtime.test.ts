@@ -147,9 +147,9 @@ test('emitted Safe boundary preserves foreign identity and rejects erased native
 	assert.match(output, /const \$viruneEncodeSafeFfiValue = encodeFfiValue;/u);
 	assert.match(output, /const \$viruneValidateSafeFfiValue = validateFfiValue;/u);
 	assert.match(output, /function \$viruneExternalizeInteropError\(/u);
-	assert.doesNotMatch(output, /const encodeSafeFfiValue = encodeFfiValue;/u);
-	assert.doesNotMatch(output, /const validateSafeFfiValue = validateFfiValue;/u);
-	assert.doesNotMatch(output, /function externalizeInteropError\(/u);
+	assert.match(output, /function encodeSafeFfiValue\(value,/u);
+	assert.match(output, /function validateSafeFfiValue\(value,/u);
+	assert.match(output, /function externalizeInteropError\(value,/u);
 
 	const module = await import(`${pathToFileURL(join(root, 'dist/main.js')).href}?case=unknown-provenance`) as {
 		roundTripForeign(): boolean;
