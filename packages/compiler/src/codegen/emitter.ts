@@ -182,11 +182,11 @@ export class JavaScriptEmitter {
 		this.#writer.indent(() => {
 			const validated = declaration.parameters.map((parameter, index) => {
 				const local = `$arg_${safeName(parameter.name)}`;
-				this.#writer.line(`const ${local} = validateSafeFfiValue(${rawParameters[index]}, ${this.safeFfiBoundary(this.typeDescriptor(parameter.type))}, ${JSON.stringify(`$.${parameter.name}`)});`);
+				this.#writer.line(`const ${local} = $viruneValidateSafeFfiValue(${rawParameters[index]}, ${this.safeFfiBoundary(this.typeDescriptor(parameter.type))}, ${JSON.stringify(`$.${parameter.name}`)});`);
 				return local;
 			});
 			const call = `${implementationName}(${[...validated, 'rootTaskContext()'].join(', ')})`;
-			this.#writer.line(`return encodeSafeFfiValue(${declaration.async ? `await ${call}` : call}, ${this.safeFfiBoundary(this.typeDescriptor(declaration.returnType))});`);
+			this.#writer.line(`return $viruneEncodeSafeFfiValue(${declaration.async ? `await ${call}` : call}, ${this.safeFfiBoundary(this.typeDescriptor(declaration.returnType))});`);
 		});
 		this.#writer.line('}');
 	}
@@ -199,7 +199,7 @@ export class JavaScriptEmitter {
 			if (fn.async) args.push('$ctx = rootTaskContext()');
 			const encoded = fn.parameters.map(parameter => declaration.unsafe
 				? `encodeFfiValue(${this.nameOf(parameter.symbolId, parameter.name)}, ${this.typeDescriptor(parameter.type)})`
-				: `encodeSafeFfiValue(${this.nameOf(parameter.symbolId, parameter.name)}, ${this.safeFfiBoundary(this.typeDescriptor(parameter.type))})`);
+				: `$viruneEncodeSafeFfiValue(${this.nameOf(parameter.symbolId, parameter.name)}, ${this.safeFfiBoundary(this.typeDescriptor(parameter.type))})`);
 			const optionalCount = [...fn.parameters].reverse().findIndex(parameter => !parameter.optional);
 			const trailingOptional = optionalCount < 0 ? fn.parameters.length : optionalCount;
 			const invocation = (body: string): string => {
@@ -209,8 +209,8 @@ export class JavaScriptEmitter {
 			};
 			const rawCall = `$ffi${externIndex}[${JSON.stringify(fn.jsName)}]($ARGS)`;
 			if (declaration.unsafe) this.#writer.line(`${fn.async ? 'async ' : ''}function ${name}(${args.join(', ')}) ${invocation(`{ return ${rawCall}; }`)}`);
-			else if (fn.async) { const success = fn.returnType.name === 'Result' ? fn.returnType.arguments[0] : undefined; this.#writer.line(`async function ${name}(${args.join(', ')}) ${invocation(`{ return safeCallAsync(() => ${rawCall}, $value => validateSafeFfiValue($value, ${this.safeFfiBoundary(this.typeDescriptor(success))}, '$')); }`)}`); }
-			else { const success = fn.returnType.name === 'Result' ? fn.returnType.arguments[0] : undefined; this.#writer.line(`function ${name}(${args.join(', ')}) ${invocation(`{ return safeCall(() => validateSafeFfiValue(${rawCall}, ${this.safeFfiBoundary(this.typeDescriptor(success))}, '$')); }`)}`); }
+			else if (fn.async) { const success = fn.returnType.name === 'Result' ? fn.returnType.arguments[0] : undefined; this.#writer.line(`async function ${name}(${args.join(', ')}) ${invocation(`{ return safeCallAsync(() => ${rawCall}, $value => $viruneValidateSafeFfiValue($value, ${this.safeFfiBoundary(this.typeDescriptor(success))}, '$')); }`)}`); }
+			else { const success = fn.returnType.name === 'Result' ? fn.returnType.arguments[0] : undefined; this.#writer.line(`function ${name}(${args.join(', ')}) ${invocation(`{ return safeCall(() => $viruneValidateSafeFfiValue(${rawCall}, ${this.safeFfiBoundary(this.typeDescriptor(success))}, '$')); }`)}`); }
 		}
 	}
 
@@ -300,7 +300,7 @@ export class JavaScriptEmitter {
 			case 'float': return `checkForeignFloat(${raw})`;
 			case 'bigint': return `checkForeignBigInt(${raw})`;
 			case 'unit': return `(${raw}, undefined)`;
-			case 'unknown': return `validateSafeFfiValue(${raw}, ${this.safeFfiBoundary(`{ kind: 'unknown' }`)})`;
+			case 'unknown': return `$viruneValidateSafeFfiValue(${raw}, ${this.safeFfiBoundary(`{ kind: 'unknown' }`)})`;
 			default: return raw;
 		}
 	}
@@ -434,7 +434,7 @@ export class JavaScriptEmitter {
 			const raw = this.expression(argument, contextName);
 			const type = argument.inferredTypeId === undefined ? undefined : this.#semantic.arena.get(argument.inferredTypeId);
 			const guarded = foreignInvocation && type?.kind === 'primitive' && type.name === 'Unknown'
-				? `encodeSafeFfiValue(${raw}, ${this.safeFfiBoundary(`{ kind: 'unknown' }`)})`
+				? `$viruneEncodeSafeFfiValue(${raw}, ${this.safeFfiBoundary(`{ kind: 'unknown' }`)})`
 				: raw;
 			const projection = this.#semantic.interop.callableProjections?.find(item => item.callNodeId === expression.id && item.argumentIndex === index);
 			return projection === undefined ? guarded : this.callableProjection(guarded, projection.descriptor);
@@ -463,7 +463,7 @@ export class JavaScriptEmitter {
 		const validated = descriptor.parameters.map((parameter, index) => `validateFfiValue(${rawParameters[index]}, ${this.callableFfiDescriptor(parameter)}, ${javascriptStringLiteral(`$[${index}]`)})`);
 		const invocation = `$fn(${[...validated, 'rootTaskContext()'].join(', ')})`;
 		const result = descriptor.async ? `await ${invocation}` : invocation;
-		const wrapper = `${descriptor.async ? 'async ' : ''}(${rawParameters.join(', ')}) => { try { return encodeFfiValue(${result}, ${this.callableFfiDescriptor(descriptor.result)}); } catch ($error) { throw externalizeInteropError($error); } }`;
+		const wrapper = `${descriptor.async ? 'async ' : ''}(${rawParameters.join(', ')}) => { try { return encodeFfiValue(${result}, ${this.callableFfiDescriptor(descriptor.result)}); } catch ($error) { throw $viruneExternalizeInteropError($error); } }`;
 		const descriptorKey = JSON.stringify(descriptor);
 		return `$viruneProjectCallable(${callable}, ${javascriptStringLiteral(descriptorKey)}, $fn => (${wrapper}))`;
 	}
