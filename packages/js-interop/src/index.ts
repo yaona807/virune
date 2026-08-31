@@ -9,12 +9,20 @@ import type {
 	ContextualCallablePrimitiveKind,
 	ContextualCallableResult,
 	ForeignCallResolution,
+	ForeignIndexResolution,
+	ForeignObjectResolution,
 	ForeignPrimitiveKind,
 	ForeignTypeRef,
 	ForeignTypeSnapshot,
+	ForeignWriteResolution,
 	InteropArgumentType,
 	InteropCallableArgumentResolution,
+	InteropCallTarget,
 	InteropCallUsage,
+	InteropIndexUsage,
+	InteropObjectArgumentResolution,
+	InteropObjectUsage,
+	InteropWriteUsage,
 	JsImportRequest,
 	JsImportResolution,
 	JsInteropProvider,
@@ -72,6 +80,22 @@ interface ProbeWorkspace {
 	projectVersion: number;
 }
 
+interface UsageProbeContext {
+	readonly stored: StoredType;
+	readonly workspace: ProbeWorkspace;
+	readonly directory: string;
+	readonly imports: Set<string>;
+	readonly declarations: string[];
+	target: string;
+	nextValueId: number;
+}
+
+interface UsageProbeResult {
+	readonly checker: ts.TypeChecker;
+	readonly initializer: ts.Expression;
+	readonly virtualFileName: string;
+}
+
 interface RuntimePackageJson {
 	readonly name?: string;
 	readonly type?: string;
@@ -83,9 +107,10 @@ const invalidPackageTarget = Symbol('invalid-package-target');
 type PackageTargetResolution = string | null | undefined | typeof invalidPackageTarget;
 
 /**
- * Conservative provider. Whole call usages are resolved by TypeScript itself
- * inside one fixed Program session; the legacy per-parameter resolver remains
- * only for providers/callers that have not adopted the usage contract yet.
+ * Conservative provider. Whole usages are resolved by TypeScript itself inside
+ * one fixed Program session. Legacy per-signature call/construct entry points
+ * remain public only for compatibility with callers that have not adopted the
+ * whole-usage contract.
  */
 export class TypeScriptInteropProvider implements JsInteropProvider {
 	readonly id: string;
@@ -119,12 +144,15 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 			...options.compilerOptions,
 		};
 		this.#createLanguageService = options.createLanguageService ?? (host => ts.createLanguageService(host));
-		Object.defineProperty(this, 'resolveCallUsage', {
-			value: (reference: ForeignTypeRef, usage: InteropCallUsage): ForeignCallResolution | undefined => this.resolveCallUsageInternal(reference, usage),
-			enumerable: false,
-			configurable: false,
-			writable: false,
-		});
+		for (const [name, value] of [
+			['resolveCallUsage', (reference: ForeignTypeRef, usage: InteropCallUsage) => this.resolveInvocationUsage(reference, usage, false)],
+			['resolveConstructUsage', (reference: ForeignTypeRef, usage: InteropCallUsage) => this.resolveInvocationUsage(reference, usage, true)],
+			['resolveIndexUsage', (reference: ForeignTypeRef, usage: InteropIndexUsage) => this.resolveIndexUsageInternal(reference, usage)],
+			['resolveWriteUsage', (reference: ForeignTypeRef, usage: InteropWriteUsage) => this.resolveWriteUsageInternal(reference, usage)],
+			['resolveObjectUsage', (reference: ForeignTypeRef, usage: InteropObjectUsage) => this.resolveObjectUsageInternal(reference, usage)],
+		] as const) {
+			Object.defineProperty(this, name, { value, enumerable: false, configurable: false, writable: false });
+		}
 	}
 
 	public dispose(): void {
@@ -190,152 +218,254 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 		);
 	}
 
-	private resolveCallUsageInternal(reference: ForeignTypeRef, usage: InteropCallUsage): ForeignCallResolution | undefined {
-		const callee = this.lookupType(reference);
-		if (callee === undefined) return undefined;
-		const workspace = callee.workspace;
-		if (usage.arguments.some(argument => argument.kind === 'native-callable') && this.#compilerOptions.strictNullChecks !== true) return undefined;
-		const calleeFlags = callee.type.getFlags();
-		if ((calleeFlags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) !== 0 || callee.type.getCallSignatures().length === 0) return undefined;
-
-		const imports = new Set<string>();
-		const declarations: string[] = ['export {};'];
-		const includeProjection = (projection: UsageProjection): void => {
-			if (projection.declaration !== undefined) imports.add(projection.declaration);
+	private resolveIndexUsageInternal(reference: ForeignTypeRef, usage: InteropIndexUsage): ForeignIndexResolution | undefined {
+		const context = this.createUsageProbeContext(reference);
+		if (context === undefined) return undefined;
+		const index = this.renderUsageValue(usage.index, context, false, false);
+		if (index === undefined) return undefined;
+		const probe = this.runUsageProbe(context, `${context.target}[${index}]`);
+		if (probe === undefined) return undefined;
+		const result = probe.checker.getTypeAtLocation(probe.initializer);
+		if ((result.getFlags() & (ts.TypeFlags.Any | ts.TypeFlags.Unknown | ts.TypeFlags.Never)) !== 0) return undefined;
+		const resultProjection: UsageProjection = {
+			typeExpression: `(typeof import(${JSON.stringify(`./${probe.virtualFileName}`)}))["__viruneResult"]`,
+			directory: context.directory,
 		};
-		let usageDirectory: string;
-		let callTarget: string;
-		if (usage.target.kind === 'member') {
-			const receiver = this.lookupType(usage.target.receiver);
-			if (
-				receiver === undefined
-				|| receiver.workspace !== workspace
-				|| receiver.usageProjection === undefined
-				|| callee.usageProjection === undefined
-				|| receiver.usageProjection.directory !== callee.usageProjection.directory
-				|| (receiver.type.getFlags() & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) !== 0
-			) return undefined;
-			const property = JSON.stringify(usage.target.property);
-			const expectedCalleeProjection = `(${receiver.usageProjection.typeExpression})[${property}]`;
-			if (callee.usageProjection.typeExpression !== expectedCalleeProjection) return undefined;
-			const expectedCalleeValue = receiver.usageProjection.valueExpression === undefined ? undefined : `(${receiver.usageProjection.valueExpression})[${property}]`;
-			usageDirectory = receiver.usageProjection.directory;
-			includeProjection(receiver.usageProjection);
-			if (receiver.usageProjection.valueExpression !== undefined) {
-				callTarget = expectedCalleeValue!;
-			} else {
-				declarations.push(`declare const __viruneReceiver: ${receiver.usageProjection.typeExpression};`);
-				callTarget = `__viruneReceiver[${property}]`;
-			}
+		return { result: this.store(result, probe.checker, probe.initializer, context.stored.origin, context.workspace, resultProjection) };
+	}
+
+	private resolveWriteUsageInternal(reference: ForeignTypeRef, usage: InteropWriteUsage): ForeignWriteResolution | undefined {
+		const context = this.createUsageProbeContext(reference);
+		if (context === undefined) return undefined;
+		let left: string;
+		let value: string | undefined;
+		if (usage.kind === 'property') {
+			left = `${context.target}.${safeTsName(usage.property)}`;
+			value = this.renderUsageValue(usage.value, context, false, true);
 		} else {
-			if (callee.usageProjection === undefined) return undefined;
-			usageDirectory = callee.usageProjection.directory;
-			includeProjection(callee.usageProjection);
-			if (callee.usageProjection.valueExpression !== undefined) callTarget = callee.usageProjection.valueExpression;
-			else {
-				declarations.push(`declare const __viruneCallee: ${callee.usageProjection.typeExpression};`);
-				callTarget = '__viruneCallee';
+			const literalKey = usage.index.kind === 'native-primitive' && usage.index.literal?.kind === 'String'
+				? usage.index.literal.value
+				: undefined;
+			if (literalKey !== undefined) {
+				const property = context.stored.checker.getPropertyOfType(context.stored.type, literalKey);
+				if (property?.declarations?.some(declaration => {
+					const modifiers = ts.getCombinedModifierFlags(declaration);
+					return (modifiers & (ts.ModifierFlags.Private | ts.ModifierFlags.Protected)) !== 0;
+				}) === true) return undefined;
 			}
+			const index = this.renderUsageValue(usage.index, context, false, false);
+			value = this.renderUsageValue(usage.value, context, false, true);
+			if (index === undefined) return undefined;
+			left = `${context.target}[${index}]`;
 		}
+		if (value === undefined) return undefined;
+		const probe = this.runUsageProbe(context, `${left} = ${value}`);
+		if (probe === undefined || !ts.isBinaryExpression(probe.initializer) || probe.initializer.operatorToken.kind !== ts.SyntaxKind.EqualsToken) return undefined;
+		const destination = probe.checker.getTypeAtLocation(probe.initializer.left);
+		if ((destination.getFlags() & (ts.TypeFlags.Any | ts.TypeFlags.Unknown | ts.TypeFlags.Never)) !== 0) return undefined;
+		if (usage.value.kind !== 'contextual-object') return { accepted: true };
+		const literal = unwrapObjectLiteral(probe.initializer.right);
+		if (literal === undefined) return undefined;
+		const objectValue = this.objectResolutionFromLiteral(literal, usage.value.object, probe.checker, context.workspace);
+		return objectValue === undefined ? undefined : { accepted: true, objectValue };
+	}
 
-		const argumentExpressions: string[] = [];
-		for (let index = 0; index < usage.arguments.length; index++) {
-			const argument = usage.arguments[index]!;
-			if (argument.kind === 'unknown') return undefined;
-			if (argument.kind === 'foreign') {
-				const source = this.lookupType(argument.type);
-				if (
-					source === undefined
-					|| source.workspace !== workspace
-					|| source.usageProjection === undefined
-					|| source.usageProjection.directory !== usageDirectory
-				) return undefined;
-				includeProjection(source.usageProjection);
-				const sourceType = foreignTypeRequiresUnknownProjection(source.type, source.checker, source.location) ? 'unknown' : source.usageProjection.typeExpression;
-				const name = `__viruneArg${index}`;
-				declarations.push(`declare const ${name}: ${sourceType};`);
-				argumentExpressions.push(name);
-				continue;
-			}
-			if (argument.kind === 'native-callable') {
-				const sourceType = renderNativeCallableType(argument.callable);
-				if (sourceType === undefined) return undefined;
-				const name = `__viruneArg${index}`;
-				declarations.push(`declare const ${name}: ${sourceType};`);
-				argumentExpressions.push(name);
-				continue;
-			}
-			const literal = argument.literal === undefined ? undefined : renderInteropLiteral(argument.primitive, argument.literal);
-			if (argument.literal !== undefined && literal === undefined) return undefined;
-			if (literal !== undefined) {
-				argumentExpressions.push(literal);
-				continue;
-			}
-			if (argument.primitive === 'Unit') {
-				argumentExpressions.push('undefined');
-				continue;
-			}
-			const name = `__viruneArg${index}`;
-			declarations.push(`declare const ${name}: ${typescriptPrimitiveName(argument.primitive)};`);
-			argumentExpressions.push(name);
+	private resolveObjectUsageInternal(reference: ForeignTypeRef, usage: InteropObjectUsage): ForeignObjectResolution | undefined {
+		const context = this.createUsageProbeContext(reference);
+		if (context === undefined || context.stored.usageProjection === undefined) return undefined;
+		const rendered = this.renderUsageValue({ kind: 'contextual-object', object: usage }, context, true, true);
+		if (rendered === undefined) return undefined;
+		const probe = this.runUsageProbe(context, `${rendered} satisfies ${context.stored.usageProjection.typeExpression}`);
+		if (probe === undefined) return undefined;
+		const literal = unwrapObjectLiteral(probe.initializer);
+		return literal === undefined ? undefined : this.objectResolutionFromLiteral(literal, usage, probe.checker, context.workspace);
+	}
+
+	private createUsageProbeContext(reference: ForeignTypeRef): UsageProbeContext | undefined {
+		const stored = this.lookupType(reference);
+		if (stored === undefined || stored.usageProjection === undefined) return undefined;
+		const flags = stored.type.getFlags();
+		if ((flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) !== 0) return undefined;
+		const imports = new Set<string>();
+		if (stored.usageProjection.declaration !== undefined) imports.add(stored.usageProjection.declaration);
+		const declarations = ['export {};'];
+		let target: string;
+		if (stored.usageProjection.valueExpression !== undefined) target = stored.usageProjection.valueExpression;
+		else {
+			declarations.push(`declare const __viruneTarget: ${stored.usageProjection.typeExpression};`);
+			target = '__viruneTarget';
 		}
+		return {
+			stored,
+			workspace: stored.workspace,
+			directory: stored.usageProjection.directory,
+			imports,
+			declarations,
+			target,
+			nextValueId: 0,
+		};
+	}
 
-		const callText = `${callTarget}(${argumentExpressions.join(', ')})`;
-		const importText = [...imports].sort().join('\n');
-		const sourceText = `${importText.length === 0 ? '' : `${importText}\n`}${declarations.join('\n')}\nexport const __viruneResult = ${callText};\n`;
-		const virtualFileExtension = workspace.platform === 'node' ? 'mts' : 'ts';
-		const virtualFileName = `.virune-interop-usage-${workspace.platform}-${hash(sourceText)}.${virtualFileExtension}`;
-		const virtualPath = join(usageDirectory, virtualFileName);
+	private renderUsageValue(argument: InteropArgumentType, context: UsageProbeContext, allowNativeCallable: boolean, allowObject: boolean, depth = 0): string | undefined {
+		if (argument.kind === 'unknown' || depth > 12) return undefined;
+		if (argument.kind === 'contextual-object') {
+			if (!allowObject) return undefined;
+			const seen = new Set<string>();
+			const entries: string[] = [];
+			for (const entry of argument.object.entries) {
+				if (typeof entry.property !== 'string' || entry.property.length === 0 || seen.has(entry.property)) return undefined;
+				seen.add(entry.property);
+				const value = this.renderUsageValue(entry.value, context, true, true, depth + 1);
+				if (value === undefined) return undefined;
+				entries.push(`[${JSON.stringify(entry.property)}]: ${value}`);
+			}
+			return `({ ${entries.join(', ')} })`;
+		}
+		if (argument.kind === 'foreign') {
+			const source = this.lookupType(argument.type);
+			if (source === undefined || source.workspace !== context.workspace || source.usageProjection === undefined || source.usageProjection.directory !== context.directory) return undefined;
+			if (source.usageProjection.declaration !== undefined) context.imports.add(source.usageProjection.declaration);
+			const sourceType = foreignTypeRequiresUnknownProjection(source.type, source.checker, source.location) ? 'unknown' : source.usageProjection.typeExpression;
+			const name = `__viruneValue${context.nextValueId++}`;
+			context.declarations.push(`declare const ${name}: ${sourceType};`);
+			return name;
+		}
+		if (argument.kind === 'native-callable') {
+			if (!allowNativeCallable) return undefined;
+			const sourceType = renderNativeCallableType(argument.callable);
+			if (sourceType === undefined) return undefined;
+			const name = `__viruneValue${context.nextValueId++}`;
+			context.declarations.push(`declare const ${name}: ${sourceType};`);
+			return name;
+		}
+		const literal = argument.literal === undefined ? undefined : renderInteropLiteral(argument.primitive, argument.literal);
+		if (argument.literal !== undefined && literal === undefined) return undefined;
+		if (literal !== undefined) return literal;
+		if (argument.primitive === 'Unit') return 'undefined';
+		const name = `__viruneValue${context.nextValueId++}`;
+		context.declarations.push(`declare const ${name}: ${typescriptPrimitiveName(argument.primitive)};`);
+		return name;
+	}
+
+	private runUsageProbe(context: UsageProbeContext, expression: string): UsageProbeResult | undefined {
+		const importText = [...context.imports].sort().join('\n');
+		const sourceText = `${importText.length === 0 ? '' : `${importText}\n`}${context.declarations.join('\n')}\nexport const __viruneResult = ${expression};\n`;
+		const extension = context.workspace.platform === 'node' ? 'mts' : 'ts';
+		const virtualFileName = `.virune-interop-operation-${context.workspace.platform}-${hash(sourceText)}.${extension}`;
+		const virtualPath = join(context.directory, virtualFileName);
 		const virtualKey = canonicalFilePath(virtualPath);
-		const existing = workspace.virtualFiles.get(virtualKey);
+		const existing = context.workspace.virtualFiles.get(virtualKey);
 		if (existing === undefined) {
-			workspace.virtualFiles.set(virtualKey, { path: virtualPath, text: sourceText, version: 1 });
-			workspace.projectVersion++;
-		} else if (existing.text !== sourceText) {
-			return undefined;
-		}
-		const program = workspace.languageService.getProgram();
+			context.workspace.virtualFiles.set(virtualKey, { path: virtualPath, text: sourceText, version: 1 });
+			context.workspace.projectVersion++;
+		} else if (existing.text !== sourceText) return undefined;
+		const program = context.workspace.languageService.getProgram();
 		if (program === undefined) return undefined;
 		const diagnostics = [
-			...workspace.languageService.getCompilerOptionsDiagnostics(),
-			...workspace.languageService.getSyntacticDiagnostics(virtualPath),
-			...workspace.languageService.getSemanticDiagnostics(virtualPath),
+			...context.workspace.languageService.getCompilerOptionsDiagnostics(),
+			...context.workspace.languageService.getSyntacticDiagnostics(virtualPath),
+			...context.workspace.languageService.getSemanticDiagnostics(virtualPath),
 		];
 		if (diagnostics.some(item => item.category === ts.DiagnosticCategory.Error)) return undefined;
 		const sourceFile = program.getSourceFile(virtualPath)
 			?? program.getSourceFiles().find(item => canonicalFilePath(item.fileName) === virtualKey);
-		const resultDeclaration = sourceFile?.statements
+		const declaration = sourceFile?.statements
 			.filter(ts.isVariableStatement)
 			.flatMap(statement => [...statement.declarationList.declarations])
-			.find(declaration => ts.isIdentifier(declaration.name) && declaration.name.text === '__viruneResult');
-		const call = resultDeclaration?.initializer;
-		if (call === undefined || !ts.isCallExpression(call)) return undefined;
-		const checker = program.getTypeChecker();
-		const signature = checker.getResolvedSignature(call);
+			.find(item => ts.isIdentifier(item.name) && item.name.text === '__viruneResult');
+		if (declaration?.initializer === undefined) return undefined;
+		return { checker: program.getTypeChecker(), initializer: declaration.initializer, virtualFileName };
+	}
+
+	private resolveInvocationUsage(reference: ForeignTypeRef, usage: InteropCallUsage, construct: boolean): ForeignCallResolution | undefined {
+		const stored = this.lookupType(reference);
+		if (stored === undefined || (stored.type.getFlags() & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) !== 0) return undefined;
+		const callSignatures = stored.type.getCallSignatures();
+		const constructSignatures = stored.type.getConstructSignatures();
+		if (construct) {
+			if (constructSignatures.length === 0 || callSignatures.length !== 0) return undefined;
+		} else if (callSignatures.length === 0 || constructSignatures.length !== 0) return undefined;
+		if (usage.arguments.some(argument => argument.kind === 'native-callable') && this.#compilerOptions.strictNullChecks !== true) return undefined;
+		const context = this.createUsageProbeContext(reference);
+		if (context === undefined) return undefined;
+		if (!construct) {
+			if (usage.target.kind === 'member') {
+				const receiver = this.lookupType(usage.target.receiver);
+				if (receiver === undefined || receiver.workspace !== context.workspace || receiver.usageProjection === undefined || receiver.usageProjection.directory !== context.directory) return undefined;
+				if ((receiver.type.getFlags() & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) !== 0) return undefined;
+				if (receiver.usageProjection.declaration !== undefined) context.imports.add(receiver.usageProjection.declaration);
+				const property = JSON.stringify(usage.target.property);
+				const expectedType = `(${receiver.usageProjection.typeExpression})[${property}]`;
+				if (stored.usageProjection?.typeExpression !== expectedType) return undefined;
+				if (receiver.usageProjection.valueExpression !== undefined) context.target = `(${receiver.usageProjection.valueExpression})[${property}]`;
+				else {
+					context.declarations.push(`declare const __viruneReceiver: ${receiver.usageProjection.typeExpression};`);
+					context.target = `__viruneReceiver[${property}]`;
+				}
+			} else if (usage.target.kind === 'indexed-member') {
+				const receiver = this.lookupType(usage.target.receiver);
+				if (receiver === undefined || receiver.workspace !== context.workspace || receiver.usageProjection === undefined || receiver.usageProjection.directory !== context.directory) return undefined;
+				if ((receiver.type.getFlags() & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) !== 0) return undefined;
+				if (receiver.usageProjection.declaration !== undefined) context.imports.add(receiver.usageProjection.declaration);
+				const index = this.renderUsageValue(usage.target.index, context, false, false);
+				if (index === undefined) return undefined;
+				if (receiver.usageProjection.valueExpression !== undefined) context.target = `(${receiver.usageProjection.valueExpression})[${index}]`;
+				else {
+					context.declarations.push(`declare const __viruneReceiver: ${receiver.usageProjection.typeExpression};`);
+					context.target = `__viruneReceiver[${index}]`;
+				}
+			}
+		}
+		const argumentExpressions: string[] = [];
+		for (const argument of usage.arguments) {
+			const rendered = this.renderUsageValue(argument, context, true, true);
+			if (rendered === undefined) return undefined;
+			argumentExpressions.push(rendered);
+		}
+		const invocationText = construct
+			? `new (${context.target})(${argumentExpressions.join(', ')})`
+			: `${context.target}(${argumentExpressions.join(', ')})`;
+		const probe = this.runUsageProbe(context, invocationText);
+		if (probe === undefined) return undefined;
+		const invocation = probe.initializer;
+		if (construct ? !ts.isNewExpression(invocation) : !ts.isCallExpression(invocation)) return undefined;
+		const signature = probe.checker.getResolvedSignature(invocation as ts.CallLikeExpression);
 		if (signature === undefined) return undefined;
-		const result = checker.getReturnTypeOfSignature(signature);
-		if ((result.getFlags() & ts.TypeFlags.Any) !== 0) return undefined;
-		const selectedGeneric = (signature.declaration?.typeParameters?.length ?? 0) > 0;
-		if (selectedGeneric && (result.getFlags() & ts.TypeFlags.Unknown) !== 0) return undefined;
+		const result = probe.checker.getReturnTypeOfSignature(signature);
+		if ((result.getFlags() & (ts.TypeFlags.Any | (construct ? ts.TypeFlags.Unknown : ts.TypeFlags.Never))) !== 0) return undefined;
+		if (!resolvedGenericResultIsConcrete(signature, probe.checker, invocation)) return undefined;
+		const invocationArguments = ts.isCallExpression(invocation)
+			? invocation.arguments
+			: ts.isNewExpression(invocation)
+				? invocation.arguments ?? ts.factory.createNodeArray<ts.Expression>()
+				: ts.factory.createNodeArray<ts.Expression>();
 		const parameters = signature.getParameters();
 		const callableArguments: InteropCallableArgumentResolution[] = [];
+		const objectArguments: InteropObjectArgumentResolution[] = [];
 		for (let index = 0; index < usage.arguments.length; index++) {
 			const argument = usage.arguments[index]!;
-			if (argument.kind !== 'native-callable') continue;
-			const callArgument = call.arguments[index];
-			const parameter = parameters[index];
-			if (callArgument === undefined || parameter === undefined) return undefined;
-			const contextual = checker.getTypeOfSymbolAtLocation(parameter, callArgument);
-			const target = contextualCallableShape(contextual, checker, callArgument);
-			if (target === undefined) return undefined;
-			callableArguments.push({ index, target });
+			const node = invocationArguments[index];
+			if (node === undefined) return undefined;
+			if (argument.kind === 'native-callable') {
+				const contextual = probe.checker.getContextualType(node);
+				if (contextual === undefined) return undefined;
+				const target = contextualCallableShape(contextual, probe.checker, node);
+				if (target === undefined) return undefined;
+				callableArguments.push({ index, target });
+			} else if (argument.kind === 'contextual-object') {
+				const literal = unwrapObjectLiteral(node);
+				if (literal === undefined) return undefined;
+				const object = this.objectResolutionFromLiteral(literal, argument.object, probe.checker, context.workspace);
+				if (object === undefined) return undefined;
+				objectArguments.push({ index, object });
+			}
 		}
 		const { minimum, optional, rest } = signatureArity(parameters);
 		const resultProjection: UsageProjection = {
-			typeExpression: `(typeof import(${JSON.stringify(`./${virtualFileName}`)}))["__viruneResult"]`,
-			directory: usageDirectory,
+			typeExpression: `(typeof import(${JSON.stringify(`./${probe.virtualFileName}`)}))["__viruneResult"]`,
+			directory: context.directory,
 		};
-		const resultSnapshot = this.store(result, checker, call, callee.origin, workspace, resultProjection);
+		const resultSnapshot = this.store(result, probe.checker, invocation, stored.origin, context.workspace, resultProjection);
 		return {
 			result: resultSnapshot,
 			parameterCount: parameters.length,
@@ -343,9 +473,36 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 			minimumArgumentCount: minimum,
 			rest,
 			mayReject: resultSnapshot.category === 'promise',
-			receiverMode: usage.target.kind === 'member' ? 'preserve-this' : 'none',
+			receiverMode: !construct && usage.target.kind !== 'value' ? 'preserve-this' : 'none',
 			...(callableArguments.length === 0 ? {} : { callableArguments: Object.freeze(callableArguments) }),
+			...(objectArguments.length === 0 ? {} : { objectArguments: Object.freeze(objectArguments) }),
 		};
+	}
+
+	private objectResolutionFromLiteral(literal: ts.ObjectLiteralExpression, usage: InteropObjectUsage, checker: ts.TypeChecker, workspace: ProbeWorkspace): ForeignObjectResolution | undefined {
+		if (literal.properties.length !== usage.entries.length) return undefined;
+		const entries: { readonly index: number; readonly property: string; readonly callable?: InteropCallableArgumentResolution['target']; readonly object?: ForeignObjectResolution }[] = [];
+		for (let index = 0; index < usage.entries.length; index++) {
+			const usageEntry = usage.entries[index]!;
+			const property = literal.properties[index];
+			if (property === undefined || !ts.isPropertyAssignment(property) || !ts.isComputedPropertyName(property.name) || !ts.isStringLiteral(property.name.expression) || property.name.expression.text !== usageEntry.property) return undefined;
+			const contextual = checker.getContextualType(property.initializer);
+			if (contextual === undefined || (contextual.getFlags() & (ts.TypeFlags.Any | ts.TypeFlags.Unknown | ts.TypeFlags.Never | ts.TypeFlags.TypeParameter)) !== 0) return undefined;
+			if (usageEntry.value.kind === 'native-callable') {
+				const callable = contextualCallableShape(contextual, checker, property.initializer);
+				if (callable === undefined) return undefined;
+				entries.push({ index, property: usageEntry.property, callable });
+			} else if (usageEntry.value.kind === 'contextual-object') {
+				const nestedLiteral = unwrapObjectLiteral(property.initializer);
+				if (nestedLiteral === undefined) return undefined;
+				const object = this.objectResolutionFromLiteral(nestedLiteral, usageEntry.value.object, checker, workspace);
+				if (object === undefined) return undefined;
+				entries.push({ index, property: usageEntry.property, object });
+			} else entries.push({ index, property: usageEntry.property });
+		}
+		const result = checker.getTypeAtLocation(literal);
+		if ((result.getFlags() & (ts.TypeFlags.Any | ts.TypeFlags.Unknown | ts.TypeFlags.Never | ts.TypeFlags.TypeParameter)) !== 0) return undefined;
+		return { result: this.store(result, checker, literal, undefined, workspace), entries: Object.freeze(entries) };
 	}
 
 	public resolveCall(reference: ForeignTypeRef, argumentsList: readonly InteropArgumentType[]): ForeignCallResolution | undefined {
@@ -431,7 +588,7 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 	}
 
 	private argumentCompatible(argument: InteropArgumentType, parameter: ts.Type, checker: ts.TypeChecker): boolean {
-		if (argument.kind === 'unknown' || argument.kind === 'native-callable') return false;
+		if (argument.kind === 'unknown' || argument.kind === 'native-callable' || argument.kind === 'contextual-object') return false;
 		const parameterFlags = parameter.getFlags();
 		if (argument.kind === 'foreign') {
 			const source = this.requireType(argument.type);
@@ -610,6 +767,12 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 	}
 }
 
+function unwrapObjectLiteral(expression: ts.Expression): ts.ObjectLiteralExpression | undefined {
+	let current = expression;
+	while (ts.isParenthesizedExpression(current) || ts.isSatisfiesExpression(current)) current = current.expression;
+	return ts.isObjectLiteralExpression(current) ? current : undefined;
+}
+
 function canonicalFilePath(fileName: string): string {
 	const normalized = resolve(fileName).replaceAll('\\', '/');
 	return ts.sys.useCaseSensitiveFileNames ? normalized : normalized.toLowerCase();
@@ -744,6 +907,121 @@ function foreignTypeRequiresUnknownProjection(
 	}
 }
 
+function resolvedGenericResultIsConcrete(signature: ts.Signature, checker: ts.TypeChecker, location: ts.Node): boolean {
+	try {
+		const declaration = signature.declaration;
+		if (declaration === undefined) return (signature.getTypeParameters()?.length ?? 0) === 0;
+		if (declaration.kind === ts.SyntaxKind.JSDocSignature) return false;
+		const original = checker.getSignatureFromDeclaration(declaration);
+		if (original === undefined) return false;
+		const typeParameters = original.getTypeParameters() ?? [];
+		if (typeParameters.length === 0) return true;
+		const originalResult = checker.getReturnTypeOfSignature(original);
+		const inferredArguments = checker.getTypeArgumentsForResolvedSignature(signature);
+		for (let index = 0; index < typeParameters.length; index++) {
+			const typeParameter = typeParameters[index]!;
+			if (!typeParameterOccursInResult(originalResult, typeParameter, checker, location)) continue;
+			const inferred = inferredArguments?.[index];
+			if (inferred === undefined || typeContainsUnresolvedGenericResult(inferred, checker, location)) return false;
+		}
+		return true;
+	} catch {
+		return false;
+	}
+}
+
+function typeParameterOccursInResult(
+	type: ts.Type,
+	target: ts.Type,
+	checker: ts.TypeChecker,
+	location: ts.Node,
+	seen = new Set<ts.Type>(),
+	budget: { remaining: number } = { remaining: 256 },
+	depth = 0,
+): boolean {
+	try {
+		if (type === target) return true;
+		if (budget.remaining-- <= 0 || depth > 16) return true;
+		if (seen.has(type)) return false;
+		seen.add(type);
+		if (type.isUnionOrIntersection() && type.types.some(item => typeParameterOccursInResult(item, target, checker, location, seen, budget, depth + 1))) return true;
+		const flags = type.getFlags();
+		if ((flags & ts.TypeFlags.Object) === 0) return false;
+		const objectType = type as ts.ObjectType;
+		if ((objectType.objectFlags & ts.ObjectFlags.Reference) !== 0) {
+			const typeArguments = checker.getTypeArguments(type as ts.TypeReference);
+			if (typeArguments.some(item => typeParameterOccursInResult(item, target, checker, location, seen, budget, depth + 1))) return true;
+		}
+		for (const signature of [
+			...checker.getSignaturesOfType(type, ts.SignatureKind.Call),
+			...checker.getSignaturesOfType(type, ts.SignatureKind.Construct),
+		]) {
+			const signatureLocation = signature.declaration ?? location;
+			const thisParameter = signature.thisParameter;
+			if (thisParameter !== undefined) {
+				const declaration = thisParameter.valueDeclaration ?? thisParameter.declarations?.[0] ?? signatureLocation;
+				const thisType = checker.getTypeOfSymbolAtLocation(thisParameter, declaration);
+				if (typeParameterOccursInResult(thisType, target, checker, declaration, seen, budget, depth + 1)) return true;
+			}
+			for (const parameter of signature.getParameters()) {
+				const declaration = parameter.valueDeclaration ?? parameter.declarations?.[0];
+				if (declaration === undefined) return true;
+				const parameterType = checker.getTypeOfSymbolAtLocation(parameter, declaration);
+				if (typeParameterOccursInResult(parameterType, target, checker, declaration, seen, budget, depth + 1)) return true;
+			}
+			if (typeParameterOccursInResult(checker.getReturnTypeOfSignature(signature), target, checker, signatureLocation, seen, budget, depth + 1)) return true;
+		}
+		for (const indexInfo of checker.getIndexInfosOfType(type)) {
+			if (typeParameterOccursInResult(indexInfo.type, target, checker, location, seen, budget, depth + 1)) return true;
+		}
+		for (const property of checker.getPropertiesOfType(type)) {
+			const declaration = property.valueDeclaration ?? property.declarations?.[0] ?? location;
+			const propertyType = checker.getTypeOfSymbolAtLocation(property, declaration);
+			if (typeParameterOccursInResult(propertyType, target, checker, declaration, seen, budget, depth + 1)) return true;
+		}
+		return false;
+	} catch {
+		return true;
+	}
+}
+
+function typeContainsUnresolvedGenericResult(
+	type: ts.Type,
+	checker: ts.TypeChecker,
+	location: ts.Node,
+	seen = new Set<ts.Type>(),
+	budget: { remaining: number } = { remaining: 64 },
+	depth = 0,
+): boolean {
+	try {
+		if (budget.remaining-- <= 0 || depth > 12) return true;
+		const flags = type.getFlags();
+		if ((flags & (ts.TypeFlags.Any | ts.TypeFlags.TypeParameter)) !== 0) return true;
+		if ((flags & (ts.TypeFlags.Unknown | ts.TypeFlags.Never)) !== 0) return depth === 0;
+		if (primitiveKind(type) !== undefined || (flags & (ts.TypeFlags.ESSymbol | ts.TypeFlags.UniqueESSymbol)) !== 0) return false;
+		if (seen.has(type)) return false;
+		seen.add(type);
+		if (type.isUnionOrIntersection()) return type.types.some(item => typeContainsUnresolvedGenericResult(item, checker, location, seen, budget, depth + 1));
+		if ((flags & ts.TypeFlags.Object) === 0) return false;
+		const objectType = type as ts.ObjectType;
+		if ((objectType.objectFlags & ts.ObjectFlags.Reference) !== 0) {
+			const typeArguments = checker.getTypeArguments(type as ts.TypeReference);
+			if (typeArguments.some(item => typeContainsUnresolvedGenericResult(item, checker, location, seen, budget, depth + 1))) return true;
+		}
+		for (const indexInfo of checker.getIndexInfosOfType(type)) {
+			if (typeContainsUnresolvedGenericResult(indexInfo.type, checker, location, seen, budget, depth + 1)) return true;
+		}
+		for (const property of checker.getPropertiesOfType(type)) {
+			const declaration = property.valueDeclaration ?? property.declarations?.[0] ?? location;
+			const propertyType = checker.getTypeOfSymbolAtLocation(property, declaration);
+			if (typeContainsUnresolvedGenericResult(propertyType, checker, declaration, seen, budget, depth + 1)) return true;
+		}
+		return false;
+	} catch {
+		return true;
+	}
+}
+
 function signatureArity(parameters: readonly ts.Symbol[]): { readonly minimum: number; readonly optional: number; readonly rest: boolean } {
 	let minimum = 0;
 	let optional = 0;
@@ -766,13 +1044,20 @@ function interopProbeFileName(request: JsImportRequest): string {
 }
 
 function usageProjectionForImport(request: JsImportRequest): UsageProjection | undefined {
-	if (request.kind === 'side-effect' || request.kind === 'type-only') return undefined;
+	if (request.kind === 'side-effect') return undefined;
 	const moduleText = JSON.stringify(request.moduleSpecifier);
 	const binding = `__viruneImport_${hash(`${request.moduleSpecifier}:${request.kind}:${request.importedName ?? ''}`).slice(0, 16)}`;
+	if (request.kind === 'type-only') {
+		if (request.importedName === undefined) return undefined;
+		return {
+			typeExpression: binding,
+			directory: dirname(request.containingFile),
+			declaration: `import type { ${safeTsName(request.importedName)} as ${binding} } from ${moduleText};`,
+		};
+	}
 	const declaration = request.kind === 'named'
 		? `import { ${safeTsName(request.importedName ?? '')} as ${binding} } from ${moduleText};`
-		: request.kind === 'default'
-			? `import ${binding} from ${moduleText};`
+		: request.kind === 'default' ? `import ${binding} from ${moduleText};`
 			: `import * as ${binding} from ${moduleText};`;
 	return {
 		typeExpression: `typeof ${binding}`,

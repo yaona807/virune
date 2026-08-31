@@ -89,33 +89,70 @@ export interface NativeCallableTypeTemplate {
 	readonly async: boolean;
 }
 
+export interface InteropObjectEntryUsage {
+	readonly property: string;
+	readonly value: InteropArgumentType;
+}
+
+export interface InteropObjectUsage {
+	readonly entries: readonly InteropObjectEntryUsage[];
+}
+
 export type InteropArgumentType =
 	| { readonly kind: 'foreign'; readonly type: ForeignTypeRef }
 	| { readonly kind: 'native-primitive'; readonly primitive: NativeCallablePrimitiveKind; readonly literal?: InteropLiteralValue }
 	| { readonly kind: 'native-callable'; readonly callable: NativeCallableTypeTemplate }
+	| { readonly kind: 'contextual-object'; readonly object: InteropObjectUsage }
 	| { readonly kind: 'unknown' };
 
 export type InteropCallTarget =
 	| { readonly kind: 'value' }
-	| { readonly kind: 'member'; readonly receiver: ForeignTypeRef; readonly property: string };
+	| { readonly kind: 'member'; readonly receiver: ForeignTypeRef; readonly property: string }
+	| { readonly kind: 'indexed-member'; readonly receiver: ForeignTypeRef; readonly index: InteropArgumentType };
 
 export interface InteropCallUsage {
 	readonly target: InteropCallTarget;
 	readonly arguments: readonly InteropArgumentType[];
 }
 
+export interface InteropIndexUsage {
+	readonly index: InteropArgumentType;
+}
+
+export type InteropWriteUsage =
+	| { readonly kind: 'property'; readonly property: string; readonly value: InteropArgumentType }
+	| { readonly kind: 'index'; readonly index: InteropArgumentType; readonly value: InteropArgumentType };
+
 export type ContextualCallableResult =
 	| { readonly kind: 'void' }
 	| { readonly kind: 'value'; readonly value: ContextualCallablePrimitiveKind }
 	| { readonly kind: 'promise'; readonly value: ContextualCallablePrimitiveKind | 'void' };
 
-/** Selected TypeScript callback facts for one native-callable argument. */
+/** Selected TypeScript callback facts for one native-callable argument or contextual object entry. */
 export interface InteropCallableArgumentResolution {
 	readonly index: number;
 	readonly target: {
 		readonly parameters: readonly ContextualCallablePrimitiveKind[];
 		readonly result: ContextualCallableResult;
 	};
+}
+
+export interface ForeignObjectEntryResolution {
+	readonly index: number;
+	readonly property: string;
+	readonly callable?: InteropCallableArgumentResolution['target'];
+	readonly object?: ForeignObjectResolution;
+}
+
+/** Whole-object contextual proof from one fixed provider snapshot. Entries retain source order. */
+export interface ForeignObjectResolution {
+	readonly result: ForeignTypeSnapshot;
+	readonly entries: readonly ForeignObjectEntryResolution[];
+}
+
+export interface InteropObjectArgumentResolution {
+	readonly index: number;
+	readonly object: ForeignObjectResolution;
 }
 
 export interface ForeignCallResolution {
@@ -127,6 +164,16 @@ export interface ForeignCallResolution {
 	readonly mayReject: boolean;
 	readonly receiverMode: 'none' | 'preserve-this';
 	readonly callableArguments?: readonly InteropCallableArgumentResolution[];
+	readonly objectArguments?: readonly InteropObjectArgumentResolution[];
+}
+
+export interface ForeignIndexResolution {
+	readonly result: ForeignTypeSnapshot;
+}
+
+export interface ForeignWriteResolution {
+	readonly accepted: true;
+	readonly objectValue?: ForeignObjectResolution;
 }
 
 export interface JsInteropProvider {
@@ -137,6 +184,14 @@ export interface JsInteropProvider {
 	getProperty(type: ForeignTypeRef, name: string): ForeignTypeSnapshot | undefined;
 	/** Whole-usage resolver. When implemented, callers must not fall back to resolveCall after it returns undefined. */
 	resolveCallUsage?(type: ForeignTypeRef, usage: InteropCallUsage): ForeignCallResolution | undefined;
+	/** Whole-usage construct resolver. A call-like source is constructable only when call usage is not also valid. */
+	resolveConstructUsage?(type: ForeignTypeRef, usage: InteropCallUsage): ForeignCallResolution | undefined;
+	/** Whole-usage index resolver. Unknown/unsupported receiver or key evidence must return undefined. */
+	resolveIndexUsage?(type: ForeignTypeRef, usage: InteropIndexUsage): ForeignIndexResolution | undefined;
+	/** Whole-usage writable-facet resolver. Unknown/readonly/inaccessible evidence must return undefined. */
+	resolveWriteUsage?(type: ForeignTypeRef, usage: InteropWriteUsage): ForeignWriteResolution | undefined;
+	/** Contextual object resolver for an already-known External expected type. */
+	resolveObjectUsage?(type: ForeignTypeRef, usage: InteropObjectUsage): ForeignObjectResolution | undefined;
 	resolveCall(type: ForeignTypeRef, argumentsList: readonly InteropArgumentType[]): ForeignCallResolution | undefined;
 	resolveConstruct(type: ForeignTypeRef, argumentsList: readonly InteropArgumentType[]): ForeignCallResolution | undefined;
 	getAwaitedType(type: ForeignTypeRef): ForeignTypeSnapshot | undefined;
@@ -171,8 +226,17 @@ export interface CallableProjectionEvidence {
 	readonly descriptor: NativeCallableBoundaryDescriptor;
 }
 
+/** Ordering evidence for a callable projection performed while evaluating a contextual External object entry. */
+export interface ObjectCallableProjectionEvidence {
+	readonly objectNodeId: NodeId;
+	readonly entryIndex: number;
+	readonly property: string;
+	readonly beforeUsageIndex: number;
+	readonly descriptor: NativeCallableBoundaryDescriptor;
+}
+
 export interface ForeignUsage {
-	readonly kind: 'import' | 'property' | 'call' | 'await' | 'bridge';
+	readonly kind: 'import' | 'property' | 'index' | 'write-property' | 'write-index' | 'object' | 'call' | 'construct' | 'await' | 'bridge';
 	readonly nodeId: NodeId;
 	readonly span: SourceSpan;
 	readonly foreignType: ForeignTypeSnapshot;
@@ -180,6 +244,7 @@ export interface ForeignUsage {
 	readonly moduleWitness?: ModuleResolutionWitness;
 	readonly receiverMode?: 'none' | 'preserve-this';
 	readonly mayReject?: boolean;
+	readonly property?: string;
 	readonly bridge?: PrimitiveBridgePlan;
 }
 
@@ -200,6 +265,7 @@ export interface ForeignUsageIR {
 	readonly moduleWitness?: ModuleResolutionWitness;
 	readonly receiverMode?: 'none' | 'preserve-this';
 	readonly mayReject?: boolean;
+	readonly property?: string;
 	readonly bridge?: PrimitiveBridgePlan;
 }
 
@@ -208,6 +274,7 @@ export interface InteropSemanticModel {
 	/** Serializable provider-independent records consumed by downstream tools. */
 	readonly usageIR: readonly ForeignUsageIR[];
 	readonly callableProjections?: readonly CallableProjectionEvidence[];
+	readonly objectCallableProjections?: readonly ObjectCallableProjectionEvidence[];
 	readonly moduleWitnesses: readonly ModuleResolutionWitness[];
 	readonly requiresJavaScriptInitialization: boolean;
 }
