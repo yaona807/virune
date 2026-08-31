@@ -92,7 +92,7 @@ test('malformed, fabricated, or stale provenance descriptors fail closed', () =>
 	}
 });
 
-// @virune-rule {"id":"ffi.safe","runner":"unit","file":"packages/runtime/test/ffi-unknown-provenance.test.ts","case":"foreign execution contract decode and internal errors stay distinguishable","kind":"positive","platform":"common"}
+// @virune-rule {"id":"ffi.safe","runner":"unit","file":"packages/runtime/test/ffi-unknown-provenance.test.ts","case":"foreign execution, contract, decode, and internal errors stay distinguishable","kind":"positive","platform":"common"}
 test('foreign execution, contract, decode, and internal errors stay distinguishable', async () => {
 	const thrown = errorFrom(safeCall(() => { throw new Error('sync'); }));
 	assert.equal(thrown.name, 'Error');
