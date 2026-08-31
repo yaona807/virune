@@ -114,7 +114,7 @@ function isCanonicalRecordField(value: unknown, active: WeakSet<object>, depth: 
 }
 
 function isCanonicalDescriptorArray(value: unknown, validate: (item: unknown) => boolean): value is readonly unknown[] {
-	if (!Array.isArray(value)) return false;
+	if (!Array.isArray(value) || Object.getPrototypeOf(value) !== Array.prototype) return false;
 	const lengthDescriptor = Object.getOwnPropertyDescriptor(value, 'length');
 	if (lengthDescriptor === undefined || !('value' in lengthDescriptor) || typeof lengthDescriptor.value !== 'number') return false;
 	const length = lengthDescriptor.value;
