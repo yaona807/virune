@@ -1,9 +1,10 @@
-import { Err, Ok, VirunePanic, VirunePropagation, type Result } from './core.js';
+import { Err, Ok, type Result } from './core.js';
 import {
 	ForeignContractError,
 	ForeignDecodeError,
 	defaultDecodeBudget,
 	encodeFfiValue as legacyEncodeFfiValue,
+	safeCallAsync as legacySafeCallAsync,
 	toJsError as legacyToJsError,
 	validateFfiValue as legacyValidateFfiValue,
 	type DecodeBudget,
@@ -242,37 +243,22 @@ export function encodeFfiValue(value: unknown, descriptor: FfiTypeDescriptor): u
 	return legacyEncodeFfiValue(value, envelope.type);
 }
 
-/** Existing Runtime v2 signature; Virune-only control identity is sanitized before FFI exposure. */
-export function toJsError(error: unknown): JsError {
-	if (error instanceof VirunePanic || error instanceof VirunePropagation) {
-		return { kind: 'JsError', name: 'ViruneInternalError', message: 'Virune internal failure' };
-	}
-	return legacyToJsError(error);
-}
-
-/** Existing Runtime v2 signature. */
-export function safeCall<T>(operation: () => T): Result<T, JsError> {
-	try { return Ok(operation()); } catch (error) { return Err(toJsError(error)); }
-}
-
 function rejectionError(error: unknown): JsError {
-	const converted = toJsError(error);
-	if (converted.name === 'ViruneInternalError') return converted;
+	const converted = legacyToJsError(error);
 	return { kind: 'JsError', name: 'PromiseRejectionError', message: converted.message };
 }
 
 /**
- * Existing Runtime v2 signature. Compiler-generated wrappers may pass a private
- * decoder as a second JavaScript argument; it is intentionally absent from the
- * public TypeScript contract.
+ * Existing Runtime v2 signature. Normal one-argument calls delegate to the
+ * legacy implementation. Compiler-generated Safe wrappers may pass a private
+ * decoder function as a second JavaScript argument.
  */
 export async function safeCallAsync<T>(operation: () => PromiseLike<T>): Promise<Result<T, JsError>> {
+	const decoder = (arguments as unknown as { readonly [index: number]: unknown })[1];
+	if (typeof decoder !== 'function') return legacySafeCallAsync(operation);
 	let pending: PromiseLike<T>;
-	try { pending = operation(); } catch (error) { return Err(toJsError(error)); }
+	try { pending = operation(); } catch (error) { return Err(legacyToJsError(error)); }
 	let value: T;
 	try { value = await pending; } catch (error) { return Err(rejectionError(error)); }
-	const decoder = (arguments as unknown as { readonly [index: number]: unknown })[1];
-	if (decoder === undefined) return Ok(value);
-	if (typeof decoder !== 'function') return Err(toJsError(new ForeignDecodeError('$decoder', 'generated Safe decoder is not callable')));
-	try { return Ok((decoder as (item: T) => T)(value)); } catch (error) { return Err(toJsError(error)); }
+	try { return Ok((decoder as (item: T) => T)(value)); } catch (error) { return Err(legacyToJsError(error)); }
 }
