@@ -127,7 +127,7 @@ function assertProvenanceRejection(result: EncodedResult): void {
 	assert.match(String(error.message), /foreign-origin Unknown or native primitive/u);
 }
 
-// @virune-rule {"id":"ffi.unknown-provenance","runner":"integration","file":"packages/js-interop/test/unknown-provenance-runtime.test.ts","case":"emitted Safe boundary preserves foreign identity and rejects erased native identity values","kind":"positive","platform":"node"}
+// @virune-rule {"id":"ffi.unknown-provenance","runner":"unit","file":"packages/js-interop/test/unknown-provenance-runtime.test.ts","case":"emitted Safe boundary preserves foreign identity and rejects erased native identity values","kind":"positive","platform":"node"}
 test('emitted Safe boundary preserves foreign identity and rejects erased native identity values', async () => {
 	const root = await buildFixture();
 	const output = await readFile(join(root, 'dist/main.js'), 'utf8');
