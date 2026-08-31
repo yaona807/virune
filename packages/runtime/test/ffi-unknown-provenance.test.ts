@@ -5,61 +5,63 @@ import {
 	ForeignDecodeError,
 	VirunePanic,
 	encodeFfiValue,
+	encodeSafeFfiValue,
 	makeRecord,
 	panic,
 	rootTaskContext,
 	safeCall,
 	safeCallAsync,
 	validateFfiValue,
-	type FfiTypeDescriptor,
+	validateSafeFfiValue,
 	type JsError,
+	type SafeFfiBoundaryDescriptor,
 } from '../src/index.js';
 
-const provenanceUnknown = { kind: 'unknown-provenance', version: 'v1' } as const;
+const provenanceUnknown = { version: 'virune-safe-ffi/v1', type: { kind: 'unknown' } } as const;
 
 function errorFrom(result: ReturnType<typeof safeCall>): JsError {
 	assert.equal(result.$tag, 'Err');
 	return result.$values[0] as JsError;
 }
 
-// @virune-rule {"id":"interop.unknown-provenance","runner":"unit","file":"packages/runtime/test/ffi-unknown-provenance.test.ts","case":"foreign Unknown preserves identity while native identity values fail closed","kind":"positive","platform":"common"}
+// @virune-rule {"id":"ffi.unknown-provenance","runner":"unit","file":"packages/runtime/test/ffi-unknown-provenance.test.ts","case":"foreign Unknown preserves identity while native identity values fail closed","kind":"positive","platform":"common"}
 test('foreign Unknown preserves identity while native identity values fail closed', () => {
 	const foreign = { token: 1 };
-	const decoded = validateFfiValue(foreign, provenanceUnknown);
+	const decoded = validateSafeFfiValue(foreign, provenanceUnknown);
 	assert.strictEqual(decoded, foreign);
-	assert.strictEqual(encodeFfiValue(decoded, provenanceUnknown), foreign);
+	assert.strictEqual(encodeSafeFfiValue(decoded, provenanceUnknown), foreign);
 
 	for (const primitive of ['value', true, 1.5, 7n, undefined, null] as const) {
-		assert.strictEqual(encodeFfiValue(primitive, provenanceUnknown), primitive);
+		assert.strictEqual(encodeSafeFfiValue(primitive, provenanceUnknown), primitive);
 	}
 
 	const nativeRecord = makeRecord({ token: 1 }, 'test:NativeRecord');
-	assert.throws(() => encodeFfiValue(nativeRecord, provenanceUnknown), ForeignContractError);
-	assert.throws(() => encodeFfiValue(['native-list'], provenanceUnknown), ForeignContractError);
-	assert.throws(() => encodeFfiValue(() => 'native-callable', provenanceUnknown), ForeignContractError);
-	assert.throws(() => encodeFfiValue(rootTaskContext(), provenanceUnknown), ForeignContractError);
-	assert.throws(() => encodeFfiValue({ token: 'fabricated' }, provenanceUnknown), ForeignContractError);
+	assert.throws(() => encodeSafeFfiValue(nativeRecord, provenanceUnknown), ForeignContractError);
+	assert.throws(() => encodeSafeFfiValue(['native-list'], provenanceUnknown), ForeignContractError);
+	assert.throws(() => encodeSafeFfiValue(() => 'native-callable', provenanceUnknown), ForeignContractError);
+	assert.throws(() => encodeSafeFfiValue(rootTaskContext(), provenanceUnknown), ForeignContractError);
+	assert.throws(() => encodeSafeFfiValue({ token: 'fabricated' }, provenanceUnknown), ForeignContractError);
 });
 
-// @virune-rule {"id":"interop.unknown-provenance-compat","runner":"unit","file":"packages/runtime/test/ffi-unknown-provenance.test.ts","case":"legacy ABI v2 unknown remains pass through","kind":"positive","platform":"common"}
+// @virune-rule {"id":"ffi.unknown-provenance","runner":"unit","file":"packages/runtime/test/ffi-unknown-provenance.test.ts","case":"legacy ABI v2 unknown remains pass through","kind":"positive","platform":"common"}
 test('legacy ABI v2 unknown remains pass through', () => {
 	const nativeRecord = makeRecord({ token: 1 }, 'test:NativeRecord');
 	assert.strictEqual(validateFfiValue(nativeRecord, { kind: 'unknown' }), nativeRecord);
 	assert.strictEqual(encodeFfiValue(nativeRecord, { kind: 'unknown' }), nativeRecord);
 });
 
-// @virune-rule {"id":"interop.unknown-provenance-malformed","runner":"unit","file":"packages/runtime/test/ffi-unknown-provenance.test.ts","case":"malformed fabricated or stale provenance descriptors fail closed","kind":"negative","platform":"common"}
+// @virune-rule {"id":"ffi.unknown-provenance","runner":"unit","file":"packages/runtime/test/ffi-unknown-provenance.test.ts","case":"malformed fabricated or stale provenance descriptors fail closed","kind":"negative","platform":"common"}
 test('malformed, fabricated, or stale provenance descriptors fail closed', () => {
-	const partial = { kind: 'unknown-provenance' } as unknown as FfiTypeDescriptor;
-	const stale = { kind: 'unknown-provenance', version: 'v0' } as unknown as FfiTypeDescriptor;
-	const fabricated = { kind: 'unknown-provenance', version: 'v1', trusted: true } as unknown as FfiTypeDescriptor;
+	const partial = { version: 'virune-safe-ffi/v1' } as unknown as SafeFfiBoundaryDescriptor;
+	const stale = { version: 'virune-safe-ffi/v0', type: { kind: 'unknown' } } as unknown as SafeFfiBoundaryDescriptor;
+	const fabricated = { version: 'virune-safe-ffi/v1', type: { kind: 'unknown' }, trusted: true } as unknown as SafeFfiBoundaryDescriptor;
 	for (const descriptor of [partial, stale, fabricated]) {
-		assert.throws(() => validateFfiValue({}, descriptor), ForeignDecodeError);
-		assert.throws(() => encodeFfiValue({}, descriptor), ForeignDecodeError);
+		assert.throws(() => validateSafeFfiValue({}, descriptor), ForeignDecodeError);
+		assert.throws(() => encodeSafeFfiValue({}, descriptor), ForeignDecodeError);
 	}
 });
 
-// @virune-rule {"id":"interop.error-origin","runner":"unit","file":"packages/runtime/test/ffi-unknown-provenance.test.ts","case":"foreign execution contract decode and internal errors stay distinguishable","kind":"positive","platform":"common"}
+// @virune-rule {"id":"ffi.safe","runner":"unit","file":"packages/runtime/test/ffi-unknown-provenance.test.ts","case":"foreign execution contract decode and internal errors stay distinguishable","kind":"positive","platform":"common"}
 test('foreign execution, contract, decode, and internal errors stay distinguishable', async () => {
 	const thrown = errorFrom(safeCall(() => { throw new Error('sync'); }));
 	assert.equal(thrown.origin, 'throw');
