@@ -68,7 +68,7 @@ function isCanonicalFfiDescriptor(value: unknown, active = new WeakSet<object>()
 			case 'option':
 				return hasKnownKeys(value, ['kind', 'value'], ['noneAs'])
 					&& isCanonicalFfiDescriptor(value.value, active, depth + 1)
-					&& (value.noneAs === undefined || value.noneAs === 'undefined' || value.noneAs === 'null' || value.noneAs === 'nullish');
+					&& (!Object.hasOwn(value, 'noneAs') || value.noneAs === 'undefined' || value.noneAs === 'null' || value.noneAs === 'nullish');
 			case 'result':
 				return hasExactKeys(value, ['error', 'kind', 'value'])
 					&& isCanonicalFfiDescriptor(value.value, active, depth + 1)
@@ -76,15 +76,15 @@ function isCanonicalFfiDescriptor(value: unknown, active = new WeakSet<object>()
 			case 'record': {
 				if (!hasKnownKeys(value, ['fields', 'kind', 'name'], ['allowClassInstance', 'strict', 'typeId'])) return false;
 				if (typeof value.name !== 'string' || value.name.length === 0 || !isCanonicalDescriptorMap(value.fields)) return false;
-				if (value.typeId !== undefined && typeof value.typeId !== 'string') return false;
-				if (value.strict !== undefined && typeof value.strict !== 'boolean') return false;
-				if (value.allowClassInstance !== undefined && typeof value.allowClassInstance !== 'boolean') return false;
+				if (Object.hasOwn(value, 'typeId') && typeof value.typeId !== 'string') return false;
+				if (Object.hasOwn(value, 'strict') && typeof value.strict !== 'boolean') return false;
+				if (Object.hasOwn(value, 'allowClassInstance') && typeof value.allowClassInstance !== 'boolean') return false;
 				return Object.values(value.fields).every(field => isCanonicalRecordField(field, active, depth + 1));
 			}
 			case 'enum': {
 				if (!hasKnownKeys(value, ['kind', 'name', 'variants'], ['typeId'])) return false;
 				if (typeof value.name !== 'string' || value.name.length === 0 || !isCanonicalDescriptorMap(value.variants)) return false;
-				if (value.typeId !== undefined && typeof value.typeId !== 'string') return false;
+				if (Object.hasOwn(value, 'typeId') && typeof value.typeId !== 'string') return false;
 				return Object.values(value.variants).every(fields => isCanonicalDescriptorArray(fields, field => isCanonicalFfiDescriptor(field, active, depth + 1)));
 			}
 			default: return false;
@@ -101,8 +101,8 @@ function isCanonicalRecordField(value: unknown, active: WeakSet<object>, depth: 
 	if (prototype !== Object.prototype && prototype !== null) return false;
 	if (!hasKnownKeys(value, ['type'], ['defaultValue', 'hasDefault', 'jsName', 'jsonName', 'missingAsNone', 'omitWhenNone'])) return false;
 	if (!isCanonicalFfiDescriptor(value.type, active, depth)) return false;
-	if (value.jsName !== undefined && typeof value.jsName !== 'string') return false;
-	if (value.jsonName !== undefined && typeof value.jsonName !== 'string') return false;
+	if (Object.hasOwn(value, 'jsName') && typeof value.jsName !== 'string') return false;
+	if (Object.hasOwn(value, 'jsonName') && typeof value.jsonName !== 'string') return false;
 	const hasDefault = Object.hasOwn(value, 'hasDefault');
 	const hasDefaultValue = Object.hasOwn(value, 'defaultValue');
 	if (hasDefault !== hasDefaultValue || hasDefault && value.hasDefault !== true) return false;
