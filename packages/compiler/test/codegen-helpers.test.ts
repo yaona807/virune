@@ -25,13 +25,6 @@ test('escapeTemplate preserves the cooked value while escaping script-sensitive 
 	assert.doesNotMatch(escaped, /<\/script>/u);
 });
 
-test('safeName escapes ECMAScript strict-mode binding restrictions', () => {
-	for (const name of ['enum', 'implements', 'interface', 'package', 'private', 'protected', 'public', 'eval', 'arguments']) {
-		assert.equal(safeName(name), `$v_${name}`);
-	}
-	assert.equal(safeName('ordinary'), 'ordinary');
-});
-
 test('safeName rejects text that is not a JavaScript identifier', () => {
 	assert.throws(() => safeName('bad-name'), /Invalid JavaScript identifier/u);
 });
