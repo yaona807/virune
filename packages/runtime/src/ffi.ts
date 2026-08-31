@@ -67,8 +67,7 @@ export function toJsError(error: unknown, fallbackOrigin: 'throw' | 'rejection' 
 
 /** Converts Virune-only control/panic values to a plain JavaScript error before they cross a generated callback boundary. */
 export function externalizeInteropError(error: unknown): unknown {
-	if (error instanceof VirunePanic) return new Error(`Virune callback failed: ${error.message}`);
-	if (error instanceof VirunePropagation) return new Error('Virune callback terminated by internal control flow');
+	if (error instanceof VirunePanic || error instanceof VirunePropagation) return new Error('Virune callback failed');
 	return error;
 }
 
@@ -174,8 +173,11 @@ function isIdentityBearingValue(value: unknown): value is object {
 	return value !== null && (typeof value === 'object' || typeof value === 'function');
 }
 
-function validateUnknownProvenanceDescriptor(descriptor: { readonly version: 'v1' }): void {
-	if ((descriptor as { readonly version?: unknown }).version !== 'v1') throw new ForeignDecodeError('$descriptor', 'unsupported or incomplete unknown provenance descriptor');
+function validateUnknownProvenanceDescriptor(descriptor: { readonly kind: 'unknown-provenance'; readonly version: 'v1' }): void {
+	const keys = Object.keys(descriptor).sort();
+	if (descriptor.kind !== 'unknown-provenance' || descriptor.version !== 'v1' || keys.length !== 2 || keys[0] !== 'kind' || keys[1] !== 'version') {
+		throw new ForeignDecodeError('$descriptor', 'unsupported, malformed, or incomplete unknown provenance descriptor');
+	}
 }
 
 function rememberForeignUnknown(value: unknown): unknown {
