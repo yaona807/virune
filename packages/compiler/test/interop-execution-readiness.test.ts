@@ -1,8 +1,12 @@
 import assert from 'node:assert/strict';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import test from 'node:test';
 import { compileSource as compileSourceBase } from '../src/compiler.js';
-import { compileSource } from '../src/interop/checked-api.js';
+import { buildProject, compileSource } from '../src/interop/checked-api.js';
 import { externalExecutionReadiness } from '../src/interop/operation-api.js';
+import { projectRuntimeModuleClosure, ProjectBuildCache } from '../src/project/project.js';
 import type { JsInteropProvider, ModuleResolutionWitness } from '../src/interop/types.js';
 
 const source = {
@@ -138,4 +142,46 @@ test('execution readiness is deterministic for equivalent registered evidence', 
 	assert.ok(first.semantic);
 	assert.ok(second.semantic);
 	assert.deepEqual(externalExecutionReadiness(first.semantic), externalExecutionReadiness(second.semantic));
+});
+
+test('project runtime module closure remains exact across cache reuse and excludes type-only dependencies', async t => {
+	const root = await mkdtemp(join(tmpdir(), 'virune-execution-closure-'));
+	t.after(() => rm(root, { recursive: true, force: true }));
+	await mkdir(join(root, 'src'), { recursive: true });
+	await writeFile(join(root, 'virune.json'), JSON.stringify({
+		languageVersion: '1.0',
+		platform: 'node',
+		sourceDir: 'src',
+		outDir: 'dist',
+		entry: 'src/main.virune',
+		target: 'es2022',
+		sourceMap: true,
+		sourcesContent: true,
+	}));
+	await writeFile(join(root, 'src/helper.virune'), 'pub fn value() -> Int {\n\treturn 1\n}\n');
+	await writeFile(join(root, 'src/types.virune'), 'pub record Box {\n\tvalue: Int\n}\n');
+	await writeFile(join(root, 'src/main.virune'), [
+		'import { value } from "./helper.virune"',
+		'import type { Box } from "./types.virune"',
+		'',
+		'pub fn main() -> Int {',
+		'\treturn value()',
+		'}',
+		'',
+	].join('\n'));
+
+	const cache = new ProjectBuildCache();
+	const first = await buildProject(root, { write: false, incrementalCache: cache });
+	const second = await buildProject(root, { write: false, incrementalCache: cache });
+	assert.deepEqual(first.diagnostics.filter(item => item.severity === 'error'), []);
+	assert.deepEqual(second.diagnostics.filter(item => item.severity === 'error'), []);
+	assert.equal(second.stats.reusedCheckedModules, 3);
+	const mainPath = join(root, 'src/main.virune');
+	const relativePaths = (result: typeof first) => projectRuntimeModuleClosure(result, [mainPath])
+		.map(module => module.source.path.slice(root.length + 1).replaceAll('\\', '/'));
+	assert.deepEqual(relativePaths(first), ['src/helper.virune', 'src/main.virune']);
+	assert.deepEqual(relativePaths(second), ['src/helper.virune', 'src/main.virune']);
+
+	const fabricated = { ...second, modules: second.modules.map(module => ({ ...module })) };
+	assert.throws(() => projectRuntimeModuleClosure(fabricated, [mainPath]), /runtime dependency evidence is unavailable/u);
 });
