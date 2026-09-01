@@ -1127,12 +1127,20 @@ function typescriptCallableResultName(primitive: NativeCallablePrimitiveKind): s
 }
 
 function contextualCallableSignature(type: ts.Type, checker: ts.TypeChecker): ts.Signature | undefined {
-	const flags = type.getFlags();
+	let callableType = type;
+	if (type.isUnion()) {
+		const candidates = type.types.filter(item => (item.getFlags() & ts.TypeFlags.Undefined) === 0);
+		if (candidates.length !== type.types.length) {
+			if (candidates.length !== 1) return undefined;
+			callableType = candidates[0]!;
+		}
+	}
+	const flags = callableType.getFlags();
 	if ((flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown | ts.TypeFlags.TypeParameter)) !== 0) return undefined;
-	if (type.getConstructSignatures().length !== 0) return undefined;
-	const signatures = type.getCallSignatures();
+	if (callableType.getConstructSignatures().length !== 0) return undefined;
+	const signatures = callableType.getCallSignatures();
 	if (signatures.length !== 1) return undefined;
-	const requiredProperties = checker.getPropertiesOfType(type).filter(property => (property.flags & ts.SymbolFlags.Optional) === 0);
+	const requiredProperties = checker.getPropertiesOfType(callableType).filter(property => (property.flags & ts.SymbolFlags.Optional) === 0);
 	if (requiredProperties.length !== 0) return undefined;
 	const signature = signatures[0]!;
 	if (signature.thisParameter !== undefined || (signature.getTypeParameters()?.length ?? 0) !== 0) return undefined;
