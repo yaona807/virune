@@ -42,7 +42,6 @@ export function registerExternalOperationSnapshot(
 	try {
 		const operations = buildExternalOperationSequence({ module, interop: semantic.interop, diagnostics });
 		const importProvenance = buildExternalImportProvenanceEvidence({ module, interop: semantic.interop, diagnostics });
-		if (importProvenance.status !== 'available') throw new Error('External import provenance is unavailable');
 		snapshots.set(semantic, Object.freeze({ status: 'valid', operations, importProvenance }));
 	} catch {
 		snapshots.set(semantic, Object.freeze({ status: 'invalid' }));
