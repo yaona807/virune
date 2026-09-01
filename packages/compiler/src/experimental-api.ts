@@ -20,7 +20,12 @@ export {
 	TypeChecker,
 } from './interop/checked-api.js';
 export * from './interop/decision.js';
-export { externalOperationSequence } from './interop/operation-api.js';
+export {
+	externalExecutionReadiness,
+	externalOperationSequence,
+	type ExternalExecutionReadiness,
+	type ExternalExecutionReadinessBlocker,
+} from './interop/operation-api.js';
 export type {
 	ExternalAwaitOperationIR,
 	ExternalBridgeForeignPrimitiveOperationIR,

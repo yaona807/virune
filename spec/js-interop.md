@@ -14,6 +14,8 @@ A native Virune callable MAY satisfy a supported JavaScript callback position on
 
 Named imports from a CommonJS runtime are rejected. Runtime module resolution used by a browser or bundler remains the bundler's responsibility.
 
+Source checking MAY retain a build-stage `runtime-resolution` obligation as pending; a diagnostic-clean check is not execution authorization. Before `virune run` or `virune test` starts emitted JavaScript, every runtime module load in the executed module closure MUST have provider-independent runtime-resolution evidence discharged for that exact build. Pending, unresolved, missing, invalid, or contradictory evidence MUST fail closed without starting Node.
+
 A TypeScript `any` import is rejected by the direct facade. TypeScript `unknown` remains an unknown foreign value and can cross to Virune `Unknown` without asserting a narrower type.
 
 ### Contextual External operations
