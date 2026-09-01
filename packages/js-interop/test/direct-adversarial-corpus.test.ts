@@ -143,7 +143,7 @@ test('focused Direct corpus rejects raw native aggregates at broad any and objec
 			'}',
 			'',
 		].join('\n'));
-		assert.ok(errorCodes(result).includes('L4204'));
+		assert.ok(errorCodes(result).includes('L4206'));
 	}
 });
 
