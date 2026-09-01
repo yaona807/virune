@@ -3,6 +3,7 @@ import type { NodeId, SourceSpan, TypeId } from '../source.js';
 export type ForeignPrimitiveKind = 'boolean' | 'string' | 'number' | 'bigint' | 'void' | 'undefined' | 'null';
 export type NativeCallablePrimitiveKind = 'Bool' | 'Int' | 'Float' | 'BigInt' | 'String' | 'Unit';
 export type ContextualCallablePrimitiveKind = 'boolean' | 'string' | 'number' | 'bigint' | 'undefined';
+export type CanonicalForeignTypeIdentity = 'ecmascript:Promise';
 
 /** Opaque reference whose lifetime is limited to one provider generation. */
 export interface ForeignTypeRef {
@@ -22,6 +23,7 @@ export interface ForeignTypeSnapshot {
 	readonly category: 'primitive' | 'literal' | 'object' | 'function' | 'constructor' | 'promise' | 'array' | 'tuple' | 'union' | 'unknown' | 'any';
 	readonly primitive?: ForeignPrimitiveKind;
 	readonly mustUse?: boolean;
+	readonly canonicalIdentity?: CanonicalForeignTypeIdentity;
 	readonly origin?: ForeignOrigin;
 	readonly navigation?: ForeignTypeNavigation;
 }
@@ -253,6 +255,7 @@ export interface StableForeignTypeSnapshot {
 	readonly category: ForeignTypeSnapshot['category'];
 	readonly primitive?: ForeignPrimitiveKind;
 	readonly mustUse?: boolean;
+	readonly canonicalIdentity?: CanonicalForeignTypeIdentity;
 	readonly origin?: ForeignOrigin;
 }
 

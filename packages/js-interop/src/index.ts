@@ -6,6 +6,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { Script } from 'node:vm';
 import ts from 'typescript';
 import type {
+	CanonicalForeignTypeIdentity,
 	ContextualCallablePrimitiveKind,
 	ContextualCallableResult,
 	ForeignCallResolution,
@@ -736,7 +737,16 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 									: (type.flags & ts.TypeFlags.Any) !== 0 ? 'any'
 										: (type.flags & ts.TypeFlags.Unknown) !== 0 ? 'unknown'
 											: 'object';
-		return { ref, display, category, ...(primitive === undefined ? {} : { primitive }), ...(category === 'promise' ? { mustUse: true } : {}), ...(origin === undefined ? {} : { origin }) };
+		const canonicalIdentity = category === 'promise' ? canonicalForeignTypeIdentity(type, checker) : undefined;
+		return {
+			ref,
+			display,
+			category,
+			...(primitive === undefined ? {} : { primitive }),
+			...(category === 'promise' ? { mustUse: true } : {}),
+			...(canonicalIdentity === undefined ? {} : { canonicalIdentity }),
+			...(origin === undefined ? {} : { origin }),
+		};
 	}
 
 	private requireType(reference: ForeignTypeRef): StoredType {
@@ -794,6 +804,23 @@ function primitiveKind(type: ts.Type): ForeignPrimitiveKind | undefined {
 	if ((flags & ts.TypeFlags.Undefined) !== 0) return 'undefined';
 	if ((flags & ts.TypeFlags.Null) !== 0) return 'null';
 	return undefined;
+}
+
+function canonicalForeignTypeIdentity(type: ts.Type, checker: ts.TypeChecker): CanonicalForeignTypeIdentity | undefined {
+	try {
+		const globalPromise = checker.resolveName('Promise', undefined, ts.SymbolFlags.Type, false);
+		if (globalPromise === undefined) return undefined;
+		const objectType = (type.getFlags() & ts.TypeFlags.Object) === 0 ? undefined : type as ts.ObjectType;
+		const candidate = objectType !== undefined && (objectType.objectFlags & ts.ObjectFlags.Reference) !== 0
+			? (type as ts.TypeReference).target.getSymbol()
+			: type.getSymbol();
+		if (candidate === undefined) return undefined;
+		const expected = (globalPromise.flags & ts.SymbolFlags.Alias) === 0 ? globalPromise : checker.getAliasedSymbol(globalPromise);
+		const actual = (candidate.flags & ts.SymbolFlags.Alias) === 0 ? candidate : checker.getAliasedSymbol(candidate);
+		return actual === expected ? 'ecmascript:Promise' : undefined;
+	} catch {
+		return undefined;
+	}
 }
 
 function nativePrimitiveCompatible(argument: Extract<InteropArgumentType, { readonly kind: 'native-primitive' }>, parameter: ts.Type, checker: ts.TypeChecker): boolean {
@@ -893,7 +920,6 @@ function foreignTypeRequiresUnknownProjection(
 			const returnType = checker.getReturnTypeOfSignature(signature);
 			if (foreignTypeRequiresUnknownProjection(returnType, checker, signatureLocation, seen, budget, depth + 1)) return true;
 		}
-
 		const objectType = type as ts.ObjectType;
 		if ((objectType.objectFlags & ts.ObjectFlags.Reference) !== 0) {
 			const typeArguments = checker.getTypeArguments(type as ts.TypeReference);
