@@ -1,0 +1,871 @@
+name: Temporary #577 contextual External validation
+
+on:
+  push:
+    branches:
+      - fix/577-contextual-external-callable
+
+permissions:
+  contents: read
+
+jobs:
+  focused:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 24
+      - run: npm ci
+      - name: Apply candidate patch without committing it
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_between(path, start, end, replacement):
+              p = Path(path)
+              text = p.read_text()
+              a = text.index(start)
+              b = text.index(end, a)
+              p.write_text(text[:a] + replacement + text[b:])
+
+          def replace_once(path, old, new):
+              p = Path(path)
+              text = p.read_text()
+              count = text.count(old)
+              if count != 1:
+                  raise RuntimeError(f'{path}: expected one match, got {count}: {old[:80]!r}')
+              p.write_text(text.replace(old, new, 1))
+
+          # Provider/compiler contract: add provisional contextual callables and External callback values.
+          replace_once('packages/compiler/src/interop/types.ts', '''export interface NativeCallableTypeTemplate {
+          \treadonly parameters: readonly NativeCallablePrimitiveKind[];
+          \treadonly result: NativeCallablePrimitiveKind;
+          \treadonly async: boolean;
+          }''', '''export interface NativeCallableTypeTemplate {
+          \treadonly parameters: readonly (NativeCallablePrimitiveKind | { readonly kind: 'foreign'; readonly type: ForeignTypeRef })[];
+          \treadonly result: NativeCallablePrimitiveKind | { readonly kind: 'foreign'; readonly type: ForeignTypeRef } | 'Never';
+          \treadonly async: boolean;
+          }''')
+          replace_once('packages/compiler/src/interop/types.ts', '''export type InteropArgumentType =
+          \t| { readonly kind: 'foreign'; readonly type: ForeignTypeRef }
+          \t| { readonly kind: 'native-primitive'; readonly primitive: NativeCallablePrimitiveKind; readonly literal?: InteropLiteralValue }
+          \t| { readonly kind: 'native-callable'; readonly callable: NativeCallableTypeTemplate }
+          \t| { readonly kind: 'contextual-object'; readonly object: InteropObjectUsage }
+          \t| { readonly kind: 'unknown' };''', '''export type InteropArgumentType =
+          \t| { readonly kind: 'foreign'; readonly type: ForeignTypeRef }
+          \t| { readonly kind: 'native-primitive'; readonly primitive: NativeCallablePrimitiveKind; readonly literal?: InteropLiteralValue }
+          \t| { readonly kind: 'native-callable'; readonly callable: NativeCallableTypeTemplate }
+          \t| { readonly kind: 'contextual-callable'; readonly parameterCount: number; readonly async: boolean }
+          \t| { readonly kind: 'contextual-object'; readonly object: InteropObjectUsage }
+          \t| { readonly kind: 'unknown' };''')
+          replace_once('packages/compiler/src/interop/types.ts', '''export type ContextualCallableResult =
+          \t| { readonly kind: 'void' }
+          \t| { readonly kind: 'value'; readonly value: ContextualCallablePrimitiveKind }
+          \t| { readonly kind: 'promise'; readonly value: ContextualCallablePrimitiveKind | 'void' };''', '''export type ContextualCallableResult =
+          \t| { readonly kind: 'void' }
+          \t| { readonly kind: 'value'; readonly value: ContextualCallablePrimitiveKind }
+          \t| { readonly kind: 'promise'; readonly value: ContextualCallablePrimitiveKind | 'void' }
+          \t| { readonly kind: 'external' }
+          \t| { readonly kind: 'deferred' };''')
+          replace_once('packages/compiler/src/interop/types.ts', '''\treadonly target: {
+          \t\treadonly parameters: readonly ContextualCallablePrimitiveKind[];
+          \t\treadonly result: ContextualCallableResult;
+          \t};''', '''\treadonly target: {
+          \t\treadonly parameters: readonly (ContextualCallablePrimitiveKind | ForeignTypeSnapshot)[];
+          \t\treadonly result: ContextualCallableResult;
+          \t};''')
+          replace_once('packages/compiler/src/interop/types.ts', '''\treadonly callableArguments?: readonly InteropCallableArgumentResolution[];
+          \treadonly objectArguments?: readonly InteropObjectArgumentResolution[];''', '''\treadonly callableArguments?: readonly InteropCallableArgumentResolution[];
+          \treadonly contextualCallableArguments?: readonly InteropCallableArgumentResolution[];
+          \treadonly objectArguments?: readonly InteropObjectArgumentResolution[];''')
+          replace_once('packages/compiler/src/interop/types.ts', '''export interface NativeCallableBoundaryDescriptor {
+          \treadonly version: 'virune-callable-shim/v1';
+          \treadonly parameters: readonly NativeCallablePrimitiveKind[];
+          \treadonly result: NativeCallablePrimitiveKind;
+          \treadonly async: boolean;''', '''export interface NativeCallableBoundaryDescriptor {
+          \treadonly version: 'virune-callable-shim/v1';
+          \treadonly parameters: readonly (NativeCallablePrimitiveKind | 'External')[];
+          \treadonly result: NativeCallablePrimitiveKind | 'External' | 'Never';
+          \treadonly async: boolean;''')
+
+          # Checker: defer only unannotated inline lambdas until TypeScript supplies concrete contextual External parameters.
+          replace_between('packages/compiler/src/checker/checker.ts', '\tprivate checkForeignCall(expression: A.CallExpression, scope: Scope, callee: ForeignTypeSnapshot): TypeId {', '\n\tprivate semanticPoint()', r'''\tprivate checkForeignCall(expression: A.CallExpression, scope: Scope, callee: ForeignTypeSnapshot): TypeId {
+          \t\tthis.requireEffects(['JavaScript'], expression.span);
+          \t\tif (expression.typeArguments.length > 0) this.diagnostics.error('L4203', 'Explicit Virune type arguments are not supported for JavaScript calls; use a TypeScript interop adapter', expression.span);
+          \t\tlet preparedArguments = expression.arguments.map(argument => this.prepareForeignCallValue(argument, scope));
+          \t\tlet interopArguments = preparedArguments.map(argument => argument.argument);
+          \t\tlet callableBoundaries = preparedArguments.map(argument => argument.boundary);
+          \t\tlet target: InteropCallTarget = { kind: 'value' };
+          \t\tif (expression.callee.kind === 'FieldExpression') {
+          \t\t\tconst receiverTypeId = expression.callee.target.inferredTypeId;
+          \t\t\tconst receiver = receiverTypeId === undefined ? undefined : this.arena.get(receiverTypeId);
+          \t\t\tif (receiver?.kind === 'foreign') target = { kind: 'member', receiver: receiver.ref, property: expression.callee.field };
+          \t\t} else if (expression.callee.kind === 'IndexExpression') {
+          \t\t\tconst receiverTypeId = expression.callee.target.inferredTypeId;
+          \t\t\tconst indexTypeId = expression.callee.index.inferredTypeId;
+          \t\t\tconst receiver = receiverTypeId === undefined ? undefined : this.arena.get(receiverTypeId);
+          \t\t\tif (receiver?.kind === 'foreign' && indexTypeId !== undefined) {
+          \t\t\t\tconst index = this.interopArgumentType(indexTypeId, expression.callee.index, expression.callee.index.span);
+          \t\t\t\tif (index.kind !== 'unknown') target = { kind: 'indexed-member', receiver: receiver.ref, index };
+          \t\t\t}
+          \t\t}
+          \t\tconst provider = this.currentInteropProvider(callee);
+          \t\tif (provider === undefined) {
+          \t\t\tthis.diagnostics.error('L4204', `Cannot resolve JavaScript call for ${callee.display}; use a TypeScript interop adapter`, expression.span);
+          \t\t\treturn this.arena.error;
+          \t\t}
+          \t\tlet usage: import('../interop/types.js').InteropCallUsage = { target, arguments: interopArguments };
+          \t\tif (interopArguments.some(argument => argument.kind === 'contextual-callable')) {
+          \t\t\tif (provider.resolveCallUsage === undefined) {
+          \t\t\t\tthis.diagnostics.error('L4204', `Cannot contextually resolve JavaScript callback for ${callee.display}; use a TypeScript interop adapter`, expression.span);
+          \t\t\t\treturn this.arena.error;
+          \t\t\t}
+          \t\t\tlet contextualResolution: import('../interop/types.js').ForeignCallResolution | undefined;
+          \t\t\ttry { contextualResolution = provider.resolveCallUsage(callee.ref, usage); } catch { contextualResolution = undefined; }
+          \t\t\tif (contextualResolution === undefined || !this.isValidForeignInvocationResolution(contextualResolution, provider, target, false, true)) {
+          \t\t\t\tthis.diagnostics.error('L4204', `Cannot resolve contextual JavaScript callback for ${callee.display}; use a TypeScript interop adapter`, expression.span);
+          \t\t\t\treturn this.arena.error;
+          \t\t\t}
+          \t\t\tconst contextualEvidence = this.validateContextualCallableArgumentEvidence(contextualResolution.contextualCallableArguments, interopArguments, provider);
+          \t\t\tif (contextualEvidence === undefined) {
+          \t\t\t\tthis.diagnostics.error('L4204', `Cannot prove contextual JavaScript callback for ${callee.display}; use a TypeScript interop adapter`, expression.span);
+          \t\t\t\treturn this.arena.error;
+          \t\t\t}
+          \t\t\tconst evidenceByIndex = new Map(contextualEvidence.map(evidence => [evidence.index, evidence]));
+          \t\t\tconst finalized: PreparedInteropValue[] = [];
+          \t\t\tfor (let index = 0; index < preparedArguments.length; index++) {
+          \t\t\t\tconst prepared = preparedArguments[index]!;
+          \t\t\t\tif (prepared.argument.kind !== 'contextual-callable') { finalized.push(prepared); continue; }
+          \t\t\t\tconst argument = expression.arguments[index];
+          \t\t\t\tconst evidence = evidenceByIndex.get(index);
+          \t\t\t\tif (argument?.kind !== 'LambdaExpression' || evidence === undefined) {
+          \t\t\t\t\tthis.diagnostics.error('L4204', `Cannot prove contextual JavaScript callback for ${callee.display}; use a TypeScript interop adapter`, expression.span);
+          \t\t\t\t\treturn this.arena.error;
+          \t\t\t\t}
+          \t\t\t\tconst parameterTypes = evidence.target.parameters.map(parameter => this.contextualCallableTypeId(parameter, provider));
+          \t\t\t\tif (parameterTypes.some(parameter => parameter === undefined)) {
+          \t\t\t\t\tthis.diagnostics.error('L4204', `Cannot safely project contextual JavaScript callback parameters for ${callee.display}`, argument.span);
+          \t\t\t\t\treturn this.arena.error;
+          \t\t\t\t}
+          \t\t\t\tconst typeId = this.checkLambda(argument, scope, undefined, parameterTypes as TypeId[]);
+          \t\t\t\targument.inferredTypeId = typeId;
+          \t\t\t\tconst projection = this.nativeCallableProjection(typeId, argument);
+          \t\t\t\tif (projection === undefined) {
+          \t\t\t\t\tthis.diagnostics.error('L4206', `Contextually typed native callback ${this.arena.display(typeId)} cannot cross the generated JavaScript callable boundary`, argument.span);
+          \t\t\t\t\treturn this.arena.error;
+          \t\t\t\t}
+          \t\t\t\tfinalized.push({ expression: argument, argument: { kind: 'native-callable', callable: projection.callable }, boundary: projection.boundary, point: prepared.point });
+          \t\t\t}
+          \t\t\tpreparedArguments = finalized;
+          \t\t\tinteropArguments = preparedArguments.map(argument => argument.argument);
+          \t\t\tcallableBoundaries = preparedArguments.map(argument => argument.boundary);
+          \t\t\tusage = { target, arguments: interopArguments };
+          \t\t}
+          \t\tlet resolution: import('../interop/types.js').ForeignCallResolution | undefined;
+          \t\tlet invocationKind: 'call' | 'construct' = 'call';
+          \t\tconst wholeUsageResolution = provider.resolveCallUsage !== undefined;
+          \t\ttry {
+          \t\t\tresolution = wholeUsageResolution
+          \t\t\t\t? provider.resolveCallUsage!(callee.ref, usage)
+          \t\t\t\t: provider.resolveCall(callee.ref, interopArguments);
+          \t\t} catch {
+          \t\t\tthis.diagnostics.error('L4204', `Cannot resolve JavaScript call for ${callee.display}; use a TypeScript interop adapter`, expression.span);
+          \t\t\treturn this.arena.error;
+          \t\t}
+          \t\tif (resolution !== undefined) {
+          \t\t\tif (!this.isValidForeignInvocationResolution(resolution, provider, usage.target, false, wholeUsageResolution)) {
+          \t\t\t\tthis.diagnostics.error('L4204', `Cannot prove JavaScript call for ${callee.display}; use a TypeScript interop adapter`, expression.span);
+          \t\t\t\treturn this.arena.error;
+          \t\t\t}
+          \t\t} else if (provider.resolveConstructUsage !== undefined) {
+          \t\t\tlet constructResolution: import('../interop/types.js').ForeignCallResolution | undefined;
+          \t\t\ttry { constructResolution = provider.resolveConstructUsage(callee.ref, usage); } catch { constructResolution = undefined; }
+          \t\t\tif (constructResolution !== undefined) {
+          \t\t\t\tif (!this.isValidForeignInvocationResolution(constructResolution, provider, usage.target, true, true)) {
+          \t\t\t\t\tthis.diagnostics.error('L4204', `Cannot prove JavaScript construct for ${callee.display}; use a TypeScript interop adapter`, expression.span);
+          \t\t\t\t\treturn this.arena.error;
+          \t\t\t\t}
+          \t\t\t\tresolution = constructResolution;
+          \t\t\t\tinvocationKind = 'construct';
+          \t\t\t}
+          \t\t}
+          \t\tif (resolution === undefined) {
+          \t\t\tthis.diagnostics.error('L4204', `Cannot resolve JavaScript call or construct for ${callee.display}; use a TypeScript interop adapter`, expression.span);
+          \t\t\treturn this.arena.error;
+          \t\t}
+          \t\tif (resolution.contextualCallableArguments !== undefined && resolution.contextualCallableArguments.length !== 0) {
+          \t\t\tthis.diagnostics.error('L4204', `Final JavaScript call retained provisional callback evidence for ${callee.display}`, expression.span);
+          \t\t\treturn this.arena.error;
+          \t\t}
+          \t\tconst callableEvidence = this.validateCallableArgumentEvidence(resolution.callableArguments, interopArguments, callableBoundaries, provider);
+          \t\tconst objectEvidence = this.validateObjectArgumentEvidence(resolution.objectArguments, preparedArguments, provider);
+          \t\tif (callableEvidence === undefined || objectEvidence === undefined) {
+          \t\t\tthis.diagnostics.error('L4204', `Cannot prove generated boundary for JavaScript ${invocationKind} ${callee.display}; use a TypeScript interop adapter`, expression.span);
+          \t\t\treturn this.arena.error;
+          \t\t}
+          \t\tconst pendingObjects = this.commitContextualObjects(objectEvidence);
+          \t\tconst minimum = resolution.minimumArgumentCount ?? Math.max(0, resolution.parameterCount - resolution.optionalParameterCount);
+          \t\tif (expression.arguments.length < minimum || (!resolution.rest && expression.arguments.length > resolution.parameterCount)) this.diagnostics.error('L4205', `JavaScript ${invocationKind} expects ${minimum}${resolution.rest ? '+' : `..${resolution.parameterCount}`} arguments, received ${expression.arguments.length}`, expression.span);
+          \t\tfor (const evidence of callableEvidence) {
+          \t\t\tconst argument = expression.arguments.at(evidence.index);
+          \t\t\tconst prepared = preparedArguments.at(evidence.index);
+          \t\t\tconst boundary = callableBoundaries.at(evidence.index);
+          \t\t\tif (argument === undefined || prepared === undefined || boundary === undefined) {
+          \t\t\t\tthis.diagnostics.error('L4204', `Cannot prove generated callback boundary for JavaScript ${invocationKind} ${callee.display}; use a TypeScript interop adapter`, expression.span);
+          \t\t\t\treturn this.arena.error;
+          \t\t\t}
+          \t\t\tthis.requireEffects(boundary.effects, argument.span);
+          \t\t\tthis.#callableProjections.push({
+          \t\t\t\tcallNodeId: expression.id,
+          \t\t\t\targumentIndex: evidence.index,
+          \t\t\t\tnodeId: argument.id,
+          \t\t\t\tspan: argument.span,
+          \t\t\t\tbeforeUsageIndex: this.adjustedUsageIndex(prepared.point, pendingObjects),
+          \t\t\t\tdescriptor: boundary,
+          \t\t\t});
+          \t\t}
+          \t\tif (invocationKind === 'call') expression.foreignCall = true;
+          \t\telse expression.foreignConstruct = true;
+          \t\tthis.#interopUsages.push({ kind: invocationKind, nodeId: expression.id, span: expression.span, foreignType: resolution.result, receiverMode: invocationKind === 'call' ? resolution.receiverMode : 'none', ...(invocationKind === 'call' ? { mayReject: resolution.mayReject } : {}) });
+          \t\treturn this.arena.foreign(resolution.result);
+          \t}
+          ''')
+          replace_between('packages/compiler/src/checker/checker.ts', '\tprivate prepareInteropValue(expression: A.Expression, scope: Scope): PreparedInteropValue {', '\n\tprivate prepareContextualObject(', r'''\tprivate prepareForeignCallValue(expression: A.Expression, scope: Scope): PreparedInteropValue {
+          \t\tif (expression.kind === 'LambdaExpression' && expression.parameters.some(parameter => parameter.annotation === undefined)) {
+          \t\t\treturn { expression, argument: { kind: 'contextual-callable', parameterCount: expression.parameters.length, async: expression.async }, point: this.semanticPoint() };
+          \t\t}
+          \t\treturn this.prepareInteropValue(expression, scope);
+          \t}
+
+          \tprivate prepareInteropValue(expression: A.Expression, scope: Scope): PreparedInteropValue {
+          \t\tif (expression.kind === 'ContextualAggregateExpression') {
+          \t\t\tconst object = this.prepareContextualObject(expression, scope);
+          \t\t\treturn { expression, argument: { kind: 'contextual-object', object: object.usage }, object, point: this.semanticPoint() };
+          \t\t}
+          \t\tconst typeId = this.checkExpression(expression, scope);
+          \t\tconst projection = this.nativeCallableProjection(typeId, expression);
+          \t\tconst argument: InteropArgumentType = projection === undefined
+          \t\t\t? this.interopArgumentType(typeId, expression, expression.span)
+          \t\t\t: { kind: 'native-callable', callable: projection.callable };
+          \t\treturn { expression, argument, ...(projection === undefined ? {} : { boundary: projection.boundary }), point: this.semanticPoint() };
+          \t}
+          ''')
+          replace_once('packages/compiler/src/checker/checker.ts', '''\tprivate checkLambda(expression: A.LambdaExpression, scope: Scope, expected?: TypeId): TypeId {
+          \t\tconst expectedType = expected === undefined ? undefined : this.arena.get(expected);
+          \t\tconst child = new Scope(scope); const parameters: TypeId[] = [];
+          \t\texpression.parameters.forEach((parameter, index) => {
+          \t\t\tconst typeId = parameter.annotation === undefined ? expectedType?.kind === 'function' ? expectedType.parameters[index] ?? this.arena.error : this.arena.error : this.resolveTypeReference(parameter.annotation, new Map());''', '''\tprivate checkLambda(expression: A.LambdaExpression, scope: Scope, expected?: TypeId, contextualParameters?: readonly TypeId[]): TypeId {
+          \t\tconst expectedType = expected === undefined ? undefined : this.arena.get(expected);
+          \t\tconst child = new Scope(scope); const parameters: TypeId[] = [];
+          \t\texpression.parameters.forEach((parameter, index) => {
+          \t\t\tconst contextual = contextualParameters?.[index];
+          \t\t\tconst typeId = parameter.annotation === undefined ? contextual ?? (expectedType?.kind === 'function' ? expectedType.parameters[index] ?? this.arena.error : this.arena.error) : this.resolveTypeReference(parameter.annotation, new Map());''')
+          replace_between('packages/compiler/src/checker/checker.ts', '\tprivate nativeCallableBoundary(typeId: TypeId, expression: A.Expression): NativeCallableBoundaryDescriptor | undefined {', '\n\tprivate interopArgumentType(', r'''\tprivate nativeCallableProjection(typeId: TypeId, expression: A.Expression): { readonly boundary: NativeCallableBoundaryDescriptor; readonly callable: import('../interop/types.js').NativeCallableTypeTemplate } | undefined {
+          \t\tconst type = this.arena.get(typeId);
+          \t\tif (type.kind !== 'function' || type.typeParameters.length !== 0 || type.effects.some(effect => effect === '*' || !this.#effects.has(effect))) return undefined;
+          \t\tif (expression.kind === 'IdentifierExpression') {
+          \t\t\tif (expression.symbolId === undefined) return undefined;
+          \t\t\tconst symbol = this.#symbols.get(expression.symbolId);
+          \t\t\tconst declaration = symbol?.declaration;
+          \t\t\tif (symbol?.kind !== 'function' || declaration?.kind !== 'FunctionDeclaration') return undefined;
+          \t\t\tconst functionDeclaration = declaration as A.FunctionDeclaration;
+          \t\t\tif (functionDeclaration.typeParameters.length !== 0 || functionDeclaration.attributes.some(attribute => attribute.name === 'jsExport')) return undefined;
+          \t\t} else if (expression.kind !== 'LambdaExpression') return undefined;
+          \t\tconst callableParameters: import('../interop/types.js').NativeCallableTypeTemplate['parameters'][number][] = [];
+          \t\tconst boundaryParameters: NativeCallableBoundaryDescriptor['parameters'][number][] = [];
+          \t\tfor (const parameter of type.parameters) {
+          \t\t\tconst value = this.nativeCallableTemplateValue(parameter, false);
+          \t\t\tif (value === undefined || value === 'Never') return undefined;
+          \t\t\tcallableParameters.push(value);
+          \t\t\tboundaryParameters.push(typeof value === 'string' ? value : 'External');
+          \t\t}
+          \t\tconst callableResult = this.nativeCallableTemplateValue(type.result, true);
+          \t\tif (callableResult === undefined) return undefined;
+          \t\tconst boundaryResult: NativeCallableBoundaryDescriptor['result'] = typeof callableResult === 'string' ? callableResult : 'External';
+          \t\treturn Object.freeze({
+          \t\t\tcallable: Object.freeze({ parameters: Object.freeze(callableParameters), result: callableResult, async: type.async }),
+          \t\t\tboundary: Object.freeze({
+          \t\t\t\tversion: 'virune-callable-shim/v1',
+          \t\t\t\tparameters: Object.freeze(boundaryParameters),
+          \t\t\t\tresult: boundaryResult,
+          \t\t\t\tasync: type.async,
+          \t\t\t\teffects: Object.freeze([...new Set(type.effects)].sort(compareText)),
+          \t\t\t\tcontextMode: 'root-argument',
+          \t\t\t}),
+          \t\t});
+          \t}
+
+          \tprivate nativeCallableTemplateValue(typeId: TypeId, allowNever: boolean): import('../interop/types.js').NativeCallableTypeTemplate['result'] | undefined {
+          \t\tconst type = this.arena.get(typeId);
+          \t\tif (type.kind === 'primitive') {
+          \t\t\tif (allowNever && type.name === 'Never') return 'Never';
+          \t\t\treturn ['Bool', 'Int', 'Float', 'BigInt', 'String', 'Unit'].includes(type.name) ? type.name as NativeCallablePrimitiveKind : undefined;
+          \t\t}
+          \t\tif (type.kind !== 'foreign') return undefined;
+          \t\tconst provider = this.currentInteropProvider(type.snapshot);
+          \t\treturn provider !== undefined && this.isCurrentForeignSnapshot(type.snapshot, provider, false) ? { kind: 'foreign', type: type.ref } : undefined;
+          \t}
+
+          \tprivate validateContextualCallableArgumentEvidence(
+          \t\traw: unknown,
+          \t\tinteropArguments: readonly InteropArgumentType[],
+          \t\tprovider: JsInteropProvider,
+          \t): readonly InteropCallableArgumentResolution[] | undefined {
+          \t\tconst expectedIndexes = interopArguments.flatMap((argument, index) => argument.kind === 'contextual-callable' ? [index] : []);
+          \t\tif (expectedIndexes.length === 0) return raw === undefined || Array.isArray(raw) && raw.length === 0 ? [] : undefined;
+          \t\tif (!Array.isArray(raw) || raw.length !== expectedIndexes.length) return undefined;
+          \t\tconst result: InteropCallableArgumentResolution[] = [];
+          \t\tfor (let position = 0; position < raw.length; position++) {
+          \t\t\tconst item = raw[position];
+          \t\t\tconst expectedIndex = expectedIndexes[position];
+          \t\t\tif (!isRecord(item) || !hasExactEnumerableKeys(item, ['index', 'target']) || item.index !== expectedIndex || expectedIndex === undefined) return undefined;
+          \t\t\tconst target = item.target;
+          \t\t\tconst expectedArgument = interopArguments[expectedIndex];
+          \t\t\tif (!isRecord(target) || !hasExactEnumerableKeys(target, ['parameters', 'result']) || !Array.isArray(target.parameters) || expectedArgument?.kind !== 'contextual-callable' || target.parameters.length !== expectedArgument.parameterCount) return undefined;
+          \t\t\tconst parameters = this.validatedContextualCallableParameters(target.parameters, provider);
+          \t\t\tconst contextualResult = canonicalContextualCallableResult(target.result);
+          \t\t\tif (parameters === undefined || contextualResult?.kind !== 'deferred') return undefined;
+          \t\t\tresult.push(Object.freeze({ index: expectedIndex, target: Object.freeze({ parameters, result: contextualResult }) }));
+          \t\t}
+          \t\treturn Object.freeze(result);
+          \t}
+
+          \tprivate validateCallableArgumentEvidence(
+          \t\traw: unknown,
+          \t\tinteropArguments: readonly InteropArgumentType[],
+          \t\tboundaries: readonly (NativeCallableBoundaryDescriptor | undefined)[],
+          \t\tprovider: JsInteropProvider,
+          \t): readonly InteropCallableArgumentResolution[] | undefined {
+          \t\tconst expectedIndexes = interopArguments.flatMap((argument, index) => argument.kind === 'native-callable' ? [index] : []);
+          \t\tif (expectedIndexes.length === 0) return raw === undefined || Array.isArray(raw) && raw.length === 0 ? [] : undefined;
+          \t\tif (!Array.isArray(raw) || raw.length !== expectedIndexes.length) return undefined;
+          \t\tconst result: InteropCallableArgumentResolution[] = [];
+          \t\tfor (let position = 0; position < raw.length; position++) {
+          \t\t\tconst item = raw[position];
+          \t\t\tif (!isRecord(item) || !hasExactEnumerableKeys(item, ['index', 'target'])) return undefined;
+          \t\t\tconst index = item.index;
+          \t\t\tconst expectedIndex = expectedIndexes.at(position);
+          \t\t\tif (typeof index !== 'number' || !Number.isSafeInteger(index) || index < 0 || expectedIndex === undefined || index !== expectedIndex) return undefined;
+          \t\t\tconst target = item.target;
+          \t\t\tif (!isRecord(target) || !hasExactEnumerableKeys(target, ['parameters', 'result']) || !Array.isArray(target.parameters)) return undefined;
+          \t\t\tconst parameters = this.validatedContextualCallableParameters(target.parameters, provider);
+          \t\t\tconst contextualResult = canonicalContextualCallableResult(target.result);
+          \t\t\tconst boundary = boundaries.at(index);
+          \t\t\tif (parameters === undefined || contextualResult === undefined || boundary === undefined || !this.callableBoundaryMatchesContext(boundary, parameters, contextualResult)) return undefined;
+          \t\t\tresult.push(Object.freeze({ index, target: Object.freeze({ parameters, result: contextualResult }) }));
+          \t\t}
+          \t\treturn Object.freeze(result);
+          \t}
+
+          \tprivate validatedContextualCallableParameters(raw: readonly unknown[], provider: JsInteropProvider): readonly InteropCallableArgumentResolution['target']['parameters'][number][] | undefined {
+          \t\tconst parameters: InteropCallableArgumentResolution['target']['parameters'][number][] = [];
+          \t\tfor (const parameter of raw) {
+          \t\t\tif (isContextualCallablePrimitive(parameter)) parameters.push(parameter);
+          \t\t\telse if (this.isCurrentForeignSnapshot(parameter, provider, false)) parameters.push(parameter);
+          \t\t\telse return undefined;
+          \t\t}
+          \t\treturn Object.freeze(parameters);
+          \t}
+
+          \tprivate contextualCallableTypeId(value: InteropCallableArgumentResolution['target']['parameters'][number], provider: JsInteropProvider): TypeId | undefined {
+          \t\tif (typeof value !== 'string') return this.isCurrentForeignSnapshot(value, provider, false) ? this.arena.foreign(value) : undefined;
+          \t\treturn value === 'boolean' ? this.arena.bool
+          \t\t\t: value === 'string' ? this.arena.string
+          \t\t\t\t: value === 'number' ? this.arena.float
+          \t\t\t\t\t: value === 'bigint' ? this.arena.bigint
+          \t\t\t\t\t\t: value === 'undefined' ? this.arena.unit
+          \t\t\t\t\t\t\t: undefined;
+          \t}
+
+          \tprivate callableBoundaryMatchesContext(
+          \t\tboundary: NativeCallableBoundaryDescriptor,
+          \t\tparameters: readonly InteropCallableArgumentResolution['target']['parameters'][number][],
+          \t\tresult: ContextualCallableResult,
+          \t): boolean {
+          \t\tif (boundary.parameters.length !== parameters.length) return false;
+          \t\tif (boundary.parameters.some((parameter, index) => {
+          \t\t\tconst target = parameters[index]!;
+          \t\t\treturn parameter === 'External' ? typeof target === 'string' : typeof target !== 'string' || !callableParameterMatchesContext(parameter, target);
+          \t\t})) return false;
+          \t\tif (result.kind === 'deferred') return false;
+          \t\tif (boundary.result === 'External' || boundary.result === 'Never') return result.kind === 'external';
+          \t\tif (result.kind === 'external') return false;
+          \t\tif (result.kind === 'void') return !boundary.async && boundary.result === 'Unit';
+          \t\tif (boundary.async !== (result.kind === 'promise')) return false;
+          \t\tif (boundary.result === 'Unit') return result.value === 'undefined' || result.kind === 'promise' && result.value === 'void';
+          \t\treturn callablePrimitiveExternalName(boundary.result) === result.value;
+          \t}
+          ''')
+          replace_once('packages/compiler/src/checker/checker.ts', '''\t\t\t\tconst parameters: ContextualCallablePrimitiveKind[] = [];
+          \t\t\t\tfor (const parameter of callable.parameters) {
+          \t\t\t\t\tif (!isContextualCallablePrimitive(parameter)) return undefined;
+          \t\t\t\t\tparameters.push(parameter);
+          \t\t\t\t}
+          \t\t\t\tconst contextualResult = canonicalContextualCallableResult(callable.result);''', '''\t\t\t\tconst parameters = this.validatedContextualCallableParameters(callable.parameters, provider);
+          \t\t\t\tif (parameters === undefined) return undefined;
+          \t\t\t\tconst contextualResult = canonicalContextualCallableResult(callable.result);''')
+          replace_once('packages/compiler/src/checker/checker.ts', '''function canonicalContextualCallableResult(value: unknown): ContextualCallableResult | undefined {
+          \tif (!isRecord(value) || typeof value.kind !== 'string') return undefined;
+          \tif (value.kind === 'void') return hasExactEnumerableKeys(value, ['kind']) ? Object.freeze({ kind: 'void' }) : undefined;
+          \tif (value.kind !== 'value' && value.kind !== 'promise') return undefined;''', '''function canonicalContextualCallableResult(value: unknown): ContextualCallableResult | undefined {
+          \tif (!isRecord(value) || typeof value.kind !== 'string') return undefined;
+          \tif (value.kind === 'void' || value.kind === 'external' || value.kind === 'deferred') return hasExactEnumerableKeys(value, ['kind']) ? Object.freeze({ kind: value.kind }) as ContextualCallableResult : undefined;
+          \tif (value.kind !== 'value' && value.kind !== 'promise') return undefined;''')
+
+          # TypeScript provider: provisional contextual probe, concrete External snapshots, then exact final source callback proof.
+          replace_between('packages/js-interop/src/index.ts', '\tprivate renderUsageValue(argument: InteropArgumentType, context: UsageProbeContext, allowNativeCallable: boolean, allowObject: boolean, depth = 0): string | undefined {', '\n\tprivate runUsageProbe(', r'''\tprivate renderUsageValue(argument: InteropArgumentType, context: UsageProbeContext, allowNativeCallable: boolean, allowObject: boolean, depth = 0): string | undefined {
+          \t\tif (depth > 12) return undefined;
+          \t\tif (argument.kind === 'unknown') {
+          \t\t\tif (depth !== 0) return undefined;
+          \t\t\tconst name = `__viruneValue${context.nextValueId++}`;
+          \t\t\tcontext.declarations.push(`declare const ${name}: unknown;`);
+          \t\t\treturn name;
+          \t\t}
+          \t\tif (argument.kind === 'contextual-object') {
+          \t\t\tif (!allowObject) return undefined;
+          \t\t\tconst seen = new Set<string>();
+          \t\t\tconst entries: string[] = [];
+          \t\t\tfor (const entry of argument.object.entries) {
+          \t\t\t\tif (typeof entry.property !== 'string' || entry.property.length === 0 || seen.has(entry.property)) return undefined;
+          \t\t\t\tseen.add(entry.property);
+          \t\t\t\tconst value = this.renderUsageValue(entry.value, context, true, true, depth + 1);
+          \t\t\t\tif (value === undefined) return undefined;
+          \t\t\t\tentries.push(`[${JSON.stringify(entry.property)}]: ${value}`);
+          \t\t\t}
+          \t\t\treturn `({ ${entries.join(', ')} })`;
+          \t\t}
+          \t\tif (argument.kind === 'foreign') {
+          \t\t\tconst source = this.lookupType(argument.type);
+          \t\t\tif (source === undefined || source.workspace !== context.workspace || source.usageProjection === undefined || source.usageProjection.directory !== context.directory) return undefined;
+          \t\t\tif (source.usageProjection.declaration !== undefined) context.imports.add(source.usageProjection.declaration);
+          \t\t\tconst sourceType = foreignTypeRequiresUnknownProjection(source.type, source.checker, source.location) ? 'unknown' : source.usageProjection.typeExpression;
+          \t\t\tconst name = `__viruneValue${context.nextValueId++}`;
+          \t\t\tcontext.declarations.push(`declare const ${name}: ${sourceType};`);
+          \t\t\treturn name;
+          \t\t}
+          \t\tif (argument.kind === 'contextual-callable') {
+          \t\t\tif (!allowNativeCallable || !Number.isSafeInteger(argument.parameterCount) || argument.parameterCount < 0 || argument.parameterCount > 64 || typeof argument.async !== 'boolean') return undefined;
+          \t\t\tconst parameters = Array.from({ length: argument.parameterCount }, (_, index) => `$arg${index}`);
+          \t\t\treturn `${argument.async ? 'async ' : ''}(${parameters.join(', ')}) => { throw new Error("__virune_contextual_probe"); }`;
+          \t\t}
+          \t\tif (argument.kind === 'native-callable') {
+          \t\t\tif (!allowNativeCallable) return undefined;
+          \t\t\tconst sourceType = this.renderNativeCallableType(argument.callable, context);
+          \t\t\tif (sourceType === undefined) return undefined;
+          \t\t\tconst name = `__viruneValue${context.nextValueId++}`;
+          \t\t\tcontext.declarations.push(`declare const ${name}: ${sourceType};`);
+          \t\t\treturn name;
+          \t\t}
+          \t\tconst literal = argument.literal === undefined ? undefined : renderInteropLiteral(argument.primitive, argument.literal);
+          \t\tif (argument.literal !== undefined && literal === undefined) return undefined;
+          \t\tif (literal !== undefined) return literal;
+          \t\tif (argument.primitive === 'Unit') return 'undefined';
+          \t\tconst name = `__viruneValue${context.nextValueId++}`;
+          \t\tcontext.declarations.push(`declare const ${name}: ${typescriptPrimitiveName(argument.primitive)};`);
+          \t\treturn name;
+          \t}
+
+          \tprivate renderNativeCallableType(callable: NativeCallableTypeTemplate, context: UsageProbeContext): string | undefined {
+          \t\tconst parameters: string[] = [];
+          \t\tfor (let index = 0; index < callable.parameters.length; index++) {
+          \t\t\tconst rendered = this.renderNativeCallableValue(callable.parameters[index]!, context, false);
+          \t\t\tif (rendered === undefined) return undefined;
+          \t\t\tparameters.push(`$arg${index}: ${rendered}`);
+          \t\t}
+          \t\tconst result = this.renderNativeCallableValue(callable.result, context, true);
+          \t\tif (result === undefined || typeof callable.async !== 'boolean') return undefined;
+          \t\treturn `(${parameters.join(', ')}) => ${callable.async ? `Promise<${result}>` : result}`;
+          \t}
+
+          \tprivate renderNativeCallableValue(value: NativeCallableTypeTemplate['result'], context: UsageProbeContext, allowNever: boolean): string | undefined {
+          \t\tif (value === 'Never') return allowNever ? 'never' : undefined;
+          \t\tif (typeof value === 'string') return allowNever ? typescriptCallableResultName(value) : typescriptCallbackParameterName(value);
+          \t\tconst source = this.lookupType(value.type);
+          \t\tif (source === undefined || source.workspace !== context.workspace || source.usageProjection === undefined || source.usageProjection.directory !== context.directory) return undefined;
+          \t\tif (source.usageProjection.declaration !== undefined) context.imports.add(source.usageProjection.declaration);
+          \t\treturn source.usageProjection.typeExpression;
+          \t}
+
+          \tprivate contextualCallableShape(
+          \t\ttype: ts.Type,
+          \t\tchecker: ts.TypeChecker,
+          \t\tlocation: ts.Node,
+          \t\tparameterCount: number,
+          \t\tcallable: NativeCallableTypeTemplate | undefined,
+          \t\tworkspace: ProbeWorkspace,
+          \t\torigin: ForeignTypeSnapshot['origin'],
+          \t\tdirectory: string,
+          \t): InteropCallableArgumentResolution['target'] | undefined {
+          \t\tconst signature = contextualCallableSignature(type, checker);
+          \t\tif (signature === undefined) return undefined;
+          \t\tconst parameters = signature.getParameters();
+          \t\tif (parameters.length < parameterCount) return undefined;
+          \t\tconst parameterTypes: InteropCallableArgumentResolution['target']['parameters'][number][] = [];
+          \t\tfor (let index = 0; index < parameterCount; index++) {
+          \t\t\tconst parameter = parameters[index];
+          \t\t\tif (parameter === undefined) return undefined;
+          \t\t\tconst parameterType = checker.getTypeOfSymbolAtLocation(parameter, location);
+          \t\t\tconst value = this.contextualCallableValue(parameterType, checker, location, workspace, origin, directory);
+          \t\t\tif (value === undefined) return undefined;
+          \t\t\tparameterTypes.push(value);
+          \t\t}
+          \t\tlet result: ContextualCallableResult;
+          \t\tif (callable === undefined) result = Object.freeze({ kind: 'deferred' });
+          \t\telse if (callable.result === 'Never' || typeof callable.result !== 'string') result = Object.freeze({ kind: 'external' });
+          \t\telse {
+          \t\t\tconst resultType = checker.getReturnTypeOfSignature(signature);
+          \t\t\tconst contextual = contextualCallbackResult(resultType, checker);
+          \t\t\tif (contextual === undefined) return undefined;
+          \t\t\tresult = contextual;
+          \t\t}
+          \t\treturn Object.freeze({ parameters: Object.freeze(parameterTypes), result });
+          \t}
+
+          \tprivate contextualCallableValue(type: ts.Type, checker: ts.TypeChecker, location: ts.Node, workspace: ProbeWorkspace, origin: ForeignTypeSnapshot['origin'], directory: string): InteropCallableArgumentResolution['target']['parameters'][number] | undefined {
+          \t\tconst primitive = contextualPrimitiveKind(type);
+          \t\tif (primitive !== undefined) return primitive;
+          \t\tconst flags = type.getFlags();
+          \t\tif ((flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown | ts.TypeFlags.Never | ts.TypeFlags.TypeParameter | ts.TypeFlags.Union | ts.TypeFlags.Intersection)) !== 0) return undefined;
+          \t\tconst typeExpression = renderContextualTypeExpression(type, checker, location);
+          \t\tif (typeExpression === undefined) return undefined;
+          \t\treturn this.store(type, checker, location, origin, workspace, { typeExpression, directory });
+          \t}
+          ''')
+          replace_between('packages/js-interop/src/index.ts', '\tprivate resolveInvocationUsage(reference: ForeignTypeRef, usage: InteropCallUsage, construct: boolean): ForeignCallResolution | undefined {', '\n\tprivate objectResolutionFromLiteral(', r'''\tprivate resolveInvocationUsage(reference: ForeignTypeRef, usage: InteropCallUsage, construct: boolean): ForeignCallResolution | undefined {
+          \t\tconst stored = this.lookupType(reference);
+          \t\tif (stored === undefined || (stored.type.getFlags() & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) !== 0) return undefined;
+          \t\tconst callSignatures = stored.type.getCallSignatures();
+          \t\tconst constructSignatures = stored.type.getConstructSignatures();
+          \t\tif (construct) {
+          \t\t\tif (constructSignatures.length === 0 || callSignatures.length !== 0) return undefined;
+          \t\t} else if (callSignatures.length === 0 || constructSignatures.length !== 0) return undefined;
+          \t\tif (usage.arguments.some(argument => argument.kind === 'native-callable' || argument.kind === 'contextual-callable') && this.#compilerOptions.strictNullChecks !== true) return undefined;
+          \t\tconst context = this.createUsageProbeContext(reference);
+          \t\tif (context === undefined) return undefined;
+          \t\tif (!construct) {
+          \t\t\tif (usage.target.kind === 'member') {
+          \t\t\t\tconst receiver = this.lookupType(usage.target.receiver);
+          \t\t\t\tif (receiver === undefined || receiver.workspace !== context.workspace || receiver.usageProjection === undefined || receiver.usageProjection.directory !== context.directory) return undefined;
+          \t\t\t\tif ((receiver.type.getFlags() & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) !== 0) return undefined;
+          \t\t\t\tif (receiver.usageProjection.declaration !== undefined) context.imports.add(receiver.usageProjection.declaration);
+          \t\t\t\tconst property = JSON.stringify(usage.target.property);
+          \t\t\t\tconst expectedType = `(${receiver.usageProjection.typeExpression})[${property}]`;
+          \t\t\t\tif (stored.usageProjection?.typeExpression !== expectedType) return undefined;
+          \t\t\t\tif (receiver.usageProjection.valueExpression !== undefined) context.target = `(${receiver.usageProjection.valueExpression})[${property}]`;
+          \t\t\t\telse {
+          \t\t\t\t\tcontext.declarations.push(`declare const __viruneReceiver: ${receiver.usageProjection.typeExpression};`);
+          \t\t\t\t\tcontext.target = `__viruneReceiver[${property}]`;
+          \t\t\t\t}
+          \t\t\t} else if (usage.target.kind === 'indexed-member') {
+          \t\t\t\tconst receiver = this.lookupType(usage.target.receiver);
+          \t\t\t\tif (receiver === undefined || receiver.workspace !== context.workspace || receiver.usageProjection === undefined || receiver.usageProjection.directory !== context.directory) return undefined;
+          \t\t\t\tif ((receiver.type.getFlags() & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) !== 0) return undefined;
+          \t\t\t\tif (receiver.usageProjection.declaration !== undefined) context.imports.add(receiver.usageProjection.declaration);
+          \t\t\t\tconst index = this.renderUsageValue(usage.target.index, context, false, false);
+          \t\t\t\tif (index === undefined) return undefined;
+          \t\t\t\tif (receiver.usageProjection.valueExpression !== undefined) context.target = `(${receiver.usageProjection.valueExpression})[${index}]`;
+          \t\t\t\telse {
+          \t\t\t\t\tcontext.declarations.push(`declare const __viruneReceiver: ${receiver.usageProjection.typeExpression};`);
+          \t\t\t\t\tcontext.target = `__viruneReceiver[${index}]`;
+          \t\t\t\t}
+          \t\t\t}
+          \t\t}
+          \t\tconst argumentExpressions: string[] = [];
+          \t\tfor (const argument of usage.arguments) {
+          \t\t\tconst rendered = this.renderUsageValue(argument, context, true, true);
+          \t\t\tif (rendered === undefined) return undefined;
+          \t\t\targumentExpressions.push(rendered);
+          \t\t}
+          \t\tconst invocationText = construct
+          \t\t\t? `new (${context.target})(${argumentExpressions.join(', ')})`
+          \t\t\t: `${context.target}(${argumentExpressions.join(', ')})`;
+          \t\tconst probe = this.runUsageProbe(context, invocationText);
+          \t\tif (probe === undefined) return undefined;
+          \t\tconst invocation = probe.initializer;
+          \t\tif (construct ? !ts.isNewExpression(invocation) : !ts.isCallExpression(invocation)) return undefined;
+          \t\tconst signature = probe.checker.getResolvedSignature(invocation as ts.CallLikeExpression);
+          \t\tif (signature === undefined) return undefined;
+          \t\tconst result = probe.checker.getReturnTypeOfSignature(signature);
+          \t\tif ((result.getFlags() & (ts.TypeFlags.Any | (construct ? ts.TypeFlags.Unknown : ts.TypeFlags.Never))) !== 0) return undefined;
+          \t\tif (!resolvedGenericResultIsConcrete(signature, probe.checker, invocation)) return undefined;
+          \t\tconst invocationArguments = ts.isCallExpression(invocation)
+          \t\t\t? invocation.arguments
+          \t\t\t: ts.isNewExpression(invocation)
+          \t\t\t\t? invocation.arguments ?? ts.factory.createNodeArray<ts.Expression>()
+          \t\t\t\t: ts.factory.createNodeArray<ts.Expression>();
+          \t\tconst parameters = signature.getParameters();
+          \t\tconst callableArguments: InteropCallableArgumentResolution[] = [];
+          \t\tconst contextualCallableArguments: InteropCallableArgumentResolution[] = [];
+          \t\tconst objectArguments: InteropObjectArgumentResolution[] = [];
+          \t\tfor (let index = 0; index < usage.arguments.length; index++) {
+          \t\t\tconst argument = usage.arguments[index]!;
+          \t\t\tconst node = invocationArguments[index];
+          \t\t\tif (node === undefined) return undefined;
+          \t\t\tif (argument.kind === 'native-callable' || argument.kind === 'contextual-callable') {
+          \t\t\t\tconst contextual = probe.checker.getContextualType(node);
+          \t\t\t\tif (contextual === undefined) return undefined;
+          \t\t\t\tconst callable = argument.kind === 'native-callable' ? argument.callable : undefined;
+          \t\t\t\tconst parameterCount = argument.kind === 'native-callable' ? argument.callable.parameters.length : argument.parameterCount;
+          \t\t\t\tconst target = this.contextualCallableShape(contextual, probe.checker, node, parameterCount, callable, context.workspace, stored.origin, context.directory);
+          \t\t\t\tif (target === undefined) return undefined;
+          \t\t\t\tconst evidence = { index, target };
+          \t\t\t\tif (argument.kind === 'native-callable') callableArguments.push(evidence);
+          \t\t\t\telse contextualCallableArguments.push(evidence);
+          \t\t\t} else if (argument.kind === 'contextual-object') {
+          \t\t\t\tconst literal = unwrapObjectLiteral(node);
+          \t\t\t\tif (literal === undefined) return undefined;
+          \t\t\t\tconst object = this.objectResolutionFromLiteral(literal, argument.object, probe.checker, context.workspace);
+          \t\t\t\tif (object === undefined) return undefined;
+          \t\t\t\tobjectArguments.push({ index, object });
+          \t\t\t}
+          \t\t}
+          \t\tconst { minimum, optional, rest } = signatureArity(parameters);
+          \t\tconst resultProjection: UsageProjection = {
+          \t\t\ttypeExpression: `(typeof import(${JSON.stringify(`./${probe.virtualFileName}`)}))["__viruneResult"]`,
+          \t\t\tdirectory: context.directory,
+          \t\t};
+          \t\tconst resultSnapshot = this.store(result, probe.checker, invocation, stored.origin, context.workspace, resultProjection);
+          \t\treturn {
+          \t\t\tresult: resultSnapshot,
+          \t\t\tparameterCount: parameters.length,
+          \t\t\toptionalParameterCount: optional,
+          \t\t\tminimumArgumentCount: minimum,
+          \t\t\trest,
+          \t\t\tmayReject: resultSnapshot.category === 'promise',
+          \t\t\treceiverMode: !construct && usage.target.kind !== 'value' ? 'preserve-this' : 'none',
+          \t\t\t...(callableArguments.length === 0 ? {} : { callableArguments: Object.freeze(callableArguments) }),
+          \t\t\t...(contextualCallableArguments.length === 0 ? {} : { contextualCallableArguments: Object.freeze(contextualCallableArguments) }),
+          \t\t\t...(objectArguments.length === 0 ? {} : { objectArguments: Object.freeze(objectArguments) }),
+          \t\t};
+          \t}
+          ''')
+          replace_once('packages/js-interop/src/index.ts', 'const callable = contextualCallableShape(contextual, checker, property.initializer, usageEntry.value.callable);', 'const callable = this.contextualCallableShape(contextual, checker, property.initializer, usageEntry.value.callable.parameters.length, usageEntry.value.callable, workspace, undefined, dirname(property.initializer.getSourceFile().fileName));')
+          replace_between('packages/js-interop/src/index.ts', 'function renderNativeCallableType(callable: NativeCallableTypeTemplate): string | undefined {', '\nfunction renderInteropLiteral(', r'''function typescriptCallbackParameterName(primitive: NativeCallablePrimitiveKind): string | undefined {
+          \tif (primitive === 'Int') return undefined;
+          \treturn typescriptCallableResultName(primitive);
+          }
+
+          function typescriptCallableResultName(primitive: NativeCallablePrimitiveKind): string | undefined {
+          \treturn primitive === 'Bool' ? 'boolean'
+          \t\t: primitive === 'String' ? 'string'
+          \t\t\t: primitive === 'BigInt' ? 'bigint'
+          \t\t\t\t: primitive === 'Unit' ? 'undefined'
+          \t\t\t\t\t: primitive === 'Int' || primitive === 'Float' ? 'number'
+          \t\t\t\t\t\t: undefined;
+          }
+
+          function contextualCallableSignature(type: ts.Type, checker: ts.TypeChecker): ts.Signature | undefined {
+          \tlet callableType = type;
+          \tif (type.isUnion()) {
+          \t\tconst candidates = type.types.filter(item => (item.getFlags() & ts.TypeFlags.Undefined) === 0);
+          \t\tif (candidates.length !== type.types.length) {
+          \t\t\tif (candidates.length !== 1) return undefined;
+          \t\t\tcallableType = candidates[0]!;
+          \t\t}
+          \t}
+          \tconst flags = callableType.getFlags();
+          \tif ((flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown | ts.TypeFlags.TypeParameter)) !== 0) return undefined;
+          \tif (callableType.getConstructSignatures().length !== 0) return undefined;
+          \tconst signatures = callableType.getCallSignatures();
+          \tif (signatures.length !== 1) return undefined;
+          \tconst requiredProperties = checker.getPropertiesOfType(callableType).filter(property => (property.flags & ts.SymbolFlags.Optional) === 0);
+          \tif (requiredProperties.length !== 0) return undefined;
+          \tconst signature = signatures[0]!;
+          \tif (signature.thisParameter !== undefined || (signature.getTypeParameters()?.length ?? 0) !== 0) return undefined;
+          \tconst parameters = signature.getParameters();
+          \tconst declaration = signature.declaration;
+          \tif (declaration === undefined || declaration.parameters.length !== parameters.length) return undefined;
+          \treturn signature;
+          }
+
+          function contextualPrimitiveKind(type: ts.Type): ContextualCallablePrimitiveKind | undefined {
+          \tconst flags = type.getFlags();
+          \tif ((flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown | ts.TypeFlags.TypeParameter | ts.TypeFlags.Union | ts.TypeFlags.Intersection)) !== 0) return undefined;
+          \tif ((flags & ts.TypeFlags.BooleanLike) !== 0) return 'boolean';
+          \tif ((flags & ts.TypeFlags.StringLike) !== 0) return 'string';
+          \tif ((flags & ts.TypeFlags.NumberLike) !== 0) return 'number';
+          \tif ((flags & ts.TypeFlags.BigIntLike) !== 0) return 'bigint';
+          \tif ((flags & ts.TypeFlags.Undefined) !== 0) return 'undefined';
+          \treturn undefined;
+          }
+
+          function contextualCallbackResult(type: ts.Type, checker: ts.TypeChecker): ContextualCallableResult | undefined {
+          \tconst flags = type.getFlags();
+          \tif ((flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown | ts.TypeFlags.TypeParameter)) !== 0) return undefined;
+          \tif ((flags & ts.TypeFlags.Void) !== 0) return Object.freeze({ kind: 'void' });
+          \tconst awaited = checker.getAwaitedType(type);
+          \tif (awaited !== undefined && awaited !== type) {
+          \t\tif ((awaited.getFlags() & ts.TypeFlags.Void) !== 0) return Object.freeze({ kind: 'promise', value: 'void' });
+          \t\tconst value = contextualPrimitiveKind(awaited);
+          \t\treturn value === undefined ? undefined : Object.freeze({ kind: 'promise', value });
+          \t}
+          \tconst value = contextualPrimitiveKind(type);
+          \treturn value === undefined ? undefined : Object.freeze({ kind: 'value', value });
+          }
+
+          function renderContextualTypeExpression(type: ts.Type, checker: ts.TypeChecker, location: ts.Node): string | undefined {
+          \ttry {
+          \t\tconst node = checker.typeToTypeNode(type, location, ts.NodeBuilderFlags.NoTruncation | ts.NodeBuilderFlags.UseFullyQualifiedType);
+          \t\tif (node === undefined) return undefined;
+          \t\tconst text = ts.createPrinter({ removeComments: true }).printNode(ts.EmitHint.Unspecified, node, location.getSourceFile()).trim();
+          \t\treturn text.length === 0 ? undefined : text;
+          \t} catch {
+          \t\treturn undefined;
+          \t}
+          }
+          ''')
+
+          # Stable operation evidence accepts only the new explicit runtime boundary classes.
+          replace_once('packages/compiler/src/interop/operation.ts', "const CALLABLE_PRIMITIVES: readonly NativeCallablePrimitiveKind[] = ['Bool', 'Int', 'Float', 'BigInt', 'String', 'Unit'];", "const CALLABLE_PRIMITIVES: readonly NativeCallablePrimitiveKind[] = ['Bool', 'Int', 'Float', 'BigInt', 'String', 'Unit'];\nconst CALLABLE_BOUNDARY_VALUES = [...CALLABLE_PRIMITIVES, 'External'] as const;\nconst CALLABLE_BOUNDARY_RESULTS = [...CALLABLE_BOUNDARY_VALUES, 'Never'] as const;")
+          replace_once('packages/compiler/src/interop/operation.ts', '''\tconst parameters = descriptor.parameters.map(parameter => {
+          \t\tassertKnown(CALLABLE_PRIMITIVES, parameter, 'native callable primitive');
+          \t\treturn parameter;
+          \t});
+          \tassertKnown(CALLABLE_PRIMITIVES, descriptor.result, 'native callable result primitive');''', '''\tconst parameters = descriptor.parameters.map(parameter => {
+          \t\tassertKnown(CALLABLE_BOUNDARY_VALUES, parameter, 'native callable boundary parameter');
+          \t\treturn parameter;
+          \t});
+          \tassertKnown(CALLABLE_BOUNDARY_RESULTS, descriptor.result, 'native callable boundary result');''')
+
+          # Generated shim passes already-External values through by identity and never exposes an unexpected Never return.
+          replace_between('packages/compiler/src/codegen/emitter.ts', '\tprivate callableProjection(callable: string, descriptor: NativeCallableBoundaryDescriptor): string {', '\n\tprivate field(', r'''\tprivate callableProjection(callable: string, descriptor: NativeCallableBoundaryDescriptor): string {
+          \t\tconst rawParameters = descriptor.parameters.map((_, index) => `$raw${index}`);
+          \t\tconst validated = descriptor.parameters.map((parameter, index) => parameter === 'External'
+          \t\t\t? rawParameters[index]!
+          \t\t\t: `validateFfiValue(${rawParameters[index]}, ${this.callableFfiDescriptor(parameter)}, ${javascriptStringLiteral(`$[${index}]`)})`);
+          \t\tconst invocation = `$fn(${[...validated, 'rootTaskContext()'].join(', ')})`;
+          \t\tconst result = descriptor.async ? `await ${invocation}` : invocation;
+          \t\tlet body: string;
+          \t\tif (descriptor.result === 'Never') body = `${result}; throw new Error("Virune Never callback returned unexpectedly");`;
+          \t\telse {
+          \t\t\tconst projected = descriptor.result === 'External' ? result : `encodeFfiValue(${result}, ${this.callableFfiDescriptor(descriptor.result)})`;
+          \t\t\tbody = `return ${projected};`;
+          \t\t}
+          \t\tconst wrapper = `${descriptor.async ? 'async ' : ''}(${rawParameters.join(', ')}) => { try { ${body} } catch ($error) { throw $viruneExternalizeInteropError($error); } }`;
+          \t\tconst descriptorKey = JSON.stringify(descriptor);
+          \t\treturn `$viruneProjectCallable(${callable}, ${javascriptStringLiteral(descriptorKey)}, $fn => (${wrapper}))`;
+          \t}
+
+          \tprivate callableFfiDescriptor(primitive: NativeCallablePrimitiveKind): string {
+          \t\tswitch (primitive) {
+          \t\t\tcase 'Bool': return `{ kind: 'bool' }`;
+          \t\t\tcase 'Int': return `{ kind: 'int' }`;
+          \t\t\tcase 'Float': return `{ kind: 'float' }`;
+          \t\t\tcase 'BigInt': return `{ kind: 'bigint' }`;
+          \t\t\tcase 'String': return `{ kind: 'string' }`;
+          \t\t\tcase 'Unit': return `{ kind: 'undefined' }`;
+          \t\t}
+          \t}
+          ''')
+
+          Path('packages/js-interop/test/contextual-external-callable.test.ts').write_text(r'''import assert from 'node:assert/strict';
+          import { writeFile } from 'node:fs/promises';
+          import { join } from 'node:path';
+          import test from 'node:test';
+          import { compileSource } from '@virune/compiler/experimental';
+          import { TypeScriptInteropProvider } from '../src/index.js';
+          import { fixtureRoot } from './fixture.js';
+
+          async function compileCase(declarations: string, source: string) {
+          \tconst root = await fixtureRoot();
+          \tawait writeFile(join(root, 'src/library.d.ts'), declarations, 'utf8');
+          \tawait writeFile(join(root, 'src/library.js'), 'export function route(_path, _handler) {}\nexport function routeAny(_handler) {}\nexport function routeUnknown(_handler) {}\n', 'utf8');
+          \tconst provider = new TypeScriptInteropProvider({ projectRoot: root });
+          \treturn compileSource({ id: 1, path: join(root, 'src/main.virune'), text: source }, { platform: 'node', jsInteropProvider: provider });
+          }
+
+          function errors(result: Awaited<ReturnType<typeof compileCase>>) {
+          \treturn result.diagnostics.filter(item => item.severity === 'error');
+          }
+
+          const declarations = `
+          export interface ExternalRequest {
+            param(name: string): string;
+            readonly path: string;
+          }
+          export interface ExternalResponse {
+            readonly status: number;
+          }
+          export interface WrongResponse {
+            readonly wrong: true;
+          }
+          export interface ExternalContext {
+            readonly req: ExternalRequest;
+            text(value: string): ExternalResponse;
+            wrong(): WrongResponse;
+          }
+          export declare function route(path: string, handler: (context: ExternalContext) => Promise<ExternalResponse>): void;
+          export declare function routeAny(handler: (context: any) => Promise<ExternalResponse>): void;
+          export declare function routeUnknown(handler: (context: unknown) => Promise<ExternalResponse>): void;
+          `;
+
+          test('contextual async callback keeps concrete parameter and result External through generated shim', async () => {
+          \tconst result = await compileCase(
+          \t\tdeclarations,
+          \t\t`import js { route } from "./library.js"\n\nfn main() -> Unit uses JavaScript {\n\tdiscard route("/jobs/:id", async fn(context) uses JavaScript => context.text(context.req.param("id")))\n\treturn Unit\n}\n`,
+          \t);
+          \tassert.deepEqual(errors(result), []);
+          \tconst projection = result.semantic?.interop.callableProjections?.[0];
+          \tassert.ok(projection);
+          \tassert.deepEqual(projection.descriptor.parameters, ['External']);
+          \tassert.equal(projection.descriptor.result, 'External');
+          \tassert.equal(projection.descriptor.async, true);
+          \tconst code = result.output?.code ?? '';
+          \tassert.match(code, /\$viruneProjectCallable\(/u);
+          \tassert.match(code, /\$fn\(\$raw0, rootTaskContext\(\)\)/u);
+          \tassert.doesNotMatch(code, /validateFfiValue\(\$raw0/u);
+          });
+
+          test('contextual callback returning an unrelated External value remains rejected by the final TypeScript usage proof', async () => {
+          \tconst result = await compileCase(
+          \t\tdeclarations,
+          \t\t`import js { route } from "./library.js"\n\nfn main() -> Unit uses JavaScript {\n\tdiscard route("/wrong", async fn(context) uses JavaScript => context.wrong())\n\treturn Unit\n}\n`,
+          \t);
+          \tassert.ok(result.diagnostics.some(item => item.code === 'L4204'));
+          \tassert.equal(result.semantic?.interop.callableProjections?.length ?? 0, 0);
+          });
+
+          test('consumed contextual any remains fail closed', async () => {
+          \tconst result = await compileCase(
+          \t\tdeclarations,
+          \t\t`import js { routeAny } from "./library.js"\n\nfn main() -> Unit uses JavaScript {\n\tdiscard routeAny(async fn(context) => panic("no any projection"))\n\treturn Unit\n}\n`,
+          \t);
+          \tassert.ok(result.diagnostics.some(item => item.code === 'L4204'));
+          \tassert.equal(result.semantic?.interop.callableProjections?.length ?? 0, 0);
+          });
+
+          test('consumed contextual unknown remains fail closed', async () => {
+          \tconst result = await compileCase(
+          \t\tdeclarations,
+          \t\t`import js { routeUnknown } from "./library.js"\n\nfn main() -> Unit uses JavaScript {\n\tdiscard routeUnknown(async fn(context) => panic("no unknown projection"))\n\treturn Unit\n}\n`,
+          \t);
+          \tassert.ok(result.diagnostics.some(item => item.code === 'L4204'));
+          \tassert.equal(result.semantic?.interop.callableProjections?.length ?? 0, 0);
+          });
+
+          test('Never callback result is projected without allowing a normal return value to escape', async () => {
+          \tconst result = await compileCase(
+          \t\tdeclarations,
+          \t\t`import js { route } from "./library.js"\n\nfn main() -> Unit uses JavaScript {\n\tdiscard route("/fail", async fn(context) => panic("intentional"))\n\treturn Unit\n}\n`,
+          \t);
+          \tassert.deepEqual(errors(result), []);
+          \tconst projection = result.semantic?.interop.callableProjections?.[0];
+          \tassert.ok(projection);
+          \tassert.deepEqual(projection.descriptor.parameters, ['External']);
+          \tassert.equal(projection.descriptor.result, 'Never');
+          \tconst code = result.output?.code ?? '';
+          \tassert.match(code, /Virune Never callback returned unexpectedly/u);
+          \tassert.match(code, /\$viruneExternalizeInteropError/u);
+          });
+          ''')
+          PY
+      - name: Build candidate patch
+        run: npm run build
+      - name: Run focused callback regressions
+        run: node --test packages/js-interop/dist/test/contextual-external-callable.test.js packages/js-interop/dist/test/callable-boundary-ignored-arguments.test.js packages/js-interop/dist/test/callable-boundary-shim.test.js packages/js-interop/dist/test/callable-boundary-regressions.test.js
+      - name: Type-check candidate patch
+        run: npm run check
