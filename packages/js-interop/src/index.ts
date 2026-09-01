@@ -983,6 +983,7 @@ function typeParameterOccursInResult(
 		if ((objectType.objectFlags & ts.ObjectFlags.Reference) !== 0) {
 			const typeArguments = checker.getTypeArguments(type as ts.TypeReference);
 			if (typeArguments.some(item => typeParameterOccursInResult(item, target, checker, location, seen, budget, depth + 1))) return true;
+			return false;
 		}
 		for (const signature of [
 			...checker.getSignaturesOfType(type, ts.SignatureKind.Call),
