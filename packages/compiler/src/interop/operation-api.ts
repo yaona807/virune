@@ -15,7 +15,7 @@ export type ExternalExecutionReadinessBlocker =
 	};
 
 export type ExternalExecutionReadiness =
-	| { readonly status: 'ready'; readonly blockers: readonly [] }
+	| { readonly status: 'ready'; readonly blockers: readonly ExternalExecutionReadinessBlocker[] }
 	| { readonly status: 'blocked'; readonly blockers: readonly ExternalExecutionReadinessBlocker[] };
 
 const snapshots = new WeakMap<SemanticModel, ExternalOperationSnapshot>();
