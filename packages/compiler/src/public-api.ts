@@ -2,8 +2,6 @@ import { compileSource as compileSourceDetailed } from './compiler.js';
 import { buildProject as buildProjectDetailed, loadConfig, type ViruneConfig } from './project/project.js';
 import { diagnosticsToDocument, diagnosticsToJson, renderDiagnostic } from './diagnostics/render.js';
 import type { Diagnostic } from './diagnostics/diagnostic.js';
-import { buildExternalImportProvenanceEvidence } from './interop/provenance.js';
-import type { ExternalImportProvenanceEvidence } from './interop/provenance.js';
 import type { SourceFile } from './source.js';
 
 export interface CompileOptions {
@@ -31,8 +29,6 @@ export interface ProjectModuleResult {
 	readonly diagnostics: readonly Diagnostic[];
 	readonly output?: EmitOutput;
 	readonly outputPath?: string;
-	/** Provider-independent audit metadata for JavaScript imports when the checked evidence is available. */
-	readonly externalImports?: ExternalImportProvenanceEvidence;
 }
 
 export interface ProjectBuildResult {
@@ -65,9 +61,6 @@ export async function buildProject(
 			diagnostics: module.diagnostics,
 			...(module.output === undefined ? {} : { output: module.output }),
 			...(module.outputPath === undefined ? {} : { outputPath: module.outputPath }),
-			externalImports: module.ast === undefined || module.semantic === undefined
-				? Object.freeze({ status: 'unavailable' as const })
-				: buildExternalImportProvenanceEvidence({ module: module.ast, interop: module.semantic.interop, diagnostics: module.diagnostics }),
 		})),
 		diagnostics: result.diagnostics,
 	};
@@ -88,8 +81,6 @@ export function formatDiagnostics(
 export { loadConfig, diagnosticsToDocument, diagnosticsToJson, renderDiagnostic };
 export { DIAGNOSTIC_CODE_RANGES, DIAGNOSTIC_SCHEMA_VERSION, DIAGNOSTIC_SOURCE, diagnosticCategory, diagnosticCategoryDescription, explainDiagnosticCode, isDiagnosticCode, qualifyDiagnosticCode } from './diagnostics/codes.js';
 export { diagnosticCause } from './diagnostics/diagnostic.js';
-export { assertExternalImportLegalMetadata } from './interop/provenance.js';
-export type { ExternalImportKind, ExternalImportProvenance, ExternalImportProvenanceEvidence, ExternalImportResolutionState } from './interop/provenance.js';
 export type { ViruneConfig } from './project/project.js';
 export type { Diagnostic, DiagnosticCause, DiagnosticFix, DiagnosticSeverity, RelatedDiagnostic } from './diagnostics/diagnostic.js';
 export type { DiagnosticCategory, DiagnosticCode } from './diagnostics/codes.js';
