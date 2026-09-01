@@ -10,16 +10,8 @@ function errorCodes(result: ReturnType<typeof compileSource>): string[] {
 	return result.diagnostics.filter(item => item.severity === 'error').map(item => item.code);
 }
 
-test('accepts a concretely defaulted generic constructor when the default type has a generic member', async () => {
-	const root = await fixtureRoot();
-	await writeFile(join(root, 'src/library.d.ts'), [
-		'export interface QueueLike { transform<T>(value: T): T }',
-		'export declare class WorkQueue<Q extends QueueLike = QueueLike> {',
-		'  constructor(options?: { readonly concurrency?: number });',
-		'  readonly concurrency: number;',
-		'}',
-		'',
-	].join('\n'), 'utf8');
+async function compileQueue(root: string, declaration: string) {
+	await writeFile(join(root, 'src/library.d.ts'), declaration, 'utf8');
 	await writeFile(join(root, 'src/library.js'), [
 		'export class WorkQueue {',
 		'  constructor(options = {}) { this.concurrency = options.concurrency ?? Infinity; }',
@@ -27,15 +19,43 @@ test('accepts a concretely defaulted generic constructor when the default type h
 		'',
 	].join('\n'), 'utf8');
 	const provider = new TypeScriptInteropProvider({ projectRoot: root });
-	const result = compileSource({
+	return compileSource({
 		id: 1,
 		path: join(root, 'src/main.virune'),
 		text: `import js { WorkQueue } from "./library.js"\n\nfn main() -> Float uses JavaScript {\n\tlet queue = WorkQueue({ concurrency: 1 })\n\treturn queue.concurrency\n}\n`,
 	}, { platform: 'node', jsInteropProvider: provider });
+}
 
+function assertQueueConstructed(result: ReturnType<typeof compileSource>): void {
 	assert.deepEqual(errorCodes(result), []);
 	assert.equal(result.semantic?.interop.usages.some(item => item.kind === 'construct'), true);
 	assert.equal(result.semantic?.interop.usages.some(item => item.kind === 'object'), true);
+}
+
+test('accepts a concretely defaulted generic constructor when the default type contains a nested any property', async () => {
+	const root = await fixtureRoot();
+	const result = await compileQueue(root, [
+		'export interface QueueLike { readonly signal?: { readonly reason: any } }',
+		'export declare class WorkQueue<Q extends QueueLike = QueueLike> {',
+		'  constructor(options?: { readonly concurrency?: number });',
+		'  readonly concurrency: number;',
+		'}',
+		'',
+	].join('\n'));
+	assertQueueConstructed(result);
+});
+
+test('accepts a concretely defaulted generic constructor when the default type contains an any index value', async () => {
+	const root = await fixtureRoot();
+	const result = await compileQueue(root, [
+		'export interface QueueLike { readonly [key: string]: any }',
+		'export declare class WorkQueue<Q extends QueueLike = QueueLike> {',
+		'  constructor(options?: { readonly concurrency?: number });',
+		'  readonly concurrency: number;',
+		'}',
+		'',
+	].join('\n'));
+	assertQueueConstructed(result);
 });
 
 test('still rejects a constructor whose result generic is unresolved', async () => {
