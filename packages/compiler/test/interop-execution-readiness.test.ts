@@ -24,6 +24,11 @@ const defaultImportSource = {
 	text: source.text.replace('import js { value } from "./library.js"', 'import js value from "./library.js"'),
 };
 
+const builtinImportSource = {
+	...source,
+	text: source.text.replace('./library.js', 'node:fs'),
+};
+
 function provider(runtimeFormat: NonNullable<ModuleResolutionWitness['runtimeFormat']>, malformedProperty = false): JsInteropProvider {
 	const generation = 1;
 	return {
@@ -59,7 +64,6 @@ function provider(runtimeFormat: NonNullable<ModuleResolutionWitness['runtimeFor
 				display: 'string',
 				category: malformedProperty ? 'future-category' : 'primitive',
 				primitive: 'string',
-				origin: { moduleSpecifier: './library.js', exportName: 'field' },
 			} as ReturnType<JsInteropProvider['getProperty']>;
 		},
 		resolveCall() { return undefined; },
@@ -73,7 +77,7 @@ test('execution readiness accepts only module loads with discharged runtime reso
 	for (const [format, input] of [
 		['esm', source],
 		['commonjs', defaultImportSource],
-		['builtin', source],
+		['builtin', builtinImportSource],
 	] as const) {
 		const result = compileSource(input, { emit: false, platform: 'node', jsInteropProvider: provider(format) });
 		assert.deepEqual(result.diagnostics.filter(item => item.severity === 'error'), []);
