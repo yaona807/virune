@@ -1,3 +1,4 @@
+# Temporary branch-only focused validation; remove before PR final review.
 name: Temporary #575 focused patch
 
 on:
