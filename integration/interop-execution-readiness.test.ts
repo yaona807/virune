@@ -102,6 +102,16 @@ test('CLI test ignores pending runtime resolution outside the selected test clos
 	await runCli(['test', root]);
 });
 
+test('CLI test ignores pending runtime resolution in matching files that are not spawned', async () => {
+	const root = await makeCliProject();
+	await configureProject(root, 'browser');
+	await writeFile(join(root, 'src/main.virune'), 'pub fn main() -> Unit {\n\treturn Unit\n}\n');
+	await writeFile(join(root, 'src/plain.test.virune'), 'test "plain" { expect(true) }\n');
+	await writeFile(join(root, 'src/unused.test.virune'), interopUnused());
+
+	await runCli(['test', root]);
+});
+
 test('CLI run preserves direct execution when Node runtime resolution is discharged', async () => {
 	const root = await makeCliProject();
 	await configureProject(root, 'node');
