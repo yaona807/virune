@@ -61,6 +61,7 @@ async function compileWithLicense(license: string) {
 	}
 }
 
+// @virune-rule {"id":"interop.third-party-distribution","runner":"unit","file":"packages/js-interop/test/license-boundary.test.ts","case":"stable interop evidence and generated JavaScript do not redistribute declaration or implementation bodies","kind":"positive","platform":"node"}
 test('stable interop evidence and generated JavaScript do not redistribute declaration or implementation bodies', async () => {
 	const { root, result } = await compileWithLicense('MIT');
 	assert.deepEqual(result.diagnostics.filter(item => item.severity === 'error'), []);
@@ -89,6 +90,7 @@ test('stable interop evidence and generated JavaScript do not redistribute decla
 	assert.equal(output.includes(implementationSentinel), false);
 });
 
+// @virune-rule {"id":"interop.third-party-distribution","runner":"unit","file":"packages/js-interop/test/license-boundary.test.ts","case":"dependency license metadata does not select an Interop mechanism or safety decision","kind":"positive","platform":"node"}
 test('dependency license metadata does not select an Interop mechanism or safety decision', async () => {
 	const permissive = await compileWithLicense('MIT');
 	const copyleft = await compileWithLicense('GPL-3.0-only');

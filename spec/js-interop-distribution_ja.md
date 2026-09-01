@@ -4,7 +4,9 @@
 
 この文書は、JavaScript / TypeScript相互運用における第三者ライセンスと再配布の境界を定めます。外部パッケージの利用・再配布許可をViruneが与えるものではなく、パッケージのライセンス分類をコンパイラーの安全性Evidenceとして扱うものでもありません。
 
-## 宣言解析は意味情報の利用であり、再配布ではない
+## `[interop.third-party-distribution]` 第三者配布境界
+
+### 宣言解析は意味情報の利用であり、再配布ではない
 
 JavaScript相互運用Providerは、具体的な利用方法を解決するために必要なTypeScript宣言ファイル、プラットフォーム宣言、package metadata、宣言graphを読み取ることができます。これらの入力は第三者の素材のままです。
 
@@ -12,24 +14,24 @@ JavaScript相互運用Providerは、具体的な利用方法を解決するた�
 
 安定したEvidenceには、解決結果の再現や説明に必要な最小限の識別情報を保持できます。たとえばmodule名、export/property名、package相対の正規化済み宣言locator、正規化済みtype display、package / Providerのidentityとversion、hash、module-resolution witness metadataです。
 
-## 生成JavaScriptは依存パッケージを参照する
+### 生成JavaScriptは依存パッケージを参照する
 
 通常のDirect External Semanticsでは、外部runtime dependencyに対する通常のJavaScript importとoperationを生成しなければなりません。Direct相互運用を成立させるために、依存パッケージのimplementationを生成applicationへコピーしてはいけません。
 
 コンパイラーが生成するcallable shim、bridge helper、その他のVirune所有のboundary codeはVirune生成コードです。第三者の宣言本文、documentation、runtime implementation本文をコピーして生成してはいけません。
 
-## 技術的な互換性はライセンス許諾ではない
+### 技術的な互換性はライセンス許諾ではない
 
 すべての外部パッケージは、それぞれ独自のライセンス条件を維持します。利用者と配布者は、自身の利用・配布形態に対して必要な条件を満たす責任があります。
 
 Direct、Managed、Adapter、Host、Unsafeの分類は技術的な相互運用境界だけを表します。法的・ライセンス上の分類として表現してはならず、dependencyのライセンス種別をTypeScript usage resolution、External operation選択、Interop safety claimへ利用してはいけません。
 
-## bundlingは別の配布境界である
+### bundlingは別の配布境界である
 
 Viruneの配布artifactがTypeScriptその他の第三者implementationを実際にbundleする場合は、repositoryに既に存在する決定的なlicense / NOTICE / SBOM収集とrelease verificationを適用します。bundle対象packageのlegal provenanceが欠落、矛盾、または未解決である場合は、既存release policyに従ってfail-closedにしなければなりません。
 
 下流のVirune applicationだけが利用する外部パッケージを、Virune所有のrelease contentsとして暗黙に扱ってはいけません。
 
-## 永続的なbinding生成は別途reviewが必要である
+### 永続的なbinding生成は別途reviewが必要である
 
 将来`.d.ts`からVirune binding sourceを生成するなど、変換した宣言内容を永続化または再配布する機能は別のdistribution featureです。source provenance、コピーするcomment/documentation、生成fileのattribution、再配布義務を含む明示的なdesign / license reviewが必要です。Direct External Semanticsの実装都合として暗黙に導入してはいけません。
