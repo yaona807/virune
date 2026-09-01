@@ -62,11 +62,59 @@ test('CLI check and build preserve pending bundler obligations while run refuses
 	await assert.rejects(runCli(['run', root]), rejectedForRuntimeResolution);
 });
 
+test('CLI run refuses pending runtime resolution in an executed Virune dependency', async () => {
+	const root = await makeCliProject();
+	await configureProject(root, 'browser');
+	await writeFile(join(root, 'src/dependency.virune'), [
+		'import js { load } from "./library.js"',
+		'',
+		'pub fn useLoad() -> Unit uses JavaScript {',
+		'\tdiscard load()',
+		'\treturn Unit',
+		'}',
+		'',
+	].join('\n'));
+	await writeFile(join(root, 'src/main.virune'), [
+		'import { useLoad } from "./dependency.virune"',
+		'',
+		'pub fn main() -> Unit uses JavaScript {',
+		'\tuseLoad()',
+		'\treturn Unit',
+		'}',
+		'',
+	].join('\n'));
+
+	await assert.rejects(runCli(['run', root]), rejectedForRuntimeResolution);
+});
+
 test('CLI run ignores pending runtime resolution in an unexecuted source module', async () => {
 	const root = await makeCliProject();
 	await configureProject(root, 'browser');
 	await writeFile(join(root, 'src/main.virune'), 'pub fn main() -> Unit {\n\treturn Unit\n}\n');
 	await writeFile(join(root, 'src/unused.virune'), interopUnused());
+
+	await runCli(['run', root]);
+});
+
+test('CLI run ignores pending runtime resolution in a type-only Virune dependency', async () => {
+	const root = await makeCliProject();
+	await configureProject(root, 'browser');
+	await writeFile(join(root, 'src/types.virune'), [
+		'import js { load } from "./library.js"',
+		'',
+		'pub record Config {',
+		'\tvalue: String',
+		'}',
+		'',
+	].join('\n'));
+	await writeFile(join(root, 'src/main.virune'), [
+		'import type { Config } from "./types.virune"',
+		'',
+		'pub fn main() -> Unit {',
+		'\treturn Unit',
+		'}',
+		'',
+	].join('\n'));
 
 	await runCli(['run', root]);
 });
