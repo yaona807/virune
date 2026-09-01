@@ -82,6 +82,8 @@ test('stable interop evidence and generated JavaScript do not redistribute decla
 
 	const output = result.output?.code ?? '';
 	assert.match(output, new RegExp(`from "${packageName}"`, 'u'));
+	assert.match(output, /\$viruneProjectCallable\(echo,/u);
+	assert.match(output, /encodeFfiValue\(/u);
 	assert.equal(output.includes(declarationBodySentinel), false);
 	assert.equal(output.includes(declarationDocSentinel), false);
 	assert.equal(output.includes(implementationSentinel), false);
