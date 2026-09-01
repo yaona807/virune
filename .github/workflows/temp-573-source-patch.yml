@@ -10,7 +10,6 @@ permissions:
 
 jobs:
   patch:
-    if: github.actor != 'github-actions[bot]' || !contains(github.event.head_commit.message, 'fix(interop): stop generic result relevance at concrete references')
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -26,15 +25,23 @@ jobs:
           text = path.read_text()
           old = """\t\tif ((objectType.objectFlags & ts.ObjectFlags.Reference) !== 0) {\n\t\t\tconst typeArguments = checker.getTypeArguments(type as ts.TypeReference);\n\t\t\tif (typeArguments.some(item => typeParameterOccursInResult(item, target, checker, location, seen, budget, depth + 1))) return true;\n\t\t}\n"""
           new = """\t\tif ((objectType.objectFlags & ts.ObjectFlags.Reference) !== 0) {\n\t\t\tconst typeArguments = checker.getTypeArguments(type as ts.TypeReference);\n\t\t\tif (typeArguments.some(item => typeParameterOccursInResult(item, target, checker, location, seen, budget, depth + 1))) return true;\n\t\t\treturn false;\n\t\t}\n"""
-          if text.count(old) != 1:
-              raise SystemExit(f'expected one exact source match, found {text.count(old)}')
-          path.write_text(text.replace(old, new, 1))
+          old_count = text.count(old)
+          new_count = text.count(new)
+          if old_count == 1 and new_count == 0:
+              path.write_text(text.replace(old, new, 1))
+          elif old_count == 0 and new_count == 1:
+              pass
+          else:
+              raise SystemExit(f'unexpected source state: old={old_count} new={new_count}')
           PY
           git diff --check
           git diff -- packages/js-interop/src/index.ts
       - name: Commit focused source edit
         shell: bash
         run: |
+          if git diff --quiet -- packages/js-interop/src/index.ts; then
+            exit 0
+          fi
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
           git add packages/js-interop/src/index.ts
