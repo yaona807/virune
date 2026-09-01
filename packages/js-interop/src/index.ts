@@ -456,7 +456,7 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 			if (argument.kind === 'native-callable') {
 				const contextual = probe.checker.getContextualType(node);
 				if (contextual === undefined) return undefined;
-				const target = contextualCallableShape(contextual, probe.checker, node);
+				const target = contextualCallableShape(contextual, probe.checker, node, argument.callable);
 				if (target === undefined) return undefined;
 				callableArguments.push({ index, target });
 			} else if (argument.kind === 'contextual-object') {
@@ -496,7 +496,7 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 			const contextual = checker.getContextualType(property.initializer);
 			if (contextual === undefined || (contextual.getFlags() & (ts.TypeFlags.Any | ts.TypeFlags.Unknown | ts.TypeFlags.Never | ts.TypeFlags.TypeParameter)) !== 0) return undefined;
 			if (usageEntry.value.kind === 'native-callable') {
-				const callable = contextualCallableShape(contextual, checker, property.initializer);
+				const callable = contextualCallableShape(contextual, checker, property.initializer, usageEntry.value.callable);
 				if (callable === undefined) return undefined;
 				entries.push({ index, property: usageEntry.property, callable });
 			} else if (usageEntry.value.kind === 'contextual-object') {
@@ -1138,9 +1138,6 @@ function contextualCallableSignature(type: ts.Type, checker: ts.TypeChecker): ts
 	const parameters = signature.getParameters();
 	const declaration = signature.declaration;
 	if (declaration === undefined || declaration.parameters.length !== parameters.length) return undefined;
-	for (const parameter of declaration.parameters) {
-		if (!ts.isParameter(parameter) || parameter.questionToken !== undefined || parameter.initializer !== undefined || parameter.dotDotDotToken !== undefined) return undefined;
-	}
 	return signature;
 }
 
@@ -1148,12 +1145,16 @@ function contextualCallableShape(
 	type: ts.Type,
 	checker: ts.TypeChecker,
 	location: ts.Node,
+	callable: NativeCallableTypeTemplate,
 ): InteropCallableArgumentResolution['target'] | undefined {
 	const signature = contextualCallableSignature(type, checker);
 	if (signature === undefined) return undefined;
 	const parameters = signature.getParameters();
+	if (parameters.length < callable.parameters.length) return undefined;
 	const parameterTypes: ContextualCallablePrimitiveKind[] = [];
-	for (const parameter of parameters) {
+	for (let index = 0; index < callable.parameters.length; index++) {
+		const parameter = parameters[index];
+		if (parameter === undefined) return undefined;
 		const parameterType = checker.getTypeOfSymbolAtLocation(parameter, location);
 		const primitive = contextualPrimitiveKind(parameterType);
 		if (primitive === undefined) return undefined;
