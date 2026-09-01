@@ -1766,6 +1766,7 @@ function stableForeignUsage(usage: import('../interop/types.js').ForeignUsage): 
 	const foreignType: import('../interop/types.js').StableForeignTypeSnapshot = {
 		display: snapshot.display,
 		category: snapshot.category,
+		...(snapshot.canonicalIdentity === undefined ? {} : { canonicalIdentity: snapshot.canonicalIdentity }),
 		...(snapshot.primitive === undefined ? {} : { primitive: snapshot.primitive }),
 		...(snapshot.mustUse === undefined ? {} : { mustUse: snapshot.mustUse }),
 		...(snapshot.origin === undefined ? {} : { origin: snapshot.origin }),
