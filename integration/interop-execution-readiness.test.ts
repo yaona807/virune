@@ -50,6 +50,14 @@ test('CLI check and build preserve pending bundler obligations while run refuses
 	await assert.rejects(runCli(['run', root]), rejectedForRuntimeResolution);
 });
 
+test('CLI test with no emitted tests does not require runtime-resolution discharge', async () => {
+	const root = await makeCliProject();
+	await configureProject(root, 'browser');
+	await writeFile(join(root, 'src/main.virune'), interopMain());
+
+	assert.match((await runCli(['test', root])).stdout, /No Virune tests found/u);
+});
+
 test('CLI test refuses to spawn tests with pending runtime resolution', async () => {
 	const root = await makeCliProject();
 	await configureProject(root, 'browser');
