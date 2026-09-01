@@ -1,0 +1,52 @@
+name: Temporary #577 materialize reviewed candidate
+
+on:
+  push:
+    branches:
+      - fix/577-contextual-external-callable
+
+permissions:
+  contents: read
+
+jobs:
+  materialize:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 24
+      - run: npm ci
+      - name: Apply reviewed candidate exactly as focused validation
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          workflow = Path('.github/workflows/agent-577-candidate-validation-v6.yml').read_text()
+          marker = "          python3 - <<'PY'\n"
+          start = workflow.index(marker) + len(marker)
+          end = workflow.index("\n          PY", start)
+          source = workflow[start:end]
+          source = '\n'.join(line[10:] if line.startswith('          ') else line for line in source.splitlines())
+          exec(compile(source, '<agent-577-materialize>', 'exec'), {'Path': Path})
+          PY
+      - name: Revalidate materialized source
+        run: |
+          npm run build
+          node --test packages/js-interop/dist/test/contextual-external-callable.test.js packages/js-interop/dist/test/callable-boundary-ignored-arguments.test.js packages/js-interop/dist/test/callable-boundary-shim.test.js packages/js-interop/dist/test/callable-boundary-regressions.test.js
+          npm run check
+      - name: Upload materialized source
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: agent-577-materialized-${{ github.sha }}
+          if-no-files-found: error
+          retention-days: 1
+          path: |
+            packages/compiler/src/interop/types.ts
+            packages/compiler/src/checker/checker.ts
+            packages/compiler/src/interop/operation.ts
+            packages/compiler/src/codegen/emitter.ts
+            packages/js-interop/src/index.ts
+            packages/js-interop/test/contextual-external-callable.test.ts
