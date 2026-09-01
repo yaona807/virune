@@ -150,9 +150,10 @@ async function testProject(root: string): Promise<number> {
 	printDiagnostics(result.diagnostics, result.modules.map(module => module.source), false);
 	if (result.diagnostics.some(item => item.severity === 'error')) return 1;
 	const testPaths = new Set(testFiles.map(file => resolve(file)));
-	const outputs = result.modules.filter(module => testPaths.has(resolve(module.source.path)) && module.ast?.declarations.some(item => item.kind === 'TestDeclaration')).map(module => module.outputPath).filter((value): value is string => value !== undefined);
+	const executableTestModules = result.modules.filter(module => testPaths.has(resolve(module.source.path)) && module.ast?.declarations.some(item => item.kind === 'TestDeclaration') && module.outputPath !== undefined);
+	const outputs = executableTestModules.map(module => module.outputPath).filter((value): value is string => value !== undefined);
 	if (outputs.length === 0) { console.log('No Virune tests found.'); return 0; }
-	if (!await requireScopedDirectExecutionReadiness(root, testFiles, false)) return 1;
+	if (!await requireScopedDirectExecutionReadiness(root, executableTestModules.map(module => module.source.path), false)) return 1;
 	return spawnAndWait(process.execPath, ['--test', '--enable-source-maps', ...outputs], root);
 }
 
