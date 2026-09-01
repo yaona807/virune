@@ -85,7 +85,7 @@ test('global ECMAScript Promise keeps one canonical identity across declaration 
 	}
 });
 
-// @virune-rule {"id":"interop.ecmascript-canonical-identity","runner":"unit","file":"packages/js-interop/test/canonical-promise-identity.test.ts","case":"Promise canonical identity is deterministic across provider cache and equivalent roots","kind":"determinism","platform":"common"}
+// @virune-rule {"id":"interop.ecmascript-canonical-identity","runner":"unit","file":"packages/js-interop/test/canonical-promise-identity.test.ts","case":"Promise canonical identity is deterministic across provider cache and equivalent roots","kind":"positive","platform":"common"}
 test('Promise canonical identity is deterministic across provider cache and equivalent roots', async () => {
 	const roots = [await fixtureRoot(), await fixtureRoot()];
 	try {
