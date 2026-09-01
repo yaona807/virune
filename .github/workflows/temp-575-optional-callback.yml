@@ -40,8 +40,10 @@ jobs:
           \tlet callableType = type;
           \tif (type.isUnion()) {
           \t\tconst candidates = type.types.filter(item => (item.getFlags() & ts.TypeFlags.Undefined) === 0);
-          \t\tif (candidates.length !== 1 || candidates.length === type.types.length) return undefined;
-          \t\tcallableType = candidates[0]!;
+          \t\tif (candidates.length !== type.types.length) {
+          \t\t\tif (candidates.length !== 1) return undefined;
+          \t\t\tcallableType = candidates[0]!;
+          \t\t}
           \t}
           \tconst flags = callableType.getFlags();
           \tif ((flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown | ts.TypeFlags.TypeParameter)) !== 0) return undefined;
