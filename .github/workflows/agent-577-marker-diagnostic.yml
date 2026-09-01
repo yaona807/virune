@@ -1,0 +1,45 @@
+name: Temporary #577 patch-anchor diagnostic
+
+on:
+  push:
+    branches:
+      - fix/577-contextual-external-callable
+
+permissions:
+  contents: read
+
+jobs:
+  anchors:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - name: Check candidate patch anchors
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          anchors = [
+              ('checker-call-start', 'packages/compiler/src/checker/checker.ts', '\tprivate checkForeignCall(expression: A.CallExpression, scope: Scope, callee: ForeignTypeSnapshot): TypeId {'),
+              ('checker-call-end', 'packages/compiler/src/checker/checker.ts', '\n\tprivate semanticPoint()'),
+              ('checker-prepare-start', 'packages/compiler/src/checker/checker.ts', '\tprivate prepareInteropValue(expression: A.Expression, scope: Scope): PreparedInteropValue {'),
+              ('checker-prepare-end', 'packages/compiler/src/checker/checker.ts', '\n\tprivate prepareContextualObject('),
+              ('checker-boundary-start', 'packages/compiler/src/checker/checker.ts', '\tprivate nativeCallableBoundary(typeId: TypeId, expression: A.Expression): NativeCallableBoundaryDescriptor | undefined {'),
+              ('checker-boundary-end', 'packages/compiler/src/checker/checker.ts', '\n\tprivate interopArgumentType('),
+              ('provider-render-start', 'packages/js-interop/src/index.ts', '\tprivate renderUsageValue(argument: InteropArgumentType, context: UsageProbeContext, allowNativeCallable: boolean, allowObject: boolean, depth = 0): string | undefined {'),
+              ('provider-render-end', 'packages/js-interop/src/index.ts', '\n\tprivate runUsageProbe('),
+              ('provider-invoke-start', 'packages/js-interop/src/index.ts', '\tprivate resolveInvocationUsage(reference: ForeignTypeRef, usage: InteropCallUsage, construct: boolean): ForeignCallResolution | undefined {'),
+              ('provider-invoke-end', 'packages/js-interop/src/index.ts', '\n\tprivate objectResolutionFromLiteral('),
+              ('provider-free-start', 'packages/js-interop/src/index.ts', 'function renderNativeCallableType(callable: NativeCallableTypeTemplate): string | undefined {'),
+              ('provider-free-end', 'packages/js-interop/src/index.ts', '\nfunction renderInteropLiteral('),
+              ('emitter-callable-start', 'packages/compiler/src/codegen/emitter.ts', '\tprivate callableProjection(callable: string, descriptor: NativeCallableBoundaryDescriptor): string {'),
+              ('emitter-callable-end', 'packages/compiler/src/codegen/emitter.ts', '\n\tprivate field('),
+          ]
+          failed = False
+          for name, path, marker in anchors:
+              count = Path(path).read_text().count(marker)
+              print(f'{name}: {count}')
+              if count != 1:
+                  failed = True
+          raise SystemExit(1 if failed else 0)
+          PY
