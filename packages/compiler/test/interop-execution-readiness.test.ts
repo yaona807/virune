@@ -19,6 +19,11 @@ const source = {
 	].join('\n'),
 };
 
+const defaultImportSource = {
+	...source,
+	text: source.text.replace('import js { value } from "./library.js"', 'import js value from "./library.js"'),
+};
+
 function provider(runtimeFormat: NonNullable<ModuleResolutionWitness['runtimeFormat']>, malformedProperty = false): JsInteropProvider {
 	const generation = 1;
 	return {
@@ -33,7 +38,9 @@ function provider(runtimeFormat: NonNullable<ModuleResolutionWitness['runtimeFor
 					category: 'object',
 					origin: { moduleSpecifier: request.moduleSpecifier, exportName: request.importedName ?? 'value' },
 				},
-				runtime: { kind: 'named', importedName: request.importedName ?? 'value' },
+				runtime: request.kind === 'default'
+					? { kind: 'default' }
+					: { kind: 'named', importedName: request.importedName ?? 'value' },
 				witness: {
 					moduleSpecifier: request.moduleSpecifier,
 					...(runtimeFormat === 'esm' || runtimeFormat === 'commonjs' || runtimeFormat === 'builtin'
@@ -63,8 +70,12 @@ function provider(runtimeFormat: NonNullable<ModuleResolutionWitness['runtimeFor
 }
 
 test('execution readiness accepts only module loads with discharged runtime resolution', () => {
-	for (const format of ['esm', 'commonjs', 'builtin'] as const) {
-		const result = compileSource(source, { emit: false, jsInteropProvider: provider(format) });
+	for (const [format, input] of [
+		['esm', source],
+		['commonjs', defaultImportSource],
+		['builtin', source],
+	] as const) {
+		const result = compileSource(input, { emit: false, jsInteropProvider: provider(format) });
 		assert.deepEqual(result.diagnostics.filter(item => item.severity === 'error'), []);
 		assert.ok(result.semantic);
 		assert.deepEqual(externalExecutionReadiness(result.semantic), { status: 'ready', blockers: [] });
