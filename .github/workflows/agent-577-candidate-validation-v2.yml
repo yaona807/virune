@@ -1,0 +1,63 @@
+name: Temporary #577 candidate validation v2
+
+on:
+  push:
+    branches:
+      - fix/577-contextual-external-callable
+
+permissions:
+  contents: read
+
+jobs:
+  focused:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 24
+      - run: npm ci
+      - name: Apply existing candidate with replacement diagnostics
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          workflow = Path('.github/workflows/agent-577-contextual-external-validation.yml').read_text()
+          marker = "          python3 - <<'PY'\n"
+          start = workflow.index(marker) + len(marker)
+          end = workflow.index("\n          PY", start)
+          source = workflow[start:end]
+          source = '\n'.join(line[10:] if line.startswith('          ') else line for line in source.splitlines())
+
+          old = '''def replace_between(path, start, end, replacement):
+              p = Path(path)
+              text = p.read_text()
+              a = text.index(start)
+              b = text.index(end, a)
+              p.write_text(text[:a] + replacement + text[b:])'''
+          new = '''def replace_between(path, start, end, replacement):
+              p = Path(path)
+              text = p.read_text()
+              try:
+                  a = text.index(start)
+                  b = text.index(end, a)
+              except ValueError:
+                  print(f"replace_between failed: {path}")
+                  print(f"start count={text.count(start)} marker={start[:120]!r}")
+                  print(f"end count={text.count(end)} marker={end[:120]!r}")
+                  raise
+              p.write_text(text[:a] + replacement + text[b:])'''
+          if source.count(old) != 1:
+              raise RuntimeError(f'expected one replace_between helper, found {source.count(old)}')
+          source = source.replace(old, new, 1)
+          exec(compile(source, '<candidate-577>', 'exec'), {'Path': Path})
+          PY
+      - name: Build candidate patch
+        run: npm run build
+      - name: Run focused callback regressions
+        run: node --test packages/js-interop/dist/test/contextual-external-callable.test.js packages/js-interop/dist/test/callable-boundary-ignored-arguments.test.js packages/js-interop/dist/test/callable-boundary-shim.test.js packages/js-interop/dist/test/callable-boundary-regressions.test.js
+      - name: Type-check candidate patch
+        run: npm run check
