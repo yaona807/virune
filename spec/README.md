@@ -18,5 +18,6 @@ Each externally observable rule has a stable ID such as `[type.nominal-identity]
 - [Tasks and structured concurrency](tasks.md) — asynchronous execution and structured concurrency
 - [JavaScript FFI](ffi.md) — JavaScript boundary rules
 - [JavaScript interoperability model](js-interop.md) — normative JavaScript / TypeScript interoperability contract
+- [JavaScript interop third-party distribution boundary](js-interop-distribution.md) — declaration analysis, redistribution, external package licensing, and bundling boundary
 - [Standard types and library contracts](standard-library.md) — `Bytes`, fixed-width integers, Unicode, and collection semantics
 - [Runtime ABI v2](runtime-abi.md) — Runtime ABI v2 contract between generated code and the Runtime
