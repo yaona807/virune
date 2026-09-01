@@ -75,7 +75,7 @@ test('execution readiness accepts only module loads with discharged runtime reso
 		['commonjs', defaultImportSource],
 		['builtin', source],
 	] as const) {
-		const result = compileSource(input, { emit: false, jsInteropProvider: provider(format) });
+		const result = compileSource(input, { emit: false, platform: 'node', jsInteropProvider: provider(format) });
 		assert.deepEqual(result.diagnostics.filter(item => item.severity === 'error'), []);
 		assert.ok(result.semantic);
 		assert.deepEqual(externalExecutionReadiness(result.semantic), { status: 'ready', blockers: [] });
