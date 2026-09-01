@@ -1040,14 +1040,6 @@ function typeContainsUnresolvedGenericResult(
 			const typeArguments = checker.getTypeArguments(type as ts.TypeReference);
 			if (typeArguments.some(item => typeContainsUnresolvedGenericResult(item, checker, location, seen, budget, depth + 1))) return true;
 		}
-		for (const indexInfo of checker.getIndexInfosOfType(type)) {
-			if (typeContainsUnresolvedGenericResult(indexInfo.type, checker, location, seen, budget, depth + 1)) return true;
-		}
-		for (const property of checker.getPropertiesOfType(type)) {
-			const declaration = property.valueDeclaration ?? property.declarations?.[0] ?? location;
-			const propertyType = checker.getTypeOfSymbolAtLocation(property, declaration);
-			if (typeContainsUnresolvedGenericResult(propertyType, checker, declaration, seen, budget, depth + 1)) return true;
-		}
 		return false;
 	} catch {
 		return true;
