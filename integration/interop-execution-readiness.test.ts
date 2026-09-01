@@ -32,6 +32,18 @@ function interopMain(): string {
 	].join('\n');
 }
 
+function interopUnused(): string {
+	return [
+		'import js { load } from "./library.js"',
+		'',
+		'fn unused() -> Unit uses JavaScript {',
+		'\tdiscard load()',
+		'\treturn Unit',
+		'}',
+		'',
+	].join('\n');
+}
+
 function rejectedForRuntimeResolution(error: unknown): boolean {
 	if (typeof error !== 'object' || error === null || !('stderr' in error)) return false;
 	const stderr = String((error as { stderr: string }).stderr);
@@ -48,6 +60,15 @@ test('CLI check and build preserve pending bundler obligations while run refuses
 	assert.match((await runCli(['check', root])).stdout, /Checked/u);
 	assert.match((await runCli(['build', root])).stdout, /Built/u);
 	await assert.rejects(runCli(['run', root]), rejectedForRuntimeResolution);
+});
+
+test('CLI run ignores pending runtime resolution in an unexecuted source module', async () => {
+	const root = await makeCliProject();
+	await configureProject(root, 'browser');
+	await writeFile(join(root, 'src/main.virune'), 'pub fn main() -> Unit {\n\treturn Unit\n}\n');
+	await writeFile(join(root, 'src/unused.virune'), interopUnused());
+
+	await runCli(['run', root]);
 });
 
 test('CLI test with no emitted tests does not require runtime-resolution discharge', async () => {
@@ -70,6 +91,15 @@ test('CLI test refuses to spawn tests with pending runtime resolution', async ()
 	].join('\n'));
 
 	await assert.rejects(runCli(['test', root]), rejectedForRuntimeResolution);
+});
+
+test('CLI test ignores pending runtime resolution outside the selected test closure', async () => {
+	const root = await makeCliProject();
+	await configureProject(root, 'browser');
+	await writeFile(join(root, 'src/main.virune'), interopMain());
+	await writeFile(join(root, 'src/plain.test.virune'), 'test "plain" { expect(true) }\n');
+
+	await runCli(['test', root]);
 });
 
 test('CLI run preserves direct execution when Node runtime resolution is discharged', async () => {
