@@ -111,7 +111,6 @@ async function runProject(root: string, programArgs: readonly string[]): Promise
 	const result = await buildViruneProject(root, true, await configuredSourceFiles(root));
 	printDiagnostics(result.diagnostics, result.modules.map(module => module.source), false);
 	if (result.diagnostics.some(item => item.severity === 'error')) return 1;
-	if (!requireDirectExecutionReadiness(result)) return 1;
 	const entrySource = resolve(root, result.config.entry);
 	const entryModule = result.modules.find(module => resolve(module.source.path) === entrySource);
 	const entry = entryModule?.outputPath;
@@ -126,6 +125,7 @@ async function runProject(root: string, programArgs: readonly string[]): Promise
 		console.error('error[L5010]: Entry module was not emitted');
 		return 1;
 	}
+	if (!requireDirectExecutionReadiness(result)) return 1;
 	const main = validation.main;
 	const invocation = main.parameters.length === 0 ? 'module.main()' : `module.main(${JSON.stringify(programArgs)})`;
 	const runner = join(root, '.virune-cache', 'run-entry.mjs');
@@ -142,10 +142,10 @@ async function testProject(root: string): Promise<number> {
 	const result = await buildViruneProject(root, true, sourceFiles);
 	printDiagnostics(result.diagnostics, result.modules.map(module => module.source), false);
 	if (result.diagnostics.some(item => item.severity === 'error')) return 1;
-	if (!requireDirectExecutionReadiness(result)) return 1;
 	const testPaths = new Set(testFiles.map(file => resolve(file)));
 	const outputs = result.modules.filter(module => testPaths.has(resolve(module.source.path)) && module.ast?.declarations.some(item => item.kind === 'TestDeclaration')).map(module => module.outputPath).filter((value): value is string => value !== undefined);
 	if (outputs.length === 0) { console.log('No Virune tests found.'); return 0; }
+	if (!requireDirectExecutionReadiness(result)) return 1;
 	return spawnAndWait(process.execPath, ['--test', '--enable-source-maps', ...outputs], root);
 }
 
