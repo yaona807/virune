@@ -1,0 +1,248 @@
+name: Temporary #577 candidate validation v6
+
+on:
+  push:
+    branches:
+      - fix/577-contextual-external-callable
+
+permissions:
+  contents: read
+
+jobs:
+  focused:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 24
+      - run: npm ci
+      - name: Apply reviewed candidate
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          source_path = Path('.github/agent-577-candidate-source.yml')
+          workflow = source_path.read_text()
+          marker = "          python3 - <<'PY'\n"
+          start = workflow.index(marker) + len(marker)
+          end = workflow.index("\n          PY", start)
+          source = workflow[start:end]
+          source = '\n'.join(line[10:] if line.startswith('          ') else line for line in source.splitlines())
+
+          old_helper = '''def replace_between(path, start, end, replacement):
+              p = Path(path)
+              text = p.read_text()
+              a = text.index(start)
+              b = text.index(end, a)
+              p.write_text(text[:a] + replacement + text[b:])'''
+          new_helper = r'''def _normalize_raw_indent(value):
+              lines = []
+              for line in value.splitlines(True):
+                  count = 0
+                  while line.startswith(r'\t'):
+                      count += 1
+                      line = line[2:]
+                  lines.append('\t' * count + line)
+              return ''.join(lines)
+
+          def replace_between(path, start, end, replacement):
+              p = Path(path)
+              text = p.read_text()
+              a = text.index(start)
+              b = text.index(end, a)
+              p.write_text(text[:a] + _normalize_raw_indent(replacement) + text[b:])'''
+          if source.count(old_helper) != 1:
+              raise RuntimeError(f'expected one replace_between helper, found {source.count(old_helper)}')
+          source = source.replace(old_helper, new_helper, 1)
+          namespace = {'Path': Path}
+          exec(compile(source, '<candidate-577>', 'exec'), namespace)
+          normalize = namespace['_normalize_raw_indent']
+
+          test_path = Path('packages/js-interop/test/contextual-external-callable.test.ts')
+          test_path.write_text(normalize(test_path.read_text()))
+
+          # Legacy/direct compatibility never interprets provisional contextual callbacks.
+          provider = Path('packages/js-interop/src/index.ts')
+          text = provider.read_text()
+          old = "if (argument.kind === 'unknown' || argument.kind === 'native-callable' || argument.kind === 'contextual-object') return false;"
+          new = "if (argument.kind === 'unknown' || argument.kind === 'native-callable' || argument.kind === 'contextual-callable' || argument.kind === 'contextual-object') return false;"
+          if text.count(old) != 1:
+              raise RuntimeError(f'expected one argumentCompatible guard, found {text.count(old)}')
+          provider.write_text(text.replace(old, new, 1))
+
+          # Preserve callable-shim/v1 exactly; introduce v2 only for External/Never positions.
+          types = Path('packages/compiler/src/interop/types.ts')
+          text = types.read_text()
+          a = text.index('export interface NativeCallableBoundaryDescriptor {')
+          b = text.index('\n\n/** Ordering evidence for a callable projection', a)
+          descriptor = normalize(r'''interface NativeCallableBoundaryDescriptorV1 {
+          \treadonly version: 'virune-callable-shim/v1';
+          \treadonly parameters: readonly NativeCallablePrimitiveKind[];
+          \treadonly result: NativeCallablePrimitiveKind;
+          \treadonly async: boolean;
+          \treadonly effects: readonly string[];
+          \treadonly contextMode: 'root-argument';
+          }
+
+          interface NativeCallableBoundaryDescriptorV2 {
+          \treadonly version: 'virune-callable-shim/v2';
+          \treadonly parameters: readonly (NativeCallablePrimitiveKind | 'External')[];
+          \treadonly result: NativeCallablePrimitiveKind | 'External' | 'Never';
+          \treadonly async: boolean;
+          \treadonly effects: readonly string[];
+          \treadonly contextMode: 'root-argument';
+          }
+
+          export type NativeCallableBoundaryDescriptor = NativeCallableBoundaryDescriptorV1 | NativeCallableBoundaryDescriptorV2;''')
+          types.write_text(text[:a] + descriptor + text[b:])
+
+          checker = Path('packages/compiler/src/checker/checker.ts')
+          text = checker.read_text()
+          old = 'let preparedArguments = expression.arguments.map(argument => this.prepareForeignCallValue(argument, scope));'
+          new = 'let preparedArguments = expression.arguments.map((argument, index) => this.prepareForeignCallValue(argument, scope, index === expression.arguments.length - 1));'
+          if text.count(old) != 1:
+              raise RuntimeError(f'expected one foreign call preparation map, found {text.count(old)}')
+          text = text.replace(old, new, 1)
+          old = 'private prepareForeignCallValue(expression: A.Expression, scope: Scope): PreparedInteropValue {\n\t\tif (expression.kind === \'LambdaExpression\' && expression.parameters.some(parameter => parameter.annotation === undefined)) {'
+          new = 'private prepareForeignCallValue(expression: A.Expression, scope: Scope, allowContextual: boolean): PreparedInteropValue {\n\t\tif (allowContextual && expression.kind === \'LambdaExpression\' && expression.parameters.some(parameter => parameter.annotation === undefined)) {'
+          if text.count(old) != 1:
+              raise RuntimeError(f'expected one prepareForeignCallValue header, found {text.count(old)}')
+          text = text.replace(old, new, 1)
+          a = text.index('\tprivate nativeCallableProjection(')
+          b = text.index('\n\tprivate nativeCallableTemplateValue(', a)
+          projection = normalize(r'''\tprivate nativeCallableProjection(typeId: TypeId, expression: A.Expression): { readonly boundary: NativeCallableBoundaryDescriptor; readonly callable: import('../interop/types.js').NativeCallableTypeTemplate } | undefined {
+          \t\tconst type = this.arena.get(typeId);
+          \t\tif (type.kind !== 'function' || type.typeParameters.length !== 0 || type.effects.some(effect => effect === '*' || !this.#effects.has(effect))) return undefined;
+          \t\tif (expression.kind === 'IdentifierExpression') {
+          \t\t\tif (expression.symbolId === undefined) return undefined;
+          \t\t\tconst symbol = this.#symbols.get(expression.symbolId);
+          \t\t\tconst declaration = symbol?.declaration;
+          \t\t\tif (symbol?.kind !== 'function' || declaration?.kind !== 'FunctionDeclaration') return undefined;
+          \t\t\tconst functionDeclaration = declaration as A.FunctionDeclaration;
+          \t\t\tif (functionDeclaration.typeParameters.length !== 0 || functionDeclaration.attributes.some(attribute => attribute.name === 'jsExport')) return undefined;
+          \t\t} else if (expression.kind !== 'LambdaExpression') return undefined;
+          \t\tconst callableParameters: import('../interop/types.js').NativeCallableTypeTemplate['parameters'][number][] = [];
+          \t\tfor (const parameter of type.parameters) {
+          \t\t\tconst value = this.nativeCallableTemplateValue(parameter, false);
+          \t\t\tif (value === undefined || value === 'Never') return undefined;
+          \t\t\tcallableParameters.push(value);
+          \t\t}
+          \t\tconst callableResult = this.nativeCallableTemplateValue(type.result, true);
+          \t\tif (callableResult === undefined) return undefined;
+          \t\tconst callable = Object.freeze({ parameters: Object.freeze(callableParameters), result: callableResult, async: type.async });
+          \t\tconst effects = Object.freeze([...new Set(type.effects)].sort(compareText));
+          \t\tconst primitiveParameters: NativeCallablePrimitiveKind[] = [];
+          \t\tlet requiresV2 = callableResult === 'Never' || typeof callableResult !== 'string';
+          \t\tfor (const parameter of callableParameters) {
+          \t\t\tif (typeof parameter === 'string') primitiveParameters.push(parameter);
+          \t\t\telse requiresV2 = true;
+          \t\t}
+          \t\tif (!requiresV2 && typeof callableResult === 'string' && callableResult !== 'Never') {
+          \t\t\treturn Object.freeze({
+          \t\t\t\tcallable,
+          \t\t\t\tboundary: Object.freeze({
+          \t\t\t\t\tversion: 'virune-callable-shim/v1',
+          \t\t\t\t\tparameters: Object.freeze(primitiveParameters),
+          \t\t\t\t\tresult: callableResult,
+          \t\t\t\t\tasync: type.async,
+          \t\t\t\t\teffects,
+          \t\t\t\t\tcontextMode: 'root-argument',
+          \t\t\t\t}),
+          \t\t\t});
+          \t\t}
+          \t\tconst boundaryParameters = callableParameters.map(parameter => typeof parameter === 'string' ? parameter : 'External' as const);
+          \t\tconst boundaryResult = typeof callableResult === 'string' ? callableResult : 'External' as const;
+          \t\treturn Object.freeze({
+          \t\t\tcallable,
+          \t\t\tboundary: Object.freeze({
+          \t\t\t\tversion: 'virune-callable-shim/v2',
+          \t\t\t\tparameters: Object.freeze(boundaryParameters),
+          \t\t\t\tresult: boundaryResult,
+          \t\t\t\tasync: type.async,
+          \t\t\t\teffects,
+          \t\t\t\tcontextMode: 'root-argument',
+          \t\t\t}),
+          \t\t});
+          \t}''')
+          text = text[:a] + projection + text[b:]
+          checker.write_text(text)
+
+          operation = Path('packages/compiler/src/interop/operation.ts')
+          text = operation.read_text()
+          a = text.index('function canonicalCallableDescriptor(')
+          b = text.index('\nfunction canonicalForeignType(', a)
+          canonical = normalize(r'''function canonicalCallableDescriptor(descriptor: NativeCallableBoundaryDescriptor): NativeCallableBoundaryDescriptor {
+          \tif (descriptor.version !== 'virune-callable-shim/v1' && descriptor.version !== 'virune-callable-shim/v2') throw new Error('Unknown native callable boundary descriptor version');
+          \tif (!Array.isArray(descriptor.parameters)) throw new Error('Native callable boundary parameters must be an array');
+          \tif (typeof descriptor.async !== 'boolean') throw new Error('Native callable boundary async flag must be boolean');
+          \tif (descriptor.contextMode !== 'root-argument') throw new Error('Native callable boundary requires external-root invocation');
+          \tif (!Array.isArray(descriptor.effects)) throw new Error('Native callable boundary effects must be an array');
+          \tconst effects = descriptor.effects.map(effect => stableProviderText(effect, 'native callable effect'));
+          \tif (effects.includes('*')) throw new Error('Open effects cannot become stable native callable boundary evidence');
+          \tconst canonicalEffects = [...new Set(effects)].sort(compareText);
+          \tif (canonicalEffects.length !== effects.length || canonicalEffects.some((effect, index) => effect !== effects[index])) throw new Error('Native callable boundary effects must be unique and canonically ordered');
+          \tif (descriptor.version === 'virune-callable-shim/v1') {
+          \t\tconst parameters = descriptor.parameters.map(parameter => {
+          \t\t\tassertKnown(CALLABLE_PRIMITIVES, parameter, 'native callable primitive');
+          \t\t\treturn parameter;
+          \t\t});
+          \t\tassertKnown(CALLABLE_PRIMITIVES, descriptor.result, 'native callable result primitive');
+          \t\treturn Object.freeze({ version: 'virune-callable-shim/v1', parameters: Object.freeze(parameters), result: descriptor.result, async: descriptor.async, effects: Object.freeze(canonicalEffects), contextMode: 'root-argument' });
+          \t}
+          \tconst parameters = descriptor.parameters.map(parameter => {
+          \t\tassertKnown(CALLABLE_BOUNDARY_VALUES, parameter, 'native callable boundary parameter');
+          \t\treturn parameter;
+          \t});
+          \tassertKnown(CALLABLE_BOUNDARY_RESULTS, descriptor.result, 'native callable boundary result');
+          \treturn Object.freeze({ version: 'virune-callable-shim/v2', parameters: Object.freeze(parameters), result: descriptor.result, async: descriptor.async, effects: Object.freeze(canonicalEffects), contextMode: 'root-argument' });
+          }''')
+          operation.write_text(text[:a] + canonical + text[b:])
+
+          # Strengthen focused tests for versioning and semantic-order fail closed behavior.
+          text = test_path.read_text()
+          old = "\tassert.deepEqual(projection.descriptor.parameters, ['External']);"
+          new = "\tassert.equal(projection.descriptor.version, 'virune-callable-shim/v2');\n\tassert.deepEqual(projection.descriptor.parameters, ['External']);"
+          if text.count(old) != 1:
+              raise RuntimeError(f'expected one v2 projection assertion anchor, found {text.count(old)}')
+          text = text.replace(old, new, 1)
+          old_decl = 'export declare function route(path: string, handler: (context: ExternalContext) => Promise<ExternalResponse>): void;'
+          new_decl = old_decl + '\n          export declare function routeFirst(handler: (context: ExternalContext) => Promise<ExternalResponse>, path: string): void;'
+          if text.count(old_decl) != 1:
+              raise RuntimeError(f'expected one route declaration, found {text.count(old_decl)}')
+          text = text.replace(old_decl, new_decl, 1)
+          text += normalize(r'''
+
+          test('non-last unannotated callback remains fail closed instead of reordering later argument evaluation', async () => {
+          \tconst result = await compileCase(
+          \t\tdeclarations,
+          \t\t`import js { routeFirst } from "./library.js"\n\nfn main() -> Unit uses JavaScript {\n\tdiscard routeFirst(async fn(context) uses JavaScript => context.text("ok"), "/ordered")\n\treturn Unit\n}\n`,
+          \t);
+          \tassert.notEqual(errors(result).length, 0);
+          \tassert.equal(result.semantic?.interop.callableProjections?.length ?? 0, 0);
+          });
+          ''')
+          test_path.write_text(text)
+
+          targets = [
+              Path('packages/compiler/src/interop/types.ts'),
+              checker,
+              Path('packages/compiler/src/interop/operation.ts'),
+              Path('packages/compiler/src/codegen/emitter.ts'),
+              provider,
+              test_path,
+          ]
+          for path in targets:
+              bad = [i for i, line in enumerate(path.read_text().splitlines(), 1) if line.startswith(r'\t')]
+              if bad:
+                  raise RuntimeError(f'{path}: literal raw tab indentation remains on lines {bad[:20]}')
+          PY
+      - name: Build reviewed candidate
+        run: npm run build
+      - name: Run focused callback regressions
+        run: node --test packages/js-interop/dist/test/contextual-external-callable.test.js packages/js-interop/dist/test/callable-boundary-ignored-arguments.test.js packages/js-interop/dist/test/callable-boundary-shim.test.js packages/js-interop/dist/test/callable-boundary-regressions.test.js
+      - name: Type-check reviewed candidate
+        run: npm run check
