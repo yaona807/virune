@@ -18,6 +18,11 @@ JavaScriptから安全な`Unknown`としてデコードしたidentity-bearingな
 
 Safe boundary envelopeはコンパイラ内部用metadataであり、authentication tokenではありません。provenance保証はRuntimeが実際に観測したforeign identityに基づき、同一process内の敵対的改ざんへの耐性を提供する仕組みではありません。既存Runtime ABI v2の`unknown` descriptorやJSON encodingの意味も変更しません。
 
+## `[interop.ecmascript-canonical-identity]` ECMAScriptの標準identity
+現在のDirect Interop semanticsで標準JavaScript概念の同一性が必要な場合、TypeScript providerが固定Program snapshot内でsemantic identityを証明したときだけ、コンパイラが所有するdeterministicなidentityを記録します。このversionで実際に提供するidentityは、global ECMAScript `Promise`そのものを示す`ecmascript:Promise`だけです。同じ`Promise`がlib.es由来の宣言、Web / DOM宣言、Node宣言、npm declaration graphを経由して参照されても同じidentityを維持します。
+
+canonical identityの判定にpackage名、declaration filenameやabsolute path、TypeScript object ID、表示用の`typeToString()`文字列だけを使いません。構造が似たthenableやunsupported / unknownな型を`ecmascript:Promise`へ推測しません。provider-localな証明はstableなcompiler evidenceへ定数identityとして取り込み、stale provider referenceは従来どおり無効です。
+
 ## `[ffi.unsafe]` 検証を省略する`unsafe extern`
 `unsafe extern`は検証を省略し、`ffi/`配下で`unsafe module`として宣言されたモジュールでのみ使用できます。
 
