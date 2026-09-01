@@ -63,6 +63,31 @@ interface CachedProjectModule {
 	readonly built: BuiltModule;
 }
 
+const runtimeDependencies = new WeakMap<BuiltModule, readonly string[]>();
+
+/**
+ * Return the exact modules that can be loaded from the supplied roots by emitted
+ * Virune-to-Virune runtime imports in this ProjectBuildResult. The dependency
+ * sidecar is attached to the same BuiltModule objects that own emitted output,
+ * so execution checks do not need to rebuild or re-read project state.
+ */
+export function projectRuntimeModuleClosure(result: ProjectBuildResult, rootPaths: readonly string[]): readonly BuiltModule[] {
+	const modulesByPath = new Map(result.modules.map(module => [resolve(module.source.path), module]));
+	const reachable = new Set<string>();
+	const visit = (path: string): void => {
+		const normalized = resolve(path);
+		if (reachable.has(normalized)) return;
+		const module = modulesByPath.get(normalized);
+		if (module === undefined) throw new Error(`Project runtime dependency ${normalized} is unavailable in this build result`);
+		const dependencies = runtimeDependencies.get(module);
+		if (dependencies === undefined) throw new Error(`Project runtime dependency evidence is unavailable for ${normalized}`);
+		reachable.add(normalized);
+		for (const dependency of dependencies) visit(dependency);
+	};
+	for (const rootPath of rootPaths) visit(isAbsolute(rootPath) ? rootPath : resolve(result.root, rootPath));
+	return Object.freeze(result.modules.filter(module => reachable.has(resolve(module.source.path))));
+}
+
 /**
  * Reusable state for incremental project builds. The cache is intentionally
  * explicit so one-shot CLI builds remain deterministic and side-effect free.
@@ -264,12 +289,14 @@ export async function buildProject(
 			continue;
 		}
 		let built: BuiltModule;
+		let moduleRuntimeDependencies: readonly string[] = Object.freeze([]);
 		if (parsed.ast === undefined || parsed.diagnostics.some(item => item.severity === 'error')) {
 			built = parsed;
 		} else {
 			const importModel = await buildImportModel(root, path, parsed.ast, parsedByPath, moduleInterfaces, projectDiagnostics, cloneId, host);
 			cloneId = importModel.nextId;
 			const { signatureOnly, typeOnlyNodeIds, importedDeclarations, emissionImports } = importModel;
+			moduleRuntimeDependencies = importModel.runtimeDependencies;
 			const synthetic: A.ModuleNode = { ...parsed.ast, imports: parsed.ast.imports.filter(item => item.sourceKind === 'javascript'), declarations: [...importedDeclarations, ...parsed.ast.declarations] };
 			const semantic = checkModule(synthetic, { signatureOnlyNodeIds: signatureOnly, typeOnlyNodeIds, platform: config.platform, moduleId: moduleIdentity(root, path), containingFile: path, ...(jsInteropProvider === undefined ? {} : { jsInteropProvider }) });
 			mutableStats.checkedModules++;
@@ -285,6 +312,7 @@ export async function buildProject(
 			}
 			built = { ...parsed, semantic, ...(output === undefined ? {} : { output }), ...(outputPath === undefined ? {} : { outputPath }), diagnostics };
 		}
+		runtimeDependencies.set(built, moduleRuntimeDependencies);
 		builtByPath.set(path, built);
 		cache?.set(path, { sourceHash: sourceHashes.get(path)!, parsed, interfaceHash: interfaceHashes.get(path) ?? '', buildFingerprint, built });
 	}
@@ -480,6 +508,7 @@ interface ImportModel {
 	readonly typeOnlyNodeIds: ReadonlySet<number>;
 	readonly importedDeclarations: readonly A.Declaration[];
 	readonly emissionImports: readonly A.ImportDeclaration[];
+	readonly runtimeDependencies: readonly string[];
 	readonly nextId: number;
 }
 
@@ -504,6 +533,7 @@ async function buildImportModel(
 	const typeOnlyNodeIds = new Set<number>();
 	const importedDeclarations: A.Declaration[] = [];
 	const emissionImports: A.ImportDeclaration[] = [];
+	const runtimeDependencyPaths: string[] = [];
 	const emittedTypeDefinitions = new Set<string>();
 
 	for (const importDeclaration of module.imports) {
@@ -563,10 +593,13 @@ async function buildImportModel(
 				importedDeclarations.push(clone);
 			}
 		}
-		if (runtimeItems.length > 0) emissionImports.push({ ...importDeclaration, items: runtimeItems });
+		if (runtimeItems.length > 0) {
+			emissionImports.push({ ...importDeclaration, items: runtimeItems });
+			if (importDeclaration.source.endsWith('.virune') && !runtimeDependencyPaths.includes(dependencyPath)) runtimeDependencyPaths.push(dependencyPath);
+		}
 	}
 
-	return { signatureOnly, typeOnlyNodeIds, importedDeclarations, emissionImports, nextId };
+	return { signatureOnly, typeOnlyNodeIds, importedDeclarations, emissionImports, runtimeDependencies: Object.freeze(runtimeDependencyPaths), nextId };
 }
 
 function isTypeDeclaration(declaration: A.Declaration): declaration is A.RecordDeclaration | A.EnumDeclaration | A.NewtypeDeclaration | A.TypeAliasDeclaration {
