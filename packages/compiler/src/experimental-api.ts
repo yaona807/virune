@@ -22,10 +22,18 @@ export {
 export * from './interop/decision.js';
 export {
 	externalExecutionReadiness,
+	externalImportProvenance,
 	externalOperationSequence,
 	type ExternalExecutionReadiness,
 	type ExternalExecutionReadinessBlocker,
 } from './interop/operation-api.js';
+export {
+	assertExternalImportLegalMetadata,
+	type ExternalImportKind,
+	type ExternalImportProvenance,
+	type ExternalImportProvenanceEvidence,
+	type ExternalImportResolutionState,
+} from './interop/provenance.js';
 export type {
 	ExternalAwaitOperationIR,
 	ExternalBridgeForeignPrimitiveOperationIR,
