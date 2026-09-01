@@ -29,6 +29,11 @@ const builtinImportSource = {
 	text: source.text.replace('./library.js', 'node:fs'),
 };
 
+const checkedErrorSource = {
+	...source,
+	text: source.text.replace('\treturn Unit', '\treturn 1'),
+};
+
 function provider(runtimeFormat: NonNullable<ModuleResolutionWitness['runtimeFormat']>, malformedProperty = false): JsInteropProvider {
 	const generation = 1;
 	return {
@@ -101,7 +106,7 @@ test('execution readiness blocks pending and unresolved runtime resolution witho
 	}
 });
 
-test('execution readiness fails closed when operation evidence is unregistered or invalid', () => {
+test('execution readiness fails closed when operation evidence is unregistered, invalid, or suppressed by checked errors', () => {
 	const unregistered = compileSourceBase(source, { emit: false, jsInteropProvider: provider('esm') });
 	assert.deepEqual(unregistered.diagnostics.filter(item => item.severity === 'error'), []);
 	assert.ok(unregistered.semantic);
@@ -114,6 +119,14 @@ test('execution readiness fails closed when operation evidence is unregistered o
 	assert.deepEqual(invalid.diagnostics.filter(item => item.severity === 'error'), []);
 	assert.ok(invalid.semantic);
 	assert.deepEqual(externalExecutionReadiness(invalid.semantic), {
+		status: 'blocked',
+		blockers: [{ reason: 'operation-evidence-unavailable' }],
+	});
+
+	const checkedError = compileSource(checkedErrorSource, { emit: false, jsInteropProvider: provider('esm') });
+	assert.ok(checkedError.diagnostics.some(item => item.severity === 'error'));
+	assert.ok(checkedError.semantic);
+	assert.deepEqual(externalExecutionReadiness(checkedError.semantic), {
 		status: 'blocked',
 		blockers: [{ reason: 'operation-evidence-unavailable' }],
 	});
