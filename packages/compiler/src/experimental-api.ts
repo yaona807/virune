@@ -45,6 +45,7 @@ export type {
 } from './interop/operation.js';
 export type {
 	CallableProjectionEvidence,
+	CanonicalForeignTypeIdentity,
 	ContextualCallablePrimitiveKind,
 	ContextualCallableResult,
 	ForeignCallResolution,
