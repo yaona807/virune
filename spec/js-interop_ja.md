@@ -14,6 +14,8 @@ Virune側の関数を対応しているJavaScriptのコールバック位置へ�
 
 CommonJSとして実行されるモジュールからの名前付きインポートは拒否します。ブラウザやバンドラーで実際に使う実行時モジュールの解決は、バンドラーの責任です。
 
+ソース検査では、build段階の`runtime-resolution`義務が未解決のまま残ることがあります。診断エラーのない`check`結果だけでは、実行を許可したことにはなりません。`virune run`または`virune test`が生成JavaScriptを開始する前に、実際に実行されるモジュールclosure内のすべての実行時module loadについて、そのexact buildに結び付いたProvider非依存のruntime-resolution evidenceがdischargedでなければなりません。pending、unresolved、欠落、不正、矛盾した証拠は安全側に失敗し、Nodeを開始してはいけません。
+
 TypeScriptで`any`と宣言されたインポートは、直接利用では拒否します。TypeScriptの`unknown`は型が不明な外部値として保持し、より狭い型を仮定せずにViruneの`Unknown`へ渡せます。
 
 ### 文脈付きExternal操作
