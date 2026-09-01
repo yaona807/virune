@@ -25,7 +25,7 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
 
-          workflow = Path('.github/agent-577-v6-source.yml').read_text()
+          workflow = Path('.github/agent-577-candidate-source.yml').read_text()
           marker = "          python3 - <<'PY'\n"
           start = workflow.index(marker) + len(marker)
           end = workflow.index("\n          PY", start)
