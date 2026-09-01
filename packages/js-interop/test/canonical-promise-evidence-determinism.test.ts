@@ -70,7 +70,7 @@ function stableEvidence(result: ProjectBuildResult) {
 	return { code: module.output.code, operations };
 }
 
-// @virune-rule {"id":"interop.ecmascript-canonical-identity","runner":"unit","file":"packages/js-interop/test/canonical-promise-evidence-determinism.test.ts","case":"canonical Promise stable evidence is deterministic across clean cache incremental roots and declaration order","kind":"positive","platform":"node"}
+// @virune-rule {"id":"interop.ecmascript-canonical-identity","runner":"unit","file":"packages/js-interop/test/canonical-promise-evidence-determinism.test.ts","case":"canonical Promise stable evidence is deterministic across clean, cache, incremental, roots, and declaration order","kind":"positive","platform":"node"}
 test('canonical Promise stable evidence is deterministic across clean, cache, incremental, roots, and declaration order', async () => {
 	const roots: string[] = [];
 	try {
