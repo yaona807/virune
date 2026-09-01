@@ -69,7 +69,11 @@ test('stable interop evidence and generated JavaScript do not redistribute decla
 	assert.equal(result.semantic.interop.callableProjections?.length, 1);
 
 	const operations = externalOperationSequence(result.semantic);
-	const stableEvidence = { usageIR: result.semantic.interop.usageIR, operations };
+	const stableEvidence = {
+		usageIR: result.semantic.interop.usageIR,
+		moduleWitnesses: result.semantic.interop.moduleWitnesses,
+		operations,
+	};
 	assert.doesNotThrow(() => structuredClone(stableEvidence));
 	const serialized = JSON.stringify(stableEvidence);
 	for (const forbidden of [
