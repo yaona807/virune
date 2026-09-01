@@ -18,6 +18,11 @@ An identity-bearing JavaScript value decoded as Safe `Unknown` retains its origi
 
 The Safe-boundary envelope is compiler-private metadata, not an authentication token. The provenance guarantee comes from runtime-observed foreign identity, and is not a hostile same-process tamper-resistance mechanism. It does not redefine the legacy ABI v2 `unknown` descriptor or JSON encoding semantics.
 
+## `[interop.ecmascript-canonical-identity]` Canonical ECMAScript identity
+When current Direct Interop semantics need to recognize a standard JavaScript concept, the compiler records a deterministic compiler-owned identity only after the TypeScript provider proves the corresponding semantic identity inside its fixed Program snapshot. The shipped identity in this version is `ecmascript:Promise`, used for the actual global ECMAScript `Promise` type. References to that same type keep the same identity when reached through lib.es-backed declarations, Web/DOM declarations, Node declarations, or npm declaration graphs.
+
+Canonical identity is not inferred from a package name, declaration filename or absolute path, TypeScript object ID, or display-only `typeToString()` text. A structural thenable or another unsupported/unknown type is not promoted to `ecmascript:Promise`. Provider-local proof is consumed into stable compiler evidence as the constant canonical identity; stale provider references remain invalid.
+
 ## `[ffi.unsafe]` Unsafe extern
 `unsafe extern` skips validation and is allowed only in an `unsafe module` under `ffi/`.
 
