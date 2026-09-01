@@ -2,9 +2,17 @@ import type * as A from '../ast/nodes.js';
 import type { SemanticModel } from '../checker/checker.js';
 import type { Diagnostic } from '../diagnostics/diagnostic.js';
 import { buildExternalOperationSequence, type ExternalOperationIR } from './operation.js';
+import {
+	buildExternalImportProvenanceEvidence,
+	type ExternalImportProvenanceEvidence,
+} from './provenance.js';
 
 type ExternalOperationSnapshot =
-	| { readonly status: 'valid'; readonly operations: readonly ExternalOperationIR[] }
+	| {
+		readonly status: 'valid';
+		readonly operations: readonly ExternalOperationIR[];
+		readonly importProvenance: ExternalImportProvenanceEvidence;
+	}
 	| { readonly status: 'invalid' };
 
 export type ExternalExecutionReadinessBlocker =
@@ -33,7 +41,9 @@ export function registerExternalOperationSnapshot(
 	if (snapshots.has(semantic)) return;
 	try {
 		const operations = buildExternalOperationSequence({ module, interop: semantic.interop, diagnostics });
-		snapshots.set(semantic, Object.freeze({ status: 'valid', operations }));
+		const importProvenance = buildExternalImportProvenanceEvidence({ module, interop: semantic.interop, diagnostics });
+		if (importProvenance.status !== 'available') throw new Error('External import provenance is unavailable');
+		snapshots.set(semantic, Object.freeze({ status: 'valid', operations, importProvenance }));
 	} catch {
 		snapshots.set(semantic, Object.freeze({ status: 'invalid' }));
 	}
@@ -45,6 +55,13 @@ export function externalOperationSequence(semantic: SemanticModel): readonly Ext
 	if (snapshot === undefined) throw new Error('External Operation evidence requires a registered checked SemanticModel');
 	if (snapshot.status === 'invalid') throw new Error('External Operation evidence is unavailable for this checked SemanticModel');
 	return snapshot.operations;
+}
+
+/** Return stable provider-independent import provenance for this exact checked semantic result. */
+export function externalImportProvenance(semantic: SemanticModel): ExternalImportProvenanceEvidence {
+	const snapshot = snapshots.get(semantic);
+	if (snapshot === undefined || snapshot.status === 'invalid') return Object.freeze({ status: 'unavailable' });
+	return snapshot.importProvenance;
 }
 
 /**
