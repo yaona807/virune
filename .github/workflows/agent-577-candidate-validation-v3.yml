@@ -1,0 +1,87 @@
+name: Temporary #577 candidate validation v3
+
+on:
+  push:
+    branches:
+      - fix/577-contextual-external-callable
+
+permissions:
+  contents: read
+
+jobs:
+  focused:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 24
+      - run: npm ci
+      - name: Apply candidate with normalized raw indentation
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          workflow = Path('.github/workflows/agent-577-contextual-external-validation.yml').read_text()
+          marker = "          python3 - <<'PY'\n"
+          start = workflow.index(marker) + len(marker)
+          end = workflow.index("\n          PY", start)
+          source = workflow[start:end]
+          source = '\n'.join(line[10:] if line.startswith('          ') else line for line in source.splitlines())
+
+          old = '''def replace_between(path, start, end, replacement):
+              p = Path(path)
+              text = p.read_text()
+              a = text.index(start)
+              b = text.index(end, a)
+              p.write_text(text[:a] + replacement + text[b:])'''
+          new = r'''def _normalize_raw_indent(value):
+              lines = []
+              for line in value.splitlines(True):
+                  count = 0
+                  while line.startswith(r'\t'):
+                      count += 1
+                      line = line[2:]
+                  lines.append('\t' * count + line)
+              return ''.join(lines)
+
+          def replace_between(path, start, end, replacement):
+              p = Path(path)
+              text = p.read_text()
+              a = text.index(start)
+              b = text.index(end, a)
+              replacement = _normalize_raw_indent(replacement)
+              p.write_text(text[:a] + replacement + text[b:])'''
+          if source.count(old) != 1:
+              raise RuntimeError(f'expected one replace_between helper, found {source.count(old)}')
+          source = source.replace(old, new, 1)
+          namespace = {'Path': Path}
+          exec(compile(source, '<candidate-577>', 'exec'), namespace)
+
+          # The generic regression test body is also a raw string in the candidate script.
+          test_path = Path('packages/js-interop/test/contextual-external-callable.test.ts')
+          if test_path.exists():
+              test_path.write_text(namespace['_normalize_raw_indent'](test_path.read_text()))
+
+          targets = [
+              Path('packages/compiler/src/checker/checker.ts'),
+              Path('packages/compiler/src/codegen/emitter.ts'),
+              Path('packages/js-interop/src/index.ts'),
+              test_path,
+          ]
+          for path in targets:
+              if not path.exists():
+                  continue
+              bad = [i for i, line in enumerate(path.read_text().splitlines(), 1) if line.startswith(r'\t')]
+              if bad:
+                  raise RuntimeError(f'{path}: literal raw tab indentation remains on lines {bad[:20]}')
+          PY
+      - name: Build candidate patch
+        run: npm run build
+      - name: Run focused callback regressions
+        run: node --test packages/js-interop/dist/test/contextual-external-callable.test.js packages/js-interop/dist/test/callable-boundary-ignored-arguments.test.js packages/js-interop/dist/test/callable-boundary-shim.test.js packages/js-interop/dist/test/callable-boundary-regressions.test.js
+      - name: Type-check candidate patch
+        run: npm run check
