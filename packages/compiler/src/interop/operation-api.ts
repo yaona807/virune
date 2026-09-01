@@ -54,7 +54,8 @@ export function externalOperationSequence(semantic: SemanticModel): readonly Ext
  */
 export function externalExecutionReadiness(semantic: SemanticModel): ExternalExecutionReadiness {
 	const snapshot = snapshots.get(semantic);
-	if (snapshot === undefined || snapshot.status === 'invalid') {
+	if (semantic.diagnostics.items.some(diagnostic => diagnostic.severity === 'error')
+		|| snapshot === undefined || snapshot.status === 'invalid') {
 		return Object.freeze({
 			status: 'blocked',
 			blockers: Object.freeze([{ reason: 'operation-evidence-unavailable' as const }]),
