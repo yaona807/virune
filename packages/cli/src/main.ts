@@ -3,7 +3,7 @@ import { spawn } from 'node:child_process';
 import { mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import { basename, dirname, join, relative, resolve } from 'node:path';
 import process from 'node:process';
-import { buildProject, compileSource, diagnosticsToJson, loadConfig, renderDiagnostic, validateEntryPoint, type Diagnostic, type SourceFile } from '@virune/compiler/experimental';
+import { buildProject, compileSource, diagnosticsToJson, externalExecutionReadiness, loadConfig, renderDiagnostic, validateEntryPoint, type Diagnostic, type ProjectBuildResult, type SourceFile } from '@virune/compiler/experimental';
 import { formatSource } from '@virune/formatter';
 import { buildInteropAdapters, copyInteropRuntimeAssets, createInteropAdapterTemplate, TypeScriptInteropProvider } from '@virune/js-interop';
 import { generateBindings } from './bind.js';
@@ -69,6 +69,25 @@ async function buildViruneProject(root: string, write: boolean, additionalEntrie
 	return buildProject(root, { write, additionalEntries, jsInteropProvider });
 }
 
+function requireDirectExecutionReadiness(result: ProjectBuildResult): boolean {
+	let ready = true;
+	for (const module of result.modules) {
+		if (module.semantic === undefined) continue;
+		const readiness = externalExecutionReadiness(module.semantic);
+		if (readiness.status === 'ready') continue;
+		ready = false;
+		for (const blocker of readiness.blockers) {
+			if (blocker.reason === 'operation-evidence-unavailable') {
+				console.error('error[INTEROP_RUNTIME_RESOLUTION]: External Operation evidence is unavailable; refusing direct execution');
+				continue;
+			}
+			const state = blocker.reason === 'runtime-resolution-pending' ? 'pending' : 'unresolved';
+			console.error(`error[INTEROP_RUNTIME_RESOLUTION]: Runtime resolution for ${JSON.stringify(blocker.moduleSpecifier)} is ${state}; refusing direct execution`);
+		}
+	}
+	return ready;
+}
+
 async function checkProject(root: string, json: boolean): Promise<number> {
 	const result = await buildViruneProject(root, false, await configuredSourceFiles(root));
 	printDiagnostics(result.diagnostics, result.modules.map(module => module.source), json);
@@ -92,6 +111,7 @@ async function runProject(root: string, programArgs: readonly string[]): Promise
 	const result = await buildViruneProject(root, true, await configuredSourceFiles(root));
 	printDiagnostics(result.diagnostics, result.modules.map(module => module.source), false);
 	if (result.diagnostics.some(item => item.severity === 'error')) return 1;
+	if (!requireDirectExecutionReadiness(result)) return 1;
 	const entrySource = resolve(root, result.config.entry);
 	const entryModule = result.modules.find(module => resolve(module.source.path) === entrySource);
 	const entry = entryModule?.outputPath;
@@ -122,6 +142,7 @@ async function testProject(root: string): Promise<number> {
 	const result = await buildViruneProject(root, true, sourceFiles);
 	printDiagnostics(result.diagnostics, result.modules.map(module => module.source), false);
 	if (result.diagnostics.some(item => item.severity === 'error')) return 1;
+	if (!requireDirectExecutionReadiness(result)) return 1;
 	const testPaths = new Set(testFiles.map(file => resolve(file)));
 	const outputs = result.modules.filter(module => testPaths.has(resolve(module.source.path)) && module.ast?.declarations.some(item => item.kind === 'TestDeclaration')).map(module => module.outputPath).filter((value): value is string => value !== undefined);
 	if (outputs.length === 0) { console.log('No Virune tests found.'); return 0; }
