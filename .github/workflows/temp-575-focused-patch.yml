@@ -1,0 +1,84 @@
+name: Temporary #575 focused patch
+
+on:
+  push:
+    branches:
+      - fix/575-callback-ignored-args
+
+permissions:
+  contents: write
+
+jobs:
+  patch-and-test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/575-callback-ignored-args
+          fetch-depth: 1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - name: Apply exact callback projection edit and focused validation
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('packages/js-interop/src/index.ts')
+          text = path.read_text()
+
+          replacements = [
+              (
+                  """\tconst parameters = signature.getParameters();\n\tconst declaration = signature.declaration;\n\tif (declaration === undefined || declaration.parameters.length !== parameters.length) return undefined;\n\tfor (const parameter of declaration.parameters) {\n\t\tif (!ts.isParameter(parameter) || parameter.questionToken !== undefined || parameter.initializer !== undefined || parameter.dotDotDotToken !== undefined) return undefined;\n\t}\n\treturn signature;\n""",
+                  """\tconst parameters = signature.getParameters();\n\tconst declaration = signature.declaration;\n\tif (declaration === undefined || declaration.parameters.length !== parameters.length) return undefined;\n\treturn signature;\n""",
+              ),
+              (
+                  """function contextualCallableShape(\n\ttype: ts.Type,\n\tchecker: ts.TypeChecker,\n\tlocation: ts.Node,\n): InteropCallableArgumentResolution['target'] | undefined {\n\tconst signature = contextualCallableSignature(type, checker);\n\tif (signature === undefined) return undefined;\n\tconst parameters = signature.getParameters();\n\tconst parameterTypes: ContextualCallablePrimitiveKind[] = [];\n\tfor (const parameter of parameters) {\n\t\tconst parameterType = checker.getTypeOfSymbolAtLocation(parameter, location);\n\t\tconst primitive = contextualPrimitiveKind(parameterType);\n\t\tif (primitive === undefined) return undefined;\n\t\tparameterTypes.push(primitive);\n\t}\n""",
+                  """function contextualCallableShape(\n\ttype: ts.Type,\n\tchecker: ts.TypeChecker,\n\tlocation: ts.Node,\n\tcallable: NativeCallableTypeTemplate,\n): InteropCallableArgumentResolution['target'] | undefined {\n\tconst signature = contextualCallableSignature(type, checker);\n\tif (signature === undefined) return undefined;\n\tconst parameters = signature.getParameters();\n\tif (parameters.length < callable.parameters.length) return undefined;\n\tconst parameterTypes: ContextualCallablePrimitiveKind[] = [];\n\tfor (let index = 0; index < callable.parameters.length; index++) {\n\t\tconst parameter = parameters[index];\n\t\tif (parameter === undefined) return undefined;\n\t\tconst parameterType = checker.getTypeOfSymbolAtLocation(parameter, location);\n\t\tconst primitive = contextualPrimitiveKind(parameterType);\n\t\tif (primitive === undefined) return undefined;\n\t\tparameterTypes.push(primitive);\n\t}\n""",
+              ),
+              (
+                  "const target = contextualCallableShape(contextual, probe.checker, node);",
+                  "const target = contextualCallableShape(contextual, probe.checker, node, argument.callable);",
+              ),
+              (
+                  "const callable = contextualCallableShape(contextual, checker, property.initializer);",
+                  "const callable = contextualCallableShape(contextual, checker, property.initializer, usageEntry.value.callable);",
+              ),
+          ]
+
+          changed = False
+          for old, new in replacements:
+              if old in text:
+                  if text.count(old) != 1:
+                      raise SystemExit(f'expected one exact match, found {text.count(old)} for {old[:80]!r}')
+                  text = text.replace(old, new, 1)
+                  changed = True
+              elif new not in text:
+                  raise SystemExit(f'neither old nor new snippet found for {old[:80]!r}')
+
+          if changed:
+              path.write_text(text)
+          PY
+
+          if git diff --quiet -- packages/js-interop/src/index.ts; then
+            echo "Focused source edit already applied; nothing to commit."
+            exit 0
+          fi
+
+          git diff --check
+          npm ci
+          npm run build
+          node --test --test-timeout=120000 \
+            packages/js-interop/dist/test/callable-boundary-ignored-arguments.test.js \
+            packages/js-interop/dist/test/callable-boundary-generic.test.js \
+            packages/js-interop/dist/test/callable-boundary-void.test.js \
+            packages/js-interop/dist/test/callable-boundary-shim.test.js \
+            packages/js-interop/dist/test/callable-boundary-runtime.test.js
+
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add packages/js-interop/src/index.ts
+          git commit -m 'fix(interop): ignore target-only callback arguments'
+          git push origin HEAD:fix/575-callback-ignored-args
