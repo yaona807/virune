@@ -18,6 +18,6 @@
 - [タスクと構造化並行処理](tasks_ja.md) — 非同期実行と構造化並行処理
 - [JavaScript FFI](ffi_ja.md) — JavaScriptとの境界に関する規則
 - [JavaScript相互運用モデル](js-interop_ja.md) — 規範的なJavaScript / TypeScript相互運用契約
-- [JavaScript相互運用における第三者配布境界](js-interop-distribution_ja.md) — 宣言解析、再配布、外部パッケージライセンス、bundlingの境界
+- [JavaScript相互運用における第三者パッケージの配布境界](js-interop-distribution_ja.md) — 宣言ファイルの解析、再配布、外部パッケージのライセンス、バンドルの境界
 - [標準型と標準ライブラリ](standard-library_ja.md) — `Bytes`、固定幅整数、Unicode、コレクションの意味論
 - [Runtime ABI v2](runtime-abi_ja.md) — 生成コードとRuntimeの間のRuntime ABI v2契約
