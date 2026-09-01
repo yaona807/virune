@@ -41,6 +41,7 @@ export interface ExternalForeignOrigin {
 
 export interface ExternalForeignValueShape {
 	readonly category: StableForeignTypeSnapshot['category'];
+	readonly canonicalIdentity?: StableForeignTypeSnapshot['canonicalIdentity'];
 	readonly primitive?: StableForeignTypeSnapshot['primitive'];
 	readonly mustUse?: boolean;
 	readonly origin?: ExternalForeignOrigin;
@@ -174,6 +175,7 @@ const FOREIGN_CATEGORIES: readonly StableForeignTypeSnapshot['category'][] = [
 const FOREIGN_PRIMITIVES: readonly NonNullable<StableForeignTypeSnapshot['primitive']>[] = [
 	'boolean', 'string', 'number', 'bigint', 'void', 'undefined', 'null',
 ];
+const CANONICAL_FOREIGN_IDENTITIES: readonly NonNullable<StableForeignTypeSnapshot['canonicalIdentity']>[] = ['ecmascript:Promise'];
 const CALLABLE_PRIMITIVES: readonly NativeCallablePrimitiveKind[] = ['Bool', 'Int', 'Float', 'BigInt', 'String', 'Unit'];
 const BRIDGES: readonly PrimitiveBridgeKind[] = ['string', 'bool', 'float', 'bigint', 'unit', 'unknown'];
 const RUNTIME_FORMATS: readonly NonNullable<ModuleResolutionWitness['runtimeFormat']>[] = ['esm', 'commonjs', 'builtin', 'bundler', 'unknown'];
@@ -550,6 +552,12 @@ function canonicalCallableDescriptor(descriptor: NativeCallableBoundaryDescripto
 function canonicalForeignType(snapshot: StableForeignTypeSnapshot): ExternalForeignValueShape {
 	assertKnown(FOREIGN_CATEGORIES, snapshot.category, 'foreign type category');
 	if (snapshot.category === 'any') throw new Error('TypeScript any cannot become successful External operation evidence');
+	if (snapshot.canonicalIdentity !== undefined) {
+		assertKnown(CANONICAL_FOREIGN_IDENTITIES, snapshot.canonicalIdentity, 'canonical foreign type identity');
+		if (snapshot.canonicalIdentity === 'ecmascript:Promise' && snapshot.category !== 'promise') {
+			throw new Error('Canonical ECMAScript Promise identity requires the promise category');
+		}
+	}
 	if (snapshot.primitive !== undefined) {
 		assertKnown(FOREIGN_PRIMITIVES, snapshot.primitive, 'foreign primitive');
 		if (snapshot.category !== 'primitive' && snapshot.category !== 'literal') {
@@ -562,6 +570,7 @@ function canonicalForeignType(snapshot: StableForeignTypeSnapshot): ExternalFore
 	const origin = snapshot.origin === undefined ? undefined : canonicalOrigin(snapshot.origin);
 	return Object.freeze({
 		category: snapshot.category,
+		...(snapshot.canonicalIdentity === undefined ? {} : { canonicalIdentity: snapshot.canonicalIdentity }),
 		...(snapshot.primitive === undefined ? {} : { primitive: snapshot.primitive }),
 		...(snapshot.mustUse === undefined ? {} : { mustUse: snapshot.mustUse }),
 		...(origin === undefined ? {} : { origin }),
