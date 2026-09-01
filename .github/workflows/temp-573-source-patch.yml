@@ -1,0 +1,42 @@
+name: Temporary #573 source patch
+
+on:
+  push:
+    branches:
+      - fix/573-generic-result-reference
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]' || !contains(github.event.head_commit.message, 'fix(interop): stop generic result relevance at concrete references')
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/573-generic-result-reference
+          fetch-depth: 1
+      - name: Apply exact source edit
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('packages/js-interop/src/index.ts')
+          text = path.read_text()
+          old = """\t\tif ((objectType.objectFlags & ts.ObjectFlags.Reference) !== 0) {\n\t\t\tconst typeArguments = checker.getTypeArguments(type as ts.TypeReference);\n\t\t\tif (typeArguments.some(item => typeParameterOccursInResult(item, target, checker, location, seen, budget, depth + 1))) return true;\n\t\t}\n"""
+          new = """\t\tif ((objectType.objectFlags & ts.ObjectFlags.Reference) !== 0) {\n\t\t\tconst typeArguments = checker.getTypeArguments(type as ts.TypeReference);\n\t\t\tif (typeArguments.some(item => typeParameterOccursInResult(item, target, checker, location, seen, budget, depth + 1))) return true;\n\t\t\treturn false;\n\t\t}\n"""
+          if text.count(old) != 1:
+              raise SystemExit(f'expected one exact source match, found {text.count(old)}')
+          path.write_text(text.replace(old, new, 1))
+          PY
+          git diff --check
+          git diff -- packages/js-interop/src/index.ts
+      - name: Commit focused source edit
+        shell: bash
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add packages/js-interop/src/index.ts
+          git commit -m 'fix(interop): stop generic result relevance at concrete references'
+          git push origin HEAD:fix/573-generic-result-reference
