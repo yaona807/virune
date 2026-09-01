@@ -63,10 +63,10 @@ async function prepareInteropAdapters(root: string, write: boolean) {
 	return result;
 }
 
-async function buildViruneProject(root: string, write: boolean, additionalEntries: readonly string[]) {
+async function buildViruneProject(root: string, write: boolean, additionalEntries: readonly string[], includeConfigEntry = true) {
 	await prepareInteropAdapters(root, write);
 	const jsInteropProvider = new TypeScriptInteropProvider({ projectRoot: root });
-	return buildProject(root, { write, additionalEntries, jsInteropProvider });
+	return buildProject(root, { write, additionalEntries, includeConfigEntry, jsInteropProvider });
 }
 
 function requireDirectExecutionReadiness(result: ProjectBuildResult): boolean {
@@ -86,6 +86,13 @@ function requireDirectExecutionReadiness(result: ProjectBuildResult): boolean {
 		}
 	}
 	return ready;
+}
+
+async function requireScopedDirectExecutionReadiness(root: string, additionalEntries: readonly string[], includeConfigEntry: boolean): Promise<boolean> {
+	const result = await buildViruneProject(root, false, additionalEntries, includeConfigEntry);
+	printDiagnostics(result.diagnostics, result.modules.map(module => module.source), false);
+	if (result.diagnostics.some(item => item.severity === 'error')) return false;
+	return requireDirectExecutionReadiness(result);
 }
 
 async function checkProject(root: string, json: boolean): Promise<number> {
@@ -125,7 +132,7 @@ async function runProject(root: string, programArgs: readonly string[]): Promise
 		console.error('error[L5010]: Entry module was not emitted');
 		return 1;
 	}
-	if (!requireDirectExecutionReadiness(result)) return 1;
+	if (!await requireScopedDirectExecutionReadiness(root, [], true)) return 1;
 	const main = validation.main;
 	const invocation = main.parameters.length === 0 ? 'module.main()' : `module.main(${JSON.stringify(programArgs)})`;
 	const runner = join(root, '.virune-cache', 'run-entry.mjs');
@@ -145,7 +152,7 @@ async function testProject(root: string): Promise<number> {
 	const testPaths = new Set(testFiles.map(file => resolve(file)));
 	const outputs = result.modules.filter(module => testPaths.has(resolve(module.source.path)) && module.ast?.declarations.some(item => item.kind === 'TestDeclaration')).map(module => module.outputPath).filter((value): value is string => value !== undefined);
 	if (outputs.length === 0) { console.log('No Virune tests found.'); return 0; }
-	if (!requireDirectExecutionReadiness(result)) return 1;
+	if (!await requireScopedDirectExecutionReadiness(root, testFiles, false)) return 1;
 	return spawnAndWait(process.execPath, ['--test', '--enable-source-maps', ...outputs], root);
 }
 
