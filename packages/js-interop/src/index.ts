@@ -513,9 +513,13 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 		if (construct ? !ts.isNewExpression(invocation) : !ts.isCallExpression(invocation)) return undefined;
 		const signature = probe.checker.getResolvedSignature(invocation as ts.CallLikeExpression);
 		if (signature === undefined) return undefined;
-		const result = probe.checker.getReturnTypeOfSignature(signature);
-		if ((result.getFlags() & (ts.TypeFlags.Any | (construct ? ts.TypeFlags.Unknown : ts.TypeFlags.Never))) !== 0) return undefined;
-		if (!resolvedGenericResultIsConcrete(signature, probe.checker, invocation)) return undefined;
+		const resolvedResult = probe.checker.getReturnTypeOfSignature(signature);
+		const provisionalSyncContext = !construct && usage.arguments.some(argument => argument.kind === 'contextual-callable' && argument.async === false);
+		if (!provisionalSyncContext) {
+			if ((resolvedResult.getFlags() & (ts.TypeFlags.Any | (construct ? ts.TypeFlags.Unknown : ts.TypeFlags.Never))) !== 0) return undefined;
+			if (!resolvedGenericResultIsConcrete(signature, probe.checker, invocation)) return undefined;
+		}
+		const result = resolvedResult;
 		const invocationArguments = ts.isCallExpression(invocation)
 			? invocation.arguments
 			: ts.isNewExpression(invocation)
