@@ -122,6 +122,7 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 	readonly #createLanguageService: (host: ts.LanguageServiceHost) => ts.LanguageService;
 	readonly #workspaces = new Map<JsImportRequest['platform'], ProbeWorkspace>();
 	readonly #types = new Map<string, StoredType>();
+	readonly #references = new Set<ForeignTypeRef>();
 	#nextTypeId = 1;
 
 	public constructor(options: TypeScriptInteropProviderOptions) {
@@ -158,6 +159,7 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 
 	public dispose(): void {
 		this.#types.clear();
+		this.#references.clear();
 		for (const workspace of this.#workspaces.values()) workspace.languageService.dispose();
 		this.#workspaces.clear();
 	}
@@ -337,9 +339,14 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 			context.declarations.push(`declare const ${name}: ${sourceType};`);
 			return name;
 		}
+		if (argument.kind === 'contextual-callable') {
+			if (!allowNativeCallable || !Number.isSafeInteger(argument.parameterCount) || argument.parameterCount < 0 || argument.parameterCount > 64 || typeof argument.async !== 'boolean') return undefined;
+			const parameters = Array.from({ length: argument.parameterCount }, (_, index) => `$arg${index}`);
+			return `${argument.async ? 'async ' : ''}(${parameters.join(', ')}) => { throw new Error("__virune_contextual_probe"); }`;
+		}
 		if (argument.kind === 'native-callable') {
 			if (!allowNativeCallable) return undefined;
-			const sourceType = renderNativeCallableType(argument.callable);
+			const sourceType = this.renderNativeCallableType(argument.callable, context);
 			if (sourceType === undefined) return undefined;
 			const name = `__viruneValue${context.nextValueId++}`;
 			context.declarations.push(`declare const ${name}: ${sourceType};`);
@@ -352,6 +359,72 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 		const name = `__viruneValue${context.nextValueId++}`;
 		context.declarations.push(`declare const ${name}: ${typescriptPrimitiveName(argument.primitive)};`);
 		return name;
+	}
+
+	private renderNativeCallableType(callable: NativeCallableTypeTemplate, context: UsageProbeContext): string | undefined {
+		const parameters: string[] = [];
+		for (let index = 0; index < callable.parameters.length; index++) {
+			const rendered = this.renderNativeCallableValue(callable.parameters[index]!, context, false);
+			if (rendered === undefined) return undefined;
+			parameters.push(`$arg${index}: ${rendered}`);
+		}
+		const result = this.renderNativeCallableValue(callable.result, context, true);
+		if (result === undefined || typeof callable.async !== 'boolean') return undefined;
+		return `(${parameters.join(', ')}) => ${callable.async ? `Promise<${result}>` : result}`;
+	}
+
+	private renderNativeCallableValue(value: NativeCallableTypeTemplate['result'], context: UsageProbeContext, allowNever: boolean): string | undefined {
+		if (value === 'Never') return allowNever ? 'never' : undefined;
+		if (typeof value === 'string') return allowNever ? typescriptCallableResultName(value) : typescriptCallbackParameterName(value);
+		const source = this.lookupType(value.type);
+		if (source === undefined || source.workspace !== context.workspace || source.usageProjection === undefined || source.usageProjection.directory !== context.directory) return undefined;
+		if (source.usageProjection.declaration !== undefined) context.imports.add(source.usageProjection.declaration);
+		return source.usageProjection.typeExpression;
+	}
+
+	private contextualCallableShape(
+		type: ts.Type,
+		checker: ts.TypeChecker,
+		location: ts.Node,
+		parameterCount: number,
+		callable: NativeCallableTypeTemplate | undefined,
+		workspace: ProbeWorkspace,
+		origin: ForeignTypeSnapshot['origin'],
+		directory: string,
+	): InteropCallableArgumentResolution['target'] | undefined {
+		const signature = contextualCallableSignature(type, checker);
+		if (signature === undefined) return undefined;
+		const parameters = signature.getParameters();
+		if (parameters.length < parameterCount) return undefined;
+		const parameterTypes: InteropCallableArgumentResolution['target']['parameters'][number][] = [];
+		for (let index = 0; index < parameterCount; index++) {
+			const parameter = parameters[index];
+			if (parameter === undefined) return undefined;
+			const parameterType = checker.getTypeOfSymbolAtLocation(parameter, location);
+			const value = this.contextualCallableValue(parameterType, checker, location, workspace, origin, directory);
+			if (value === undefined) return undefined;
+			parameterTypes.push(value);
+		}
+		let result: ContextualCallableResult;
+		if (callable === undefined) result = Object.freeze({ kind: 'deferred' });
+		else if (callable.result === 'Never' || typeof callable.result !== 'string') result = Object.freeze({ kind: 'external' });
+		else {
+			const resultType = checker.getReturnTypeOfSignature(signature);
+			const contextual = contextualCallbackResult(resultType, checker);
+			if (contextual === undefined) return undefined;
+			result = contextual;
+		}
+		return Object.freeze({ parameters: Object.freeze(parameterTypes), result });
+	}
+
+	private contextualCallableValue(type: ts.Type, checker: ts.TypeChecker, location: ts.Node, workspace: ProbeWorkspace, origin: ForeignTypeSnapshot['origin'], directory: string): InteropCallableArgumentResolution['target']['parameters'][number] | undefined {
+		const primitive = contextualPrimitiveKind(type);
+		if (primitive !== undefined) return primitive;
+		const flags = type.getFlags();
+		if ((flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown | ts.TypeFlags.Never | ts.TypeFlags.TypeParameter | ts.TypeFlags.Union | ts.TypeFlags.Intersection)) !== 0) return undefined;
+		const typeExpression = renderContextualTypeExpression(type, checker, location);
+		if (typeExpression === undefined) return undefined;
+		return this.store(type, checker, location, origin, workspace, { typeExpression, directory });
 	}
 
 	private runUsageProbe(context: UsageProbeContext, expression: string): UsageProbeResult | undefined {
@@ -392,7 +465,7 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 		if (construct) {
 			if (constructSignatures.length === 0 || callSignatures.length !== 0) return undefined;
 		} else if (callSignatures.length === 0 || constructSignatures.length !== 0) return undefined;
-		if (usage.arguments.some(argument => argument.kind === 'native-callable') && this.#compilerOptions.strictNullChecks !== true) return undefined;
+		if (usage.arguments.some(argument => argument.kind === 'native-callable' || argument.kind === 'contextual-callable') && this.#compilerOptions.strictNullChecks !== true) return undefined;
 		const context = this.createUsageProbeContext(reference);
 		if (context === undefined) return undefined;
 		if (!construct) {
@@ -448,17 +521,22 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 				: ts.factory.createNodeArray<ts.Expression>();
 		const parameters = signature.getParameters();
 		const callableArguments: InteropCallableArgumentResolution[] = [];
+		const contextualCallableArguments: InteropCallableArgumentResolution[] = [];
 		const objectArguments: InteropObjectArgumentResolution[] = [];
 		for (let index = 0; index < usage.arguments.length; index++) {
 			const argument = usage.arguments[index]!;
 			const node = invocationArguments[index];
 			if (node === undefined) return undefined;
-			if (argument.kind === 'native-callable') {
+			if (argument.kind === 'native-callable' || argument.kind === 'contextual-callable') {
 				const contextual = probe.checker.getContextualType(node);
 				if (contextual === undefined) return undefined;
-				const target = contextualCallableShape(contextual, probe.checker, node, argument.callable);
+				const callable = argument.kind === 'native-callable' ? argument.callable : undefined;
+				const parameterCount = argument.kind === 'native-callable' ? argument.callable.parameters.length : argument.parameterCount;
+				const target = this.contextualCallableShape(contextual, probe.checker, node, parameterCount, callable, context.workspace, stored.origin, context.directory);
 				if (target === undefined) return undefined;
-				callableArguments.push({ index, target });
+				const evidence = { index, target };
+				if (argument.kind === 'native-callable') callableArguments.push(evidence);
+				else contextualCallableArguments.push(evidence);
 			} else if (argument.kind === 'contextual-object') {
 				const literal = unwrapObjectLiteral(node);
 				if (literal === undefined) return undefined;
@@ -482,6 +560,7 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 			mayReject: resultSnapshot.category === 'promise',
 			receiverMode: !construct && usage.target.kind !== 'value' ? 'preserve-this' : 'none',
 			...(callableArguments.length === 0 ? {} : { callableArguments: Object.freeze(callableArguments) }),
+			...(contextualCallableArguments.length === 0 ? {} : { contextualCallableArguments: Object.freeze(contextualCallableArguments) }),
 			...(objectArguments.length === 0 ? {} : { objectArguments: Object.freeze(objectArguments) }),
 		};
 	}
@@ -496,7 +575,7 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 			const contextual = checker.getContextualType(property.initializer);
 			if (contextual === undefined || (contextual.getFlags() & (ts.TypeFlags.Any | ts.TypeFlags.Unknown | ts.TypeFlags.Never | ts.TypeFlags.TypeParameter)) !== 0) return undefined;
 			if (usageEntry.value.kind === 'native-callable') {
-				const callable = contextualCallableShape(contextual, checker, property.initializer, usageEntry.value.callable);
+				const callable = this.contextualCallableShape(contextual, checker, property.initializer, usageEntry.value.callable.parameters.length, usageEntry.value.callable, workspace, undefined, dirname(property.initializer.getSourceFile().fileName));
 				if (callable === undefined) return undefined;
 				entries.push({ index, property: usageEntry.property, callable });
 			} else if (usageEntry.value.kind === 'contextual-object') {
@@ -595,7 +674,7 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 	}
 
 	private argumentCompatible(argument: InteropArgumentType, parameter: ts.Type, checker: ts.TypeChecker): boolean {
-		if (argument.kind === 'unknown' || argument.kind === 'native-callable' || argument.kind === 'contextual-object') return false;
+		if (argument.kind === 'unknown' || argument.kind === 'native-callable' || argument.kind === 'contextual-callable' || argument.kind === 'contextual-object') return false;
 		const parameterFlags = parameter.getFlags();
 		if (argument.kind === 'foreign') {
 			const source = this.requireType(argument.type);
@@ -608,7 +687,7 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 	}
 
 	private lookupType(reference: ForeignTypeRef): StoredType | undefined {
-		if (reference.providerId !== this.id || reference.generation !== this.generation) return undefined;
+		if (reference.providerId !== this.id || reference.generation !== this.generation || !this.#references.has(reference)) return undefined;
 		return this.#types.get(reference.id);
 	}
 
@@ -721,9 +800,10 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 		usageProjection?: UsageProjection,
 	): ForeignTypeSnapshot {
 		const id = String(this.#nextTypeId++);
-		const ref: ForeignTypeRef = { providerId: this.id, generation: this.generation, id };
+		const ref = Object.freeze<ForeignTypeRef>({ providerId: this.id, generation: this.generation, id });
 		const rawDisplay = checker.typeToString(type, location, ts.TypeFormatFlags.NoTruncation | ts.TypeFormatFlags.UseAliasDefinedOutsideCurrentScope);
 		const display = stableTypeDisplay(rawDisplay, origin, this.#projectRoot);
+		this.#references.add(ref);
 		this.#types.set(id, { type, checker, location, origin, workspace, display, ...(usageProjection === undefined ? {} : { usageProjection }) });
 		const primitive = primitiveKind(type);
 		const awaited = checker.getAwaitedType(type);
@@ -751,7 +831,10 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 
 	private requireType(reference: ForeignTypeRef): StoredType {
 		const type = this.lookupType(reference);
-		if (type === undefined) throw new Error(reference.providerId !== this.id || reference.generation !== this.generation ? 'Stale or foreign JavaScript type handle' : 'Unknown JavaScript type handle');
+		if (type === undefined) {
+			const staleOrForeign = reference.providerId !== this.id || reference.generation !== this.generation || this.#types.has(reference.id) && !this.#references.has(reference);
+			throw new Error(staleOrForeign ? 'Stale or foreign JavaScript type handle' : 'Unknown JavaScript type handle');
+		}
 		return type;
 	}
 
@@ -1100,18 +1183,6 @@ function typescriptPrimitiveName(primitive: Extract<InteropArgumentType, { reado
 					: 'number';
 }
 
-function renderNativeCallableType(callable: NativeCallableTypeTemplate): string | undefined {
-	const parameters: string[] = [];
-	for (let index = 0; index < callable.parameters.length; index++) {
-		const primitive = typescriptCallbackParameterName(callable.parameters[index]!);
-		if (primitive === undefined) return undefined;
-		parameters.push(`$arg${index}: ${primitive}`);
-	}
-	const result = typescriptCallableResultName(callable.result);
-	if (result === undefined || typeof callable.async !== 'boolean') return undefined;
-	return `(${parameters.join(', ')}) => ${callable.async ? `Promise<${result}>` : result}`;
-}
-
 function typescriptCallbackParameterName(primitive: NativeCallablePrimitiveKind): string | undefined {
 	if (primitive === 'Int') return undefined;
 	return typescriptCallableResultName(primitive);
@@ -1150,31 +1221,6 @@ function contextualCallableSignature(type: ts.Type, checker: ts.TypeChecker): ts
 	return signature;
 }
 
-function contextualCallableShape(
-	type: ts.Type,
-	checker: ts.TypeChecker,
-	location: ts.Node,
-	callable: NativeCallableTypeTemplate,
-): InteropCallableArgumentResolution['target'] | undefined {
-	const signature = contextualCallableSignature(type, checker);
-	if (signature === undefined) return undefined;
-	const parameters = signature.getParameters();
-	if (parameters.length < callable.parameters.length) return undefined;
-	const parameterTypes: ContextualCallablePrimitiveKind[] = [];
-	for (let index = 0; index < callable.parameters.length; index++) {
-		const parameter = parameters[index];
-		if (parameter === undefined) return undefined;
-		const parameterType = checker.getTypeOfSymbolAtLocation(parameter, location);
-		const primitive = contextualPrimitiveKind(parameterType);
-		if (primitive === undefined) return undefined;
-		parameterTypes.push(primitive);
-	}
-	const resultType = checker.getReturnTypeOfSignature(signature);
-	const result = contextualCallbackResult(resultType, checker);
-	if (result === undefined) return undefined;
-	return Object.freeze({ parameters: Object.freeze(parameterTypes), result });
-}
-
 function contextualPrimitiveKind(type: ts.Type): ContextualCallablePrimitiveKind | undefined {
 	const flags = type.getFlags();
 	if ((flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown | ts.TypeFlags.TypeParameter | ts.TypeFlags.Union | ts.TypeFlags.Intersection)) !== 0) return undefined;
@@ -1198,6 +1244,17 @@ function contextualCallbackResult(type: ts.Type, checker: ts.TypeChecker): Conte
 	}
 	const value = contextualPrimitiveKind(type);
 	return value === undefined ? undefined : Object.freeze({ kind: 'value', value });
+}
+
+function renderContextualTypeExpression(type: ts.Type, checker: ts.TypeChecker, location: ts.Node): string | undefined {
+	try {
+		const node = checker.typeToTypeNode(type, location, ts.NodeBuilderFlags.NoTruncation | ts.NodeBuilderFlags.UseFullyQualifiedType);
+		if (node === undefined) return undefined;
+		const text = ts.createPrinter({ removeComments: true }).printNode(ts.EmitHint.Unspecified, node, location.getSourceFile()).trim();
+		return text.length === 0 ? undefined : text;
+	} catch {
+		return undefined;
+	}
 }
 
 function renderInteropLiteral(primitive: Extract<InteropArgumentType, { readonly kind: 'native-primitive' }>['primitive'], literal: NonNullable<Extract<InteropArgumentType, { readonly kind: 'native-primitive' }>['literal']>): string | undefined {
