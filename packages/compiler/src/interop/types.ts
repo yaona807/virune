@@ -104,7 +104,7 @@ export type InteropArgumentType =
 	| { readonly kind: 'foreign'; readonly type: ForeignTypeRef }
 	| { readonly kind: 'native-primitive'; readonly primitive: NativeCallablePrimitiveKind; readonly literal?: InteropLiteralValue }
 	| { readonly kind: 'native-callable'; readonly callable: NativeCallableTypeTemplate }
-	| { readonly kind: 'contextual-callable'; readonly parameterCount: number; readonly async: true }
+	| { readonly kind: 'contextual-callable'; readonly parameterCount: number; readonly async: boolean }
 	| { readonly kind: 'contextual-object'; readonly object: InteropObjectUsage }
 	| { readonly kind: 'unknown' };
 
@@ -226,7 +226,7 @@ interface NativeCallableBoundaryDescriptorV2 {
 	readonly version: 'virune-callable-shim/v2';
 	readonly parameters: readonly 'External'[];
 	readonly result: 'External' | 'Never';
-	readonly async: true;
+	readonly async: boolean;
 	readonly effects: readonly string[];
 	readonly contextMode: 'root-argument';
 }
