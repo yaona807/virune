@@ -27,8 +27,9 @@ async function runCase(declarations: string, suffix: string): Promise<void> {
 let retained;
 const target = {
 	state: '',
-	setAttribute(name, value) {
-		if (name === 'data-state') this.state = value;
+	mark(value) {
+		this.state = value;
+		return this;
 	},
 };
 export function consume(config) { retained = config.onEvent; }
@@ -43,7 +44,7 @@ export function trigger() {
 @jsExport
 pub fn run() -> String uses JavaScript {
 	discard consume({
-		onEvent: fn(event) uses JavaScript => event.currentTarget.setAttribute("data-state", "seen"),
+		onEvent: fn(event) uses JavaScript => event.currentTarget.mark("seen"),
 	})
 	return trigger()
 }
@@ -55,9 +56,15 @@ pub fn run() -> String uses JavaScript {
 	const mainModule = result.modules.find(item => item.source.path.endsWith('main.virune'));
 	assert.ok(mainModule?.semantic);
 	assert.equal(mainModule.semantic.interop.objectCallableProjections?.length, 1);
+	const projection = mainModule.semantic.interop.objectCallableProjections?.[0];
+	assert.ok(projection);
+	assert.equal(projection.descriptor.version, 'virune-callable-shim/v2');
+	assert.deepEqual(projection.descriptor.parameters, ['External']);
+	assert.equal(projection.descriptor.result, 'External');
+	assert.equal(projection.descriptor.async, false);
 	const generated = await readFile(join(root, 'dist/main.js'), 'utf8');
 	assert.match(generated, /\$viruneProjectCallable\(/u);
-	assert.match(generated, /rootTaskContext\(\)/u);
+	assert.match(generated, /\$fn\(\$raw0, rootTaskContext\(\)\)/u);
 	await writeFile(join(root, 'dist/library.js'), await readFile(join(root, 'src/library.js'), 'utf8'), 'utf8');
 	const module = await import(`${pathToFileURL(join(root, 'dist/main.js')).href}?contextual-object-callback-${suffix}`) as { run(): string };
 	assert.equal(module.run(), 'seen');
@@ -65,7 +72,7 @@ pub fn run() -> String uses JavaScript {
 
 const commonDeclarations = `
 export interface ExternalTarget {
-	setAttribute(name: string, value: string): void;
+	mark(value: string): ExternalTarget;
 }
 export interface ExternalEvent {
 	readonly currentTarget: ExternalTarget;
@@ -75,13 +82,13 @@ export declare function trigger(): string;
 
 test('unannotated synchronous callback in optional contextual External object property is projected', async () => {
 	await runCase(`${commonDeclarations}
-export declare function consume(config: { onEvent?: (event: ExternalEvent) => void }): void;
+export declare function consume(config: { onEvent?: (event: ExternalEvent) => ExternalTarget }): void;
 `, 'optional');
 });
 
 test('contextual object callback aliases retain TypeScript callable evidence', async () => {
 	await runCase(`${commonDeclarations}
-type EventHandler<E> = { bivarianceHack(event: E): void }['bivarianceHack'];
+type EventHandler<E> = { bivarianceHack(event: E): ExternalTarget }['bivarianceHack'];
 export declare function consume(config: { onEvent?: EventHandler<ExternalEvent> }): void;
 `, 'bivariance');
 });
