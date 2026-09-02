@@ -1,0 +1,103 @@
+name: Apply issue 589 source patch
+
+on:
+  push:
+    branches:
+      - fix/589-sync-contextual-callback
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/589-sync-contextual-callback
+          fetch-depth: 0
+      - name: Apply exact source replacements
+        shell: python
+        run: |
+          from pathlib import Path
+
+          def replace_once(path: str, old: str, new: str) -> None:
+              file = Path(path)
+              text = file.read_text(encoding='utf-8')
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{path}: expected exactly one match, found {count}')
+              file.write_text(text.replace(old, new), encoding='utf-8')
+
+          replace_once(
+              'packages/compiler/src/checker/checker.ts',
+              "\t\tif (allowContextual && expression.kind === 'LambdaExpression' && expression.async && expression.parameters.length > 0 && expression.parameters.every(parameter => parameter.annotation === undefined)) {\n\t\t\treturn { expression, argument: { kind: 'contextual-callable', parameterCount: expression.parameters.length, async: true }, point: this.semanticPoint() };\n\t\t}",
+              "\t\tif (allowContextual && expression.kind === 'LambdaExpression' && expression.parameters.length > 0 && expression.parameters.every(parameter => parameter.annotation === undefined)) {\n\t\t\treturn { expression, argument: { kind: 'contextual-callable', parameterCount: expression.parameters.length, async: expression.async }, point: this.semanticPoint() };\n\t\t}",
+          )
+          replace_once(
+              'packages/compiler/src/checker/checker.ts',
+              "\t\tif (!expression.async || type.kind !== 'function' || !type.async || type.typeParameters.length !== 0 || type.parameters.length === 0 || type.effects.some(effect => effect === '*' || !this.#effects.has(effect))) return undefined;",
+              "\t\tif (type.kind !== 'function' || type.async !== expression.async || type.typeParameters.length !== 0 || type.parameters.length === 0 || type.effects.some(effect => effect === '*' || !this.#effects.has(effect))) return undefined;",
+          )
+          replace_once(
+              'packages/compiler/src/checker/checker.ts',
+              "\t\t\tcallable: Object.freeze({\n\t\t\t\tparameters: Object.freeze(parameters),\n\t\t\t\tresult: result === 'Never' ? result : { kind: 'foreign' as const, type: result },\n\t\t\t\tasync: true,\n\t\t\t}),\n\t\t\tboundary: Object.freeze({\n\t\t\t\tversion: 'virune-callable-shim/v2',\n\t\t\t\tparameters: Object.freeze(parameters.map(() => 'External' as const)),\n\t\t\t\tresult: result === 'Never' ? 'Never' : 'External',\n\t\t\t\tasync: true,",
+              "\t\t\tcallable: Object.freeze({\n\t\t\t\tparameters: Object.freeze(parameters),\n\t\t\t\tresult: result === 'Never' ? result : { kind: 'foreign' as const, type: result },\n\t\t\t\tasync: type.async,\n\t\t\t}),\n\t\t\tboundary: Object.freeze({\n\t\t\t\tversion: 'virune-callable-shim/v2',\n\t\t\t\tparameters: Object.freeze(parameters.map(() => 'External' as const)),\n\t\t\t\tresult: result === 'Never' ? 'Never' : 'External',\n\t\t\t\tasync: type.async,",
+          )
+          replace_once(
+              'packages/compiler/src/checker/checker.ts',
+              "\t\tif (boundary.version === 'virune-callable-shim/v2') {\n\t\t\treturn boundary.async === true\n\t\t\t\t&& boundary.parameters.every(parameter => parameter === 'External')",
+              "\t\tif (boundary.version === 'virune-callable-shim/v2') {\n\t\t\treturn boundary.parameters.every(parameter => parameter === 'External')",
+          )
+
+          replace_once(
+              'packages/js-interop/src/index.ts',
+              "\t\tconst result = probe.checker.getReturnTypeOfSignature(signature);\n\t\tif ((result.getFlags() & (ts.TypeFlags.Any | (construct ? ts.TypeFlags.Unknown : ts.TypeFlags.Never))) !== 0) return undefined;\n\t\tif (!resolvedGenericResultIsConcrete(signature, probe.checker, invocation)) return undefined;",
+              "\t\tconst resolvedResult = probe.checker.getReturnTypeOfSignature(signature);\n\t\tconst provisionalSyncContext = !construct && usage.arguments.some(argument => argument.kind === 'contextual-callable' && argument.async === false);\n\t\tif (!provisionalSyncContext) {\n\t\t\tif ((resolvedResult.getFlags() & (ts.TypeFlags.Any | (construct ? ts.TypeFlags.Unknown : ts.TypeFlags.Never))) !== 0) return undefined;\n\t\t\tif (!resolvedGenericResultIsConcrete(signature, probe.checker, invocation)) return undefined;\n\t\t}\n\t\tconst result = provisionalSyncContext ? probe.checker.getUndefinedType() : resolvedResult;",
+          )
+
+          replace_once(
+              'packages/compiler/src/interop/operation.ts',
+              "\treturn Object.freeze({ version: 'virune-callable-shim/v2', parameters: Object.freeze(descriptor.parameters.map(() => 'External' as const)), result: descriptor.result, async: true, effects: Object.freeze(canonicalEffects), contextMode: 'root-argument' });",
+              "\treturn Object.freeze({ version: 'virune-callable-shim/v2', parameters: Object.freeze(descriptor.parameters.map(() => 'External' as const)), result: descriptor.result, async: descriptor.async, effects: Object.freeze(canonicalEffects), contextMode: 'root-argument' });",
+          )
+
+          replace_once(
+              'packages/compiler/src/codegen/emitter.ts',
+              "\tprivate lambdaExpression(expression: A.LambdaExpression, outerContextName: string): string {\n\t\tconst parameters = expression.parameters.map(parameter => this.nameOf(parameter.symbolId, parameter.name));\n\t\tconst contextName = expression.async ? `$lambdaCtx${this.#temporary++}` : outerContextName;\n\t\tif (expression.async) parameters.push(`${contextName} = rootTaskContext()`);",
+              "\tprivate lambdaExpression(expression: A.LambdaExpression, outerContextName: string): string {\n\t\tconst parameters = expression.parameters.map(parameter => this.nameOf(parameter.symbolId, parameter.name));\n\t\tconst projectedSyncExternal = !expression.async && this.#semantic.interop.callableProjections?.some(item => item.nodeId === expression.id && item.descriptor.version === 'virune-callable-shim/v2' && item.descriptor.async === false) === true;\n\t\tconst ownsContext = expression.async || projectedSyncExternal;\n\t\tconst contextName = ownsContext ? `$lambdaCtx${this.#temporary++}` : outerContextName;\n\t\tif (ownsContext) parameters.push(`${contextName} = rootTaskContext()`);",
+          )
+          replace_once(
+              'packages/compiler/src/codegen/emitter.ts',
+              "\t\t\tconst result = `await ${invocation}`;\n\t\t\tbody = descriptor.result === 'Never'",
+              "\t\t\tconst result = descriptor.async ? `await ${invocation}` : invocation;\n\t\t\tbody = descriptor.result === 'Never'",
+          )
+
+          replace_once(
+              'spec/js-interop.md',
+              'A contextual External callable subset MAY additionally accept an unannotated inline `async` lambda in the final JavaScript call-argument position',
+              'A contextual External callable subset MAY additionally accept an unannotated inline lambda, either synchronous or `async`, in the final JavaScript call-argument position',
+          )
+          replace_once(
+              'spec/js-interop_ja.md',
+              '文脈付きExternal callableでは、JavaScript呼び出しの最後の実引数にある型注釈なしのinline `async` lambdaについて',
+              '文脈付きExternal callableでは、JavaScript呼び出しの最後の実引数にある型注釈なしのinline lambda（同期または`async`）について',
+          )
+      - name: Verify patch scope
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check
+          git diff --name-only
+          test "$(git diff --name-only | sort | tr '\n' ' ')" = "$(printf '%s\n' packages/compiler/src/checker/checker.ts packages/compiler/src/codegen/emitter.ts packages/compiler/src/interop/operation.ts packages/js-interop/src/index.ts spec/js-interop.md spec/js-interop_ja.md | sort | tr '\n' ' ')"
+      - name: Commit source patch and remove temporary workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git rm .github/workflows/patch-589.yml
+          git add packages/compiler/src/checker/checker.ts packages/compiler/src/codegen/emitter.ts packages/compiler/src/interop/operation.ts packages/js-interop/src/index.ts spec/js-interop.md spec/js-interop_ja.md
+          git commit -m "fix(interop): contextually type sync External callbacks"
+          git push origin HEAD:fix/589-sync-contextual-callback
