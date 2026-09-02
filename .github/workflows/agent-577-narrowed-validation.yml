@@ -36,7 +36,9 @@ jobs:
           exec(compile(source, '<agent-577-reviewed>', 'exec'), {'Path': Path})
           PY
       - name: Narrow reviewed candidate
-        run: python3 .github/agent-577-narrow.py
+        run: |
+          python3 .github/agent-577-narrow.py
+          python3 .github/agent-577-narrow-fix.py
       - name: Validate narrowed compiler and regressions
         run: |
           npm run build
