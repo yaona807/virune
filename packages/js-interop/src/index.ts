@@ -334,7 +334,7 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 			const source = this.lookupType(argument.type);
 			if (source === undefined || source.workspace !== context.workspace || source.usageProjection === undefined || source.usageProjection.directory !== context.directory) return undefined;
 			if (source.usageProjection.declaration !== undefined) context.imports.add(source.usageProjection.declaration);
-			const sourceType = foreignTypeRequiresUnknownProjection(source.type) ? 'unknown' : source.usageProjection.typeExpression;
+			const sourceType = typeContainsUnresolvedGenericResult(source.type, source.checker, source.location) ? 'unknown' : source.usageProjection.typeExpression;
 			const name = `__viruneValue${context.nextValueId++}`;
 			context.declarations.push(`declare const ${name}: ${sourceType};`);
 			return name;
@@ -957,11 +957,6 @@ function isDefinitelyNonPrimitive(type: ts.Type, checker: ts.TypeChecker): boole
 		checker.getESSymbolType(),
 	];
 	return primitiveRuntimeTypes.every(primitive => !checker.isTypeAssignableTo(primitive, type));
-}
-
-function foreignTypeRequiresUnknownProjection(type: ts.Type): boolean {
-	const flags = type.getFlags();
-	return (flags & (ts.TypeFlags.Any | ts.TypeFlags.Never | ts.TypeFlags.TypeParameter)) !== 0;
 }
 
 function resolvedGenericResultIsConcrete(signature: ts.Signature, checker: ts.TypeChecker, location: ts.Node): boolean {
