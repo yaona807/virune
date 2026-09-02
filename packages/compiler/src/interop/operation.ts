@@ -525,13 +525,8 @@ function canonicalObjectCallableProjections(
 }
 
 function canonicalCallableDescriptor(descriptor: NativeCallableBoundaryDescriptor): NativeCallableBoundaryDescriptor {
-	if (descriptor.version !== 'virune-callable-shim/v1') throw new Error('Unknown native callable boundary descriptor version');
+	if (descriptor.version !== 'virune-callable-shim/v1' && descriptor.version !== 'virune-callable-shim/v2') throw new Error('Unknown native callable boundary descriptor version');
 	if (!Array.isArray(descriptor.parameters)) throw new Error('Native callable boundary parameters must be an array');
-	const parameters = descriptor.parameters.map(parameter => {
-		assertKnown(CALLABLE_PRIMITIVES, parameter, 'native callable primitive');
-		return parameter;
-	});
-	assertKnown(CALLABLE_PRIMITIVES, descriptor.result, 'native callable result primitive');
 	if (typeof descriptor.async !== 'boolean') throw new Error('Native callable boundary async flag must be boolean');
 	if (descriptor.contextMode !== 'root-argument') throw new Error('Native callable boundary requires external-root invocation');
 	if (!Array.isArray(descriptor.effects)) throw new Error('Native callable boundary effects must be an array');
@@ -539,14 +534,18 @@ function canonicalCallableDescriptor(descriptor: NativeCallableBoundaryDescripto
 	if (effects.includes('*')) throw new Error('Open effects cannot become stable native callable boundary evidence');
 	const canonicalEffects = [...new Set(effects)].sort(compareText);
 	if (canonicalEffects.length !== effects.length || canonicalEffects.some((effect, index) => effect !== effects[index])) throw new Error('Native callable boundary effects must be unique and canonically ordered');
-	return Object.freeze({
-		version: 'virune-callable-shim/v1',
-		parameters: Object.freeze(parameters),
-		result: descriptor.result,
-		async: descriptor.async,
-		effects: Object.freeze(canonicalEffects),
-		contextMode: 'root-argument',
-	});
+	if (descriptor.version === 'virune-callable-shim/v1') {
+		const parameters = descriptor.parameters.map(parameter => {
+			assertKnown(CALLABLE_PRIMITIVES, parameter, 'native callable primitive');
+			return parameter;
+		});
+		assertKnown(CALLABLE_PRIMITIVES, descriptor.result, 'native callable result primitive');
+		return Object.freeze({ version: 'virune-callable-shim/v1', parameters: Object.freeze(parameters), result: descriptor.result, async: descriptor.async, effects: Object.freeze(canonicalEffects), contextMode: 'root-argument' });
+	}
+	if (descriptor.async !== true || descriptor.parameters.some(parameter => parameter !== 'External') || (descriptor.result !== 'External' && descriptor.result !== 'Never')) {
+		throw new Error('Native callable boundary v2 only supports async External callbacks');
+	}
+	return Object.freeze({ version: 'virune-callable-shim/v2', parameters: Object.freeze(descriptor.parameters.map(() => 'External' as const)), result: descriptor.result, async: true, effects: Object.freeze(canonicalEffects), contextMode: 'root-argument' });
 }
 
 function canonicalForeignType(snapshot: StableForeignTypeSnapshot): ExternalForeignValueShape {

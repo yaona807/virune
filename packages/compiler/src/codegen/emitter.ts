@@ -472,10 +472,20 @@ export class JavaScriptEmitter {
 
 	private callableProjection(callable: string, descriptor: NativeCallableBoundaryDescriptor): string {
 		const rawParameters = descriptor.parameters.map((_, index) => `$raw${index}`);
-		const validated = descriptor.parameters.map((parameter, index) => `validateFfiValue(${rawParameters[index]}, ${this.callableFfiDescriptor(parameter)}, ${javascriptStringLiteral(`$[${index}]`)})`);
-		const invocation = `$fn(${[...validated, 'rootTaskContext()'].join(', ')})`;
-		const result = descriptor.async ? `await ${invocation}` : invocation;
-		const wrapper = `${descriptor.async ? 'async ' : ''}(${rawParameters.join(', ')}) => { try { return encodeFfiValue(${result}, ${this.callableFfiDescriptor(descriptor.result)}); } catch ($error) { throw $viruneExternalizeInteropError($error); } }`;
+		let body: string;
+		if (descriptor.version === 'virune-callable-shim/v1') {
+			const validated = descriptor.parameters.map((parameter, index) => `validateFfiValue(${rawParameters[index]}, ${this.callableFfiDescriptor(parameter)}, ${javascriptStringLiteral(`$[${index}]`)})`);
+			const invocation = `$fn(${[...validated, 'rootTaskContext()'].join(', ')})`;
+			const result = descriptor.async ? `await ${invocation}` : invocation;
+			body = `return encodeFfiValue(${result}, ${this.callableFfiDescriptor(descriptor.result)});`;
+		} else {
+			const invocation = `$fn(${[...rawParameters, 'rootTaskContext()'].join(', ')})`;
+			const result = `await ${invocation}`;
+			body = descriptor.result === 'Never'
+				? `${result}; throw new Error("Virune Never callback returned unexpectedly");`
+				: `return ${result};`;
+		}
+		const wrapper = `${descriptor.async ? 'async ' : ''}(${rawParameters.join(', ')}) => { try { ${body} } catch ($error) { throw $viruneExternalizeInteropError($error); } }`;
 		const descriptorKey = JSON.stringify(descriptor);
 		return `$viruneProjectCallable(${callable}, ${javascriptStringLiteral(descriptorKey)}, $fn => (${wrapper}))`;
 	}

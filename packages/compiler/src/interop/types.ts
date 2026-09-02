@@ -86,8 +86,8 @@ export type InteropLiteralValue =
 
 /** Provider-facing native callable template. Compiler-owned effects and provenance are intentionally excluded. */
 export interface NativeCallableTypeTemplate {
-	readonly parameters: readonly NativeCallablePrimitiveKind[];
-	readonly result: NativeCallablePrimitiveKind;
+	readonly parameters: readonly (NativeCallablePrimitiveKind | { readonly kind: 'foreign'; readonly type: ForeignTypeRef })[];
+	readonly result: NativeCallablePrimitiveKind | { readonly kind: 'foreign'; readonly type: ForeignTypeRef } | 'Never';
 	readonly async: boolean;
 }
 
@@ -104,6 +104,7 @@ export type InteropArgumentType =
 	| { readonly kind: 'foreign'; readonly type: ForeignTypeRef }
 	| { readonly kind: 'native-primitive'; readonly primitive: NativeCallablePrimitiveKind; readonly literal?: InteropLiteralValue }
 	| { readonly kind: 'native-callable'; readonly callable: NativeCallableTypeTemplate }
+	| { readonly kind: 'contextual-callable'; readonly parameterCount: number; readonly async: true }
 	| { readonly kind: 'contextual-object'; readonly object: InteropObjectUsage }
 	| { readonly kind: 'unknown' };
 
@@ -128,13 +129,15 @@ export type InteropWriteUsage =
 export type ContextualCallableResult =
 	| { readonly kind: 'void' }
 	| { readonly kind: 'value'; readonly value: ContextualCallablePrimitiveKind }
-	| { readonly kind: 'promise'; readonly value: ContextualCallablePrimitiveKind | 'void' };
+	| { readonly kind: 'promise'; readonly value: ContextualCallablePrimitiveKind | 'void' }
+	| { readonly kind: 'external' }
+	| { readonly kind: 'deferred' };
 
 /** Selected TypeScript callback facts for one native-callable argument or contextual object entry. */
 export interface InteropCallableArgumentResolution {
 	readonly index: number;
 	readonly target: {
-		readonly parameters: readonly ContextualCallablePrimitiveKind[];
+		readonly parameters: readonly (ContextualCallablePrimitiveKind | ForeignTypeSnapshot)[];
 		readonly result: ContextualCallableResult;
 	};
 }
@@ -166,6 +169,7 @@ export interface ForeignCallResolution {
 	readonly mayReject: boolean;
 	readonly receiverMode: 'none' | 'preserve-this';
 	readonly callableArguments?: readonly InteropCallableArgumentResolution[];
+	readonly contextualCallableArguments?: readonly InteropCallableArgumentResolution[];
 	readonly objectArguments?: readonly InteropObjectArgumentResolution[];
 }
 
@@ -209,7 +213,7 @@ export interface PrimitiveBridgePlan {
 }
 
 /** Stable compiler-owned description of one generated native-to-JavaScript callable boundary. */
-export interface NativeCallableBoundaryDescriptor {
+interface NativeCallableBoundaryDescriptorV1 {
 	readonly version: 'virune-callable-shim/v1';
 	readonly parameters: readonly NativeCallablePrimitiveKind[];
 	readonly result: NativeCallablePrimitiveKind;
@@ -217,6 +221,17 @@ export interface NativeCallableBoundaryDescriptor {
 	readonly effects: readonly string[];
 	readonly contextMode: 'root-argument';
 }
+
+interface NativeCallableBoundaryDescriptorV2 {
+	readonly version: 'virune-callable-shim/v2';
+	readonly parameters: readonly 'External'[];
+	readonly result: 'External' | 'Never';
+	readonly async: true;
+	readonly effects: readonly string[];
+	readonly contextMode: 'root-argument';
+}
+
+export type NativeCallableBoundaryDescriptor = NativeCallableBoundaryDescriptorV1 | NativeCallableBoundaryDescriptorV2;
 
 /** Ordering evidence for a callable projection performed while evaluating a JavaScript call argument. */
 export interface CallableProjectionEvidence {
