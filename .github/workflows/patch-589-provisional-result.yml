@@ -1,0 +1,46 @@
+name: Preserve issue 589 provisional result evidence
+
+on:
+  push:
+    branches:
+      - fix/589-sync-contextual-callback
+    paths:
+      - .github/workflows/patch-589-provisional-result.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/589-sync-contextual-callback
+          fetch-depth: 0
+      - name: Apply exact provider replacement
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('packages/js-interop/src/index.ts')
+          text = path.read_text()
+          old = "\t\tconst result = provisionalSyncContext ? probe.checker.getUndefinedType() : resolvedResult;"
+          new = "\t\tconst result = resolvedResult;"
+          if text.count(old) != 1:
+              raise SystemExit(f'provider replacement count={text.count(old)}')
+          path.write_text(text.replace(old, new))
+          PY
+      - name: Verify patch scope
+        run: |
+          set -euo pipefail
+          test "$(git diff --name-only)" = 'packages/js-interop/src/index.ts'
+          git diff --check
+      - name: Commit fix and remove temporary workflow
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm .github/workflows/patch-589-provisional-result.yml
+          git add packages/js-interop/src/index.ts
+          git commit -m 'fix(interop): retain provisional TypeScript result evidence'
+          git push origin HEAD:fix/589-sync-contextual-callback
