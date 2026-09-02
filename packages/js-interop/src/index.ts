@@ -334,7 +334,7 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 			const source = this.lookupType(argument.type);
 			if (source === undefined || source.workspace !== context.workspace || source.usageProjection === undefined || source.usageProjection.directory !== context.directory) return undefined;
 			if (source.usageProjection.declaration !== undefined) context.imports.add(source.usageProjection.declaration);
-			const sourceType = foreignTypeRequiresUnknownProjection(source.type, source.checker, source.location) ? 'unknown' : source.usageProjection.typeExpression;
+			const sourceType = foreignTypeRequiresUnknownProjection(source.type) ? 'unknown' : source.usageProjection.typeExpression;
 			const name = `__viruneValue${context.nextValueId++}`;
 			context.declarations.push(`declare const ${name}: ${sourceType};`);
 			return name;
@@ -959,67 +959,9 @@ function isDefinitelyNonPrimitive(type: ts.Type, checker: ts.TypeChecker): boole
 	return primitiveRuntimeTypes.every(primitive => !checker.isTypeAssignableTo(primitive, type));
 }
 
-function foreignTypeRequiresUnknownProjection(
-	type: ts.Type,
-	checker: ts.TypeChecker,
-	location: ts.Node,
-	seen = new Set<ts.Type>(),
-	budget: { remaining: number } = { remaining: 64 },
-	depth = 0,
-): boolean {
-	try {
-		if (budget.remaining-- <= 0 || depth > 12) return true;
-		const flags = type.getFlags();
-		if ((flags & (ts.TypeFlags.Any | ts.TypeFlags.Never | ts.TypeFlags.TypeParameter)) !== 0) return true;
-		if ((flags & ts.TypeFlags.Unknown) !== 0) return false;
-		if (primitiveKind(type) !== undefined || (flags & (ts.TypeFlags.ESSymbol | ts.TypeFlags.UniqueESSymbol)) !== 0) return false;
-		if (seen.has(type)) return false;
-		seen.add(type);
-		if (type.isUnionOrIntersection()) return type.types.some(item => foreignTypeRequiresUnknownProjection(item, checker, location, seen, budget, depth + 1));
-		if ((flags & ts.TypeFlags.Object) === 0) return true;
-
-		if (checker.isArrayType(type) || checker.isTupleType(type)) {
-			const typeArguments = checker.getTypeArguments(type as ts.TypeReference);
-			if (typeArguments.length === 0) return true;
-			return typeArguments.some(item => foreignTypeRequiresUnknownProjection(item, checker, location, seen, budget, depth + 1));
-		}
-		for (const signature of [
-			...checker.getSignaturesOfType(type, ts.SignatureKind.Call),
-			...checker.getSignaturesOfType(type, ts.SignatureKind.Construct),
-		]) {
-			const signatureLocation = signature.declaration ?? location;
-			const thisParameter = signature.thisParameter;
-			if (thisParameter !== undefined) {
-				const declaration = thisParameter.valueDeclaration ?? thisParameter.declarations?.[0] ?? signatureLocation;
-				const thisType = checker.getTypeOfSymbolAtLocation(thisParameter, declaration);
-				if (foreignTypeRequiresUnknownProjection(thisType, checker, declaration, seen, budget, depth + 1)) return true;
-			}
-			for (const parameter of signature.getParameters()) {
-				const declaration = parameter.valueDeclaration ?? parameter.declarations?.[0];
-				if (declaration === undefined) return true;
-				const parameterType = checker.getTypeOfSymbolAtLocation(parameter, declaration);
-				if (foreignTypeRequiresUnknownProjection(parameterType, checker, declaration, seen, budget, depth + 1)) return true;
-			}
-			const returnType = checker.getReturnTypeOfSignature(signature);
-			if (foreignTypeRequiresUnknownProjection(returnType, checker, signatureLocation, seen, budget, depth + 1)) return true;
-		}
-		const objectType = type as ts.ObjectType;
-		if ((objectType.objectFlags & ts.ObjectFlags.Reference) !== 0) {
-			const typeArguments = checker.getTypeArguments(type as ts.TypeReference);
-			if (typeArguments.some(item => foreignTypeRequiresUnknownProjection(item, checker, location, seen, budget, depth + 1))) return true;
-		}
-		for (const indexInfo of checker.getIndexInfosOfType(type)) {
-			if (foreignTypeRequiresUnknownProjection(indexInfo.type, checker, location, seen, budget, depth + 1)) return true;
-		}
-		for (const property of checker.getPropertiesOfType(type)) {
-			const declaration = property.valueDeclaration ?? property.declarations?.[0] ?? location;
-			const propertyType = checker.getTypeOfSymbolAtLocation(property, declaration);
-			if (foreignTypeRequiresUnknownProjection(propertyType, checker, declaration, seen, budget, depth + 1)) return true;
-		}
-		return false;
-	} catch {
-		return true;
-	}
+function foreignTypeRequiresUnknownProjection(type: ts.Type): boolean {
+	const flags = type.getFlags();
+	return (flags & (ts.TypeFlags.Any | ts.TypeFlags.Never | ts.TypeFlags.TypeParameter)) !== 0;
 }
 
 function resolvedGenericResultIsConcrete(signature: ts.Signature, checker: ts.TypeChecker, location: ts.Node): boolean {
