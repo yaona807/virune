@@ -65,6 +65,8 @@ fn main() -> Unit uses JavaScript {
 	assert.ok(result.semantic);
 	const callOperation = externalOperationSequence(result.semantic).find(operation => operation.kind === 'call' && operation.nodeId === projection.callNodeId);
 	assert.ok(callOperation?.kind === 'call');
+	assert.equal(callOperation.result.category, 'object');
+	assert.equal(callOperation.mayReject, false);
 	const stableProjection = callOperation.callableProjections?.[0];
 	assert.ok(stableProjection);
 	assert.deepEqual(stableProjection.descriptor, projection.descriptor);
