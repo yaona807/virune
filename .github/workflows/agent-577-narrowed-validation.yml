@@ -38,7 +38,7 @@ jobs:
       - name: Narrow reviewed candidate
         run: |
           python3 .github/agent-577-narrow.py
-          python3 .github/agent-577-narrow-fix.py
+          python3 .github/agent-577-narrow-fix-v2.py
       - name: Validate narrowed compiler and regressions
         run: |
           npm run build
