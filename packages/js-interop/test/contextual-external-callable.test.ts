@@ -122,7 +122,8 @@ test('provider-mismatched provisional and stale final External callback evidence
 		{
 			name: 'provider-mismatched provisional evidence',
 			override: resolution => {
-				const contextual = resolution?.contextualCallableArguments;
+				if (resolution === undefined) return undefined;
+				const contextual = resolution.contextualCallableArguments;
 				const first = contextual?.[0]?.target.parameters[0];
 				if (contextual === undefined || contextual.length === 0 || first === undefined || typeof first === 'string') return resolution;
 				return {
@@ -143,8 +144,9 @@ test('provider-mismatched provisional and stale final External callback evidence
 		{
 			name: 'stale final evidence',
 			override: resolution => {
-				if (resolution?.contextualCallableArguments !== undefined && resolution.contextualCallableArguments.length !== 0) return resolution;
-				const callable = resolution?.callableArguments;
+				if (resolution === undefined) return undefined;
+				if (resolution.contextualCallableArguments !== undefined && resolution.contextualCallableArguments.length !== 0) return resolution;
+				const callable = resolution.callableArguments;
 				const first = callable?.[0]?.target.parameters[0];
 				if (callable === undefined || callable.length === 0 || first === undefined || typeof first === 'string') return resolution;
 				return {
