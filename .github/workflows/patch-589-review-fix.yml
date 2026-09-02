@@ -1,0 +1,61 @@
+name: Apply issue 589 review fix
+
+on:
+  push:
+    branches:
+      - fix/589-sync-contextual-callback
+    paths:
+      - .github/workflows/patch-589-review-fix.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/589-sync-contextual-callback
+          fetch-depth: 0
+      - name: Apply exact review replacements
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          op = Path('packages/compiler/src/interop/operation.ts')
+          text = op.read_text()
+          old = "\tif (descriptor.async !== true || descriptor.parameters.some(parameter => parameter !== 'External') || (descriptor.result !== 'External' && descriptor.result !== 'Never')) {\n\t\tthrow new Error('Native callable boundary v2 only supports async External callbacks');\n\t}"
+          new = "\tif (descriptor.parameters.some(parameter => parameter !== 'External') || (descriptor.result !== 'External' && descriptor.result !== 'Never')) {\n\t\tthrow new Error('Native callable boundary v2 only supports External callbacks');\n\t}"
+          if text.count(old) != 1:
+              raise SystemExit(f'operation replacement count={text.count(old)}')
+          op.write_text(text.replace(old, new))
+
+          test = Path('packages/js-interop/test/contextual-sync-external-callable.test.ts')
+          text = test.read_text()
+          old_import = "import { compileSource } from '@virune/compiler/experimental';"
+          new_import = "import { compileSource, externalOperationSequence } from '@virune/compiler/experimental';"
+          if text.count(old_import) != 1:
+              raise SystemExit(f'import replacement count={text.count(old_import)}')
+          text = text.replace(old_import, new_import)
+          old_assert = "\tassert.equal(projection.descriptor.async, false);\n\tconst code = result.output?.code ?? '';"
+          new_assert = "\tassert.equal(projection.descriptor.async, false);\n\tassert.ok(result.semantic);\n\tconst callOperation = externalOperationSequence(result.semantic).find(operation => operation.kind === 'call' && operation.nodeId === projection.callNodeId);\n\tassert.ok(callOperation?.kind === 'call');\n\tconst stableProjection = callOperation.callableProjections?.[0];\n\tassert.ok(stableProjection);\n\tassert.deepEqual(stableProjection.descriptor, projection.descriptor);\n\tassert.equal(stableProjection.descriptor.async, false);\n\tconst code = result.output?.code ?? '';"
+          if text.count(old_assert) != 1:
+              raise SystemExit(f'assert replacement count={text.count(old_assert)}')
+          test.write_text(text.replace(old_assert, new_assert))
+          PY
+      - name: Verify review patch scope
+        run: |
+          set -euo pipefail
+          changed="$(git diff --name-only)"
+          test "$changed" = $'packages/compiler/src/interop/operation.ts\npackages/js-interop/test/contextual-sync-external-callable.test.ts'
+          git diff --check
+      - name: Commit review fix and remove temporary workflow
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm .github/workflows/patch-589-review-fix.yml
+          git add packages/compiler/src/interop/operation.ts packages/js-interop/test/contextual-sync-external-callable.test.ts
+          git commit -m 'fix(interop): preserve sync callback operation evidence'
+          git push origin HEAD:fix/589-sync-contextual-callback
