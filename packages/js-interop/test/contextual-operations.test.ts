@@ -187,7 +187,7 @@ fn main() -> Unit uses JavaScript {
 	assert.ok(codes.includes('L2120'));
 });
 
-test('ambiguous, inaccessible, and unresolved constructors fail closed', async () => {
+test('ordinary dual callable values call normally while inaccessible and unresolved constructors fail closed', async () => {
 	const codes = await errorCodesFor(`import js { both, PrivateCtor, unresolved } from "./library.js"
 
 fn main() -> Unit uses JavaScript {
@@ -209,7 +209,7 @@ export declare const both: Both;
 export declare class PrivateCtor { private constructor(value: number); }
 export declare const unresolved: { new <T>(): T };
 `);
-	assert.ok(codes.filter(code => code === 'L4204').length >= 3);
+	assert.deepEqual(codes, ['L4204', 'L4204']);
 });
 
 test('native aggregates and unknown/any evidence cannot become Direct External operations', async () => {
