@@ -309,7 +309,7 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 		};
 	}
 
-	private renderUsageValue(argument: InteropArgumentType, context: UsageProbeContext, allowNativeCallable: boolean, allowObject: boolean, depth = 0): string | undefined {
+	private renderUsageValue(argument: InteropArgumentType, context: UsageProbeContext, allowNativeCallable: boolean, allowObject: boolean, depth = 0, preserveForeignEvidence = false): string | undefined {
 		if (depth > 12) return undefined;
 		if (argument.kind === 'unknown') {
 			if (depth !== 0) return undefined;
@@ -324,7 +324,7 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 			for (const entry of argument.object.entries) {
 				if (typeof entry.property !== 'string' || entry.property.length === 0 || seen.has(entry.property)) return undefined;
 				seen.add(entry.property);
-				const value = this.renderUsageValue(entry.value, context, true, true, depth + 1);
+				const value = this.renderUsageValue(entry.value, context, true, true, depth + 1, preserveForeignEvidence);
 				if (value === undefined) return undefined;
 				entries.push(`[${JSON.stringify(entry.property)}]: ${value}`);
 			}
@@ -334,7 +334,9 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 			const source = this.lookupType(argument.type);
 			if (source === undefined || source.workspace !== context.workspace || source.usageProjection === undefined || source.usageProjection.directory !== context.directory) return undefined;
 			if (source.usageProjection.declaration !== undefined) context.imports.add(source.usageProjection.declaration);
-			const sourceType = typeContainsUnresolvedGenericResult(source.type, source.checker, source.location) ? 'unknown' : source.usageProjection.typeExpression;
+			const sourceType = preserveForeignEvidence || !foreignTypeRequiresUnknownProjection(source.type, source.checker, source.location)
+				? source.usageProjection.typeExpression
+				: 'unknown';
 			const name = `__viruneValue${context.nextValueId++}`;
 			context.declarations.push(`declare const ${name}: ${sourceType};`);
 			return name;
@@ -498,7 +500,7 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 		}
 		const argumentExpressions: string[] = [];
 		for (const argument of usage.arguments) {
-			const rendered = this.renderUsageValue(argument, context, true, true);
+			const rendered = this.renderUsageValue(argument, context, true, true, 0, !construct);
 			if (rendered === undefined) return undefined;
 			argumentExpressions.push(rendered);
 		}
@@ -527,6 +529,7 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 			const argument = usage.arguments[index]!;
 			const node = invocationArguments[index];
 			if (node === undefined) return undefined;
+			if (!construct && !this.callArgumentPreservesAnySafety(argument, node, probe.checker)) return undefined;
 			if (argument.kind === 'native-callable' || argument.kind === 'contextual-callable') {
 				const contextual = probe.checker.getContextualType(node);
 				if (contextual === undefined) return undefined;
@@ -563,6 +566,27 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 			...(contextualCallableArguments.length === 0 ? {} : { contextualCallableArguments: Object.freeze(contextualCallableArguments) }),
 			...(objectArguments.length === 0 ? {} : { objectArguments: Object.freeze(objectArguments) }),
 		};
+	}
+
+	private callArgumentPreservesAnySafety(argument: InteropArgumentType, node: ts.Expression, checker: ts.TypeChecker): boolean {
+		if (argument.kind === 'foreign') {
+			const actual = checker.getTypeAtLocation(node);
+			if (!foreignTypeRequiresUnknownProjection(actual, checker, node)) return true;
+			const contextual = checker.getContextualType(node);
+			if (contextual === undefined) return false;
+			if ((contextual.getFlags() & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) !== 0) return true;
+			return sameForeignTypeIdentity(actual, contextual, checker);
+		}
+		if (argument.kind !== 'contextual-object') return true;
+		const literal = unwrapObjectLiteral(node);
+		if (literal === undefined || literal.properties.length !== argument.object.entries.length) return false;
+		for (let index = 0; index < argument.object.entries.length; index++) {
+			const entry = argument.object.entries[index]!;
+			const property = literal.properties[index];
+			if (property === undefined || !ts.isPropertyAssignment(property) || !ts.isComputedPropertyName(property.name) || !ts.isStringLiteral(property.name.expression) || property.name.expression.text !== entry.property) return false;
+			if (!this.callArgumentPreservesAnySafety(entry.value, property.initializer, checker)) return false;
+		}
+		return true;
 	}
 
 	private objectResolutionFromLiteral(literal: ts.ObjectLiteralExpression, usage: InteropObjectUsage, checker: ts.TypeChecker, workspace: ProbeWorkspace): ForeignObjectResolution | undefined {
@@ -957,6 +981,97 @@ function isDefinitelyNonPrimitive(type: ts.Type, checker: ts.TypeChecker): boole
 		checker.getESSymbolType(),
 	];
 	return primitiveRuntimeTypes.every(primitive => !checker.isTypeAssignableTo(primitive, type));
+}
+
+function foreignTypeRequiresUnknownProjection(
+	type: ts.Type,
+	checker: ts.TypeChecker,
+	location: ts.Node,
+	seen = new Set<ts.Type>(),
+	budget: { remaining: number } = { remaining: 64 },
+	depth = 0,
+): boolean {
+	try {
+		if (budget.remaining-- <= 0 || depth > 12) return true;
+		const flags = type.getFlags();
+		if ((flags & (ts.TypeFlags.Any | ts.TypeFlags.Never | ts.TypeFlags.TypeParameter)) !== 0) return true;
+		if ((flags & ts.TypeFlags.Unknown) !== 0) return false;
+		if (primitiveKind(type) !== undefined || (flags & (ts.TypeFlags.ESSymbol | ts.TypeFlags.UniqueESSymbol)) !== 0) return false;
+		if (seen.has(type)) return false;
+		seen.add(type);
+		if (type.isUnionOrIntersection()) return type.types.some(item => foreignTypeRequiresUnknownProjection(item, checker, location, seen, budget, depth + 1));
+		if ((flags & ts.TypeFlags.Object) === 0) return true;
+
+		if (checker.isArrayType(type) || checker.isTupleType(type)) {
+			const typeArguments = checker.getTypeArguments(type as ts.TypeReference);
+			if (typeArguments.length === 0) return true;
+			return typeArguments.some(item => foreignTypeRequiresUnknownProjection(item, checker, location, seen, budget, depth + 1));
+		}
+		for (const signature of [
+			...checker.getSignaturesOfType(type, ts.SignatureKind.Call),
+			...checker.getSignaturesOfType(type, ts.SignatureKind.Construct),
+		]) {
+			const signatureLocation = signature.declaration ?? location;
+			const thisParameter = signature.thisParameter;
+			if (thisParameter !== undefined) {
+				const declaration = thisParameter.valueDeclaration ?? thisParameter.declarations?.[0] ?? signatureLocation;
+				const thisType = checker.getTypeOfSymbolAtLocation(thisParameter, declaration);
+				if (foreignTypeRequiresUnknownProjection(thisType, checker, declaration, seen, budget, depth + 1)) return true;
+			}
+			for (const parameter of signature.getParameters()) {
+				const declaration = parameter.valueDeclaration ?? parameter.declarations?.[0];
+				if (declaration === undefined) return true;
+				const parameterType = checker.getTypeOfSymbolAtLocation(parameter, declaration);
+				if (foreignTypeRequiresUnknownProjection(parameterType, checker, declaration, seen, budget, depth + 1)) return true;
+			}
+			const returnType = checker.getReturnTypeOfSignature(signature);
+			if (foreignTypeRequiresUnknownProjection(returnType, checker, signatureLocation, seen, budget, depth + 1)) return true;
+		}
+		const objectType = type as ts.ObjectType;
+		if ((objectType.objectFlags & ts.ObjectFlags.Reference) !== 0) {
+			const typeArguments = checker.getTypeArguments(type as ts.TypeReference);
+			if (typeArguments.some(item => foreignTypeRequiresUnknownProjection(item, checker, location, seen, budget, depth + 1))) return true;
+		}
+		for (const indexInfo of checker.getIndexInfosOfType(type)) {
+			if (foreignTypeRequiresUnknownProjection(indexInfo.type, checker, location, seen, budget, depth + 1)) return true;
+		}
+		for (const property of checker.getPropertiesOfType(type)) {
+			const declaration = property.valueDeclaration ?? property.declarations?.[0] ?? location;
+			const propertyType = checker.getTypeOfSymbolAtLocation(property, declaration);
+			if (foreignTypeRequiresUnknownProjection(propertyType, checker, declaration, seen, budget, depth + 1)) return true;
+		}
+		return false;
+	} catch {
+		return true;
+	}
+}
+
+function sameForeignTypeIdentity(actual: ts.Type, contextual: ts.Type, checker: ts.TypeChecker): boolean {
+	if (actual === contextual) return true;
+	if (contextual.isUnion()) return contextual.types.some(item => sameForeignTypeIdentity(actual, item, checker));
+	if (actual.isUnion()) {
+		if (!contextual.isUnion() || actual.types.length !== contextual.types.length) return false;
+		return actual.types.every(item => contextual.types.some(candidate => sameForeignTypeIdentity(item, candidate, checker)));
+	}
+	const invalid = ts.TypeFlags.Any | ts.TypeFlags.Unknown | ts.TypeFlags.Never | ts.TypeFlags.TypeParameter;
+	if ((actual.getFlags() & invalid) !== 0 || (contextual.getFlags() & invalid) !== 0) return false;
+	if ((actual.getFlags() & ts.TypeFlags.Object) === 0 || (contextual.getFlags() & ts.TypeFlags.Object) === 0) return false;
+	const actualObject = actual as ts.ObjectType;
+	const contextualObject = contextual as ts.ObjectType;
+	const actualReference = (actualObject.objectFlags & ts.ObjectFlags.Reference) !== 0;
+	const contextualReference = (contextualObject.objectFlags & ts.ObjectFlags.Reference) !== 0;
+	if (actualReference !== contextualReference) return false;
+	if (actualReference) {
+		const actualRef = actual as ts.TypeReference;
+		const contextualRef = contextual as ts.TypeReference;
+		if (actualRef.target !== contextualRef.target) return false;
+		const actualArguments = checker.getTypeArguments(actualRef);
+		const contextualArguments = checker.getTypeArguments(contextualRef);
+		return actualArguments.length === contextualArguments.length
+			&& actualArguments.every((item, index) => sameForeignTypeIdentity(item, contextualArguments[index]!, checker));
+	}
+	const actualSymbol = actual.getSymbol();
+	return actualSymbol !== undefined && actualSymbol === contextual.getSymbol();
 }
 
 function resolvedGenericResultIsConcrete(signature: ts.Signature, checker: ts.TypeChecker, location: ts.Node): boolean {
