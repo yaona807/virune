@@ -1,0 +1,46 @@
+name: Refresh qs audit fix
+
+on:
+  push:
+    branches:
+      - build/qs-audit-fix
+    paths:
+      - .github/workflows/qs-audit-fix.yml
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: build/qs-audit-fix
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - name: Refresh qs within existing semver range
+        run: npm update qs --package-lock-only --ignore-scripts
+      - name: Verify minimal secure lock update
+        run: |
+          set -euo pipefail
+          test "$(git diff --name-only)" = 'package-lock.json'
+          node - <<'NODE'
+          const lock = require('./package-lock.json');
+          const qs = lock.packages?.['node_modules/qs'];
+          if (!qs || qs.version !== '6.16.0') throw new Error(`expected qs 6.16.0, got ${qs?.version}`);
+          NODE
+          npm audit --package-lock-only --audit-level=moderate
+          git diff --check
+      - name: Commit lock update and remove temporary workflow
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm .github/workflows/qs-audit-fix.yml
+          git add package-lock.json
+          git commit -m 'build(deps): refresh qs security fix'
+          git push origin HEAD:build/qs-audit-fix
