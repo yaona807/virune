@@ -122,6 +122,7 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 	readonly #createLanguageService: (host: ts.LanguageServiceHost) => ts.LanguageService;
 	readonly #workspaces = new Map<JsImportRequest['platform'], ProbeWorkspace>();
 	readonly #types = new Map<string, StoredType>();
+	readonly #references = new Set<ForeignTypeRef>();
 	#nextTypeId = 1;
 
 	public constructor(options: TypeScriptInteropProviderOptions) {
@@ -158,6 +159,7 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 
 	public dispose(): void {
 		this.#types.clear();
+		this.#references.clear();
 		for (const workspace of this.#workspaces.values()) workspace.languageService.dispose();
 		this.#workspaces.clear();
 	}
@@ -685,7 +687,7 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 	}
 
 	private lookupType(reference: ForeignTypeRef): StoredType | undefined {
-		if (reference.providerId !== this.id || reference.generation !== this.generation) return undefined;
+		if (reference.providerId !== this.id || reference.generation !== this.generation || !this.#references.has(reference)) return undefined;
 		return this.#types.get(reference.id);
 	}
 
@@ -798,9 +800,10 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 		usageProjection?: UsageProjection,
 	): ForeignTypeSnapshot {
 		const id = String(this.#nextTypeId++);
-		const ref: ForeignTypeRef = { providerId: this.id, generation: this.generation, id };
+		const ref = Object.freeze<ForeignTypeRef>({ providerId: this.id, generation: this.generation, id });
 		const rawDisplay = checker.typeToString(type, location, ts.TypeFormatFlags.NoTruncation | ts.TypeFormatFlags.UseAliasDefinedOutsideCurrentScope);
 		const display = stableTypeDisplay(rawDisplay, origin, this.#projectRoot);
+		this.#references.add(ref);
 		this.#types.set(id, { type, checker, location, origin, workspace, display, ...(usageProjection === undefined ? {} : { usageProjection }) });
 		const primitive = primitiveKind(type);
 		const awaited = checker.getAwaitedType(type);
@@ -828,7 +831,7 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 
 	private requireType(reference: ForeignTypeRef): StoredType {
 		const type = this.lookupType(reference);
-		if (type === undefined) throw new Error(reference.providerId !== this.id || reference.generation !== this.generation ? 'Stale or foreign JavaScript type handle' : 'Unknown JavaScript type handle');
+		if (type === undefined) throw new Error(reference.providerId !== this.id || reference.generation !== this.generation || !this.#references.has(reference) ? 'Stale or foreign JavaScript type handle' : 'Unknown JavaScript type handle');
 		return type;
 	}
 

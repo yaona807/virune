@@ -172,6 +172,58 @@ test('provider-mismatched provisional and stale final External callback evidence
 	}
 });
 
+test('cross-workspace contextual External evidence remains fail closed when opaque ref fields collide', async () => {
+	const foreignRoot = await fixtureRoot();
+	await writeFile(join(foreignRoot, 'src/library.d.ts'), declarations, 'utf8');
+	await writeFile(join(foreignRoot, 'src/library.js'), 'export function route(_path, _handler) {}\n', 'utf8');
+	const foreignProvider = new TypeScriptInteropProvider({ projectRoot: foreignRoot });
+	const foreignRoute = foreignProvider.resolveImport({
+		containingFile: join(foreignRoot, 'src/main.virune'),
+		moduleSpecifier: './library.js',
+		kind: 'named',
+		importedName: 'route',
+		platform: 'node',
+	}).type;
+	assert.ok(foreignRoute);
+	const foreignResolution = (foreignProvider as JsInteropProvider).resolveCallUsage?.(foreignRoute.ref, {
+		target: { kind: 'value' },
+		arguments: [
+			{ kind: 'native-primitive', primitive: 'String' },
+			{ kind: 'contextual-callable', parameterCount: 1, async: true },
+		],
+	});
+	const foreignParameter = foreignResolution?.contextualCallableArguments?.[0]?.target.parameters[0];
+	assert.ok(foreignParameter !== undefined && typeof foreignParameter !== 'string');
+	let collided = false;
+	const result = await compileCase(
+		declarations,
+		`import js { route } from "./library.js"\n\nfn main() -> Unit uses JavaScript {\n\tdiscard route("/jobs/:id", async fn(context) uses JavaScript => context.text("ok"))\n\treturn Unit\n}\n`,
+		provider => usageOverrideProvider(provider, resolution => {
+			if (resolution === undefined) return undefined;
+			const contextual = resolution.contextualCallableArguments;
+			const localParameter = contextual?.[0]?.target.parameters[0];
+			if (contextual === undefined || contextual.length === 0 || localParameter === undefined || typeof localParameter === 'string') return resolution;
+			collided = localParameter.ref.providerId === foreignParameter.ref.providerId
+				&& localParameter.ref.generation === foreignParameter.ref.generation
+				&& localParameter.ref.id === foreignParameter.ref.id;
+			if (!collided) return resolution;
+			return {
+				...resolution,
+				contextualCallableArguments: contextual.map((item, itemIndex) => itemIndex === 0 ? {
+					...item,
+					target: {
+						...item.target,
+						parameters: item.target.parameters.map((parameter, parameterIndex) => parameterIndex === 0 ? foreignParameter : parameter),
+					},
+				} : item),
+			};
+		}),
+	);
+	assert.equal(collided, true, 'fixture must reproduce equal opaque ref fields across provider workspaces');
+	assert.ok(result.diagnostics.some(item => item.code === 'L4204'));
+	assert.equal(result.semantic?.interop.callableProjections?.length ?? 0, 0);
+});
+
 test('native aggregate and raw callable callback results cannot masquerade as External', async () => {
 	const cases = [
 		[

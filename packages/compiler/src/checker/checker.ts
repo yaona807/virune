@@ -1061,6 +1061,11 @@ export class TypeChecker {
 			}
 		}
 		if (snapshot.navigation !== undefined && (!isRecord(snapshot.navigation) || typeof snapshot.navigation.declarationPath !== 'string')) return false;
+		try {
+			if (provider.display(snapshot.ref as unknown as import('../interop/types.js').ForeignTypeRef) !== snapshot.display) return false;
+		} catch {
+			return false;
+		}
 		return true;
 	}
 
