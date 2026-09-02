@@ -2,16 +2,44 @@ import assert from 'node:assert/strict';
 import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import test from 'node:test';
-import { compileSource } from '@virune/compiler/experimental';
+import {
+	compileSource,
+	type ForeignCallResolution,
+	type JsInteropProvider,
+} from '@virune/compiler/experimental';
 import { TypeScriptInteropProvider } from '../src/index.js';
 import { fixtureRoot } from './fixture.js';
 
-async function compileCase(declarations: string, source: string) {
+async function compileCase(
+	declarations: string,
+	source: string,
+	providerFactory?: (provider: TypeScriptInteropProvider) => JsInteropProvider,
+) {
 	const root = await fixtureRoot();
 	await writeFile(join(root, 'src/library.d.ts'), declarations, 'utf8');
 	await writeFile(join(root, 'src/library.js'), 'export function route(_path, _handler) {}\nexport function routeAny(_handler) {}\nexport function routeUnknown(_handler) {}\n', 'utf8');
-	const provider = new TypeScriptInteropProvider({ projectRoot: root });
+	const baseProvider = new TypeScriptInteropProvider({ projectRoot: root });
+	const provider = providerFactory?.(baseProvider) ?? baseProvider;
 	return compileSource({ id: 1, path: join(root, 'src/main.virune'), text: source }, { platform: 'node', jsInteropProvider: provider });
+}
+
+function usageOverrideProvider(
+	provider: TypeScriptInteropProvider,
+	override: (resolution: ForeignCallResolution | undefined) => ForeignCallResolution | undefined,
+): JsInteropProvider {
+	const wholeUsageProvider = provider as JsInteropProvider;
+	return {
+		id: provider.id,
+		version: provider.version,
+		generation: provider.generation,
+		resolveImport: request => provider.resolveImport(request),
+		getProperty: (reference, name) => provider.getProperty(reference, name),
+		resolveCallUsage: (reference, usage) => override(wholeUsageProvider.resolveCallUsage?.(reference, usage)),
+		resolveCall: (reference, argumentsList) => provider.resolveCall(reference, argumentsList),
+		resolveConstruct: (reference, argumentsList) => provider.resolveConstruct(reference, argumentsList),
+		getAwaitedType: reference => provider.getAwaitedType(reference),
+		display: reference => provider.display(reference),
+	};
 }
 
 function errors(result: Awaited<ReturnType<typeof compileCase>>) {
@@ -83,6 +111,63 @@ test('consumed contextual unknown remains fail closed', async () => {
 	);
 	assert.ok(result.diagnostics.some(item => item.code === 'L4204'));
 	assert.equal(result.semantic?.interop.callableProjections?.length ?? 0, 0);
+});
+
+test('provider-mismatched provisional and stale final External callback evidence remain fail closed', async () => {
+	const source = `import js { route } from "./library.js"\n\nfn main() -> Unit uses JavaScript {\n\tdiscard route("/jobs/:id", async fn(context) uses JavaScript => context.text("ok"))\n\treturn Unit\n}\n`;
+	const cases: readonly {
+		readonly name: string;
+		readonly override: (resolution: ForeignCallResolution | undefined) => ForeignCallResolution | undefined;
+	}[] = [
+		{
+			name: 'provider-mismatched provisional evidence',
+			override: resolution => {
+				const contextual = resolution?.contextualCallableArguments;
+				const first = contextual?.[0]?.target.parameters[0];
+				if (contextual === undefined || contextual.length === 0 || first === undefined || typeof first === 'string') return resolution;
+				return {
+					...resolution,
+					contextualCallableArguments: contextual.map((item, itemIndex) => itemIndex === 0 ? {
+						...item,
+						target: {
+							...item.target,
+							parameters: item.target.parameters.map((parameter, parameterIndex) => parameterIndex === 0 ? {
+								...first,
+								ref: { ...first.ref, providerId: `${first.ref.providerId}:foreign` },
+							} : parameter),
+						},
+					} : item),
+				};
+			},
+		},
+		{
+			name: 'stale final evidence',
+			override: resolution => {
+				if (resolution?.contextualCallableArguments !== undefined && resolution.contextualCallableArguments.length !== 0) return resolution;
+				const callable = resolution?.callableArguments;
+				const first = callable?.[0]?.target.parameters[0];
+				if (callable === undefined || callable.length === 0 || first === undefined || typeof first === 'string') return resolution;
+				return {
+					...resolution,
+					callableArguments: callable.map((item, itemIndex) => itemIndex === 0 ? {
+						...item,
+						target: {
+							...item.target,
+							parameters: item.target.parameters.map((parameter, parameterIndex) => parameterIndex === 0 ? {
+								...first,
+								ref: { ...first.ref, generation: first.ref.generation + 1 },
+							} : parameter),
+						},
+					} : item),
+				};
+			},
+		},
+	];
+	for (const { name, override } of cases) {
+		const result = await compileCase(declarations, source, provider => usageOverrideProvider(provider, override));
+		assert.ok(result.diagnostics.some(item => item.code === 'L4204'), `${name} must fail closed`);
+		assert.equal(result.semantic?.interop.callableProjections?.length ?? 0, 0, `${name} must not commit a callable projection`);
+	}
 });
 
 test('Never callback result is projected without allowing a normal return value to escape', async () => {
