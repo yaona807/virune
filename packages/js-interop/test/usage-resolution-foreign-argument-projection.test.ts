@@ -41,17 +41,21 @@ test('preserves exact External argument types without trusting permissive member
 		'}',
 		'export interface OtherItem { readonly id: number }',
 		'export declare const anyValue: any;',
+		'export declare const anyList: Array<any>;',
 		'export declare function makeItem(): ExternalItem;',
 		'export declare function makeOther(): OtherItem;',
 		'export declare function takeItem(value: ExternalItem): void;',
+		'export declare function takeStrings(value: string[]): void;',
 		'export declare function wrap<T extends Record<string, ExternalItem>>(value: T): T;',
 		'',
 	].join('\n'), 'utf8');
 	await writeFile(join(root, 'src/library.js'), [
 		'export const anyValue = { id: "unsafe" };',
+		'export const anyList = [1];',
 		'export function makeItem() { return { id: "ok", permissive: undefined }; }',
 		'export function makeOther() { return { id: 1 }; }',
 		'export function takeItem() {}',
+		'export function takeStrings() {}',
 		'export function wrap(value) { return value; }',
 		'',
 	].join('\n'), 'utf8');
@@ -76,6 +80,10 @@ test('preserves exact External argument types without trusting permissive member
 
 	const anyValue = resolveNamed(provider, root, 'anyValue');
 	assert.equal(call(interopProvider, takeItem, [{ kind: 'foreign', type: anyValue.ref }]), undefined, 'top-level any must remain fail-closed for a specific parameter');
+
+	const anyList = resolveNamed(provider, root, 'anyList');
+	const takeStrings = resolveNamed(provider, root, 'takeStrings');
+	assert.equal(call(interopProvider, takeStrings, [{ kind: 'foreign', type: anyList.ref }]), undefined, 'any in a generic type argument must not prove a more specific External parameter');
 
 	const makeOther = resolveNamed(provider, root, 'makeOther');
 	const other = call(interopProvider, makeOther, []);
