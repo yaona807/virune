@@ -172,6 +172,24 @@ test('provider-mismatched provisional and stale final External callback evidence
 	}
 });
 
+test('native aggregate and raw callable callback results cannot masquerade as External', async () => {
+	const cases = [
+		[
+			'native aggregate',
+			`import js { route } from "./library.js"\n\nrecord Payload {\n\tvalue: String\n}\n\nfn main() -> Unit uses JavaScript {\n\tdiscard route("/native", async fn(context) => Payload { value: "native" })\n\treturn Unit\n}\n`,
+		],
+		[
+			'raw native callable',
+			`import js { route } from "./library.js"\n\nfn helper() -> String {\n\treturn "native"\n}\n\nfn main() -> Unit uses JavaScript {\n\tdiscard route("/callable", async fn(context) => helper)\n\treturn Unit\n}\n`,
+		],
+	] as const;
+	for (const [name, source] of cases) {
+		const result = await compileCase(declarations, source);
+		assert.ok(result.diagnostics.some(item => item.code === 'L4206'), `${name} must be rejected before projection`);
+		assert.equal(result.semantic?.interop.callableProjections?.length ?? 0, 0, `${name} must not commit a callable projection`);
+	}
+});
+
 test('Never callback result is projected without allowing a normal return value to escape', async () => {
 	const result = await compileCase(
 		declarations,
