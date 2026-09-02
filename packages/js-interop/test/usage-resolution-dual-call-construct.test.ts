@@ -96,4 +96,11 @@ test('resolves ordinary calls on dual callable/constructable values without cons
 		text: `import js { Hybrid } from "./library.js"\n\nfn useHybrid() -> Unit uses JavaScript {\n\tdiscard Hybrid("bad")\n\treturn Unit\n}\n`,
 	}, { platform: 'node', jsInteropProvider: new TypeScriptInteropProvider({ projectRoot: root }) });
 	assert.deepEqual(errors(rejected), ['L4204']);
+
+	const constructCandidate = compileSource({
+		id: 3,
+		path: join(root, 'src/construct-candidate.virune'),
+		text: `import js { Hybrid } from "./library.js"\n\nfn useHybrid() -> Unit uses JavaScript {\n\tdiscard Hybrid(1)\n\treturn Unit\n}\n`,
+	}, { platform: 'node', jsInteropProvider: new TypeScriptInteropProvider({ projectRoot: root }) });
+	assert.deepEqual(errors(constructCandidate), ['L4204'], 'an ordinary call must not become construction when only the construct signature accepts its arguments');
 });
