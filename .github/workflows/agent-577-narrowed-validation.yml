@@ -1,4 +1,4 @@
-name: Temporary #577 narrowed validation
+name: Temporary #577 simplified validation
 
 on:
   push:
@@ -35,11 +35,12 @@ jobs:
           source = '\n'.join(line[10:] if line.startswith('          ') else line for line in source.splitlines())
           exec(compile(source, '<agent-577-reviewed>', 'exec'), {'Path': Path})
           PY
-      - name: Narrow reviewed candidate
+      - name: Build simplified candidate
         run: |
           python3 .github/agent-577-narrow.py
           python3 .github/agent-577-narrow-fix-v2.py
-      - name: Validate narrowed compiler and regressions
+          python3 .github/agent-577-simple.py
+      - name: Validate simplified compiler and regressions
         run: |
           npm run build
           node --test packages/js-interop/dist/test/contextual-external-callable.test.js packages/js-interop/dist/test/callable-boundary-ignored-arguments.test.js packages/js-interop/dist/test/callable-boundary-shim.test.js packages/js-interop/dist/test/callable-boundary-regressions.test.js
@@ -49,8 +50,8 @@ jobs:
         run: |
           npm install --no-save --package-lock=false --ignore-scripts hono@4.13.5
           node --input-type=module <<'JS'
-          import { compileSource } from './packages/compiler/dist/experimental-api.js';
-          import { TypeScriptInteropProvider } from './packages/js-interop/dist/index.js';
+          import { compileSource } from '@virune/compiler/experimental';
+          import { TypeScriptInteropProvider } from '@virune/js-interop';
           import { join } from 'node:path';
           const path = join(process.cwd(), 'agent-577-hono.virune');
           const source = `import js { Hono } from "hono"\n\npub async fn runHttpSuccess() -> String uses JavaScript {\n\tlet app = Hono()\n\tdiscard app.get("/jobs/:id", async fn(c) uses JavaScript => c.text(c.req.param("id")))\n\tlet response = await app.request("/jobs/job-42")\n\tlet body = await response.text()\n\treturn "{response.status}:{body}"\n}\n`;
@@ -60,5 +61,18 @@ jobs:
           if (errors.length !== 0) throw new Error(errors.map(item => `${item.code} ${item.message}`).join('\n'));
           const projection = result.semantic?.interop.callableProjections?.[0];
           if (projection?.descriptor.version !== 'virune-callable-shim/v2') throw new Error('expected v2 Hono callback projection');
-          if (projection.descriptor.parameters.join(',') !== 'External' || projection.descriptor.result !== 'External' || projection.descriptor.async !== true) throw new Error('unexpected narrowed Hono callback descriptor');
+          if (projection.descriptor.parameters.join(',') !== 'External' || projection.descriptor.result !== 'External' || projection.descriptor.async !== true) throw new Error('unexpected simplified Hono callback descriptor');
           JS
+      - name: Upload exact simplified source
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: agent-577-simplified-${{ github.sha }}
+          if-no-files-found: error
+          retention-days: 1
+          path: |
+            packages/compiler/src/interop/types.ts
+            packages/compiler/src/checker/checker.ts
+            packages/compiler/src/interop/operation.ts
+            packages/compiler/src/codegen/emitter.ts
+            packages/js-interop/src/index.ts
+            packages/js-interop/test/contextual-external-callable.test.ts
