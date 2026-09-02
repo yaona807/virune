@@ -542,8 +542,8 @@ function canonicalCallableDescriptor(descriptor: NativeCallableBoundaryDescripto
 		assertKnown(CALLABLE_PRIMITIVES, descriptor.result, 'native callable result primitive');
 		return Object.freeze({ version: 'virune-callable-shim/v1', parameters: Object.freeze(parameters), result: descriptor.result, async: descriptor.async, effects: Object.freeze(canonicalEffects), contextMode: 'root-argument' });
 	}
-	if (descriptor.async !== true || descriptor.parameters.some(parameter => parameter !== 'External') || (descriptor.result !== 'External' && descriptor.result !== 'Never')) {
-		throw new Error('Native callable boundary v2 only supports async External callbacks');
+	if (descriptor.parameters.some(parameter => parameter !== 'External') || (descriptor.result !== 'External' && descriptor.result !== 'Never')) {
+		throw new Error('Native callable boundary v2 only supports External callbacks');
 	}
 	return Object.freeze({ version: 'virune-callable-shim/v2', parameters: Object.freeze(descriptor.parameters.map(() => 'External' as const)), result: descriptor.result, async: descriptor.async, effects: Object.freeze(canonicalEffects), contextMode: 'root-argument' });
 }

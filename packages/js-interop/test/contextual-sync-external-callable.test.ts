@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import test from 'node:test';
-import { compileSource } from '@virune/compiler/experimental';
+import { compileSource, externalOperationSequence } from '@virune/compiler/experimental';
 import { TypeScriptInteropProvider } from '../src/index.js';
 import { fixtureRoot } from './fixture.js';
 
@@ -62,6 +62,13 @@ fn main() -> Unit uses JavaScript {
 	assert.deepEqual(projection.descriptor.parameters, ['External']);
 	assert.equal(projection.descriptor.result, 'External');
 	assert.equal(projection.descriptor.async, false);
+	assert.ok(result.semantic);
+	const callOperation = externalOperationSequence(result.semantic).find(operation => operation.kind === 'call' && operation.nodeId === projection.callNodeId);
+	assert.ok(callOperation?.kind === 'call');
+	const stableProjection = callOperation.callableProjections?.[0];
+	assert.ok(stableProjection);
+	assert.deepEqual(stableProjection.descriptor, projection.descriptor);
+	assert.equal(stableProjection.descriptor.async, false);
 	const code = result.output?.code ?? '';
 	assert.match(code, /\$viruneProjectCallable\(/u);
 	assert.match(code, /\$fn\(\$raw0, rootTaskContext\(\)\)/u);
