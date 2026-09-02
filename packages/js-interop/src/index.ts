@@ -519,7 +519,7 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 			if ((resolvedResult.getFlags() & (ts.TypeFlags.Any | (construct ? ts.TypeFlags.Unknown : ts.TypeFlags.Never))) !== 0) return undefined;
 			if (!resolvedGenericResultIsConcrete(signature, probe.checker, invocation)) return undefined;
 		}
-		const result = provisionalSyncContext ? probe.checker.getUndefinedType() : resolvedResult;
+		const result = resolvedResult;
 		const invocationArguments = ts.isCallExpression(invocation)
 			? invocation.arguments
 			: ts.isNewExpression(invocation)
