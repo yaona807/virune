@@ -39,7 +39,7 @@ jobs:
         run: |
           python3 .github/agent-577-narrow.py
           python3 .github/agent-577-narrow-fix-v2.py
-          python3 .github/agent-577-simple.py
+          python3 .github/agent-577-simple-v2.py
       - name: Validate simplified compiler and regressions
         run: |
           npm run build
