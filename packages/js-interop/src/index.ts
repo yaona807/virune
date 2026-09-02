@@ -831,7 +831,10 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 
 	private requireType(reference: ForeignTypeRef): StoredType {
 		const type = this.lookupType(reference);
-		if (type === undefined) throw new Error(reference.providerId !== this.id || reference.generation !== this.generation || !this.#references.has(reference) ? 'Stale or foreign JavaScript type handle' : 'Unknown JavaScript type handle');
+		if (type === undefined) {
+			const staleOrForeign = reference.providerId !== this.id || reference.generation !== this.generation || this.#types.has(reference.id) && !this.#references.has(reference);
+			throw new Error(staleOrForeign ? 'Stale or foreign JavaScript type handle' : 'Unknown JavaScript type handle');
+		}
 		return type;
 	}
 
