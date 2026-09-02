@@ -883,8 +883,8 @@ export class TypeChecker {
 	}
 
 	private prepareForeignCallValue(expression: A.Expression, scope: Scope, allowContextual: boolean): PreparedInteropValue {
-		if (allowContextual && expression.kind === 'LambdaExpression' && expression.async && expression.parameters.length > 0 && expression.parameters.every(parameter => parameter.annotation === undefined)) {
-			return { expression, argument: { kind: 'contextual-callable', parameterCount: expression.parameters.length, async: true }, point: this.semanticPoint() };
+		if (allowContextual && expression.kind === 'LambdaExpression' && expression.parameters.length > 0 && expression.parameters.every(parameter => parameter.annotation === undefined)) {
+			return { expression, argument: { kind: 'contextual-callable', parameterCount: expression.parameters.length, async: expression.async }, point: this.semanticPoint() };
 		}
 		return this.prepareInteropValue(expression, scope);
 	}
@@ -1130,7 +1130,7 @@ export class TypeChecker {
 
 	private externalInlineCallableProjection(typeId: TypeId, expression: A.LambdaExpression): { readonly boundary: NativeCallableBoundaryDescriptor; readonly callable: import('../interop/types.js').NativeCallableTypeTemplate } | undefined {
 		const type = this.arena.get(typeId);
-		if (!expression.async || type.kind !== 'function' || !type.async || type.typeParameters.length !== 0 || type.parameters.length === 0 || type.effects.some(effect => effect === '*' || !this.#effects.has(effect))) return undefined;
+		if (type.kind !== 'function' || type.async !== expression.async || type.typeParameters.length !== 0 || type.parameters.length === 0 || type.effects.some(effect => effect === '*' || !this.#effects.has(effect))) return undefined;
 		const parameters: { readonly kind: 'foreign'; readonly type: import('../interop/types.js').ForeignTypeRef }[] = [];
 		for (const parameter of type.parameters) {
 			const foreign = this.currentExternalObjectRef(parameter);
@@ -1144,13 +1144,13 @@ export class TypeChecker {
 			callable: Object.freeze({
 				parameters: Object.freeze(parameters),
 				result: result === 'Never' ? result : { kind: 'foreign' as const, type: result },
-				async: true,
+				async: type.async,
 			}),
 			boundary: Object.freeze({
 				version: 'virune-callable-shim/v2',
 				parameters: Object.freeze(parameters.map(() => 'External' as const)),
 				result: result === 'Never' ? 'Never' : 'External',
-				async: true,
+				async: type.async,
 				effects: Object.freeze([...new Set(type.effects)].sort(compareText)),
 				contextMode: 'root-argument',
 			}),
@@ -1242,8 +1242,7 @@ export class TypeChecker {
 	): boolean {
 		if (boundary.parameters.length !== parameters.length || result.kind === 'deferred') return false;
 		if (boundary.version === 'virune-callable-shim/v2') {
-			return boundary.async === true
-				&& boundary.parameters.every(parameter => parameter === 'External')
+			return boundary.parameters.every(parameter => parameter === 'External')
 				&& parameters.every(parameter => typeof parameter !== 'string')
 				&& result.kind === 'external';
 		}

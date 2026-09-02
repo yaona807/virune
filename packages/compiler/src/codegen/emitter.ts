@@ -357,8 +357,10 @@ export class JavaScriptEmitter {
 
 	private lambdaExpression(expression: A.LambdaExpression, outerContextName: string): string {
 		const parameters = expression.parameters.map(parameter => this.nameOf(parameter.symbolId, parameter.name));
-		const contextName = expression.async ? `$lambdaCtx${this.#temporary++}` : outerContextName;
-		if (expression.async) parameters.push(`${contextName} = rootTaskContext()`);
+		const projectedSyncExternal = !expression.async && this.#semantic.interop.callableProjections?.some(item => item.nodeId === expression.id && item.descriptor.version === 'virune-callable-shim/v2' && item.descriptor.async === false) === true;
+		const ownsContext = expression.async || projectedSyncExternal;
+		const contextName = ownsContext ? `$lambdaCtx${this.#temporary++}` : outerContextName;
+		if (ownsContext) parameters.push(`${contextName} = rootTaskContext()`);
 		const lines: string[] = [`${expression.async ? 'async ' : ''}(${parameters.join(', ')}) => {`, '\ttry {'];
 		if (expression.expressionBody) lines.push(`\t\treturn ${this.expression(expression.body as A.Expression, contextName)};`);
 		else lines.push(...this.inlineBlock(expression.body as A.BlockStatement, contextName, expression.async, 2));
@@ -480,7 +482,7 @@ export class JavaScriptEmitter {
 			body = `return encodeFfiValue(${result}, ${this.callableFfiDescriptor(descriptor.result)});`;
 		} else {
 			const invocation = `$fn(${[...rawParameters, 'rootTaskContext()'].join(', ')})`;
-			const result = `await ${invocation}`;
+			const result = descriptor.async ? `await ${invocation}` : invocation;
 			body = descriptor.result === 'Never'
 				? `${result}; throw new Error("Virune Never callback returned unexpectedly");`
 				: `return ${result};`;
