@@ -464,7 +464,7 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 		const constructSignatures = stored.type.getConstructSignatures();
 		if (construct) {
 			if (constructSignatures.length === 0 || callSignatures.length !== 0) return undefined;
-		} else if (callSignatures.length === 0 || constructSignatures.length !== 0) return undefined;
+		} else if (callSignatures.length === 0) return undefined;
 		if (usage.arguments.some(argument => argument.kind === 'native-callable' || argument.kind === 'contextual-callable') && this.#compilerOptions.strictNullChecks !== true) return undefined;
 		const context = this.createUsageProbeContext(reference);
 		if (context === undefined) return undefined;
