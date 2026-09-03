@@ -28,6 +28,25 @@ function request(root: string, moduleSpecifier: string) {
 const declarations = 'declare const value: (input: string) => string;\nexport = value;\n';
 const commonJs = 'module.exports = value => value;\n';
 
+test('Node runtime witness resolves the index-shaped extensionless legacy main', async () => {
+	const root = await fixtureRoot();
+	await writePackage(root, 'legacy-main-index', {
+		name: 'legacy-main-index',
+		version: '1.2.3',
+		main: './index',
+	}, {
+		'index.d.ts': declarations,
+		'index.js': commonJs,
+	});
+
+	const imported = new TypeScriptInteropProvider({ projectRoot: root }).resolveImport(request(root, 'legacy-main-index'));
+	assert.ok(imported.type);
+	assert.equal(imported.witness.packageName, 'legacy-main-index');
+	assert.equal(imported.witness.packageVersion, '1.2.3');
+	assert.equal(imported.witness.runtimeEntry, 'index.js');
+	assert.equal(imported.witness.runtimeFormat, 'commonjs');
+});
+
 test('Node runtime witness resolves an extensionless legacy package main before package index fallback', async () => {
 	const root = await fixtureRoot();
 	await writePackage(root, 'legacy-main-runtime', {
