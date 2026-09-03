@@ -228,6 +228,21 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 	private resolveIndexUsageInternal(reference: ForeignTypeRef, usage: InteropIndexUsage): ForeignIndexResolution | undefined {
 		const context = this.createUsageProbeContext(reference);
 		if (context === undefined) return undefined;
+		const literalKey = usage.index.kind === 'native-primitive' && usage.index.literal !== undefined
+			? usage.index.literal.kind === 'String'
+				? usage.index.literal.value
+				: (usage.index.literal.kind === 'Int' || usage.index.literal.kind === 'Float')
+					&& renderInteropLiteral(usage.index.primitive, usage.index.literal) !== undefined
+					? String(usage.index.literal.value)
+					: undefined
+			: undefined;
+		if (literalKey !== undefined) {
+			const property = context.stored.checker.getPropertyOfType(context.stored.type, literalKey);
+			if (property?.declarations?.some(declaration => {
+				const modifiers = ts.getCombinedModifierFlags(declaration);
+				return (modifiers & (ts.ModifierFlags.Private | ts.ModifierFlags.Protected)) !== 0;
+			}) === true) return undefined;
+		}
 		const index = this.renderUsageValue(usage.index, context, false, false);
 		if (index === undefined) return undefined;
 		const probe = this.runUsageProbe(context, `${context.target}[${index}]`);
