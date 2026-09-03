@@ -1149,9 +1149,39 @@ function foreignAssignmentPreservesAnySafety(
 			if (contextualSignatures.length === 0) continue;
 			const actualSignatures = checker.getSignaturesOfType(actual, kind);
 			if (actualSignatures.length !== 1 || contextualSignatures.length !== 1) return false;
-			const contextualResult = checker.getReturnTypeOfSignature(contextualSignatures[0]!);
+			const actualSignature = actualSignatures[0]!;
+			const contextualSignature = contextualSignatures[0]!;
+			const actualThis = actualSignature.thisParameter;
+			if (actualThis !== undefined) {
+				const actualThisDeclaration = actualThis.valueDeclaration ?? actualThis.declarations?.[0] ?? actualSignature.declaration;
+				if (actualThisDeclaration === undefined) return false;
+				const actualThisType = checker.getTypeOfSymbolAtLocation(actualThis, actualThisDeclaration);
+				if (foreignTypeRequiresUnknownProjection(actualThisType, checker, actualThisDeclaration)) {
+					const contextualThis = contextualSignature.thisParameter;
+					const contextualThisDeclaration = contextualThis?.valueDeclaration ?? contextualThis?.declarations?.[0] ?? contextualSignature.declaration;
+					if (contextualThis === undefined || contextualThisDeclaration === undefined) return false;
+					const contextualThisType = checker.getTypeOfSymbolAtLocation(contextualThis, contextualThisDeclaration);
+					if (!foreignAssignmentPreservesAnySafety(actualThisType, contextualThisType, checker, seen, budget, depth + 1)) return false;
+				}
+			}
+			const actualParameters = actualSignature.getParameters();
+			const contextualParameters = contextualSignature.getParameters();
+			const parameterCount = Math.min(actualParameters.length, contextualParameters.length);
+			for (let index = 0; index < parameterCount; index++) {
+				const actualParameter = actualParameters[index]!;
+				const actualDeclaration = actualParameter.valueDeclaration ?? actualParameter.declarations?.[0] ?? actualSignature.declaration;
+				if (actualDeclaration === undefined) return false;
+				const actualParameterType = checker.getTypeOfSymbolAtLocation(actualParameter, actualDeclaration);
+				if (!foreignTypeRequiresUnknownProjection(actualParameterType, checker, actualDeclaration)) continue;
+				const contextualParameter = contextualParameters[index]!;
+				const contextualDeclaration = contextualParameter.valueDeclaration ?? contextualParameter.declarations?.[0] ?? contextualSignature.declaration;
+				if (contextualDeclaration === undefined) return false;
+				const contextualParameterType = checker.getTypeOfSymbolAtLocation(contextualParameter, contextualDeclaration);
+				if (!foreignAssignmentPreservesAnySafety(actualParameterType, contextualParameterType, checker, seen, budget, depth + 1)) return false;
+			}
+			const contextualResult = checker.getReturnTypeOfSignature(contextualSignature);
 			if ((contextualResult.getFlags() & ts.TypeFlags.Void) !== 0) continue;
-			const actualResult = checker.getReturnTypeOfSignature(actualSignatures[0]!);
+			const actualResult = checker.getReturnTypeOfSignature(actualSignature);
 			if (!foreignAssignmentPreservesAnySafety(actualResult, contextualResult, checker, seen, budget, depth + 1)) return false;
 		}
 
