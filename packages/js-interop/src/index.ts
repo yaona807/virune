@@ -938,7 +938,7 @@ function primitiveKind(type: ts.Type): ForeignPrimitiveKind | undefined {
 	if ((flags & (ts.TypeFlags.String | ts.TypeFlags.StringLiteral)) !== 0) return 'string';
 	if ((flags & (ts.TypeFlags.Boolean | ts.TypeFlags.BooleanLiteral)) !== 0) return 'boolean';
 	if ((flags & (ts.TypeFlags.Number | ts.TypeFlags.NumberLiteral)) !== 0) return 'number';
-	if ((flags & (ts.TypeFlags.BigInt | ts.TypeFlags.BigIntLiteral)) !== 0) return 'bigint';
+	if ((flags & ts.TypeFlags.BigInt) !== 0) return 'bigint';
 	if ((flags & ts.TypeFlags.Void) !== 0) return 'void';
 	if ((flags & ts.TypeFlags.Undefined) !== 0) return 'undefined';
 	if ((flags & ts.TypeFlags.Null) !== 0) return 'null';
@@ -1645,6 +1645,8 @@ function resolveLegacyPackageRuntimePath(packageRoot: string, packageJson: Runti
 			join(main, 'index.json'),
 			join(main, 'index.node'),
 		]) {
+			const locator = relative(resolve(packageRoot), resolve(candidate)).replaceAll('\\', '/');
+			if (locator === '..' || locator.startsWith('../') || locator.startsWith('/') || /^[A-Za-z]:\//u.test(locator)) continue;
 			const resolved = existingRuntimeFile(candidate);
 			if (resolved !== undefined) return resolved;
 		}
