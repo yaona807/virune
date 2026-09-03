@@ -204,6 +204,10 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 		const stored = this.requireType(reference);
 		const property = stored.checker.getPropertyOfType(stored.type, name);
 		if (property === undefined) return undefined;
+		if (property.declarations?.some(declaration => {
+			const modifiers = ts.getCombinedModifierFlags(declaration);
+			return (modifiers & (ts.ModifierFlags.Private | ts.ModifierFlags.Protected)) !== 0;
+		}) === true) return undefined;
 		const declaration = property.valueDeclaration ?? property.declarations?.[0] ?? stored.location;
 		const propertyName = JSON.stringify(name);
 		const usageProjection = stored.usageProjection === undefined ? undefined : {
