@@ -29,7 +29,6 @@ const target = {
 	state: '',
 	mark(value) {
 		this.state = value;
-		return this;
 	},
 };
 export function consume(config) { retained = config.onEvent; }
@@ -72,7 +71,7 @@ pub fn run() -> String uses JavaScript {
 
 const commonDeclarations = `
 export interface ExternalTarget {
-	mark(value: string): ExternalTarget;
+	mark(value: string): void;
 }
 export interface ExternalEvent {
 	readonly currentTarget: ExternalTarget;
@@ -82,13 +81,13 @@ export declare function trigger(): string;
 
 test('unannotated synchronous callback in optional contextual External object property is projected', async () => {
 	await runCase(`${commonDeclarations}
-export declare function consume(config: { onEvent?: (event: ExternalEvent) => ExternalTarget }): void;
+export declare function consume(config: { onEvent?: (event: ExternalEvent) => void }): void;
 `, 'optional');
 });
 
 test('contextual object callback aliases retain TypeScript callable evidence', async () => {
 	await runCase(`${commonDeclarations}
-type EventHandler<E> = { bivarianceHack(event: E): ExternalTarget }['bivarianceHack'];
+type EventHandler<E> = { bivarianceHack(event: E): void }['bivarianceHack'];
 export declare function consume(config: { onEvent?: EventHandler<ExternalEvent> }): void;
 `, 'bivariance');
 });
