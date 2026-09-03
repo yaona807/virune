@@ -319,6 +319,7 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 		let target: string;
 		if (stored.usageProjection.valueExpression !== undefined) target = stored.usageProjection.valueExpression;
 		else {
+			context.declarations.push;
 			declarations.push(`declare const __viruneTarget: ${stored.usageProjection.typeExpression};`);
 			target = '__viruneTarget';
 		}
@@ -1628,13 +1629,42 @@ function resolveNodeRuntimePath(specifier: string, containingFile: string, nodeI
 }
 
 function resolveLegacyPackageRuntimePath(packageRoot: string, packageJson: RuntimePackageJson, subpath: string): string | undefined {
-	const target = subpath === '.' ? packageJson.main ?? '.' : subpath;
-	if (typeof target !== 'string' || target.length === 0) return undefined;
+	if (subpath !== '.') {
+		const target = resolveLegacyPackageTargetPath(packageRoot, subpath);
+		return target === undefined ? undefined : existingRuntimeFile(target);
+	}
+
+	if (packageJson.main !== undefined && packageJson.main.length > 0) {
+		const main = resolveLegacyPackageTargetPath(packageRoot, packageJson.main);
+		if (main === undefined) return undefined;
+		for (const candidate of [
+			main,
+			`${main}.js`,
+			`${main}.json`,
+			`${main}.node`,
+			join(main, 'index.js'),
+			join(main, 'index.json'),
+			join(main, 'index.node'),
+		]) {
+			const resolved = existingRuntimeFile(candidate);
+			if (resolved !== undefined) return resolved;
+		}
+	}
+
+	for (const candidate of ['index.js', 'index.json', 'index.node']) {
+		const resolved = existingRuntimeFile(join(packageRoot, candidate));
+		if (resolved !== undefined) return resolved;
+	}
+	return undefined;
+}
+
+function resolveLegacyPackageTargetPath(packageRoot: string, target: string): string | undefined {
+	if (target.length === 0) return undefined;
 	try {
 		const packageUrl = pathToFileURL(`${resolve(packageRoot)}/`);
 		const url = new URL(target, packageUrl);
 		if (url.protocol !== 'file:' || url.search.length > 0 || url.hash.length > 0) return undefined;
-		return existingRuntimeFile(fileURLToPath(url));
+		return fileURLToPath(url);
 	} catch {
 		return undefined;
 	}
