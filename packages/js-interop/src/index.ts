@@ -423,7 +423,9 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 		const primitive = contextualPrimitiveKind(type);
 		if (primitive !== undefined) return primitive;
 		const flags = type.getFlags();
-		if ((flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown | ts.TypeFlags.Never | ts.TypeFlags.TypeParameter | ts.TypeFlags.Union | ts.TypeFlags.Intersection)) !== 0) return undefined;
+		const unsafeFlags = ts.TypeFlags.Any | ts.TypeFlags.Unknown | ts.TypeFlags.Never | ts.TypeFlags.TypeParameter | ts.TypeFlags.Union;
+		if ((flags & unsafeFlags) !== 0) return undefined;
+		if ((flags & ts.TypeFlags.Intersection) !== 0 && (type as ts.IntersectionType).types.some(item => (item.getFlags() & unsafeFlags) !== 0)) return undefined;
 		const typeExpression = renderContextualTypeExpression(type, checker, location);
 		if (typeExpression === undefined) return undefined;
 		return this.store(type, checker, location, origin, workspace, { typeExpression, directory });
