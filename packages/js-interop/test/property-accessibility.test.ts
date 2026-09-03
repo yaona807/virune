@@ -29,7 +29,10 @@ async function errorsFor(source: string) {
 export declare class Box {
 	private secret: string;
 	protected hidden: string;
+	private 0: string;
+	protected 1.5: string;
 	name: string;
+	2.5: string;
 }
 export declare const box: Box;
 `, 'utf8');
@@ -54,4 +57,27 @@ fn main() -> Unit uses JavaScript {
 	assert.equal(errors.filter(item => item.code === 'L4202' && item.message.includes('secret')).length, 1);
 	assert.equal(errors.filter(item => item.code === 'L4202' && item.message.includes('hidden')).length, 1);
 	assert.equal(errors.length, 2);
+});
+
+test('private and protected External exact-literal index reads fail closed while public indexed reads retain their resolved type', async () => {
+	const errors = await errorsFor(`import js { box } from "./library.js"
+
+fn readPublicStringKey() -> String uses JavaScript {
+	return box["name"]
+}
+
+fn readPublicNumericKey() -> String uses JavaScript {
+	return box[2.5]
+}
+
+fn main() -> Unit uses JavaScript {
+	discard box["secret"]
+	discard box["hidden"]
+	discard box[0]
+	discard box[1.5]
+	return Unit
+}
+`);
+	assert.equal(errors.filter(item => item.code === 'L2121').length, 4);
+	assert.equal(errors.length, 4);
 });
