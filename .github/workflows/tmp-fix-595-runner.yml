@@ -22,13 +22,17 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
           import base64
-          import re
 
           workflow = Path('.github/workflows/tmp-apply-595.yml').read_text()
-          match = re.search(r"printf '%s' '([A-Za-z0-9+/=]+)' \\| base64 -d \\| python3", workflow)
-          if match is None:
-              raise SystemExit('cannot extract existing issue 595 patch payload')
-          payload = base64.b64decode(match.group(1)).decode()
+          lines = [line.strip() for line in workflow.splitlines() if "base64 -d | python3" in line]
+          if len(lines) != 1:
+              raise SystemExit(f'expected exactly one patch payload line, found {len(lines)}')
+          prefix = "printf '%s' '"
+          suffix = "' | base64 -d | python3"
+          line = lines[0]
+          if not line.startswith(prefix) or not line.endswith(suffix):
+              raise SystemExit('unexpected issue 595 payload line shape')
+          payload = base64.b64decode(line[len(prefix):-len(suffix)]).decode()
           old = "function nativePrimitiveCompatible(argument: Extract<InteropArgumentType, { kind: 'native-primitive' }>"
           new = "function nativePrimitiveCompatible(argument: Extract<InteropArgumentType, { readonly kind: 'native-primitive' }>"
           count = payload.count(old)
