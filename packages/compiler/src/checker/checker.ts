@@ -763,7 +763,7 @@ export class TypeChecker {
 			return this.arena.error;
 		}
 		let usage: import('../interop/types.js').InteropCallUsage = { target, arguments: interopArguments };
-		if (interopArguments.some(argument => argument.kind === 'contextual-callable')) {
+		if (interopArguments.some(argument => this.interopArgumentHasContextualCallable(argument))) {
 			if (provider.resolveCallUsage === undefined) {
 				this.diagnostics.error('L4204', `Cannot contextually resolve JavaScript callback for ${callee.display}; use a TypeScript interop adapter`, expression.span);
 				return this.arena.error;
@@ -804,7 +804,12 @@ export class TypeChecker {
 				}
 				finalized.push({ expression: argument, argument: { kind: 'native-callable', callable: projection.callable }, boundary: projection.boundary, point: prepared.point });
 			}
-			preparedArguments = finalized;
+			const finalizedObjects = this.finalizeContextualObjectArguments(contextualResolution.objectArguments, finalized, provider, scope);
+			if (finalizedObjects === undefined) {
+				this.diagnostics.error('L4204', `Cannot prove contextual JavaScript object callback for ${callee.display}; use a TypeScript interop adapter`, expression.span);
+				return this.arena.error;
+			}
+			preparedArguments = [...finalizedObjects];
 			interopArguments = preparedArguments.map(argument => argument.argument);
 			callableBoundaries = preparedArguments.map(argument => argument.boundary);
 			usage = { target, arguments: interopArguments };
@@ -882,6 +887,11 @@ export class TypeChecker {
 		return { usageIndex: this.#interopUsages.length, order: this.#semanticOrder++ };
 	}
 
+	private interopArgumentHasContextualCallable(argument: InteropArgumentType): boolean {
+		return argument.kind === 'contextual-callable'
+			|| argument.kind === 'contextual-object' && argument.object.entries.some(entry => this.interopArgumentHasContextualCallable(entry.value));
+	}
+
 	private prepareForeignCallValue(expression: A.Expression, scope: Scope, allowContextual: boolean): PreparedInteropValue {
 		if (allowContextual && expression.kind === 'LambdaExpression' && expression.parameters.length > 0 && expression.parameters.every(parameter => parameter.annotation === undefined)) {
 			return { expression, argument: { kind: 'contextual-callable', parameterCount: expression.parameters.length, async: expression.async }, point: this.semanticPoint() };
@@ -902,19 +912,95 @@ export class TypeChecker {
 		return { expression, argument, ...(boundary === undefined ? {} : { boundary }), point: this.semanticPoint() };
 	}
 
+	private prepareContextualObjectValue(expression: A.Expression, scope: Scope): PreparedInteropValue {
+		if (expression.kind === 'LambdaExpression' && expression.parameters.length > 0 && expression.parameters.every(parameter => parameter.annotation === undefined)) {
+			return { expression, argument: { kind: 'contextual-callable', parameterCount: expression.parameters.length, async: expression.async }, point: this.semanticPoint() };
+		}
+		return this.prepareInteropValue(expression, scope);
+	}
+
 	private prepareContextualObject(expression: A.ContextualAggregateExpression, scope: Scope): PreparedContextualObject {
 		const supplied = new Set<string>();
 		const entries: PreparedInteropValue[] = [];
 		for (const entry of expression.entries) {
 			if (supplied.has(entry.name)) this.diagnostics.error('L2025', `Duplicate contextual aggregate field ${entry.name}`, entry.span);
 			supplied.add(entry.name);
-			entries.push(this.prepareInteropValue(entry.value, scope));
+			entries.push(this.prepareContextualObjectValue(entry.value, scope));
 		}
 		return {
 			expression,
 			entries,
 			usage: { entries: expression.entries.map((entry, index) => ({ property: entry.name, value: entries[index]!.argument })) },
 			point: this.semanticPoint(),
+		};
+	}
+
+	private finalizeContextualObjectArguments(
+		raw: unknown,
+		preparedArguments: readonly PreparedInteropValue[],
+		provider: JsInteropProvider,
+		scope: Scope,
+	): readonly PreparedInteropValue[] | undefined {
+		const expected = preparedArguments.flatMap((argument, index) => argument.object === undefined ? [] : [{ index, object: argument.object }]);
+		if (expected.length === 0) return raw === undefined || Array.isArray(raw) && raw.length === 0 ? Object.freeze([...preparedArguments]) : undefined;
+		if (!Array.isArray(raw) || raw.length !== expected.length) return undefined;
+		const finalized = [...preparedArguments];
+		for (let position = 0; position < expected.length; position++) {
+			const item = raw[position];
+			const expectedItem = expected[position]!;
+			if (!isRecord(item) || !hasExactEnumerableKeys(item, ['index', 'object']) || item.index !== expectedItem.index) return undefined;
+			const object = this.finalizeContextualObjectCallbacks(item.object, expectedItem.object, provider, scope);
+			const prepared = finalized[expectedItem.index];
+			if (object === undefined || prepared?.object === undefined) return undefined;
+			finalized[expectedItem.index] = { ...prepared, argument: { kind: 'contextual-object', object: object.usage }, object };
+		}
+		return Object.freeze(finalized);
+	}
+
+	private finalizeContextualObjectCallbacks(
+		raw: unknown,
+		prepared: PreparedContextualObject,
+		provider: JsInteropProvider,
+		scope: Scope,
+	): PreparedContextualObject | undefined {
+		if (!isRecord(raw) || !hasExactEnumerableKeys(raw, ['entries', 'result']) || !Array.isArray(raw.entries)) return undefined;
+		if (!this.isCurrentForeignSnapshot(raw.result, provider, false) || raw.entries.length !== prepared.entries.length) return undefined;
+		const finalized: PreparedInteropValue[] = [];
+		for (let index = 0; index < prepared.entries.length; index++) {
+			const entry = raw.entries[index];
+			const preparedEntry = prepared.entries[index]!;
+			const property = prepared.expression.entries[index]?.name;
+			if (!isRecord(entry) || property === undefined || entry.index !== index || entry.property !== property) return undefined;
+			if (preparedEntry.argument.kind === 'contextual-callable') {
+				if (!hasExactEnumerableKeys(entry, ['callable', 'index', 'property'])) return undefined;
+				const callable = entry.callable;
+				if (!isRecord(callable) || !hasExactEnumerableKeys(callable, ['parameters', 'result']) || !Array.isArray(callable.parameters) || callable.parameters.length !== preparedEntry.argument.parameterCount) return undefined;
+				if (!callable.parameters.every(parameter => typeof parameter !== 'string' && parameter.category === 'object' && this.isCurrentForeignSnapshot(parameter, provider, false))) return undefined;
+				const contextualResult = canonicalContextualCallableResult(callable.result);
+				if (contextualResult?.kind !== 'deferred' || preparedEntry.expression.kind !== 'LambdaExpression') return undefined;
+				const parameterTypes = (callable.parameters as ForeignTypeSnapshot[]).map(parameter => this.contextualCallableTypeId(parameter, provider));
+				if (parameterTypes.some(parameter => parameter === undefined)) return undefined;
+				const typeId = this.checkLambda(preparedEntry.expression, scope, undefined, parameterTypes as TypeId[]);
+				preparedEntry.expression.inferredTypeId = typeId;
+				const projection = this.externalInlineCallableProjection(typeId, preparedEntry.expression);
+				if (projection === undefined) return undefined;
+				finalized.push({ expression: preparedEntry.expression, argument: { kind: 'native-callable', callable: projection.callable }, boundary: projection.boundary, point: preparedEntry.point });
+			} else if (preparedEntry.object !== undefined) {
+				if (!hasExactEnumerableKeys(entry, ['index', 'object', 'property'])) return undefined;
+				const object = this.finalizeContextualObjectCallbacks(entry.object, preparedEntry.object, provider, scope);
+				if (object === undefined) return undefined;
+				finalized.push({ ...preparedEntry, argument: { kind: 'contextual-object', object: object.usage }, object });
+			} else {
+				const expectedKeys = preparedEntry.boundary === undefined ? ['index', 'property'] : ['callable', 'index', 'property'];
+				if (!hasExactEnumerableKeys(entry, expectedKeys)) return undefined;
+				finalized.push(preparedEntry);
+			}
+		}
+		return {
+			expression: prepared.expression,
+			entries: Object.freeze(finalized),
+			usage: { entries: prepared.expression.entries.map((entry, index) => ({ property: entry.name, value: finalized[index]!.argument })) },
+			point: prepared.point,
 		};
 	}
 
@@ -957,14 +1043,21 @@ export class TypeChecker {
 				if (!hasExactEnumerableKeys(entry, ['callable', 'index', 'property'])) return undefined;
 				const callable = entry.callable;
 				if (!isRecord(callable) || !hasExactEnumerableKeys(callable, ['parameters', 'result']) || !Array.isArray(callable.parameters)) return undefined;
-				const parameters: ContextualCallablePrimitiveKind[] = [];
-				for (const parameter of callable.parameters) {
-					if (!isContextualCallablePrimitive(parameter)) return undefined;
-					parameters.push(parameter);
+				let parameters: readonly InteropCallableArgumentResolution['target']['parameters'][number][];
+				if (preparedEntry.boundary.version === 'virune-callable-shim/v1') {
+					const primitives: ContextualCallablePrimitiveKind[] = [];
+					for (const parameter of callable.parameters) {
+						if (!isContextualCallablePrimitive(parameter)) return undefined;
+						primitives.push(parameter);
+					}
+					parameters = Object.freeze(primitives);
+				} else {
+					if (!callable.parameters.every(parameter => typeof parameter !== 'string' && parameter.category === 'object' && this.isCurrentForeignSnapshot(parameter, provider, false))) return undefined;
+					parameters = Object.freeze(callable.parameters as ForeignTypeSnapshot[]);
 				}
 				const contextualResult = canonicalContextualCallableResult(callable.result);
-				if (contextualResult === undefined || preparedEntry.boundary.version !== 'virune-callable-shim/v1' || !this.callableBoundaryMatchesContext(preparedEntry.boundary, parameters, contextualResult)) return undefined;
-				entries.push({ index, property, callable: Object.freeze({ parameters: Object.freeze(parameters), result: contextualResult }) });
+				if (contextualResult === undefined || !this.callableBoundaryMatchesContext(preparedEntry.boundary, parameters, contextualResult)) return undefined;
+				entries.push({ index, property, callable: Object.freeze({ parameters, result: contextualResult }) });
 				nested.push(undefined);
 			} else if (preparedEntry.object !== undefined) {
 				if (!hasExactEnumerableKeys(entry, ['index', 'object', 'property'])) return undefined;
@@ -1138,7 +1231,7 @@ export class TypeChecker {
 			parameters.push({ kind: 'foreign', type: foreign });
 		}
 		const resultType = this.arena.get(type.result);
-		const result = resultType.kind === 'primitive' && resultType.name === 'Never' ? 'Never' as const : this.currentExternalObjectRef(type.result);
+		const result = resultType.kind === 'primitive' && resultType.name === 'Never' ? 'Never' as const : this.currentExternalRef(type.result);
 		if (result === undefined) return undefined;
 		return Object.freeze({
 			callable: Object.freeze({
@@ -1155,6 +1248,13 @@ export class TypeChecker {
 				contextMode: 'root-argument',
 			}),
 		});
+	}
+
+	private currentExternalRef(typeId: TypeId): import('../interop/types.js').ForeignTypeRef | undefined {
+		const type = this.arena.get(typeId);
+		if (type.kind !== 'foreign') return undefined;
+		const provider = this.currentInteropProvider(type.snapshot);
+		return provider !== undefined && this.isCurrentForeignSnapshot(type.snapshot, provider, false) ? type.ref : undefined;
 	}
 
 	private currentExternalObjectRef(typeId: TypeId): import('../interop/types.js').ForeignTypeRef | undefined {
