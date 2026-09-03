@@ -1,0 +1,49 @@
+name: Temporary issue 595 repair runner
+
+on:
+  push:
+    branches: [fix/595-contextual-object-callback]
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: fix/595-contextual-object-callback
+          fetch-depth: 0
+      - name: Repair and apply exact source patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import base64
+          import re
+
+          workflow = Path('.github/workflows/tmp-apply-595.yml').read_text()
+          match = re.search(r"printf '%s' '([A-Za-z0-9+/=]+)' \\| base64 -d \\| python3", workflow)
+          if match is None:
+              raise SystemExit('cannot extract existing issue 595 patch payload')
+          payload = base64.b64decode(match.group(1)).decode()
+          old = "function nativePrimitiveCompatible(argument: Extract<InteropArgumentType, { kind: 'native-primitive' }>"
+          new = "function nativePrimitiveCompatible(argument: Extract<InteropArgumentType, { readonly kind: 'native-primitive' }>"
+          count = payload.count(old)
+          print(f'provider helper anchor repair: matches={count}')
+          if count != 1:
+              raise SystemExit(f'expected exactly one provider helper anchor, found {count}')
+          Path('/tmp/apply595.py').write_text(payload.replace(old, new, 1))
+          PY
+          git fetch origin main --depth=1
+          git checkout FETCH_HEAD -- packages/compiler/src/checker/checker.ts packages/js-interop/src/index.ts
+          python3 /tmp/apply595.py
+          rm -f .github/workflows/tmp-apply-595.yml .github/workflows/tmp-fix-595-runner.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add packages/compiler/src/checker/checker.ts packages/js-interop/src/index.ts .github/workflows/tmp-apply-595.yml .github/workflows/tmp-fix-595-runner.yml
+          git diff --cached --check
+          git commit -m "fix(interop): contextually type object-literal callbacks"
+          git push origin HEAD:fix/595-contextual-object-callback
