@@ -1097,7 +1097,7 @@ function foreignAssignmentPreservesAnySafety(
 	contextual: ts.Type,
 	checker: ts.TypeChecker,
 	seen: Map<ts.Type, Set<ts.Type>> = new Map(),
-	budget: { remaining: number } = { remaining: 512 },
+	budget: { remaining: number } = { remaining: 1024 },
 	depth = 0,
 ): boolean {
 	try {
