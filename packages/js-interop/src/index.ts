@@ -938,7 +938,7 @@ function primitiveKind(type: ts.Type): ForeignPrimitiveKind | undefined {
 	if ((flags & (ts.TypeFlags.String | ts.TypeFlags.StringLiteral)) !== 0) return 'string';
 	if ((flags & (ts.TypeFlags.Boolean | ts.TypeFlags.BooleanLiteral)) !== 0) return 'boolean';
 	if ((flags & (ts.TypeFlags.Number | ts.TypeFlags.NumberLiteral)) !== 0) return 'number';
-	if ((flags & ts.TypeFlags.BigInt) !== 0) return 'bigint';
+	if ((flags & (ts.TypeFlags.BigInt | ts.TypeFlags.BigIntLiteral)) !== 0) return 'bigint';
 	if ((flags & ts.TypeFlags.Void) !== 0) return 'void';
 	if ((flags & ts.TypeFlags.Undefined) !== 0) return 'undefined';
 	if ((flags & ts.TypeFlags.Null) !== 0) return 'null';
