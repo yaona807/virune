@@ -37,11 +37,23 @@ test('allows structural External widening only when permissive source members ar
 		'export type Child = object | string | null | undefined;',
 		'export interface Container {',
 		'  readonly nodeType: number;',
+		'  readonly parentNode: Container | null;',
+		'  readonly firstChild: Container | null;',
+		'  readonly childNodes: ArrayLike<Container>;',
+		'  contains(other: Container | null): boolean;',
+		'  insertBefore(node: Container, child: Container | null): Container;',
 		'  appendChild(node: Container): Container;',
+		'  removeChild(child: Container): Container;',
 		'}',
 		'export interface ConcreteContainer {',
 		'  readonly nodeType: number;',
+		'  readonly parentNode: ConcreteContainer | null;',
+		'  readonly firstChild: ConcreteContainer | null;',
+		'  readonly childNodes: ConcreteContainer[];',
+		'  contains(other: Container | null): boolean;',
+		'  insertBefore<T extends Container>(node: T, child: Container | null): T;',
 		'  appendChild<T extends Container>(node: T): T;',
+		'  removeChild<T extends Container>(child: T): T;',
 		'  readonly unrelated: any;',
 		'  generic<T>(value: T): T;',
 		'}',
@@ -64,7 +76,12 @@ test('allows structural External widening only when permissive source members ar
 	await writeFile(join(root, 'src/library.js'), [
 		'export function makeChild() { return { id: "child", unrelated: undefined }; }',
 		'export function makeContainer() {',
-		'  return { nodeType: 1, unrelated: undefined, appendChild(node) { return node; }, generic(value) { return value; } };',
+		'  return {',
+		'    nodeType: 1, parentNode: null, firstChild: null, childNodes: [], unrelated: undefined,',
+		'    contains() { return false; },',
+		'    insertBefore(node) { return node; }, appendChild(node) { return node; }, removeChild(node) { return node; },',
+		'    generic(value) { return value; },',
+		'  };',
 		'}',
 		'export function render() {}',
 		'export const unsafeTop = ["not-proven"];',
@@ -88,7 +105,7 @@ test('allows structural External widening only when permissive source members ar
 	assert.ok(call(interopProvider, render, [
 		{ kind: 'foreign', type: child.result.ref },
 		{ kind: 'foreign', type: container.result.ref },
-	]), 'unrelated permissive and generic source members must not block a TypeScript-proven structural call');
+	]), 'recursive structural members and unrelated permissive/generic source members must not block a TypeScript-proven call');
 
 	const takeStrings = resolveNamed(provider, root, 'takeStrings');
 	const unsafeTop = resolveNamed(provider, root, 'unsafeTop');
