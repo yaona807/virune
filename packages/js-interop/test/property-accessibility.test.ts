@@ -60,7 +60,7 @@ fn main() -> Unit uses JavaScript {
 });
 
 test('private and protected External exact-literal index reads fail closed while public indexed reads retain their resolved type', async () => {
-	const errors = await errorsFor(`import js { box } from "./library.js"
+	const publicErrors = await errorsFor(`import js { box } from "./library.js"
 
 fn readPublicStringKey() -> String uses JavaScript {
 	return box["name"]
@@ -71,6 +71,14 @@ fn readPublicNumericKey() -> String uses JavaScript {
 }
 
 fn main() -> Unit uses JavaScript {
+	return Unit
+}
+`);
+	assert.equal(publicErrors.length, 0);
+
+	const inaccessibleErrors = await errorsFor(`import js { box } from "./library.js"
+
+fn main() -> Unit uses JavaScript {
 	discard box["secret"]
 	discard box["hidden"]
 	discard box[0]
@@ -78,6 +86,6 @@ fn main() -> Unit uses JavaScript {
 	return Unit
 }
 `);
-	assert.equal(errors.filter(item => item.code === 'L2121').length, 4);
-	assert.equal(errors.length, 4);
+	assert.equal(inaccessibleErrors.filter(item => item.code === 'L2121').length, 4);
+	assert.equal(inaccessibleErrors.length, 4);
 });
