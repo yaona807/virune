@@ -1602,7 +1602,6 @@ function resolveNodeRuntimePath(specifier: string, containingFile: string, nodeI
 	if (packageJson === undefined) return undefined;
 	if (packageJson.exports !== undefined) {
 		const target = resolvePackageExports(packageJson.exports, parsed.subpath, packageRoot, nodeImportConditions);
-		if (target === invalidPackageTarget || target === null || target === undefined) return undefined;
 		return typeof target === 'string' ? existingRuntimeFile(target) : undefined;
 	}
 	return resolveLegacyPackageRuntimePath(packageRoot, packageJson, parsed.subpath);
