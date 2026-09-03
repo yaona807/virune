@@ -91,3 +91,20 @@ type EventHandler<E> = { bivarianceHack(event: E): void }['bivarianceHack'];
 export declare function consume(config: { onEvent?: EventHandler<ExternalEvent> }): void;
 `, 'bivariance');
 });
+
+test('intersection callback parameter aliases retain contextual External evidence', async () => {
+	await runCase(`
+export interface ExternalTarget {
+	mark(value: string): void;
+}
+export interface ExternalEventBase {
+	readonly type: string;
+}
+export type ExternalEvent = ExternalEventBase & {
+	readonly currentTarget: ExternalTarget;
+};
+type EventHandler<E> = { bivarianceHack(event: E): void }['bivarianceHack'];
+export declare function consume(config: { onEvent?: EventHandler<ExternalEvent> }): void;
+export declare function trigger(): string;
+`, 'intersection-bivariance');
+});
