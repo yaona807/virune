@@ -18,4 +18,4 @@ jobs:
           node-version: 24
       - run: npm ci
       - run: npm run build
-      - run: node --test packages/js-interop/dist/test/usage-resolution-structural-any-safety.test.js
+      - run: node --test packages/js-interop/dist/test/tmp-598-dom-path.test.js
