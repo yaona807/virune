@@ -15,30 +15,11 @@ jobs:
         with:
           ref: fix/595-contextual-object-callback
           fetch-depth: 0
-      - name: Permit concrete contextual intersection parameters
+      - name: Apply concrete intersection parameter patch
         shell: bash
         run: |
           set -euo pipefail
-          python3 - <<'PY'
-          from pathlib import Path
-
-          path = Path('packages/js-interop/src/index.ts')
-          text = path.read_text()
-          old = """\t\tconst flags = type.getFlags();
-\t\tif ((flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown | ts.TypeFlags.Never | ts.TypeFlags.TypeParameter | ts.TypeFlags.Union | ts.TypeFlags.Intersection)) !== 0) return undefined;
-\t\tconst typeExpression = renderContextualTypeExpression(type, checker, location);
-"""
-          new = """\t\tconst flags = type.getFlags();
-\t\tconst unsafeFlags = ts.TypeFlags.Any | ts.TypeFlags.Unknown | ts.TypeFlags.Never | ts.TypeFlags.TypeParameter | ts.TypeFlags.Union;
-\t\tif ((flags & unsafeFlags) !== 0) return undefined;
-\t\tif ((flags & ts.TypeFlags.Intersection) !== 0 && (type as ts.IntersectionType).types.some(item => (item.getFlags() & unsafeFlags) !== 0)) return undefined;
-\t\tconst typeExpression = renderContextualTypeExpression(type, checker, location);
-"""
-          count = text.count(old)
-          if count != 1:
-              raise SystemExit(f'expected one contextual parameter safety anchor, found {count}')
-          path.write_text(text.replace(old, new, 1))
-          PY
+          printf '%s' 'ZnJvbSBwYXRobGliIGltcG9ydCBQYXRoCnBhdGggPSBQYXRoKCJwYWNrYWdlcy9qcy1pbnRlcm9wL3NyYy9pbmRleC50cyIpCnRleHQgPSBwYXRoLnJlYWRfdGV4dCgpCm9sZCA9ICIiIlx0XHRjb25zdCBmbGFncyA9IHR5cGUuZ2V0RmxhZ3MoKTsKXHRcdGlmICgoZmxhZ3MgJiAodHMuVHlwZUZsYWdzLkFueSB8IHRzLlR5cGVGbGFncy5Vbmtub3duIHwgdHMuVHlwZUZsYWdzLk5ldmVyIHwgdHMuVHlwZUZsYWdzLlR5cGVQYXJhbWV0ZXIgfCB0cy5UeXBlRmxhZ3MuVW5pb24gfCB0cy5UeXBlRmxhZ3MuSW50ZXJzZWN0aW9uKSkgIT09IDApIHJldHVybiB1bmRlZmluZWQ7Clx0XHRjb25zdCB0eXBlRXhwcmVzc2lvbiA9IHJlbmRlckNvbnRleHR1YWxUeXBlRXhwcmVzc2lvbih0eXBlLCBjaGVja2VyLCBsb2NhdGlvbik7CiIiIgpuZXcgPSAiIiJcdFx0Y29uc3QgZmxhZ3MgPSB0eXBlLmdldEZsYWdzKCk7Clx0XHRjb25zdCB1bnNhZmVGbGFncyA9IHRzLlR5cGVGbGFncy5BbnkgfCB0cy5UeXBlRmxhZ3MuVW5rbm93biB8IHRzLlR5cGVGbGFncy5OZXZlciB8IHRzLlR5cGVGbGFncy5UeXBlUGFyYW1ldGVyIHwgdHMuVHlwZUZsYWdzLlVuaW9uOwpcdFx0aWYgKChmbGFncyAmIHVuc2FmZUZsYWdzKSAhPT0gMCkgcmV0dXJuIHVuZGVmaW5lZDsKXHRcdGlmICgoZmxhZ3MgJiB0cy5UeXBlRmxhZ3MuSW50ZXJzZWN0aW9uKSAhPT0gMCAmJiAodHlwZSBhcyB0cy5JbnRlcnNlY3Rpb25UeXBlKS50eXBlcy5zb21lKGl0ZW0gPT4gKGl0ZW0uZ2V0RmxhZ3MoKSAmIHVuc2FmZUZsYWdzKSAhPT0gMCkpIHJldHVybiB1bmRlZmluZWQ7Clx0XHRjb25zdCB0eXBlRXhwcmVzc2lvbiA9IHJlbmRlckNvbnRleHR1YWxUeXBlRXhwcmVzc2lvbih0eXBlLCBjaGVja2VyLCBsb2NhdGlvbik7CiIiIgpjb3VudCA9IHRleHQuY291bnQob2xkKQppZiBjb3VudCAhPSAxOgogICAgcmFpc2UgU3lzdGVtRXhpdChmImV4cGVjdGVkIG9uZSBjb250ZXh0dWFsIHBhcmFtZXRlciBzYWZldHkgYW5jaG9yLCBmb3VuZCB7Y291bnR9IikKcGF0aC53cml0ZV90ZXh0KHRleHQucmVwbGFjZShvbGQsIG5ldywgMSkpCg==' | base64 -d | python3
           rm .github/workflows/tmp-595-intersection.yml
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
