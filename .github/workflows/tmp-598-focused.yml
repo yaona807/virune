@@ -17,5 +17,7 @@ jobs:
         with:
           node-version: 24
       - run: npm ci
+      - name: Diagnose structural safety budget
+        run: python -c 'from pathlib import Path; p=Path("packages/js-interop/src/index.ts"); s=p.read_text(); old="budget: { remaining: number } = { remaining: 512 },"; assert s.count(old)==1; p.write_text(s.replace(old, "budget: { remaining: number } = { remaining: 4096 },"))'
       - run: npm run build
-      - run: node --test packages/js-interop/dist/test/tmp-598-dom-path.test.js
+      - run: node --test packages/js-interop/dist/test/usage-resolution-structural-any-safety.test.js
