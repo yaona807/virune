@@ -65,7 +65,7 @@ test('deferred External callback starts at a fresh root and awaits structured pa
 		'let saved;\nexport function remember(callback) { saved = callback; }\nexport async function invokeAsync(value) { return await saved(value); }\n',
 	);
 	const output = await readFile(join(root, 'dist/main.js'), 'utf8');
-	assert.match(output, /\$fn\(validateFfiValue\([\s\S]*?rootTaskContext\(\)\)/u);
+	assert.match(output, /\$fn\(validateFfiValue\(\$raw0, \{ kind: 'string' \}, "\$\[0\]"\), rootTaskContext\(\)\)/u);
 	const module = await import(`${pathToFileURL(join(root, 'dist/main.js')).href}?case=structured-deferred-root`) as {
 		rememberCallback(): void;
 		invokeSaved(value: string): Promise<string>;
