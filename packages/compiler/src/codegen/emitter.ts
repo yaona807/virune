@@ -347,17 +347,18 @@ export class JavaScriptEmitter {
 	private contextualAggregate(expression: A.ContextualAggregateExpression, contextName: string): string {
 		if (expression.foreignObject !== true) return panicEmitter('ContextualAggregateExpression reached emission without a checked aggregate facet');
 		const entries = expression.entries.map((entry, index) => {
-			const raw = this.expression(entry.value, contextName);
 			const projection = this.#semantic.interop.objectCallableProjections?.find(item => item.objectNodeId === expression.id && item.entryIndex === index && item.property === entry.name);
+			const projectedSyncExternal = entry.value.kind === 'LambdaExpression' && projection?.descriptor.version === 'virune-callable-shim/v2' && projection.descriptor.async === false;
+			const raw = projectedSyncExternal ? this.lambdaExpression(entry.value, contextName, true) : this.expression(entry.value, contextName);
 			const value = projection === undefined ? raw : this.callableProjection(raw, projection.descriptor);
 			return `[${JSON.stringify(entry.name)}]: ${value}`;
 		});
 		return `({ ${entries.join(', ')} })`;
 	}
 
-	private lambdaExpression(expression: A.LambdaExpression, outerContextName: string): string {
+	private lambdaExpression(expression: A.LambdaExpression, outerContextName: string, forceProjectedSyncExternal = false): string {
 		const parameters = expression.parameters.map(parameter => this.nameOf(parameter.symbolId, parameter.name));
-		const projectedSyncExternal = !expression.async && this.#semantic.interop.callableProjections?.some(item => item.nodeId === expression.id && item.descriptor.version === 'virune-callable-shim/v2' && item.descriptor.async === false) === true;
+		const projectedSyncExternal = !expression.async && (forceProjectedSyncExternal || this.#semantic.interop.callableProjections?.some(item => item.nodeId === expression.id && item.descriptor.version === 'virune-callable-shim/v2' && item.descriptor.async === false) === true);
 		const ownsContext = expression.async || projectedSyncExternal;
 		const contextName = ownsContext ? `$lambdaCtx${this.#temporary++}` : outerContextName;
 		if (ownsContext) parameters.push(`${contextName} = rootTaskContext()`);

@@ -64,6 +64,7 @@ pub fn run() -> String uses JavaScript {
 	const generated = await readFile(join(root, 'dist/main.js'), 'utf8');
 	assert.match(generated, /\$viruneProjectCallable\(/u);
 	assert.match(generated, /\$fn\(\$raw0, rootTaskContext\(\)\)/u);
+	assert.match(generated, /\([^)]*, \$lambdaCtx\d+ = rootTaskContext\(\)\) => \{/u);
 	await writeFile(join(root, 'dist/library.js'), await readFile(join(root, 'src/library.js'), 'utf8'), 'utf8');
 	const module = await import(`${pathToFileURL(join(root, 'dist/main.js')).href}?contextual-object-callback-${suffix}`) as { run(): string };
 	assert.equal(module.run(), 'seen');
