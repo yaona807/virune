@@ -204,6 +204,10 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 		const stored = this.requireType(reference);
 		const property = stored.checker.getPropertyOfType(stored.type, name);
 		if (property === undefined) return undefined;
+		if (property.declarations?.some(declaration => {
+			const modifiers = ts.getCombinedModifierFlags(declaration);
+			return (modifiers & (ts.ModifierFlags.Private | ts.ModifierFlags.Protected)) !== 0;
+		}) === true) return undefined;
 		const declaration = property.valueDeclaration ?? property.declarations?.[0] ?? stored.location;
 		const propertyName = JSON.stringify(name);
 		const usageProjection = stored.usageProjection === undefined ? undefined : {
@@ -1598,6 +1602,7 @@ function resolveNodeRuntimePath(specifier: string, containingFile: string, nodeI
 	if (packageJson === undefined) return undefined;
 	if (packageJson.exports !== undefined) {
 		const target = resolvePackageExports(packageJson.exports, parsed.subpath, packageRoot, nodeImportConditions);
+		if (target === invalidPackageTarget || target === null || target === undefined) return undefined;
 		return typeof target === 'string' ? existingRuntimeFile(target) : undefined;
 	}
 	return resolveLegacyPackageRuntimePath(packageRoot, packageJson, parsed.subpath);
