@@ -82,10 +82,11 @@ fn main() -> Unit uses JavaScript {
 	discard box["secret"]
 	discard box["hidden"]
 	discard box[0]
+	discard box[-0]
 	discard box[1.5]
 	return Unit
 }
 `);
-	assert.equal(inaccessibleErrors.filter(item => item.code === 'L2121').length, 4);
-	assert.equal(inaccessibleErrors.length, 4);
+	assert.equal(inaccessibleErrors.filter(item => item.code === 'L2121').length, 5);
+	assert.equal(inaccessibleErrors.length, 5);
 });
