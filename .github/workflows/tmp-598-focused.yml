@@ -18,6 +18,6 @@ jobs:
           node-version: 24
       - run: npm ci
       - name: Diagnose structural safety budget
-        run: "sed -i 's/{ remaining: 512 }/{ remaining: 4096 }/' packages/js-interop/src/index.ts"
+        run: "sed -i 's/{ remaining: 512 }/{ remaining: 1024 }/' packages/js-interop/src/index.ts"
       - run: npm run build
       - run: node --test packages/js-interop/dist/test/usage-resolution-structural-any-safety.test.js
