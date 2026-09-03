@@ -102,7 +102,6 @@ test('Node runtime witness falls back to package index only after legacy main ca
 
 test('Node runtime witness rejects a legacy main whose extension fallback escapes the package root', async () => {
 	const root = await fixtureRoot();
-	await writeFile(join(root, 'node_modules', 'outside.js'), commonJs, 'utf8');
 	await writePackage(root, 'legacy-main-escape', {
 		name: 'legacy-main-escape',
 		types: './index.d.ts',
@@ -110,6 +109,7 @@ test('Node runtime witness rejects a legacy main whose extension fallback escape
 	}, {
 		'index.d.ts': declarations,
 	});
+	await writeFile(join(root, 'node_modules', 'outside.js'), commonJs, 'utf8');
 
 	const imported = new TypeScriptInteropProvider({ projectRoot: root }).resolveImport(request(root, 'legacy-main-escape'));
 	assert.ok(imported.type);
