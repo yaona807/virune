@@ -579,9 +579,7 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 			const actual = checker.getTypeAtLocation(node);
 			if (!foreignTypeRequiresUnknownProjection(actual, checker, node)) return true;
 			const contextual = checker.getContextualType(node);
-			if (contextual === undefined) return false;
-			if ((contextual.getFlags() & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) !== 0) return true;
-			return sameForeignTypeIdentity(actual, contextual, checker);
+			return contextual !== undefined && foreignAssignmentPreservesAnySafety(actual, contextual, checker);
 		}
 		if (argument.kind !== 'contextual-object') return true;
 		const literal = unwrapObjectLiteral(node);
@@ -1092,6 +1090,98 @@ function sameForeignTypeIdentity(actual: ts.Type, contextual: ts.Type, checker: 
 	}
 	const actualSymbol = actual.getSymbol();
 	return actualSymbol !== undefined && actualSymbol === contextual.getSymbol();
+}
+
+function foreignAssignmentPreservesAnySafety(
+	actual: ts.Type,
+	contextual: ts.Type,
+	checker: ts.TypeChecker,
+	seen: Map<ts.Type, Set<ts.Type>> = new Map(),
+	budget: { remaining: number } = { remaining: 512 },
+	depth = 0,
+): boolean {
+	try {
+		if (budget.remaining-- <= 0 || depth > 24) return false;
+		const contextualFlags = contextual.getFlags();
+		if ((contextualFlags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) !== 0) return true;
+		const actualFlags = actual.getFlags();
+		if ((actualFlags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown | ts.TypeFlags.Never)) !== 0) return false;
+		if ((contextualFlags & (ts.TypeFlags.Never | ts.TypeFlags.TypeParameter)) !== 0) return false;
+		if ((actualFlags & ts.TypeFlags.TypeParameter) !== 0) {
+			const constraint = checker.getBaseConstraintOfType(actual);
+			return constraint !== undefined && constraint !== actual
+				&& foreignAssignmentPreservesAnySafety(constraint, contextual, checker, seen, budget, depth + 1);
+		}
+		if (!checker.isTypeAssignableTo(actual, contextual)) return false;
+		if (sameForeignTypeIdentity(actual, contextual, checker)) return true;
+		if (actual.isUnion()) {
+			return actual.types.every(item => foreignAssignmentPreservesAnySafety(item, contextual, checker, seen, budget, depth + 1));
+		}
+		if (contextual.isUnion()) {
+			return contextual.types.some(item => foreignAssignmentPreservesAnySafety(actual, item, checker, seen, budget, depth + 1));
+		}
+		if (primitiveKind(actual) !== undefined || primitiveKind(contextual) !== undefined) return true;
+		if ((contextualFlags & ts.TypeFlags.NonPrimitive) !== 0) return isDefinitelyNonPrimitive(actual, checker);
+		if ((actualFlags & ts.TypeFlags.Object) === 0 || (contextualFlags & ts.TypeFlags.Object) === 0) return false;
+
+		const previous = seen.get(actual);
+		if (previous?.has(contextual) === true) return true;
+		if (previous === undefined) seen.set(actual, new Set([contextual]));
+		else previous.add(contextual);
+
+		const actualObject = actual as ts.ObjectType;
+		const contextualObject = contextual as ts.ObjectType;
+		const actualReference = (actualObject.objectFlags & ts.ObjectFlags.Reference) !== 0;
+		const contextualReference = (contextualObject.objectFlags & ts.ObjectFlags.Reference) !== 0;
+		if (actualReference && contextualReference) {
+			const actualRef = actual as ts.TypeReference;
+			const contextualRef = contextual as ts.TypeReference;
+			if (actualRef.target === contextualRef.target) {
+				const actualArguments = checker.getTypeArguments(actualRef);
+				const contextualArguments = checker.getTypeArguments(contextualRef);
+				return actualArguments.length === contextualArguments.length
+					&& actualArguments.every((item, index) => foreignAssignmentPreservesAnySafety(item, contextualArguments[index]!, checker, seen, budget, depth + 1));
+			}
+		}
+
+		for (const kind of [ts.SignatureKind.Call, ts.SignatureKind.Construct]) {
+			const contextualSignatures = checker.getSignaturesOfType(contextual, kind);
+			if (contextualSignatures.length === 0) continue;
+			const actualSignatures = checker.getSignaturesOfType(actual, kind);
+			if (actualSignatures.length !== 1 || contextualSignatures.length !== 1) return false;
+			const contextualResult = checker.getReturnTypeOfSignature(contextualSignatures[0]!);
+			if ((contextualResult.getFlags() & ts.TypeFlags.Void) !== 0) continue;
+			const actualResult = checker.getReturnTypeOfSignature(actualSignatures[0]!);
+			if (!foreignAssignmentPreservesAnySafety(actualResult, contextualResult, checker, seen, budget, depth + 1)) return false;
+		}
+
+		for (const property of checker.getPropertiesOfType(contextual)) {
+			const sourceProperty = checker.getPropertyOfType(actual, property.getName());
+			if (sourceProperty === undefined) {
+				if ((property.flags & ts.SymbolFlags.Optional) !== 0) continue;
+				return false;
+			}
+			const contextualDeclaration = property.valueDeclaration ?? property.declarations?.[0];
+			const actualDeclaration = sourceProperty.valueDeclaration ?? sourceProperty.declarations?.[0];
+			if (contextualDeclaration === undefined || actualDeclaration === undefined) return false;
+			const contextualProperty = checker.getTypeOfSymbolAtLocation(property, contextualDeclaration);
+			const actualProperty = checker.getTypeOfSymbolAtLocation(sourceProperty, actualDeclaration);
+			if (!foreignAssignmentPreservesAnySafety(actualProperty, contextualProperty, checker, seen, budget, depth + 1)) return false;
+		}
+
+		for (const indexInfo of checker.getIndexInfosOfType(contextual)) {
+			const keyFlags = indexInfo.keyType.getFlags();
+			const sourceIndex = (keyFlags & ts.TypeFlags.NumberLike) !== 0
+				? checker.getIndexTypeOfType(actual, ts.IndexKind.Number)
+				: (keyFlags & ts.TypeFlags.StringLike) !== 0
+					? checker.getIndexTypeOfType(actual, ts.IndexKind.String)
+					: undefined;
+			if (sourceIndex === undefined || !foreignAssignmentPreservesAnySafety(sourceIndex, indexInfo.type, checker, seen, budget, depth + 1)) return false;
+		}
+		return true;
+	} catch {
+		return false;
+	}
 }
 
 function resolvedGenericResultIsConcrete(signature: ts.Signature, checker: ts.TypeChecker, location: ts.Node): boolean {
