@@ -45,6 +45,9 @@ test('allows structural External widening only when permissive source members ar
 		'  readonly unrelated: any;',
 		'  generic<T>(value: T): T;',
 		'}',
+		'export interface StrictLeaf { value: string }',
+		'export interface StrictBranchA { nested: StrictLeaf; optional?: number }',
+		'export interface StrictBranchB { nested: StrictLeaf }',
 		'export declare function makeChild(): ChildObject;',
 		'export declare function makeContainer(): ConcreteContainer;',
 		'export declare function render(value: Child, parent: Container): void;',
@@ -54,6 +57,8 @@ test('allows structural External widening only when permissive source members ar
 		'export declare function takeStrings(value: string[]): void;',
 		'export declare function makeUnsafeField(): { value: any; unrelated: string };',
 		'export declare function takeSafeField(value: { value: string }): void;',
+		'export declare function makeUnsafeNested(): { nested: { value: any } };',
+		'export declare function takeStrictUnion(value: StrictBranchA | StrictBranchB): void;',
 		'',
 	].join('\n'), 'utf8');
 	await writeFile(join(root, 'src/library.js'), [
@@ -67,6 +72,8 @@ test('allows structural External widening only when permissive source members ar
 		'export function takeStrings() {}',
 		'export function makeUnsafeField() { return { value: 1, unrelated: "x" }; }',
 		'export function takeSafeField() {}',
+		'export function makeUnsafeNested() { return { nested: { value: 1 } }; }',
+		'export function takeStrictUnion() {}',
 		'',
 	].join('\n'), 'utf8');
 
@@ -93,4 +100,9 @@ test('allows structural External widening only when permissive source members ar
 	assert.ok(unsafeField);
 	const takeSafeField = resolveNamed(provider, root, 'takeSafeField');
 	assert.equal(call(interopProvider, takeSafeField, [{ kind: 'foreign', type: unsafeField.result.ref }]), undefined, 'any in an assignment-relevant structural property must remain fail-closed');
+
+	const unsafeNested = call(interopProvider, resolveNamed(provider, root, 'makeUnsafeNested'), []);
+	assert.ok(unsafeNested);
+	const takeStrictUnion = resolveNamed(provider, root, 'takeStrictUnion');
+	assert.equal(call(interopProvider, takeStrictUnion, [{ kind: 'foreign', type: unsafeNested.result.ref }]), undefined, 'a failed union candidate must not leak recursive any-safety evidence into the next candidate');
 });
