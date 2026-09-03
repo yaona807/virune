@@ -467,7 +467,7 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 		if (construct) {
 			if (constructSignatures.length === 0 || callSignatures.length !== 0) return undefined;
 		} else if (callSignatures.length === 0) return undefined;
-		if (usage.arguments.some(argument => argument.kind === 'native-callable' || argument.kind === 'contextual-callable') && this.#compilerOptions.strictNullChecks !== true) return undefined;
+		if (usage.arguments.some(argument => argument.kind === 'native-callable' || hasContextualCallable(argument)) && this.#compilerOptions.strictNullChecks !== true) return undefined;
 		const context = this.createUsageProbeContext(reference);
 		if (context === undefined) return undefined;
 		if (!construct) {
@@ -514,7 +514,7 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 		const signature = probe.checker.getResolvedSignature(invocation as ts.CallLikeExpression);
 		if (signature === undefined) return undefined;
 		const resolvedResult = probe.checker.getReturnTypeOfSignature(signature);
-		const provisionalSyncContext = !construct && usage.arguments.some(argument => argument.kind === 'contextual-callable' && argument.async === false);
+		const provisionalSyncContext = !construct && usage.arguments.some(hasSyncContextualCallable);
 		if (!provisionalSyncContext) {
 			if ((resolvedResult.getFlags() & (ts.TypeFlags.Any | (construct ? ts.TypeFlags.Unknown : ts.TypeFlags.Never))) !== 0) return undefined;
 			if (!resolvedGenericResultIsConcrete(signature, probe.checker, invocation)) return undefined;
@@ -602,7 +602,11 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 			if (property === undefined || !ts.isPropertyAssignment(property) || !ts.isComputedPropertyName(property.name) || !ts.isStringLiteral(property.name.expression) || property.name.expression.text !== usageEntry.property) return undefined;
 			const contextual = checker.getContextualType(property.initializer);
 			if (contextual === undefined || (contextual.getFlags() & (ts.TypeFlags.Any | ts.TypeFlags.Unknown | ts.TypeFlags.Never | ts.TypeFlags.TypeParameter)) !== 0) return undefined;
-			if (usageEntry.value.kind === 'native-callable') {
+			if (usageEntry.value.kind === 'contextual-callable') {
+				const callable = this.contextualCallableShape(contextual, checker, property.initializer, usageEntry.value.parameterCount, undefined, workspace, undefined, dirname(property.initializer.getSourceFile().fileName));
+				if (callable === undefined) return undefined;
+				entries.push({ index, property: usageEntry.property, callable });
+			} else if (usageEntry.value.kind === 'native-callable') {
 				const callable = this.contextualCallableShape(contextual, checker, property.initializer, usageEntry.value.callable.parameters.length, usageEntry.value.callable, workspace, undefined, dirname(property.initializer.getSourceFile().fileName));
 				if (callable === undefined) return undefined;
 				entries.push({ index, property: usageEntry.property, callable });
@@ -932,6 +936,16 @@ function canonicalForeignTypeIdentity(type: ts.Type, checker: ts.TypeChecker): C
 	} catch {
 		return undefined;
 	}
+}
+
+function hasContextualCallable(argument: InteropArgumentType): boolean {
+	return argument.kind === 'contextual-callable'
+		|| argument.kind === 'contextual-object' && argument.object.entries.some(entry => hasContextualCallable(entry.value));
+}
+
+function hasSyncContextualCallable(argument: InteropArgumentType): boolean {
+	return argument.kind === 'contextual-callable' ? argument.async === false
+		: argument.kind === 'contextual-object' && argument.object.entries.some(entry => hasSyncContextualCallable(entry.value));
 }
 
 function nativePrimitiveCompatible(argument: Extract<InteropArgumentType, { readonly kind: 'native-primitive' }>, parameter: ts.Type, checker: ts.TypeChecker): boolean {
