@@ -1,0 +1,21 @@
+name: Temporary issue 598 focused regression
+
+on:
+  push:
+    branches:
+      - fix/598-vnode-structural-any
+
+permissions:
+  contents: read
+
+jobs:
+  focused:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: npm ci
+      - run: npm run build
+      - run: node --test packages/js-interop/dist/test/usage-resolution-structural-any-safety.test.js
