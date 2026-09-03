@@ -1231,7 +1231,7 @@ export class TypeChecker {
 			parameters.push({ kind: 'foreign', type: foreign });
 		}
 		const resultType = this.arena.get(type.result);
-		const result = resultType.kind === 'primitive' && resultType.name === 'Never' ? 'Never' as const : this.currentExternalObjectRef(type.result);
+		const result = resultType.kind === 'primitive' && resultType.name === 'Never' ? 'Never' as const : this.currentExternalRef(type.result);
 		if (result === undefined) return undefined;
 		return Object.freeze({
 			callable: Object.freeze({
@@ -1248,6 +1248,13 @@ export class TypeChecker {
 				contextMode: 'root-argument',
 			}),
 		});
+	}
+
+	private currentExternalRef(typeId: TypeId): import('../interop/types.js').ForeignTypeRef | undefined {
+		const type = this.arena.get(typeId);
+		if (type.kind !== 'foreign') return undefined;
+		const provider = this.currentInteropProvider(type.snapshot);
+		return provider !== undefined && this.isCurrentForeignSnapshot(type.snapshot, provider, false) ? type.ref : undefined;
 	}
 
 	private currentExternalObjectRef(typeId: TypeId): import('../interop/types.js').ForeignTypeRef | undefined {
