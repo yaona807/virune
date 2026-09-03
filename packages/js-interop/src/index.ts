@@ -319,7 +319,6 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 		let target: string;
 		if (stored.usageProjection.valueExpression !== undefined) target = stored.usageProjection.valueExpression;
 		else {
-			context.declarations.push;
 			declarations.push(`declare const __viruneTarget: ${stored.usageProjection.typeExpression};`);
 			target = '__viruneTarget';
 		}
