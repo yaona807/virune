@@ -1118,7 +1118,11 @@ function foreignAssignmentPreservesAnySafety(
 			return actual.types.every(item => foreignAssignmentPreservesAnySafety(item, contextual, checker, seen, budget, depth + 1));
 		}
 		if (contextual.isUnion()) {
-			return contextual.types.some(item => foreignAssignmentPreservesAnySafety(actual, item, checker, seen, budget, depth + 1));
+			return contextual.types.some(item => {
+				const branchSeen = new Map<ts.Type, Set<ts.Type>>();
+				for (const [source, targets] of seen) branchSeen.set(source, new Set(targets));
+				return foreignAssignmentPreservesAnySafety(actual, item, checker, branchSeen, budget, depth + 1);
+			});
 		}
 		if (primitiveKind(actual) !== undefined || primitiveKind(contextual) !== undefined) return true;
 		if ((contextualFlags & ts.TypeFlags.NonPrimitive) !== 0) return isDefinitelyNonPrimitive(actual, checker);
