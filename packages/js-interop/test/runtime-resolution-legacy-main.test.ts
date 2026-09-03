@@ -100,6 +100,24 @@ test('Node runtime witness falls back to package index only after legacy main ca
 	assert.equal(imported.witness.runtimeFormat, 'commonjs');
 });
 
+test('Node runtime witness keeps derived legacy-main candidates inside the package root', async () => {
+	const root = await fixtureRoot();
+	await writePackage(root, 'legacy-main-dot', {
+		name: 'legacy-main-dot',
+		types: './index.d.ts',
+		main: '.',
+	}, {
+		'index.d.ts': declarations,
+		'index.js': commonJs,
+	});
+	await writeFile(join(root, 'node_modules', 'legacy-main-dot.js'), 'module.exports = () => "outside";\n', 'utf8');
+
+	const imported = new TypeScriptInteropProvider({ projectRoot: root }).resolveImport(request(root, 'legacy-main-dot'));
+	assert.ok(imported.type);
+	assert.equal(imported.witness.runtimeEntry, 'index.js');
+	assert.equal(imported.witness.runtimeFormat, 'commonjs');
+});
+
 test('Node runtime witness rejects a legacy main whose extension fallback escapes the package root', async () => {
 	const root = await fixtureRoot();
 	await writePackage(root, 'legacy-main-escape', {
