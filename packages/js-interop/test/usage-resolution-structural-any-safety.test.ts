@@ -123,3 +123,43 @@ test('allows structural External widening only when permissive source members ar
 	const takeStrictUnion = resolveNamed(provider, root, 'takeStrictUnion');
 	assert.equal(call(interopProvider, takeStrictUnion, [{ kind: 'foreign', type: unsafeNested.result.ref }]), undefined, 'a failed union candidate must not leak recursive any-safety evidence into the next candidate');
 });
+
+test('allows a DOM element to satisfy a smaller recursive structural container contract', async () => {
+	const root = await fixtureRoot();
+	await writeFile(join(root, 'src/library.d.ts'), [
+		'export interface RenderContainer {',
+		'  readonly nodeType: number;',
+		'  readonly parentNode: RenderContainer | null;',
+		'  readonly firstChild: RenderContainer | null;',
+		'  readonly childNodes: ArrayLike<RenderContainer>;',
+		'  contains(other: RenderContainer | null): boolean;',
+		'  insertBefore(node: RenderContainer, child: RenderContainer | null): RenderContainer;',
+		'  appendChild(node: RenderContainer): RenderContainer;',
+		'  removeChild(child: RenderContainer): RenderContainer;',
+		'}',
+		'export declare function makeValue(): { readonly id: string };',
+		'export declare function makeDomContainer(): HTMLDivElement;',
+		'export declare function render(value: object | string | null | undefined, parent: RenderContainer): void;',
+		'export declare function render(value: object | string | null | undefined, parent: RenderContainer, replace?: Element | Text): void;',
+		'',
+	].join('\n'), 'utf8');
+	await writeFile(join(root, 'src/library.js'), [
+		'export function makeValue() { return { id: "value" }; }',
+		'export function makeDomContainer() { return {}; }',
+		'export function render() {}',
+		'',
+	].join('\n'), 'utf8');
+
+	const provider = new TypeScriptInteropProvider({ projectRoot: root });
+	const interopProvider: JsInteropProvider = provider;
+	const value = call(interopProvider, resolveNamed(provider, root, 'makeValue'), []);
+	const container = call(interopProvider, resolveNamed(provider, root, 'makeDomContainer'), []);
+	assert.ok(value);
+	assert.ok(container);
+
+	const render = resolveNamed(provider, root, 'render');
+	assert.ok(call(interopProvider, render, [
+		{ kind: 'foreign', type: value.result.ref },
+		{ kind: 'foreign', type: container.result.ref },
+	]), 'a TypeScript-proven HTML element to recursive structural container assignment must remain valid despite unrelated DOM members');
+});
