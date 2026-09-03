@@ -250,8 +250,13 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 			left = `${context.target}.${safeTsName(usage.property)}`;
 			value = this.renderUsageValue(usage.value, context, false, true);
 		} else {
-			const literalKey = usage.index.kind === 'native-primitive' && usage.index.literal?.kind === 'String'
-				? usage.index.literal.value
+			const literalKey = usage.index.kind === 'native-primitive' && usage.index.literal !== undefined
+				? usage.index.literal.kind === 'String'
+					? usage.index.literal.value
+					: (usage.index.literal.kind === 'Int' || usage.index.literal.kind === 'Float')
+						&& renderInteropLiteral(usage.index.primitive, usage.index.literal) !== undefined
+						? String(usage.index.literal.value)
+						: undefined
 				: undefined;
 			if (literalKey !== undefined) {
 				const property = context.stored.checker.getPropertyOfType(context.stored.type, literalKey);
