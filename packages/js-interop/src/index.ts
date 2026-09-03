@@ -1660,10 +1660,14 @@ function resolveLegacyPackageRuntimePath(packageRoot: string, packageJson: Runti
 function resolveLegacyPackageTargetPath(packageRoot: string, target: string): string | undefined {
 	if (target.length === 0) return undefined;
 	try {
-		const packageUrl = pathToFileURL(`${resolve(packageRoot)}/`);
+		const packagePath = resolve(packageRoot);
+		const packageUrl = pathToFileURL(`${packagePath}/`);
 		const url = new URL(target, packageUrl);
 		if (url.protocol !== 'file:' || url.search.length > 0 || url.hash.length > 0) return undefined;
-		return fileURLToPath(url);
+		const candidate = fileURLToPath(url);
+		const locator = relative(packagePath, candidate).replaceAll('\\', '/');
+		if (locator === '..' || locator.startsWith('../') || locator.startsWith('/') || /^[A-Za-z]:\//u.test(locator)) return undefined;
+		return candidate;
 	} catch {
 		return undefined;
 	}
