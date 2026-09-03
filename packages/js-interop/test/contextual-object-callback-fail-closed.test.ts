@@ -59,7 +59,9 @@ function mutateNestedCallableParameter(
 	mutate: (parameter: ForeignTypeSnapshot) => ForeignTypeSnapshot,
 ): ForeignCallResolution | undefined {
 	if (resolution === undefined) return undefined;
-	const objectArgument = resolution.objectArguments?.[0];
+	const objectArguments = resolution.objectArguments;
+	if (objectArguments === undefined) return resolution;
+	const objectArgument = objectArguments[0];
 	const entry = objectArgument?.object.entries.find(item => item.property === 'onEvent');
 	const callable = entry?.callable;
 	const first = callable?.parameters[0];
@@ -73,7 +75,7 @@ function mutateNestedCallableParameter(
 	});
 	return {
 		...resolution,
-		objectArguments: resolution.objectArguments?.map((item, index) => index === 0 ? {
+		objectArguments: objectArguments.map((item, index) => index === 0 ? {
 			...item,
 			object: { ...item.object, entries },
 		} : item),
