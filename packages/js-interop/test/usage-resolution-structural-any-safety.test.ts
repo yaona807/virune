@@ -41,7 +41,7 @@ test('allows structural External widening only when permissive source members ar
 		'}',
 		'export interface ConcreteContainer {',
 		'  readonly nodeType: number;',
-		'  appendChild(node: Container): Container;',
+		'  appendChild<T extends Container>(node: T): T;',
 		'  readonly unrelated: any;',
 		'  generic<T>(value: T): T;',
 		'}',
