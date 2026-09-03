@@ -57,6 +57,37 @@ export declare const box: Box;
 	assert.equal(codes.filter(code => code === 'L2120').length, 2);
 });
 
+test('numeric exact-literal External index writes reject inaccessible members while public assignment checking remains intact', async () => {
+	const declarations = `
+export declare class Box {
+	private 0: string;
+	protected 1.5: string;
+	2.5: string;
+}
+export declare const box: Box;
+`;
+	const inaccessible = await errorCodesFor(`import js { box } from "./library.js"
+
+fn main() -> Unit uses JavaScript {
+	box[0] = "private"
+	box[1.5] = "protected"
+	box[2.5] = "public"
+	return Unit
+}
+`, declarations);
+	assert.equal(inaccessible.filter(code => code === 'L2120').length, 2);
+	assert.equal(inaccessible.length, 2);
+
+	const incompatiblePublicValue = await errorCodesFor(`import js { box } from "./library.js"
+
+fn main() -> Unit uses JavaScript {
+	box[2.5] = 1
+	return Unit
+}
+`, declarations);
+	assert.ok(incompatiblePublicValue.includes('L2120'));
+});
+
 test('contextual External generic object succeeds only when TypeScript supplies concrete contextual evidence', async () => {
 	const resolved = await errorCodesFor(`import js { consume } from "./library.js"
 
