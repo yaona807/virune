@@ -40,6 +40,16 @@ test('block lambdas nested in lists preserve their own statement newlines', () =
 `);
 });
 
+test('expression lambdas inside calls keep outer structural newlines soft', () => {
+	assertParses(`pub fn main() -> Unit {
+	invoke(
+		fn() -> Unit => Unit,
+	)
+	return Unit
+}
+`);
+});
+
 test('ordinary aggregate and call continuation newlines remain soft', () => {
 	assertParses(`pub fn main() -> Unit {
 	consume(
