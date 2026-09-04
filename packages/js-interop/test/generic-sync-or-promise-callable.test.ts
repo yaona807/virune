@@ -80,3 +80,23 @@ fn main() -> Unit uses JavaScript {
 	assert.ok(result.diagnostics.some(item => item.code === 'L4204'));
 	assert.equal(result.semantic?.interop.callableProjections?.length ?? 0, 0);
 });
+
+test('sync-or-promise callback union rejects an additional unsupported result branch', async () => {
+	const result = await compileFixture(
+		`export type MixedTask<T> = (() => PromiseLike<T>) | (() => T) | (() => string);
+export declare function enqueueMixed<T>(task: MixedTask<T>): Promise<T>;
+`,
+		`import js { enqueueMixed } from "./library.js"
+
+fn main() -> Unit uses JavaScript {
+	let result = enqueueMixed(fn() -> Unit uses JavaScript {
+		return Unit
+	})
+	discard result
+	return Unit
+}
+`,
+	);
+	assert.ok(result.diagnostics.some(item => item.code === 'L4204'));
+	assert.equal(result.semantic?.interop.callableProjections?.length ?? 0, 0);
+});
