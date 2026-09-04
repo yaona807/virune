@@ -193,7 +193,7 @@ function normalizeNewLines(input: readonly IToken[]): IToken[] {
 			if (!soft && previous?.tokenType.name !== 'NewLine') output.push(token);
 			continue;
 		}
-		const opensLambdaBlock = name === 'LBrace' && isBlockLambdaOpeningBrace(input, index);
+		const opensLambdaBlock = name === 'LBrace' && (parenDepth > 0 || bracketDepth > 0) && isBlockLambdaOpeningBrace(input, index);
 		output.push(token);
 		if (name === 'LParen') parenDepth++; else if (name === 'RParen') parenDepth = Math.max(0, parenDepth - 1);
 		if (name === 'LBracket') bracketDepth++; else if (name === 'RBracket') bracketDepth = Math.max(0, bracketDepth - 1);

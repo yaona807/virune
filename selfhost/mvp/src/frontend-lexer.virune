@@ -489,7 +489,7 @@ fn normalizeNewLines(rawTokens: List<FrontendToken>) -> List<FrontendToken> {
 			index = index + 1
 			continue
 		}
-		let opensLambdaBlock = value.text == "{" && isBlockLambdaOpeningBrace(rawTokens, index)
+		let opensLambdaBlock = value.text == "{" && (parenDepth > 0 || bracketDepth > 0) && isBlockLambdaOpeningBrace(rawTokens, index)
 		if value.text == "(" {
 			parenDepth = parenDepth + 1
 		} else if value.text == ")" && parenDepth > 0 {
