@@ -91,7 +91,7 @@ jobs:
           test('generic sync-or-promise callback result keeps the accepted synchronous Unit branch', async () => {
           \tconst result = await compileFixture(
           \t\t`export interface TaskOptions { readonly token: string; }\nexport type Task<T> = ((options: TaskOptions) => PromiseLike<T>) | ((options: TaskOptions) => T);\nexport declare function enqueue<T>(task: Task<T>): Promise<T>;\n`,
-          \t\t`import js { enqueue } from "./library.js"\n\nfn main() -> Unit uses JavaScript {\n\tlet result = await enqueue(fn() -> Unit uses JavaScript {\n\t\treturn Unit\n\t})\n\tdiscard result\n\treturn Unit\n}\n`,
+          \t\t`import js { enqueue } from "./library.js"\n\nasync fn main() -> Unit uses JavaScript {\n\tlet result = await enqueue(fn() -> Unit uses JavaScript {\n\t\treturn Unit\n\t})\n\tdiscard result\n\treturn Unit\n}\n`,
           \t);
           \tassert.deepEqual(result.diagnostics.filter(item => item.severity === 'error'), []);
           \tconst projection = result.semantic?.interop.callableProjections?.[0];
