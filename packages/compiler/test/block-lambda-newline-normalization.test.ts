@@ -50,7 +50,7 @@ test('expression lambdas inside calls keep outer structural newlines soft', () =
 `);
 });
 
-test('ordinary aggregate and call continuation newlines remain soft', () => {
+test('ordinary aggregate and call continuation newlines remain soft without trailing commas', () => {
 	assertParses(`pub fn main() -> Unit {
 	consume(
 		{
@@ -58,8 +58,8 @@ test('ordinary aggregate and call continuation newlines remain soft', () => {
 				1,
 				2,
 			),
-			right: 3,
-		},
+			right: 3
+		}
 	)
 	return Unit
 }
