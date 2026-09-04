@@ -1468,11 +1468,21 @@ function contextualCallbackResult(type: ts.Type, checker: ts.TypeChecker): Conte
 
 function contextualCallbackResultForNativeCallable(type: ts.Type, checker: ts.TypeChecker, callable: NativeCallableTypeTemplate): ContextualCallableResult | undefined {
 	if (!type.isUnion() || callable.async || callable.result !== 'Unit') return contextualCallbackResult(type, checker);
+	let synchronous: ContextualCallableResult | undefined;
+	let hasPromise = false;
 	for (const branch of type.types) {
 		const result = contextualCallbackResult(branch, checker);
-		if (result?.kind === 'void' || result?.kind === 'value' && result.value === 'undefined') return result;
+		if (result?.kind === 'promise' && (result.value === 'undefined' || result.value === 'void')) {
+			hasPromise = true;
+			continue;
+		}
+		if (result?.kind === 'void' || result?.kind === 'value' && result.value === 'undefined') {
+			synchronous ??= result;
+			continue;
+		}
+		return contextualCallbackResult(type, checker);
 	}
-	return contextualCallbackResult(type, checker);
+	return hasPromise && synchronous !== undefined ? synchronous : contextualCallbackResult(type, checker);
 }
 
 function renderContextualTypeExpression(type: ts.Type, checker: ts.TypeChecker, location: ts.Node): string | undefined {

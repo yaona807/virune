@@ -62,3 +62,21 @@ fn main() -> Unit uses JavaScript {
 	assert.ok(result.diagnostics.some(item => item.code === 'L4204'));
 	assert.equal(result.semantic?.interop.callableProjections?.length ?? 0, 0);
 });
+
+test('non-promise mixed callback result remains fail closed for synchronous Unit', async () => {
+	const result = await compileFixture(
+		`export declare function mixed(task: () => string | undefined): void;
+`,
+		`import js { mixed } from "./library.js"
+
+fn main() -> Unit uses JavaScript {
+	discard mixed(fn() -> Unit {
+		return Unit
+	})
+	return Unit
+}
+`,
+	);
+	assert.ok(result.diagnostics.some(item => item.code === 'L4204'));
+	assert.equal(result.semantic?.interop.callableProjections?.length ?? 0, 0);
+});
