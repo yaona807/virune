@@ -320,22 +320,20 @@ test('bootstrap candidate keeps exact reviewed RC artifacts non-ready for normal
 	});
 });
 
-test('publication candidate enables the existing Registry-eligible prerelease and stable channels only after pre-write blockers clear', () => {
-	for (const version of ['1.1.0-rc.1', '1.1.0']) {
-		withFixture(root => {
-			configureReleaseState(root, {
-				version,
-				stage: 'publication-candidate',
-				publicationReady: true,
-				unresolved: postPublicationRequirements,
-			});
-			const result = verifyNpmPublicationPlan(root);
-			assert.equal(result.stage, 'publication-candidate');
-			assert.equal(result.currentVersion, version);
-			assert.equal(result.publicationReady, true);
-			assert.deepEqual(result.unresolvedRequirements, postPublicationRequirements);
+test('publication candidate enables only the reviewed v1.1 rc path after pre-write blockers clear', () => {
+	withFixture(root => {
+		configureReleaseState(root, {
+			version: '1.1.0-rc.1',
+			stage: 'publication-candidate',
+			publicationReady: true,
+			unresolved: postPublicationRequirements,
 		});
-	}
+		const result = verifyNpmPublicationPlan(root);
+		assert.equal(result.stage, 'publication-candidate');
+		assert.equal(result.currentVersion, '1.1.0-rc.1');
+		assert.equal(result.publicationReady, true);
+		assert.deepEqual(result.unresolvedRequirements, postPublicationRequirements);
+	});
 });
 
 test('bootstrap and publication stages fail closed on contradictory readiness and requirement sets', () => {
@@ -368,7 +366,7 @@ test('bootstrap and publication stages fail closed on contradictory readiness an
 	});
 });
 
-test('bootstrap candidate is restricted to the first v1.1 rc line and publication candidates reject ineligible versions', () => {
+test('bootstrap and publication candidates are restricted to the first v1.1 rc line', () => {
 	for (const version of ['1.1.0', '1.1.0-beta.0', '1.2.0-rc.0']) {
 		withFixture(root => {
 			configureReleaseState(root, {
@@ -380,7 +378,7 @@ test('bootstrap candidate is restricted to the first v1.1 rc line and publicatio
 			assert.throws(() => verifyNpmPublicationPlan(root), /bootstrap candidate must/u);
 		});
 	}
-	for (const version of ['1.0.1-rc.0', '1.1.0-nightly.20260905.0']) {
+	for (const version of ['1.0.1-rc.0', '1.1.0-nightly.20260905.0', '1.1.0', '1.1.0-beta.0', '1.2.0-rc.0']) {
 		withFixture(root => {
 			configureReleaseState(root, {
 				version,
