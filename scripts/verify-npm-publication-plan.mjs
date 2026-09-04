@@ -72,14 +72,13 @@ export function verifyNpmPublicationPlan(root = process.cwd()) {
 	assert(stableDistTag !== prereleaseDistTag, '$.distTagPolicy', 'stable and prerelease dist-tags must be distinct');
 	assert(distTagPolicy.nightly === null, '$.distTagPolicy.nightly', 'nightly releases must not be published to npm in this policy');
 	assert(rootManifest.private === true, '$root.private', 'monorepo root must remain private');
-	const rootVersion = releaseVersion(rootManifest.version, '$root.version');
+	const rootVersionText = nonEmptyString(rootManifest.version, '$root.version');
 	validatePublicationStage({
 		stage,
 		publicationReady: plan.publicationReady,
 		unresolvedRequirements,
-		rootVersion,
+		rootVersionText,
 		forbiddenThroughText,
-		firstStable,
 	});
 	const rootWorkspaces = array(rootManifest.workspaces, '$root.workspaces')
 		.map((value, index) => nonEmptyString(value, `$root.workspaces[${index}]`));
@@ -195,25 +194,29 @@ export function verifyNpmPublicationPlan(root = process.cwd()) {
 	};
 }
 
-function validatePublicationStage({ stage, publicationReady, unresolvedRequirements, rootVersion, forbiddenThroughText, firstStable }) {
+function validatePublicationStage({ stage, publicationReady, unresolvedRequirements, rootVersionText, forbiddenThroughText }) {
 	if (stage === 'prepublication-audit') {
 		assert(publicationReady === false, '$.publicationReady', 'prepublication audit must not claim publication readiness');
-		assert(rootVersion.text === forbiddenThroughText, '$root.version', 'prepublication plan must be updated deliberately when the repository version advances');
+		assert(rootVersionText === forbiddenThroughText, '$root.version', 'prepublication plan must be updated deliberately when the repository version advances');
 		assertRequirements(unresolvedRequirements, REQUIRED_PREPUBLICATION_BLOCKERS, 'prepublication-audit');
 		return;
 	}
 	if (stage === 'bootstrap-candidate') {
 		assert(publicationReady === false, '$.publicationReady', 'bootstrap candidate must not enable normal npm publication');
-		assert(rootVersion.channel === 'prerelease' && rootVersion.prereleaseLabel === 'rc', '$root.version', 'bootstrap candidate must use an rc prerelease');
-		assert(compareSemver(rootVersion.base, firstStable) === 0, '$root.version', `bootstrap candidate must use the ${FIRST_STABLE_REGISTRY_RELEASE} release line`);
+		assert(isV110RcVersion(rootVersionText), '$root.version', `bootstrap candidate must use a ${FIRST_STABLE_REGISTRY_RELEASE}-rc.N version`);
 		assertRequirements(unresolvedRequirements, REQUIRED_PREPUBLICATION_BLOCKERS, 'bootstrap-candidate');
 		return;
 	}
 	assert(stage === 'publication-candidate', '$.stage', 'unexpected publication stage');
 	assert(publicationReady === true, '$.publicationReady', 'publication candidate must explicitly enable normal npm publication');
-	assert(rootVersion.channel === 'prerelease' && rootVersion.prereleaseLabel === 'rc', '$root.version', 'publication candidate must use an rc prerelease');
-	assert(compareSemver(rootVersion.base, firstStable) === 0, '$root.version', `publication candidate must use the ${FIRST_STABLE_REGISTRY_RELEASE} release line`);
+	assert(isV110RcVersion(rootVersionText), '$root.version', `publication candidate must use a ${FIRST_STABLE_REGISTRY_RELEASE}-rc.N version`);
 	assertRequirements(unresolvedRequirements, REQUIRED_POSTPUBLICATION_BLOCKERS, 'publication-candidate');
+}
+
+function isV110RcVersion(value) {
+	const prefix = `${FIRST_STABLE_REGISTRY_RELEASE}-rc.`;
+	if (!value.startsWith(prefix)) return false;
+	return /^(?:0|[1-9]\d*)$/u.test(value.slice(prefix.length));
 }
 
 function assertRequirements(actual, expected, stage) {
@@ -261,15 +264,6 @@ function semver(value, path) {
 	const match = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/u.exec(text);
 	assert(match !== null, path, 'expected a stable x.y.z semantic version');
 	return match.slice(1).map(Number);
-}
-
-function releaseVersion(value, path) {
-	const text = nonEmptyString(value, path);
-	const match = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:(?:-(alpha|beta|rc)\.(0|[1-9]\d*))|(?:-nightly\.(\d{8})\.(0|[1-9]\d*)))?$/u.exec(text);
-	assert(match !== null, path, 'expected stable, alpha, beta, rc, or nightly Virune semantic version');
-	const base = match.slice(1, 4).map(Number);
-	const channel = match[6] !== undefined ? 'nightly' : match[4] !== undefined ? 'prerelease' : 'stable';
-	return { text, base, channel, prereleaseLabel: match[4] ?? null };
 }
 
 function compareSemver(left, right) {
