@@ -1,0 +1,201 @@
+name: Patch 617 selfhost syntax
+
+on:
+  push:
+    branches:
+      - fix/616-block-lambda-newlines
+    paths:
+      - .github/workflows/patch-617-selfhost-syntax.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: fix/616-block-lambda-newlines
+      - name: Replace unsupported match-arm statement blocks
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('selfhost/mvp/src/frontend-lexer.virune')
+          text = path.read_text()
+          old = '''fn previousNonNewLineIndex(tokens: List<FrontendToken>, startIndex: Int) -> Int? {
+\tlet mut index = startIndex
+\twhile index >= 0 {
+\t\tif tokenAt(tokens, index).kind != FrontendTokenKind.NewLine {
+\t\t\treturn Some(index)
+\t\t}
+\t\tindex = index - 1
+\t}
+\treturn None
+}
+
+fn matchingOpenParenIndex(tokens: List<FrontendToken>, closeIndex: Int) -> Int? {
+\tlet mut depth = 0
+\tlet mut index = closeIndex
+\twhile index >= 0 {
+\t\tlet text = tokenAt(tokens, index).text
+\t\tif text == ")" {
+\t\t\tdepth = depth + 1
+\t\t} else if text == "(" {
+\t\t\tdepth = depth - 1
+\t\t\tif depth == 0 {
+\t\t\t\treturn Some(index)
+\t\t\t}
+\t\t}
+\t\tindex = index - 1
+\t}
+\treturn None
+}
+
+fn isBlockLambdaOpeningBrace(tokens: List<FrontendToken>, braceIndex: Int) -> Bool {
+\tlet mut index = braceIndex - 1
+\tlet mut angleDepth = 0
+\tlet mut sawTopLevelComma = false
+\tlet mut sawUses = false
+\twhile index >= 0 {
+\t\tlet value = tokenAt(tokens, index)
+\t\tif value.kind == FrontendTokenKind.NewLine {
+\t\t\tindex = index - 1
+\t\t\tcontinue
+\t\t}
+\t\tif value.text == ">" {
+\t\t\tangleDepth = angleDepth + 1
+\t\t\tindex = index - 1
+\t\t\tcontinue
+\t\t}
+\t\tif value.text == "<" && angleDepth > 0 {
+\t\t\tangleDepth = angleDepth - 1
+\t\t\tindex = index - 1
+\t\t\tcontinue
+\t\t}
+\t\tif angleDepth > 0 {
+\t\t\tindex = index - 1
+\t\t\tcontinue
+\t\t}
+\t\tif value.text == ")" {
+\t\t\tlet openIndex = matchingOpenParenIndex(tokens, index)
+\t\t\tmatch openIndex {
+\t\t\t\tSome(open) => {
+\t\t\t\t\tlet beforeIndex = previousNonNewLineIndex(tokens, open - 1)
+\t\t\t\t\tmatch beforeIndex {
+\t\t\t\t\t\tSome(before) => {
+\t\t\t\t\t\t\tif tokenAt(tokens, before).text == "fn" {
+\t\t\t\t\t\t\t\treturn !sawTopLevelComma || sawUses
+\t\t\t\t\t\t\t}
+\t\t\t\t\t\t}
+\t\t\t\t\t\tNone => Unit
+\t\t\t\t\t}
+\t\t\t\t\tindex = open - 1
+\t\t\t\t\tcontinue
+\t\t\t\t}
+\t\t\t\tNone => return false
+\t\t\t}
+\t\t}
+\t\tif value.text == "uses" {
+\t\t\tsawUses = true
+\t\t} else if value.text == "," {
+\t\t\tsawTopLevelComma = true
+\t\t} else if value.text == "=>" || value.text == "=" || value.text == ":" || value.text == "{" || value.text == "}" || value.text == "]" {
+\t\t\treturn false
+\t\t}
+\t\tindex = index - 1
+\t}
+\treturn false
+}
+'''
+          new = '''fn previousNonNewLineIndex(tokens: List<FrontendToken>, startIndex: Int) -> Int {
+\tlet mut index = startIndex
+\twhile index >= 0 {
+\t\tif tokenAt(tokens, index).kind != FrontendTokenKind.NewLine {
+\t\t\treturn index
+\t\t}
+\t\tindex = index - 1
+\t}
+\treturn -1
+}
+
+fn matchingOpenParenIndex(tokens: List<FrontendToken>, closeIndex: Int) -> Int {
+\tlet mut depth = 0
+\tlet mut index = closeIndex
+\twhile index >= 0 {
+\t\tlet text = tokenAt(tokens, index).text
+\t\tif text == ")" {
+\t\t\tdepth = depth + 1
+\t\t} else if text == "(" {
+\t\t\tdepth = depth - 1
+\t\t\tif depth == 0 {
+\t\t\t\treturn index
+\t\t\t}
+\t\t}
+\t\tindex = index - 1
+\t}
+\treturn -1
+}
+
+fn isBlockLambdaOpeningBrace(tokens: List<FrontendToken>, braceIndex: Int) -> Bool {
+\tlet mut index = braceIndex - 1
+\tlet mut angleDepth = 0
+\tlet mut sawTopLevelComma = false
+\tlet mut sawUses = false
+\twhile index >= 0 {
+\t\tlet value = tokenAt(tokens, index)
+\t\tif value.kind == FrontendTokenKind.NewLine {
+\t\t\tindex = index - 1
+\t\t\tcontinue
+\t\t}
+\t\tif value.text == ">" {
+\t\t\tangleDepth = angleDepth + 1
+\t\t\tindex = index - 1
+\t\t\tcontinue
+\t\t}
+\t\tif value.text == "<" && angleDepth > 0 {
+\t\t\tangleDepth = angleDepth - 1
+\t\t\tindex = index - 1
+\t\t\tcontinue
+\t\t}
+\t\tif angleDepth > 0 {
+\t\t\tindex = index - 1
+\t\t\tcontinue
+\t\t}
+\t\tif value.text == ")" {
+\t\t\tlet open = matchingOpenParenIndex(tokens, index)
+\t\t\tif open < 0 {
+\t\t\t\treturn false
+\t\t\t}
+\t\t\tlet before = previousNonNewLineIndex(tokens, open - 1)
+\t\t\tif before >= 0 && tokenAt(tokens, before).text == "fn" {
+\t\t\t\treturn !sawTopLevelComma || sawUses
+\t\t\t}
+\t\t\tindex = open - 1
+\t\t\tcontinue
+\t\t}
+\t\tif value.text == "uses" {
+\t\t\tsawUses = true
+\t\t} else if value.text == "," {
+\t\t\tsawTopLevelComma = true
+\t\t} else if value.text == "=>" || value.text == "=" || value.text == ":" || value.text == "{" || value.text == "}" || value.text == "]" {
+\t\t\treturn false
+\t\t}
+\t\tindex = index - 1
+\t}
+\treturn false
+}
+'''
+          if old not in text:
+              raise SystemExit('target block not found exactly')
+          path.write_text(text.replace(old, new))
+          PY
+      - name: Remove temporary patch workflow
+        run: git rm .github/workflows/patch-617-selfhost-syntax.yml
+      - name: Commit patch
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add selfhost/mvp/src/frontend-lexer.virune
+          git commit -m 'fix(parser): keep selfhost lambda scope scan syntax-valid'
+          git push origin HEAD:fix/616-block-lambda-newlines
