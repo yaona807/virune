@@ -1467,25 +1467,12 @@ function contextualCallbackResult(type: ts.Type, checker: ts.TypeChecker): Conte
 }
 
 function contextualCallbackResultForNativeCallable(type: ts.Type, checker: ts.TypeChecker, callable: NativeCallableTypeTemplate): ContextualCallableResult | undefined {
-	if (!type.isUnion()) return contextualCallbackResult(type, checker);
-	if (callable.result === 'Never' || typeof callable.result !== 'string') return undefined;
-	const expected = typescriptCallableResultName(callable.result);
-	if (expected === undefined) return undefined;
+	if (!type.isUnion() || callable.async || callable.result !== 'Unit') return contextualCallbackResult(type, checker);
 	for (const branch of type.types) {
 		const result = contextualCallbackResult(branch, checker);
-		if (result === undefined || result.kind === 'external' || result.kind === 'deferred') continue;
-		if (callable.async) {
-			if (result.kind !== 'promise') continue;
-			if (callable.result === 'Unit' ? result.value === 'undefined' || result.value === 'void' : result.value === expected) return result;
-			continue;
-		}
-		if (result.kind === 'void') {
-			if (callable.result === 'Unit') return result;
-			continue;
-		}
-		if (result.kind === 'value' && result.value === expected) return result;
+		if (result?.kind === 'void' || result?.kind === 'value' && result.value === 'undefined') return result;
 	}
-	return undefined;
+	return contextualCallbackResult(type, checker);
 }
 
 function renderContextualTypeExpression(type: ts.Type, checker: ts.TypeChecker, location: ts.Node): string | undefined {
