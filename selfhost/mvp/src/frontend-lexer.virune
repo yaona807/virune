@@ -359,8 +359,110 @@ fn retainGenericDeclarationBreak(previous: FrontendToken?, next: FrontendToken?,
 	}
 }
 
+fn previousNonNewLineIndex(tokens: List<FrontendToken>, startIndex: Int) -> Int {
+	let mut index = startIndex
+	while index >= 0 {
+		if tokenAt(tokens, index).kind != FrontendTokenKind.NewLine {
+			return index
+		}
+		index = index - 1
+	}
+	return -1
+}
+
+fn matchingOpenParenIndex(tokens: List<FrontendToken>, closeIndex: Int) -> Int {
+	let mut depth = 0
+	let mut index = closeIndex
+	while index >= 0 {
+		let text = tokenAt(tokens, index).text
+		if text == ")" {
+			depth = depth + 1
+		} else if text == "(" {
+			depth = depth - 1
+			if depth == 0 {
+				return index
+			}
+		}
+		index = index - 1
+	}
+	return -1
+}
+
+fn isBlockLambdaOpeningBrace(tokens: List<FrontendToken>, braceIndex: Int) -> Bool {
+	let mut index = braceIndex - 1
+	let mut angleDepth = 0
+	let mut sawTopLevelComma = false
+	let mut sawUses = false
+	while index >= 0 {
+		let value = tokenAt(tokens, index)
+		if value.kind == FrontendTokenKind.NewLine {
+			index = index - 1
+			continue
+		}
+		if value.text == ">" {
+			angleDepth = angleDepth + 1
+			index = index - 1
+			continue
+		}
+		if value.text == "<" && angleDepth > 0 {
+			angleDepth = angleDepth - 1
+			index = index - 1
+			continue
+		}
+		if angleDepth > 0 {
+			index = index - 1
+			continue
+		}
+		if value.text == ")" {
+			let open = matchingOpenParenIndex(tokens, index)
+			if open < 0 {
+				return false
+			}
+			let before = previousNonNewLineIndex(tokens, open - 1)
+			if before >= 0 && tokenAt(tokens, before).text == "fn" {
+				return !sawTopLevelComma || sawUses
+			}
+			index = open - 1
+			continue
+		}
+		if value.text == "uses" {
+			sawUses = true
+		} else if value.text == "," {
+			sawTopLevelComma = true
+		} else if value.text == "=>" || value.text == "=" || value.text == ":" || value.text == "{" || value.text == "}" || value.text == "]" {
+			return false
+		}
+		index = index - 1
+	}
+	return false
+}
+
+fn withoutLastInt(values: List<Int>) -> List<Int> {
+	let mut result: List<Int> = []
+	let mut index = 0
+	while index + 1 < List.length(values) {
+		let value = match List.get(values, index) {
+			Some(item) => item
+			None => panic("Missing lambda scope depth")
+		}
+		result = List.append(result, value)
+		index = index + 1
+	}
+	return result
+}
+
+fn lastIntOr(values: List<Int>, fallback: Int) -> Int {
+	return match List.last(values) {
+		Some(value) => value
+		None => fallback
+	}
+}
+
 fn normalizeNewLines(rawTokens: List<FrontendToken>) -> List<FrontendToken> {
 	let mut result: List<FrontendToken> = []
+	let mut lambdaBraceDepths: List<Int> = []
+	let mut lambdaParenFloors: List<Int> = []
+	let mut lambdaBracketFloors: List<Int> = []
 	let mut parenDepth = 0
 	let mut bracketDepth = 0
 	let mut braceDepth = 0
@@ -372,7 +474,8 @@ fn normalizeNewLines(rawTokens: List<FrontendToken>) -> List<FrontendToken> {
 			let next = nextNonNewLine(rawTokens, index + 1)
 			let previousText = match previous { Some(item) => item.text, None => "" }
 			let nextText = match next { Some(item) => item.text, None => "" }
-			let structuralSoft = parenDepth > 0 || bracketDepth > 0
+			let lambdaActive = List.length(lambdaBraceDepths) > 0
+			let structuralSoft = if lambdaActive then parenDepth > lastIntOr(lambdaParenFloors, 0) || bracketDepth > lastIntOr(lambdaBracketFloors, 0) else parenDepth > 0 || bracketDepth > 0
 			let continuationSoft = softAfter(previousText) || softBefore(nextText)
 			if !(structuralSoft || continuationSoft) || retainGenericDeclarationBreak(previous, next, braceDepth) {
 				result = List.append(result, value)
@@ -380,6 +483,7 @@ fn normalizeNewLines(rawTokens: List<FrontendToken>) -> List<FrontendToken> {
 			index = index + 1
 			continue
 		}
+		let opensLambdaBlock = value.text == "{" && (parenDepth > 0 || bracketDepth > 0) && isBlockLambdaOpeningBrace(rawTokens, index)
 		if value.text == "(" {
 			parenDepth = parenDepth + 1
 		} else if value.text == ")" && parenDepth > 0 {
@@ -390,8 +494,18 @@ fn normalizeNewLines(rawTokens: List<FrontendToken>) -> List<FrontendToken> {
 			bracketDepth = bracketDepth - 1
 		} else if value.text == "{" {
 			braceDepth = braceDepth + 1
+			if opensLambdaBlock {
+				lambdaBraceDepths = List.append(lambdaBraceDepths, braceDepth)
+				lambdaParenFloors = List.append(lambdaParenFloors, parenDepth)
+				lambdaBracketFloors = List.append(lambdaBracketFloors, bracketDepth)
+			}
 		} else if value.text == "}" && braceDepth > 0 {
 			braceDepth = braceDepth - 1
+			while List.length(lambdaBraceDepths) > 0 && lastIntOr(lambdaBraceDepths, 0) > braceDepth {
+				lambdaBraceDepths = withoutLastInt(lambdaBraceDepths)
+				lambdaParenFloors = withoutLastInt(lambdaParenFloors)
+				lambdaBracketFloors = withoutLastInt(lambdaBracketFloors)
+			}
 		}
 		result = List.append(result, value)
 		index = index + 1

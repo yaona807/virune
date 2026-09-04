@@ -165,6 +165,18 @@
       ]
     },
     {
+      "id": "valid-call-argument-block-lambda",
+      "tags": [
+        "valid",
+        "expression",
+        "lambda",
+        "call",
+        "newline"
+      ],
+      "source": "pub fn main() -> Unit {\n\tinvoke(\n\t\tfn() -> Unit {\n\t\t\tdiscard nested(\n\t\t\t\t1,\n\t\t\t\t2,\n\t\t\t)\n\t\t\treturn Unit\n\t\t},\n\t)\n\treturn Unit\n}\n",
+      "mutations": []
+    },
+    {
       "id": "invalid-lex-character",
       "tags": [
         "invalid",
