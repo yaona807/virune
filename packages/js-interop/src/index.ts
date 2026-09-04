@@ -436,7 +436,7 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 		else if (callable.result === 'Never' || typeof callable.result !== 'string') result = Object.freeze({ kind: 'external' });
 		else {
 			const resultType = checker.getReturnTypeOfSignature(signature);
-			const contextual = contextualCallbackResult(resultType, checker);
+			const contextual = contextualCallbackResultForNativeCallable(resultType, checker, callable);
 			if (contextual === undefined) return undefined;
 			result = contextual;
 		}
@@ -1464,6 +1464,28 @@ function contextualCallbackResult(type: ts.Type, checker: ts.TypeChecker): Conte
 	}
 	const value = contextualPrimitiveKind(type);
 	return value === undefined ? undefined : Object.freeze({ kind: 'value', value });
+}
+
+function contextualCallbackResultForNativeCallable(type: ts.Type, checker: ts.TypeChecker, callable: NativeCallableTypeTemplate): ContextualCallableResult | undefined {
+	if (!type.isUnion()) return contextualCallbackResult(type, checker);
+	if (callable.result === 'Never' || typeof callable.result !== 'string') return undefined;
+	const expected = typescriptCallableResultName(callable.result);
+	if (expected === undefined) return undefined;
+	for (const branch of type.types) {
+		const result = contextualCallbackResult(branch, checker);
+		if (result === undefined || result.kind === 'external' || result.kind === 'deferred') continue;
+		if (callable.async) {
+			if (result.kind !== 'promise') continue;
+			if (callable.result === 'Unit' ? result.value === 'undefined' || result.value === 'void' : result.value === expected) return result;
+			continue;
+		}
+		if (result.kind === 'void') {
+			if (callable.result === 'Unit') return result;
+			continue;
+		}
+		if (result.kind === 'value' && result.value === expected) return result;
+	}
+	return undefined;
 }
 
 function renderContextualTypeExpression(type: ts.Type, checker: ts.TypeChecker, location: ts.Node): string | undefined {
