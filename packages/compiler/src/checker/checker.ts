@@ -846,6 +846,10 @@ export class TypeChecker {
 			this.diagnostics.error('L4204', `Cannot resolve JavaScript call or construct for ${callee.display}; use a TypeScript interop adapter`, expression.span);
 			return this.arena.error;
 		}
+		if (invocationKind === 'construct' && expression.arguments.some((argument, index) => argument.kind === 'LambdaExpression' && argument.parameters.length === 0 && callableBoundaries[index]?.version === 'virune-callable-shim/v1')) {
+			this.diagnostics.error('L4204', `Zero-argument inline generated callbacks are not supported for JavaScript construct ${callee.display}; use a TypeScript interop adapter`, expression.span);
+			return this.arena.error;
+		}
 		if (resolution.contextualCallableArguments !== undefined && resolution.contextualCallableArguments.length !== 0) {
 			this.diagnostics.error('L4204', `Final JavaScript call retained provisional callback evidence for ${callee.display}`, expression.span);
 			return this.arena.error;
@@ -896,16 +900,16 @@ export class TypeChecker {
 		if (allowContextual && expression.kind === 'LambdaExpression' && expression.parameters.length > 0 && expression.parameters.every(parameter => parameter.annotation === undefined)) {
 			return { expression, argument: { kind: 'contextual-callable', parameterCount: expression.parameters.length, async: expression.async }, point: this.semanticPoint() };
 		}
-		return this.prepareInteropValue(expression, scope);
+		return this.prepareInteropValue(expression, scope, true);
 	}
 
-	private prepareInteropValue(expression: A.Expression, scope: Scope): PreparedInteropValue {
+	private prepareInteropValue(expression: A.Expression, scope: Scope, allowInlineZeroArgument = false): PreparedInteropValue {
 		if (expression.kind === 'ContextualAggregateExpression') {
 			const object = this.prepareContextualObject(expression, scope);
 			return { expression, argument: { kind: 'contextual-object', object: object.usage }, object, point: this.semanticPoint() };
 		}
 		const typeId = this.checkExpression(expression, scope);
-		const boundary = this.nativeCallableBoundary(typeId, expression);
+		const boundary = this.nativeCallableBoundary(typeId, expression, allowInlineZeroArgument);
 		const argument: InteropArgumentType = boundary === undefined
 			? this.interopArgumentType(typeId, expression, expression.span)
 			: { kind: 'native-callable', callable: { parameters: boundary.parameters, result: boundary.result, async: boundary.async } };
@@ -1188,15 +1192,19 @@ export class TypeChecker {
 		return !construct || resolution.receiverMode === 'none';
 	}
 
-	private nativeCallableBoundary(typeId: TypeId, expression: A.Expression): Extract<NativeCallableBoundaryDescriptor, { readonly version: 'virune-callable-shim/v1' }> | undefined {
+	private nativeCallableBoundary(typeId: TypeId, expression: A.Expression, allowInlineZeroArgument = false): Extract<NativeCallableBoundaryDescriptor, { readonly version: 'virune-callable-shim/v1' }> | undefined {
 		const type = this.arena.get(typeId);
 		if (type.kind !== 'function' || type.typeParameters.length !== 0 || type.effects.some(effect => effect === '*' || !this.#effects.has(effect))) return undefined;
-		if (expression.kind !== 'IdentifierExpression' || expression.symbolId === undefined) return undefined;
-		const symbol = this.#symbols.get(expression.symbolId);
-		const declaration = symbol?.declaration;
-		if (symbol?.kind !== 'function' || declaration?.kind !== 'FunctionDeclaration') return undefined;
-		const functionDeclaration = declaration as A.FunctionDeclaration;
-		if (functionDeclaration.typeParameters.length !== 0 || functionDeclaration.attributes.some(attribute => attribute.name === 'jsExport')) return undefined;
+		if (expression.kind === 'LambdaExpression') {
+			if (!allowInlineZeroArgument || expression.async || expression.parameters.length !== 0 || type.parameters.length !== 0) return undefined;
+		} else {
+			if (expression.kind !== 'IdentifierExpression' || expression.symbolId === undefined) return undefined;
+			const symbol = this.#symbols.get(expression.symbolId);
+			const declaration = symbol?.declaration;
+			if (symbol?.kind !== 'function' || declaration?.kind !== 'FunctionDeclaration') return undefined;
+			const functionDeclaration = declaration as A.FunctionDeclaration;
+			if (functionDeclaration.typeParameters.length !== 0 || functionDeclaration.attributes.some(attribute => attribute.name === 'jsExport')) return undefined;
+		}
 		const parameters: NativeCallablePrimitiveKind[] = [];
 		for (const parameter of type.parameters) {
 			const primitive = this.nativeCallablePrimitive(parameter);

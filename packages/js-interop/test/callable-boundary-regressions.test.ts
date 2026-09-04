@@ -64,3 +64,76 @@ test('nested cleanup callable result remains fail closed until nested callable d
 	assert.ok(result.diagnostics.some(item => item.code === 'L4204' || item.code === 'L4206'));
 	assert.equal(result.semantic?.interop.callableProjections?.length ?? 0, 0);
 });
+
+test('projects a zero-argument inline closure that captures an External handle through the primitive shim', async () => {
+	const result = await compileFixture(
+		'library',
+		'export interface Handle { run(): void; }\nexport declare function makeHandle(): Handle;\nexport declare function enqueue(task: () => void): void;\n',
+		`import js { enqueue, makeHandle } from "./library.js"\n\nfn main() -> Unit uses JavaScript {\n\tlet handle = makeHandle()\n\tdiscard enqueue(fn() -> Unit uses JavaScript {\n\t\tdiscard handle.run()\n\t\treturn Unit\n\t})\n\treturn Unit\n}\n`,
+	);
+	assert.deepEqual(result.diagnostics.filter(item => item.severity === 'error'), []);
+	const projection = result.semantic?.interop.callableProjections?.[0];
+	assert.ok(projection);
+	assert.deepEqual(projection.descriptor, {
+		version: 'virune-callable-shim/v1',
+		parameters: [],
+		result: 'Unit',
+		async: false,
+		effects: ['JavaScript'],
+		contextMode: 'root-argument',
+	});
+	assert.doesNotMatch(JSON.stringify(projection.descriptor), /Handle|External|provider|typescript|library|package/iu);
+	const code = result.output?.code ?? '';
+	assert.match(code, /\$viruneProjectCallable\(\(\(\$lambdaCtx\d+ = rootTaskContext\(\)\) => \{/u);
+	assert.match(code, /\$fn\(rootTaskContext\(\)\)/u);
+	assert.match(code, /\.run\(\)/u);
+});
+
+test('zero-argument inline primitive callbacks remain fail closed for open effects and composite results', async () => {
+	const open = await compileFixture(
+		'library',
+		'export declare function consume(callback: () => void): void;\n',
+		`import js { consume } from "./library.js"\n\nfn main() -> Unit uses JavaScript {\n\tdiscard consume(fn() -> Unit uses * {\n\t\treturn Unit\n\t})\n\treturn Unit\n}\n`,
+	);
+	assert.ok(open.diagnostics.some(item => item.code === 'L4206' || item.code === 'L4204'));
+	assert.equal(open.semantic?.interop.callableProjections?.length ?? 0, 0);
+
+	const composite = await compileFixture(
+		'library',
+		'export declare function consume(callback: () => object): void;\n',
+		`import js { consume } from "./library.js"\n\nrecord Payload { value: String }\n\nfn main() -> Unit uses JavaScript {\n\tdiscard consume(fn() -> Payload {\n\t\treturn Payload { value: "blocked" }\n\t})\n\treturn Unit\n}\n`,
+	);
+	assert.ok(composite.diagnostics.some(item => item.code === 'L4206' || item.code === 'L4204'));
+	assert.equal(composite.semantic?.interop.callableProjections?.length ?? 0, 0);
+});
+
+test('zero-argument inline primitive callbacks remain fail closed for foreign property writes', async () => {
+	const result = await compileFixture(
+		'library',
+		'export interface Box { callback: () => void; }\nexport declare function makeBox(): Box;\n',
+		`import js { makeBox } from "./library.js"\n\nfn main() -> Unit uses JavaScript {\n\tlet box = makeBox()\n\tbox.callback = fn() -> Unit {\n\t\treturn Unit\n\t}\n\treturn Unit\n}\n`,
+	);
+	assert.ok(result.diagnostics.some(item => item.code === 'L4206' || item.code === 'L2119'));
+	assert.equal(result.semantic?.interop.callableProjections?.length ?? 0, 0);
+});
+
+test('zero-argument inline primitive callbacks remain fail closed for construct fallback', async () => {
+	const result = await compileFixture(
+		'library',
+		'export declare class Consumer { constructor(callback: () => void); }\n',
+		`import js { Consumer } from "./library.js"\n\nfn main() -> Unit uses JavaScript {\n\tdiscard Consumer(fn() -> Unit {\n\t\treturn Unit\n\t})\n\treturn Unit\n}\n`,
+	);
+	assert.ok(result.diagnostics.some(item => item.code === 'L4204'));
+	assert.equal(result.semantic?.interop.callableProjections?.length ?? 0, 0);
+});
+
+test('zero-argument async inline primitive callbacks remain fail closed', async () => {
+	const result = await compileFixture(
+		'library',
+		'export declare function consume(callback: () => Promise<void>): void;\n',
+		`import js { consume } from "./library.js"\n\nfn main() -> Unit uses JavaScript {\n\tdiscard consume(async fn() -> Unit {\n\t\treturn Unit\n\t})\n\treturn Unit\n}\n`,
+	);
+	assert.ok(result.diagnostics.some(item => item.code === 'L4204' || item.code === 'L4206'));
+	assert.equal(result.semantic?.interop.callableProjections?.length ?? 0, 0);
+	assert.doesNotMatch(result.output?.code ?? '', /\$viruneProjectCallable/u);
+});
