@@ -220,10 +220,14 @@ export function validateReviewedPublicationManifest(manifest, plan) {
 	assert(document.githubReleaseTag === `v${version}`, '$.publicationManifest.githubReleaseTag', `expected v${version}`);
 	assert(document.publishSource === 'reviewed-release-registry-candidate-tarball', '$.publicationManifest.publishSource', 'unexpected publication source');
 	assert(document.bundledCliReleaseAsset === bundledCliReleaseAssetName(version), '$.publicationManifest.bundledCliReleaseAsset', 'bundled CLI release asset drift');
-	assert(document.publicationReady === true, '$.publicationManifest.publicationReady', 'public Registry verification requires a reviewed publication-ready candidate');
+	const policy = record(plan, '$.publicationPlan');
+	if (policy.stage === 'bootstrap-candidate') {
+		assert(document.publicationReady === false, '$.publicationManifest.publicationReady', 'bootstrap public Registry verification requires the reviewed non-ready bootstrap candidate');
+	} else {
+		assert(document.publicationReady === true, '$.publicationManifest.publicationReady', 'public Registry verification requires a reviewed publication-ready candidate');
+	}
 	assert(document.registryVersionEligible === true, '$.publicationManifest.registryVersionEligible', 'public Registry verification requires a Registry-eligible version');
 
-	const policy = record(plan, '$.publicationPlan');
 	const registryPolicy = registryPolicyForVersion(
 		version,
 		nonEmptyString(policy.firstStableRegistryRelease, '$.publicationPlan.firstStableRegistryRelease'),
