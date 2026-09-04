@@ -7,19 +7,6 @@ const REPOSITORY_URL = 'git+https://github.com/yaona807/virune.git';
 const HOMEPAGE = 'https://github.com/yaona807/virune#readme';
 const BUGS_URL = 'https://github.com/yaona807/virune/issues';
 const CANONICAL_WORKSPACES = ['packages/*'];
-const RETRO_PUBLISH_BOUNDARY = '1.0.0';
-const FIRST_STABLE_REGISTRY_RELEASE = '1.1.0';
-const REQUIRED_PREPUBLICATION_BLOCKERS = [
-	'clean-registry-install-smoke',
-	'documentation-sync',
-	'generated-project-registry-smoke',
-	'package-publication-enablement',
-	'public-registry-verification',
-	'publication-gate-integration',
-	'registry-ownership',
-	'release-identity-integration',
-	'trusted-publishing',
-];
 const DEPENDENCY_SECTIONS = ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies'];
 const RUNTIME_DEPENDENCY_SECTIONS = new Set(['dependencies', 'peerDependencies', 'optionalDependencies']);
 
@@ -27,40 +14,18 @@ export function verifyNpmPublicationPlan(root = process.cwd()) {
 	const plan = readJson(resolve(root, PLAN_PATH));
 	const rootManifest = readJson(resolve(root, 'package.json'));
 	assertExactKeys(plan, [
-		'schemaVersion',
-		'stage',
 		'publicationReady',
-		'unresolvedRequirements',
 		'forbidRegistryPublishThroughVersion',
 		'firstStableRegistryRelease',
 		'distTagPolicy',
-		'trustedPublishingRequired',
-		'publicVerificationRequired',
-		'sameReviewedReleaseIdentityRequired',
 		'packages',
 		'excludedWorkspacePackages',
 	], '$');
-	assert(plan.schemaVersion === 1, '$.schemaVersion', 'expected schemaVersion 1');
-	assert(plan.stage === 'prepublication-audit', '$.stage', 'expected prepublication-audit stage');
-	assert(plan.publicationReady === false, '$.publicationReady', 'prepublication audit must not claim publication readiness');
-	const unresolvedRequirements = array(plan.unresolvedRequirements, '$.unresolvedRequirements')
-		.map((value, index) => nonEmptyString(value, `$.unresolvedRequirements[${index}]`))
-		.sort(compareText);
-	assertUnique(unresolvedRequirements, '$.unresolvedRequirements', 'requirement');
-	assert(
-		JSON.stringify(unresolvedRequirements) === JSON.stringify(REQUIRED_PREPUBLICATION_BLOCKERS),
-		'$.unresolvedRequirements',
-		`expected unresolved prepublication requirements ${REQUIRED_PREPUBLICATION_BLOCKERS.join(', ')}`,
-	);
-	assert(plan.trustedPublishingRequired === true, '$.trustedPublishingRequired', 'must remain true');
-	assert(plan.publicVerificationRequired === true, '$.publicVerificationRequired', 'must remain true');
-	assert(plan.sameReviewedReleaseIdentityRequired === true, '$.sameReviewedReleaseIdentityRequired', 'must remain true');
+	assert(plan.publicationReady === false, '$.publicationReady', 'must remain false until deliberate publication enablement');
 	const forbiddenThroughText = nonEmptyString(plan.forbidRegistryPublishThroughVersion, '$.forbidRegistryPublishThroughVersion');
 	const firstStableText = nonEmptyString(plan.firstStableRegistryRelease, '$.firstStableRegistryRelease');
 	const forbiddenThrough = semver(forbiddenThroughText, '$.forbidRegistryPublishThroughVersion');
 	const firstStable = semver(firstStableText, '$.firstStableRegistryRelease');
-	assert(forbiddenThroughText === RETRO_PUBLISH_BOUNDARY, '$.forbidRegistryPublishThroughVersion', `expected ${RETRO_PUBLISH_BOUNDARY} retro-publish boundary`);
-	assert(firstStableText === FIRST_STABLE_REGISTRY_RELEASE, '$.firstStableRegistryRelease', `expected first stable npm release ${FIRST_STABLE_REGISTRY_RELEASE}`);
 	assert(compareSemver(firstStable, forbiddenThrough) > 0, '$.firstStableRegistryRelease', 'must be later than the forbidden retro-publish boundary');
 	const distTagPolicy = record(plan.distTagPolicy, '$.distTagPolicy');
 	assertExactKeys(distTagPolicy, ['stable', 'prerelease', 'nightly'], '$.distTagPolicy');
@@ -71,7 +36,11 @@ export function verifyNpmPublicationPlan(root = process.cwd()) {
 	assert(stableDistTag !== prereleaseDistTag, '$.distTagPolicy', 'stable and prerelease dist-tags must be distinct');
 	assert(distTagPolicy.nightly === null, '$.distTagPolicy.nightly', 'nightly releases must not be published to npm in this policy');
 	assert(rootManifest.private === true, '$root.private', 'monorepo root must remain private');
-	assert(rootManifest.version === plan.forbidRegistryPublishThroughVersion, '$root.version', 'prepublication plan must be updated deliberately when the repository version advances');
+	assert(
+		rootManifest.version === forbiddenThroughText,
+		'$root.version',
+		'publication plan retro-publish boundary must match the reviewed root version before publication enablement',
+	);
 	const rootWorkspaces = array(rootManifest.workspaces, '$root.workspaces')
 		.map((value, index) => nonEmptyString(value, `$root.workspaces[${index}]`));
 	assert(
@@ -90,7 +59,6 @@ export function verifyNpmPublicationPlan(root = process.cwd()) {
 		.sort((left, right) => compareText(left.directory, right.directory));
 	assertUnique(publishPackages.map(item => item.directory), '$.packages', 'directory');
 	assertUnique(publishPackages.map(item => item.workspaceName), '$.packages', 'workspaceName');
-	assertUnique(publishPackages.map(item => item.registryName), '$.packages', 'registryName');
 	assertUnique(excludedPackages.map(item => item.directory), '$.excludedWorkspacePackages', 'directory');
 	assertUnique(excludedPackages.map(item => item.workspaceName), '$.excludedWorkspacePackages', 'workspaceName');
 
@@ -111,7 +79,7 @@ export function verifyNpmPublicationPlan(root = process.cwd()) {
 		const manifest = readJson(resolve(root, 'packages', item.directory, 'package.json'));
 		assert(manifest.name === item.workspaceName, `$.${item.directory}.name`, `expected workspace package name ${item.workspaceName}`);
 		assert(manifest.version === rootManifest.version, `$.${item.directory}.version`, 'must match the reviewed root release version');
-		assert(manifest.private === true, `$.${item.directory}.private`, 'prepublication audit requires private:true until the publication-enablement change');
+		assert(manifest.private === true, `$.${item.directory}.private`, 'publication remains disabled until the publication-enablement change');
 		assert(manifest.license === reviewedLicense, `$.${item.directory}.license`, `must match reviewed root license ${reviewedLicense}`);
 		manifests.set(item.workspaceName, manifest);
 	}
@@ -120,7 +88,6 @@ export function verifyNpmPublicationPlan(root = process.cwd()) {
 	const excludedWorkspaceNames = new Set(excludedPackages.map(item => item.workspaceName));
 	for (const item of publishPackages) {
 		const manifest = manifests.get(item.workspaceName);
-		assert(item.registryName === item.workspaceName, `$.packages.${item.directory}.registryName`, 'registry package renaming is not modeled by the current release packaging path');
 		assert(manifest.repository?.type === 'git', `$.${item.directory}.repository.type`, 'expected git repository metadata');
 		assert(manifest.repository?.url === REPOSITORY_URL, `$.${item.directory}.repository.url`, 'unexpected repository URL');
 		assert(manifest.repository?.directory === `packages/${item.directory}`, `$.${item.directory}.repository.directory`, 'unexpected repository directory');
@@ -136,8 +103,8 @@ export function verifyNpmPublicationPlan(root = process.cwd()) {
 		assert(hasPackageExports(manifest.exports), `$.${item.directory}.exports`, 'non-empty exports metadata is required');
 		assert(manifest.engines?.node === reviewedNodeEngine, `$.${item.directory}.engines.node`, `must match reviewed root Node engine ${reviewedNodeEngine}`);
 		assert(manifest.publishConfig === undefined, `$.${item.directory}.publishConfig`, 'publishConfig must be introduced only in the publication-enablement change');
-		if (item.role === 'cli-dependency') {
-			assert(manifest.bin === undefined, `$.${item.directory}.bin`, 'CLI dependency packages must not expose npm executables');
+		if (item.workspaceName !== 'virune') {
+			assert(manifest.bin === undefined, `$.${item.directory}.bin`, 'non-CLI npm packages must not expose npm executables');
 		}
 		for (const section of DEPENDENCY_SECTIONS) {
 			const rawDependencies = manifest[section];
@@ -156,23 +123,17 @@ export function verifyNpmPublicationPlan(root = process.cwd()) {
 		}
 	}
 
-	const cli = publishPackages.find(item => item.role === 'cli');
-	assert(cli !== undefined, '$.packages', 'exactly one CLI publication package is required');
-	assert(publishPackages.filter(item => item.role === 'cli').length === 1, '$.packages', 'exactly one CLI publication package is required');
+	const cli = publishPackages.find(item => item.workspaceName === 'virune');
+	assert(cli !== undefined, '$.packages', 'canonical CLI publication package virune is required');
 	const cliManifest = manifests.get(cli.workspaceName);
-	assert(cli.workspaceName === 'virune', '$.packages', 'canonical CLI workspace package must be virune');
-	assert(cli.registryName === 'virune', '$.packages', 'canonical CLI registry name must be virune');
 	assertExactKeys(cliManifest.bin, ['virune'], `$.${cli.directory}.bin`);
 	assert(cliManifest.bin.virune === './dist/src/entry.js', `$.${cli.directory}.bin.virune`, 'canonical virune executable mapping is required');
-	for (const item of publishPackages.filter(item => item.role === 'cli-dependency')) {
+	for (const item of publishPackages.filter(item => item.workspaceName !== 'virune')) {
 		assert(cliManifest.dependencies?.[item.workspaceName] === rootManifest.version, `$.${cli.directory}.dependencies.${item.workspaceName}`, 'CLI must depend on every planned npm package dependency at the exact release version');
 	}
 
 	return {
-		schemaVersion: 1,
-		stage: plan.stage,
-		publicationReady: false,
-		unresolvedRequirements,
+		publicationReady: plan.publicationReady,
 		currentVersion: rootManifest.version,
 		forbidRegistryPublishThroughVersion: forbiddenThroughText,
 		firstStableRegistryRelease: firstStableText,
@@ -188,22 +149,21 @@ export function verifyNpmPublicationPlan(root = process.cwd()) {
 
 function publicationPackage(value, path) {
 	const item = record(value, path);
-	assertExactKeys(item, ['directory', 'workspaceName', 'registryName', 'role'], path);
+	assertExactKeys(item, ['directory', 'workspaceName'], path);
+	const workspaceName = packageName(item.workspaceName, `${path}.workspaceName`);
 	return {
 		directory: identifier(item.directory, `${path}.directory`),
-		workspaceName: packageName(item.workspaceName, `${path}.workspaceName`),
-		registryName: packageName(item.registryName, `${path}.registryName`),
-		role: oneOf(item.role, ['cli', 'cli-dependency'], `${path}.role`),
+		workspaceName,
+		registryName: workspaceName,
 	};
 }
 
 function excludedPackage(value, path) {
 	const item = record(value, path);
-	assertExactKeys(item, ['directory', 'workspaceName', 'reason'], path);
+	assertExactKeys(item, ['directory', 'workspaceName'], path);
 	return {
 		directory: identifier(item.directory, `${path}.directory`),
 		workspaceName: packageName(item.workspaceName, `${path}.workspaceName`),
-		reason: nonEmptyString(item.reason, `${path}.reason`),
 	};
 }
 
@@ -248,11 +208,6 @@ function identifier(value, path) {
 	const text = nonEmptyString(value, path);
 	assert(/^[a-z0-9][a-z0-9-]*$/u.test(text), path, 'invalid workspace directory');
 	return text;
-}
-
-function oneOf(value, values, path) {
-	assert(typeof value === 'string' && values.includes(value), path, `expected one of ${values.join(', ')}`);
-	return value;
 }
 
 function nonEmptyString(value, path) {

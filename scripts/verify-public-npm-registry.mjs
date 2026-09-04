@@ -234,9 +234,9 @@ export function validateReviewedPublicationManifest(manifest, plan) {
 
 	const planPackages = array(policy.packages, '$.publicationPlan.packages').map((item, index) => {
 		const pkg = record(item, `$.publicationPlan.packages[${index}]`);
-		return nonEmptyString(pkg.registryName, `$.publicationPlan.packages[${index}].registryName`);
+		return nonEmptyString(pkg.workspaceName, `$.publicationPlan.packages[${index}].workspaceName`);
 	});
-	assertUnique(planPackages, '$.publicationPlan.packages', 'registryName');
+	assertUnique(planPackages, '$.publicationPlan.packages', 'workspaceName');
 	const expectedNames = [...planPackages].sort(compareText);
 	const packages = array(document.packages, '$.publicationManifest.packages').map((item, index) => {
 		const pkg = record(item, `$.publicationManifest.packages[${index}]`);

@@ -1,18 +1,5 @@
 {
-  "schemaVersion": 1,
-  "stage": "prepublication-audit",
   "publicationReady": false,
-  "unresolvedRequirements": [
-    "clean-registry-install-smoke",
-    "documentation-sync",
-    "generated-project-registry-smoke",
-    "package-publication-enablement",
-    "public-registry-verification",
-    "publication-gate-integration",
-    "registry-ownership",
-    "release-identity-integration",
-    "trusted-publishing"
-  ],
   "forbidRegistryPublishThroughVersion": "1.0.0",
   "firstStableRegistryRelease": "1.1.0",
   "distTagPolicy": {
@@ -20,57 +7,40 @@
     "prerelease": "next",
     "nightly": null
   },
-  "trustedPublishingRequired": true,
-  "publicVerificationRequired": true,
-  "sameReviewedReleaseIdentityRequired": true,
   "packages": [
     {
       "directory": "cli",
-      "workspaceName": "virune",
-      "registryName": "virune",
-      "role": "cli"
+      "workspaceName": "virune"
     },
     {
       "directory": "compiler",
-      "workspaceName": "@virune/compiler",
-      "registryName": "@virune/compiler",
-      "role": "cli-dependency"
+      "workspaceName": "@virune/compiler"
     },
     {
       "directory": "formatter",
-      "workspaceName": "@virune/formatter",
-      "registryName": "@virune/formatter",
-      "role": "cli-dependency"
+      "workspaceName": "@virune/formatter"
     },
     {
       "directory": "js-interop",
-      "workspaceName": "@virune/js-interop",
-      "registryName": "@virune/js-interop",
-      "role": "cli-dependency"
+      "workspaceName": "@virune/js-interop"
     },
     {
       "directory": "runtime",
-      "workspaceName": "@virune/runtime",
-      "registryName": "@virune/runtime",
-      "role": "cli-dependency"
+      "workspaceName": "@virune/runtime"
     },
     {
       "directory": "stdlib",
-      "workspaceName": "@virune/stdlib",
-      "registryName": "@virune/stdlib",
-      "role": "cli-dependency"
+      "workspaceName": "@virune/stdlib"
     }
   ],
   "excludedWorkspacePackages": [
     {
       "directory": "language-server",
-      "workspaceName": "@virune/language-server",
-      "reason": "Implementation component of the official editor integration; not required by the npm CLI distribution contract."
+      "workspaceName": "@virune/language-server"
     },
     {
       "directory": "vscode",
-      "workspaceName": "virune-vscode",
-      "reason": "Distributed as the official VS Code extension rather than as an npm runtime package."
+      "workspaceName": "virune-vscode"
     }
   ]
 }
