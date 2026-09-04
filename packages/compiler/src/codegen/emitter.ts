@@ -358,7 +358,7 @@ export class JavaScriptEmitter {
 
 	private lambdaExpression(expression: A.LambdaExpression, outerContextName: string, forceProjectedSyncExternal = false): string {
 		const parameters = expression.parameters.map(parameter => this.nameOf(parameter.symbolId, parameter.name));
-		const projectedSyncExternal = !expression.async && (forceProjectedSyncExternal || this.#semantic.interop.callableProjections?.some(item => item.nodeId === expression.id && item.descriptor.version === 'virune-callable-shim/v2' && item.descriptor.async === false) === true);
+		const projectedSyncExternal = !expression.async && (forceProjectedSyncExternal || this.#semantic.interop.callableProjections?.some(item => item.nodeId === expression.id && item.descriptor.async === false) === true);
 		const ownsContext = expression.async || projectedSyncExternal;
 		const contextName = ownsContext ? `$lambdaCtx${this.#temporary++}` : outerContextName;
 		if (ownsContext) parameters.push(`${contextName} = rootTaskContext()`);
