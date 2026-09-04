@@ -441,10 +441,11 @@ fn withoutLastInt(values: List<Int>) -> List<Int> {
 	let mut result: List<Int> = []
 	let mut index = 0
 	while index + 1 < List.length(values) {
-		match List.get(values, index) {
-			Some(value) => result = List.append(result, value)
-			None => Unit
+		let value = match List.get(values, index) {
+			Some(item) => item
+			None => panic("Missing lambda scope depth")
 		}
+		result = List.append(result, value)
 		index = index + 1
 	}
 	return result
