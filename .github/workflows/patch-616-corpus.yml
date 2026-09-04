@@ -1,0 +1,32 @@
+name: Patch 616 parser parity corpus
+
+on:
+  push:
+    branches:
+      - fix/616-block-lambda-newlines
+    paths:
+      - .github/patch-616-corpus.py
+      - .github/workflows/patch-616-corpus.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: fix/616-block-lambda-newlines
+          fetch-depth: 0
+      - name: Update parser parity corpus
+        run: python3 .github/patch-616-corpus.py
+      - name: Commit corpus and remove bootstrap files
+        run: |
+          rm .github/patch-616-corpus.py .github/workflows/patch-616-corpus.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .github/self-hosting/parser-parity-corpus-v1.json .github/patch-616-corpus.py .github/workflows/patch-616-corpus.yml
+          git diff --cached --check
+          git commit -m "test(parser): cover block lambda inside call arguments"
+          git push origin HEAD:fix/616-block-lambda-newlines
