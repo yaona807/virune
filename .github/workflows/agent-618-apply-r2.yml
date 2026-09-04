@@ -1,0 +1,139 @@
+name: Apply focused #618 patch r2
+
+on:
+  push:
+    branches:
+      - fix/618-generic-sync-promise-callback
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-validate:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/618-generic-sync-promise-callback
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Apply package-independent fix and regression
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          provider = Path('packages/js-interop/src/index.ts')
+          text = provider.read_text()
+          old_call = "\t\t\tconst contextual = contextualCallbackResult(resultType, checker);"
+          new_call = "\t\t\tconst contextual = contextualCallbackResultForNativeCallable(resultType, checker, callable);"
+          if text.count(old_call) != 1:
+              raise SystemExit(f'expected one contextual result call, found {text.count(old_call)}')
+          text = text.replace(old_call, new_call, 1)
+          old_helper = '''function contextualCallbackResult(type: ts.Type, checker: ts.TypeChecker): ContextualCallableResult | undefined {
+          \tconst flags = type.getFlags();
+          \tif ((flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown | ts.TypeFlags.TypeParameter)) !== 0) return undefined;
+          \tif ((flags & ts.TypeFlags.Void) !== 0) return Object.freeze({ kind: 'void' });
+          \tconst awaited = checker.getAwaitedType(type);
+          \tif (awaited !== undefined && awaited !== type) {
+          \t\tif ((awaited.getFlags() & ts.TypeFlags.Void) !== 0) return Object.freeze({ kind: 'promise', value: 'void' });
+          \t\tconst value = contextualPrimitiveKind(awaited);
+          \t\treturn value === undefined ? undefined : Object.freeze({ kind: 'promise', value });
+          \t}
+          \tconst value = contextualPrimitiveKind(type);
+          \treturn value === undefined ? undefined : Object.freeze({ kind: 'value', value });
+          }'''
+          new_helper = old_helper + '''
+
+          function contextualCallbackResultForNativeCallable(type: ts.Type, checker: ts.TypeChecker, callable: NativeCallableTypeTemplate): ContextualCallableResult | undefined {
+          \tif (!type.isUnion()) return contextualCallbackResult(type, checker);
+          \tif (callable.result === 'Never' || typeof callable.result !== 'string') return undefined;
+          \tconst expected = typescriptCallableResultName(callable.result);
+          \tif (expected === undefined) return undefined;
+          \tfor (const branch of type.types) {
+          \t\tconst result = contextualCallbackResult(branch, checker);
+          \t\tif (result === undefined || result.kind === 'external' || result.kind === 'deferred') continue;
+          \t\tif (callable.async) {
+          \t\t\tif (result.kind !== 'promise') continue;
+          \t\t\tif (callable.result === 'Unit' ? result.value === 'undefined' || result.value === 'void' : result.value === expected) return result;
+          \t\t\tcontinue;
+          \t\t}
+          \t\tif (result.kind === 'void') {
+          \t\t\tif (callable.result === 'Unit') return result;
+          \t\t\tcontinue;
+          \t\t}
+          \t\tif (result.kind === 'value' && result.value === expected) return result;
+          \t}
+          \treturn undefined;
+          }'''
+          if text.count(old_helper) != 1:
+              raise SystemExit(f'expected one contextualCallbackResult helper, found {text.count(old_helper)}')
+          provider.write_text(text.replace(old_helper, new_helper, 1))
+
+          Path('packages/js-interop/test/generic-sync-or-promise-callable.test.ts').write_text('''import assert from 'node:assert/strict';
+          import { writeFile } from 'node:fs/promises';
+          import { join } from 'node:path';
+          import test from 'node:test';
+          import { compileSource } from '@virune/compiler/experimental';
+          import { TypeScriptInteropProvider } from '../src/index.js';
+          import { fixtureRoot } from './fixture.js';
+
+          async function compileFixture(declarations: string, source: string) {
+          \tconst root = await fixtureRoot();
+          \tawait writeFile(join(root, 'src/library.d.ts'), declarations, 'utf8');
+          \tconst provider = new TypeScriptInteropProvider({ projectRoot: root });
+          \treturn compileSource({ id: 1, path: join(root, 'src/main.virune'), text: source }, { platform: 'node', jsInteropProvider: provider });
+          }
+
+          test('generic sync-or-promise callback result keeps the accepted synchronous Unit branch', async () => {
+          \tconst result = await compileFixture(
+          \t\t`export interface TaskOptions { readonly token: string; }\nexport type Task<T> = ((options: TaskOptions) => PromiseLike<T>) | ((options: TaskOptions) => T);\nexport declare function enqueue<T>(task: Task<T>): Promise<T>;\n`,
+          \t\t`import js { enqueue } from "./library.js"\n\nfn main() -> Unit uses JavaScript {\n\tlet result = await enqueue(fn() -> Unit uses JavaScript {\n\t\treturn Unit\n\t})\n\tdiscard result\n\treturn Unit\n}\n`,
+          \t);
+          \tassert.deepEqual(result.diagnostics.filter(item => item.severity === 'error'), []);
+          \tconst projection = result.semantic?.interop.callableProjections?.[0];
+          \tassert.ok(projection);
+          \tassert.deepEqual(projection.descriptor, {
+          \t\tversion: 'virune-callable-shim/v1',
+          \t\tparameters: [],
+          \t\tresult: 'Unit',
+          \t\tasync: false,
+          \t\teffects: ['JavaScript'],
+          \t\tcontextMode: 'root-argument',
+          \t});
+          });
+
+          test('promise-only generic callback still rejects a synchronous Unit boundary', async () => {
+          \tconst result = await compileFixture(
+          \t\t`export interface TaskOptions { readonly token: string; }\nexport declare function promiseOnly<T>(task: (options: TaskOptions) => PromiseLike<T>): Promise<T>;\n`,
+          \t\t`import js { promiseOnly } from "./library.js"\n\nfn main() -> Unit uses JavaScript {\n\tlet result = promiseOnly(fn() -> Unit uses JavaScript {\n\t\treturn Unit\n\t})\n\tdiscard result\n\treturn Unit\n}\n`,
+          \t);
+          \tassert.ok(result.diagnostics.some(item => item.code === 'L4204'));
+          \tassert.equal(result.semantic?.interop.callableProjections?.length ?? 0, 0);
+          });
+          ''')
+          Path('.github/workflows/agent-618-apply-r2.yml').unlink()
+          PY
+      - name: Bootstrap
+        run: npm run bootstrap
+      - name: Build
+        run: npm run build
+      - name: Focused regression
+        run: node --test packages/js-interop/dist/test/generic-sync-or-promise-callable.test.js
+      - name: Validate final diff
+        shell: bash
+        run: |
+          git diff --check
+          test "$(git status --short | wc -l)" -eq 3
+          git status --short
+      - name: Commit focused change
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add packages/js-interop/src/index.ts packages/js-interop/test/generic-sync-or-promise-callable.test.ts .github/workflows/agent-618-apply-r2.yml
+          git commit -m "fix(interop): preserve sync callback union evidence"
+          git push origin HEAD:fix/618-generic-sync-promise-callback
