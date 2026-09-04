@@ -114,8 +114,63 @@ const softAfter = new Set(['Pipe', 'EqualEqual', 'BangEqual', 'LessEqual', 'Grea
 const softBefore = new Set(['Pipe', 'EqualEqual', 'BangEqual', 'LessEqual', 'GreaterEqual', 'AndAnd', 'OrOr', 'Less', 'Greater', 'Plus', 'Minus', 'Star', 'Slash', 'Percent', 'RParen', 'RBracket', 'KwElse']);
 const topLevelDeclarationStarts = new Set(['At', 'KwPub', 'KwAsync', 'KwFn', 'KwRecord', 'KwEnum', 'KwNewtype', 'KwType', 'KwExtern', 'KwUnsafe', 'KwTest', 'KwLet', 'KwConst']);
 
+interface LambdaBlockScope {
+	readonly bodyBraceDepth: number;
+	readonly floorParenDepth: number;
+	readonly floorBracketDepth: number;
+}
+
+function previousNonNewLineIndex(input: readonly IToken[], startIndex: number): number | undefined {
+	for (let index = startIndex; index >= 0; index--) {
+		if (input[index]?.tokenType.name !== 'NewLine') return index;
+	}
+	return undefined;
+}
+
+function matchingOpenParenIndex(input: readonly IToken[], closeIndex: number): number | undefined {
+	let depth = 0;
+	for (let index = closeIndex; index >= 0; index--) {
+		const name = input[index]?.tokenType.name;
+		if (name === 'RParen') depth++;
+		else if (name === 'LParen') {
+			depth--;
+			if (depth === 0) return index;
+		}
+	}
+	return undefined;
+}
+
+function isBlockLambdaOpeningBrace(input: readonly IToken[], braceIndex: number): boolean {
+	let index = braceIndex - 1;
+	let angleDepth = 0;
+	let sawTopLevelComma = false;
+	let sawUses = false;
+	while (index >= 0) {
+		const token = input[index]!;
+		const name = token.tokenType.name;
+		if (name === 'NewLine') { index--; continue; }
+		if (name === 'Greater') { angleDepth++; index--; continue; }
+		if (name === 'Less' && angleDepth > 0) { angleDepth--; index--; continue; }
+		if (angleDepth > 0) { index--; continue; }
+		if (name === 'RParen') {
+			const openIndex = matchingOpenParenIndex(input, index);
+			if (openIndex === undefined) return false;
+			const beforeIndex = previousNonNewLineIndex(input, openIndex - 1);
+			if (beforeIndex !== undefined && input[beforeIndex]?.tokenType.name === 'KwFn') return !sawTopLevelComma || sawUses;
+			index = openIndex - 1;
+			continue;
+		}
+		if (name === 'KwUses') sawUses = true;
+		else if (name === 'Comma') sawTopLevelComma = true;
+		else if (name === 'FatArrow' || name === 'Equals' || name === 'Colon' || name === 'LBrace' || name === 'RBrace' || name === 'RBracket') return false;
+		index--;
+	}
+	return false;
+}
+
 function normalizeNewLines(input: readonly IToken[]): IToken[] {
 	const output: IToken[] = [];
+	const lambdaBlockScopes: LambdaBlockScope[] = [];
 	let parenDepth = 0;
 	let bracketDepth = 0;
 	let braceDepth = 0;
@@ -128,17 +183,27 @@ function normalizeNewLines(input: readonly IToken[]): IToken[] {
 			const topLevelDeclarationBoundary = braceDepth === 0
 				&& previous?.tokenType.name === 'Greater'
 				&& (next === undefined || topLevelDeclarationStarts.has(next.tokenType.name));
-			const soft = parenDepth > 0
-				|| bracketDepth > 0
+			const scope = lambdaBlockScopes.at(-1);
+			const structuralSoft = scope === undefined
+				? parenDepth > 0 || bracketDepth > 0
+				: parenDepth > scope.floorParenDepth || bracketDepth > scope.floorBracketDepth;
+			const soft = structuralSoft
 				|| (!topLevelDeclarationBoundary && previous !== undefined && softAfter.has(previous.tokenType.name))
 				|| (next !== undefined && softBefore.has(next.tokenType.name));
 			if (!soft && previous?.tokenType.name !== 'NewLine') output.push(token);
 			continue;
 		}
+		const opensLambdaBlock = name === 'LBrace' && isBlockLambdaOpeningBrace(input, index);
 		output.push(token);
 		if (name === 'LParen') parenDepth++; else if (name === 'RParen') parenDepth = Math.max(0, parenDepth - 1);
 		if (name === 'LBracket') bracketDepth++; else if (name === 'RBracket') bracketDepth = Math.max(0, bracketDepth - 1);
-		if (name === 'LBrace') braceDepth++; else if (name === 'RBrace') braceDepth = Math.max(0, braceDepth - 1);
+		if (name === 'LBrace') {
+			braceDepth++;
+			if (opensLambdaBlock) lambdaBlockScopes.push({ bodyBraceDepth: braceDepth, floorParenDepth: parenDepth, floorBracketDepth: bracketDepth });
+		} else if (name === 'RBrace') {
+			braceDepth = Math.max(0, braceDepth - 1);
+			while (lambdaBlockScopes.length > 0 && lambdaBlockScopes[lambdaBlockScopes.length - 1]!.bodyBraceDepth > braceDepth) lambdaBlockScopes.pop();
+		}
 	}
 	return output;
 }
