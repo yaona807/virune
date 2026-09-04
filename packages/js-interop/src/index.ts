@@ -436,7 +436,7 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 		else if (callable.result === 'Never' || typeof callable.result !== 'string') result = Object.freeze({ kind: 'external' });
 		else {
 			const resultType = checker.getReturnTypeOfSignature(signature);
-			const contextual = contextualCallbackResult(resultType, checker);
+			const contextual = contextualCallbackResultForNativeCallable(resultType, checker, callable);
 			if (contextual === undefined) return undefined;
 			result = contextual;
 		}
@@ -1464,6 +1464,25 @@ function contextualCallbackResult(type: ts.Type, checker: ts.TypeChecker): Conte
 	}
 	const value = contextualPrimitiveKind(type);
 	return value === undefined ? undefined : Object.freeze({ kind: 'value', value });
+}
+
+function contextualCallbackResultForNativeCallable(type: ts.Type, checker: ts.TypeChecker, callable: NativeCallableTypeTemplate): ContextualCallableResult | undefined {
+	if (!type.isUnion() || callable.async || callable.result !== 'Unit') return contextualCallbackResult(type, checker);
+	let synchronous: ContextualCallableResult | undefined;
+	let hasPromise = false;
+	for (const branch of type.types) {
+		const result = contextualCallbackResult(branch, checker);
+		if (result?.kind === 'promise' && (result.value === 'undefined' || result.value === 'void')) {
+			hasPromise = true;
+			continue;
+		}
+		if (result?.kind === 'void' || result?.kind === 'value' && result.value === 'undefined') {
+			synchronous ??= result;
+			continue;
+		}
+		return contextualCallbackResult(type, checker);
+	}
+	return hasPromise && synchronous !== undefined ? synchronous : contextualCallbackResult(type, checker);
 }
 
 function renderContextualTypeExpression(type: ts.Type, checker: ts.TypeChecker, location: ts.Node): string | undefined {
