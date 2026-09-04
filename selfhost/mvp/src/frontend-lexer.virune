@@ -359,18 +359,18 @@ fn retainGenericDeclarationBreak(previous: FrontendToken?, next: FrontendToken?,
 	}
 }
 
-fn previousNonNewLineIndex(tokens: List<FrontendToken>, startIndex: Int) -> Int? {
+fn previousNonNewLineIndex(tokens: List<FrontendToken>, startIndex: Int) -> Int {
 	let mut index = startIndex
 	while index >= 0 {
 		if tokenAt(tokens, index).kind != FrontendTokenKind.NewLine {
-			return Some(index)
+			return index
 		}
 		index = index - 1
 	}
-	return None
+	return -1
 }
 
-fn matchingOpenParenIndex(tokens: List<FrontendToken>, closeIndex: Int) -> Int? {
+fn matchingOpenParenIndex(tokens: List<FrontendToken>, closeIndex: Int) -> Int {
 	let mut depth = 0
 	let mut index = closeIndex
 	while index >= 0 {
@@ -380,12 +380,12 @@ fn matchingOpenParenIndex(tokens: List<FrontendToken>, closeIndex: Int) -> Int? 
 		} else if text == "(" {
 			depth = depth - 1
 			if depth == 0 {
-				return Some(index)
+				return index
 			}
 		}
 		index = index - 1
 	}
-	return None
+	return -1
 }
 
 fn isBlockLambdaOpeningBrace(tokens: List<FrontendToken>, braceIndex: Int) -> Bool {
@@ -414,23 +414,16 @@ fn isBlockLambdaOpeningBrace(tokens: List<FrontendToken>, braceIndex: Int) -> Bo
 			continue
 		}
 		if value.text == ")" {
-			let openIndex = matchingOpenParenIndex(tokens, index)
-			match openIndex {
-				Some(open) => {
-					let beforeIndex = previousNonNewLineIndex(tokens, open - 1)
-					match beforeIndex {
-						Some(before) => {
-							if tokenAt(tokens, before).text == "fn" {
-								return !sawTopLevelComma || sawUses
-							}
-						}
-						None => Unit
-					}
-					index = open - 1
-					continue
-				}
-				None => return false
+			let open = matchingOpenParenIndex(tokens, index)
+			if open < 0 {
+				return false
 			}
+			let before = previousNonNewLineIndex(tokens, open - 1)
+			if before >= 0 && tokenAt(tokens, before).text == "fn" {
+				return !sawTopLevelComma || sawUses
+			}
+			index = open - 1
+			continue
 		}
 		if value.text == "uses" {
 			sawUses = true
