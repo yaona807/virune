@@ -1,0 +1,86 @@
+name: Narrow focused #618 patch
+
+on:
+  push:
+    branches:
+      - fix/618-generic-sync-promise-callback
+
+permissions:
+  contents: write
+
+jobs:
+  narrow-and-validate:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/618-generic-sync-promise-callback
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Narrow implementation to current requirement
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('packages/js-interop/src/index.ts')
+          text = path.read_text()
+          old = '''function contextualCallbackResultForNativeCallable(type: ts.Type, checker: ts.TypeChecker, callable: NativeCallableTypeTemplate): ContextualCallableResult | undefined {
+          \tif (!type.isUnion()) return contextualCallbackResult(type, checker);
+          \tif (callable.result === 'Never' || typeof callable.result !== 'string') return undefined;
+          \tconst expected = typescriptCallableResultName(callable.result);
+          \tif (expected === undefined) return undefined;
+          \tfor (const branch of type.types) {
+          \t\tconst result = contextualCallbackResult(branch, checker);
+          \t\tif (result === undefined || result.kind === 'external' || result.kind === 'deferred') continue;
+          \t\tif (callable.async) {
+          \t\t\tif (result.kind !== 'promise') continue;
+          \t\t\tif (callable.result === 'Unit' ? result.value === 'undefined' || result.value === 'void' : result.value === expected) return result;
+          \t\t\tcontinue;
+          \t\t}
+          \t\tif (result.kind === 'void') {
+          \t\t\tif (callable.result === 'Unit') return result;
+          \t\t\tcontinue;
+          \t\t}
+          \t\tif (result.kind === 'value' && result.value === expected) return result;
+          \t}
+          \treturn undefined;
+          }'''
+          new = '''function contextualCallbackResultForNativeCallable(type: ts.Type, checker: ts.TypeChecker, callable: NativeCallableTypeTemplate): ContextualCallableResult | undefined {
+          \tif (!type.isUnion() || callable.async || callable.result !== 'Unit') return contextualCallbackResult(type, checker);
+          \tfor (const branch of type.types) {
+          \t\tconst result = contextualCallbackResult(branch, checker);
+          \t\tif (result?.kind === 'void' || result?.kind === 'value' && result.value === 'undefined') return result;
+          \t}
+          \treturn contextualCallbackResult(type, checker);
+          }'''
+          if text.count(old) != 1:
+              raise SystemExit(f'expected one broad helper, found {text.count(old)}')
+          path.write_text(text.replace(old, new, 1))
+          Path('.github/workflows/agent-618-narrow.yml').unlink()
+          PY
+      - name: Bootstrap
+        run: npm run bootstrap
+      - name: Build
+        run: npm run build
+      - name: Focused regressions
+        run: |
+          node --test packages/js-interop/dist/test/generic-sync-or-promise-callable.test.js
+          node --test packages/js-interop/dist/test/callable-boundary-regressions.test.js
+      - name: Validate final diff
+        shell: bash
+        run: |
+          git diff --check
+          test "$(git status --short | wc -l)" -eq 2
+          git status --short
+      - name: Commit narrow implementation
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add packages/js-interop/src/index.ts .github/workflows/agent-618-narrow.yml
+          git commit -m "refactor(interop): scope sync union proof to Unit"
+          git push origin HEAD:fix/618-generic-sync-promise-callback
