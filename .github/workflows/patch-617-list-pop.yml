@@ -1,0 +1,32 @@
+name: Patch 617 list pop
+
+on:
+  push:
+    branches:
+      - fix/616-block-lambda-newlines
+    paths:
+      - .github/workflows/patch-617-list-pop.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: fix/616-block-lambda-newlines
+      - name: Apply source patch
+        env:
+          PATCH_B64: ZnJvbSBwYXRobGliIGltcG9ydCBQYXRoCnBhdGggPSBQYXRoKCJzZWxmaG9zdC9tdnAvc3JjL2Zyb250ZW5kLWxleGVyLnZpcnVuZSIpCnRleHQgPSBwYXRoLnJlYWRfdGV4dCgpCm9sZCA9ICIiImZuIHdpdGhvdXRMYXN0SW50KHZhbHVlczogTGlzdDxJbnQ+KSAtPiBMaXN0PEludD4gewpcdGxldCBtdXQgcmVzdWx0OiBMaXN0PEludD4gPSBbXVxuXHRsZXQgbXV0IGluZGV4ID0gMFxuXHR3aGlsZSBpbmRleCArIDEgPCBMaXN0Lmxlbmd0aCh2YWx1ZXMpIHtcblx0XHRtYXRjaCBMaXN0LmdldCh2YWx1ZXMsIGluZGV4KSB7XG5cdFx0XHRTb21lKHZhbHVlKSA9PiByZXN1bHQgPSBMaXN0LmFwcGVuZChyZXN1bHQsIHZhbHVlKVxuXHRcdFx0Tm9uZSA9PiBVbml0XG5cdFx0fVxuXHRcdGluZGV4ID0gaW5kZXggKyAxXG5cdH1cblx0cmV0dXJuIHJlc3VsdFxufVxuIiIiCm5ldyA9ICIiImZuIHdpdGhvdXRMYXN0SW50KHZhbHVlczogTGlzdDxJbnQ+KSAtPiBMaXN0PEludD4gewpcdGxldCBtdXQgcmVzdWx0OiBMaXN0PEludD4gPSBbXVxuXHRsZXQgbXV0IGluZGV4ID0gMFxuXHR3aGlsZSBpbmRleCArIDEgPCBMaXN0Lmxlbmd0aCh2YWx1ZXMpIHtcblx0XHRsZXQgdmFsdWUgPSBtYXRjaCBMaXN0LmdldCh2YWx1ZXMsIGluZGV4KSB7XG5cdFx0XHRTb21lKGl0ZW0pID0+IGl0ZW1cblx0XHRcdE5vbmUgPT4gcGFuaWMoXCJNaXNzaW5nIGxhbWJkYSBzY29wZSBkZXB0aFwiKVxuXHRcdH1cblx0XHRyZXN1bHQgPSBMaXN0LmFwcGVuZChyZXN1bHQsIHZhbHVlKVxuXHRcdGluZGV4ID0gaW5kZXggKyAxXG5cdH1cblx0cmV0dXJuIHJlc3VsdFxufVxuIiIiCmlmIG9sZCBub3QgaW4gdGV4dDoKICAgIHJhaXNlIFN5c3RlbUV4aXQoInRhcmdldCBibG9jayBub3QgZm91bmQgZXhhY3RseSIpCnBhdGgud3JpdGVfdGV4dCh0ZXh0LnJlcGxhY2Uob2xkLCBuZXcpKQo=
+        run: echo "$PATCH_B64" | base64 -d | python3
+      - name: Remove temporary patch workflow
+        run: git rm .github/workflows/patch-617-list-pop.yml
+      - name: Commit patch
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add selfhost/mvp/src/frontend-lexer.virune
+          git commit -m 'fix(parser): keep lambda scope list pop expression-valid'
+          git push origin HEAD:fix/616-block-lambda-newlines
