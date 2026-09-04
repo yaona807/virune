@@ -20,6 +20,12 @@ const REQUIRED_PREPUBLICATION_BLOCKERS = [
 	'release-identity-integration',
 	'trusted-publishing',
 ];
+const REQUIRED_POSTPUBLICATION_BLOCKERS = [
+	'clean-registry-install-smoke',
+	'generated-project-registry-smoke',
+	'public-registry-verification',
+];
+const PUBLICATION_STAGES = ['prepublication-audit', 'bootstrap-candidate', 'publication-candidate'];
 const DEPENDENCY_SECTIONS = ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies'];
 const RUNTIME_DEPENDENCY_SECTIONS = new Set(['dependencies', 'peerDependencies', 'optionalDependencies']);
 
@@ -41,17 +47,12 @@ export function verifyNpmPublicationPlan(root = process.cwd()) {
 		'excludedWorkspacePackages',
 	], '$');
 	assert(plan.schemaVersion === 1, '$.schemaVersion', 'expected schemaVersion 1');
-	assert(plan.stage === 'prepublication-audit', '$.stage', 'expected prepublication-audit stage');
-	assert(plan.publicationReady === false, '$.publicationReady', 'prepublication audit must not claim publication readiness');
+	const stage = oneOf(plan.stage, PUBLICATION_STAGES, '$.stage');
+	assert(typeof plan.publicationReady === 'boolean', '$.publicationReady', 'expected a boolean');
 	const unresolvedRequirements = array(plan.unresolvedRequirements, '$.unresolvedRequirements')
 		.map((value, index) => nonEmptyString(value, `$.unresolvedRequirements[${index}]`))
 		.sort(compareText);
 	assertUnique(unresolvedRequirements, '$.unresolvedRequirements', 'requirement');
-	assert(
-		JSON.stringify(unresolvedRequirements) === JSON.stringify(REQUIRED_PREPUBLICATION_BLOCKERS),
-		'$.unresolvedRequirements',
-		`expected unresolved prepublication requirements ${REQUIRED_PREPUBLICATION_BLOCKERS.join(', ')}`,
-	);
 	assert(plan.trustedPublishingRequired === true, '$.trustedPublishingRequired', 'must remain true');
 	assert(plan.publicVerificationRequired === true, '$.publicVerificationRequired', 'must remain true');
 	assert(plan.sameReviewedReleaseIdentityRequired === true, '$.sameReviewedReleaseIdentityRequired', 'must remain true');
@@ -71,7 +72,15 @@ export function verifyNpmPublicationPlan(root = process.cwd()) {
 	assert(stableDistTag !== prereleaseDistTag, '$.distTagPolicy', 'stable and prerelease dist-tags must be distinct');
 	assert(distTagPolicy.nightly === null, '$.distTagPolicy.nightly', 'nightly releases must not be published to npm in this policy');
 	assert(rootManifest.private === true, '$root.private', 'monorepo root must remain private');
-	assert(rootManifest.version === plan.forbidRegistryPublishThroughVersion, '$root.version', 'prepublication plan must be updated deliberately when the repository version advances');
+	const rootVersion = releaseVersion(rootManifest.version, '$root.version');
+	validatePublicationStage({
+		stage,
+		publicationReady: plan.publicationReady,
+		unresolvedRequirements,
+		rootVersion,
+		forbiddenThroughText,
+		firstStable,
+	});
 	const rootWorkspaces = array(rootManifest.workspaces, '$root.workspaces')
 		.map((value, index) => nonEmptyString(value, `$root.workspaces[${index}]`));
 	assert(
@@ -111,7 +120,7 @@ export function verifyNpmPublicationPlan(root = process.cwd()) {
 		const manifest = readJson(resolve(root, 'packages', item.directory, 'package.json'));
 		assert(manifest.name === item.workspaceName, `$.${item.directory}.name`, `expected workspace package name ${item.workspaceName}`);
 		assert(manifest.version === rootManifest.version, `$.${item.directory}.version`, 'must match the reviewed root release version');
-		assert(manifest.private === true, `$.${item.directory}.private`, 'prepublication audit requires private:true until the publication-enablement change');
+		assert(manifest.private === true, `$.${item.directory}.private`, 'reviewed source workspace must remain private:true');
 		assert(manifest.license === reviewedLicense, `$.${item.directory}.license`, `must match reviewed root license ${reviewedLicense}`);
 		manifests.set(item.workspaceName, manifest);
 	}
@@ -135,7 +144,7 @@ export function verifyNpmPublicationPlan(root = process.cwd()) {
 		}
 		assert(hasPackageExports(manifest.exports), `$.${item.directory}.exports`, 'non-empty exports metadata is required');
 		assert(manifest.engines?.node === reviewedNodeEngine, `$.${item.directory}.engines.node`, `must match reviewed root Node engine ${reviewedNodeEngine}`);
-		assert(manifest.publishConfig === undefined, `$.${item.directory}.publishConfig`, 'publishConfig must be introduced only in the publication-enablement change');
+		assert(manifest.publishConfig === undefined, `$.${item.directory}.publishConfig`, 'publishConfig must remain absent from reviewed source workspaces');
 		if (item.role === 'cli-dependency') {
 			assert(manifest.bin === undefined, `$.${item.directory}.bin`, 'CLI dependency packages must not expose npm executables');
 		}
@@ -170,8 +179,8 @@ export function verifyNpmPublicationPlan(root = process.cwd()) {
 
 	return {
 		schemaVersion: 1,
-		stage: plan.stage,
-		publicationReady: false,
+		stage,
+		publicationReady: plan.publicationReady,
 		unresolvedRequirements,
 		currentVersion: rootManifest.version,
 		forbidRegistryPublishThroughVersion: forbiddenThroughText,
@@ -184,6 +193,35 @@ export function verifyNpmPublicationPlan(root = process.cwd()) {
 		publishPackages: publishPackages.map(item => ({ workspaceName: item.workspaceName, registryName: item.registryName })),
 		excludedWorkspacePackages: excludedPackages.map(item => item.workspaceName),
 	};
+}
+
+function validatePublicationStage({ stage, publicationReady, unresolvedRequirements, rootVersion, forbiddenThroughText, firstStable }) {
+	if (stage === 'prepublication-audit') {
+		assert(publicationReady === false, '$.publicationReady', 'prepublication audit must not claim publication readiness');
+		assert(rootVersion.text === forbiddenThroughText, '$root.version', 'prepublication plan must be updated deliberately when the repository version advances');
+		assertRequirements(unresolvedRequirements, REQUIRED_PREPUBLICATION_BLOCKERS, 'prepublication-audit');
+		return;
+	}
+	if (stage === 'bootstrap-candidate') {
+		assert(publicationReady === false, '$.publicationReady', 'bootstrap candidate must not enable normal npm publication');
+		assert(rootVersion.channel === 'prerelease' && rootVersion.prereleaseLabel === 'rc', '$root.version', 'bootstrap candidate must use an rc prerelease');
+		assert(compareSemver(rootVersion.base, firstStable) === 0, '$root.version', `bootstrap candidate must use the ${FIRST_STABLE_REGISTRY_RELEASE} release line`);
+		assertRequirements(unresolvedRequirements, REQUIRED_PREPUBLICATION_BLOCKERS, 'bootstrap-candidate');
+		return;
+	}
+	assert(stage === 'publication-candidate', '$.stage', 'unexpected publication stage');
+	assert(publicationReady === true, '$.publicationReady', 'publication candidate must explicitly enable normal npm publication');
+	assert(rootVersion.channel !== 'nightly', '$root.version', 'publication candidate must not use a nightly version');
+	assert(compareSemver(rootVersion.base, firstStable) >= 0, '$root.version', `publication candidate must be on or after ${FIRST_STABLE_REGISTRY_RELEASE}`);
+	assertRequirements(unresolvedRequirements, REQUIRED_POSTPUBLICATION_BLOCKERS, 'publication-candidate');
+}
+
+function assertRequirements(actual, expected, stage) {
+	assert(
+		JSON.stringify(actual) === JSON.stringify(expected),
+		'$.unresolvedRequirements',
+		`expected unresolved ${stage} requirements ${expected.join(', ')}`,
+	);
 }
 
 function publicationPackage(value, path) {
@@ -223,6 +261,15 @@ function semver(value, path) {
 	const match = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/u.exec(text);
 	assert(match !== null, path, 'expected a stable x.y.z semantic version');
 	return match.slice(1).map(Number);
+}
+
+function releaseVersion(value, path) {
+	const text = nonEmptyString(value, path);
+	const match = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:(?:-(alpha|beta|rc)\.(0|[1-9]\d*))|(?:-nightly\.(\d{8})\.(0|[1-9]\d*)))?$/u.exec(text);
+	assert(match !== null, path, 'expected stable, alpha, beta, rc, or nightly Virune semantic version');
+	const base = match.slice(1, 4).map(Number);
+	const channel = match[6] !== undefined ? 'nightly' : match[4] !== undefined ? 'prerelease' : 'stable';
+	return { text, base, channel, prereleaseLabel: match[4] ?? null };
 }
 
 function compareSemver(left, right) {
