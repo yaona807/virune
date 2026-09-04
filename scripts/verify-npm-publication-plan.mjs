@@ -211,8 +211,8 @@ function validatePublicationStage({ stage, publicationReady, unresolvedRequireme
 	}
 	assert(stage === 'publication-candidate', '$.stage', 'unexpected publication stage');
 	assert(publicationReady === true, '$.publicationReady', 'publication candidate must explicitly enable normal npm publication');
-	assert(rootVersion.channel !== 'nightly', '$root.version', 'publication candidate must not use a nightly version');
-	assert(compareSemver(rootVersion.base, firstStable) >= 0, '$root.version', `publication candidate must be on or after ${FIRST_STABLE_REGISTRY_RELEASE}`);
+	assert(rootVersion.channel === 'prerelease' && rootVersion.prereleaseLabel === 'rc', '$root.version', 'publication candidate must use an rc prerelease');
+	assert(compareSemver(rootVersion.base, firstStable) === 0, '$root.version', `publication candidate must use the ${FIRST_STABLE_REGISTRY_RELEASE} release line`);
 	assertRequirements(unresolvedRequirements, REQUIRED_POSTPUBLICATION_BLOCKERS, 'publication-candidate');
 }
 
