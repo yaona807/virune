@@ -33,7 +33,7 @@ test('releases generate provenance and SBOM attestations for every asset', async
 	assert.match(source, /sbom-path: release\/SBOM\.cdx\.json/u);
 });
 
-test('normal npm publication uses verified eligibility and precedes immutable GitHub Release creation', async () => {
+test('normal npm publication requires verified Registry eligibility and reviewed publication readiness', async () => {
 	const source = await readWorkflow('release.yml');
 	assert.match(source, /id-token:\s+write/u);
 	assert.match(source, /concurrency:\n\s+group: virune-release-publication\n\s+cancel-in-progress: false/u);
@@ -42,7 +42,10 @@ test('normal npm publication uses verified eligibility and precedes immutable Gi
 	assert.match(source, /import \{ verifyNpmPublicationIdentity \} from '\.\/scripts\/verify-npm-publication-identity\.mjs';/u);
 	assert.match(source, /const identity = verifyNpmPublicationIdentity\(\);/u);
 	assert.match(source, /eligible=\$\{identity\.registryVersionEligible\}/u);
-	assert.equal((source.match(/if: steps\.npm-publication\.outputs\.eligible == 'true'/gu) ?? []).length, 2);
+	assert.match(source, /ready=\$\{identity\.publicationReady\}/u);
+	assert.match(source, /publish=\$\{identity\.registryVersionEligible === true && identity\.publicationReady === true\}/u);
+	assert.equal((source.match(/if: steps\.npm-publication\.outputs\.publish == 'true'/gu) ?? []).length, 2);
+	assert.doesNotMatch(source, /if: steps\.npm-publication\.outputs\.eligible == 'true'/u);
 	assert.match(source, /npm install --global npm@11\.19\.0 --registry=https:\/\/registry\.npmjs\.org\/ --ignore-scripts --no-audit --no-fund/u);
 	assert.match(source, /test "\$\(npm --version\)" = "11\.19\.0"/u);
 	assert.match(source, /node scripts\/publish-npm-release\.mjs --expected-commit="\$GITHUB_SHA"/u);
@@ -62,8 +65,8 @@ test('normal npm publication uses verified eligibility and precedes immutable Gi
 	}
 	assert(releaseGate < provenance, 'release gate must precede release attestations');
 	assert(provenance < sbom, 'build provenance must precede SBOM attestation');
-	assert(sbom < eligibility, 'release attestations must complete before npm eligibility is derived from reviewed artifacts');
-	assert(eligibility < npmPin, 'npm-ineligible releases must be identified before the npm client network fetch');
+	assert(sbom < eligibility, 'release attestations must complete before npm eligibility/readiness is derived from reviewed artifacts');
+	assert(eligibility < npmPin, 'non-publishable releases must be identified before the npm client network fetch');
 	assert(npmPin < npmPublish, 'the exact npm client must be selected before publication');
 	assert(npmPublish < githubRelease, 'npm publication/recovery must run before immutable GitHub Release creation');
 });
