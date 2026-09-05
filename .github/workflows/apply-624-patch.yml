@@ -1,0 +1,59 @@
+name: Apply #624 source patch
+
+on:
+  push:
+    branches:
+      - feat/624-erased-explicit-this
+    paths:
+      - .github/workflows/apply-624-patch.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor == 'yaona807'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/624-erased-explicit-this
+          fetch-depth: 0
+      - name: Apply exact provider patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('packages/js-interop/src/index.ts')
+          text = path.read_text()
+
+          old_signature = '''\tconst signature = signatures[0]!;\n\tif (signature.thisParameter !== undefined || (signature.getTypeParameters()?.length ?? 0) !== 0) return undefined;\n\tconst parameters = signature.getParameters();\n\tconst declaration = signature.declaration;\n\tif (declaration === undefined || declaration.parameters.length !== parameters.length) return undefined;\n\treturn signature;\n}\n\nfunction contextualPrimitiveKind'''
+          new_signature = '''\tconst signature = signatures[0]!;\n\tif ((signature.getTypeParameters()?.length ?? 0) !== 0) return undefined;\n\tconst parameters = signature.getParameters();\n\tconst declaration = signature.declaration;\n\tif (declaration === undefined) return undefined;\n\tif (signature.thisParameter === undefined) {\n\t\tif (declaration.parameters.length !== parameters.length) return undefined;\n\t} else if (!erasedThisParameterIsSupported(signature, checker)) return undefined;\n\treturn signature;\n}\n\nfunction erasedThisParameterIsSupported(signature: ts.Signature, checker: ts.TypeChecker): boolean {\n\ttry {\n\t\tconst declaration = signature.declaration;\n\t\tconst thisParameter = signature.thisParameter;\n\t\tif (declaration === undefined || thisParameter === undefined) return false;\n\t\tconst parameters = signature.getParameters();\n\t\tif (declaration.parameters.length !== parameters.length + 1) return false;\n\t\tconst node = declaration.parameters[0];\n\t\tif (node === undefined\n\t\t\t|| !ts.isIdentifier(node.name)\n\t\t\t|| node.name.text !== 'this'\n\t\t\t|| node.type === undefined\n\t\t\t|| node.dotDotDotToken !== undefined\n\t\t\t|| node.questionToken !== undefined\n\t\t\t|| node.initializer !== undefined) return false;\n\t\tconst type = checker.getTypeOfSymbolAtLocation(thisParameter, node);\n\t\tconst flags = type.getFlags();\n\t\tconst unsafe = ts.TypeFlags.Any\n\t\t\t| ts.TypeFlags.Unknown\n\t\t\t| ts.TypeFlags.Never\n\t\t\t| ts.TypeFlags.TypeParameter\n\t\t\t| ts.TypeFlags.Union\n\t\t\t| ts.TypeFlags.Intersection;\n\t\treturn (flags & unsafe) === 0 && (flags & ts.TypeFlags.Object) !== 0;\n\t} catch {\n\t\treturn false;\n\t}\n}\n\nfunction contextualPrimitiveKind'''
+          if text.count(old_signature) != 1:
+              raise SystemExit(f'expected one contextualCallableSignature target, found {text.count(old_signature)}')
+          text = text.replace(old_signature, new_signature)
+
+          old_result = '''function contextualCallbackResultForNativeCallable(type: ts.Type, checker: ts.TypeChecker, callable: NativeCallableTypeTemplate): ContextualCallableResult | undefined {\n\tif (!type.isUnion() || callable.async || callable.result !== 'Unit') return contextualCallbackResult(type, checker);'''
+          new_result = '''function contextualCallbackResultForNativeCallable(type: ts.Type, checker: ts.TypeChecker, callable: NativeCallableTypeTemplate): ContextualCallableResult | undefined {\n\tif ((type.getFlags() & ts.TypeFlags.Any) !== 0) {\n\t\treturn !callable.async && callable.result === 'Unit'\n\t\t\t? Object.freeze({ kind: 'value', value: 'undefined' })\n\t\t\t: undefined;\n\t}\n\tif (!type.isUnion() || callable.async || callable.result !== 'Unit') return contextualCallbackResult(type, checker);'''
+          if text.count(old_result) != 1:
+              raise SystemExit(f'expected one callback-result target, found {text.count(old_result)}')
+          text = text.replace(old_result, new_result)
+
+          path.write_text(text)
+          PY
+
+          rm .github/workflows/apply-624-patch.yml
+          git diff --check
+          git diff -- packages/js-interop/src/index.ts
+          test "$(git diff --name-only | sort)" = "$(printf '.github/workflows/apply-624-patch.yml\npackages/js-interop/src/index.ts' | sort)"
+      - name: Commit source change and remove patch workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "Yaona"
+          git config user.email "72598968+yaona807@users.noreply.github.com"
+          git add packages/js-interop/src/index.ts .github/workflows/apply-624-patch.yml
+          git commit -m "feat(interop): prove erased explicit-this callbacks"
+          git push origin HEAD:feat/624-erased-explicit-this
