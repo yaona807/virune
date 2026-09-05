@@ -14,7 +14,7 @@ class InteropAdapterBuildError extends Error {
 	public constructor(readonly diagnostics: readonly string[]) { super('TypeScript interop adapter validation failed'); }
 }
 
-const VERSION = '1.0.0';
+const VERSION = '1.1.0-rc.0';
 const args = process.argv.slice(2);
 const command = args[0] ?? 'help';
 
