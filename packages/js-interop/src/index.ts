@@ -1434,11 +1434,43 @@ function contextualCallableSignature(type: ts.Type, checker: ts.TypeChecker): ts
 	const requiredProperties = checker.getPropertiesOfType(callableType).filter(property => (property.flags & ts.SymbolFlags.Optional) === 0);
 	if (requiredProperties.length !== 0) return undefined;
 	const signature = signatures[0]!;
-	if (signature.thisParameter !== undefined || (signature.getTypeParameters()?.length ?? 0) !== 0) return undefined;
+	if ((signature.getTypeParameters()?.length ?? 0) !== 0) return undefined;
 	const parameters = signature.getParameters();
 	const declaration = signature.declaration;
-	if (declaration === undefined || declaration.parameters.length !== parameters.length) return undefined;
+	if (declaration === undefined) return undefined;
+	if (signature.thisParameter === undefined) {
+		if (declaration.parameters.length !== parameters.length) return undefined;
+	} else if (!erasedThisParameterIsSupported(signature, checker)) return undefined;
 	return signature;
+}
+
+function erasedThisParameterIsSupported(signature: ts.Signature, checker: ts.TypeChecker): boolean {
+	try {
+		const declaration = signature.declaration;
+		const thisParameter = signature.thisParameter;
+		if (declaration === undefined || thisParameter === undefined) return false;
+		const parameters = signature.getParameters();
+		if (declaration.parameters.length !== parameters.length + 1) return false;
+		const node = declaration.parameters[0];
+		if (node === undefined
+			|| !ts.isIdentifier(node.name)
+			|| node.name.text !== 'this'
+			|| node.type === undefined
+			|| node.dotDotDotToken !== undefined
+			|| node.questionToken !== undefined
+			|| node.initializer !== undefined) return false;
+		const type = checker.getTypeOfSymbolAtLocation(thisParameter, node);
+		const flags = type.getFlags();
+		const unsafe = ts.TypeFlags.Any
+			| ts.TypeFlags.Unknown
+			| ts.TypeFlags.Never
+			| ts.TypeFlags.TypeParameter
+			| ts.TypeFlags.Union
+			| ts.TypeFlags.Intersection;
+		return (flags & unsafe) === 0 && (flags & ts.TypeFlags.Object) !== 0;
+	} catch {
+		return false;
+	}
 }
 
 function contextualPrimitiveKind(type: ts.Type): ContextualCallablePrimitiveKind | undefined {
@@ -1467,6 +1499,11 @@ function contextualCallbackResult(type: ts.Type, checker: ts.TypeChecker): Conte
 }
 
 function contextualCallbackResultForNativeCallable(type: ts.Type, checker: ts.TypeChecker, callable: NativeCallableTypeTemplate): ContextualCallableResult | undefined {
+	if ((type.getFlags() & ts.TypeFlags.Any) !== 0) {
+		return !callable.async && callable.result === 'Unit'
+			? Object.freeze({ kind: 'value', value: 'undefined' })
+			: undefined;
+	}
 	if (!type.isUnion() || callable.async || callable.result !== 'Unit') return contextualCallbackResult(type, checker);
 	let synchronous: ContextualCallableResult | undefined;
 	let hasPromise = false;
