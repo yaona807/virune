@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "stage": "prepublication-audit",
+  "stage": "bootstrap-candidate",
   "publicationReady": false,
   "unresolvedRequirements": [
     "clean-registry-install-smoke",
