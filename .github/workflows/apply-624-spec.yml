@@ -1,0 +1,67 @@
+name: Apply #624 spec patch
+
+on:
+  push:
+    branches:
+      - feat/624-erased-explicit-this
+    paths:
+      - .github/workflows/apply-624-spec.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor == 'yaona807'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/624-erased-explicit-this
+          fetch-depth: 0
+      - name: Apply exact synchronized spec patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          en = Path('spec/js-interop.md')
+          text = en.read_text()
+          old = '''A generated callable boundary is available only when the pinned provider selects one whole JavaScript call usage and proves a supported contextual callback shape for the callable argument. Missing, stale, malformed, ambiguous, unresolved, `any`, `unknown`, construct-only, unresolved generic, explicit-`this`, optional/rest-parameter, or required callable-object-property evidence MUST fail closed and require an adapter. The Virune compiler MUST NOT recreate general TypeScript assignability rules.\n'''
+          new = '''A generated callable boundary is available only when the pinned provider selects one whole JavaScript call usage and proves a supported contextual callback shape for the callable argument. Missing, stale, malformed, ambiguous, unresolved, `unknown`, construct-only, unresolved generic, optional/rest-parameter, or required callable-object-property evidence MUST fail closed and require an adapter. TypeScript `any` remains unsupported except for the directional callback-result discharge defined below. The Virune compiler MUST NOT recreate general TypeScript assignability rules.\n\nAn explicit TypeScript `this` parameter MAY be erased only when the pinned provider has already accepted the complete usage with the concrete `this`-independent Virune callable, the selected callback has exactly one non-generic call signature with no construct signature or required callable-object properties, and the explicit receiver is a concrete, non-ambiguous object type. The receiver MUST NOT be projected, decoded, exposed as a Virune callback parameter, added to the canonical callable descriptor, or become stable projection evidence. `any`, `unknown`, `never`, type-parameter, union, intersection, primitive, malformed, stale, or otherwise unsupported explicit-receiver evidence MUST fail closed.\n'''
+          if text.count(old) != 1:
+              raise SystemExit(f'English callable paragraph count={text.count(old)}')
+          text = text.replace(old, new)
+          old_void = '''TypeScript `void` does not grant Virune discard semantics. A synchronous `() => void` target accepts only a synchronous Virune callback returning `Unit`; an async `Promise<void>` target accepts only an async Virune callback returning `Unit`.\n'''
+          new_void = old_void + '''\nA TypeScript callback target result of `any` does not generally authorize a generated boundary. After the pinned provider has accepted the complete usage, a synchronous Virune callback returning `Unit` MAY discharge that target result using the compiler-owned `undefined` representation. This is only the outbound known representation `Unit` to `undefined`: `any` itself MUST NOT become stable evidence or authorize inbound narrowing. An async callback or a callback returning any non-`Unit` native result MUST fail closed for an `any` target result.\n'''
+          if text.count(old_void) != 1:
+              raise SystemExit(f'English void paragraph count={text.count(old_void)}')
+          en.write_text(text.replace(old_void, new_void))
+
+          ja = Path('spec/js-interop_ja.md')
+          text = ja.read_text()
+          old = '''生成コールバック境界を使えるのは、固定したProviderがJavaScript呼び出し全体を1つに確定し、その実引数に対応するコールバック型を安全に扱えると証明できた場合だけです。証拠が欠落、古い、不正、曖昧、未解決、`any`、`unknown`、コンストラクター専用、未解決ジェネリック、明示的な`this`付き、任意引数・可変長引数付き、または必須プロパティを持つcallable objectである場合は安全側に失敗し、アダプターを要求しなければなりません。ViruneコンパイラーでTypeScript一般の代入互換性を再実装してはいけません。\n'''
+          new = '''生成コールバック境界を使えるのは、固定したProviderがJavaScript呼び出し全体を1つに確定し、その実引数に対応するコールバック型を安全に扱えると証明できた場合だけです。証拠が欠落、古い、不正、曖昧、未解決、`unknown`、コンストラクター専用、未解決ジェネリック、任意引数・可変長引数付き、または必須プロパティを持つcallable objectである場合は安全側に失敗し、アダプターを要求しなければなりません。TypeScriptの`any`は、後述する方向限定のcallback戻り値dischargeを除いて対応しません。ViruneコンパイラーでTypeScript一般の代入互換性を再実装してはいけません。\n\nTypeScriptの明示的な`this`引数を消去してよいのは、固定したProviderが、`this`に依存しない具体的なVirune callableを使った呼び出し全体をすでに受理しており、選択されたcallbackがconstruct signatureや必須callable-object propertyを持たない単一の非ジェネリックcall signatureで、かつ明示的receiverが具体的で曖昧でないobject型である場合だけです。このreceiverをViruneへprojectまたはdecodeしたり、Virune callbackの引数として公開したり、正規化済みcallable descriptorへ追加したり、安定したprojection evidenceへ含めたりしてはいけません。明示的receiverの証拠が`any`、`unknown`、`never`、type parameter、union、intersection、primitive、不正、古い、その他未対応のshapeである場合は安全側に失敗しなければなりません。\n'''
+          if text.count(old) != 1:
+              raise SystemExit(f'Japanese callable paragraph count={text.count(old)}')
+          text = text.replace(old, new)
+          old_void = '''TypeScriptの`void`は、Viruneの戻り値を自由に破棄してよいという意味にはなりません。同期の`() => void`へ渡せるのは同期で`Unit`を返すVirune関数だけで、非同期の`Promise<void>`へ渡せるのは非同期で`Unit`を返すVirune関数だけです。\n'''
+          new_void = old_void + '''\nTypeScriptのcallback targetの戻り値が`any`であることだけでは、生成境界を一般に許可しません。固定したProviderが呼び出し全体を受理した後に限り、同期で`Unit`を返すVirune callbackは、コンパイラーが所有する`undefined`表現を使ってそのtarget戻り値をdischargeできます。これは既知の外向き表現`Unit`から`undefined`への変換だけであり、`any`自体を安定した証拠にしたり、外部値からVirune型へのnarrowingを許可したりしてはいけません。非同期callback、または`Unit`以外のVirune側の戻り値を持つcallbackは、`any` target resultに対して安全側に失敗しなければなりません。\n'''
+          if text.count(old_void) != 1:
+              raise SystemExit(f'Japanese void paragraph count={text.count(old_void)}')
+          ja.write_text(text.replace(old_void, new_void))
+          PY
+
+          rm .github/workflows/apply-624-spec.yml
+          git diff --check
+          test "$(git diff --name-only | sort)" = "$(printf '.github/workflows/apply-624-spec.yml\nspec/js-interop.md\nspec/js-interop_ja.md' | sort)"
+      - name: Commit synchronized spec and remove patch workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "Yaona"
+          git config user.email "72598968+yaona807@users.noreply.github.com"
+          git add spec/js-interop.md spec/js-interop_ja.md .github/workflows/apply-624-spec.yml
+          git commit -m "docs(interop): specify erased explicit-this proof"
+          git push origin HEAD:feat/624-erased-explicit-this
