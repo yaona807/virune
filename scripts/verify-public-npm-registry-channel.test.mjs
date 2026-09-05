@@ -7,9 +7,14 @@ import test from 'node:test';
 import {
 	bindPublicNpmRegistryEvidence,
 	validatePublicReleaseBinding,
+	validateReviewedPublicationManifest,
 	verifyCleanGlobalCliInstall,
 	verifyPublicNpmRegistry,
 } from './verify-public-npm-registry.mjs';
+import {
+	bundledCliReleaseAssetName,
+	registryReleaseAssetNameForPackage,
+} from './verify-npm-publication-identity.mjs';
 import {
 	validateBundledGeneratedProject,
 	validateReleaseRecord,
@@ -129,6 +134,42 @@ test('public-release binding rejects a prerelease flag that contradicts the rele
 			version,
 		}), /release must/u);
 	}
+});
+
+test('bootstrap public Registry verification accepts only the reviewed non-ready Registry-eligible candidate', () => {
+	const version = '1.1.0-rc.1';
+	const bootstrapPlan = {
+		stage: 'bootstrap-candidate',
+		publicationReady: false,
+		firstStableRegistryRelease: '1.1.0',
+		distTagPolicy: { stable: 'latest', prerelease: 'next', nightly: null },
+		packages: [{ registryName: 'virune' }],
+	};
+	const manifest = {
+		schemaVersion: 1,
+		version,
+		githubReleaseTag: `v${version}`,
+		publishSource: 'reviewed-release-registry-candidate-tarball',
+		bundledCliReleaseAsset: bundledCliReleaseAssetName(version),
+		publicationReady: false,
+		registryVersionEligible: true,
+		distTag: 'next',
+		packages: [{
+			registryName: 'virune',
+			releaseAsset: registryReleaseAssetNameForPackage('virune', version),
+			sha256: 'a'.repeat(64),
+			bytes: 1,
+		}],
+	};
+	assert.doesNotThrow(() => validateReviewedPublicationManifest(manifest, bootstrapPlan));
+
+	const ready = structuredClone(manifest);
+	ready.publicationReady = true;
+	assert.throws(() => validateReviewedPublicationManifest(ready, bootstrapPlan), /non-ready bootstrap candidate/u);
+
+	const ineligible = structuredClone(manifest);
+	ineligible.registryVersionEligible = false;
+	assert.throws(() => validateReviewedPublicationManifest(ineligible, bootstrapPlan), /Registry-eligible version/u);
 });
 
 test('public release record validation supports exact stable and prerelease channels from reviewed policy', () => {
