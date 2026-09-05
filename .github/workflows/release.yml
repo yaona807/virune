@@ -79,8 +79,6 @@ jobs:
           import { appendFileSync } from 'node:fs';
           import { verifyNpmPublicationIdentity } from './scripts/verify-npm-publication-identity.mjs';
           const identity = verifyNpmPublicationIdentity();
-          appendFileSync(process.env.GITHUB_OUTPUT, `eligible=${identity.registryVersionEligible}\n`);
-          appendFileSync(process.env.GITHUB_OUTPUT, `ready=${identity.publicationReady}\n`);
           appendFileSync(process.env.GITHUB_OUTPUT, `publish=${identity.registryVersionEligible === true && identity.publicationReady === true}\n`);
           NODE
       - name: Pin npm Trusted Publishing client
