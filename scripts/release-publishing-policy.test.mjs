@@ -41,11 +41,10 @@ test('normal npm publication requires verified Registry eligibility and reviewed
 	assert.match(source, /name: Resolve verified npm publication eligibility/u);
 	assert.match(source, /import \{ verifyNpmPublicationIdentity \} from '\.\/scripts\/verify-npm-publication-identity\.mjs';/u);
 	assert.match(source, /const identity = verifyNpmPublicationIdentity\(\);/u);
-	assert.match(source, /eligible=\$\{identity\.registryVersionEligible\}/u);
-	assert.match(source, /ready=\$\{identity\.publicationReady\}/u);
 	assert.match(source, /publish=\$\{identity\.registryVersionEligible === true && identity\.publicationReady === true\}/u);
 	assert.equal((source.match(/if: steps\.npm-publication\.outputs\.publish == 'true'/gu) ?? []).length, 2);
 	assert.doesNotMatch(source, /if: steps\.npm-publication\.outputs\.eligible == 'true'/u);
+	assert.doesNotMatch(source, /(?:eligible|ready)=\$\{identity\./u);
 	assert.match(source, /npm install --global npm@11\.19\.0 --registry=https:\/\/registry\.npmjs\.org\/ --ignore-scripts --no-audit --no-fund/u);
 	assert.match(source, /test "\$\(npm --version\)" = "11\.19\.0"/u);
 	assert.match(source, /node scripts\/publish-npm-release\.mjs --expected-commit="\$GITHUB_SHA"/u);
