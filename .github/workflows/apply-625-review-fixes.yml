@@ -1,0 +1,77 @@
+name: Apply 625 review fixes
+
+on:
+  push:
+    branches:
+      - feat/624-erased-explicit-this
+    paths:
+      - .github/workflows/apply-625-review-fixes.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/624-erased-explicit-this
+          fetch-depth: 0
+      - name: Apply exact review simplification
+        shell: bash
+        run: |
+          python <<'PY'
+          from pathlib import Path
+
+          def replace_exact(path, old, new):
+              p = Path(path)
+              text = p.read_text()
+              if text.count(old) != 1:
+                  raise SystemExit(f"expected exactly one match in {path}, found {text.count(old)}")
+              p.write_text(text.replace(old, new))
+
+          replace_exact(
+              'packages/js-interop/src/index.ts',
+              '''\tconst signature = signatures[0]!;\n\tif ((signature.getTypeParameters()?.length ?? 0) !== 0) return undefined;\n\tconst parameters = signature.getParameters();\n\tconst declaration = signature.declaration;\n\tif (declaration === undefined) return undefined;\n\tif (signature.thisParameter === undefined) {\n\t\tif (declaration.parameters.length !== parameters.length) return undefined;\n\t} else if (!erasedThisParameterIsSupported(signature, checker)) return undefined;\n\treturn signature;\n}\n\nfunction erasedThisParameterIsSupported(signature: ts.Signature, checker: ts.TypeChecker): boolean {\n\ttry {\n\t\tconst declaration = signature.declaration;\n\t\tconst thisParameter = signature.thisParameter;\n\t\tif (declaration === undefined || thisParameter === undefined) return false;\n\t\tconst parameters = signature.getParameters();\n\t\tif (declaration.parameters.length !== parameters.length + 1) return false;\n\t\tconst node = declaration.parameters[0];\n\t\tif (node === undefined\n\t\t\t|| !ts.isIdentifier(node.name)\n\t\t\t|| node.name.text !== 'this'\n\t\t\t|| node.type === undefined\n\t\t\t|| node.dotDotDotToken !== undefined\n\t\t\t|| node.questionToken !== undefined\n\t\t\t|| node.initializer !== undefined) return false;\n\t\tconst type = checker.getTypeOfSymbolAtLocation(thisParameter, node);\n\t\tconst flags = type.getFlags();\n\t\tconst unsafe = ts.TypeFlags.Any\n\t\t\t| ts.TypeFlags.Unknown\n\t\t\t| ts.TypeFlags.Never\n\t\t\t| ts.TypeFlags.TypeParameter\n\t\t\t| ts.TypeFlags.Union\n\t\t\t| ts.TypeFlags.Intersection;\n\t\treturn (flags & unsafe) === 0 && (flags & ts.TypeFlags.Object) !== 0;\n\t} catch {\n\t\treturn false;\n\t}\n}\n''',
+              '''\tconst signature = signatures[0]!;\n\tif ((signature.getTypeParameters()?.length ?? 0) !== 0) return undefined;\n\tconst parameters = signature.getParameters();\n\tconst declaration = signature.declaration;\n\tif (declaration === undefined\n\t\t|| declaration.parameters.length !== parameters.length + (signature.thisParameter === undefined ? 0 : 1)) return undefined;\n\treturn signature;\n}\n''',
+          )
+
+          replace_exact(
+              'packages/js-interop/test/callable-boundary-this.test.ts',
+              '''test('accepts a proved concrete explicit this receiver without adding it to the callable boundary', async () => {\n''',
+              '''test('accepts a proved erased explicit this receiver without adding it to the callable boundary', async () => {\n''',
+          )
+          replace_exact(
+              'packages/js-interop/test/callable-boundary-this.test.ts',
+              '''\tassert.doesNotMatch(JSON.stringify(projection.descriptor), /this|context|provider|typescript/iu);\n''',
+              '',
+          )
+          replace_exact(
+              'packages/js-interop/test/callable-boundary-this.test.ts',
+              '''\ntest('keeps unsafe or ambiguous explicit this receivers fail-closed', async () => {\n\tfor (const [name, receiver] of [\n\t\t['any', 'any'],\n\t\t['unknown', 'unknown'],\n\t\t['primitive', 'number'],\n\t\t['union', 'Context | OtherContext'],\n\t] as const) {\n\t\tconst declarations = `interface Context { readonly scale: number }\\ninterface OtherContext { readonly scale: number }\\nexport declare function consume(callback: (this: ${receiver}, value: number) => number): void;\\n`;\n\t\tconst result = await compileWithDeclarations(declarations, floatCallbackSource);\n\t\tassert.ok(result.diagnostics.some(item => item.code === 'L4204'), `${name} receiver must fail closed`);\n\t\tassert.equal(result.semantic?.interop.callableProjections?.length ?? 0, 0);\n\t}\n});\n''',
+              '',
+          )
+
+          replace_exact(
+              'spec/js-interop.md',
+              '''An explicit TypeScript `this` parameter MAY be erased only when the pinned provider has already accepted the complete usage with the concrete `this`-independent Virune callable, the selected callback has exactly one non-generic call signature with no construct signature or required callable-object properties, and the explicit receiver is a concrete, non-ambiguous object type. The receiver MUST NOT be projected, decoded, exposed as a Virune callback parameter, added to the canonical callable descriptor, or become stable projection evidence. `any`, `unknown`, `never`, type-parameter, union, intersection, primitive, malformed, stale, or otherwise unsupported explicit-receiver evidence MUST fail closed.\n''',
+              '''An explicit TypeScript `this` parameter MAY be erased when the pinned provider has already accepted the complete usage with the concrete `this`-independent Virune callable and the selected callback otherwise satisfies the existing generated-callable shape rules. Virune MUST treat that receiver as erased TypeScript-only metadata: its type MUST NOT be reclassified, projected, decoded, exposed as a Virune callback parameter, added to the canonical callable descriptor, or become stable projection evidence. If TypeScript does not resolve the declaration as a `thisParameter`, or the whole-usage / ordinary callback-shape evidence is missing, stale, malformed, ambiguous, or unsupported, the boundary MUST fail closed.\n''',
+          )
+
+          replace_exact(
+              'spec/js-interop_ja.md',
+              '''TypeScriptの明示的な`this`引数を消去してよいのは、固定したProviderが、`this`に依存しない具体的なVirune callableを使った呼び出し全体をすでに受理しており、選択されたcallbackがconstruct signatureや必須callable-object propertyを持たない単一の非ジェネリックcall signatureで、かつ明示的receiverが具体的で曖昧でないobject型である場合だけです。このreceiverをViruneへprojectまたはdecodeしたり、Virune callbackの引数として公開したり、正規化済みcallable descriptorへ追加したり、安定したprojection evidenceへ含めたりしてはいけません。明示的receiverの証拠が`any`、`unknown`、`never`、type parameter、union、intersection、primitive、不正、古い、その他未対応のshapeである場合は安全側に失敗しなければなりません。\n''',
+              '''TypeScriptの明示的な`this`引数を消去してよいのは、固定したProviderが、`this`に依存しない具体的なVirune callableを使った呼び出し全体をすでに受理しており、選択されたcallbackが既存の生成callable shape規則をそれ以外の点で満たす場合です。このreceiverはTypeScriptだけの消去済みmetadataとして扱い、その型をVirune側で再分類したり、projectまたはdecodeしたり、Virune callbackの引数として公開したり、正規化済みcallable descriptorへ追加したり、安定したprojection evidenceへ含めたりしてはいけません。TypeScriptがその宣言を`thisParameter`として解決できない場合、またはwhole usageや通常のcallback shapeの証拠が欠落、古い、不正、曖昧、未対応である場合は、安全側に失敗しなければなりません。\n''',
+          )
+          PY
+          git diff --check
+      - name: Commit final review simplification and remove helper workflow
+        shell: bash
+        run: |
+          git config user.name "Yaona"
+          git config user.email "72598968+yaona807@users.noreply.github.com"
+          git rm .github/workflows/apply-625-review-fixes.yml
+          git add packages/js-interop/src/index.ts packages/js-interop/test/callable-boundary-this.test.ts spec/js-interop.md spec/js-interop_ja.md
+          git commit -m "refactor(interop): keep erased this proof minimal"
+          git push origin HEAD:feat/624-erased-explicit-this
