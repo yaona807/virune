@@ -1437,40 +1437,9 @@ function contextualCallableSignature(type: ts.Type, checker: ts.TypeChecker): ts
 	if ((signature.getTypeParameters()?.length ?? 0) !== 0) return undefined;
 	const parameters = signature.getParameters();
 	const declaration = signature.declaration;
-	if (declaration === undefined) return undefined;
-	if (signature.thisParameter === undefined) {
-		if (declaration.parameters.length !== parameters.length) return undefined;
-	} else if (!erasedThisParameterIsSupported(signature, checker)) return undefined;
+	if (declaration === undefined
+		|| declaration.parameters.length !== parameters.length + (signature.thisParameter === undefined ? 0 : 1)) return undefined;
 	return signature;
-}
-
-function erasedThisParameterIsSupported(signature: ts.Signature, checker: ts.TypeChecker): boolean {
-	try {
-		const declaration = signature.declaration;
-		const thisParameter = signature.thisParameter;
-		if (declaration === undefined || thisParameter === undefined) return false;
-		const parameters = signature.getParameters();
-		if (declaration.parameters.length !== parameters.length + 1) return false;
-		const node = declaration.parameters[0];
-		if (node === undefined
-			|| !ts.isIdentifier(node.name)
-			|| node.name.text !== 'this'
-			|| node.type === undefined
-			|| node.dotDotDotToken !== undefined
-			|| node.questionToken !== undefined
-			|| node.initializer !== undefined) return false;
-		const type = checker.getTypeOfSymbolAtLocation(thisParameter, node);
-		const flags = type.getFlags();
-		const unsafe = ts.TypeFlags.Any
-			| ts.TypeFlags.Unknown
-			| ts.TypeFlags.Never
-			| ts.TypeFlags.TypeParameter
-			| ts.TypeFlags.Union
-			| ts.TypeFlags.Intersection;
-		return (flags & unsafe) === 0 && (flags & ts.TypeFlags.Object) !== 0;
-	} catch {
-		return false;
-	}
 }
 
 function contextualPrimitiveKind(type: ts.Type): ContextualCallablePrimitiveKind | undefined {

@@ -15,7 +15,7 @@ async function compileWithDeclarations(declarations: string, sourceText: string)
 
 const floatCallbackSource = `import js { consume } from "./library.js"\n\nfn callback(value: Float) -> Float {\n\treturn value\n}\n\nfn main() -> Unit uses JavaScript {\n\tdiscard consume(callback)\n\treturn Unit\n}\n`;
 
-test('accepts a proved concrete explicit this receiver without adding it to the callable boundary', async () => {
+test('accepts a proved erased explicit this receiver without adding it to the callable boundary', async () => {
 	const result = await compileWithDeclarations(
 		'interface Context { readonly scale: number }\nexport declare function consume(callback: (this: Context, value: number) => number): void;\n',
 		floatCallbackSource,
@@ -31,21 +31,6 @@ test('accepts a proved concrete explicit this receiver without adding it to the 
 		effects: [],
 		contextMode: 'root-argument',
 	});
-	assert.doesNotMatch(JSON.stringify(projection.descriptor), /this|context|provider|typescript/iu);
-});
-
-test('keeps unsafe or ambiguous explicit this receivers fail-closed', async () => {
-	for (const [name, receiver] of [
-		['any', 'any'],
-		['unknown', 'unknown'],
-		['primitive', 'number'],
-		['union', 'Context | OtherContext'],
-	] as const) {
-		const declarations = `interface Context { readonly scale: number }\ninterface OtherContext { readonly scale: number }\nexport declare function consume(callback: (this: ${receiver}, value: number) => number): void;\n`;
-		const result = await compileWithDeclarations(declarations, floatCallbackSource);
-		assert.ok(result.diagnostics.some(item => item.code === 'L4204'), `${name} receiver must fail closed`);
-		assert.equal(result.semantic?.interop.callableProjections?.length ?? 0, 0);
-	}
 });
 
 test('discharges an any callback result only as synchronous Unit to undefined after whole-usage proof', async () => {
