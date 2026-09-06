@@ -255,9 +255,10 @@ export class AstBuilder extends baseCstVisitorConstructor {
 		for (const name of ['viewExpression', 'recordExpression', 'contextualAggregateExpression', 'listExpression', 'parenthesizedOrTupleExpression', 'conditionalExpression', 'matchExpression', 'lambdaExpression', 'parallelExpression']) {
 			const child = firstNode(ctx, name); if (child !== undefined) return this.visitNode(child);
 		}
+		const identifier = firstToken(ctx, 'Identifier');
+		if (identifier !== undefined) return { id: this.id(), kind: 'IdentifierExpression', span: tokenSpan(this.#fileId, identifier), name: identifier.image };
 		const token = Object.values(ctx).flat().filter(isToken).sort((a, b) => a.startOffset - b.startOffset)[0];
 		if (token === undefined) return { id: this.id(), kind: 'WildcardExpression', span: zeroSpan(this.#fileId) };
-		if (token.tokenType.name === 'Identifier') return { id: this.id(), kind: 'IdentifierExpression', span: tokenSpan(this.#fileId, token), name: token.image };
 		if (token.tokenType.name === 'Underscore') return { id: this.id(), kind: 'WildcardExpression', span: tokenSpan(this.#fileId, token) };
 		return this.literal(token);
 	}
@@ -306,7 +307,8 @@ export class AstBuilder extends baseCstVisitorConstructor {
 		for (const name of ['rangePattern', 'listPattern', 'tuplePattern', 'variantPattern', 'recordPattern']) { const child = firstNode(ctx, name); if (child !== undefined) return this.visitNode(child); }
 		const token = Object.values(ctx).flat().filter(isToken).sort((a, b) => a.startOffset - b.startOffset)[0];
 		if (token?.tokenType.name === 'Underscore') return { id: this.id(), kind: 'WildcardPattern', span: tokenSpan(this.#fileId, token) };
-		if (token?.tokenType.name === 'Identifier') return /^[A-Z]/u.test(token.image) ? { id: this.id(), kind: 'VariantPattern', span: tokenSpan(this.#fileId, token), name: token.image, values: [] } : { id: this.id(), kind: 'BindingPattern', span: tokenSpan(this.#fileId, token), name: token.image };
+		const identifier = firstToken(ctx, 'Identifier');
+		if (identifier !== undefined) return /^[A-Z]/u.test(identifier.image) ? { id: this.id(), kind: 'VariantPattern', span: tokenSpan(this.#fileId, identifier), name: identifier.image, values: [] } : { id: this.id(), kind: 'BindingPattern', span: tokenSpan(this.#fileId, identifier), name: identifier.image };
 		const literal = this.literal(token);
 		return { id: this.id(), kind: 'LiteralPattern', span: literal.span, literalKind: literal.literalKind === 'Bool' ? 'Bool' : literal.literalKind === 'Int' ? 'Int' : 'String', value: literal.value as string | number | boolean };
 	}
