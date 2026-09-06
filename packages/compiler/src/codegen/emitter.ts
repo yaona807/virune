@@ -16,6 +16,7 @@ export class JavaScriptEmitter {
 	readonly #writer: SourceWriter;
 	readonly #semantic: SemanticModel;
 	readonly #source: SourceFile;
+	readonly #outputFile: string;
 	readonly #symbolNames = new Map<SymbolId, string>();
 	readonly #sourceMap: boolean;
 	#contextName = '$ctx';
@@ -26,6 +27,7 @@ export class JavaScriptEmitter {
 	public constructor(hir: HirModule, source: SourceFile, outputFile: string, options: EmitOptions = {}) {
 		this.#semantic = hir.semantic;
 		this.#source = source;
+		this.#outputFile = outputFile;
 		this.#sourceMap = options.sourceMap ?? true;
 		this.#writer = new SourceWriter(source, outputFile, options.sourcePath ?? source.path, options.sourcesContent ?? true);
 		for (const [id, symbol] of hir.semantic.symbols) this.#symbolNames.set(id, safeName(symbol.name));
@@ -72,7 +74,7 @@ export class JavaScriptEmitter {
 		}
 	}
 
-	private outputMapName(): string { return `${this.#source.path.split(/[\\/]/u).at(-1)?.replace(/\.virune$/u, '.js') ?? 'module.js'}.map`; }
+	private outputMapName(): string { return `${this.#outputFile.split(/[\\/]/u).at(-1) ?? 'module.js'}.map`; }
 
 	private emitImport(declaration: A.ImportDeclaration): void {
 		if (declaration.typeOnly) return;
