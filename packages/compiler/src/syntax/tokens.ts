@@ -42,14 +42,15 @@ export const KwFrom = keyword('KwFrom', /from\b/);
 export const KwIf = keyword('KwIf', /if\b/);
 export const KwImport = keyword('KwImport', /import\b/);
 export const KwIn = keyword('KwIn', /in\b/);
-export const KwInternal = keyword('KwInternal', /internal\b/);
 export const KwLet = keyword('KwLet', /let\b/);
 export const KwMatch = keyword('KwMatch', /match\b/);
 export const KwModule = keyword('KwModule', /module\b/);
 export const KwMut = keyword('KwMut', /mut\b/);
 export const KwNewtype = keyword('KwNewtype', /newtype\b/);
 export const KwParallel = keyword('KwParallel', /parallel\b/);
-export const KwPub = keyword('KwPub', /pub\b/);
+// `pub` and `internal` occupy the same mutually-exclusive declaration visibility slot.
+// The AST builder distinguishes them by token image while the existing grammar stays unchanged.
+export const KwPub = keyword('KwPub', /(?:pub|internal)\b/);
 export const KwRecord = keyword('KwRecord', /record\b/);
 export const KwReturn = keyword('KwReturn', /return\b/);
 export const KwTest = keyword('KwTest', /test\b/);
@@ -95,7 +96,7 @@ export const allTokens: TokenType[] = [
 	FatArrow, ThinArrow, Pipe, EqualEqual, BangEqual, LessEqual, GreaterEqual, AndAnd, OrOr, RangeInclusive, Spread, Bar,
 	IdentifierName,
 	KwAs, KwAsync, KwAwait, KwBreak, KwConst, KwContinue, KwDefer, KwDerives, KwDiscard, KwElse, KwEnum, KwExtern, KwFalse, KwFn, KwFor,
-	KwFrom, KwIf, KwImport, KwIn, KwInternal, KwLet, KwMatch, KwModule, KwMut, KwNewtype, KwParallel, KwPub, KwRecord,
+	KwFrom, KwIf, KwImport, KwIn, KwLet, KwMatch, KwModule, KwMut, KwNewtype, KwParallel, KwPub, KwRecord,
 	KwReturn, KwTest, KwThen, KwTrue, KwTry, KwType, KwUnsafe, KwUses, KwWhile, KwWith, KwJs,
 	BigIntLiteral, FloatLiteral, IntLiteral, StringLiteral,
 	Underscore, Identifier,
@@ -113,7 +114,7 @@ export interface LexResult {
 
 const softAfter = new Set(['Pipe', 'EqualEqual', 'BangEqual', 'LessEqual', 'GreaterEqual', 'AndAnd', 'OrOr', 'Equals', 'Less', 'Greater', 'Plus', 'Minus', 'Star', 'Slash', 'Percent', 'Comma', 'LParen', 'LBracket']);
 const softBefore = new Set(['Pipe', 'EqualEqual', 'BangEqual', 'LessEqual', 'GreaterEqual', 'AndAnd', 'OrOr', 'Less', 'Greater', 'Plus', 'Minus', 'Star', 'Slash', 'Percent', 'RParen', 'RBracket', 'KwElse']);
-const topLevelDeclarationStarts = new Set(['At', 'KwPub', 'KwInternal', 'KwAsync', 'KwFn', 'KwRecord', 'KwEnum', 'KwNewtype', 'KwType', 'KwExtern', 'KwUnsafe', 'KwTest', 'KwLet', 'KwConst']);
+const topLevelDeclarationStarts = new Set(['At', 'KwPub', 'KwAsync', 'KwFn', 'KwRecord', 'KwEnum', 'KwNewtype', 'KwType', 'KwExtern', 'KwUnsafe', 'KwTest', 'KwLet', 'KwConst']);
 
 interface LambdaBlockScope {
 	readonly bodyBraceDepth: number;
