@@ -152,6 +152,12 @@ test('children is a single compiler-managed View slot', () => {
 	}
 }
 `).includes('L4306'));
+	assert.deepEqual(errorCodes(`component ChildrenTag() uses JavaScript {
+	return view {
+		children()
+	}
+}
+`), []);
 	const ordinary = compileSource(source(`record Box {
 	children: Int
 }
