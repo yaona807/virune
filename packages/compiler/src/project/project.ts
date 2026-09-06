@@ -254,7 +254,7 @@ export async function buildProject(
 		const dependencies: string[] = [];
 		if (parsed.ast !== undefined) {
 			validateModulePolicy(root, config, normalized, parsed.ast, projectDiagnostics);
-			validatePublicApi(parsed.ast, projectDiagnostics);
+			validateSignatureVisibility(parsed.ast, projectDiagnostics);
 			for (const declaration of parsed.ast.imports) {
 				if (declaration.sourceKind === 'javascript') continue;
 				const dependency = await resolveImport(root, normalized, declaration.source, host);
@@ -330,7 +330,7 @@ function moduleInterfaceHash(moduleInterface: ModuleInterface | undefined): stri
 	if (moduleInterface === undefined) return contentHash('missing');
 	const entries = [...moduleInterface.exports.entries()]
 		.sort(([left], [right]) => left.localeCompare(right))
-		.map(([name, entry]) => ({ name, originPath: entry.originPath, declaration: canonicalAst(publicSignatureAst(entry.declaration)) }));
+		.map(([name, entry]) => ({ name, visibility: entry.visibility, originPath: entry.originPath, declaration: canonicalAst(publicSignatureAst(entry.declaration)) }));
 	return contentHash(JSON.stringify(entries));
 }
 
@@ -443,9 +443,31 @@ function isWithin(parent: string, child: string): boolean {
 	return value === '' || (!value.startsWith('..') && !isAbsolute(value));
 }
 
+function modulePackageScope(root: string, path: string): string | undefined {
+	const normalizedRoot = resolve(root);
+	const normalizedPath = resolve(path);
+	if (!isWithin(normalizedRoot, normalizedPath)) return undefined;
+	const segments = relative(normalizedRoot, normalizedPath).replaceAll('\\', '/').split('/');
+	const nodeModulesIndex = segments.lastIndexOf('node_modules');
+	if (nodeModulesIndex < 0) return 'project';
+	const first = segments[nodeModulesIndex + 1];
+	if (first === undefined || first.length === 0) return undefined;
+	const packageEnd = first.startsWith('@') ? nodeModulesIndex + 3 : nodeModulesIndex + 2;
+	if (first.startsWith('@') && (segments[nodeModulesIndex + 2]?.length ?? 0) === 0) return undefined;
+	return `package:${segments.slice(0, packageEnd).join('/')}`;
+}
+
+function samePackageScope(root: string, left: string, right: string): boolean {
+	const leftScope = modulePackageScope(root, left);
+	return leftScope !== undefined && leftScope === modulePackageScope(root, right);
+}
+
 function validateModulePolicy(root: string, config: ViruneConfig, path: string, module: A.ModuleNode, diagnostics: DiagnosticBag): void {
 	const sourceRelative = relative(resolve(root, config.sourceDir), path).replaceAll('\\', '/');
 	const inFfiDirectory = sourceRelative === 'ffi' || sourceRelative.startsWith('ffi/');
+	for (const declaration of module.imports) {
+		if (declaration.internal === true) diagnostics.error('L4019', '`internal` is a declaration visibility modifier and cannot be applied to imports', declaration.span);
+	}
 	for (const declaration of module.declarations) {
 		if (declaration.kind !== 'ExternDeclaration') continue;
 		if (declaration.module.startsWith('node:') && config.platform !== 'node') diagnostics.error('L4006', `Node.js module ${declaration.module} is not available for platform ${config.platform}`, declaration.span);
@@ -456,16 +478,23 @@ function validateModulePolicy(root: string, config: ViruneConfig, path: string, 
 }
 
 function declarationHasRuntimeExport(declaration: A.Declaration): boolean {
-	return declaration.kind === 'FunctionDeclaration' || declaration.kind === 'RecordDeclaration' || declaration.kind === 'EnumDeclaration' || declaration.kind === 'NewtypeDeclaration' || (declaration.kind === 'TopLevelLetDeclaration' && declaration.public);
+	return declaration.kind === 'FunctionDeclaration' || declaration.kind === 'RecordDeclaration' || declaration.kind === 'EnumDeclaration' || declaration.kind === 'NewtypeDeclaration' || (declaration.kind === 'TopLevelLetDeclaration' && (declaration.public || declaration.internal === true));
 }
+
+type ExportVisibility = 'internal' | 'public';
 
 interface ExportEntry {
 	readonly declaration: A.Declaration;
 	readonly originPath: string;
 	readonly originModule: A.ModuleNode;
+	readonly visibility: ExportVisibility;
 }
 
 interface ModuleInterface { readonly exports: ReadonlyMap<string, ExportEntry>; }
+
+function exportVisibleTo(root: string, importerPath: string, entry: ExportEntry): boolean {
+	return entry.visibility === 'public' || samePackageScope(root, importerPath, entry.originPath);
+}
 
 async function buildModuleInterfaces(
 	root: string,
@@ -480,8 +509,10 @@ async function buildModuleInterfaces(
 		if (module === undefined) continue;
 		const exports = new Map<string, ExportEntry>();
 		for (const declaration of module.declarations) {
-			if (!('name' in declaration) || !('public' in declaration) || declaration.public !== true) continue;
-			exports.set(declaration.name, { declaration, originPath: path, originModule: module });
+			if (!('name' in declaration) || !('public' in declaration)) continue;
+			const visibility: ExportVisibility | undefined = declaration.public ? 'public' : declaration.internal === true ? 'internal' : undefined;
+			if (visibility === undefined) continue;
+			exports.set(declaration.name, { declaration, originPath: path, originModule: module, visibility });
 		}
 		for (const importDeclaration of module.imports.filter(item => item.public && item.sourceKind === 'virune')) {
 			const dependencyPath = await resolveImport(root, path, importDeclaration.source, host);
@@ -489,7 +520,8 @@ async function buildModuleInterfaces(
 			if (dependencyInterface === undefined) continue;
 			for (const item of importDeclaration.items) {
 				const exported = dependencyInterface.exports.get(item.imported);
-				if (exported === undefined) { diagnostics.error('L4004', `Module ${importDeclaration.source} does not export ${item.imported}`, item.span); continue; }
+				if (exported === undefined || !exportVisibleTo(root, path, exported)) { diagnostics.error('L4004', `Module ${importDeclaration.source} does not export ${item.imported}`, item.span); continue; }
+				if (exported.visibility === 'internal') { diagnostics.error('L4018', `Public import cannot re-export internal declaration ${item.imported}`, item.span); continue; }
 				if (importDeclaration.typeOnly && !isTypeDeclaration(exported.declaration)) {
 					diagnostics.error('L4015', `Type-only re-export ${item.local} must refer to a type`, item.span);
 					continue;
@@ -537,6 +569,7 @@ async function buildImportModel(
 	const emittedTypeDefinitions = new Set<string>();
 
 	for (const importDeclaration of module.imports) {
+		if (importDeclaration.internal === true) continue;
 		if (importDeclaration.sourceKind === 'javascript') { emissionImports.push(importDeclaration); continue; }
 		const dependencyPath = await resolveImport(root, importerPath, importDeclaration.source, host);
 		const dependencyInterface = dependencyPath === undefined ? undefined : moduleInterfaces.get(dependencyPath);
@@ -546,7 +579,8 @@ async function buildImportModel(
 
 		for (const item of importDeclaration.items) {
 			const exported = dependencyInterface.exports.get(item.imported);
-			if (exported === undefined) { diagnostics.error('L4004', `Module ${importDeclaration.source} does not export ${item.imported}`, item.span); continue; }
+			if (exported === undefined || !exportVisibleTo(root, importerPath, exported)) { diagnostics.error('L4004', `Module ${importDeclaration.source} does not export ${item.imported}`, item.span); continue; }
+			if (importDeclaration.public && exported.visibility === 'internal') continue;
 			const group = groups.get(exported.originPath) ?? { module: exported.originModule, entries: [] };
 			group.entries.push({ item, exported });
 			groups.set(exported.originPath, group);
@@ -717,17 +751,24 @@ function moduleIdentity(root: string, path: string): string {
 	return relativePath.startsWith('../') ? `external:${createHash('sha256').update(path).digest('hex').slice(0, 16)}` : `project:${relativePath}`;
 }
 
-function validatePublicApi(module: A.ModuleNode, diagnostics: DiagnosticBag): void {
+function declarationVisibilityRank(declaration: A.Declaration): 0 | 1 | 2 {
+	return 'public' in declaration && declaration.public ? 2 : 'internal' in declaration && declaration.internal === true ? 1 : 0;
+}
+
+function validateSignatureVisibility(module: A.ModuleNode, diagnostics: DiagnosticBag): void {
 	const localTypes = new Map(module.declarations.filter(isTypeDeclaration).map(declaration => [declaration.name, declaration]));
 	for (const declaration of module.declarations) {
-		if (!('public' in declaration) || declaration.public !== true || declaration.kind === 'NewtypeDeclaration') continue;
+		const rank = declarationVisibilityRank(declaration);
+		if (rank === 0 || declaration.kind === 'NewtypeDeclaration' || !('name' in declaration)) continue;
 		for (const name of referencedTypeNames(declaration)) {
 			const local = localTypes.get(name);
-			if (local !== undefined && !local.public) diagnostics.error('L4010', `Public declaration ${declaration.name} exposes private type ${name}`, declaration.span);
+			if (local === undefined || declarationVisibilityRank(local) >= rank) continue;
+			const owner = rank === 2 ? 'Public' : 'Internal';
+			const exposed = local.internal === true ? 'internal' : 'private';
+			diagnostics.error('L4010', `${owner} declaration ${declaration.name} exposes ${exposed} type ${name}`, declaration.span);
 		}
 	}
 }
-
 
 function finitePosition(value: number | undefined, fallback: number): number {
 	return value !== undefined && Number.isFinite(value) ? value : fallback;
