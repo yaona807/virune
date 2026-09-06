@@ -220,6 +220,6 @@ async function loadVisibilityModule(): Promise<{ readonly root: string; readonly
 		outputPaths.push(outputPath);
 	}
 	for (const outputPath of outputPaths.sort()) await execFileAsync(process.execPath, ['--check', outputPath]);
-	const moduleUrl = `${pathToFileURL(join(root, 'main.js')).href}?test=${Date.now()}`;
+	const moduleUrl = pathToFileURL(join(root, 'main.js')).href;
 	return { root, module: await import(moduleUrl) as VisibilityModule };
 }
