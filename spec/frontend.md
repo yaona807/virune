@@ -41,7 +41,7 @@ A View result may be consumed only as:
 - the direct return value of a `component`;
 - nested View child structure;
 - a View-local declarative conditional branch; or
-- the compiler-managed native-component child slot defined by `[frontend.children-slot]`.
+- the compiler-managed native-component child slot defined below.
 
 A View result cannot be stored in `let`/`const`, records, lists, tuples, or other ordinary values; passed to an ordinary call; exported as an ordinary API value; field- or index-accessed; projected to a general External value; or returned from an ordinary `fn`.
 
