@@ -579,7 +579,7 @@ export class ViruneParser extends CstParser {
 		$.RULE('viewChild', () => {
 			$.OR([
 				{ GATE: () => this.LA(1).tokenType === KwIf, ALT: () => $.SUBRULE($.viewConditional) },
-				{ GATE: () => this.LA(1).tokenType === KwChildren, ALT: () => $.SUBRULE($.viewChildrenSlot) },
+				{ GATE: () => this.LA(1).tokenType === KwChildren && this.LA(2).tokenType === NewLine, ALT: () => $.SUBRULE($.viewChildrenSlot) },
 				{ GATE: () => this.LA(1).tokenType === StringLiteral, ALT: () => $.SUBRULE($.viewTextChild) },
 				{ GATE: () => this.LA(1).tokenType === Equals, ALT: () => $.SUBRULE($.viewExpressionChild) },
 				{ ALT: () => $.SUBRULE($.viewElement) },
@@ -955,7 +955,6 @@ export class ViruneParser extends CstParser {
 	public newtypeDeclaration!: () => CstNode;
 	public typeAliasDeclaration!: () => CstNode;
 	public externDeclaration!: () => CstNode;
-	public externFunction!: () => CstNode;
 	public testDeclaration!: () => CstNode;
 	public topLevelLetDeclaration!: () => CstNode;
 	public typeReference!: () => CstNode;
