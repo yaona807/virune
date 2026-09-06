@@ -109,7 +109,7 @@ conditionは通常のVirune expressionであり、branchはView blockである�
 
 ## `[frontend.children-slot]` Compiler-managed native children slot
 
-View structure内の`children`は、現在のVirune-native componentに対するcompiler-managed child slotを表す。
+View structure内でstandaloneの`children`は、現在のVirune-native componentに対するcompiler-managed child slotを表す。
 
 ```virune
 internal component Panel(title: String) uses JavaScript {
@@ -122,7 +122,9 @@ internal component Panel(title: String) uses JavaScript {
 }
 ```
 
-`children`は通常parameter、callable、External value、React `props.children`、Vue slot object、Solid accessorその他のframework固有APIではない。View childとしてだけ利用できる。Virune 1.0では1 componentにつきこのslotを配置できるのは最大1回とする。複数配置は、frameworkごとに異なるrepeated evaluation/laziness semanticsを言語側で発明しないためrejectする。
+このslot spellingはglobal reserved wordではなくcontextual formである。standaloneなView childという正確な位置以外では、`children`はparameter、local、field、expression nameを含む通常のVirune identifierとして引き続き利用できる。compiler-managed slotを表すのはView child位置のstandalone `children`だけである。
+
+そのslot自体は通常parameter、callable、External value、React `props.children`、Vue slot object、Solid accessorその他のframework固有APIではない。Virune 1.0では1 componentにつきこのslotを配置できるのは最大1回とする。複数配置は、frameworkごとに異なるrepeated evaluation/laziness semanticsを言語側で発明しないためrejectする。
 
 後段のcompiler-owned transport/loweringは、general View valueを公開せず、実frontend frameworkに必要なsource evaluation/lazinessを保存しなければならない。
 
