@@ -130,6 +130,17 @@
           }
         },
         {
+          "match": "\\b(component)(\\s+)([A-Za-z_][A-Za-z0-9_]*)",
+          "captures": {
+            "1": {
+              "name": "storage.type.virune"
+            },
+            "3": {
+              "name": "entity.name.type.virune"
+            }
+          }
+        },
+        {
           "match": "\\b(record|enum|newtype|type)(\\s+)([A-Za-z_][A-Za-z0-9_]*)",
           "captures": {
             "1": {
@@ -208,7 +219,7 @@
       "patterns": [
         {
           "name": "keyword.control.virune",
-          "match": "\\b(?:await|break|continue|defer|discard|else|for|if|in|match|parallel|return|then|try|while|with)\\b"
+          "match": "\\b(?:await|break|continue|defer|discard|else|for|if|in|match|parallel|return|then|try|view|while|with)\\b"
         },
         {
           "name": "keyword.control.import.virune",
@@ -216,7 +227,7 @@
         },
         {
           "name": "storage.type.virune",
-          "match": "\\b(?:enum|extern|fn|newtype|record|test|type)\\b"
+          "match": "\\b(?:component|enum|extern|fn|newtype|record|test|type)\\b"
         },
         {
           "name": "storage.modifier.virune",
