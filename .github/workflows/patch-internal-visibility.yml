@@ -1,0 +1,46 @@
+name: Apply top-level visibility patch
+
+on:
+  push:
+    branches:
+      - feature/633-internal-visibility
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: feature/633-internal-visibility
+          fetch-depth: 2
+      - name: Apply exact top-level signature extraction and remove one-shot workflow
+        shell: bash
+        run: |
+          python <<'PY'
+          from pathlib import Path
+
+          path = Path('packages/compiler/src/project/project.ts')
+          source = path.read_text()
+          old = '''\t} else if (declaration.kind === 'NewtypeDeclaration') addReference(declaration.underlying, new Set());\n\telse if (declaration.kind === 'TypeAliasDeclaration') addReference(declaration.target, new Set(declaration.typeParameters.map(item => item.name)));\n\treturn result;\n'''
+          new = '''\t} else if (declaration.kind === 'NewtypeDeclaration') addReference(declaration.underlying, new Set());\n\telse if (declaration.kind === 'TypeAliasDeclaration') addReference(declaration.target, new Set(declaration.typeParameters.map(item => item.name)));\n\telse if (declaration.kind === 'TopLevelLetDeclaration' && declaration.annotation !== undefined) addReference(declaration.annotation, new Set());\n\treturn result;\n'''
+          assert source.count(old) == 1, 'unexpected referencedTypeNames tail'
+          assert "declaration.kind === 'TopLevelLetDeclaration' && declaration.annotation !== undefined" not in source
+          path.write_text(source.replace(old, new, 1))
+          Path('.github/workflows/patch-internal-visibility.yml').unlink()
+          PY
+
+          git diff --check
+          test "$(git diff --numstat -- packages/compiler/src/project/project.ts)" = $'1\t0\tpackages/compiler/src/project/project.ts'
+          test "$(git diff -- packages/compiler/src/project/project.ts | grep -c '^+.*TopLevelLetDeclaration.*annotation')" = '1'
+      - name: Commit exact patch
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add packages/compiler/src/project/project.ts .github/workflows/patch-internal-visibility.yml
+          git commit -m 'fix(modules): validate top-level value visibility'
+          git push origin HEAD:feature/633-internal-visibility
