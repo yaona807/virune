@@ -1649,7 +1649,7 @@ fn parseParametersNode(stateValue: CoreState, tokens: List<FrontendToken>) -> Co
 		let mut parameterChildren: List<Int> = []
 		if typeValue.id >= 0 {
 			parameterChildren = List.append(parameterChildren, typeValue.id)
-			}
+		}
 		let parameterText = if optional then "optional " + name else name
 		let parameter = addNode(state, tokens, "Parameter", parameterText, before, state.index, parameterChildren, [])
 		state = parameter.state
