@@ -198,6 +198,8 @@ export interface JsInteropProvider {
 	resolveWriteUsage?(type: ForeignTypeRef, usage: InteropWriteUsage): ForeignWriteResolution | undefined;
 	/** Contextual object resolver for an already-known External expected type. */
 	resolveObjectUsage?(type: ForeignTypeRef, usage: InteropObjectUsage): ForeignObjectResolution | undefined;
+	/** Whole generated TSX usage resolver. Any syntactic, semantic, or JSX-environment uncertainty must fail closed. */
+	resolveJsxUsage?(usage: { readonly containingFile: string; readonly platform: JsImportRequest['platform']; readonly sourceText: string }): { readonly accepted: true } | undefined;
 	resolveCall(type: ForeignTypeRef, argumentsList: readonly InteropArgumentType[]): ForeignCallResolution | undefined;
 	resolveConstruct(type: ForeignTypeRef, argumentsList: readonly InteropArgumentType[]): ForeignCallResolution | undefined;
 	getAwaitedType(type: ForeignTypeRef): ForeignTypeSnapshot | undefined;

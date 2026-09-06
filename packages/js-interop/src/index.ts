@@ -32,6 +32,9 @@ import type {
 	NativeCallableTypeTemplate,
 } from '@virune/compiler/experimental';
 
+type InteropJsxUsage = Parameters<NonNullable<JsInteropProvider['resolveJsxUsage']>>[0];
+type ForeignJsxResolution = NonNullable<ReturnType<NonNullable<JsInteropProvider['resolveJsxUsage']>>>;
+
 export interface TypeScriptInteropProviderOptions {
 	readonly projectRoot: string;
 	readonly compilerOptions?: ts.CompilerOptions;
@@ -152,6 +155,7 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 			['resolveIndexUsage', (reference: ForeignTypeRef, usage: InteropIndexUsage) => this.resolveIndexUsageInternal(reference, usage)],
 			['resolveWriteUsage', (reference: ForeignTypeRef, usage: InteropWriteUsage) => this.resolveWriteUsageInternal(reference, usage)],
 			['resolveObjectUsage', (reference: ForeignTypeRef, usage: InteropObjectUsage) => this.resolveObjectUsageInternal(reference, usage)],
+			['resolveJsxUsage', (usage: InteropJsxUsage) => this.resolveJsxUsageInternal(usage)],
 		] as const) {
 			Object.defineProperty(this, name, { value, enumerable: false, configurable: false, writable: false });
 		}
@@ -453,6 +457,33 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 		const typeExpression = renderContextualTypeExpression(type, checker, location);
 		if (typeExpression === undefined) return undefined;
 		return this.store(type, checker, location, origin, workspace, { typeExpression, directory });
+	}
+
+	private resolveJsxUsageInternal(usage: InteropJsxUsage): ForeignJsxResolution | undefined {
+		if (usage.platform !== 'node' && usage.platform !== 'browser' && usage.platform !== 'neutral') return undefined;
+		if (usage.sourceText.trim().length === 0) return undefined;
+		const workspace = this.probeWorkspace(usage.platform);
+		const sourceText = `${usage.sourceText}\nexport {};\n`;
+		const virtualFileName = `.virune-interop-jsx-${usage.platform}-${hash(sourceText)}.tsx`;
+		const virtualPath = join(dirname(resolve(usage.containingFile)), virtualFileName);
+		const virtualKey = canonicalFilePath(virtualPath);
+		const existing = workspace.virtualFiles.get(virtualKey);
+		if (existing === undefined) {
+			workspace.virtualFiles.set(virtualKey, { path: virtualPath, text: sourceText, version: 1 });
+			workspace.projectVersion++;
+		} else if (existing.text !== sourceText) return undefined;
+		const program = workspace.languageService.getProgram();
+		if (program === undefined) return undefined;
+		const diagnostics = [
+			...workspace.languageService.getCompilerOptionsDiagnostics(),
+			...workspace.languageService.getSyntacticDiagnostics(virtualPath),
+			...workspace.languageService.getSemanticDiagnostics(virtualPath),
+		];
+		if (diagnostics.some(item => item.category === ts.DiagnosticCategory.Error)) return undefined;
+		const sourceFile = program.getSourceFile(virtualPath)
+			?? program.getSourceFiles().find(item => canonicalFilePath(item.fileName) === virtualKey);
+		if (sourceFile === undefined || sourceFile.languageVariant !== ts.LanguageVariant.JSX || !sourceFileContainsJsx(sourceFile)) return undefined;
+		return Object.freeze({ accepted: true });
 	}
 
 	private runUsageProbe(context: UsageProbeContext, expression: string): UsageProbeResult | undefined {
@@ -926,6 +957,20 @@ function unwrapObjectLiteral(expression: ts.Expression): ts.ObjectLiteralExpress
 	let current = expression;
 	while (ts.isParenthesizedExpression(current) || ts.isSatisfiesExpression(current)) current = current.expression;
 	return ts.isObjectLiteralExpression(current) ? current : undefined;
+}
+
+function sourceFileContainsJsx(sourceFile: ts.SourceFile): boolean {
+	let found = false;
+	const visit = (node: ts.Node): void => {
+		if (found) return;
+		if (ts.isJsxElement(node) || ts.isJsxSelfClosingElement(node) || ts.isJsxFragment(node)) {
+			found = true;
+			return;
+		}
+		ts.forEachChild(node, visit);
+	};
+	visit(sourceFile);
+	return found;
 }
 
 function canonicalFilePath(fileName: string): string {
