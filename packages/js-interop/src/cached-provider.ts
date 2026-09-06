@@ -17,6 +17,9 @@ import type {
 } from '@virune/compiler/experimental';
 import { TypeScriptInteropProvider, type TypeScriptInteropProviderOptions } from './index.js';
 
+type InteropJsxUsage = Parameters<NonNullable<JsInteropProvider['resolveJsxUsage']>>[0];
+type ForeignJsxResolution = NonNullable<ReturnType<NonNullable<JsInteropProvider['resolveJsxUsage']>>>;
+
 export interface CachedTypeScriptInteropProviderOptions extends TypeScriptInteropProviderOptions {
 	readonly createProvider?: (options: TypeScriptInteropProviderOptions) => TypeScriptInteropProvider;
 }
@@ -82,6 +85,15 @@ export class CachedTypeScriptInteropProvider implements JsInteropProvider {
 			value: (type: ForeignTypeRef, usage: InteropObjectUsage): ForeignObjectResolution | undefined => {
 				const active: JsInteropProvider = this.#requireProvider();
 				return active.resolveObjectUsage?.(type, usage);
+			},
+			enumerable: false,
+			configurable: false,
+			writable: false,
+		});
+		Object.defineProperty(this, 'resolveJsxUsage', {
+			value: (usage: InteropJsxUsage): ForeignJsxResolution | undefined => {
+				const active: JsInteropProvider = this.#requireProvider();
+				return active.resolveJsxUsage?.(usage);
 			},
 			enumerable: false,
 			configurable: false,
