@@ -27,7 +27,7 @@ Declaration             = Attribute* ( FunctionDeclaration
 
 Attribute               = "@" Identifier [ "(" [ ArgumentList ] ")" ] NewLine* ;
 
-FunctionDeclaration     = [ "pub" | "internal" ] [ "async" ] "fn" Identifier [ TypeParameters ]
+FunctionDeclaration     = [ "pub" ] [ "async" ] "fn" Identifier [ TypeParameters ]
                           "(" NewLine* [ ParameterList ] NewLine* ")"
                           [ "->" TypeReference ] [ UsesClause ]
                           ( Block | "=>" Expression LineEnd ) ;
@@ -40,17 +40,17 @@ Parameter               = Identifier ":" TypeReference ;
 UsesClause              = "uses" EffectName { "," EffectName } ;
 EffectName              = Identifier | "*" ;
 
-RecordDeclaration       = [ "pub" | "internal" ] "record" Identifier [ TypeParameters ] [ DerivesClause ]
+RecordDeclaration       = [ "pub" ] "record" Identifier [ TypeParameters ] [ DerivesClause ]
                           "{" NewLine* { RecordField NewLine* } "}" ;
 RecordField             = Attribute* Identifier ":" TypeReference [ "," ] ;
 DerivesClause           = "derives" Identifier { "," Identifier } ;
 
-EnumDeclaration         = [ "pub" | "internal" ] "enum" Identifier [ TypeParameters ] [ DerivesClause ]
+EnumDeclaration         = [ "pub" ] "enum" Identifier [ TypeParameters ] [ DerivesClause ]
                           "{" NewLine* { EnumVariant NewLine* } "}" ;
 EnumVariant             = Identifier [ "(" [ TypeReference { "," TypeReference } ] ")" ] [ "," ] ;
 
-NewtypeDeclaration      = [ "pub" | "internal" ] "newtype" Identifier "=" TypeReference LineEnd ;
-TypeAliasDeclaration    = [ "pub" | "internal" ] "type" Identifier [ TypeParameters ] "=" TypeReference LineEnd ;
+NewtypeDeclaration      = [ "pub" ] "newtype" Identifier "=" TypeReference LineEnd ;
+TypeAliasDeclaration    = [ "pub" ] "type" Identifier [ TypeParameters ] "=" TypeReference LineEnd ;
 
 ExternDeclaration       = [ "unsafe" ] "extern" "js" StringLiteral
                           "{" NewLine* { ExternFunction NewLine* } "}" ;
@@ -60,7 +60,7 @@ ExternParameterList     = ExternParameter { "," NewLine* [ ExternParameter ] } ;
 ExternParameter         = Identifier [ "?" ] ":" TypeReference ;
 
 TestDeclaration         = [ "async" ] "test" StringLiteral Block ;
-TopLevelValueDeclaration= [ "pub" | "internal" ] ( "let" | "const" ) Identifier
+TopLevelValueDeclaration= [ "pub" ] ( "let" | "const" ) Identifier
                           [ ":" TypeReference ] "=" Expression LineEnd ;
 
 TypeReference           = ( FunctionTypeReference | TupleTypeReference | NamedTypeReference ) [ "?" ] ;
