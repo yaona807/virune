@@ -231,4 +231,7 @@ Ui.Empty()
 	assert.match(first.text, /Ui\.Card\("data-title": title\)/u);
 	assert.match(first.text, /\n\t\t\t"hello"\n\t\t\t= title\n/u);
 	assert.match(first.text, /\n\t\t\t\tchildren\n/u);
+	const rejected = formatSource('component Rejected(value?:String) uses JavaScript {\nreturn view {}\n}\n');
+	assert.deepEqual(rejected.errors, []);
+	assert.match(rejected.text, /component Rejected\(value\?: String\) uses JavaScript/u);
 });
