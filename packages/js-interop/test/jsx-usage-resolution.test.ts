@@ -110,12 +110,12 @@ test('reuses deterministic virtual TSX probes and separates target-platform work
 	assert.equal(hosts[1]!.getScriptFileNames().filter(name => name.includes('.virune-interop-jsx-neutral-')).length, 1);
 });
 
-test('cached provider forwards JSX whole-usage resolution through one provider generation', async () => {
+test('cached provider forwards one JSX generation and rejects stale evidence after disposal', async () => {
 	const root = await fixtureRoot();
 	const sourceFile = join(root, 'src/main.virune');
 	await writeFile(join(root, 'src/jsx-a.d.ts'), jsxA, 'utf8');
 	let providerCount = 0;
-	const provider: JsInteropProvider = new CachedTypeScriptInteropProvider({
+	const provider = new CachedTypeScriptInteropProvider({
 		projectRoot: root,
 		compilerOptions: { jsx: ts.JsxEmit.Preserve },
 		createProvider: options => {
@@ -123,11 +123,14 @@ test('cached provider forwards JSX whole-usage resolution through one provider g
 			return new TypeScriptInteropProvider(options);
 		},
 	});
-	const resolveJsxUsage = provider.resolveJsxUsage;
+	const interop: JsInteropProvider = provider;
+	const resolveJsxUsage = interop.resolveJsxUsage;
 	assert.ok(resolveJsxUsage !== undefined);
 	const usage = jsxUsage(sourceFile, `/// <reference path="./jsx-a.d.ts" />\nconst view = <panel className="page" />;\nview;`);
 
 	assert.deepEqual(resolveJsxUsage(usage), { accepted: true });
 	assert.deepEqual(resolveJsxUsage(usage), { accepted: true });
 	assert.equal(providerCount, 1);
+	provider.dispose();
+	assert.throws(() => resolveJsxUsage(usage), /Disposed JavaScript interop provider generation/);
 });
