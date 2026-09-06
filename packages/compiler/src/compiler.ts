@@ -58,6 +58,11 @@ export function compileSource(source: SourceFile, options: CompileOptions = {}):
 	const semantic = checkModule(ast, { ...(options.platform === undefined ? {} : { platform: options.platform }), containingFile: source.path, ...(options.jsInteropProvider === undefined ? {} : { jsInteropProvider: options.jsInteropProvider }) });
 	for (const diagnostic of semantic.diagnostics.items) diagnostics.add(diagnostic);
 	if (diagnostics.hasErrors || options.emit === false) return { source, diagnostics: diagnostics.items, ast, semantic };
+	const component = ast.declarations.find(declaration => declaration.kind === 'ComponentDeclaration');
+	if (component !== undefined) {
+		diagnostics.error('L4307', 'Component emission is unavailable until frontend JSX usage and preserved artifact emission are implemented', component.span);
+		return { source, diagnostics: diagnostics.items, ast, semantic };
+	}
 	const hir = lowerToHir(ast, semantic);
 	const outputFile = options.outputFile ?? source.path.replace(/\.virune$/u, '.js');
 	const output = emitJavaScript(hir, source, outputFile, {
