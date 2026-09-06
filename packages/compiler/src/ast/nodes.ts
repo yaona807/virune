@@ -9,6 +9,7 @@ export interface ImportItem { readonly imported: string; readonly local: string;
 export interface ImportDeclaration extends AstNode {
 	readonly kind: 'ImportDeclaration';
 	readonly public: boolean;
+	readonly internal?: true;
 	readonly sourceKind: 'virune' | 'javascript';
 	readonly typeOnly: boolean;
 	readonly items: readonly ImportItem[];
