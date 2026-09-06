@@ -205,7 +205,6 @@ fn commentAt(comments: List<FrontendComment>, index: Int) -> FrontendComment {
 			text: "",
 			span: fallbackSpan(),
 		}
-	}
 }
 
 fn convertPosition(value: FrontendPosition) -> ParserPosition {
@@ -332,6 +331,21 @@ fn consumeLineEnd(stateValue: CoreState, tokens: List<FrontendToken>, context: S
 	return synchronizeLine(state, tokens)
 }
 
+fn consumeViewLineEnd(stateValue: CoreState, tokens: List<FrontendToken>, context: String) -> CoreState {
+	let mut state = stateValue
+	if currentKind(state, tokens) == FrontendTokenKind.NewLine {
+		return skipNewLines(state, tokens)
+	}
+	state = addDiagnosticAt(
+		state,
+		tokens,
+		"L0002",
+		"Expected a line end after " + context,
+		state.index,
+	)
+	return synchronizeLine(state, tokens)
+}
+
 fn ingestCommentsBefore(
 	stateValue: CoreState,
 	comments: List<FrontendComment>,
@@ -418,6 +432,9 @@ fn declarationKind(state: CoreState, tokens: List<FrontendToken>) -> String {
 	if keyword == "fn" {
 		return "FunctionDeclaration"
 	}
+	if keyword == "component" {
+		return "ComponentDeclaration"
+	}
 	if keyword == "record" {
 		return "RecordDeclaration"
 	}
@@ -444,6 +461,7 @@ fn declarationKind(state: CoreState, tokens: List<FrontendToken>) -> String {
 
 fn supportsDocumentation(kind: String) -> Bool {
 	return kind == "FunctionDeclaration"
+		|| kind == "ComponentDeclaration"
 		|| kind == "RecordDeclaration"
 		|| kind == "EnumDeclaration"
 		|| kind == "NewtypeDeclaration"
@@ -1220,6 +1238,200 @@ fn parseParallelExpression(stateValue: CoreState, tokens: List<FrontendToken>) -
 	return parseControlPostfix(expression.state, tokens, start, expression.id)
 }
 
+fn isViewIdentifierName(state: CoreState, tokens: List<FrontendToken>) -> Bool {
+	let kind = currentKind(state, tokens)
+	return kind == FrontendTokenKind.Identifier || kind == FrontendTokenKind.Keyword
+}
+
+fn parseViewProperty(stateValue: CoreState, tokens: List<FrontendToken>) -> CoreParsedNode {
+	let start = stateValue.index
+	let mut state = stateValue
+	let kind = currentKind(state, tokens)
+	let validName = isViewIdentifierName(state, tokens) || kind == FrontendTokenKind.StringLiteral
+	let name = if validName then currentText(state, tokens) else ""
+	if validName {
+		state = advance(state)
+	} else {
+		state = addDiagnosticAt(state, tokens, "L0002", "Expected a View property name", state.index)
+		if !atEnd(state, tokens) {
+			state = advance(state)
+		}
+	}
+	if isText(state, tokens, ":") {
+		state = advance(state)
+	} else {
+		state = addDiagnosticAt(state, tokens, "L0002", "Expected : after a View property name", state.index)
+	}
+	let value = parseExpression(state, tokens, 1, false)
+	state = value.state
+	let mut children: List<Int> = []
+	if value.id >= 0 {
+		children = List.append(children, value.id)
+	}
+	return addNode(state, tokens, "ViewProperty", name, start, state.index, children, [])
+}
+
+fn parseViewElement(stateValue: CoreState, tokens: List<FrontendToken>) -> CoreParsedNode {
+	let start = stateValue.index
+	let mut state = stateValue
+	let mut tag = currentText(state, tokens)
+	if currentKind(state, tokens) == FrontendTokenKind.Identifier {
+		state = advance(state)
+	} else {
+		state = addDiagnosticAt(state, tokens, "L0002", "Expected a View tag name", state.index)
+		if !atEnd(state, tokens) {
+			state = advance(state)
+		}
+	}
+	while isText(state, tokens, ".") {
+		state = advance(state)
+		if isViewIdentifierName(state, tokens) {
+			tag = tag + "." + currentText(state, tokens)
+			state = advance(state)
+		} else {
+			state = addDiagnosticAt(state, tokens, "L0002", "Expected a member name after . in a View tag", state.index)
+		}
+	}
+	let mut children: List<Int> = []
+	if isText(state, tokens, "(") {
+		state = skipNewLines(advance(state), tokens)
+	} else {
+		state = addDiagnosticAt(state, tokens, "L0002", "Expected ( after a View tag", state.index)
+	}
+	while !atEnd(state, tokens) && !isText(state, tokens, ")") {
+		let before = state.index
+		let property = parseViewProperty(state, tokens)
+		state = property.state
+		if property.id >= 0 {
+			children = List.append(children, property.id)
+		}
+		if isText(state, tokens, ",") {
+			state = skipNewLines(advance(state), tokens)
+		} else if !isText(state, tokens, ")") {
+			state = addDiagnosticAt(state, tokens, "L0002", "Expected , or ) after a View property", state.index)
+			state = synchronizeAggregateItem(state, tokens, ")")
+			if isText(state, tokens, ",") {
+				state = skipNewLines(advance(state), tokens)
+			}
+		}
+		if state.index <= before {
+			state = addDiagnosticAt(state, tokens, "L0002", "Parser made no progress in View properties", state.index)
+			if !atEnd(state, tokens) {
+				state = advance(state)
+			}
+		}
+	}
+	if isText(state, tokens, ")") {
+		state = advance(state)
+	} else {
+		state = addDiagnosticAt(state, tokens, "L0002", "Expected ) after View properties", state.index)
+	}
+	if isText(state, tokens, "{") {
+		let body = parseViewBlock(state, tokens)
+		state = body.state
+		children = List.append(children, body.id)
+	} else {
+		state = consumeViewLineEnd(state, tokens, "a View element")
+	}
+	return addNode(state, tokens, "ViewElement", tag, start, state.index, children, [])
+}
+
+fn parseViewConditional(stateValue: CoreState, tokens: List<FrontendToken>) -> CoreParsedNode {
+	let start = stateValue.index
+	let condition = parseExpression(advance(stateValue), tokens, 1, true)
+	let mut state = condition.state
+	let mut children: List<Int> = []
+	if condition.id >= 0 {
+		children = List.append(children, condition.id)
+	}
+	let thenBlock = parseViewBlock(state, tokens)
+	state = thenBlock.state
+	children = List.append(children, thenBlock.id)
+	if isText(state, tokens, "else") {
+		state = advance(state)
+		if isText(state, tokens, "if") {
+			let alternative = parseViewConditional(state, tokens)
+			state = alternative.state
+			children = List.append(children, alternative.id)
+		} else {
+			let alternative = parseViewBlock(state, tokens)
+			state = alternative.state
+			children = List.append(children, alternative.id)
+		}
+	}
+	return addNode(state, tokens, "ViewConditional", "if", start, state.index, children, [])
+}
+
+fn parseViewChild(stateValue: CoreState, tokens: List<FrontendToken>) -> CoreParsedNode {
+	let start = stateValue.index
+	let mut state = stateValue
+	let text = currentText(state, tokens)
+	if text == "if" {
+		return parseViewConditional(state, tokens)
+	}
+	if text == "children" && tokenAt(tokens, state.index + 1).kind == FrontendTokenKind.NewLine {
+		state = consumeViewLineEnd(advance(state), tokens, "the children slot")
+		return addNode(state, tokens, "ViewChildrenSlot", "children", start, state.index, [], [])
+	}
+	if currentKind(state, tokens) == FrontendTokenKind.StringLiteral {
+		state = consumeViewLineEnd(advance(state), tokens, "a View text child")
+		return addNode(state, tokens, "ViewTextChild", text, start, state.index, [], [])
+	}
+	if text == "=" {
+		let expression = parseExpression(advance(state), tokens, 1, false)
+		state = consumeViewLineEnd(expression.state, tokens, "a View expression child")
+		let mut children: List<Int> = []
+		if expression.id >= 0 {
+			children = List.append(children, expression.id)
+		}
+		return addNode(state, tokens, "ViewExpressionChild", "=", start, state.index, children, [])
+	}
+	if currentKind(state, tokens) == FrontendTokenKind.Identifier {
+		return parseViewElement(state, tokens)
+	}
+	state = addDiagnosticAt(state, tokens, "L0002", "Expected a View child", state.index)
+	state = synchronizeLine(state, tokens)
+	return CoreParsedNode { state: state, id: -1 }
+}
+
+fn parseViewBlock(stateValue: CoreState, tokens: List<FrontendToken>) -> CoreParsedNode {
+	let start = stateValue.index
+	let mut state = stateValue
+	if isText(state, tokens, "{") {
+		state = skipNewLines(advance(state), tokens)
+	} else {
+		state = addDiagnosticAt(state, tokens, "L0002", "Expected { to begin a View block", state.index)
+	}
+	let mut children: List<Int> = []
+	while !atEnd(state, tokens) && !isText(state, tokens, "}") {
+		let before = state.index
+		let child = parseViewChild(state, tokens)
+		state = child.state
+		if child.id >= 0 {
+			children = List.append(children, child.id)
+		}
+		state = skipNewLines(state, tokens)
+		if state.index <= before {
+			state = addDiagnosticAt(state, tokens, "L0002", "Parser made no progress in a View block", state.index)
+			if !atEnd(state, tokens) {
+				state = skipNewLines(advance(state), tokens)
+			}
+		}
+	}
+	if isText(state, tokens, "}") {
+		state = advance(state)
+	} else {
+		state = addDiagnosticAt(state, tokens, "L0002", "Expected } to end a View block", state.index)
+	}
+	return addNode(state, tokens, "ViewBlock", "{}", start, state.index, children, [])
+}
+
+fn parseViewExpression(stateValue: CoreState, tokens: List<FrontendToken>) -> CoreParsedNode {
+	let start = stateValue.index
+	let body = parseViewBlock(advance(stateValue), tokens)
+	return addNode(body.state, tokens, "ViewExpression", "view", start, body.state.index, [body.id], [])
+}
+
 fn parsePrimary(stateValue: CoreState, tokens: List<FrontendToken>, stopAtBrace: Bool) -> CoreParsedNode {
 	let mut state = stateValue
 	let start = state.index
@@ -1228,6 +1440,10 @@ fn parsePrimary(stateValue: CoreState, tokens: List<FrontendToken>, stopAtBrace:
 		return CoreParsedNode { state: state, id: -1 }
 	}
 	let text = currentText(state, tokens)
+	if text == "view" {
+		let viewValue = parseViewExpression(state, tokens)
+		return parsePostfix(viewValue.state, tokens, start, viewValue.id)
+	}
 	if text == "if" {
 		return parseConditionalExpression(state, tokens)
 	}
@@ -1775,6 +1991,79 @@ fn parseFunction(
 		state = synchronizeLine(state, tokens)
 	}
 	return addNode(state, tokens, "FunctionDeclaration", name, start, state.index, children, documentation)
+}
+
+fn parseComponent(
+	stateValue: CoreState,
+	tokens: List<FrontendToken>,
+	documentation: List<String>,
+) -> CoreParsedNode {
+	let start = stateValue.index
+	let keywordIndex = declarationKeywordIndex(stateValue, tokens)
+	let publicValue = modifierPresent(stateValue, tokens, keywordIndex, "pub")
+	let internalValue = modifierPresent(stateValue, tokens, keywordIndex, "internal")
+	let asyncValue = modifierPresent(stateValue, tokens, keywordIndex, "async")
+	let unsafeValue = modifierPresent(stateValue, tokens, keywordIndex, "unsafe")
+	let mut state = stateValue
+	if publicValue && internalValue {
+		state = addDiagnosticAt(state, tokens, "L0002", "A component cannot combine pub and internal visibility", state.index)
+	}
+	if asyncValue || unsafeValue {
+		state = addDiagnosticAt(state, tokens, "L0002", "A component does not support async or unsafe modifiers", state.index)
+	}
+	state = withIndex(state, keywordIndex + 1)
+	let name = currentText(state, tokens)
+	if currentKind(state, tokens) == FrontendTokenKind.Identifier {
+		state = advance(state)
+	} else {
+		state = addDiagnosticAt(state, tokens, "L0002", "Expected a component name", state.index)
+	}
+	let mut children: List<Int> = []
+	if publicValue || internalValue {
+		let modifierText = if publicValue && internalValue then "public internal" else if publicValue then "public" else "internal"
+		let modifiers = addNode(state, tokens, "ComponentModifiers", modifierText, start, keywordIndex, [], [])
+		state = modifiers.state
+		children = List.append(children, modifiers.id)
+	}
+	if isText(state, tokens, "<") {
+		state = addDiagnosticAt(state, tokens, "L0002", "A component does not support type parameters", state.index)
+		state = advance(state)
+		while !atEnd(state, tokens) && !isText(state, tokens, ">") {
+			state = advance(state)
+		}
+		if isText(state, tokens, ">") {
+			state = advance(state)
+		}
+	}
+	let parameters = parseParametersNode(state, tokens)
+	state = parameters.state
+	children = List.append(children, parameters.id)
+	if isText(state, tokens, "->") {
+		state = addDiagnosticAt(state, tokens, "L0002", "A component does not support a written return type", state.index)
+		state = advance(state)
+		while !atEnd(state, tokens)
+			&& currentKind(state, tokens) != FrontendTokenKind.NewLine
+			&& !isText(state, tokens, "uses")
+			&& !isText(state, tokens, "{") {
+			state = advance(state)
+		}
+	}
+	if isText(state, tokens, "uses") {
+		let usesClause = parseUsesClauseNode(state, tokens)
+		state = usesClause.state
+		children = List.append(children, usesClause.id)
+	} else {
+		state = addDiagnosticAt(state, tokens, "L0002", "Expected uses in a component declaration", state.index)
+	}
+	if isText(state, tokens, "{") {
+		let body = parseBlock(state, tokens)
+		state = body.state
+		children = List.append(children, body.id)
+	} else {
+		state = addDiagnosticAt(state, tokens, "L0002", "Expected a component body", state.index)
+		state = synchronizeLine(state, tokens)
+	}
+	return addNode(state, tokens, "ComponentDeclaration", name, start, state.index, children, documentation)
 }
 
 fn parseTestDeclaration(
@@ -2388,6 +2677,9 @@ fn parseDeclaration(stateValue: CoreState, tokens: List<FrontendToken>) -> CoreP
 	let state = withSignificant(docs.state, true)
 	if kind == "FunctionDeclaration" {
 		return parseFunction(state, tokens, docs.documentation)
+	}
+	if kind == "ComponentDeclaration" {
+		return parseComponent(state, tokens, docs.documentation)
 	}
 	if kind == "RecordDeclaration"
 		|| kind == "EnumDeclaration"
