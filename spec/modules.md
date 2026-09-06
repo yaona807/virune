@@ -6,10 +6,22 @@
 Each `.virune` file is one module. Relative imports include the `.virune` extension and are resolved exactly; directory indexes and extension inference are not performed.
 
 ## `[module.visibility]` Visibility
-Declarations are private by default. `pub` exposes a declaration from its module. A public signature cannot expose a private nominal type.
+Declarations are private by default. `internal` exposes a declaration to other modules in the same package or application scope. `pub` exposes a declaration as published public API.
+
+Visibility is ordered as:
+
+```text
+private < internal < public
+```
+
+A declaration signature cannot expose a nominal type with lower visibility: a `pub` signature may refer only to public nominal types, while an `internal` signature may refer to internal or public nominal types. Private signatures are unrestricted by module visibility.
+
+For the root project, modules in that project share one application/package scope. Modules inside one installed npm package share that concrete package scope. Internal visibility does not cross from an installed dependency into its consumer, and unknown or out-of-scope paths do not acquire internal visibility by inference.
+
+`internal` is a declaration visibility modifier. It does not define an `internal import` or internal re-export form. A runtime JavaScript binding for an internal declaration may be emitted as an ESM export when needed for sibling-module linking; that runtime export does not make the declaration part of the published Virune API.
 
 ## `[module.import]` Imports
-Imports are named. `import type` removes the import from generated JavaScript. `pub import` re-exports the imported identity.
+Imports are named. `import type` removes the import from generated JavaScript. `pub import` re-exports the imported identity. A `pub import` cannot promote an `internal` declaration into published public API.
 
 ## `[module.cycle]` Cycles
 Module dependency cycles are rejected, including type-only cycles.
