@@ -230,5 +230,5 @@ Ui.Empty()
 	assert.match(first.text, /internal component Card\(title: String\) uses JavaScript/u);
 	assert.match(first.text, /Ui\.Card\("data-title": title\)/u);
 	assert.match(first.text, /\n\t\t\t"hello"\n\t\t\t= title\n/u);
-	assert.match(first.text, /\n\t\t\tchildren\n/u);
+	assert.match(first.text, /\n\t\t\t\tchildren\n/u);
 });
