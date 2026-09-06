@@ -87,6 +87,22 @@ test('fails JSX closed for malformed, invalid, unreadable, or unresolved project
 	}
 });
 
+test('malformed project JSX config does not poison ordinary non-JSX Interop resolution', async () => {
+	const { root, sourceFile } = await jsxProject();
+	await writeFile(join(root, 'tsconfig.json'), '{"compilerOptions":', 'utf8');
+	const provider = new TypeScriptInteropProvider({ projectRoot: root });
+
+	assert.equal(resolver(provider)(usage(sourceFile)), undefined);
+	const imported = provider.resolveImport({
+		containingFile: sourceFile,
+		moduleSpecifier: './library.js',
+		kind: 'named',
+		importedName: 'greet',
+		platform: 'node',
+	});
+	assert.ok(imported.type);
+});
+
 test('project config cannot weaken Interop safety or replace target-platform module resolution', async () => {
 	const { root, sourceFile } = await jsxProject();
 	await writeFile(join(root, 'tsconfig.json'), JSON.stringify({
