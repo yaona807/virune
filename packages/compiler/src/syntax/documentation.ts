@@ -145,8 +145,9 @@ function collectTargets(module: A.ModuleNode): DocumentationTarget[] {
 				targets.push({ node: fn, anchor: syntaxStartOf(fn) ?? fn.span.start.offset, label: 'an extern function', supported: true });
 				for (const parameter of fn.parameters) targets.push({ node: {}, anchor: syntaxStartOf(parameter) ?? parameter.span.start.offset, label: 'a function parameter', supported: false });
 			}
-		} else if (declaration.kind === 'FunctionDeclaration') {
-			for (const parameter of declaration.parameters) targets.push({ node: {}, anchor: syntaxStartOf(parameter) ?? parameter.span.start.offset, label: 'a function parameter', supported: false });
+		} else if (declaration.kind === 'FunctionDeclaration' || declaration.kind === 'ComponentDeclaration') {
+			const label = declaration.kind === 'ComponentDeclaration' ? 'a component parameter' : 'a function parameter';
+			for (const parameter of declaration.parameters) targets.push({ node: {}, anchor: syntaxStartOf(parameter) ?? parameter.span.start.offset, label, supported: false });
 		}
 	}
 	for (const declaration of module.imports) {
@@ -267,6 +268,7 @@ function memberAnchor(field: A.RecordFieldNode): number {
 function declarationLabel(declaration: Exclude<A.Declaration, A.TestDeclaration>): string {
 	switch (declaration.kind) {
 		case 'FunctionDeclaration': return 'a function declaration';
+		case 'ComponentDeclaration': return 'a component declaration';
 		case 'RecordDeclaration': return 'a record declaration';
 		case 'EnumDeclaration': return 'an enum declaration';
 		case 'NewtypeDeclaration': return 'a newtype declaration';
