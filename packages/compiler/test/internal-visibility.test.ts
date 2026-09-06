@@ -40,7 +40,7 @@ test('same-project modules can import and execute an internal runtime binding', 
 		assert.deepEqual(errorCodes(result), []);
 		const helper = result.modules.find(module => module.source.path === resolve(root, 'src/helper.virune'));
 		assert.match(helper?.output?.code ?? '', /export function add\(/u);
-		const loaded = await import(`${pathToFileURL(join(root, 'dist/main.js')).href}?internal=${Date.now()}`) as { run(): number };
+		const loaded = await import(pathToFileURL(join(root, 'dist/main.js')).href) as { run(): number };
 		assert.equal(loaded.run(), 42);
 	});
 });
