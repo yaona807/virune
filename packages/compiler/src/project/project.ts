@@ -514,13 +514,20 @@ async function buildModuleInterfaces(
 			if (visibility === undefined) continue;
 			exports.set(declaration.name, { declaration, originPath: path, originModule: module, visibility });
 		}
-		for (const importDeclaration of module.imports.filter(item => item.public && item.sourceKind === 'virune')) {
+		const importedTypeVisibilities = new Map<string, ExportVisibility>();
+		for (const importDeclaration of module.imports.filter(item => item.sourceKind === 'virune' && item.internal !== true)) {
 			const dependencyPath = await resolveImport(root, path, importDeclaration.source, host);
 			const dependencyInterface = dependencyPath === undefined ? undefined : interfaces.get(dependencyPath);
 			if (dependencyInterface === undefined) continue;
 			for (const item of importDeclaration.items) {
 				const exported = dependencyInterface.exports.get(item.imported);
-				if (exported === undefined || !exportVisibleTo(root, path, exported)) { diagnostics.error('L4004', `Module ${importDeclaration.source} does not export ${item.imported}`, item.span); continue; }
+				const visible = exported !== undefined && exportVisibleTo(root, path, exported);
+				if (visible && exported !== undefined && isTypeDeclaration(exported.declaration)) {
+					const previous = importedTypeVisibilities.get(item.local);
+					if (previous === undefined || exported.visibility === 'internal') importedTypeVisibilities.set(item.local, exported.visibility);
+				}
+				if (!importDeclaration.public) continue;
+				if (!visible || exported === undefined) { diagnostics.error('L4004', `Module ${importDeclaration.source} does not export ${item.imported}`, item.span); continue; }
 				if (exported.visibility === 'internal') { diagnostics.error('L4018', `Public import cannot re-export internal declaration ${item.imported}`, item.span); continue; }
 				if (importDeclaration.typeOnly && !isTypeDeclaration(exported.declaration)) {
 					diagnostics.error('L4015', `Type-only re-export ${item.local} must refer to a type`, item.span);
@@ -530,6 +537,7 @@ async function buildModuleInterfaces(
 				exports.set(item.local, exported);
 			}
 		}
+		validateImportedSignatureVisibility(module, importedTypeVisibilities, diagnostics);
 		interfaces.set(path, { exports });
 	}
 	return interfaces;
@@ -766,6 +774,25 @@ function validateSignatureVisibility(module: A.ModuleNode, diagnostics: Diagnost
 			const owner = rank === 2 ? 'Public' : 'Internal';
 			const exposed = local.internal === true ? 'internal' : 'private';
 			diagnostics.error('L4010', `${owner} declaration ${declaration.name} exposes ${exposed} type ${name}`, declaration.span);
+		}
+	}
+}
+
+function validateImportedSignatureVisibility(
+	module: A.ModuleNode,
+	importedTypes: ReadonlyMap<string, ExportVisibility>,
+	diagnostics: DiagnosticBag,
+): void {
+	for (const declaration of module.declarations) {
+		const rank = declarationVisibilityRank(declaration);
+		if (rank === 0 || declaration.kind === 'NewtypeDeclaration' || !('name' in declaration)) continue;
+		for (const name of referencedTypeNames(declaration)) {
+			const importedVisibility = importedTypes.get(name);
+			if (importedVisibility === undefined) continue;
+			const importedRank = importedVisibility === 'public' ? 2 : 1;
+			if (importedRank >= rank) continue;
+			const owner = rank === 2 ? 'Public' : 'Internal';
+			diagnostics.error('L4010', `${owner} declaration ${declaration.name} exposes internal type ${name}`, declaration.span);
 		}
 	}
 }
