@@ -27,7 +27,9 @@ export const KwAs = keyword('KwAs', /as\b/);
 export const KwAsync = keyword('KwAsync', /async\b/);
 export const KwAwait = keyword('KwAwait', /await\b/);
 export const KwBreak = keyword('KwBreak', /break\b/);
-export const KwChildren = keyword('KwChildren', /children\b/);
+// `children` is contextual View syntax. Keep its distinct token for View parsing while
+// also accepting it anywhere an ordinary identifier is valid for source compatibility.
+export const KwChildren = createToken({ name: 'KwChildren', pattern: /children\b/, longer_alt: Identifier, categories: [Identifier, IdentifierName] });
 export const KwComponent = keyword('KwComponent', /component\b/);
 export const KwConst = keyword('KwConst', /const\b/);
 export const KwContinue = keyword('KwContinue', /continue\b/);
