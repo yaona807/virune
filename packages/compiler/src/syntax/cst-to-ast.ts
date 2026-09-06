@@ -12,6 +12,10 @@ const firstToken = (ctx: Ctx, name: string): IToken | undefined => tokens(ctx, n
 const firstNode = (ctx: Ctx, name: string): CstNode | undefined => nodes(ctx, name)[0];
 const tokenText = (ctx: Ctx, name: string, index = 0): string => tokens(ctx, name)[index]?.image ?? '';
 const unquote = (image: string): string => JSON.parse(image) as string;
+const declarationVisibility = (ctx: Ctx): A.DeclarationVisibility => {
+	const image = firstToken(ctx, 'KwPub')?.image;
+	return image === 'pub' ? { public: true } : image === 'internal' ? { public: false, internal: true } : { public: false };
+};
 
 function tokenSpan(fileId: FileId, token: IToken | undefined): SourceSpan {
 	if (token === undefined) return zeroSpan(fileId);
@@ -70,9 +74,10 @@ export class AstBuilder extends baseCstVisitorConstructor {
 		const namespace = firstToken(ctx, 'Star') !== undefined;
 		const namedClause = firstToken(ctx, 'LBrace') !== undefined;
 		const sideEffect = !namedClause && !namespace && identifiers.length === 0;
+		const modifier = firstToken(ctx, 'KwPub')?.image;
 		return setSyntaxStart({
 			id: this.id(), kind: 'ImportDeclaration', span: nodeSpan(this.#fileId, this.currentNode(ctx)),
-			public: firstToken(ctx, 'KwPub') !== undefined,
+			public: modifier === 'pub', ...(modifier === 'internal' ? { internal: true as const } : {}),
 			sourceKind: firstToken(ctx, 'KwJs') === undefined ? 'virune' : 'javascript',
 			typeOnly: firstToken(ctx, 'KwType') !== undefined,
 			items: named,
@@ -105,7 +110,7 @@ export class AstBuilder extends baseCstVisitorConstructor {
 		const expressionNode = firstNode(ctx, 'expression');
 		return {
 			id: this.id(), kind: 'FunctionDeclaration', span: nodeSpan(this.#fileId, this.currentNode(ctx)), name: tokenText(ctx, 'Identifier'),
-			public: firstToken(ctx, 'KwPub') !== undefined, async: firstToken(ctx, 'KwAsync') !== undefined, attributes: [],
+			...declarationVisibility(ctx), async: firstToken(ctx, 'KwAsync') !== undefined, attributes: [],
 			typeParameters: firstNode(ctx, 'typeParameters') === undefined ? [] : this.visitNode<A.TypeParameterNode[]>(firstNode(ctx, 'typeParameters')),
 			parameters: firstNode(ctx, 'parameterList') === undefined ? [] : this.visitNode<A.ParameterNode[]>(firstNode(ctx, 'parameterList')),
 			...(firstNode(ctx, 'typeReference') === undefined ? {} : { returnType: this.visitNode<A.TypeReferenceNode>(firstNode(ctx, 'typeReference')) }),
@@ -120,18 +125,18 @@ export class AstBuilder extends baseCstVisitorConstructor {
 	public usesClause(ctx: Ctx): string[] { return [...tokens(ctx, 'Identifier'), ...tokens(ctx, 'Star')].sort((left, right) => left.startOffset - right.startOffset).map(token => token.image); }
 
 	public recordDeclaration(ctx: Ctx): A.RecordDeclaration {
-		return { id: this.id(), kind: 'RecordDeclaration', span: nodeSpan(this.#fileId, this.currentNode(ctx)), name: tokenText(ctx, 'Identifier'), public: firstToken(ctx, 'KwPub') !== undefined, attributes: [], typeParameters: firstNode(ctx, 'typeParameters') === undefined ? [] : this.visitNode(firstNode(ctx, 'typeParameters')), fields: this.visitNodes(nodes(ctx, 'recordField')), derives: firstNode(ctx, 'derivesClause') === undefined ? [] : this.visitNode(firstNode(ctx, 'derivesClause')) };
+		return { id: this.id(), kind: 'RecordDeclaration', span: nodeSpan(this.#fileId, this.currentNode(ctx)), name: tokenText(ctx, 'Identifier'), ...declarationVisibility(ctx), attributes: [], typeParameters: firstNode(ctx, 'typeParameters') === undefined ? [] : this.visitNode(firstNode(ctx, 'typeParameters')), fields: this.visitNodes(nodes(ctx, 'recordField')), derives: firstNode(ctx, 'derivesClause') === undefined ? [] : this.visitNode(firstNode(ctx, 'derivesClause')) };
 	}
 	public recordField(ctx: Ctx): A.RecordFieldNode { return setSyntaxStart({ name: tokenText(ctx, 'Identifier'), type: this.visitNode(firstNode(ctx, 'typeReference')), attributes: this.visitNodes<A.AttributeNode>(nodes(ctx, 'attribute')), span: nodeSpan(this.#fileId, this.currentNode(ctx)) }, contextSpan(this.#fileId, ctx).start.offset); }
 	public derivesClause(ctx: Ctx): string[] { return tokens(ctx, 'Identifier').map(token => token.image); }
-	public enumDeclaration(ctx: Ctx): A.EnumDeclaration { return { id: this.id(), kind: 'EnumDeclaration', span: nodeSpan(this.#fileId, this.currentNode(ctx)), name: tokenText(ctx, 'Identifier'), public: firstToken(ctx, 'KwPub') !== undefined, attributes: [], typeParameters: firstNode(ctx, 'typeParameters') === undefined ? [] : this.visitNode(firstNode(ctx, 'typeParameters')), variants: this.visitNodes(nodes(ctx, 'enumVariant')), derives: firstNode(ctx, 'derivesClause') === undefined ? [] : this.visitNode(firstNode(ctx, 'derivesClause')) }; }
+	public enumDeclaration(ctx: Ctx): A.EnumDeclaration { return { id: this.id(), kind: 'EnumDeclaration', span: nodeSpan(this.#fileId, this.currentNode(ctx)), name: tokenText(ctx, 'Identifier'), ...declarationVisibility(ctx), attributes: [], typeParameters: firstNode(ctx, 'typeParameters') === undefined ? [] : this.visitNode(firstNode(ctx, 'typeParameters')), variants: this.visitNodes(nodes(ctx, 'enumVariant')), derives: firstNode(ctx, 'derivesClause') === undefined ? [] : this.visitNode(firstNode(ctx, 'derivesClause')) }; }
 	public enumVariant(ctx: Ctx): A.EnumVariantNode { return setSyntaxStart({ name: tokenText(ctx, 'Identifier'), values: this.visitNodes(nodes(ctx, 'typeReference')), span: nodeSpan(this.#fileId, this.currentNode(ctx)) }, contextSpan(this.#fileId, ctx).start.offset); }
-	public newtypeDeclaration(ctx: Ctx): A.NewtypeDeclaration { return { id: this.id(), kind: 'NewtypeDeclaration', span: nodeSpan(this.#fileId, this.currentNode(ctx)), name: tokenText(ctx, 'Identifier'), public: firstToken(ctx, 'KwPub') !== undefined, attributes: [], underlying: this.visitNode(firstNode(ctx, 'typeReference')) }; }
-	public typeAliasDeclaration(ctx: Ctx): A.TypeAliasDeclaration { return { id: this.id(), kind: 'TypeAliasDeclaration', span: nodeSpan(this.#fileId, this.currentNode(ctx)), name: tokenText(ctx, 'Identifier'), public: firstToken(ctx, 'KwPub') !== undefined, attributes: [], typeParameters: firstNode(ctx, 'typeParameters') === undefined ? [] : this.visitNode(firstNode(ctx, 'typeParameters')), target: this.visitNode(firstNode(ctx, 'typeReference')) }; }
+	public newtypeDeclaration(ctx: Ctx): A.NewtypeDeclaration { return { id: this.id(), kind: 'NewtypeDeclaration', span: nodeSpan(this.#fileId, this.currentNode(ctx)), name: tokenText(ctx, 'Identifier'), ...declarationVisibility(ctx), attributes: [], underlying: this.visitNode(firstNode(ctx, 'typeReference')) }; }
+	public typeAliasDeclaration(ctx: Ctx): A.TypeAliasDeclaration { return { id: this.id(), kind: 'TypeAliasDeclaration', span: nodeSpan(this.#fileId, this.currentNode(ctx)), name: tokenText(ctx, 'Identifier'), ...declarationVisibility(ctx), attributes: [], typeParameters: firstNode(ctx, 'typeParameters') === undefined ? [] : this.visitNode(firstNode(ctx, 'typeParameters')), target: this.visitNode(firstNode(ctx, 'typeReference')) }; }
 	public externDeclaration(ctx: Ctx): A.ExternDeclaration { return { id: this.id(), kind: 'ExternDeclaration', span: nodeSpan(this.#fileId, this.currentNode(ctx)), module: unquote(tokenText(ctx, 'StringLiteral')), unsafe: firstToken(ctx, 'KwUnsafe') !== undefined, attributes: [], functions: this.visitNodes(nodes(ctx, 'externFunction')) }; }
 	public externFunction(ctx: Ctx): A.ExternFunctionNode { const strings = tokens(ctx, 'StringLiteral'); return setSyntaxStart({ id: this.id(), kind: 'ExternFunction', span: nodeSpan(this.#fileId, this.currentNode(ctx)), name: tokenText(ctx, 'Identifier'), async: firstToken(ctx, 'KwAsync') !== undefined, parameters: firstNode(ctx, 'parameterList') === undefined ? [] : this.visitNode(firstNode(ctx, 'parameterList')), returnType: this.visitNode(firstNode(ctx, 'typeReference')), effects: firstNode(ctx, 'usesClause') === undefined ? [] : this.visitNode<string[]>(firstNode(ctx, 'usesClause')), jsName: unquote(strings[0]?.image ?? '""') }, contextSpan(this.#fileId, ctx).start.offset); }
 	public testDeclaration(ctx: Ctx): A.TestDeclaration { return { id: this.id(), kind: 'TestDeclaration', span: nodeSpan(this.#fileId, this.currentNode(ctx)), name: unquote(tokenText(ctx, 'StringLiteral')), async: firstToken(ctx, 'KwAsync') !== undefined, attributes: [], body: this.visitNode(firstNode(ctx, 'block')) }; }
-	public topLevelLetDeclaration(ctx: Ctx): A.TopLevelLetDeclaration { return { id: this.id(), kind: 'TopLevelLetDeclaration', span: nodeSpan(this.#fileId, this.currentNode(ctx)), name: tokenText(ctx, 'Identifier'), attributes: [], constant: firstToken(ctx, 'KwConst') !== undefined, public: firstToken(ctx, 'KwPub') !== undefined, ...(firstNode(ctx, 'typeReference') === undefined ? {} : { annotation: this.visitNode<A.TypeReferenceNode>(firstNode(ctx, 'typeReference')) }), value: this.visitNode(firstNode(ctx, 'expression')) }; }
+	public topLevelLetDeclaration(ctx: Ctx): A.TopLevelLetDeclaration { return { id: this.id(), kind: 'TopLevelLetDeclaration', span: nodeSpan(this.#fileId, this.currentNode(ctx)), name: tokenText(ctx, 'Identifier'), attributes: [], constant: firstToken(ctx, 'KwConst') !== undefined, ...declarationVisibility(ctx), ...(firstNode(ctx, 'typeReference') === undefined ? {} : { annotation: this.visitNode<A.TypeReferenceNode>(firstNode(ctx, 'typeReference')) }), value: this.visitNode(firstNode(ctx, 'expression')) }; }
 
 	public typeReference(ctx: Ctx): A.TypeReferenceNode {
 		const functionType = firstNode(ctx, 'functionTypeReference');
