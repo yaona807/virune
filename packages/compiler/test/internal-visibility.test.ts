@@ -92,6 +92,29 @@ test('signature visibility rejects lower-visibility nominal types', async () => 
 	});
 });
 
+test('public signatures reject imported internal types without rejecting imported public types', async () => {
+	await withProject(async root => {
+		await writeFile(join(root, 'src/types.virune'), 'internal record Internal {}\n\npub record Public {}\n', 'utf8');
+		await writeFile(join(root, 'src/main.virune'), [
+			'import { Internal as SharedInternal, Public as SharedPublic } from "./types.virune"',
+			'',
+			'pub fn leak(value: SharedInternal) -> Unit {',
+			'\treturn Unit',
+			'}',
+			'',
+			'pub fn valid(value: SharedPublic) -> Unit {',
+			'\treturn Unit',
+			'}',
+			'',
+		].join('\n'), 'utf8');
+		const result = await buildProject(root, { write: false });
+		const visibilityErrors = result.diagnostics.filter(item => item.code === 'L4010');
+		assert.deepEqual(visibilityErrors.map(item => item.message), [
+			'Public declaration leak exposes internal type SharedInternal',
+		]);
+	});
+});
+
 test('dependency internal declarations stay hidden from the package consumer', async () => {
 	await withProject(async root => {
 		const packageRoot = join(root, 'node_modules/example-internal');
