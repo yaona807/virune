@@ -220,7 +220,7 @@
         },
         {
           "name": "storage.modifier.virune",
-          "match": "\\b(?:async|const|derives|js|let|module|mut|pub|unsafe|uses)\\b"
+          "match": "\\b(?:async|const|derives|internal|js|let|module|mut|pub|unsafe|uses)\\b"
         }
       ]
     },
