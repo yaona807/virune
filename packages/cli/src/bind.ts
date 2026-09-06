@@ -36,7 +36,7 @@ interface FunctionBinding {
 }
 
 const reserved = new Set([
-	'as', 'async', 'await', 'break', 'const', 'continue', 'defer', 'derives', 'discard', 'else', 'enum', 'extern', 'false', 'fn', 'for', 'from', 'if', 'import', 'in', 'js', 'let', 'match', 'module', 'mut', 'newtype', 'parallel', 'pub', 'record', 'return', 'test', 'then', 'true', 'try', 'type', 'unsafe', 'uses', 'while', 'with',
+	'as', 'async', 'await', 'break', 'const', 'continue', 'defer', 'derives', 'discard', 'else', 'enum', 'extern', 'false', 'fn', 'for', 'from', 'if', 'import', 'in', 'internal', 'js', 'let', 'match', 'module', 'mut', 'newtype', 'parallel', 'pub', 'record', 'return', 'test', 'then', 'true', 'try', 'type', 'unsafe', 'uses', 'while', 'with',
 	'Bool', 'Int', 'Float', 'BigInt', 'String', 'Unit', 'Unknown', 'Never', 'List', 'Map', 'Set', 'Option', 'Result', 'Validation', 'Stream', 'Json', 'Console', 'Debug', 'Task', 'Duration', 'Queue', 'Stack', 'File', 'Path', 'Process', 'Http', 'Fetch', 'Timer', 'Storage', 'Dom', 'Crypto', 'Bytes', 'MutableBytes', 'Some', 'None', 'Ok', 'Err', 'panic', 'expect',
 ]);
 
