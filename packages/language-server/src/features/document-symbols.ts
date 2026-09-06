@@ -29,6 +29,7 @@ function declarationName(declaration: Declaration): string {
 function declarationKind(declaration: Declaration): SymbolKind {
 	switch (declaration.kind) {
 		case 'FunctionDeclaration': return SymbolKind.Function;
+		case 'ComponentDeclaration': return SymbolKind.Function;
 		case 'RecordDeclaration': return SymbolKind.Struct;
 		case 'EnumDeclaration': return SymbolKind.Enum;
 		case 'NewtypeDeclaration': return SymbolKind.Class;
