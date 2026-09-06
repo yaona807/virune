@@ -1,10 +1,10 @@
 import { CstParser, type CstNode, type IParserErrorMessageProvider, type IRecognitionException, type IToken } from 'chevrotain';
 import {
 	allTokens, AndAnd, At, Bang, BangEqual, Bar, BigIntLiteral, Colon, Comma, Dot, EqualEqual, Equals, FatArrow,
-	FloatLiteral, Greater, GreaterEqual, Identifier, IdentifierName, IntLiteral, KwAs, KwAsync, KwAwait, KwBreak, KwConst, KwContinue, KwDerives,
+	FloatLiteral, Greater, GreaterEqual, Identifier, IdentifierName, IntLiteral, KwAs, KwAsync, KwAwait, KwBreak, KwChildren, KwComponent, KwConst, KwContinue, KwDerives,
 	KwDefer, KwDiscard, KwElse, KwEnum, KwExtern, KwFalse, KwFn, KwFor, KwFrom, KwIf, KwImport, KwIn, KwJs, KwLet, KwMatch, KwModule,
 	KwMut, KwNewtype, KwParallel, KwPub, KwRecord, KwReturn, KwTest, KwThen, KwTrue, KwTry, KwType,
-	KwUnsafe, KwUses, KwWhile, KwWith, LBrace, LBracket, Less, LessEqual, LParen, Minus, NewLine, OrOr,
+	KwUnsafe, KwUses, KwView, KwWhile, KwWith, LBrace, LBracket, Less, LessEqual, LParen, Minus, NewLine, OrOr,
 	Percent, Pipe, Plus, Question, RangeInclusive, RBrace, RBracket, RParen, Slash, Spread, Star, StringLiteral, ThinArrow, Underscore,
 } from './tokens.js';
 
@@ -96,6 +96,7 @@ export class ViruneParser extends CstParser {
 			$.MANY(() => $.SUBRULE($.attribute));
 			$.OR([
 				{ GATE: () => this.isFunctionStart(), ALT: () => $.SUBRULE($.functionDeclaration) },
+				{ GATE: () => this.isComponentStart(), ALT: () => $.SUBRULE($.componentDeclaration) },
 				{ GATE: () => this.isRecordStart(), ALT: () => $.SUBRULE($.recordDeclaration) },
 				{ GATE: () => this.isEnumStart(), ALT: () => $.SUBRULE($.enumDeclaration) },
 				{ GATE: () => this.isNewtypeStart(), ALT: () => $.SUBRULE($.newtypeDeclaration) },
@@ -137,6 +138,19 @@ export class ViruneParser extends CstParser {
 				{ ALT: () => $.SUBRULE($.block) },
 				{ ALT: () => { $.CONSUME(FatArrow); $.SUBRULE($.expression); $.SUBRULE($.lineEnd); } },
 			]);
+		});
+
+		$.RULE('componentDeclaration', () => {
+			$.OPTION(() => $.CONSUME(KwPub));
+			$.CONSUME(KwComponent);
+			$.CONSUME(Identifier);
+			$.CONSUME(LParen);
+			$.MANY(() => $.CONSUME(NewLine));
+			$.OPTION2(() => $.SUBRULE($.parameterList));
+			$.MANY2(() => $.CONSUME2(NewLine));
+			$.CONSUME(RParen);
+			$.SUBRULE($.usesClause);
+			$.SUBRULE($.block);
 		});
 
 		$.RULE('typeParameters', () => {
@@ -534,6 +548,7 @@ export class ViruneParser extends CstParser {
 				{ ALT: () => $.CONSUME(KwTrue) },
 				{ ALT: () => $.CONSUME(KwFalse) },
 				{ ALT: () => $.CONSUME(Underscore) },
+				{ GATE: () => this.LA(1).tokenType === KwView, ALT: () => $.SUBRULE($.viewExpression) },
 				{ GATE: () => this.isRecordExpressionStart(), ALT: () => $.SUBRULE($.recordExpression) },
 				{ ALT: () => $.CONSUME(Identifier) },
 				{ ALT: () => $.SUBRULE($.listExpression) },
@@ -544,6 +559,96 @@ export class ViruneParser extends CstParser {
 				{ ALT: () => $.SUBRULE($.parallelExpression) },
 				{ ALT: () => $.SUBRULE($.contextualAggregateExpression) },
 			]);
+		});
+
+		$.RULE('viewExpression', () => {
+			$.CONSUME(KwView);
+			$.SUBRULE($.viewBlock);
+		});
+
+		$.RULE('viewBlock', () => {
+			$.CONSUME(LBrace);
+			$.MANY(() => $.CONSUME(NewLine));
+			$.MANY2(() => {
+				$.SUBRULE($.viewChild);
+				$.MANY3(() => $.CONSUME2(NewLine));
+			});
+			$.CONSUME(RBrace);
+		});
+
+		$.RULE('viewChild', () => {
+			$.OR([
+				{ GATE: () => this.LA(1).tokenType === KwIf, ALT: () => $.SUBRULE($.viewConditional) },
+				{ GATE: () => this.LA(1).tokenType === KwChildren, ALT: () => $.SUBRULE($.viewChildrenSlot) },
+				{ GATE: () => this.LA(1).tokenType === StringLiteral, ALT: () => $.SUBRULE($.viewTextChild) },
+				{ GATE: () => this.LA(1).tokenType === Equals, ALT: () => $.SUBRULE($.viewExpressionChild) },
+				{ ALT: () => $.SUBRULE($.viewElement) },
+			]);
+		});
+
+		$.RULE('viewElement', () => {
+			$.SUBRULE($.viewTag);
+			$.CONSUME(LParen);
+			$.MANY(() => $.CONSUME(NewLine));
+			$.OPTION(() => $.SUBRULE($.viewPropertyList));
+			$.MANY2(() => $.CONSUME2(NewLine));
+			$.CONSUME(RParen);
+			$.OR([
+				{ GATE: () => this.LA(1).tokenType === LBrace, ALT: () => $.SUBRULE($.viewBlock) },
+				{ ALT: () => $.SUBRULE($.lineEnd) },
+			]);
+		});
+
+		$.RULE('viewTag', () => {
+			$.CONSUME(Identifier);
+			$.MANY(() => { $.CONSUME(Dot); $.CONSUME(IdentifierName); });
+		});
+
+		$.RULE('viewPropertyList', () => {
+			$.SUBRULE($.viewProperty);
+			$.MANY(() => {
+				$.CONSUME(Comma);
+				$.MANY2(() => $.CONSUME(NewLine));
+				$.OPTION(() => $.SUBRULE2($.viewProperty));
+			});
+		});
+
+		$.RULE('viewProperty', () => {
+			$.OR([
+				{ ALT: () => $.CONSUME(IdentifierName) },
+				{ ALT: () => $.CONSUME(StringLiteral) },
+			]);
+			$.CONSUME(Colon);
+			$.SUBRULE($.expression);
+		});
+
+		$.RULE('viewConditional', () => {
+			$.CONSUME(KwIf);
+			$.SUBRULE($.expression);
+			$.SUBRULE($.viewBlock);
+			$.OPTION(() => {
+				$.CONSUME(KwElse);
+				$.OR([
+					{ GATE: () => this.LA(1).tokenType === LBrace, ALT: () => $.SUBRULE2($.viewBlock) },
+					{ ALT: () => $.SUBRULE2($.viewConditional) },
+				]);
+			});
+		});
+
+		$.RULE('viewTextChild', () => {
+			$.CONSUME(StringLiteral);
+			$.SUBRULE($.lineEnd);
+		});
+
+		$.RULE('viewExpressionChild', () => {
+			$.CONSUME(Equals);
+			$.SUBRULE($.expression);
+			$.SUBRULE($.lineEnd);
+		});
+
+		$.RULE('viewChildrenSlot', () => {
+			$.CONSUME(KwChildren);
+			$.SUBRULE($.lineEnd);
 		});
 
 		$.RULE('recordExpression', () => {
@@ -823,6 +928,7 @@ export class ViruneParser extends CstParser {
 	private isFunctionStart(): boolean {
 		return this.tokenAt(1)?.tokenType === KwFn || this.tokenAt(1)?.tokenType === KwAsync || this.publicFollowIs(KwFn) || (this.publicFollowIs(KwAsync) && this.tokenAt(3)?.tokenType === KwFn);
 	}
+	private isComponentStart(): boolean { return this.tokenAt(1)?.tokenType === KwComponent || this.publicFollowIs(KwComponent); }
 	private isRecordStart(): boolean { return this.tokenAt(1)?.tokenType === KwRecord || this.publicFollowIs(KwRecord); }
 	private isEnumStart(): boolean { return this.tokenAt(1)?.tokenType === KwEnum || this.publicFollowIs(KwEnum); }
 	private isNewtypeStart(): boolean { return this.tokenAt(1)?.tokenType === KwNewtype || this.publicFollowIs(KwNewtype); }
@@ -836,6 +942,7 @@ export class ViruneParser extends CstParser {
 	public declaration!: () => CstNode;
 	public attribute!: () => CstNode;
 	public functionDeclaration!: () => CstNode;
+	public componentDeclaration!: () => CstNode;
 	public typeParameters!: () => CstNode;
 	public parameterList!: () => CstNode;
 	public parameter!: () => CstNode;
@@ -883,6 +990,17 @@ export class ViruneParser extends CstParser {
 	public typeArguments!: () => CstNode;
 	public argumentList!: () => CstNode;
 	public primaryExpression!: () => CstNode;
+	public viewExpression!: () => CstNode;
+	public viewBlock!: () => CstNode;
+	public viewChild!: () => CstNode;
+	public viewElement!: () => CstNode;
+	public viewTag!: () => CstNode;
+	public viewPropertyList!: () => CstNode;
+	public viewProperty!: () => CstNode;
+	public viewConditional!: () => CstNode;
+	public viewTextChild!: () => CstNode;
+	public viewExpressionChild!: () => CstNode;
+	public viewChildrenSlot!: () => CstNode;
 	public recordExpression!: () => CstNode;
 	public recordFieldBlock!: () => CstNode;
 	public recordEntry!: () => CstNode;
