@@ -140,11 +140,18 @@ test('children is a single compiler-managed View slot', () => {
 	}
 }
 `).includes('L4306'));
-	assert.ok(errorCodes(`fn readChildren() -> Unit {
-	let value = children
-	return Unit
+	const ordinary = compileSource(source(`record Box {
+	children: Int
 }
-`).includes('L0002'));
+
+fn preserveChildren(children: Int) -> Int {
+	let mut value = children
+	value = value + 1
+	let box = Box { children: value }
+	return box.children
+}
+`), { emit: false });
+	assert.deepEqual(ordinary.diagnostics.filter(item => item.severity === 'error'), []);
 });
 
 // @virune-rule {"id":"frontend.no-generic-repetition","runner":"unit","file":"packages/compiler/test/frontend-component-view.test.ts","case":"generic View repetition syntax is not part of the grammar","kind":"negative","platform":"common"}
