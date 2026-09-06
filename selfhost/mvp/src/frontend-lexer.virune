@@ -110,7 +110,7 @@ fn isHorizontalWhitespace(value: String) -> Bool {
 }
 
 fn isKeyword(value: String) -> Bool {
-	return value == "as" || value == "async" || value == "await" || value == "break" || value == "const" || value == "continue" || value == "defer" || value == "derives" || value == "discard" || value == "else" || value == "enum" || value == "extern" || value == "false" || value == "fn" || value == "for" || value == "from" || value == "if" || value == "import" || value == "in" || value == "js" || value == "let" || value == "match" || value == "module" || value == "mut" || value == "newtype" || value == "parallel" || value == "pub" || value == "record" || value == "return" || value == "test" || value == "then" || value == "true" || value == "try" || value == "type" || value == "unsafe" || value == "uses" || value == "while" || value == "with"
+	return value == "as" || value == "async" || value == "await" || value == "break" || value == "const" || value == "continue" || value == "defer" || value == "derives" || value == "discard" || value == "else" || value == "enum" || value == "extern" || value == "false" || value == "fn" || value == "for" || value == "from" || value == "if" || value == "import" || value == "in" || value == "internal" || value == "js" || value == "let" || value == "match" || value == "module" || value == "mut" || value == "newtype" || value == "parallel" || value == "pub" || value == "record" || value == "return" || value == "test" || value == "then" || value == "true" || value == "try" || value == "type" || value == "unsafe" || value == "uses" || value == "while" || value == "with"
 }
 
 fn isSingleSymbol(value: String) -> Bool {
@@ -342,7 +342,7 @@ fn softBefore(value: String) -> Bool {
 }
 
 fn beginsDeclaration(value: String) -> Bool {
-	return value == "pub" || value == "async" || value == "fn" || value == "record" || value == "enum" || value == "newtype" || value == "type" || value == "unsafe" || value == "extern" || value == "test" || value == "let" || value == "const" || value == "@"
+	return value == "internal" || value == "pub" || value == "async" || value == "fn" || value == "record" || value == "enum" || value == "newtype" || value == "type" || value == "unsafe" || value == "extern" || value == "test" || value == "let" || value == "const" || value == "@"
 }
 
 fn retainGenericDeclarationBreak(previous: FrontendToken?, next: FrontendToken?, braceDepth: Int) -> Bool {
