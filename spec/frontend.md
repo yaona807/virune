@@ -109,7 +109,7 @@ Its condition is an ordinary Virune expression. The branches are View blocks. Th
 
 ## `[frontend.children-slot]` Compiler-managed native children slot
 
-Inside View structure, `children` denotes the compiler-managed child slot of the current Virune-native component:
+Inside View structure, standalone `children` denotes the compiler-managed child slot of the current Virune-native component:
 
 ```virune
 internal component Panel(title: String) uses JavaScript {
@@ -122,7 +122,9 @@ internal component Panel(title: String) uses JavaScript {
 }
 ```
 
-`children` is not an ordinary parameter, callable, External value, React `props.children`, Vue slot object, Solid accessor, or other framework-specific API. It may appear only as a View child. In Virune 1.0, a component may place this slot at most once; duplicate placement is rejected so the language does not invent repeated-evaluation/laziness semantics that differ across frameworks.
+The slot spelling is contextual rather than globally reserved. Outside the exact standalone View-child form, `children` remains a valid ordinary Virune identifier, including parameter, local, field, and expression names. Only standalone `children` in View-child position denotes the compiler-managed slot.
+
+That slot is not an ordinary parameter, callable, External value, React `props.children`, Vue slot object, Solid accessor, or other framework-specific API. In Virune 1.0, a component may place the slot at most once; duplicate placement is rejected so the language does not invent repeated-evaluation/laziness semantics that differ across frameworks.
 
 The eventual compiler-owned transport/lowering must preserve the source evaluation and laziness required by the actual frontend framework without exposing a general View value.
 
