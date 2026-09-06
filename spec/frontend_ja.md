@@ -41,7 +41,7 @@ View resultは次の用途に限ってconsumeできる。
 - `component`のdirect return value
 - nested View child structure
 - View-local declarative conditional branch
-- `[frontend.children-slot]`で定義するcompiler-managed native-component child slot
+- 下記で定義するcompiler-managed native-component child slot
 
 View resultは、`let`/`const`、record、list、tupleその他の通常valueへ保存できない。通常callへ渡せず、通常API valueとしてexportできず、field/index accessできず、general External valueへprojectできず、通常の`fn`からreturnできない。
 
