@@ -45,6 +45,20 @@ test('same-project modules can import and execute an internal runtime binding', 
 	});
 });
 
+test('same-project modules can import an internal component signature before frontend emission', async () => {
+	await withProject(async root => {
+		await writeFile(join(root, 'src/card.virune'), 'internal component Card(title: String) uses JavaScript {\n\treturn view {\n\t\tdiv() {\n\t\t\t= title\n\t\t}\n\t}\n}\n', 'utf8');
+		await writeFile(join(root, 'src/main.virune'), 'import { Card } from "./card.virune"\n\npub fn run() -> Unit {\n\treturn Unit\n}\n', 'utf8');
+		const result = await buildProject(root, { write: false });
+		const codes = errorCodes(result);
+		assert.ok(codes.includes('L4307'));
+		assert.ok(!codes.includes('L4004'));
+		assert.ok(!codes.includes('L4304'));
+		const card = result.modules.find(module => module.source.path === resolve(root, 'src/card.virune'));
+		assert.equal(card?.output, undefined);
+	});
+});
+
 test('private declarations remain unavailable to sibling modules', async () => {
 	await withProject(async root => {
 		await writeFile(join(root, 'src/helper.virune'), 'fn secret() -> Int => 7\n', 'utf8');
@@ -122,6 +136,18 @@ test('dependency internal declarations stay hidden from the package consumer', a
 		await writeFile(join(packageRoot, 'package.json'), JSON.stringify({ name: 'example-internal', virune: 'src/index.virune' }), 'utf8');
 		await writeFile(join(packageRoot, 'src/index.virune'), 'internal fn secret() -> Int => 7\n', 'utf8');
 		await writeFile(join(root, 'src/main.virune'), 'import { secret } from "example-internal"\n\npub fn run() -> Int {\n\treturn secret()\n}\n', 'utf8');
+		const result = await buildProject(root, { write: false });
+		assert.ok(errorCodes(result).includes('L4004'));
+	});
+});
+
+test('dependency internal components stay hidden from the package consumer', async () => {
+	await withProject(async root => {
+		const packageRoot = join(root, 'node_modules/example-internal-component');
+		await mkdir(join(packageRoot, 'src'), { recursive: true });
+		await writeFile(join(packageRoot, 'package.json'), JSON.stringify({ name: 'example-internal-component', virune: 'src/index.virune' }), 'utf8');
+		await writeFile(join(packageRoot, 'src/index.virune'), 'internal component Card() uses JavaScript {\n\treturn view {\n\t\tdiv()\n\t}\n}\n', 'utf8');
+		await writeFile(join(root, 'src/main.virune'), 'import { Card } from "example-internal-component"\n\npub fn run() -> Unit {\n\treturn Unit\n}\n', 'utf8');
 		const result = await buildProject(root, { write: false });
 		assert.ok(errorCodes(result).includes('L4004'));
 	});
