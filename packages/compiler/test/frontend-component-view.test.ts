@@ -75,6 +75,18 @@ test('public components fail closed and JavaScript effect is explicit', () => {
 	}
 }
 `).includes('L4302'));
+	assert.ok(errorCodes(`component OpenEffects() uses JavaScript, * {
+	return view {
+		main()
+	}
+}
+`).includes('L2113'));
+	assert.deepEqual(errorCodes(`component ConcreteEffects() uses JavaScript, Console {
+	return view {
+		main()
+	}
+}
+`), []);
 });
 
 // @virune-rule {"id":"frontend.component-declaration","runner":"unit","file":"packages/compiler/test/frontend-component-view.test.ts","case":"unsupported component modifiers and named return syntax remain absent","kind":"negative","platform":"common"}
