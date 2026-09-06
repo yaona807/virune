@@ -417,6 +417,7 @@ export class TypeChecker {
 
 	private checkComponent(declaration: A.ComponentDeclaration): void {
 		this.validateEffects(declaration.effects, declaration.span);
+		if (declaration.effects.includes('*')) this.diagnostics.error('L2113', 'uses * is allowed only on non-escaping callback parameters', declaration.span);
 		if (declaration.public) this.diagnostics.error('L4301', 'Components cannot be public; use private or internal visibility', declaration.span);
 		if (!declaration.effects.includes('JavaScript')) this.diagnostics.error('L4302', 'Components require an explicit uses JavaScript effect', declaration.span);
 		const scope = new Scope(this.globalScope);
