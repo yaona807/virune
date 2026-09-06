@@ -13,10 +13,10 @@ import { documentationSummary, recordFieldDocumentation, symbolDocumentationSumm
 type SymbolInfo = SemanticModel['symbols'] extends ReadonlyMap<number, infer Value> ? Value : never;
 
 const keywords = [
-	'as', 'async', 'await', 'break', 'const', 'continue', 'defer', 'derives', 'discard', 'else',
+	'as', 'async', 'await', 'break', 'children', 'component', 'const', 'continue', 'defer', 'derives', 'discard', 'else',
 	'enum', 'extern', 'false', 'fn', 'for', 'from', 'if', 'import', 'in', 'internal', 'js', 'let', 'match', 'module', 'mut',
 	'newtype', 'parallel', 'pub', 'record', 'return', 'test', 'then', 'true', 'try', 'type', 'unsafe',
-	'uses', 'while', 'with',
+	'uses', 'view', 'while', 'with',
 ] as const;
 
 interface BraceScope {
@@ -94,7 +94,7 @@ function isVisibleLocal(symbol: SymbolInfo, module: BuiltModule, source: SourceF
 	const declarationScope = innermostScope(scopes, declarationOffset);
 	if (symbol.kind === 'parameter') {
 		const owner = symbol.declaration;
-		const ownerScope = (owner.kind === 'FunctionDeclaration' || owner.kind === 'LambdaExpression') && 'body' in owner
+		const ownerScope = (owner.kind === 'FunctionDeclaration' || owner.kind === 'ComponentDeclaration' || owner.kind === 'LambdaExpression') && 'body' in owner
 			? scopeContainingNode(scopes, source, owner.body as AstNode)
 			: undefined;
 		return ownerScope === undefined ? sameTopLevelRegion(module, source, owner, offset) : scopeContains(ownerScope, offset);
@@ -202,6 +202,7 @@ function symbolCompletion(symbol: SymbolInfo, module: BuiltModule): CompletionIt
 function completionKind(kind: SymbolInfo['kind'], constant: boolean): CompletionItemKind {
 	switch (kind) {
 		case 'function': return CompletionItemKind.Function;
+		case 'component': return CompletionItemKind.Function;
 		case 'extern': return CompletionItemKind.Function;
 		case 'builtin': return CompletionItemKind.Function;
 		case 'type': return CompletionItemKind.Class;
