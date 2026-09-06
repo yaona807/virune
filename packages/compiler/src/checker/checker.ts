@@ -25,7 +25,7 @@ import { EffectRegistry } from './effect-registry.js';
 import { TypeOperations } from './type-operations.js';
 
 interface FunctionContext {
-	readonly declaration: A.FunctionDeclaration | A.TestDeclaration | A.LambdaExpression;
+	readonly declaration: A.FunctionDeclaration | A.ComponentDeclaration | A.TestDeclaration | A.LambdaExpression;
 	readonly scope: Scope;
 	readonly async: boolean;
 	returnType?: TypeId;
@@ -98,6 +98,7 @@ export class TypeChecker {
 	readonly #variants = new Map<string, { readonly enumType: TypeId; readonly valueTypes: readonly TypeId[]; readonly symbol: SymbolInfo }>();
 	#currentFunction: FunctionContext | undefined;
 	#loopDepth = 0;
+	#currentComponentChildrenSlots = 0;
 	readonly #signatureOnlyNodeIds: ReadonlySet<number>;
 	readonly #typeOnlyNodeIds: ReadonlySet<number>;
 	readonly #platform: 'node' | 'browser' | 'neutral';
@@ -297,6 +298,11 @@ export class TypeChecker {
 				const typeId = this.arena.function(parameters, result, declaration.typeParameters.map(item => item.name), declaration.async, declaration.effects);
 				const symbol = this.defineValue(declaration.name, 'function', typeId, declaration.span, declaration.public, declaration);
 				if (symbol !== undefined) declaration.symbolId = symbol.id;
+			} else if (declaration.kind === 'ComponentDeclaration') {
+				const parameters = declaration.parameters.map(item => this.resolveTypeReference(item.type, new Map()));
+				const typeId = this.arena.function(parameters, this.arena.error, [], false, declaration.effects);
+				const symbol = this.defineValue(declaration.name, 'component', typeId, declaration.span, declaration.public, declaration);
+				if (symbol !== undefined) declaration.symbolId = symbol.id;
 			} else if (declaration.kind === 'TopLevelLetDeclaration') {
 				const typeId = declaration.annotation === undefined ? this.arena.error : this.resolveTypeReference(declaration.annotation, new Map());
 				const symbol = this.defineValue(declaration.name, 'variable', typeId, declaration.span, declaration.public, declaration, declaration.constant);
@@ -336,6 +342,7 @@ export class TypeChecker {
 		this.checkAttributes(declaration);
 		switch (declaration.kind) {
 			case 'FunctionDeclaration': this.checkFunction(declaration); break;
+			case 'ComponentDeclaration': this.checkComponent(declaration); break;
 			case 'TopLevelLetDeclaration': {
 				if (declaration.public && !declaration.constant) this.diagnostics.error('L2080', 'Only const declarations can be public', declaration.span);
 				if (declaration.public && declaration.annotation === undefined) this.diagnostics.error('L2081', 'Public const declarations require an explicit type', declaration.span);
@@ -406,6 +413,36 @@ export class TypeChecker {
 			const functionType = this.arena.get(symbol.typeId);
 			if (functionType.kind === 'function') symbol.typeId = this.arena.function(functionType.parameters, inferred, functionType.typeParameters, functionType.async, functionType.effects);
 		}
+	}
+
+	private checkComponent(declaration: A.ComponentDeclaration): void {
+		this.validateEffects(declaration.effects, declaration.span);
+		if (declaration.public) this.diagnostics.error('L4301', 'Components cannot be public; use private or internal visibility', declaration.span);
+		if (!declaration.effects.includes('JavaScript')) this.diagnostics.error('L4302', 'Components require an explicit uses JavaScript effect', declaration.span);
+		const scope = new Scope(this.globalScope);
+		for (const parameter of declaration.parameters) {
+			if (parameter.optional) this.diagnostics.error('L2114', 'Optional parameters are supported only in extern js declarations', parameter.span);
+			const typeId = this.resolveTypeReference(parameter.type, new Map());
+			const parameterType = this.arena.get(typeId);
+			if (this.containsOpenEffect(typeId) && !(parameterType.kind === 'function' && parameterType.effects.includes('*'))) this.diagnostics.error('L2113', 'uses * is allowed only on a direct non-escaping callback parameter', parameter.span);
+			const symbol = this.#factory.create(parameter.name, 'parameter', typeId, parameter.span, { declaration });
+			if (!scope.define(symbol)) this.diagnostics.error('L1006', `Parameter ${parameter.name} shadows an existing name`, parameter.span);
+			else { parameter.symbolId = symbol.id; this.#symbols.set(symbol.id, symbol); }
+		}
+		const context: FunctionContext = { declaration, scope, async: false, returnTypes: [], typeParameters: new Map(), effects: new Set(declaration.effects) };
+		const previous = this.#currentFunction;
+		const previousLoopDepth = this.#loopDepth;
+		const previousChildrenSlots = this.#currentComponentChildrenSlots;
+		this.#currentFunction = context;
+		this.#loopDepth = 0;
+		this.#currentComponentChildrenSlots = 0;
+		this.checkBlock(declaration.body, scope);
+		const controlFlow = analyzeControlFlow(declaration.body, this.arena);
+		if (!controlFlow.alwaysTerminates) this.diagnostics.error('L4304', `Component ${declaration.name} must return view on every path`, declaration.span);
+		for (const span of controlFlow.unreachable) this.diagnostics.error('L3006', 'Unreachable statement', span);
+		this.#currentFunction = previous;
+		this.#loopDepth = previousLoopDepth;
+		this.#currentComponentChildrenSlots = previousChildrenSlots;
 	}
 
 	private checkTest(declaration: A.TestDeclaration): void {
@@ -550,6 +587,14 @@ export class TypeChecker {
 				break;
 			}
 			case 'ReturnStatement': {
+				if (this.#currentFunction?.declaration.kind === 'ComponentDeclaration') {
+					if (statement.value?.kind === 'ViewExpression') this.checkViewExpression(statement.value, scope);
+					else {
+						if (statement.value !== undefined) this.checkExpression(statement.value, scope);
+						this.diagnostics.error('L4303', 'Component returns must directly return view', statement.span);
+					}
+					break;
+				}
 				const typeId = statement.value === undefined ? this.arena.unit : this.checkExpression(statement.value, scope, this.#currentFunction?.returnType);
 				this.#currentFunction?.returnTypes.push(typeId);
 				if (this.#currentFunction?.returnType !== undefined && !this.isAssignable(typeId, this.#currentFunction.returnType)) this.typeMismatch(typeId, this.#currentFunction.returnType, statement.span);
@@ -642,12 +687,12 @@ export class TypeChecker {
 				break;
 			}
 			case 'DeferStatement': {
-					if (this.#currentFunction === undefined) this.diagnostics.error('L2070', 'defer can be used only inside a function or test', statement.span);
-					const deferredType = this.checkExpression(statement.expression, scope);
-					if (!this.arena.equals(deferredType, this.arena.unit) && !this.arena.equals(deferredType, this.arena.never)) this.diagnostics.error('L2071', `defer expression must produce Unit, received ${this.arena.display(deferredType)}`, statement.expression.span);
-					break;
-				}
-				case 'ExpressionStatement': { const result = this.checkExpression(statement.expression, scope); if (this.isMustUse(result)) this.diagnostics.error('L2097', `Value of type ${this.arena.display(result)} must be used; bind it, return it, await it, handle it, or write discard`, statement.span); break; }
+				if (this.#currentFunction === undefined) this.diagnostics.error('L2070', 'defer can be used only inside a function or test', statement.span);
+				const deferredType = this.checkExpression(statement.expression, scope);
+				if (!this.arena.equals(deferredType, this.arena.unit) && !this.arena.equals(deferredType, this.arena.never)) this.diagnostics.error('L2071', `defer expression must produce Unit, received ${this.arena.display(deferredType)}`, statement.expression.span);
+				break;
+			}
+			case 'ExpressionStatement': { const result = this.checkExpression(statement.expression, scope); if (this.isMustUse(result)) this.diagnostics.error('L2097', `Value of type ${this.arena.display(result)} must be used; bind it, return it, await it, handle it, or write discard`, statement.span); break; }
 		}
 	}
 
@@ -660,7 +705,13 @@ export class TypeChecker {
 				const symbol = scope.lookup(expression.name);
 				if (symbol === undefined) { this.diagnostics.error('L1010', `Unknown name ${expression.name}`, expression.span); typeId = this.arena.error; }
 				else {
-					expression.symbolId = symbol.id; typeId = symbol.typeId;
+					expression.symbolId = symbol.id;
+					if (symbol.kind === 'component') {
+						this.diagnostics.error('L4305', `Component ${expression.name} cannot be used as an ordinary Virune value; use it as a View tag`, expression.span);
+						typeId = this.arena.error;
+						break;
+					}
+					typeId = symbol.typeId;
 					if (symbol.typeOnly) this.diagnostics.error('L1012', `Type-only import ${expression.name} cannot be used as a value`, expression.span);
 					if (this.#currentFunction?.declaration.kind === 'LambdaExpression' && this.containsOpenEffect(symbol.typeId) && symbol.declaration !== this.#currentFunction.declaration) this.diagnostics.error('L2113', 'uses * callbacks are non-escaping and cannot be captured by lambdas', expression.span);
 					if (expected !== undefined && symbol.kind === 'variant') { const substitutions = new Map<string, TypeId>(); this.unify(typeId, expected, substitutions); typeId = this.substitute(typeId, substitutions); }
@@ -689,9 +740,44 @@ export class TypeChecker {
 			case 'MatchExpression': typeId = this.checkMatch(expression, scope, expected); break;
 			case 'LambdaExpression': typeId = this.checkLambda(expression, scope, expected); break;
 			case 'ParallelExpression': typeId = this.checkParallel(expression, scope); break;
+			case 'ViewExpression': this.diagnostics.error('L4300', 'view is compiler-controlled and can be used only as a direct component return', expression.span); typeId = this.arena.error; break;
 		}
 		typeId = this.applyExpectedForeignBridge(expression, typeId, expected);
 		expression.inferredTypeId = typeId; return typeId;
+	}
+
+	private checkViewExpression(expression: A.ViewExpression, scope: Scope): void {
+		this.checkViewBlock(expression.body, scope);
+	}
+
+	private checkViewBlock(block: A.ViewBlock, scope: Scope): void {
+		for (const child of block.children) {
+			switch (child.kind) {
+				case 'ViewTextChild': break;
+				case 'ViewExpressionChild': this.checkExpression(child.expression, scope); break;
+				case 'ViewChildrenSlot':
+					this.#currentComponentChildrenSlots++;
+					if (this.#currentComponentChildrenSlots > 1) this.diagnostics.error('L4306', 'A component may contain at most one children slot', child.span);
+					break;
+				case 'ViewElement':
+					for (const property of child.properties) this.checkExpression(property.value, scope);
+					if (child.children !== undefined) this.checkViewBlock(child.children, scope);
+					break;
+				case 'ViewConditional':
+					this.requireBool(this.checkExpression(child.condition, scope), child.condition.span);
+					this.checkViewBlock(child.thenBlock, scope);
+					if (child.elseBranch?.kind === 'ViewBlock') this.checkViewBlock(child.elseBranch, scope);
+					else if (child.elseBranch !== undefined) this.checkViewConditional(child.elseBranch, scope);
+					break;
+			}
+		}
+	}
+
+	private checkViewConditional(conditional: A.ViewConditional, scope: Scope): void {
+		this.requireBool(this.checkExpression(conditional.condition, scope), conditional.condition.span);
+		this.checkViewBlock(conditional.thenBlock, scope);
+		if (conditional.elseBranch?.kind === 'ViewBlock') this.checkViewBlock(conditional.elseBranch, scope);
+		else if (conditional.elseBranch !== undefined) this.checkViewConditional(conditional.elseBranch, scope);
 	}
 
 	private checkContextualAggregate(expression: A.ContextualAggregateExpression, scope: Scope, expected: TypeId | undefined): TypeId {
@@ -1431,6 +1517,15 @@ export class TypeChecker {
 	}
 
 	private checkCall(expression: A.CallExpression, scope: Scope, expected?: TypeId): TypeId {
+		if (expression.callee.kind === 'IdentifierExpression') {
+			const component = scope.lookup(expression.callee.name);
+			if (component?.kind === 'component') {
+				expression.callee.symbolId = component.id;
+				this.diagnostics.error('L4305', `Component ${expression.callee.name} cannot be called as an ordinary Virune function; use it as a View tag`, expression.callee.span);
+				for (const argument of expression.arguments) this.checkExpression(argument, scope);
+				return this.arena.error;
+			}
+		}
 		const calleeTypeId = this.checkExpression(expression.callee, scope);
 		const calleeType = this.arena.get(calleeTypeId);
 		if (calleeType.kind === 'foreign') return this.checkForeignCall(expression, scope, calleeType.snapshot);
@@ -1479,7 +1574,7 @@ export class TypeChecker {
 				if (element !== undefined && (!this.supportsEq(element) || !this.supportsHash(element))) this.diagnostics.error('L2110', `Set element type ${this.arena.display(element)} must support structural Eq and Hash`, expression.span);
 			}
 			if (namespace === 'List' && expression.callee.field === 'unique') { const element = this.listElementOf(argumentTypes[0]); if (element !== undefined && (!this.supportsEq(element) || !this.supportsHash(element))) this.diagnostics.error('L2111', `List.unique element type ${this.arena.display(element)} must support structural Eq and Hash`, expression.span); }
-				if (namespace === 'List' && expression.callee.field === 'uniqueBy') { const key = substitutions.get('U'); if (key !== undefined && (!this.supportsEq(key) || !this.supportsHash(key))) this.diagnostics.error('L2111', `List.uniqueBy key type ${this.arena.display(key)} must support structural Eq and Hash`, expression.span); }
+			if (namespace === 'List' && expression.callee.field === 'uniqueBy') { const key = substitutions.get('U'); if (key !== undefined && (!this.supportsEq(key) || !this.supportsHash(key))) this.diagnostics.error('L2111', `List.uniqueBy key type ${this.arena.display(key)} must support structural Eq and Hash`, expression.span); }
 		}
 		return calleeType.async ? this.arena.future(result) : result;
 	}
