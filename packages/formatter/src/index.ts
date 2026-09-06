@@ -231,8 +231,12 @@ function printModule(printer: Printer, module: ModuleNode): void {
 	printer.remainingComments();
 }
 
+function visibilityPrefix(declaration: { readonly public: boolean; readonly internal?: true }): string {
+	return declaration.public ? 'pub ' : declaration.internal === true ? 'internal ' : '';
+}
+
 function printImport(printer: Printer, declaration: ImportDeclaration): void {
-	const prefix = `${declaration.public ? 'pub ' : ''}import${declaration.sourceKind === 'javascript' ? ' js' : ''}${declaration.typeOnly ? ' type' : ''}`;
+	const prefix = `${visibilityPrefix(declaration)}import${declaration.sourceKind === 'javascript' ? ' js' : ''}${declaration.typeOnly ? ' type' : ''}`;
 	if (declaration.defaultImport !== undefined) { printer.line(`${prefix} ${declaration.defaultImport} from ${quote(declaration.source)}`); return; }
 	if (declaration.namespaceImport !== undefined) { printer.line(`${prefix} * as ${declaration.namespaceImport} from ${quote(declaration.source)}`); return; }
 	if (declaration.items.length === 0) { printer.line(`${prefix} ${quote(declaration.source)}`); return; }
@@ -248,7 +252,7 @@ function printDeclaration(printer: Printer, declaration: Declaration): void {
 	printAttributes(printer, declaration.attributes);
 	switch (declaration.kind) {
 		case 'FunctionDeclaration': {
-			const prefix = `${declaration.public ? 'pub ' : ''}${declaration.async ? 'async ' : ''}fn ${declaration.name}${printTypeParameters(declaration.typeParameters.map(item => item.name))}`;
+			const prefix = `${visibilityPrefix(declaration)}${declaration.async ? 'async ' : ''}fn ${declaration.name}${printTypeParameters(declaration.typeParameters.map(item => item.name))}`;
 			const parameters = declaration.parameters.map(parameter => `${parameter.name}${parameter.optional ? '?' : ''}: ${printType(parameter.type)}`);
 			const signature = `${prefix}${printDelimited(parameters, '(', ')')} ${declaration.returnType === undefined ? '' : `-> ${printType(declaration.returnType)} `}${printUses(declaration.effects)}`.trimEnd();
 			if (declaration.expressionBody) printer.line(`${signature} => ${printExpression(declaration.body as Expression)}`);
@@ -256,20 +260,20 @@ function printDeclaration(printer: Printer, declaration: Declaration): void {
 			break;
 		}
 		case 'RecordDeclaration':
-			printer.line(`${declaration.public ? 'pub ' : ''}record ${declaration.name}${printTypeParameters(declaration.typeParameters.map(item => item.name))}${printDerives(declaration.derives)} {`);
+			printer.line(`${visibilityPrefix(declaration)}record ${declaration.name}${printTypeParameters(declaration.typeParameters.map(item => item.name))}${printDerives(declaration.derives)} {`);
 			printer.indent(() => declaration.fields.forEach(field => { printer.commentsBefore(field.span.start.offset); printAttributes(printer, field.attributes); printer.line(`${field.name}: ${printType(field.type)}`); })); printer.line('}'); break;
 		case 'EnumDeclaration':
-			printer.line(`${declaration.public ? 'pub ' : ''}enum ${declaration.name}${printTypeParameters(declaration.typeParameters.map(item => item.name))}${printDerives(declaration.derives)} {`);
+			printer.line(`${visibilityPrefix(declaration)}enum ${declaration.name}${printTypeParameters(declaration.typeParameters.map(item => item.name))}${printDerives(declaration.derives)} {`);
 			printer.indent(() => declaration.variants.forEach(variant => { printer.commentsBefore(variant.span.start.offset); printer.line(`${variant.name}${variant.values.length === 0 ? '' : `(${variant.values.map(printType).join(', ')})`}`); })); printer.line('}'); break;
-		case 'NewtypeDeclaration': printer.line(`${declaration.public ? 'pub ' : ''}newtype ${declaration.name} = ${printType(declaration.underlying)}`); break;
-		case 'TypeAliasDeclaration': printer.line(`${declaration.public ? 'pub ' : ''}type ${declaration.name}${printTypeParameters(declaration.typeParameters.map(item => item.name))} = ${printType(declaration.target)}`); break;
+		case 'NewtypeDeclaration': printer.line(`${visibilityPrefix(declaration)}newtype ${declaration.name} = ${printType(declaration.underlying)}`); break;
+		case 'TypeAliasDeclaration': printer.line(`${visibilityPrefix(declaration)}type ${declaration.name}${printTypeParameters(declaration.typeParameters.map(item => item.name))} = ${printType(declaration.target)}`); break;
 		case 'ExternDeclaration':
 			printer.line(`${declaration.unsafe ? 'unsafe ' : ''}extern js ${quote(declaration.module)} {`);
 			printer.indent(() => declaration.functions.forEach(fn => printer.line(`${fn.async ? 'async ' : ''}fn ${fn.name}${printDelimited(fn.parameters.map(parameter => `${parameter.name}${parameter.optional ? '?' : ''}: ${printType(parameter.type)}`), '(', ')')} -> ${printType(fn.returnType)}${fn.effects.length === 0 ? '' : ` uses ${fn.effects.join(', ')}`} = ${quote(fn.jsName)}`)));
 			printer.line('}'); break;
 		case 'TestDeclaration':
 			printer.line(`${declaration.async ? 'async ' : ''}test ${quote(declaration.name)} {`); printer.indent(() => printBlockContents(printer, declaration.body)); printer.line('}'); break;
-		case 'TopLevelLetDeclaration': printer.line(`${declaration.public ? 'pub ' : ''}${declaration.constant ? 'const' : 'let'} ${declaration.name}${declaration.annotation === undefined ? '' : `: ${printType(declaration.annotation)}`} = ${printExpression(declaration.value)}`); break;
+		case 'TopLevelLetDeclaration': printer.line(`${visibilityPrefix(declaration)}${declaration.constant ? 'const' : 'let'} ${declaration.name}${declaration.annotation === undefined ? '' : `: ${printType(declaration.annotation)}`} = ${printExpression(declaration.value)}`); break;
 	}
 }
 
