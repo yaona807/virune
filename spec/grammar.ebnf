@@ -16,6 +16,7 @@ JavaScriptImportDeclaration
 ImportItem              = Identifier [ "as" Identifier ] ;
 
 Declaration             = Attribute* ( FunctionDeclaration
+                                      | ComponentDeclaration
                                       | RecordDeclaration
                                       | EnumDeclaration
                                       | NewtypeDeclaration
@@ -26,27 +27,30 @@ Declaration             = Attribute* ( FunctionDeclaration
 
 Attribute               = "@" Identifier [ "(" [ ArgumentList ] ")" ] NewLine* ;
 
-FunctionDeclaration     = [ "pub" ] [ "async" ] "fn" Identifier [ TypeParameters ]
+FunctionDeclaration     = [ "pub" | "internal" ] [ "async" ] "fn" Identifier [ TypeParameters ]
                           "(" NewLine* [ ParameterList ] NewLine* ")"
                           [ "->" TypeReference ] [ UsesClause ]
                           ( Block | "=>" Expression LineEnd ) ;
+ComponentDeclaration    = [ "pub" | "internal" ] "component" Identifier
+                          "(" NewLine* [ ParameterList ] NewLine* ")"
+                          UsesClause Block ;
 TypeParameters          = "<" Identifier { "," Identifier } ">" ;
 ParameterList           = Parameter { "," NewLine* [ Parameter ] } ;
 Parameter               = Identifier ":" TypeReference ;
 UsesClause              = "uses" EffectName { "," EffectName } ;
 EffectName              = Identifier | "*" ;
 
-RecordDeclaration       = [ "pub" ] "record" Identifier [ TypeParameters ] [ DerivesClause ]
+RecordDeclaration       = [ "pub" | "internal" ] "record" Identifier [ TypeParameters ] [ DerivesClause ]
                           "{" NewLine* { RecordField NewLine* } "}" ;
 RecordField             = Attribute* Identifier ":" TypeReference [ "," ] ;
 DerivesClause           = "derives" Identifier { "," Identifier } ;
 
-EnumDeclaration         = [ "pub" ] "enum" Identifier [ TypeParameters ] [ DerivesClause ]
+EnumDeclaration         = [ "pub" | "internal" ] "enum" Identifier [ TypeParameters ] [ DerivesClause ]
                           "{" NewLine* { EnumVariant NewLine* } "}" ;
 EnumVariant             = Identifier [ "(" [ TypeReference { "," TypeReference } ] ")" ] [ "," ] ;
 
-NewtypeDeclaration      = [ "pub" ] "newtype" Identifier "=" TypeReference LineEnd ;
-TypeAliasDeclaration    = [ "pub" ] "type" Identifier [ TypeParameters ] "=" TypeReference LineEnd ;
+NewtypeDeclaration      = [ "pub" | "internal" ] "newtype" Identifier "=" TypeReference LineEnd ;
+TypeAliasDeclaration    = [ "pub" | "internal" ] "type" Identifier [ TypeParameters ] "=" TypeReference LineEnd ;
 
 ExternDeclaration       = [ "unsafe" ] "extern" "js" StringLiteral
                           "{" NewLine* { ExternFunction NewLine* } "}" ;
@@ -56,7 +60,7 @@ ExternParameterList     = ExternParameter { "," NewLine* [ ExternParameter ] } ;
 ExternParameter         = Identifier [ "?" ] ":" TypeReference ;
 
 TestDeclaration         = [ "async" ] "test" StringLiteral Block ;
-TopLevelValueDeclaration= [ "pub" ] ( "let" | "const" ) Identifier
+TopLevelValueDeclaration= [ "pub" | "internal" ] ( "let" | "const" ) Identifier
                           [ ":" TypeReference ] "=" Expression LineEnd ;
 
 TypeReference           = ( FunctionTypeReference | TupleTypeReference | NamedTypeReference ) [ "?" ] ;
@@ -117,6 +121,7 @@ PrimaryExpression       = StringLiteral
                         | "_"
                         | RecordExpression
                         | ContextualAggregateExpression
+                        | ViewExpression
                         | Identifier
                         | ListExpression
                         | ParenthesizedOrTupleExpression
@@ -130,6 +135,22 @@ RecordEntry             = Identifier [ ":" Expression ] ;
 ContextualAggregateExpression
                         = "{" NewLine* [ ContextualAggregateEntry { "," NewLine* [ ContextualAggregateEntry ] } ] "}" ;
 ContextualAggregateEntry= IdentifierName ":" Expression ;
+ViewExpression          = "view" ViewBlock ;
+ViewBlock               = "{" NewLine* { ViewChild NewLine* } "}" ;
+ViewChild               = ViewElement
+                        | ViewConditional
+                        | ViewChildrenSlot
+                        | StringLiteral LineEnd
+                        | "=" Expression LineEnd ;
+ViewElement             = ViewTag "(" NewLine* [ ViewPropertyList ] NewLine* ")"
+                          ( ViewBlock | LineEnd ) ;
+ViewTag                 = Identifier { "." IdentifierName } ;
+ViewPropertyList        = ViewProperty { "," NewLine* [ ViewProperty ] } ;
+ViewProperty            = ViewPropertyName ":" Expression ;
+ViewPropertyName        = IdentifierName | StringLiteral ;
+ViewConditional         = "if" Expression ViewBlock
+                          [ "else" ( ViewBlock | ViewConditional ) ] ;
+ViewChildrenSlot        = "children" LineEnd ;
 ListExpression          = "[" NewLine* [ Expression { "," NewLine* [ Expression ] } ] "]" ;
 ParenthesizedOrTupleExpression
                         = "(" Expression [ "," Expression { "," Expression } ] ")" ;
@@ -194,12 +215,13 @@ StringCharacter         = UnicodeScalarExceptQuoteBackslashCrLf ;
 NewLine                 = "\n" | "\r\n" ;
 EOF                     = end of input ;
 
-Keyword                 = "as" | "async" | "await" | "break" | "const" | "continue"
-                        | "defer" | "derives" | "discard" | "else" | "enum" | "extern"
-                        | "false" | "fn" | "for" | "from" | "if" | "import" | "in"
-                        | "js" | "let" | "match" | "module" | "mut" | "newtype"
-                        | "parallel" | "pub" | "record" | "return" | "test" | "then"
-                        | "true" | "try" | "type" | "unsafe" | "uses" | "while" | "with" ;
+Keyword                 = "as" | "async" | "await" | "break" | "children" | "component"
+                        | "const" | "continue" | "defer" | "derives" | "discard" | "else"
+                        | "enum" | "extern" | "false" | "fn" | "for" | "from" | "if"
+                        | "import" | "in" | "internal" | "js" | "let" | "match" | "module"
+                        | "mut" | "newtype" | "parallel" | "pub" | "record" | "return"
+                        | "test" | "then" | "true" | "try" | "type" | "unsafe" | "uses"
+                        | "view" | "while" | "with" ;
 
 (* Newline normalization: a physical NewLine is removed before parsing when it
  * occurs inside parentheses or brackets, after a continuation token, or before
