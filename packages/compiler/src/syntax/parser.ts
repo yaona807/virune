@@ -955,6 +955,7 @@ export class ViruneParser extends CstParser {
 	public newtypeDeclaration!: () => CstNode;
 	public typeAliasDeclaration!: () => CstNode;
 	public externDeclaration!: () => CstNode;
+	public externFunction!: () => CstNode;
 	public testDeclaration!: () => CstNode;
 	public topLevelLetDeclaration!: () => CstNode;
 	public typeReference!: () => CstNode;
