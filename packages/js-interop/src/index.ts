@@ -107,6 +107,11 @@ interface RuntimePackageJson {
 	readonly exports?: unknown;
 }
 
+interface ProjectJsxConfiguration {
+	readonly compilerOptions: ts.CompilerOptions;
+	readonly valid: boolean;
+}
+
 const invalidPackageTarget = Symbol('invalid-package-target');
 type PackageTargetResolution = string | null | undefined | typeof invalidPackageTarget;
 
@@ -122,6 +127,7 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 	readonly generation: number;
 	readonly #projectRoot: string;
 	readonly #compilerOptions: ts.CompilerOptions;
+	readonly #jsxConfigurationValid: boolean;
 	readonly #createLanguageService: (host: ts.LanguageServiceHost) => ts.LanguageService;
 	readonly #workspaces = new Map<JsImportRequest['platform'], ProbeWorkspace>();
 	readonly #types = new Map<string, StoredType>();
@@ -132,6 +138,8 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 		this.id = options.providerId ?? 'typescript';
 		this.generation = options.generation ?? 1;
 		this.#projectRoot = resolve(options.projectRoot);
+		const projectJsx = projectJsxCompilerOptions(this.#projectRoot);
+		this.#jsxConfigurationValid = projectJsx.valid || options.compilerOptions?.jsx !== undefined;
 		this.#compilerOptions = {
 			target: ts.ScriptTarget.ES2022,
 			module: ts.ModuleKind.NodeNext,
@@ -146,6 +154,7 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 			allowImportingTsExtensions: true,
 			noEmit: true,
 			types: [],
+			...projectJsx.compilerOptions,
 			...options.compilerOptions,
 		};
 		this.#createLanguageService = options.createLanguageService ?? (host => ts.createLanguageService(host));
@@ -461,7 +470,7 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 
 	private resolveJsxUsageInternal(usage: InteropJsxUsage): ForeignJsxResolution | undefined {
 		if (usage.platform !== 'node' && usage.platform !== 'browser' && usage.platform !== 'neutral') return undefined;
-		if (usage.sourceText.trim().length === 0) return undefined;
+		if (usage.sourceText.trim().length === 0 || !this.#jsxConfigurationValid) return undefined;
 		const workspace = this.probeWorkspace(usage.platform);
 		const sourceText = `${usage.sourceText}\nexport {};\n`;
 		const virtualFileName = `.virune-interop-jsx-${usage.platform}-${hash(sourceText)}.tsx`;
@@ -976,6 +985,38 @@ function sourceFileContainsJsx(sourceFile: ts.SourceFile): boolean {
 function canonicalFilePath(fileName: string): string {
 	const normalized = resolve(fileName).replaceAll('\\', '/');
 	return ts.sys.useCaseSensitiveFileNames ? normalized : normalized.toLowerCase();
+}
+
+const projectConfigInputOnlyDiagnosticCodes = new Set([18002, 18003]);
+
+function projectJsxCompilerOptions(projectRoot: string): ProjectJsxConfiguration {
+	const configPath = join(projectRoot, 'tsconfig.json');
+	if (!existsSync(configPath)) return { compilerOptions: {}, valid: true };
+	const read = ts.readConfigFile(configPath, ts.sys.readFile);
+	if (read.error !== undefined) return { compilerOptions: {}, valid: false };
+	const parsed = ts.parseJsonConfigFileContent(
+		read.config,
+		ts.sys,
+		projectRoot,
+		undefined,
+		configPath,
+		undefined,
+		[{ extension: '.virune', isMixedContent: false, scriptKind: ts.ScriptKind.Deferred }],
+	);
+	if (parsed.errors.some(diagnostic => diagnostic.category === ts.DiagnosticCategory.Error && !projectConfigInputOnlyDiagnosticCodes.has(diagnostic.code))) {
+		return { compilerOptions: {}, valid: false };
+	}
+	const options = parsed.options;
+	return {
+		valid: true,
+		compilerOptions: {
+			...(options.jsx === undefined ? {} : { jsx: options.jsx }),
+			...(options.jsxFactory === undefined ? {} : { jsxFactory: options.jsxFactory }),
+			...(options.jsxFragmentFactory === undefined ? {} : { jsxFragmentFactory: options.jsxFragmentFactory }),
+			...(options.jsxImportSource === undefined ? {} : { jsxImportSource: options.jsxImportSource }),
+			...(options.reactNamespace === undefined ? {} : { reactNamespace: options.reactNamespace }),
+		},
+	};
 }
 
 function primitiveKind(type: ts.Type): ForeignPrimitiveKind | undefined {
