@@ -165,3 +165,14 @@ test('generic View repetition syntax is not part of the grammar', () => {
 }
 `).includes('L0002'));
 });
+
+test('single-file component emission fails closed before ordinary JavaScript output', () => {
+	const result = compileSource(source(`component Card() uses JavaScript {
+	return view {
+		main()
+	}
+}
+`));
+	assert.ok(result.diagnostics.some(item => item.code === 'L4307' && item.severity === 'error'));
+	assert.equal(result.output, undefined);
+});
