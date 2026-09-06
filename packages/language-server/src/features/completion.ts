@@ -13,7 +13,7 @@ import { documentationSummary, recordFieldDocumentation, symbolDocumentationSumm
 type SymbolInfo = SemanticModel['symbols'] extends ReadonlyMap<number, infer Value> ? Value : never;
 
 const keywords = [
-	'as', 'async', 'await', 'break', 'children', 'component', 'const', 'continue', 'defer', 'derives', 'discard', 'else',
+	'as', 'async', 'await', 'break', 'component', 'const', 'continue', 'defer', 'derives', 'discard', 'else',
 	'enum', 'extern', 'false', 'fn', 'for', 'from', 'if', 'import', 'in', 'internal', 'js', 'let', 'match', 'module', 'mut',
 	'newtype', 'parallel', 'pub', 'record', 'return', 'test', 'then', 'true', 'try', 'type', 'unsafe',
 	'uses', 'view', 'while', 'with',
