@@ -151,6 +151,8 @@ ViewPropertyName        = IdentifierName | StringLiteral ;
 ViewConditional         = "if" Expression ViewBlock
                           [ "else" ( ViewBlock | ViewConditional ) ] ;
 ViewChildrenSlot        = "children" LineEnd ;
+(* "children" is contextual: the exact standalone form above is reserved in a
+ * ViewBlock, while Identifier may still spell "children" outside that form. *)
 ListExpression          = "[" NewLine* [ Expression { "," NewLine* [ Expression ] } ] "]" ;
 ParenthesizedOrTupleExpression
                         = "(" Expression [ "," Expression { "," Expression } ] ")" ;
@@ -215,13 +217,13 @@ StringCharacter         = UnicodeScalarExceptQuoteBackslashCrLf ;
 NewLine                 = "\n" | "\r\n" ;
 EOF                     = end of input ;
 
-Keyword                 = "as" | "async" | "await" | "break" | "children" | "component"
-                        | "const" | "continue" | "defer" | "derives" | "discard" | "else"
-                        | "enum" | "extern" | "false" | "fn" | "for" | "from" | "if"
-                        | "import" | "in" | "internal" | "js" | "let" | "match" | "module"
-                        | "mut" | "newtype" | "parallel" | "pub" | "record" | "return"
-                        | "test" | "then" | "true" | "try" | "type" | "unsafe" | "uses"
-                        | "view" | "while" | "with" ;
+Keyword                 = "as" | "async" | "await" | "break" | "component" | "const"
+                        | "continue" | "defer" | "derives" | "discard" | "else" | "enum"
+                        | "extern" | "false" | "fn" | "for" | "from" | "if" | "import"
+                        | "in" | "internal" | "js" | "let" | "match" | "module" | "mut"
+                        | "newtype" | "parallel" | "pub" | "record" | "return" | "test"
+                        | "then" | "true" | "try" | "type" | "unsafe" | "uses" | "view"
+                        | "while" | "with" ;
 
 (* Newline normalization: a physical NewLine is removed before parsing when it
  * occurs inside parentheses or brackets, after a continuation token, or before
