@@ -688,6 +688,7 @@ function referencedTypeNames(declaration: A.Declaration): ReadonlySet<string> {
 		for (const variant of declaration.variants) for (const value of variant.values) addReference(value, parameters);
 	} else if (declaration.kind === 'NewtypeDeclaration') addReference(declaration.underlying, new Set());
 	else if (declaration.kind === 'TypeAliasDeclaration') addReference(declaration.target, new Set(declaration.typeParameters.map(item => item.name)));
+	else if (declaration.kind === 'TopLevelLetDeclaration' && declaration.annotation !== undefined) addReference(declaration.annotation, new Set());
 	return result;
 }
 
