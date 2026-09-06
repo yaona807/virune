@@ -119,6 +119,16 @@ export class AstBuilder extends baseCstVisitorConstructor {
 		};
 	}
 
+	public componentDeclaration(ctx: Ctx): A.ComponentDeclaration {
+		return {
+			id: this.id(), kind: 'ComponentDeclaration', span: contextSpan(this.#fileId, ctx), name: tokenText(ctx, 'Identifier'),
+			...declarationVisibility(ctx), attributes: [],
+			parameters: firstNode(ctx, 'parameterList') === undefined ? [] : this.visitNode<A.ParameterNode[]>(firstNode(ctx, 'parameterList')),
+			effects: this.visitNode<string[]>(firstNode(ctx, 'usesClause')),
+			body: this.visitNode<A.BlockStatement>(firstNode(ctx, 'block')),
+		};
+	}
+
 	public typeParameters(ctx: Ctx): A.TypeParameterNode[] { return tokens(ctx, 'Identifier').map(token => ({ name: token.image, span: tokenSpan(this.#fileId, token) })); }
 	public parameterList(ctx: Ctx): A.ParameterNode[] { return this.visitNodes<A.ParameterNode>(nodes(ctx, 'parameter')); }
 	public parameter(ctx: Ctx): A.ParameterNode { return setSyntaxStart({ name: tokenText(ctx, 'Identifier'), optional: firstToken(ctx, 'Question') !== undefined, type: this.visitNode(firstNode(ctx, 'typeReference')), span: nodeSpan(this.#fileId, this.currentNode(ctx)) }, contextSpan(this.#fileId, ctx).start.offset); }
@@ -242,7 +252,7 @@ export class AstBuilder extends baseCstVisitorConstructor {
 
 	public argumentList(ctx: Ctx): A.Expression[] { return this.visitNodes(nodes(ctx, 'expression')); }
 	public primaryExpression(ctx: Ctx): A.Expression {
-		for (const name of ['recordExpression', 'contextualAggregateExpression', 'listExpression', 'parenthesizedOrTupleExpression', 'conditionalExpression', 'matchExpression', 'lambdaExpression', 'parallelExpression']) {
+		for (const name of ['viewExpression', 'recordExpression', 'contextualAggregateExpression', 'listExpression', 'parenthesizedOrTupleExpression', 'conditionalExpression', 'matchExpression', 'lambdaExpression', 'parallelExpression']) {
 			const child = firstNode(ctx, name); if (child !== undefined) return this.visitNode(child);
 		}
 		const token = Object.values(ctx).flat().filter(isToken).sort((a, b) => a.startOffset - b.startOffset)[0];
@@ -251,6 +261,32 @@ export class AstBuilder extends baseCstVisitorConstructor {
 		if (token.tokenType.name === 'Underscore') return { id: this.id(), kind: 'WildcardExpression', span: tokenSpan(this.#fileId, token) };
 		return this.literal(token);
 	}
+
+	public viewExpression(ctx: Ctx): A.ViewExpression { return { id: this.id(), kind: 'ViewExpression', span: contextSpan(this.#fileId, ctx), body: this.visitNode(firstNode(ctx, 'viewBlock')) }; }
+	public viewBlock(ctx: Ctx): A.ViewBlock { return { id: this.id(), kind: 'ViewBlock', span: contextSpan(this.#fileId, ctx), children: this.visitNodes(nodes(ctx, 'viewChild')) }; }
+	public viewChild(ctx: Ctx): A.ViewChild {
+		for (const name of ['viewElement', 'viewConditional', 'viewTextChild', 'viewExpressionChild', 'viewChildrenSlot']) {
+			const child = firstNode(ctx, name); if (child !== undefined) return this.visitNode(child);
+		}
+		throw new Error('Missing View child during AST construction');
+	}
+	public viewElement(ctx: Ctx): A.ViewElement { const block = firstNode(ctx, 'viewBlock'); return { id: this.id(), kind: 'ViewElement', span: contextSpan(this.#fileId, ctx), tag: this.visitNode(firstNode(ctx, 'viewTag')), properties: firstNode(ctx, 'viewPropertyList') === undefined ? [] : this.visitNode(firstNode(ctx, 'viewPropertyList')), ...(block === undefined ? {} : { children: this.visitNode<A.ViewBlock>(block) }) }; }
+	public viewTag(ctx: Ctx): string[] { return [tokenText(ctx, 'Identifier'), ...tokens(ctx, 'IdentifierName').map(token => token.image)]; }
+	public viewPropertyList(ctx: Ctx): A.ViewProperty[] { return this.visitNodes(nodes(ctx, 'viewProperty')); }
+	public viewProperty(ctx: Ctx): A.ViewProperty {
+		const quotedToken = firstToken(ctx, 'StringLiteral');
+		const nameToken = quotedToken ?? firstToken(ctx, 'IdentifierName');
+		return { name: quotedToken === undefined ? nameToken?.image ?? '' : unquote(quotedToken.image), quoted: quotedToken !== undefined, value: this.visitNode(firstNode(ctx, 'expression')), span: contextSpan(this.#fileId, ctx) };
+	}
+	public viewConditional(ctx: Ctx): A.ViewConditional {
+		const blocks = nodes(ctx, 'viewBlock');
+		const nested = firstNode(ctx, 'viewConditional');
+		return { id: this.id(), kind: 'ViewConditional', span: contextSpan(this.#fileId, ctx), condition: this.visitNode(firstNode(ctx, 'expression')), thenBlock: this.visitNode(blocks[0]), ...(blocks[1] === undefined && nested === undefined ? {} : { elseBranch: blocks[1] === undefined ? this.visitNode<A.ViewConditional>(nested) : this.visitNode<A.ViewBlock>(blocks[1]) }) };
+	}
+	public viewTextChild(ctx: Ctx): A.ViewTextChild { const token = firstToken(ctx, 'StringLiteral'); return { id: this.id(), kind: 'ViewTextChild', span: contextSpan(this.#fileId, ctx), value: unquote(token?.image ?? '""') }; }
+	public viewExpressionChild(ctx: Ctx): A.ViewExpressionChild { return { id: this.id(), kind: 'ViewExpressionChild', span: contextSpan(this.#fileId, ctx), expression: this.visitNode(firstNode(ctx, 'expression')) }; }
+	public viewChildrenSlot(ctx: Ctx): A.ViewChildrenSlot { return { id: this.id(), kind: 'ViewChildrenSlot', span: contextSpan(this.#fileId, ctx) }; }
+
 	public recordExpression(ctx: Ctx): A.RecordExpression { const typeArguments = firstNode(ctx, 'typeArguments'); return { id: this.id(), kind: 'RecordExpression', span: nodeSpan(this.#fileId, this.currentNode(ctx)), name: tokenText(ctx, 'Identifier'), typeArguments: typeArguments === undefined ? [] : this.visitNode<A.TypeReferenceNode[]>(typeArguments), entries: this.visitNode<A.RecordEntryNode[]>(firstNode(ctx, 'recordFieldBlock')) }; }
 	public recordFieldBlock(ctx: Ctx): A.RecordEntryNode[] { return this.visitNodes(nodes(ctx, 'recordEntry')); }
 	public recordEntry(ctx: Ctx): A.RecordEntryNode { const name = tokenText(ctx, 'Identifier'); const expression = firstNode(ctx, 'expression'); return { name, value: expression === undefined ? { id: this.id(), kind: 'IdentifierExpression', span: tokenSpan(this.#fileId, firstToken(ctx, 'Identifier')), name } : this.visitNode(expression), span: nodeSpan(this.#fileId, this.currentNode(ctx)) }; }
