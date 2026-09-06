@@ -472,7 +472,7 @@ fn parseDetailed(
 		nodes: [],
 		diagnostics: [],
 	}
-	while isText(state, tokens, "pub") || isText(state, tokens, "async") || isText(state, tokens, "unsafe") {
+	while isText(state, tokens, "internal") || isText(state, tokens, "pub") || isText(state, tokens, "async") || isText(state, tokens, "unsafe") {
 		state = advance(state)
 	}
 	if !atEnd(state, tokens) {
