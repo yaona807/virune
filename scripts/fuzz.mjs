@@ -30,13 +30,14 @@ let formattedInputs = 0;
 const validSeeds = [
 	'fn main() -> Unit {\n\treturn Unit\n}\n',
 	'pub fn add(left: Int, right: Int) -> Int {\n\treturn left + right\n}\n',
+	'internal fn helper(value: Int) -> Int {\n\treturn value + 1\n}\n',
 	'record User {\n\tname: String,\n\tage: Int,\n}\n',
 	'enum ResultValue {\n\tOk(Int),\n\tErr(String),\n}\n',
 	'fn values() -> List<Int> {\n\tlet items = [1, 2, 3]\n\treturn items\n}\n',
 	'fn commented() -> Unit {\n\t// leading\n\tlet values = [\n\t\t1, // first\n\t\t// second\n\t\t2,\n\t]\n\treturn Unit\n}\n',
 	'async fn load() -> Future<Unit> {\n\treturn async { return Unit }\n}\n',
 ];
-const tokens = ['fn', 'let', 'return', 'record', 'enum', 'match', 'if', 'else', 'async', 'await', 'parallel', 'try', 'pub', 'mut', 'Int', 'String', 'Bool', 'Unit', 'Future', 'Result', 'List', 'Option', 'true', 'false', 'Unit', '0', '1', '2', '"text"', 'alpha', 'beta', 'value', '(', ')', '{', '}', '[', ']', '<', '>', ',', ':', '->', '=>', '=', '+', '-', '*', '/', '?', '\n', '\t', ' ', '// fuzz\n'];
+const tokens = ['fn', 'let', 'return', 'record', 'enum', 'match', 'if', 'else', 'async', 'await', 'parallel', 'try', 'pub', 'internal', 'mut', 'Int', 'String', 'Bool', 'Unit', 'Future', 'Result', 'List', 'Option', 'true', 'false', 'Unit', '0', '1', '2', '"text"', 'alpha', 'beta', 'value', '(', ')', '{', '}', '[', ']', '<', '>', ',', ':', '->', '=>', '=', '+', '-', '*', '/', '?', '\n', '\t', ' ', '// fuzz\n'];
 
 try {
 	while (iterations < iterationLimit && (durationMs === 0 || Date.now() - startedAt < durationMs)) {
