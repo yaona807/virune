@@ -18,6 +18,7 @@ record FrontendModuleSymbolDefinition derives Eq, Debug, Json {
 	name: String
 	sourceNodeId: Int
 	isPublic: Bool
+	isInternal: Bool
 	signatureTypes: List<FrontendVisibilityReference>
 }
 
@@ -48,6 +49,7 @@ record SemanticModuleSymbol derives Eq, Debug, Json {
 	name: String
 	sourceNodeId: Int
 	isPublic: Bool
+	isInternal: Bool
 	signatureTypeIds: List<Int>
 }
 
@@ -121,6 +123,7 @@ fn fallbackSymbol() -> SemanticModuleSymbol {
 		name: "",
 		sourceNodeId: -1,
 		isPublic: false,
+		isInternal: false,
 		signatureTypeIds: [],
 	}
 }
@@ -133,6 +136,7 @@ fn fallbackDefinition() -> FrontendModuleSymbolDefinition {
 		name: "",
 		sourceNodeId: -1,
 		isPublic: false,
+		isInternal: false,
 		signatureTypes: [],
 	}
 }
@@ -174,6 +178,26 @@ fn validSpace(space: String) -> Bool {
 
 fn validKind(kind: String) -> Bool {
 	return kind == "type" || kind == "function" || kind == "const" || kind == "variant" || kind == "capability" || kind == "import"
+}
+
+fn visibilityRank(isPublic: Bool, isInternal: Bool) -> Int {
+	if isPublic {
+		return 2
+	}
+	if isInternal {
+		return 1
+	}
+	return 0
+}
+
+fn visibilityName(isPublic: Bool, isInternal: Bool) -> String {
+	if isPublic {
+		return "Public"
+	}
+	if isInternal {
+		return "Internal"
+	}
+	return "Private"
 }
 
 fn moduleNameIndex(values: List<SemanticModule>, name: String) -> Int {
@@ -253,6 +277,7 @@ fn buildSymbols(
 		let spaceValid = validSpace(definition.space)
 		let kindValid = validKind(definition.kind)
 		let nameValid = String.length(definition.name) > 0
+		let visibilityValid = !(definition.isPublic && definition.isInternal)
 		if !moduleValid {
 			diagnostics = List.append(diagnostics, visibilityDiagnostic(
 				"L9001",
@@ -289,6 +314,15 @@ fn buildSymbols(
 				Some("Use the canonical declaration or imported binding name."),
 			))
 		}
+		if !visibilityValid {
+			diagnostics = List.append(diagnostics, visibilityDiagnostic(
+				"L9001",
+				"Module symbol cannot be both public and internal",
+				Some(definition.moduleId),
+				Some(definition.name),
+				Some("Choose exactly one non-private visibility modifier."),
+			))
+		}
 		if definition.sourceNodeId < 0 {
 			diagnostics = List.append(diagnostics, visibilityDiagnostic(
 				"L9001",
@@ -298,7 +332,7 @@ fn buildSymbols(
 				Some("Pass the canonical AST node ID that defines the symbol."),
 			))
 		}
-		if moduleValid && spaceValid && kindValid && nameValid && definition.sourceNodeId >= 0 {
+		if moduleValid && spaceValid && kindValid && nameValid && visibilityValid && definition.sourceNodeId >= 0 {
 			if symbolIndex(symbols, definition.moduleId, definition.space, definition.name) >= 0 {
 				diagnostics = List.append(diagnostics, visibilityDiagnostic(
 					"L1001",
@@ -316,6 +350,7 @@ fn buildSymbols(
 					name: definition.name,
 					sourceNodeId: definition.sourceNodeId,
 					isPublic: definition.isPublic,
+					isInternal: definition.isInternal,
 					signatureTypeIds: [],
 				})
 			}
@@ -356,7 +391,7 @@ fn resolveSignatures(
 				if !moduleValid || !spaceValid || !nameValid {
 					diagnostics = List.append(diagnostics, visibilityDiagnostic(
 						"L9001",
-						"Malformed public signature reference",
+						"Malformed signature reference",
 						Some(referencedModuleId),
 						Some(reference.name),
 						Some("Use a valid module ID, namespace, and non-empty symbol name."),
@@ -369,18 +404,21 @@ fn resolveSignatures(
 							"Unknown signature type " + reference.name,
 							Some(referencedModuleId),
 							Some(reference.name),
-							Some("Declare the referenced type before validating the public API."),
+							Some("Declare the referenced type before validating the declaration signature."),
 						))
 					} else {
 						signatureTypeIds = List.append(signatureTypeIds, referencedSymbolId)
 						let referenced = symbolAt(symbolsValue, referencedSymbolId)
-						if symbol.isPublic && reference.space == "type" && !referenced.isPublic {
+						if reference.space == "type"
+							&& visibilityRank(referenced.isPublic, referenced.isInternal) < visibilityRank(symbol.isPublic, symbol.isInternal) {
 							diagnostics = List.append(diagnostics, visibilityDiagnostic(
 								"L4010",
-								"Public API " + symbol.name + " exposes private nominal type " + reference.name,
+								visibilityName(symbol.isPublic, symbol.isInternal) + " declaration " + symbol.name
+									+ " exposes " + visibilityName(referenced.isPublic, referenced.isInternal)
+									+ " nominal type " + reference.name,
 								Some(symbol.moduleId),
 								Some(symbol.name),
-								Some("Make the nominal type public or remove it from the public signature."),
+								Some("Raise the nominal type visibility or remove it from the declaration signature."),
 							))
 						}
 					}
@@ -395,6 +433,7 @@ fn resolveSignatures(
 			name: symbol.name,
 			sourceNodeId: symbol.sourceNodeId,
 			isPublic: symbol.isPublic,
+			isInternal: symbol.isInternal,
 			signatureTypeIds: signatureTypeIds,
 		})
 	}
@@ -436,14 +475,14 @@ fn buildAccesses(
 				))
 			} else {
 				let symbol = symbolAt(symbols, symbolId)
-				accessible = request.requesterModuleId == request.definingModuleId || symbol.isPublic
+				accessible = request.requesterModuleId == request.definingModuleId || symbol.isPublic || symbol.isInternal
 				if !accessible {
 					diagnostics = List.append(diagnostics, visibilityDiagnostic(
 						"L4010",
 						"Private module symbol " + request.name + " is not visible across modules",
 						Some(request.requesterModuleId),
 						Some(request.name),
-						Some("Make the symbol public or access it only from its defining module."),
+						Some("Make the symbol internal or public, or access it only from its defining module."),
 					))
 				}
 			}

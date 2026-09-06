@@ -3,11 +3,13 @@ import type { NodeId, SourceSpan, SymbolId, TypeId } from '../source.js';
 export interface AstNode { readonly id: NodeId; readonly kind: string; readonly span: SourceSpan; }
 export interface DocumentationNode { readonly kind: 'Documentation'; readonly text: string; readonly span: SourceSpan; }
 export interface DocumentedNode { readonly documentation?: DocumentationNode; }
+export interface DeclarationVisibility { readonly public: boolean; readonly internal?: true; }
 export interface ModuleNode extends AstNode, DocumentedNode { readonly kind: 'Module'; readonly unsafe: boolean; readonly imports: readonly ImportDeclaration[]; readonly declarations: readonly Declaration[]; }
 export interface ImportItem { readonly imported: string; readonly local: string; readonly span: SourceSpan; }
 export interface ImportDeclaration extends AstNode {
 	readonly kind: 'ImportDeclaration';
 	readonly public: boolean;
+	readonly internal?: true;
 	readonly sourceKind: 'virune' | 'javascript';
 	readonly typeOnly: boolean;
 	readonly items: readonly ImportItem[];
@@ -23,31 +25,31 @@ export interface TypeParameterNode { readonly name: string; readonly span: Sourc
 export interface ParameterNode { readonly name: string; readonly optional: boolean; readonly type: TypeReferenceNode; readonly span: SourceSpan; symbolId?: SymbolId; }
 export type Declaration = FunctionDeclaration | RecordDeclaration | EnumDeclaration | NewtypeDeclaration | TypeAliasDeclaration | ExternDeclaration | TestDeclaration | TopLevelLetDeclaration;
 
-export interface FunctionDeclaration extends AstNode, DocumentedNode {
-	readonly kind: 'FunctionDeclaration'; readonly name: string; readonly public: boolean; readonly async: boolean;
+export interface FunctionDeclaration extends AstNode, DocumentedNode, DeclarationVisibility {
+	readonly kind: 'FunctionDeclaration'; readonly name: string; readonly async: boolean;
 	readonly attributes: readonly AttributeNode[]; readonly typeParameters: readonly TypeParameterNode[]; readonly parameters: readonly ParameterNode[];
 	readonly returnType?: TypeReferenceNode; readonly effects: readonly string[]; readonly body: BlockStatement | Expression;
 	readonly expressionBody: boolean; symbolId?: SymbolId; inferredTypeId?: TypeId;
 }
 export interface RecordFieldNode extends DocumentedNode { readonly name: string; readonly type: TypeReferenceNode; readonly attributes: readonly AttributeNode[]; readonly span: SourceSpan; }
-export interface RecordDeclaration extends AstNode, DocumentedNode {
-	readonly kind: 'RecordDeclaration'; readonly name: string; readonly public: boolean; readonly attributes: readonly AttributeNode[];
+export interface RecordDeclaration extends AstNode, DocumentedNode, DeclarationVisibility {
+	readonly kind: 'RecordDeclaration'; readonly name: string; readonly attributes: readonly AttributeNode[];
 	readonly typeParameters: readonly TypeParameterNode[]; readonly fields: readonly RecordFieldNode[]; readonly derives: readonly string[]; readonly definitionId?: string; symbolId?: SymbolId;
 }
 export interface EnumVariantNode extends DocumentedNode { readonly name: string; readonly values: readonly TypeReferenceNode[]; readonly span: SourceSpan; symbolId?: SymbolId; }
-export interface EnumDeclaration extends AstNode, DocumentedNode {
-	readonly kind: 'EnumDeclaration'; readonly name: string; readonly public: boolean; readonly attributes: readonly AttributeNode[];
+export interface EnumDeclaration extends AstNode, DocumentedNode, DeclarationVisibility {
+	readonly kind: 'EnumDeclaration'; readonly name: string; readonly attributes: readonly AttributeNode[];
 	readonly typeParameters: readonly TypeParameterNode[]; readonly variants: readonly EnumVariantNode[]; readonly derives: readonly string[]; readonly definitionId?: string; symbolId?: SymbolId;
 }
-export interface NewtypeDeclaration extends AstNode, DocumentedNode { readonly kind: 'NewtypeDeclaration'; readonly name: string; readonly public: boolean; readonly attributes: readonly AttributeNode[]; readonly underlying: TypeReferenceNode; readonly definitionId?: string; symbolId?: SymbolId; }
-export interface TypeAliasDeclaration extends AstNode, DocumentedNode { readonly kind: 'TypeAliasDeclaration'; readonly name: string; readonly public: boolean; readonly attributes: readonly AttributeNode[]; readonly typeParameters: readonly TypeParameterNode[]; readonly target: TypeReferenceNode; readonly definitionId?: string; symbolId?: SymbolId; }
+export interface NewtypeDeclaration extends AstNode, DocumentedNode, DeclarationVisibility { readonly kind: 'NewtypeDeclaration'; readonly name: string; readonly attributes: readonly AttributeNode[]; readonly underlying: TypeReferenceNode; readonly definitionId?: string; symbolId?: SymbolId; }
+export interface TypeAliasDeclaration extends AstNode, DocumentedNode, DeclarationVisibility { readonly kind: 'TypeAliasDeclaration'; readonly name: string; readonly attributes: readonly AttributeNode[]; readonly typeParameters: readonly TypeParameterNode[]; readonly target: TypeReferenceNode; readonly definitionId?: string; symbolId?: SymbolId; }
 
 export interface ExternFunctionNode extends AstNode, DocumentedNode { readonly kind: 'ExternFunction'; readonly name: string; readonly async: boolean; readonly parameters: readonly ParameterNode[]; readonly returnType: TypeReferenceNode; readonly effects: readonly string[]; readonly jsName: string; symbolId?: SymbolId; }
 export interface ExternDeclaration extends AstNode, DocumentedNode { readonly kind: 'ExternDeclaration'; readonly module: string; readonly unsafe: boolean; readonly attributes: readonly AttributeNode[]; readonly functions: readonly ExternFunctionNode[]; }
 export interface TestDeclaration extends AstNode { readonly kind: 'TestDeclaration'; readonly name: string; readonly async: boolean; readonly attributes: readonly AttributeNode[]; readonly body: BlockStatement; }
-export interface TopLevelLetDeclaration extends AstNode, DocumentedNode {
+export interface TopLevelLetDeclaration extends AstNode, DocumentedNode, DeclarationVisibility {
 	readonly kind: 'TopLevelLetDeclaration'; readonly name: string; readonly attributes: readonly AttributeNode[];
-	readonly constant: boolean; readonly public: boolean; readonly annotation?: TypeReferenceNode; readonly value: Expression;
+	readonly constant: boolean; readonly annotation?: TypeReferenceNode; readonly value: Expression;
 	symbolId?: SymbolId; inferredTypeId?: TypeId;
 }
 

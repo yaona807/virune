@@ -402,7 +402,7 @@ fn takeDocumentation(
 }
 
 fn isModifier(text: String) -> Bool {
-	return text == "pub" || text == "async" || text == "unsafe"
+	return text == "pub" || text == "internal" || text == "async" || text == "unsafe"
 }
 
 fn declarationKeywordIndex(state: CoreState, tokens: List<FrontendToken>) -> Int {

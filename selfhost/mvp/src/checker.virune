@@ -1078,6 +1078,9 @@ fn namedFieldType(typeNameValue: String, fieldName: String) -> MvpType {
 	if base == "FrontendModuleSymbolDefinition" && fieldName == "isPublic" {
 		return typeFromName("Bool")
 	}
+	if base == "FrontendModuleSymbolDefinition" && fieldName == "isInternal" {
+		return typeFromName("Bool")
+	}
 	if base == "FrontendModuleSymbolDefinition" && fieldName == "kind" {
 		return typeFromName("String")
 	}
@@ -3062,6 +3065,9 @@ fn namedFieldType(typeNameValue: String, fieldName: String) -> MvpType {
 		return typeFromName("Int")
 	}
 	if base == "SemanticModuleSymbol" && fieldName == "isPublic" {
+		return typeFromName("Bool")
+	}
+	if base == "SemanticModuleSymbol" && fieldName == "isInternal" {
 		return typeFromName("Bool")
 	}
 	if base == "SemanticModuleSymbol" && fieldName == "kind" {

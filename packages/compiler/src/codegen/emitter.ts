@@ -119,19 +119,19 @@ export class JavaScriptEmitter {
 			case 'TypeAliasDeclaration': this.#writer.line(`// type ${declaration.name} is erased during JavaScript emission.`); break;
 			case 'ExternDeclaration': this.emitExternDeclaration(declaration); break;
 			case 'TestDeclaration': this.emitTest(declaration); break;
-			case 'TopLevelLetDeclaration': this.#writer.line(`${declaration.public ? 'export ' : this.exportPrefix(declaration.attributes)}const ${this.nameOf(declaration.symbolId, declaration.name)} = ${this.expression(declaration.value)};`); break;
+			case 'TopLevelLetDeclaration': this.#writer.line(`${this.moduleExported(declaration) ? 'export ' : this.exportPrefix(declaration.attributes)}const ${this.nameOf(declaration.symbolId, declaration.name)} = ${this.expression(declaration.value)};`); break;
 		}
 	}
 
 	private emitRecordDeclaration(declaration: A.RecordDeclaration): void {
 		this.#writer.line(`// record ${declaration.name}`);
-		if (declaration.public) this.#writer.line(`export const ${safeName(declaration.name)} = Object.freeze({ name: ${JSON.stringify(declaration.name)}, typeId: ${JSON.stringify(this.declarationTypeId(declaration.symbolId, declaration.definitionId ?? declaration.name))} });`);
+		if (this.moduleExported(declaration)) this.#writer.line(`export const ${safeName(declaration.name)} = Object.freeze({ name: ${JSON.stringify(declaration.name)}, typeId: ${JSON.stringify(this.declarationTypeId(declaration.symbolId, declaration.definitionId ?? declaration.name))} });`);
 	}
 
 	private emitEnumDeclaration(declaration: A.EnumDeclaration): void {
 		this.#writer.line(`// enum ${declaration.name}`);
 		for (const variant of declaration.variants) {
-			const prefix = declaration.public ? 'export ' : '';
+			const prefix = this.moduleExported(declaration) ? 'export ' : '';
 			const name = this.nameOf(variant.symbolId, variant.name);
 			if (variant.values.length === 0) this.#writer.line(`${prefix}const ${name} = Object.freeze(makeVariant(${JSON.stringify(variant.name)}, [], ${JSON.stringify(this.declarationTypeId(declaration.symbolId, declaration.definitionId ?? declaration.name))}));`);
 			else {
@@ -139,17 +139,17 @@ export class JavaScriptEmitter {
 				this.#writer.line(`${prefix}function ${name}(${args}) { return makeVariant(${JSON.stringify(variant.name)}, [${args}], ${JSON.stringify(this.declarationTypeId(declaration.symbolId, declaration.definitionId ?? declaration.name))}); }`);
 			}
 		}
-		this.#writer.line(`${declaration.public ? 'export ' : ''}const ${safeName(declaration.name)} = Object.freeze({ ${declaration.variants.map(variant => safeName(variant.name)).join(', ')} });`);
+		this.#writer.line(`${this.moduleExported(declaration) ? 'export ' : ''}const ${safeName(declaration.name)} = Object.freeze({ ${declaration.variants.map(variant => safeName(variant.name)).join(', ')} });`);
 	}
 
 	private emitNewtypeDeclaration(declaration: A.NewtypeDeclaration): void {
-		const prefix = declaration.public ? 'export ' : '';
+		const prefix = this.moduleExported(declaration) ? 'export ' : '';
 		this.#writer.line(`${prefix}const ${safeName(declaration.name)} = Object.freeze({ create: value => value });`);
 	}
 
 	private emitFunction(declaration: A.FunctionDeclaration): void {
 		const jsExport = declaration.attributes.some(item => item.name === 'jsExport');
-		const prefix = declaration.public && !jsExport ? 'export ' : '';
+		const prefix = this.moduleExported(declaration) && !jsExport ? 'export ' : '';
 		const asyncKeyword = declaration.async ? 'async ' : '';
 		const name = this.nameOf(declaration.symbolId, declaration.name);
 		const parameters = declaration.parameters.map(parameter => this.nameOf(parameter.symbolId, parameter.name));
@@ -703,6 +703,7 @@ export class JavaScriptEmitter {
 	}
 
 	private nameOf(symbolId: SymbolId | undefined, fallback: string): string { return symbolId === undefined ? safeName(fallback) : this.#symbolNames.get(symbolId) ?? safeName(fallback); }
+	private moduleExported(declaration: A.DeclarationVisibility): boolean { return declaration.public || declaration.internal === true; }
 	private exportPrefix(attributes: readonly A.AttributeNode[]): string { return attributes.some(item => item.name === 'jsExport') ? 'export ' : ''; }
 }
 

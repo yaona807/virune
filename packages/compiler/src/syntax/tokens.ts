@@ -48,7 +48,9 @@ export const KwModule = keyword('KwModule', /module\b/);
 export const KwMut = keyword('KwMut', /mut\b/);
 export const KwNewtype = keyword('KwNewtype', /newtype\b/);
 export const KwParallel = keyword('KwParallel', /parallel\b/);
-export const KwPub = keyword('KwPub', /pub\b/);
+// `pub` and `internal` occupy the same mutually-exclusive declaration visibility slot.
+// The AST builder distinguishes them by token image while the existing grammar stays unchanged.
+export const KwPub = keyword('KwPub', /(?:pub|internal)\b/);
 export const KwRecord = keyword('KwRecord', /record\b/);
 export const KwReturn = keyword('KwReturn', /return\b/);
 export const KwTest = keyword('KwTest', /test\b/);

@@ -14,7 +14,7 @@ type SymbolInfo = SemanticModel['symbols'] extends ReadonlyMap<number, infer Val
 
 const keywords = [
 	'as', 'async', 'await', 'break', 'const', 'continue', 'defer', 'derives', 'discard', 'else',
-	'enum', 'extern', 'false', 'fn', 'for', 'from', 'if', 'import', 'in', 'js', 'let', 'match', 'module', 'mut',
+	'enum', 'extern', 'false', 'fn', 'for', 'from', 'if', 'import', 'in', 'internal', 'js', 'let', 'match', 'module', 'mut',
 	'newtype', 'parallel', 'pub', 'record', 'return', 'test', 'then', 'true', 'try', 'type', 'unsafe',
 	'uses', 'while', 'with',
 ] as const;
