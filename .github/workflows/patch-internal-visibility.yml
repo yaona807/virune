@@ -1,0 +1,57 @@
+name: Apply internal visibility checker patch
+
+on:
+  push:
+    branches:
+      - feature/633-internal-visibility
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: feature/633-internal-visibility
+          fetch-depth: 2
+      - name: Apply exact checker mappings and remove one-shot workflow
+        shell: bash
+        run: |
+          python <<'PY'
+          from pathlib import Path
+
+          path = Path('selfhost/mvp/src/checker.virune')
+          source = path.read_text()
+
+          frontend = '''\tif base == "FrontendModuleSymbolDefinition" && fieldName == "isPublic" {\n\t\treturn typeFromName("Bool")\n\t}\n'''
+          frontend_internal = frontend + '''\tif base == "FrontendModuleSymbolDefinition" && fieldName == "isInternal" {\n\t\treturn typeFromName("Bool")\n\t}\n'''
+          semantic = '''\tif base == "SemanticModuleSymbol" && fieldName == "isPublic" {\n\t\treturn typeFromName("Bool")\n\t}\n'''
+          semantic_internal = semantic + '''\tif base == "SemanticModuleSymbol" && fieldName == "isInternal" {\n\t\treturn typeFromName("Bool")\n\t}\n'''
+
+          assert source.count(frontend) == 1, 'unexpected FrontendModuleSymbolDefinition.isPublic mapping count'
+          assert source.count(semantic) == 1, 'unexpected SemanticModuleSymbol.isPublic mapping count'
+          assert 'FrontendModuleSymbolDefinition" && fieldName == "isInternal"' not in source
+          assert 'SemanticModuleSymbol" && fieldName == "isInternal"' not in source
+
+          source = source.replace(frontend, frontend_internal, 1)
+          source = source.replace(semantic, semantic_internal, 1)
+          path.write_text(source)
+
+          workflow = Path('.github/workflows/patch-internal-visibility.yml')
+          workflow.unlink()
+          PY
+
+          git diff --check
+          test "$(git diff --numstat -- selfhost/mvp/src/checker.virune)" = $'6\t0\tselfhost/mvp/src/checker.virune'
+          test "$(git diff -- selfhost/mvp/src/checker.virune | grep -c '^+\s*if base == .*isInternal')" = '2'
+      - name: Commit exact patch
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add selfhost/mvp/src/checker.virune .github/workflows/patch-internal-visibility.yml
+          git commit -m 'fix(selfhost): type internal visibility fields'
+          git push origin HEAD:feature/633-internal-visibility
