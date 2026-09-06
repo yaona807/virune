@@ -168,6 +168,7 @@ function evaluateExpression(expression: Expression, environment: Environment, in
 		case 'TryExpression':
 		case 'AwaitExpression':
 		case 'ParallelExpression':
+		case 'ViewExpression':
 		case 'WildcardExpression':
 			throw new ReferenceEvaluationError(`${expression.kind} is outside the pure reference subset`);
 	}
