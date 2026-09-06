@@ -8,13 +8,16 @@ fn encoded(source: String) -> String {
 }
 
 test "frontend lexer recognizes the normative token vocabulary deterministically" {
-	let source = "pub async fn main<T>(value: Int) -> Bool uses io {\n\tlet count = 0x2a\n\tlet mask = 0b1010n\n\tlet ratio = 1_2.5e+2\n\tlet label = \"ok\"\n\treturn count >= 2 && value != 0 || label == \"ok\"\n}\n\ninternal fn helper() -> Int => 1\n"
+	let source = "pub async fn main<T>(value: Int) -> Bool uses io {\n\tlet count = 0x2a\n\tlet mask = 0b1010n\n\tlet ratio = 1_2.5e+2\n\tlet label = \"ok\"\n\treturn count >= 2 && value != 0 || label == \"ok\"\n}\n\ninternal component Card(children: String) uses JavaScript {\n\treturn view {\n\t\tspan() {\n\t\t\tchildren\n\t\t}\n\t}\n}\n"
 	let first = encoded(source)
 	let second = encoded(source)
 	expect(first == second)
 	expect(String.contains(first, "\"text\":\"pub\""))
 	expect(String.contains(first, "\"text\":\"internal\""))
 	expect(String.contains(first, "\"text\":\"async\""))
+	expect(String.contains(first, "\"tag\":\"Keyword\",\"text\":\"component\""))
+	expect(String.contains(first, "\"tag\":\"Keyword\",\"text\":\"view\""))
+	expect(String.contains(first, "\"tag\":\"Identifier\",\"text\":\"children\""))
 	expect(String.contains(first, "\"text\":\"0x2a\""))
 	expect(String.contains(first, "\"text\":\"0b1010n\""))
 	expect(String.contains(first, "\"text\":\"1_2.5e+2\""))
@@ -47,7 +50,7 @@ test "frontend lexer applies normative soft-line normalization" {
 }
 
 test "frontend lexer retains the top-level generic declaration line end" {
-	let source = "pub type Box<T> = List<T>\npub fn main() -> Unit {\n\treturn\n}\n"
+	let source = "pub type Box<T> = List<T>\ncomponent Card() uses JavaScript {\n\treturn view {\n\t\tmain()\n\t}\n}\n"
 	let result = encoded(source)
 	expect(String.contains(result, "\"text\":\">\""))
 	expect(String.contains(result, "\"tag\":\"NewLine\""))
