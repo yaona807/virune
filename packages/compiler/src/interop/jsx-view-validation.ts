@@ -55,8 +55,9 @@ export function validateFrontendJsxUsage(module: A.ModuleNode, semantic: Semanti
 		}
 		const sourceText = [
 			...imports,
+			...[...externalTagRoots].map(name => `void ${name};`),
 			...context.declarations,
-			...renderedViews.map((view, index) => `const $viruneView${index} = ${view};`),
+			...renderedViews.map(view => `${view};`),
 		].join('\n');
 		let resolution: { readonly accepted: true } | undefined;
 		try {
@@ -74,7 +75,7 @@ export function validateFrontendJsxUsage(module: A.ModuleNode, semantic: Semanti
 
 function renderJavaScriptImport(declaration: A.ImportDeclaration): string {
 	const source = JSON.stringify(declaration.source);
-	if (declaration.typeOnly && declaration.items.length > 0) return `import type { ${renderImportItems(declaration.items)} } from ${source};`;
+	if (declaration.typeOnly) return `import ${source};`;
 	if (declaration.defaultImport !== undefined) return `import ${declaration.defaultImport} from ${source};`;
 	if (declaration.namespaceImport !== undefined) return `import * as ${declaration.namespaceImport} from ${source};`;
 	if (declaration.items.length > 0) return `import { ${renderImportItems(declaration.items)} } from ${source};`;
