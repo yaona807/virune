@@ -16,6 +16,37 @@ const jsxValidationProvider: JsInteropProvider = {
 	display: () => '<unused>',
 	resolveJsxUsage: () => ({ accepted: true }),
 };
+const externalJsxProvider: JsInteropProvider = {
+	id: 'frontend-external-test',
+	version: '1',
+	generation: 1,
+	resolveImport(request) {
+		const importedName = request.importedName ?? 'value';
+		return {
+			type: {
+				ref: { providerId: 'frontend-external-test', generation: 1, id: importedName },
+				display: importedName,
+				category: importedName === 'Card' ? 'function' : 'object',
+				origin: { moduleSpecifier: request.moduleSpecifier, exportName: importedName },
+			},
+			runtime: { kind: 'named', importedName },
+			witness: {
+				moduleSpecifier: request.moduleSpecifier,
+				runtimeEntry: 'library.js',
+				runtimeFormat: 'esm',
+				conditions: ['import'],
+				platform: request.platform,
+				providerVersion: '1',
+			},
+		};
+	},
+	getProperty: () => undefined,
+	resolveCall: () => undefined,
+	resolveConstruct: () => undefined,
+	getAwaitedType: () => undefined,
+	display: type => type.id,
+	resolveJsxUsage: () => ({ accepted: true }),
+};
 
 function compile(text: string, outputFile?: string) {
 	return compileSource(source(text), {
@@ -27,7 +58,7 @@ function compile(text: string, outputFile?: string) {
 test('single-file components emit preserved JSX and a matching default JSX source map', () => {
 	const result = compile(`internal component Card() uses JavaScript {
 	return view {
-		main(class: "page") {
+		main(class: "page", "data-state": "ready", "a:b": "namespaced") {
 			"hello"
 			span()
 		}
@@ -38,9 +69,27 @@ test('single-file components emit preserved JSX and a matching default JSX sourc
 	assert.ok(result.output);
 	assert.match(result.output.code, /export function Card\(\$props\)/u);
 	assert.match(result.output.code, /const \$ctx = rootTaskContext\(\);/u);
-	assert.ok(result.output.code.includes('return <main class={"page"}>{"hello"}<span /></main>;'));
+	assert.ok(result.output.code.includes('return <main class={"page"} data-state={"ready"} a:b={"namespaced"}>{"hello"}<span /></main>;'));
 	assert.ok(result.output.code.endsWith('//# sourceMappingURL=frontend-emission.jsx.map\n'));
 	assert.equal(JSON.parse(result.output.map).file, 'frontend-emission.jsx');
+});
+
+test('JavaScript-imported External and dotted tags preserve their checked source shape', () => {
+	const result = compileSource(source(`import js { Card, ui } from "./library.js"
+
+component Page() uses JavaScript {
+	return view {
+		Card(label: "ok") {
+			"hello"
+		}
+		ui.Tile(tone: "warm")
+	}
+}
+`), { jsInteropProvider: externalJsxProvider });
+	assert.deepEqual(result.diagnostics.filter(item => item.severity === 'error'), []);
+	assert.ok(result.output);
+	assert.ok(result.output.code.includes('import { Card, ui } from "./library.js";'));
+	assert.ok(result.output.code.includes('return <><Card label={"ok"}>{"hello"}</Card><ui.Tile tone={"warm"} /></>;'));
 });
 
 test('primitive component props stay host-backed and use existing safe FFI descriptors', () => {
