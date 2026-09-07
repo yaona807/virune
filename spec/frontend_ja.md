@@ -12,7 +12,7 @@
 internal component UserPage(user: User) uses JavaScript {
     return view {
         main(className: "page") {
-            = user.name
+            { user.name }
         }
     }
 }
@@ -78,18 +78,18 @@ property expressionは通常のVirune expressionであり、View内にあるこ�
 
 ## `[frontend.view-children]` Text / expression child
 
-string literalはtext childである。通常のVirune expressionは、先頭に`=`を置いたときexpression childになる。
+string literalはtext childである。通常のVirune expressionは、View child位置で`{`と`}`に囲んだときexpression childになる。
 
 ```virune
 view {
     p() {
         "User: "
-        = user.name
+        { user.name }
     }
 }
 ```
 
-`=` markerはView authoring syntaxでありassignmentではない。その後ろのexpressionは通常のVirune expression semanticsに従い、通常のeffectおよびJavaScript boundary ruleを引き続き受ける。
+このbraceはcontextualなView authoring delimiterであり、Viruneの一般expression syntaxを変更するものではない。内側のexpressionは通常のVirune expression semanticsに従い、通常のeffectおよびJavaScript boundary ruleを引き続き受ける。先頭`= expression`はView expression-child formではない。
 
 ## `[frontend.view-conditional]` Declarative View conditional
 
@@ -115,7 +115,9 @@ View structure内でstandaloneの`children`は、現在のVirune-native componen
 internal component Panel(title: String) uses JavaScript {
     return view {
         section() {
-            h2() { = title }
+            h2() {
+                { title }
+            }
             children
         }
     }
