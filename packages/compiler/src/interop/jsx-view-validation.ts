@@ -17,6 +17,7 @@ interface RenderFailure {
 interface RenderContext {
 	readonly semantic: SemanticModel;
 	readonly externalTagRoots: ReadonlySet<string>;
+	readonly externalTags: Set<string>;
 	failure?: RenderFailure;
 }
 
@@ -45,7 +46,7 @@ export function validateFrontendJsxUsage(module: A.ModuleNode, semantic: Semanti
 	for (const component of components) {
 		const views: A.ViewExpression[] = [];
 		collectViewReturns(component.body, views);
-		const context: RenderContext = { semantic, externalTagRoots };
+		const context: RenderContext = { semantic, externalTagRoots, externalTags: new Set() };
 		const renderedViews: string[] = [];
 		for (const view of views) {
 			const onlyChild = view.body.children.length === 1 ? view.body.children[0] : undefined;
@@ -57,9 +58,11 @@ export function validateFrontendJsxUsage(module: A.ModuleNode, semantic: Semanti
 			semantic.diagnostics.error('L4308', `Cannot validate JSX usage for component ${component.name}: ${context.failure.message}`, context.failure.span);
 			continue;
 		}
+		const externalTagProof = renderExternalTagProof(context.externalTags);
 		const sourceText = [
 			...imports,
 			...[...externalTagRoots].map(name => `void ${name};`),
+			...(externalTagProof === undefined ? [] : [externalTagProof]),
 			...renderedViews.map(view => `${view};`),
 		].join('\n');
 		let resolution: { readonly accepted: true } | undefined;
@@ -98,6 +101,18 @@ function javaScriptValueImportNames(module: A.ModuleNode): ReadonlySet<string> {
 		for (const item of declaration.items) names.add(item.local);
 	}
 	return names;
+}
+
+function renderExternalTagProof(tags: ReadonlySet<string>): string | undefined {
+	if (tags.size === 0) return undefined;
+	const lines = ['{', '\ttype __ViruneSafeJsxTag<T> = 0 extends (1 & T) ? never : unknown extends T ? never : T;'];
+	let index = 0;
+	for (const tag of tags) {
+		const name = `__viruneJsxTag${index++}`;
+		lines.push(`\tconst ${name}: __ViruneSafeJsxTag<typeof ${tag}> = ${tag};`, `\tvoid ${name};`);
+	}
+	lines.push('}');
+	return lines.join('\n');
 }
 
 function collectViewReturns(block: A.BlockStatement, views: A.ViewExpression[]): void {
@@ -177,6 +192,7 @@ function renderViewElement(element: A.ViewElement, context: RenderContext): stri
 		properties.push(`${property.name}={${value}}`);
 	}
 	const tag = element.tag.join('.');
+	if (external) context.externalTags.add(tag);
 	const attributes = properties.length === 0 ? '' : ` ${properties.join(' ')}`;
 	if (element.children === undefined) return `<${tag}${attributes} />`;
 	const children = renderViewBlockContents(element.children, context);
