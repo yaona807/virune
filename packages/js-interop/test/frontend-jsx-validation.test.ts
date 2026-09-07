@@ -25,13 +25,17 @@ export declare function child(props: { imported: "yes" }): JSX.Element;
 export declare const ui: {
 	Tile: (props: { tone: "warm" }) => JSX.Element;
 };
+export declare const UnsafeCard: any;
+export declare const unsafeUi: {
+	Tile: any;
+};
 `;
 
 async function project() {
 	const root = await fixtureRoot();
 	await writeFile(join(root, 'tsconfig.json'), JSON.stringify({ compilerOptions: { jsx: 'preserve', noUnusedLocals: true }, include: ['src/**/*'] }), 'utf8');
 	await writeFile(join(root, 'src/library.d.ts'), declarations, 'utf8');
-	await writeFile(join(root, 'src/library.js'), 'export const Card = () => null; export const child = () => null; export const ui = { Tile: () => null };\n', 'utf8');
+	await writeFile(join(root, 'src/library.js'), 'export const Card = () => null; export const child = () => null; export const ui = { Tile: () => null }; export const UnsafeCard = () => null; export const unsafeUi = { Tile: () => null };\n', 'utf8');
 	return root;
 }
 
@@ -155,6 +159,26 @@ component Page() uses JavaScript {
 }
 `);
 	assert.ok(errors(rejected).some(item => item.code === 'L4308'));
+
+	const unsafeDirect = await compile(`import js { UnsafeCard } from "./library.js"
+
+component Page() uses JavaScript {
+	return view {
+		UnsafeCard(unchecked: "yes")
+	}
+}
+`);
+	assert.ok(errors(unsafeDirect).some(item => item.code === 'L4308'));
+
+	const unsafeDotted = await compile(`import js { unsafeUi } from "./library.js"
+
+component Page() uses JavaScript {
+	return view {
+		unsafeUi.Tile(unchecked: "yes")
+	}
+}
+`);
+	assert.ok(errors(unsafeDotted).some(item => item.code === 'L4308'));
 
 	const lowercase = await compile(`import js { child } from "./library.js"
 
