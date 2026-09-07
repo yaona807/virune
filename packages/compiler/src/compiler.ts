@@ -30,6 +30,8 @@ export interface CompileResult {
 	readonly output?: EmitResult;
 }
 
+const frontendPrimitiveParameters = new Set(['Bool', 'Int', 'Float', 'BigInt', 'String']);
+
 export function compileSource(source: SourceFile, options: CompileOptions = {}): CompileResult {
 	const diagnostics = new DiagnosticBag();
 	const lexResult = lex(source.text);
@@ -62,17 +64,30 @@ export function compileSource(source: SourceFile, options: CompileOptions = {}):
 	if (diagnostics.hasErrors || options.emit === false) return { source, diagnostics: diagnostics.items, ast, semantic };
 	const component = ast.declarations.find(declaration => declaration.kind === 'ComponentDeclaration');
 	if (component !== undefined) {
-		diagnostics.error('L4307', 'Component emission is unavailable until frontend JSX usage and preserved artifact emission are implemented', component.span);
-		return { source, diagnostics: diagnostics.items, ast, semantic };
+		validateSingleFileComponentBoundary(ast, semantic, diagnostics);
+		if (diagnostics.hasErrors) return { source, diagnostics: diagnostics.items, ast, semantic };
 	}
 	const hir = lowerToHir(ast, semantic);
-	const outputFile = options.outputFile ?? source.path.replace(/\.virune$/u, '.js');
+	const outputFile = options.outputFile ?? source.path.replace(/\.virune$/u, component === undefined ? '.js' : '.jsx');
 	const output = emitJavaScript(hir, source, outputFile, {
 		...(options.sourceMap === undefined ? {} : { sourceMap: options.sourceMap }),
 		...(options.sourcesContent === undefined ? {} : { sourcesContent: options.sourcesContent }),
 		...(options.sourcePath === undefined ? {} : { sourcePath: options.sourcePath }),
 	});
 	return { source, diagnostics: diagnostics.items, ast, semantic, output };
+}
+
+function validateSingleFileComponentBoundary(module: ModuleNode, semantic: SemanticModel, diagnostics: DiagnosticBag): void {
+	for (const declaration of module.declarations) {
+		if (declaration.kind !== 'ComponentDeclaration') continue;
+		for (const parameter of declaration.parameters) {
+			const symbol = parameter.symbolId === undefined ? undefined : semantic.symbols.get(parameter.symbolId);
+			const type = symbol === undefined ? undefined : semantic.arena.get(symbol.typeId);
+			if (type?.kind === 'primitive' && frontendPrimitiveParameters.has(type.name)) continue;
+			const display = symbol === undefined ? '<unresolved>' : semantic.arena.display(symbol.typeId);
+			diagnostics.error('L4309', `Component parameter ${parameter.name} has type ${display}; single-file JSX emission currently supports only Bool, Int, Float, BigInt, and String host props`, parameter.span);
+		}
+	}
 }
 
 function parserDiagnostic(source: SourceFile, error: IRecognitionException): Diagnostic {
