@@ -12,6 +12,7 @@ const declarations = `declare global {
 		interface ElementChildrenAttribute { children: {}; }
 		interface IntrinsicElements {
 			panel: { tone: "warm"; count?: -1; label?: string; "data-state"?: "ready"; children?: string };
+			child: {};
 		}
 	}
 	const AmbientCard: (props: { label: "ambient" }) => JSX.Element;
@@ -207,7 +208,7 @@ component Page() uses JavaScript {
 
 	const nativeComponent = await compile(`import js { Card } from "./library.js"
 
-component Child() uses JavaScript {
+component child() uses JavaScript {
 	return view {
 		panel(tone: "warm")
 	}
@@ -215,7 +216,7 @@ component Child() uses JavaScript {
 
 component Page() uses JavaScript {
 	return view {
-		Child()
+		child()
 	}
 }
 `);
