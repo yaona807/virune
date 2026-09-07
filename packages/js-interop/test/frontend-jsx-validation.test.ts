@@ -20,13 +20,15 @@ export declare function Card(props: { label: "ok"; children?: string }): JSX.Ele
 export declare const ui: {
 	Tile: (props: { tone: "warm" }) => JSX.Element;
 };
+export declare const __viruneValue0: number;
+export declare const __viruneView0: number;
 `;
 
 async function project() {
 	const root = await fixtureRoot();
 	await writeFile(join(root, 'tsconfig.json'), JSON.stringify({ compilerOptions: { jsx: 'preserve' }, include: ['src/**/*'] }), 'utf8');
 	await writeFile(join(root, 'src/library.d.ts'), declarations, 'utf8');
-	await writeFile(join(root, 'src/library.js'), 'export const Card = () => null; export const ui = { Tile: () => null };\n', 'utf8');
+	await writeFile(join(root, 'src/library.js'), 'export const Card = () => null; export const ui = { Tile: () => null }; export const __viruneValue0 = 0; export const __viruneView0 = 0;\n', 'utf8');
 	return root;
 }
 
@@ -94,6 +96,18 @@ component Page() uses JavaScript {
 }
 `);
 	assert.ok(errors(invalidTag).some(item => item.code === 'L4308'));
+});
+
+test('synthetic JSX bindings cannot collide with Virune import identifiers', async () => {
+	const result = await compile(`import js { Card, __viruneValue0, __viruneView0 } from "./library.js"
+
+component Page(label: String) uses JavaScript {
+	return view {
+		panel(tone: "warm", label: label)
+	}
+}
+`);
+	assert.deepEqual(errors(result), []);
 });
 
 test('View conditionals preserve supported single-child branch value types', async () => {
