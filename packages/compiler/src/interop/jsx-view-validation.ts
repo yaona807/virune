@@ -21,6 +21,7 @@ interface RenderContext {
 }
 
 const jsxAttributeName = /^[A-Za-z_$][A-Za-z0-9_$-]*(?::[A-Za-z_$][A-Za-z0-9_$-]*)?$/u;
+const stringInterpolationPlaceholder = /(?<!\{)\{[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*\}(?!\})/u;
 
 /**
  * Validate checked View structure against the project's real TypeScript JSX
@@ -248,7 +249,11 @@ function renderViewValue(expression: A.Expression, context: RenderContext): stri
 
 function renderLiteral(expression: A.LiteralExpression, context: RenderContext): string | undefined {
 	switch (expression.literalKind) {
-		case 'String': return JSON.stringify(expression.value);
+		case 'String': {
+			const value = String(expression.value);
+			if (stringInterpolationPlaceholder.test(value)) return '("" as string)';
+			return JSON.stringify(value.replaceAll('{{', '{').replaceAll('}}', '}'));
+		}
 		case 'Bool': return expression.value === true ? 'true' : 'false';
 		case 'Int':
 		case 'Float':
