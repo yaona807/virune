@@ -1216,7 +1216,7 @@ function sameForeignTypeIdentity(actual: ts.Type, contextual: ts.Type, checker: 
 	if (contextual.isUnion()) return contextual.types.some(item => sameForeignTypeIdentity(actual, item, checker));
 	if (actual.isUnion()) {
 		if (!contextual.isUnion() || actual.types.length !== contextual.types.length) return false;
-		return actual.types.every(item => contextual.types.some(candidate => sameForeignTypeIdentity(item, candidate, checker)));
+		return actual.types.every(item => contextual.types.some(candidate => sameForeignTypeIdentity(item, candidate, checker));
 	}
 	const invalid = ts.TypeFlags.Any | ts.TypeFlags.Unknown | ts.TypeFlags.Never | ts.TypeFlags.TypeParameter;
 	if ((actual.getFlags() & invalid) !== 0 || (contextual.getFlags() & invalid) !== 0) return false;
