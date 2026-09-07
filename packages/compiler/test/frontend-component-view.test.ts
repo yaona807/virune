@@ -1,12 +1,34 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { compileSource } from '../src/compiler.js';
 import type { ComponentDeclaration, ReturnStatement, ViewElement, ViewExpression } from '../src/ast/nodes.js';
+import { checkModule } from '../src/checker/checker.js';
+import { compileSource } from '../src/compiler.js';
+import type { JsInteropProvider } from '../src/interop/types.js';
+import { parseSource } from '../src/project/project.js';
 
 const source = (text: string) => ({ id: 1, path: 'frontend.virune', text });
-const errorCodes = (text: string): readonly string[] => compileSource(source(text), { emit: false }).diagnostics
+function checkSource(text: string) {
+	const parsed = parseSource(source(text));
+	if (parsed.ast === undefined || parsed.diagnostics.some(item => item.severity === 'error')) return parsed;
+	const semantic = checkModule(parsed.ast, { containingFile: parsed.source.path });
+	return { ...parsed, diagnostics: [...parsed.diagnostics, ...semantic.diagnostics.items] };
+}
+const errorCodes = (text: string): readonly string[] => checkSource(text).diagnostics
 	.filter(item => item.severity === 'error')
 	.map(item => item.code);
+
+const jsxValidationProvider: JsInteropProvider = {
+	id: 'frontend-test',
+	version: '1',
+	generation: 1,
+	resolveImport: () => { throw new Error('unexpected import'); },
+	getProperty: () => undefined,
+	resolveCall: () => undefined,
+	resolveConstruct: () => undefined,
+	getAwaitedType: () => undefined,
+	display: () => '<unused>',
+	resolveJsxUsage: () => ({ accepted: true }),
+};
 
 // @virune-rule {"id":"frontend.component-declaration","runner":"unit","file":"packages/compiler/test/frontend-component-view.test.ts","case":"component and View syntax preserves framework-neutral structure","kind":"positive","platform":"common"}
 // @virune-rule {"id":"frontend.component-effects","runner":"unit","file":"packages/compiler/test/frontend-component-view.test.ts","case":"component and View syntax preserves framework-neutral structure","kind":"positive","platform":"common"}
@@ -16,7 +38,7 @@ const errorCodes = (text: string): readonly string[] => compileSource(source(tex
 // @virune-rule {"id":"frontend.view-conditional","runner":"unit","file":"packages/compiler/test/frontend-component-view.test.ts","case":"component and View syntax preserves framework-neutral structure","kind":"positive","platform":"common"}
 // @virune-rule {"id":"frontend.framework-neutral","runner":"unit","file":"packages/compiler/test/frontend-component-view.test.ts","case":"component and View syntax preserves framework-neutral structure","kind":"positive","platform":"common"}
 test('component and View syntax preserves framework-neutral structure', () => {
-	const result = compileSource(source(`internal record User {
+	const result = checkSource(`internal record User {
 	name: String
 }
 
@@ -34,7 +56,7 @@ internal component UserCard(user: User) uses JavaScript {
 		}
 	}
 }
-`), { emit: false });
+`);
 	assert.deepEqual(result.diagnostics.filter(item => item.severity === 'error'), []);
 	const component = result.ast?.declarations.find((declaration): declaration is ComponentDeclaration => declaration.kind === 'ComponentDeclaration');
 	assert.ok(component);
@@ -190,7 +212,7 @@ test('single-file component emission fails closed before ordinary JavaScript out
 		main()
 	}
 }
-`));
+`), { jsInteropProvider: jsxValidationProvider });
 	assert.ok(result.diagnostics.some(item => item.code === 'L4307' && item.severity === 'error'));
 	assert.equal(result.output, undefined);
 });

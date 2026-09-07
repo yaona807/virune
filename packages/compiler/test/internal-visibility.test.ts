@@ -3,6 +3,7 @@ import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 import { join, resolve } from 'node:path';
 import test from 'node:test';
+import type { JsInteropProvider } from '../src/interop/types.js';
 import { buildProject } from '../src/project/project.js';
 
 const config = JSON.stringify({
@@ -15,6 +16,19 @@ const config = JSON.stringify({
 	sourceMap: true,
 	sourcesContent: true,
 });
+
+const jsxValidationProvider: JsInteropProvider = {
+	id: 'frontend-test',
+	version: '1',
+	generation: 1,
+	resolveImport: () => { throw new Error('unexpected import'); },
+	getProperty: () => undefined,
+	resolveCall: () => undefined,
+	resolveConstruct: () => undefined,
+	getAwaitedType: () => undefined,
+	display: () => '<unused>',
+	resolveJsxUsage: () => ({ accepted: true }),
+};
 
 async function withProject(run: (root: string) => Promise<void>): Promise<void> {
 	await mkdir(resolve('.cache'), { recursive: true });
@@ -49,7 +63,7 @@ test('same-project modules can import an internal component signature before fro
 	await withProject(async root => {
 		await writeFile(join(root, 'src/card.virune'), 'internal component Card(title: String) uses JavaScript {\n\treturn view {\n\t\tdiv() {\n\t\t\t= title\n\t\t}\n\t}\n}\n', 'utf8');
 		await writeFile(join(root, 'src/main.virune'), 'import { Card } from "./card.virune"\n\npub fn run() -> Unit {\n\treturn Unit\n}\n', 'utf8');
-		const result = await buildProject(root, { write: false });
+		const result = await buildProject(root, { write: false, jsInteropProvider: jsxValidationProvider });
 		const codes = errorCodes(result);
 		assert.ok(codes.includes('L4307'));
 		assert.ok(!codes.includes('L4004'));

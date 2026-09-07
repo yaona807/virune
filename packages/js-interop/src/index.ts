@@ -492,6 +492,7 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 		const sourceFile = program.getSourceFile(virtualPath)
 			?? program.getSourceFiles().find(item => canonicalFilePath(item.fileName) === virtualKey);
 		if (sourceFile === undefined || sourceFile.languageVariant !== ts.LanguageVariant.JSX || !sourceFileContainsJsx(sourceFile)) return undefined;
+		if (sourceFileContainsUnsafeJsxValueTag(sourceFile, program.getTypeChecker())) return undefined;
 		return Object.freeze({ accepted: true });
 	}
 
@@ -980,6 +981,42 @@ function sourceFileContainsJsx(sourceFile: ts.SourceFile): boolean {
 	};
 	visit(sourceFile);
 	return found;
+}
+
+function sourceFileContainsUnsafeJsxValueTag(sourceFile: ts.SourceFile, checker: ts.TypeChecker): boolean {
+	let found = false;
+	const visit = (node: ts.Node): void => {
+		if (found) return;
+		if (ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) {
+			const tagName = node.tagName;
+			const intrinsic = ts.isJsxNamespacedName(tagName)
+				|| ts.isIdentifier(tagName) && (/^[a-z]/u.test(tagName.text) || tagName.text.includes('-'));
+			if (!intrinsic) {
+				const type = jsxValueTagType(tagName, checker);
+				if (type === undefined || (type.getFlags() & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) !== 0) {
+					found = true;
+					return;
+				}
+			}
+		}
+		ts.forEachChild(node, visit);
+	};
+	visit(sourceFile);
+	return found;
+}
+
+function jsxValueTagType(tagName: ts.JsxTagNameExpression, checker: ts.TypeChecker): ts.Type | undefined {
+	try {
+		const location = ts.isPropertyAccessExpression(tagName) ? tagName.name : tagName;
+		const symbol = checker.getSymbolAtLocation(location);
+		if (symbol === undefined) return undefined;
+		const target = (symbol.flags & ts.SymbolFlags.Alias) === 0 ? symbol : checker.getAliasedSymbol(symbol);
+		const declaration = target.valueDeclaration ?? target.declarations?.[0];
+		if (declaration === undefined) return undefined;
+		return checker.getTypeOfSymbolAtLocation(target, declaration);
+	} catch {
+		return undefined;
+	}
 }
 
 function canonicalFilePath(fileName: string): string {
