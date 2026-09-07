@@ -54,7 +54,7 @@ export function validateFrontendJsxUsage(module: A.ModuleNode, semantic: Semanti
 		const sourceText = [
 			...imports,
 			...context.declarations,
-			...renderedViews.map((view, index) => `const __viruneView${index} = ${view};`),
+			...renderedViews.map((view, index) => `const $viruneView${index} = ${view};`),
 		].join('\n');
 		let resolution: { readonly accepted: true } | undefined;
 		try {
@@ -204,7 +204,7 @@ function renderViewValue(expression: A.Expression, context: RenderContext): stri
 					: type.name === 'String' ? 'string'
 						: undefined;
 		if (typeName === undefined) return fail(context, expression.span, `View value type ${context.semantic.arena.display(typeId)} is not safely projectable in this validation slice`);
-		const name = `__viruneValue${context.nextValueId++}`;
+		const name = `$viruneValue${context.nextValueId++}`;
 		context.declarations.push(`declare const ${name}: ${typeName};`);
 		return name;
 	}
