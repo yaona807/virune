@@ -71,7 +71,7 @@ component Page(label: String) uses JavaScript {
 component Page(label: String) uses JavaScript {
 	return view {
 		panel(tone: "warm") {
-			= label
+			{ label }
 		}
 	}
 }
@@ -247,7 +247,7 @@ component Page(config: Config) uses JavaScript {
 component Page(value: Unknown) uses JavaScript {
 	return view {
 		panel(tone: "warm") {
-			= value
+			{ value }
 		}
 	}
 }
@@ -271,7 +271,7 @@ component Page() uses JavaScript {
 component Page() uses JavaScript {
 	return view {
 		panel(tone: "warm") {
-			= fn(value: String) -> String => value
+			{ fn(value: String) -> String => value }
 		}
 	}
 }

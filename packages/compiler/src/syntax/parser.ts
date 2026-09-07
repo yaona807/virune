@@ -581,7 +581,7 @@ export class ViruneParser extends CstParser {
 				{ GATE: () => this.LA(1).tokenType === KwIf, ALT: () => $.SUBRULE($.viewConditional) },
 				{ GATE: () => this.LA(1).tokenType === KwChildren && this.LA(2).tokenType === NewLine, ALT: () => $.SUBRULE($.viewChildrenSlot) },
 				{ GATE: () => this.LA(1).tokenType === StringLiteral, ALT: () => $.SUBRULE($.viewTextChild) },
-				{ GATE: () => this.LA(1).tokenType === Equals, ALT: () => $.SUBRULE($.viewExpressionChild) },
+				{ GATE: () => this.LA(1).tokenType === LBrace, ALT: () => $.SUBRULE($.viewExpressionChild) },
 				{ ALT: () => $.SUBRULE($.viewElement) },
 			]);
 		});
@@ -641,8 +641,9 @@ export class ViruneParser extends CstParser {
 		});
 
 		$.RULE('viewExpressionChild', () => {
-			$.CONSUME(Equals);
+			$.CONSUME(LBrace);
 			$.SUBRULE($.expression);
+			$.CONSUME(RBrace);
 			$.SUBRULE($.lineEnd);
 		});
 

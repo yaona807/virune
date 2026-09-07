@@ -47,7 +47,7 @@ test('completionItems keeps components distinct from ordinary callable functions
 	const text = `component Card(title: String) uses JavaScript {
 	return view {
 		main() {
-			= title
+			{ title }
 		}
 	}
 }

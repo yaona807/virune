@@ -358,7 +358,7 @@ function printViewChild(child: ViewChild, indent: number): string {
 	const prefix = '\t'.repeat(indent);
 	switch (child.kind) {
 		case 'ViewTextChild': return `${prefix}${quote(child.value)}`;
-		case 'ViewExpressionChild': return `${prefix}= ${indentContinuation(printExpression(child.expression), indent)}`;
+		case 'ViewExpressionChild': return `${prefix}{ ${indentContinuation(printExpression(child.expression), indent)} }`;
 		case 'ViewChildrenSlot': return `${prefix}children`;
 		case 'ViewElement': {
 			const properties = child.properties.map(property => `${property.quoted ? quote(property.name) : property.name}: ${printExpression(property.value)}`).join(', ');

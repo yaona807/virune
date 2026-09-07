@@ -12,7 +12,7 @@ A `component` declaration is a frontend host-invoked boundary and is distinct fr
 internal component UserPage(user: User) uses JavaScript {
     return view {
         main(className: "page") {
-            = user.name
+            { user.name }
         }
     }
 }
@@ -78,18 +78,18 @@ Property expressions remain ordinary Virune expressions and do not gain View or 
 
 ## `[frontend.view-children]` Text and expression children
 
-A string literal is a text child. An ordinary Virune expression becomes an expression child when prefixed with `=`:
+A string literal is a text child. An ordinary Virune expression becomes an expression child when enclosed by `{` and `}` in View-child position:
 
 ```virune
 view {
     p() {
         "User: "
-        = user.name
+        { user.name }
     }
 }
 ```
 
-The `=` marker is View authoring syntax, not assignment. The expression after it follows ordinary Virune expression semantics and remains subject to the normal effect and JavaScript-boundary rules.
+The braces are contextual View authoring delimiters, not a general change to Virune expression syntax. The expression inside them follows ordinary Virune expression semantics and remains subject to the normal effect and JavaScript-boundary rules. A leading `= expression` is not a View expression-child form.
 
 ## `[frontend.view-conditional]` Declarative View conditionals
 
@@ -115,7 +115,9 @@ Inside View structure, standalone `children` denotes the compiler-managed child 
 internal component Panel(title: String) uses JavaScript {
     return view {
         section() {
-            h2() { = title }
+            h2() {
+                { title }
+            }
             children
         }
     }

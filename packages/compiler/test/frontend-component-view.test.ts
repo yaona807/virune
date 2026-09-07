@@ -16,6 +16,9 @@ function checkSource(text: string) {
 const errorCodes = (text: string): readonly string[] => checkSource(text).diagnostics
 	.filter(item => item.severity === 'error')
 	.map(item => item.code);
+const parseErrorCodes = (text: string): readonly string[] => parseSource(source(text)).diagnostics
+	.filter(item => item.severity === 'error')
+	.map(item => item.code);
 
 const jsxValidationProvider: JsInteropProvider = {
 	id: 'frontend-test',
@@ -46,7 +49,7 @@ internal component UserCard(user: User) uses JavaScript {
 	return view {
 		main(class: "page", "data-state": user.name) {
 			"User: "
-			= user.name
+			{ user.name }
 			if true {
 				ui.Button(onClick: user.name)
 			} else {
@@ -80,6 +83,34 @@ internal component UserCard(user: User) uses JavaScript {
 	if (conditional?.kind !== 'ViewConditional') throw new Error('expected ViewConditional');
 	const button = conditional.thenBlock.children[0] as ViewElement;
 	assert.deepEqual(button.tag, ['ui', 'Button']);
+});
+
+// @virune-rule {"id":"frontend.view-children","runner":"unit","file":"packages/compiler/test/frontend-component-view.test.ts","case":"View expression holes preserve ordinary expression grammar","kind":"positive","platform":"common"}
+test('View expression holes preserve ordinary expression grammar', () => {
+	for (const expression of [
+		'user.name',
+		'formatUser(user)',
+		'if ready then value else fallback',
+		'match value { Some(x) => x None => "" }',
+		'{ name: user.name }',
+	]) {
+		const text = `component Card() uses JavaScript {\n\treturn view {\n\t\tmain() {\n\t\t\t{ ${expression} }\n\t\t}\n\t}\n}\n`;
+		assert.deepEqual(parseErrorCodes(text), [], expression);
+	}
+});
+
+// @virune-rule {"id":"frontend.view-children","runner":"unit","file":"packages/compiler/test/frontend-component-view.test.ts","case":"legacy and malformed View expression children fail closed","kind":"negative","platform":"common"}
+test('legacy and malformed View expression children fail closed', () => {
+	for (const child of [
+		'= user.name',
+		'{}',
+		'{ user.name',
+		'{ if ready then }',
+		'{ user.name extra }',
+	]) {
+		const text = `component Card() uses JavaScript {\n\treturn view {\n\t\tmain() {\n\t\t\t${child}\n\t\t\tspan()\n\t\t}\n\t}\n}\n`;
+		assert.ok(parseErrorCodes(text).length > 0, child);
+	}
 });
 
 // @virune-rule {"id":"frontend.component-visibility","runner":"unit","file":"packages/compiler/test/frontend-component-view.test.ts","case":"public components fail closed and JavaScript effect is explicit","kind":"negative","platform":"common"}
