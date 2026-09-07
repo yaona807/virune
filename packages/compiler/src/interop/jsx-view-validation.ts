@@ -29,7 +29,11 @@ const jsxAttributeName = /^[A-Za-z_$][A-Za-z0-9_$-]*$/u;
  */
 export function validateFrontendJsxUsage(module: A.ModuleNode, semantic: SemanticModel, options: FrontendJsxValidationOptions): void {
 	const components = module.declarations.filter((declaration): declaration is A.ComponentDeclaration => declaration.kind === 'ComponentDeclaration');
-	if (components.length === 0 || semantic.diagnostics.hasErrors || options.jsInteropProvider === undefined) return;
+	if (components.length === 0 || semantic.diagnostics.hasErrors) return;
+	if (options.jsInteropProvider === undefined) {
+		for (const component of components) semantic.diagnostics.error('L4308', `Cannot validate JSX usage for component ${component.name}: the JavaScript interop provider is unavailable`, component.span);
+		return;
+	}
 	const provider = options.jsInteropProvider;
 	const resolver = provider.resolveJsxUsage;
 	if (resolver === undefined) {
