@@ -141,7 +141,8 @@ ViewChild               = ViewElement
                         | ViewConditional
                         | ViewChildrenSlot
                         | StringLiteral LineEnd
-                        | "=" Expression LineEnd ;
+                        | ViewExpressionChild ;
+ViewExpressionChild     = "{" Expression "}" LineEnd ;
 ViewElement             = ViewTag "(" NewLine* [ ViewPropertyList ] NewLine* ")"
                           ( ViewBlock | LineEnd ) ;
 ViewTag                 = Identifier { "." IdentifierName } ;
