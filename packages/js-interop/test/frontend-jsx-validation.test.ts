@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import test from 'node:test';
-import { compileSource, type JsInteropProvider } from '@virune/compiler/experimental';
+import { buildProject, compileSource, type JsInteropProvider } from '@virune/compiler/experimental';
 import { TypeScriptInteropProvider } from '../src/index.js';
 import { fixtureRoot } from './fixture.js';
 
@@ -142,4 +142,31 @@ test('a supplied provider without JSX whole-usage support cannot approve a compo
 `,
 	}, { emit: false, platform: 'browser', jsInteropProvider: provider });
 	assert.ok(result.diagnostics.some(item => item.severity === 'error' && item.code === 'L4308' && /does not support JSX whole-usage validation/u.test(item.message)));
+});
+
+test('project builds reuse the same JSX oracle validation before the existing emission gate', async () => {
+	const root = await project();
+	const provider = new TypeScriptInteropProvider({ projectRoot: root });
+	try {
+		await writeFile(join(root, 'src/main.virune'), `component Page() uses JavaScript {
+	return view {
+		panel(tone: "warm")
+	}
+}
+`, 'utf8');
+		const accepted = await buildProject(root, { write: false, jsInteropProvider: provider });
+		assert.equal(accepted.diagnostics.some(item => item.code === 'L4308'), false);
+		assert.ok(accepted.diagnostics.some(item => item.code === 'L4307'));
+
+		await writeFile(join(root, 'src/main.virune'), `component Page() uses JavaScript {
+	return view {
+		panel(tone: "cold")
+	}
+}
+`, 'utf8');
+		const rejected = await buildProject(root, { write: false, jsInteropProvider: provider });
+		assert.ok(rejected.diagnostics.some(item => item.code === 'L4308'));
+	} finally {
+		provider.dispose();
+	}
 });
