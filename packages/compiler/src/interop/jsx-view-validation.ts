@@ -48,7 +48,8 @@ export function validateFrontendJsxUsage(module: A.ModuleNode, semantic: Semanti
 		const context: RenderContext = { semantic, externalTagRoots };
 		const renderedViews: string[] = [];
 		for (const view of views) {
-			const rendered = renderViewBlock(view.body, context);
+			const onlyChild = view.body.children.length === 1 ? view.body.children[0] : undefined;
+			const rendered = onlyChild?.kind === 'ViewElement' ? renderViewElement(onlyChild, context) : renderViewBlock(view.body, context);
 			if (rendered === undefined) break;
 			renderedViews.push(rendered);
 		}
@@ -162,7 +163,10 @@ function renderViewChild(child: A.ViewChild, context: RenderContext): string | u
 function renderViewElement(element: A.ViewElement, context: RenderContext): string | undefined {
 	const root = element.tag[0]!;
 	if (context.semantic.globalScope.lookup(root)?.kind === 'component') return fail(context, element.span, `Virune-native component tag ${element.tag.join('.')} requires a native component boundary that is not implemented in this validation slice`);
-	if (!(element.tag.length === 1 && /^[a-z]/u.test(root)) && !context.externalTagRoots.has(root)) {
+	const intrinsic = element.tag.length === 1 && /^[a-z]/u.test(root);
+	const external = context.externalTagRoots.has(root);
+	if (intrinsic && external) return fail(context, element.span, `lowercase JavaScript-imported View tag ${root} is ambiguous with JSX intrinsic syntax`);
+	if (!intrinsic && !external) {
 		return fail(context, element.span, `View tag ${element.tag.join('.')} is neither intrinsic nor rooted in a JavaScript-imported External binding`);
 	}
 	const properties: string[] = [];
