@@ -138,6 +138,29 @@ internal component Details(title: String, count: Int, ready: Bool, ratio: Float,
 	assert.match(code, /: <span>\{/u);
 });
 
+test('host-backed component props cannot bypass use-site validation through string interpolation', () => {
+	const direct = compile(`component Card(title: String) uses JavaScript {
+	return view {
+		main(label: "Hello {title}")
+	}
+}
+`);
+	assert.ok(direct.diagnostics.some(item => item.code === 'L4309' && item.severity === 'error' && /string interpolation/u.test(item.message)));
+	assert.equal(direct.output, undefined);
+
+	const snapshot = compile(`component Card(title: String) uses JavaScript {
+	let localTitle = title
+	return view {
+		main(label: "Hello {localTitle}")
+	}
+}
+`);
+	assert.deepEqual(snapshot.diagnostics.filter(item => item.severity === 'error'), []);
+	assert.ok(snapshot.output);
+	assert.ok(snapshot.output.code.includes('const localTitle = $viruneValidateSafeFfiValue($props["title"]'));
+	assert.ok(snapshot.output.code.includes('label={`Hello ${localTitle}`}'));
+});
+
 test('unsupported component parameter transport fails closed before emission', () => {
 	for (const [declaration, type] of [
 		['record User {\n\tname: String\n}\n\n', 'User'],
