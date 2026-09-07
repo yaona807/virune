@@ -11,7 +11,7 @@ const declarations = `declare global {
 		interface Element { readonly __viruneJsxElement: unique symbol; }
 		interface ElementChildrenAttribute { children: {}; }
 		interface IntrinsicElements {
-			panel: { tone: "warm"; label?: string; "data-state"?: "ready"; children?: string };
+			panel: { tone: "warm"; count?: -1; label?: string; "data-state"?: "ready"; children?: string };
 		}
 	}
 }
@@ -49,7 +49,7 @@ test('View intrinsic usage is accepted only through the declaration-driven JSX c
 
 component Page(label: String) uses JavaScript {
 	return view {
-		panel(tone: "warm", label: label, "data-state": "ready") {
+		panel(tone: "warm", count: -1, label: label, "data-state": "ready") {
 			"hello"
 		}
 	}
