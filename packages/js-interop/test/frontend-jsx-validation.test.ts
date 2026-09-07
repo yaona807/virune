@@ -15,11 +15,13 @@ const declarations = `declare global {
 			child: {};
 		}
 	}
+	function h(type: string, props: object | null): JSX.Element;
 	const AmbientCard: (props: { label: "ambient" }) => JSX.Element;
 }
 
 export interface Marker { readonly marker: true; }
 export declare function Card(props: { label: "ok"; children?: string }): JSX.Element;
+export declare function child(props: { imported: "yes" }): JSX.Element;
 export declare const ui: {
 	Tile: (props: { tone: "warm" }) => JSX.Element;
 };
@@ -29,7 +31,7 @@ async function project() {
 	const root = await fixtureRoot();
 	await writeFile(join(root, 'tsconfig.json'), JSON.stringify({ compilerOptions: { jsx: 'preserve', noUnusedLocals: true }, include: ['src/**/*'] }), 'utf8');
 	await writeFile(join(root, 'src/library.d.ts'), declarations, 'utf8');
-	await writeFile(join(root, 'src/library.js'), 'export const Card = () => null; export const ui = { Tile: () => null };\n', 'utf8');
+	await writeFile(join(root, 'src/library.js'), 'export const Card = () => null; export const child = () => null; export const ui = { Tile: () => null };\n', 'utf8');
 	return root;
 }
 
@@ -154,6 +156,16 @@ component Page() uses JavaScript {
 `);
 	assert.ok(errors(rejected).some(item => item.code === 'L4308'));
 
+	const lowercase = await compile(`import js { child } from "./library.js"
+
+component Page() uses JavaScript {
+	return view {
+		child()
+	}
+}
+`);
+	assert.ok(errors(lowercase).some(item => item.code === 'L4308' && /ambiguous with JSX intrinsic syntax/u.test(item.message)));
+
 	const ambientOnly = await compile(`import js { Card } from "./library.js"
 
 component Page() uses JavaScript {
@@ -163,6 +175,27 @@ component Page() uses JavaScript {
 }
 `);
 	assert.ok(errors(ambientOnly).some(item => item.code === 'L4308'));
+});
+
+test('single-element View validation does not require an unnecessary JSX fragment factory', async () => {
+	const root = await project();
+	await writeFile(join(root, 'tsconfig.json'), JSON.stringify({ compilerOptions: { jsx: 'react', jsxFactory: 'h', noUnusedLocals: true }, include: ['src/**/*'] }), 'utf8');
+	const provider = new TypeScriptInteropProvider({ projectRoot: root });
+	try {
+		const result = compileSource({
+			id: 1,
+			path: join(root, 'src/main.virune'),
+			text: `component Page() uses JavaScript {
+	return view {
+		panel(tone: "warm")
+	}
+}
+`,
+		}, { emit: false, platform: 'browser', jsInteropProvider: provider });
+		assert.deepEqual(result.diagnostics.filter(item => item.severity === 'error'), []);
+	} finally {
+		provider.dispose();
+	}
 });
 
 test('View JSX validation fails closed for unsupported native boundaries', async () => {
