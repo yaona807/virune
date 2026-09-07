@@ -8,6 +8,7 @@ import { lowerToHir } from './hir/lower.js';
 import { emitJavaScript, type EmitResult } from './codegen/emitter.js';
 import { DiagnosticBag, diagnosticCause, type Diagnostic } from './diagnostics/diagnostic.js';
 import type { ModuleNode } from './ast/nodes.js';
+import { validateFrontendJsxUsage } from './interop/jsx-view-validation.js';
 import type { JsInteropProvider } from './interop/types.js';
 import type { SourceFile, SourceSpan } from './source.js';
 
@@ -56,6 +57,7 @@ export function compileSource(source: SourceFile, options: CompileOptions = {}):
 	}
 	if (diagnostics.hasErrors) return { source, diagnostics: diagnostics.items, ast };
 	const semantic = checkModule(ast, { ...(options.platform === undefined ? {} : { platform: options.platform }), containingFile: source.path, ...(options.jsInteropProvider === undefined ? {} : { jsInteropProvider: options.jsInteropProvider }) });
+	validateFrontendJsxUsage(ast, semantic, { containingFile: source.path, platform: options.platform ?? 'neutral', ...(options.jsInteropProvider === undefined ? {} : { jsInteropProvider: options.jsInteropProvider }) });
 	for (const diagnostic of semantic.diagnostics.items) diagnostics.add(diagnostic);
 	if (diagnostics.hasErrors || options.emit === false) return { source, diagnostics: diagnostics.items, ast, semantic };
 	const component = ast.declarations.find(declaration => declaration.kind === 'ComponentDeclaration');
