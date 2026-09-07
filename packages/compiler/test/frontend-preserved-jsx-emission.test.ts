@@ -161,6 +161,26 @@ test('host-backed component props cannot bypass use-site validation through stri
 	assert.ok(snapshot.output.code.includes('label={`Hello ${localTitle}`}'));
 });
 
+test('JSX proof widens interpolated strings and normalizes escaped braces like emission', () => {
+	let proofSource = '';
+	const provider: JsInteropProvider = {
+		...jsxValidationProvider,
+		resolveJsxUsage(usage) {
+			proofSource = usage.sourceText;
+			return { accepted: true };
+		},
+	};
+	const result = compileSource(source(`component Card(title: String) uses JavaScript {
+	return view {
+		main(label: "Hello {title}", brace: "{{ready}}")
+	}
+}
+`), { emit: false, jsInteropProvider: provider });
+	assert.deepEqual(result.diagnostics.filter(item => item.severity === 'error'), []);
+	assert.ok(proofSource.includes('label={("" as string)}'));
+	assert.ok(proofSource.includes('brace={"{ready}"}'));
+});
+
 test('unsupported component parameter transport fails closed before emission', () => {
 	for (const [declaration, type] of [
 		['record User {\n\tname: String\n}\n\n', 'User'],
