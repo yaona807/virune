@@ -6,6 +6,7 @@ import { checkModule, type SemanticModel } from '../checker/checker.js';
 import { emitJavaScript, type EmitResult } from '../codegen/emitter.js';
 import { DiagnosticBag, type Diagnostic } from '../diagnostics/diagnostic.js';
 import { lowerToHir } from '../hir/lower.js';
+import { validateFrontendJsxUsage } from '../interop/jsx-view-validation.js';
 import { buildAst } from '../syntax/cst-to-ast.js';
 import { attachDocumentation } from '../syntax/documentation.js';
 import { parse } from '../syntax/parser.js';
@@ -299,6 +300,7 @@ export async function buildProject(
 			moduleRuntimeDependencies = importModel.runtimeDependencies;
 			const synthetic: A.ModuleNode = { ...parsed.ast, imports: parsed.ast.imports.filter(item => item.sourceKind === 'javascript'), declarations: [...importedDeclarations, ...parsed.ast.declarations] };
 			const semantic = checkModule(synthetic, { signatureOnlyNodeIds: signatureOnly, typeOnlyNodeIds, platform: config.platform, moduleId: moduleIdentity(root, path), containingFile: path, ...(jsInteropProvider === undefined ? {} : { jsInteropProvider }) });
+			validateFrontendJsxUsage(parsed.ast, semantic, { containingFile: path, platform: config.platform, ...(jsInteropProvider === undefined ? {} : { jsInteropProvider }) });
 			mutableStats.checkedModules++;
 			const component = parsed.ast.declarations.find(declaration => declaration.kind === 'ComponentDeclaration');
 			if (!semantic.diagnostics.hasErrors && component !== undefined && isWithin(resolve(root, config.sourceDir), path)) {
@@ -497,7 +499,6 @@ interface ExportEntry {
 	readonly originModule: A.ModuleNode;
 	readonly visibility: ExportVisibility;
 }
-
 interface ModuleInterface { readonly exports: ReadonlyMap<string, ExportEntry>; }
 
 function exportVisibleTo(root: string, importerPath: string, entry: ExportEntry): boolean {
