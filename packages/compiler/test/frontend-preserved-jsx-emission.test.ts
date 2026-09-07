@@ -93,10 +93,14 @@ component Page() uses JavaScript {
 });
 
 test('primitive component props stay host-backed and use existing safe FFI descriptors', () => {
-	const result = compile(`internal component Details(title: String, count: Int, ready: Bool, ratio: Float, id: BigInt) uses JavaScript {
+	const result = compile(`fn normalize(value: String) -> String {
+	return value
+}
+
+internal component Details(title: String, count: Int, ready: Bool, ratio: Float, id: BigInt) uses JavaScript {
 	let snapshot = title
 	return view {
-		main(title: title, count: count, ready: ready, ratio: ratio, id: id) {
+		main(title: title |> normalize, count: count, ready: ready, ratio: ratio, id: id) {
 			{ title }
 			{ snapshot }
 			if ready {
@@ -126,6 +130,8 @@ test('primitive component props stay host-backed and use existing safe FFI descr
 	}
 	assert.ok((code.match(/\$props\["title"\]/gu) ?? []).length >= 3);
 	assert.ok(code.includes('const snapshot = $viruneValidateSafeFfiValue($props["title"]'));
+	assert.ok(code.includes('normalize($viruneValidateSafeFfiValue($props["title"]'));
+	assert.ok(!code.includes('|>'));
 	assert.ok(!code.includes('const title ='));
 	assert.ok(!code.includes('const {'));
 	assert.match(code, /\? <span>\{intAdd\(/u);
