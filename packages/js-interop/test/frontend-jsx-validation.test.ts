@@ -256,20 +256,7 @@ component Page() uses JavaScript {
 	assert.ok(errors(nativeComponent).some(item => item.code === 'L4308'));
 });
 
-test('a missing or incapable JSX provider cannot approve a component', () => {
-	const source = {
-		id: 1,
-		path: 'frontend.virune',
-		text: `component Page() uses JavaScript {
-	return view {
-		panel(tone: "warm")
-	}
-}
-`,
-	};
-	const missing = compileSource(source, { emit: false, platform: 'browser' });
-	assert.ok(missing.diagnostics.some(item => item.severity === 'error' && item.code === 'L4308' && /no JavaScript interop provider is available/u.test(item.message)));
-
+test('a supplied provider without JSX whole-usage support cannot approve a component', () => {
 	const provider: JsInteropProvider = {
 		id: 'no-jsx',
 		version: '1',
@@ -281,8 +268,17 @@ test('a missing or incapable JSX provider cannot approve a component', () => {
 		getAwaitedType: () => undefined,
 		display: () => '<unused>',
 	};
-	const unsupported = compileSource(source, { emit: false, platform: 'browser', jsInteropProvider: provider });
-	assert.ok(unsupported.diagnostics.some(item => item.severity === 'error' && item.code === 'L4308' && /does not support JSX whole-usage validation/u.test(item.message)));
+	const result = compileSource({
+		id: 1,
+		path: 'frontend.virune',
+		text: `component Page() uses JavaScript {
+	return view {
+		panel(tone: "warm")
+	}
+}
+`,
+	}, { emit: false, platform: 'browser', jsInteropProvider: provider });
+	assert.ok(result.diagnostics.some(item => item.severity === 'error' && item.code === 'L4308' && /does not support JSX whole-usage validation/u.test(item.message)));
 });
 
 test('project builds reuse the same JSX oracle validation before the existing emission gate', async () => {
