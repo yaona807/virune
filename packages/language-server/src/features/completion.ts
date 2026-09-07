@@ -192,7 +192,7 @@ function symbolCompletion(symbol: SymbolInfo, module: BuiltModule): CompletionIt
 		label: symbol.name,
 		kind: completionKind(symbol.kind, symbol.constant),
 	};
-	if (module.semantic !== undefined) item.detail = module.semantic.arena.display(symbol.typeId);
+	if (module.semantic !== undefined && symbol.kind !== 'component') item.detail = module.semantic.arena.display(symbol.typeId);
 	if (symbol.kind === 'function' || symbol.kind === 'extern' || symbol.kind === 'builtin') item.insertText = `${symbol.name}()`;
 	const documentation = symbolDocumentationSummary(symbol);
 	if (documentation !== undefined) item.documentation = { kind: MarkupKind.Markdown, value: documentation };
