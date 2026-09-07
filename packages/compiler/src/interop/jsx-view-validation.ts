@@ -16,9 +16,7 @@ interface RenderFailure {
 
 interface RenderContext {
 	readonly semantic: SemanticModel;
-	readonly declarations: string[];
 	readonly externalTagRoots: ReadonlySet<string>;
-	nextValueId: number;
 	failure?: RenderFailure;
 }
 
@@ -42,7 +40,7 @@ export function validateFrontendJsxUsage(module: A.ModuleNode, semantic: Semanti
 	for (const component of components) {
 		const views: A.ViewExpression[] = [];
 		collectViewReturns(component.body, views);
-		const context: RenderContext = { semantic, declarations: [], externalTagRoots, nextValueId: 0 };
+		const context: RenderContext = { semantic, externalTagRoots };
 		const renderedViews: string[] = [];
 		for (const view of views) {
 			const rendered = renderViewBlock(view.body, context);
@@ -56,7 +54,6 @@ export function validateFrontendJsxUsage(module: A.ModuleNode, semantic: Semanti
 		const sourceText = [
 			...imports,
 			...[...externalTagRoots].map(name => `void ${name};`),
-			...context.declarations,
 			...renderedViews.map(view => `${view};`),
 		].join('\n');
 		let resolution: { readonly accepted: true } | undefined;
@@ -221,15 +218,14 @@ function renderViewValue(expression: A.Expression, context: RenderContext): stri
 	if (typeId === undefined) return fail(context, expression.span, 'a View expression value has no checked type');
 	const type = context.semantic.arena.get(typeId);
 	if (type.kind === 'primitive') {
-		const typeName = type.name === 'Bool' ? 'boolean'
-			: type.name === 'Int' || type.name === 'Float' ? 'number'
-				: type.name === 'BigInt' ? 'bigint'
-					: type.name === 'String' ? 'string'
-						: undefined;
-		if (typeName === undefined) return fail(context, expression.span, `View value type ${context.semantic.arena.display(typeId)} is not safely projectable in this validation slice`);
-		const name = `$viruneValue${context.nextValueId++}`;
-		context.declarations.push(`declare const ${name}: ${typeName};`);
-		return name;
+		switch (type.name) {
+			case 'Bool': return '(false as boolean)';
+			case 'Int':
+			case 'Float': return '(0 as number)';
+			case 'BigInt': return '(0n as bigint)';
+			case 'String': return '("" as string)';
+			default: return fail(context, expression.span, `View value type ${context.semantic.arena.display(typeId)} is not safely projectable in this validation slice`);
+		}
 	}
 	if (type.kind === 'foreign' && expression.kind === 'IdentifierExpression' && expression.symbolId !== undefined) {
 		const symbol = context.semantic.symbols.get(expression.symbolId);
