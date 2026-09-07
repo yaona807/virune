@@ -164,8 +164,8 @@ component Page() uses JavaScript {
 	assert.ok(errors(ambientOnly).some(item => item.code === 'L4308'));
 });
 
-test('View JSX validation fails closed for unsupported native aggregate values', async () => {
-	const result = await compile(`import js { Card } from "./library.js"
+test('View JSX validation fails closed for unsupported native boundaries', async () => {
+	const aggregate = await compile(`import js { Card } from "./library.js"
 
 record Config {
 	label: String
@@ -177,9 +177,49 @@ component Page(config: Config) uses JavaScript {
 	}
 }
 `);
-	const diagnostic = errors(result).find(item => item.code === 'L4308');
-	assert.ok(diagnostic);
-	assert.match(diagnostic.message, /requires a boundary not implemented/u);
+	const aggregateDiagnostic = errors(aggregate).find(item => item.code === 'L4308');
+	assert.ok(aggregateDiagnostic);
+	assert.match(aggregateDiagnostic.message, /requires a boundary not implemented/u);
+
+	const unknown = await compile(`import js { Card } from "./library.js"
+
+component Page(value: Unknown) uses JavaScript {
+	return view {
+		panel(tone: "warm") {
+			= value
+		}
+	}
+}
+`);
+	assert.ok(errors(unknown).some(item => item.code === 'L4308'));
+
+	const callable = await compile(`import js { Card } from "./library.js"
+
+component Page() uses JavaScript {
+	return view {
+		panel(tone: "warm") {
+			= fn(value: String) -> String => value
+		}
+	}
+}
+`);
+	assert.ok(errors(callable).some(item => item.code === 'L4308'));
+
+	const nativeComponent = await compile(`import js { Card } from "./library.js"
+
+component Child() uses JavaScript {
+	return view {
+		panel(tone: "warm")
+	}
+}
+
+component Page() uses JavaScript {
+	return view {
+		Child()
+	}
+}
+`);
+	assert.ok(errors(nativeComponent).some(item => item.code === 'L4308'));
 });
 
 test('a supplied provider without JSX whole-usage support cannot approve a component', () => {
