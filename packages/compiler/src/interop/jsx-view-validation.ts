@@ -20,7 +20,7 @@ interface RenderContext {
 	failure?: RenderFailure;
 }
 
-const jsxAttributeName = /^[A-Za-z_$][A-Za-z0-9_$-]*$/u;
+const jsxAttributeName = /^[A-Za-z_$][A-Za-z0-9_$-]*(?::[A-Za-z_$][A-Za-z0-9_$-]*)?$/u;
 
 /**
  * Validate checked View structure against the project's real TypeScript JSX
