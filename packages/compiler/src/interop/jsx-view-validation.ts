@@ -158,6 +158,7 @@ function renderViewChild(child: A.ViewChild, context: RenderContext): string | u
 
 function renderViewElement(element: A.ViewElement, context: RenderContext): string | undefined {
 	const root = element.tag[0]!;
+	if (context.semantic.globalScope.lookup(root)?.kind === 'component') return fail(context, element.span, `Virune-native component tag ${element.tag.join('.')} requires a native component boundary that is not implemented in this validation slice`);
 	if (!(element.tag.length === 1 && /^[a-z]/u.test(root)) && !context.externalTagRoots.has(root)) {
 		return fail(context, element.span, `View tag ${element.tag.join('.')} is neither intrinsic nor rooted in a JavaScript-imported External binding`);
 	}
