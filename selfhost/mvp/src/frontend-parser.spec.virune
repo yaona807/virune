@@ -26,7 +26,7 @@ test "frontend parser builds a deterministic flat module AST" {
 }
 
 test "frontend parser preserves the component and View surface" {
-	let source = "internal component Card(title: String) uses JavaScript {\n\treturn view {\n\t\tUi.Card(\"aria-label\": title) {\n\t\t\t\"hello\"\n\t\t\t= title\n\t\t\tif true {\n\t\t\t\tchildren\n\t\t\t} else {\n\t\t\t\tUi.Empty()\n\t\t\t}\n\t\t}\n\t}\n}\n"
+	let source = "internal component Card(title: String) uses JavaScript {\n\treturn view {\n\t\tUi.Card(\"aria-label\": title) {\n\t\t\t\"hello\"\n\t\t\t{ title }\n\t\t\tif true {\n\t\t\t\tchildren\n\t\t\t} else {\n\t\t\t\tUi.Empty()\n\t\t\t}\n\t\t}\n\t}\n}\n"
 	let result = encoded(source)
 	expect(String.contains(result, "\"accepted\":true"))
 	expect(String.contains(result, "\"kind\":\"ComponentDeclaration\""))
@@ -38,6 +38,11 @@ test "frontend parser preserves the component and View surface" {
 	expect(String.contains(result, "\"kind\":\"ViewConditional\""))
 	expect(String.contains(result, "\"kind\":\"ViewChildrenSlot\""))
 
+	expect(String.contains(encoded("component Legacy(title: String) uses JavaScript {\n\treturn view {\n\t\t= title\n\t}\n}\n"), "\"accepted\":false"))
+	let missingClose = encoded("component BrokenHole(title: String) uses JavaScript {\n\treturn view {\n\t\t{ title\n\t\tspan()\n\t}\n}\n")
+	expect(String.contains(missingClose, "\"accepted\":false"))
+	expect(String.contains(missingClose, "Expected } to end a View expression child"))
+	expect(String.contains(missingClose, "\"text\":\"span\""))
 	expect(String.contains(encoded("async component Broken() uses JavaScript {\n\treturn view {\n\t}\n}\n"), "\"accepted\":false"))
 	expect(String.contains(encoded("component Generic<T>() uses JavaScript {\n\treturn view {\n\t}\n}\n"), "\"accepted\":false"))
 	expect(String.contains(encoded("component Typed() -> Unit uses JavaScript {\n\treturn view {\n\t}\n}\n"), "\"accepted\":false"))
