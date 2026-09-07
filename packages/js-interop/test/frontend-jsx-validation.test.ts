@@ -74,6 +74,38 @@ component Page(tone: String) uses JavaScript {
 }
 `);
 	assert.ok(errors(widenedLiteral).some(item => item.code === 'L4308'));
+
+	const invalidProperty = await compile(`component Page() uses JavaScript {
+	return view {
+		panel(tone: "warm", missing: "no")
+	}
+}
+`);
+	assert.ok(errors(invalidProperty).some(item => item.code === 'L4308'));
+
+	const invalidTag = await compile(`component Page() uses JavaScript {
+	return view {
+		unknown(tone: "warm")
+	}
+}
+`);
+	assert.ok(errors(invalidTag).some(item => item.code === 'L4308'));
+});
+
+test('View conditionals preserve supported single-child branch value types', async () => {
+	const result = await compile(`component Page(flag: Bool) uses JavaScript {
+	return view {
+		panel(tone: "warm") {
+			if flag {
+				"yes"
+			} else {
+				"no"
+			}
+		}
+	}
+}
+`);
+	assert.deepEqual(errors(result), []);
 });
 
 test('View External component and dotted member tags use their real TypeScript imports', async () => {
