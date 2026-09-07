@@ -185,7 +185,9 @@ test('single-element View validation does not require an unnecessary JSX fragmen
 		const result = compileSource({
 			id: 1,
 			path: join(root, 'src/main.virune'),
-			text: `component Page() uses JavaScript {
+			text: `import js "./library.js"
+
+component Page() uses JavaScript {
 	return view {
 		panel(tone: "warm")
 	}
