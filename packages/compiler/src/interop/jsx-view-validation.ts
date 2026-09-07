@@ -194,6 +194,10 @@ function renderConditionalExpression(conditional: A.ViewConditional, context: Re
 
 function renderViewValue(expression: A.Expression, context: RenderContext): string | undefined {
 	if (expression.kind === 'LiteralExpression') return renderLiteral(expression, context);
+	if (expression.kind === 'UnaryExpression' && expression.operator === '-' && expression.operand.kind === 'LiteralExpression' && ['Int', 'Float', 'BigInt'].includes(expression.operand.literalKind)) {
+		const literal = renderLiteral(expression.operand, context);
+		return literal === undefined ? undefined : `-${literal}`;
+	}
 	const typeId = expression.inferredTypeId;
 	if (typeId === undefined) return fail(context, expression.span, 'a View expression value has no checked type');
 	const type = context.semantic.arena.get(typeId);
