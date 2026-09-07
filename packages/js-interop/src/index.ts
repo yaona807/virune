@@ -332,7 +332,7 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 		let target: string;
 		if (stored.usageProjection.valueExpression !== undefined) target = stored.usageProjection.valueExpression;
 		else {
-			declarations.push(`declare const __viruneTarget: ${stored.usageProjection.typeExpression};`);
+			context.declarations.push(`declare const __viruneTarget: ${stored.usageProjection.typeExpression};`);
 			target = '__viruneTarget';
 		}
 		return {
@@ -991,15 +991,30 @@ function sourceFileContainsUnsafeJsxValueTag(sourceFile: ts.SourceFile, checker:
 			const tagName = node.tagName;
 			const intrinsic = ts.isJsxNamespacedName(tagName)
 				|| ts.isIdentifier(tagName) && (/^[a-z]/u.test(tagName.text) || tagName.text.includes('-'));
-			if (!intrinsic && (checker.getTypeAtLocation(tagName).getFlags() & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) !== 0) {
-				found = true;
-				return;
+			if (!intrinsic) {
+				const type = jsxValueTagType(tagName, checker);
+				if (type === undefined || (type.getFlags() & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) !== 0) {
+					found = true;
+					return;
+				}
 			}
 		}
 		ts.forEachChild(node, visit);
 	};
 	visit(sourceFile);
 	return found;
+}
+
+function jsxValueTagType(tagName: ts.JsxTagNameExpression, checker: ts.TypeChecker): ts.Type | undefined {
+	try {
+		const location = ts.isPropertyAccessExpression(tagName) ? tagName.name : tagName;
+		const symbol = checker.getSymbolAtLocation(location);
+		if (symbol === undefined) return undefined;
+		const target = (symbol.flags & ts.SymbolFlags.Alias) === 0 ? symbol : checker.getAliasedSymbol(symbol);
+		return checker.getTypeOfSymbolAtLocation(target, location);
+	} catch {
+		return undefined;
+	}
 }
 
 function canonicalFilePath(fileName: string): string {
