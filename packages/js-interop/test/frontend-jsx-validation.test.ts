@@ -282,6 +282,20 @@ component Page() uses JavaScript {
 	assert.ok(errors(nativeComponent).some(item => item.code === 'L4308'));
 });
 
+test('View JSX validation fails closed when no JavaScript interop provider is supplied', () => {
+	const result = compileSource({
+		id: 1,
+		path: 'frontend.virune',
+		text: `component Page() uses JavaScript {
+	return view {
+		panel(tone: "warm")
+	}
+}
+`,
+	}, { emit: false, platform: 'browser' });
+	assert.ok(result.diagnostics.some(item => item.severity === 'error' && item.code === 'L4308' && /JavaScript interop provider is unavailable/u.test(item.message)));
+});
+
 test('a supplied provider without JSX whole-usage support cannot approve a component', () => {
 	const provider: JsInteropProvider = {
 		id: 'no-jsx',
