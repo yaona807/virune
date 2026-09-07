@@ -14,6 +14,7 @@ const declarations = `declare global {
 			panel: { tone: "warm"; count?: -1; label?: string; "data-state"?: "ready"; children?: string };
 		}
 	}
+	const AmbientCard: (props: { label: "ambient" }) => JSX.Element;
 }
 
 export declare function Card(props: { label: "ok"; children?: string }): JSX.Element;
@@ -151,6 +152,16 @@ component Page() uses JavaScript {
 }
 `);
 	assert.ok(errors(rejected).some(item => item.code === 'L4308'));
+
+	const ambientOnly = await compile(`import js { Card } from "./library.js"
+
+component Page() uses JavaScript {
+	return view {
+		AmbientCard(label: "ambient")
+	}
+}
+`);
+	assert.ok(errors(ambientOnly).some(item => item.code === 'L4308'));
 });
 
 test('View JSX validation fails closed for unsupported native aggregate values', async () => {
