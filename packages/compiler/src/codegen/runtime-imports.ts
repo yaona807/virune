@@ -10,6 +10,7 @@ export function runtimeImportLines(module: A.ModuleNode): readonly string[] {
 	lines.push(BASE_RUNTIME_IMPORT_LINE);
 	const hasJavaScriptBoundary = module.imports.some(item => item.sourceKind === 'javascript') || module.declarations.some(item =>
 		item.kind === 'ExternDeclaration'
+		|| item.kind === 'ComponentDeclaration'
 		|| item.kind === 'FunctionDeclaration' && item.attributes.some(attribute => attribute.name === 'jsExport'),
 	);
 	if (hasJavaScriptBoundary) {
