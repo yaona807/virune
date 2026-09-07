@@ -11,7 +11,7 @@ const declarations = `declare global {
 		interface Element { readonly __viruneJsxElement: unique symbol; }
 		interface ElementChildrenAttribute { children: {}; }
 		interface IntrinsicElements {
-			panel: { tone: "warm"; count?: -1; label?: string; "data-state"?: "ready"; children?: string };
+			panel: { tone: "warm"; count?: -1; label?: string; external?: unknown; "data-state"?: "ready"; children?: string };
 			child: {};
 		}
 	}
@@ -29,13 +29,14 @@ export declare const UnsafeCard: any;
 export declare const unsafeUi: {
 	Tile: any;
 };
+export declare const UnknownValue: unknown;
 `;
 
 async function project() {
 	const root = await fixtureRoot();
 	await writeFile(join(root, 'tsconfig.json'), JSON.stringify({ compilerOptions: { jsx: 'preserve', noUnusedLocals: true }, include: ['src/**/*'] }), 'utf8');
 	await writeFile(join(root, 'src/library.d.ts'), declarations, 'utf8');
-	await writeFile(join(root, 'src/library.js'), 'export const Card = () => null; export const child = () => null; export const ui = { Tile: () => null }; export const UnsafeCard = () => null; export const unsafeUi = { Tile: () => null };\n', 'utf8');
+	await writeFile(join(root, 'src/library.js'), 'export const Card = () => null; export const child = () => null; export const ui = { Tile: () => null }; export const UnsafeCard = () => null; export const unsafeUi = { Tile: () => null }; export const UnknownValue = undefined;\n', 'utf8');
 	return root;
 }
 
@@ -252,6 +253,18 @@ component Page(value: Unknown) uses JavaScript {
 }
 `);
 	assert.ok(errors(unknown).some(item => item.code === 'L4308'));
+
+	const externalUnknown = await compile(`import js { UnknownValue } from "./library.js"
+
+component Page() uses JavaScript {
+	return view {
+		panel(tone: "warm", external: UnknownValue)
+	}
+}
+`);
+	const externalUnknownDiagnostic = errors(externalUnknown).find(item => item.code === 'L4308');
+	assert.ok(externalUnknownDiagnostic);
+	assert.match(externalUnknownDiagnostic.message, /not safely projectable/u);
 
 	const callable = await compile(`import js { Card } from "./library.js"
 
