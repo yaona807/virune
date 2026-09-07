@@ -22,7 +22,7 @@ export function runtimeImportLines(module: A.ModuleNode): readonly string[] {
 	}
 	const builtins = collectBuiltinNamespaces(module);
 	if (builtins.has('File')) lines.push("import { closeHandle as $fileClose, openHandle as $fileOpen, readBytes as $fileReadBytes, readHandle as $fileRead, readHandleBytes as $fileReadHandleBytes, readText as $fileReadText, writeBytes as $fileWriteBytes, writeHandle as $fileWrite, writeHandleBytes as $fileWriteHandleBytes, writeText as $fileWriteText } from '@virune/stdlib/node/fs';");
-	if (builtins.has('Path')) lines.push("import { basename as $pathBasename, dirname as $pathDirname, extname as $pathExtname, isAbsolute as $pathIsAbsolute, joinParts as $pathJoin, normalize as $pathNormalize, relativeParts as $pathRelative, resolveParts as $pathResolve } from '@virune/stdlib/node/path';");
+	if (builtins.has('Path')) lines.push("import { basename as $pathBasename, dirname as $pathDirname, extname as $pathExtname, isAbsolute as $pathIsAbsolute, joinParts as $pathJoin, normalize as $pathNormalize, relative as $pathRelative, resolveParts as $pathResolve } from '@virune/stdlib/node/path';");
 	if (builtins.has('Process')) lines.push("import { architecture as $processArchitecture, args as $processArgs, cwd as $processCwd, environment as $processEnvironment, exitCode as $processExitCode, platform as $processPlatform } from '@virune/stdlib/node/process';");
 	if (builtins.has('Http')) lines.push("import { get as $httpGet, request as $httpRequest } from '@virune/stdlib/node/http';");
 	if (builtins.has('Fetch')) lines.push("import { get as $fetchGet, request as $fetchRequest } from '@virune/stdlib/browser/fetch';");
