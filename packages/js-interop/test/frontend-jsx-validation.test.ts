@@ -75,7 +75,9 @@ component Page(tone: String) uses JavaScript {
 `);
 	assert.ok(errors(widenedLiteral).some(item => item.code === 'L4308'));
 
-	const invalidProperty = await compile(`component Page() uses JavaScript {
+	const invalidProperty = await compile(`import js { Card } from "./library.js"
+
+component Page() uses JavaScript {
 	return view {
 		panel(tone: "warm", missing: "no")
 	}
@@ -83,7 +85,9 @@ component Page(tone: String) uses JavaScript {
 `);
 	assert.ok(errors(invalidProperty).some(item => item.code === 'L4308'));
 
-	const invalidTag = await compile(`component Page() uses JavaScript {
+	const invalidTag = await compile(`import js { Card } from "./library.js"
+
+component Page() uses JavaScript {
 	return view {
 		unknown(tone: "warm")
 	}
@@ -93,7 +97,9 @@ component Page(tone: String) uses JavaScript {
 });
 
 test('View conditionals preserve supported single-child branch value types', async () => {
-	const result = await compile(`component Page(flag: Bool) uses JavaScript {
+	const result = await compile(`import js { Card } from "./library.js"
+
+component Page(flag: Bool) uses JavaScript {
 	return view {
 		panel(tone: "warm") {
 			if flag {
@@ -180,7 +186,9 @@ test('project builds reuse the same JSX oracle validation before the existing em
 	const root = await project();
 	const provider = new TypeScriptInteropProvider({ projectRoot: root });
 	try {
-		await writeFile(join(root, 'src/main.virune'), `component Page() uses JavaScript {
+		await writeFile(join(root, 'src/main.virune'), `import js { Card } from "./library.js"
+
+component Page() uses JavaScript {
 	return view {
 		panel(tone: "warm")
 	}
@@ -190,7 +198,9 @@ test('project builds reuse the same JSX oracle validation before the existing em
 		assert.equal(accepted.diagnostics.some(item => item.code === 'L4308'), false);
 		assert.ok(accepted.diagnostics.some(item => item.code === 'L4307'));
 
-		await writeFile(join(root, 'src/main.virune'), `component Page() uses JavaScript {
+		await writeFile(join(root, 'src/main.virune'), `import js { Card } from "./library.js"
+
+component Page() uses JavaScript {
 	return view {
 		panel(tone: "cold")
 	}
