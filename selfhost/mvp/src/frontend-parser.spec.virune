@@ -39,10 +39,11 @@ test "frontend parser preserves the component and View surface" {
 	expect(String.contains(result, "\"kind\":\"ViewChildrenSlot\""))
 
 	expect(String.contains(encoded("component Legacy(title: String) uses JavaScript {\n\treturn view {\n\t\t= title\n\t}\n}\n"), "\"accepted\":false"))
-	let missingClose = encoded("component BrokenHole(title: String) uses JavaScript {\n\treturn view {\n\t\t{ title\n\t\tspan()\n\t}\n}\n")
+	let missingClose = encoded("component BrokenHole(title: String) uses JavaScript {\n\treturn view {\n\t\t{ title\n\t\tspan()\n\t\tif true {\n\t\t\tem()\n\t\t} else {\n\t\t\tstrong()\n\t\t}\n\t}\n}\n")
 	expect(String.contains(missingClose, "\"accepted\":false"))
 	expect(String.contains(missingClose, "Expected } to end a View expression child"))
 	expect(String.contains(missingClose, "\"text\":\"span\""))
+	expect(String.contains(missingClose, "\"kind\":\"ViewConditional\""))
 	expect(String.contains(encoded("async component Broken() uses JavaScript {\n\treturn view {\n\t}\n}\n"), "\"accepted\":false"))
 	expect(String.contains(encoded("component Generic<T>() uses JavaScript {\n\treturn view {\n\t}\n}\n"), "\"accepted\":false"))
 	expect(String.contains(encoded("component Typed() -> Unit uses JavaScript {\n\treturn view {\n\t}\n}\n"), "\"accepted\":false"))
