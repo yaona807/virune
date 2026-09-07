@@ -80,6 +80,7 @@ export function compileSource(source: SourceFile, options: CompileOptions = {}):
 function validateSingleFileComponentBoundary(module: ModuleNode, semantic: SemanticModel, diagnostics: DiagnosticBag): void {
 	for (const declaration of module.declarations) {
 		if (declaration.kind !== 'ComponentDeclaration') continue;
+		const parameterNames = new Set(declaration.parameters.map(parameter => parameter.name));
 		for (const parameter of declaration.parameters) {
 			const symbol = parameter.symbolId === undefined ? undefined : semantic.symbols.get(parameter.symbolId);
 			const type = symbol === undefined ? undefined : semantic.arena.get(symbol.typeId);
@@ -87,7 +88,37 @@ function validateSingleFileComponentBoundary(module: ModuleNode, semantic: Seman
 			const display = symbol === undefined ? '<unresolved>' : semantic.arena.display(symbol.typeId);
 			diagnostics.error('L4309', `Component parameter ${parameter.name} has type ${display}; single-file JSX emission currently supports only Bool, Int, Float, BigInt, and String host props`, parameter.span);
 		}
+		const interpolation = findHostParameterInterpolation(declaration.body, parameterNames);
+		if (interpolation !== undefined) {
+			diagnostics.error('L4309', `Component parameter ${interpolation.name} cannot be referenced directly through string interpolation because component parameters remain host-backed at each use site; bind it to an explicit local value first`, interpolation.span);
+		}
 	}
+}
+
+function findHostParameterInterpolation(value: unknown, parameterNames: ReadonlySet<string>): { readonly name: string; readonly span: SourceSpan } | undefined {
+	if (Array.isArray(value)) {
+		for (const item of value) {
+			const found = findHostParameterInterpolation(item, parameterNames);
+			if (found !== undefined) return found;
+		}
+		return undefined;
+	}
+	if (value === null || typeof value !== 'object') return undefined;
+	const node = value as Record<string, unknown>;
+	if (node.kind === 'LiteralExpression' && node.literalKind === 'String' && typeof node.value === 'string') {
+		for (const match of node.value.matchAll(/(?<!\{)\{([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*)\}(?!\})/gu)) {
+			const path = match[1];
+			if (path === undefined) continue;
+			const name = path.split('.')[0]!;
+			if (parameterNames.has(name)) return { name, span: node.span as SourceSpan };
+		}
+	}
+	for (const [key, child] of Object.entries(node)) {
+		if (key === 'span') continue;
+		const found = findHostParameterInterpolation(child, parameterNames);
+		if (found !== undefined) return found;
+	}
+	return undefined;
 }
 
 function parserDiagnostic(source: SourceFile, error: IRecognitionException): Diagnostic {
