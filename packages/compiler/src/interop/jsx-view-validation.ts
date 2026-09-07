@@ -238,7 +238,10 @@ function renderViewValue(expression: A.Expression, context: RenderContext): stri
 	}
 	if (type.kind === 'foreign' && expression.kind === 'IdentifierExpression' && expression.symbolId !== undefined) {
 		const symbol = context.semantic.symbols.get(expression.symbolId);
-		if (symbol?.kind === 'import' && !symbol.typeOnly) return expression.name;
+		if (symbol?.kind === 'import' && !symbol.typeOnly) {
+			if (type.snapshot.category === 'unknown' || type.snapshot.category === 'any') return fail(context, expression.span, `View value type ${context.semantic.arena.display(typeId)} is not safely projectable in this validation slice`);
+			return expression.name;
+		}
 	}
 	return fail(context, expression.span, `View value type ${context.semantic.arena.display(typeId)} requires a boundary not implemented by this validation slice`);
 }
