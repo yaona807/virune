@@ -17,6 +17,7 @@ interface RenderFailure {
 interface RenderContext {
 	readonly semantic: SemanticModel;
 	readonly declarations: string[];
+	readonly externalTagRoots: ReadonlySet<string>;
 	nextValueId: number;
 	failure?: RenderFailure;
 }
@@ -37,10 +38,11 @@ export function validateFrontendJsxUsage(module: A.ModuleNode, semantic: Semanti
 		return;
 	}
 	const imports = module.imports.filter(item => item.sourceKind === 'javascript').map(renderJavaScriptImport);
+	const externalTagRoots = javaScriptValueImportNames(module);
 	for (const component of components) {
 		const views: A.ViewExpression[] = [];
 		collectViewReturns(component.body, views);
-		const context: RenderContext = { semantic, declarations: [], nextValueId: 0 };
+		const context: RenderContext = { semantic, declarations: [], externalTagRoots, nextValueId: 0 };
 		const renderedViews: string[] = [];
 		for (const view of views) {
 			const rendered = renderViewBlock(view.body, context);
@@ -81,6 +83,17 @@ function renderJavaScriptImport(declaration: A.ImportDeclaration): string {
 
 function renderImportItems(items: readonly A.ImportItem[]): string {
 	return items.map(item => item.imported === item.local ? item.imported : `${item.imported} as ${item.local}`).join(', ');
+}
+
+function javaScriptValueImportNames(module: A.ModuleNode): ReadonlySet<string> {
+	const names = new Set<string>();
+	for (const declaration of module.imports) {
+		if (declaration.sourceKind !== 'javascript' || declaration.typeOnly) continue;
+		if (declaration.defaultImport !== undefined) names.add(declaration.defaultImport);
+		if (declaration.namespaceImport !== undefined) names.add(declaration.namespaceImport);
+		for (const item of declaration.items) names.add(item.local);
+	}
+	return names;
 }
 
 function collectViewReturns(block: A.BlockStatement, views: A.ViewExpression[]): void {
@@ -144,6 +157,10 @@ function renderViewChild(child: A.ViewChild, context: RenderContext): string | u
 }
 
 function renderViewElement(element: A.ViewElement, context: RenderContext): string | undefined {
+	const root = element.tag[0]!;
+	if (!(element.tag.length === 1 && /^[a-z]/u.test(root)) && !context.externalTagRoots.has(root)) {
+		return fail(context, element.span, `View tag ${element.tag.join('.')} is neither intrinsic nor rooted in a JavaScript-imported External binding`);
+	}
 	const properties: string[] = [];
 	for (const property of element.properties) {
 		if (!jsxAttributeName.test(property.name)) return fail(context, property.span, `property ${JSON.stringify(property.name)} cannot be represented as a preserved JSX attribute without speculative lowering`);
