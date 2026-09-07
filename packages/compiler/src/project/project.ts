@@ -499,6 +499,7 @@ interface ExportEntry {
 	readonly originModule: A.ModuleNode;
 	readonly visibility: ExportVisibility;
 }
+
 interface ModuleInterface { readonly exports: ReadonlyMap<string, ExportEntry>; }
 
 function exportVisibleTo(root: string, importerPath: string, entry: ExportEntry): boolean {
