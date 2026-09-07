@@ -206,3 +206,32 @@ test('formatter preserves contextual aggregate, index, and assignable source for
 	assert.deepEqual(second.errors, []);
 	assert.equal(second.text, first.text);
 });
+
+test('formatter round-trips component and View syntax deterministically', () => {
+	const input = `internal component Card(title:String) uses JavaScript {
+return view {
+Ui.Card("data-title":title) {
+"hello"
+=title
+if true {
+children
+} else {
+Ui.Empty()
+}
+}
+}
+}
+`;
+	const first = formatSource(input);
+	const second = formatSource(first.text);
+	assert.deepEqual(first.errors, []);
+	assert.deepEqual(second.errors, []);
+	assert.equal(second.text, first.text);
+	assert.match(first.text, /internal component Card\(title: String\) uses JavaScript/u);
+	assert.match(first.text, /Ui\.Card\("data-title": title\)/u);
+	assert.match(first.text, /\n\t\t\t"hello"\n\t\t\t= title\n/u);
+	assert.match(first.text, /\n\t\t\t\tchildren\n/u);
+	const rejected = formatSource('component Rejected(value?:String) uses JavaScript {\nreturn view {}\n}\n');
+	assert.deepEqual(rejected.errors, []);
+	assert.match(rejected.text, /component Rejected\(value\?: String\) uses JavaScript/u);
+});

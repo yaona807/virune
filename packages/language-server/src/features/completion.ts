@@ -13,10 +13,10 @@ import { documentationSummary, recordFieldDocumentation, symbolDocumentationSumm
 type SymbolInfo = SemanticModel['symbols'] extends ReadonlyMap<number, infer Value> ? Value : never;
 
 const keywords = [
-	'as', 'async', 'await', 'break', 'const', 'continue', 'defer', 'derives', 'discard', 'else',
+	'as', 'async', 'await', 'break', 'component', 'const', 'continue', 'defer', 'derives', 'discard', 'else',
 	'enum', 'extern', 'false', 'fn', 'for', 'from', 'if', 'import', 'in', 'internal', 'js', 'let', 'match', 'module', 'mut',
 	'newtype', 'parallel', 'pub', 'record', 'return', 'test', 'then', 'true', 'try', 'type', 'unsafe',
-	'uses', 'while', 'with',
+	'uses', 'view', 'while', 'with',
 ] as const;
 
 interface BraceScope {
@@ -94,7 +94,7 @@ function isVisibleLocal(symbol: SymbolInfo, module: BuiltModule, source: SourceF
 	const declarationScope = innermostScope(scopes, declarationOffset);
 	if (symbol.kind === 'parameter') {
 		const owner = symbol.declaration;
-		const ownerScope = (owner.kind === 'FunctionDeclaration' || owner.kind === 'LambdaExpression') && 'body' in owner
+		const ownerScope = (owner.kind === 'FunctionDeclaration' || owner.kind === 'ComponentDeclaration' || owner.kind === 'LambdaExpression') && 'body' in owner
 			? scopeContainingNode(scopes, source, owner.body as AstNode)
 			: undefined;
 		return ownerScope === undefined ? sameTopLevelRegion(module, source, owner, offset) : scopeContains(ownerScope, offset);
@@ -192,7 +192,7 @@ function symbolCompletion(symbol: SymbolInfo, module: BuiltModule): CompletionIt
 		label: symbol.name,
 		kind: completionKind(symbol.kind, symbol.constant),
 	};
-	if (module.semantic !== undefined) item.detail = module.semantic.arena.display(symbol.typeId);
+	if (module.semantic !== undefined && symbol.kind !== 'component') item.detail = module.semantic.arena.display(symbol.typeId);
 	if (symbol.kind === 'function' || symbol.kind === 'extern' || symbol.kind === 'builtin') item.insertText = `${symbol.name}()`;
 	const documentation = symbolDocumentationSummary(symbol);
 	if (documentation !== undefined) item.documentation = { kind: MarkupKind.Markdown, value: documentation };
@@ -202,6 +202,7 @@ function symbolCompletion(symbol: SymbolInfo, module: BuiltModule): CompletionIt
 function completionKind(kind: SymbolInfo['kind'], constant: boolean): CompletionItemKind {
 	switch (kind) {
 		case 'function': return CompletionItemKind.Function;
+		case 'component': return CompletionItemKind.Function;
 		case 'extern': return CompletionItemKind.Function;
 		case 'builtin': return CompletionItemKind.Function;
 		case 'type': return CompletionItemKind.Class;

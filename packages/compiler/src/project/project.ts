@@ -300,6 +300,10 @@ export async function buildProject(
 			const synthetic: A.ModuleNode = { ...parsed.ast, imports: parsed.ast.imports.filter(item => item.sourceKind === 'javascript'), declarations: [...importedDeclarations, ...parsed.ast.declarations] };
 			const semantic = checkModule(synthetic, { signatureOnlyNodeIds: signatureOnly, typeOnlyNodeIds, platform: config.platform, moduleId: moduleIdentity(root, path), containingFile: path, ...(jsInteropProvider === undefined ? {} : { jsInteropProvider }) });
 			mutableStats.checkedModules++;
+			const component = parsed.ast.declarations.find(declaration => declaration.kind === 'ComponentDeclaration');
+			if (!semantic.diagnostics.hasErrors && component !== undefined && isWithin(resolve(root, config.sourceDir), path)) {
+				semantic.diagnostics.error('L4307', 'Component emission is unavailable until frontend JSX usage and preserved artifact emission are implemented', component.span);
+			}
 			const diagnostics = [...parsed.diagnostics, ...semantic.diagnostics.items];
 			let output: EmitResult | undefined; let outputPath: string | undefined;
 			if (!diagnostics.some(item => item.severity === 'error') && isWithin(resolve(root, config.sourceDir), path)) {
@@ -339,6 +343,10 @@ function publicSignatureAst(declaration: A.Declaration): unknown {
 		case 'FunctionDeclaration': {
 			const { body: _body, expressionBody: _expressionBody, attributes, ...signature } = declaration;
 			return attributes.some(attribute => attribute.name === 'jsExport') ? { ...signature, jsExport: true } : signature;
+		}
+		case 'ComponentDeclaration': {
+			const { body: _body, attributes: _attributes, ...signature } = declaration;
+			return signature;
 		}
 		case 'TopLevelLetDeclaration': {
 			const { value: _value, attributes: _attributes, ...signature } = declaration;
@@ -680,6 +688,8 @@ function referencedTypeNames(declaration: A.Declaration): ReadonlySet<string> {
 		const parameters = new Set(declaration.typeParameters.map(item => item.name));
 		for (const parameter of declaration.parameters) addReference(parameter.type, parameters);
 		if (declaration.returnType !== undefined) addReference(declaration.returnType, parameters);
+	} else if (declaration.kind === 'ComponentDeclaration') {
+		for (const parameter of declaration.parameters) addReference(parameter.type, new Set());
 	} else if (declaration.kind === 'RecordDeclaration') {
 		const parameters = new Set(declaration.typeParameters.map(item => item.name));
 		for (const field of declaration.fields) addReference(field.type, parameters);
@@ -703,6 +713,18 @@ function cloneValueSignature(declaration: A.Declaration, localName: string, rena
 			attributes: [],
 			...(declaration.annotation === undefined ? {} : { annotation: cloneTypeReference(declaration.annotation, rename, next) }),
 			value: { id: next(), kind: 'LiteralExpression', span: declaration.span, literalKind: 'Bool', value: false },
+		};
+	}
+	if (declaration.kind === 'ComponentDeclaration') {
+		return {
+			...declaration,
+			id: next(),
+			name: localName,
+			public: false,
+			attributes: [],
+			parameters: declaration.parameters.map(parameter => ({ ...parameter, type: cloneTypeReference(parameter.type, rename, next) })),
+			effects: declaration.effects,
+			body: { id: next(), kind: 'BlockStatement', span: declaration.span, statements: [] },
 		};
 	}
 	if (declaration.kind !== 'FunctionDeclaration') throw new Error(`Declaration ${declaration.kind} cannot be imported as a value signature`);

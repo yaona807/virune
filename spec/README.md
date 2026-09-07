@@ -14,6 +14,7 @@ Each externally observable rule has a stable ID such as `[type.nominal-identity]
 - [Types](types.md) — type identity, inference, generics, nullability, and capabilities
 - [Evaluation and control flow](evaluation.md) — evaluation order, control flow, errors, and cleanup
 - [Modules and packages](modules.md) — modules, imports, visibility, re-exports, and platform targets
+- [Frontend component and View authoring](frontend.md) — framework-neutral component boundaries, non-nameable View structure, children, and declarative conditionals
 - [Executable entry point](entry-point.md) — executable `main` signature and exit behavior
 - [Tasks and structured concurrency](tasks.md) — asynchronous execution and structured concurrency
 - [JavaScript FFI](ffi.md) — JavaScript boundary rules

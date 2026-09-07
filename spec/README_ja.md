@@ -14,6 +14,7 @@
 - [型](types_ja.md) — 型同一性、推論、ジェネリクス、null許容性、ケイパビリティ
 - [評価と制御フロー](evaluation_ja.md) — 評価順、制御フロー、エラー、後始末
 - [モジュールとパッケージ](modules_ja.md) — モジュール、インポート、可視性、再エクスポート、対象プラットフォーム
+- [Frontend component / View authoring](frontend_ja.md) — framework-neutralなcomponent boundary、non-nameable View structure、children、declarative conditional
 - [実行エントリーポイント](entry-point_ja.md) — 実行可能な`main`のシグネチャと終了動作
 - [タスクと構造化並行処理](tasks_ja.md) — 非同期実行と構造化並行処理
 - [JavaScript FFI](ffi_ja.md) — JavaScriptとの境界に関する規則

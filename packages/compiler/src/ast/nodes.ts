@@ -23,13 +23,18 @@ export interface FunctionTypeReference { readonly async: boolean; readonly param
 export interface TypeReferenceNode extends AstNode { readonly kind: 'TypeReference'; readonly name: string; readonly arguments: readonly TypeReferenceNode[]; readonly optional: boolean; readonly functionType?: FunctionTypeReference; resolvedTypeId?: TypeId; }
 export interface TypeParameterNode { readonly name: string; readonly span: SourceSpan; }
 export interface ParameterNode { readonly name: string; readonly optional: boolean; readonly type: TypeReferenceNode; readonly span: SourceSpan; symbolId?: SymbolId; }
-export type Declaration = FunctionDeclaration | RecordDeclaration | EnumDeclaration | NewtypeDeclaration | TypeAliasDeclaration | ExternDeclaration | TestDeclaration | TopLevelLetDeclaration;
+export type Declaration = FunctionDeclaration | ComponentDeclaration | RecordDeclaration | EnumDeclaration | NewtypeDeclaration | TypeAliasDeclaration | ExternDeclaration | TestDeclaration | TopLevelLetDeclaration;
 
 export interface FunctionDeclaration extends AstNode, DocumentedNode, DeclarationVisibility {
 	readonly kind: 'FunctionDeclaration'; readonly name: string; readonly async: boolean;
 	readonly attributes: readonly AttributeNode[]; readonly typeParameters: readonly TypeParameterNode[]; readonly parameters: readonly ParameterNode[];
 	readonly returnType?: TypeReferenceNode; readonly effects: readonly string[]; readonly body: BlockStatement | Expression;
 	readonly expressionBody: boolean; symbolId?: SymbolId; inferredTypeId?: TypeId;
+}
+export interface ComponentDeclaration extends AstNode, DocumentedNode, DeclarationVisibility {
+	readonly kind: 'ComponentDeclaration'; readonly name: string; readonly attributes: readonly AttributeNode[];
+	readonly parameters: readonly ParameterNode[]; readonly effects: readonly string[]; readonly body: BlockStatement;
+	symbolId?: SymbolId;
 }
 export interface RecordFieldNode extends DocumentedNode { readonly name: string; readonly type: TypeReferenceNode; readonly attributes: readonly AttributeNode[]; readonly span: SourceSpan; }
 export interface RecordDeclaration extends AstNode, DocumentedNode, DeclarationVisibility {
@@ -69,7 +74,7 @@ export interface IndexAssignmentStatement extends AstNode { readonly kind: 'Inde
 export interface DeferStatement extends AstNode { readonly kind: 'DeferStatement'; readonly expression: Expression; }
 export interface ExpressionStatement extends AstNode { readonly kind: 'ExpressionStatement'; readonly expression: Expression; }
 
-export type Expression = LiteralExpression | IdentifierExpression | CallExpression | FieldExpression | IndexExpression | BinaryExpression | UnaryExpression | PipelineExpression | TryExpression | AwaitExpression | RecordExpression | RecordUpdateExpression | ContextualAggregateExpression | ListExpression | TupleExpression | ConditionalExpression | MatchExpression | LambdaExpression | ParallelExpression | WildcardExpression;
+export type Expression = LiteralExpression | IdentifierExpression | CallExpression | FieldExpression | IndexExpression | BinaryExpression | UnaryExpression | PipelineExpression | TryExpression | AwaitExpression | RecordExpression | RecordUpdateExpression | ContextualAggregateExpression | ListExpression | TupleExpression | ConditionalExpression | MatchExpression | LambdaExpression | ParallelExpression | ViewExpression | WildcardExpression;
 export interface ExpressionBase extends AstNode { inferredTypeId?: TypeId; foreignBridge?: 'string' | 'bool' | 'float' | 'bigint' | 'unit' | 'unknown'; }
 export interface LiteralExpression extends ExpressionBase { readonly kind: 'LiteralExpression'; readonly literalKind: 'String' | 'Int' | 'Float' | 'BigInt' | 'Bool'; readonly value: string | number | bigint | boolean; }
 export interface IdentifierExpression extends ExpressionBase { readonly kind: 'IdentifierExpression'; readonly name: string; symbolId?: SymbolId; }
@@ -99,6 +104,18 @@ export interface LambdaExpression extends ExpressionBase {
 }
 export interface ParallelEntryNode { readonly name: string; readonly value: Expression; readonly span: SourceSpan; }
 export interface ParallelExpression extends ExpressionBase { readonly kind: 'ParallelExpression'; readonly tryMode: boolean; readonly entries: readonly ParallelEntryNode[]; }
+
+export interface ViewExpression extends ExpressionBase { readonly kind: 'ViewExpression'; readonly body: ViewBlock; }
+export interface ViewBlock extends AstNode { readonly kind: 'ViewBlock'; readonly children: readonly ViewChild[]; }
+export type ViewChild = ViewElement | ViewConditional | ViewTextChild | ViewExpressionChild | ViewChildrenSlot;
+export interface ViewElement extends AstNode {
+	readonly kind: 'ViewElement'; readonly tag: readonly string[]; readonly properties: readonly ViewProperty[]; readonly children?: ViewBlock;
+}
+export interface ViewProperty { readonly name: string; readonly quoted: boolean; readonly value: Expression; readonly span: SourceSpan; }
+export interface ViewConditional extends AstNode { readonly kind: 'ViewConditional'; readonly condition: Expression; readonly thenBlock: ViewBlock; readonly elseBranch?: ViewBlock | ViewConditional; }
+export interface ViewTextChild extends AstNode { readonly kind: 'ViewTextChild'; readonly value: string; }
+export interface ViewExpressionChild extends AstNode { readonly kind: 'ViewExpressionChild'; readonly expression: Expression; }
+export interface ViewChildrenSlot extends AstNode { readonly kind: 'ViewChildrenSlot'; }
 
 export type Pattern = WildcardPattern | BindingPattern | LiteralPattern | VariantPattern | RecordPattern | OrPattern | ListPattern | TuplePattern | RangePattern;
 export interface PatternBase extends AstNode {}

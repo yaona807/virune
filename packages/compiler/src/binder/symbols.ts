@@ -2,7 +2,7 @@ import type { AstNode, Declaration } from '../ast/nodes.js';
 import type { SourceSpan, SymbolId, TypeId } from '../source.js';
 import { IdGenerator } from '../source.js';
 
-export type SymbolKind = 'function' | 'variable' | 'parameter' | 'type' | 'variant' | 'extern' | 'builtin' | 'import';
+export type SymbolKind = 'function' | 'component' | 'variable' | 'parameter' | 'type' | 'variant' | 'extern' | 'builtin' | 'import';
 export interface SymbolInfo {
 	readonly id: SymbolId;
 	readonly name: string;

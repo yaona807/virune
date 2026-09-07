@@ -1,5 +1,5 @@
 import type { SourceFile } from '@virune/compiler';
-import { lex, parseSource, type AttributeNode, type BlockStatement, type Declaration, type Expression, type ImportDeclaration, type MatchArmNode, type ModuleNode, type Pattern, type RecordEntryNode, type Statement, type TypeReferenceNode } from '@virune/compiler/experimental';
+import { lex, parseSource, type AttributeNode, type BlockStatement, type Declaration, type Expression, type ImportDeclaration, type MatchArmNode, type ModuleNode, type Pattern, type RecordEntryNode, type Statement, type TypeReferenceNode, type ViewBlock, type ViewChild, type ViewConditional } from '@virune/compiler/experimental';
 
 export interface FormatResult { readonly text: string; readonly changed: boolean; readonly errors: readonly string[]; }
 
@@ -259,6 +259,13 @@ function printDeclaration(printer: Printer, declaration: Declaration): void {
 			else { printer.line(`${signature} {`); printer.indent(() => printBlockContents(printer, declaration.body as BlockStatement)); printer.line('}'); }
 			break;
 		}
+		case 'ComponentDeclaration': {
+			const parameters = declaration.parameters.map(parameter => `${parameter.name}${parameter.optional ? '?' : ''}: ${printType(parameter.type)}`);
+			printer.line(`${visibilityPrefix(declaration)}component ${declaration.name}${printDelimited(parameters, '(', ')')} ${printUses(declaration.effects)} {`);
+			printer.indent(() => printBlockContents(printer, declaration.body));
+			printer.line('}');
+			break;
+		}
 		case 'RecordDeclaration':
 			printer.line(`${visibilityPrefix(declaration)}record ${declaration.name}${printTypeParameters(declaration.typeParameters.map(item => item.name))}${printDerives(declaration.derives)} {`);
 			printer.indent(() => declaration.fields.forEach(field => { printer.commentsBefore(field.span.start.offset); printAttributes(printer, field.attributes); printer.line(`${field.name}: ${printType(field.type)}`); })); printer.line('}'); break;
@@ -337,7 +344,41 @@ function expressionText(expression: Expression): readonly [string, number] {
 			return [`${signature} {\n${printBlockExpression(expression.body as BlockStatement)}\n}`, 5];
 		}
 		case 'ParallelExpression': return [printParallel(expression.tryMode, expression.entries), 5];
+		case 'ViewExpression': return [`view ${printViewBlock(expression.body)}`, 5];
 	}
+}
+
+function printViewBlock(block: ViewBlock, indent = 0): string {
+	if (block.children.length === 0) return '{}';
+	const prefix = '\t'.repeat(indent);
+	return `{\n${block.children.map(child => printViewChild(child, indent + 1)).join('\n')}\n${prefix}}`;
+}
+
+function printViewChild(child: ViewChild, indent: number): string {
+	const prefix = '\t'.repeat(indent);
+	switch (child.kind) {
+		case 'ViewTextChild': return `${prefix}${quote(child.value)}`;
+		case 'ViewExpressionChild': return `${prefix}= ${indentContinuation(printExpression(child.expression), indent)}`;
+		case 'ViewChildrenSlot': return `${prefix}children`;
+		case 'ViewElement': {
+			const properties = child.properties.map(property => `${property.quoted ? quote(property.name) : property.name}: ${printExpression(property.value)}`).join(', ');
+			const head = `${prefix}${child.tag.join('.')}(${properties})`;
+			return child.children === undefined ? head : `${head} ${printViewBlock(child.children, indent)}`;
+		}
+		case 'ViewConditional': return printViewConditional(child, indent);
+	}
+}
+
+function printViewConditional(conditional: ViewConditional, indent: number): string {
+	const prefix = '\t'.repeat(indent);
+	let text = `${prefix}if ${printExpression(conditional.condition)} ${printViewBlock(conditional.thenBlock, indent)}`;
+	if (conditional.elseBranch === undefined) return text;
+	if (conditional.elseBranch.kind === 'ViewBlock') return `${text} else ${printViewBlock(conditional.elseBranch, indent)}`;
+	return `${text} else ${printViewConditional(conditional.elseBranch, indent).slice(prefix.length)}`;
+}
+
+function indentContinuation(value: string, indent: number): string {
+	return value.replaceAll('\n', `\n${'\t'.repeat(indent)}`);
 }
 
 function printRecordEntries(name: string, entries: readonly RecordEntryNode[]): string {

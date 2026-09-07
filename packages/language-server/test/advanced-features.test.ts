@@ -42,6 +42,23 @@ fn second(b: Int) -> Int {
 	assert.equal(labels.has('fn'), true);
 });
 
+test('completionItems keeps components distinct from ordinary callable functions', async () => {
+	const path = join(tmpdir(), 'virune-completion-component.virune');
+	const text = `component Card(title: String) uses JavaScript {
+	return view {
+		main() {
+			= title
+		}
+	}
+}
+`;
+	const { module } = await analyze(path, text);
+	const card = completionItems(module, module.source, text.length).find(item => item.label === 'Card');
+	assert.ok(card);
+	assert.equal(card.insertText, undefined);
+	assert.equal(card.detail, undefined);
+});
+
 test('completionItems offers fields for a typed receiver', async () => {
 	const path = join(tmpdir(), 'virune-completion-field.virune');
 	const text = `record User {

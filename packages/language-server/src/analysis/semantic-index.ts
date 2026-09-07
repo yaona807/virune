@@ -454,7 +454,7 @@ function walkSemanticAst(
 					...(containerKey === undefined ? {} : { containerKey }),
 				});
 			}
-			if (kind === 'FunctionDeclaration' || kind === 'LambdaExpression') nextContainer = key;
+			if (kind === 'FunctionDeclaration' || kind === 'ComponentDeclaration' || kind === 'LambdaExpression') nextContainer = key;
 		}
 
 		if (kind === 'AssignmentStatement' && typeof value.targetSymbolId === 'number' && typeof value.name === 'string' && isSourceSpan(value.span)) {
@@ -595,16 +595,18 @@ function definitionIdForSymbol(semantic: SemanticModel, symbolId: SymbolId): str
 function occurrenceRole(value: Record<string, unknown>, parent: Record<string, unknown> | undefined): OccurrenceRole {
 	const kind = value.kind;
 	if (kind === undefined && (parent?.kind === 'FunctionDeclaration'
+		|| parent?.kind === 'ComponentDeclaration'
 		|| parent?.kind === 'LambdaExpression'
 		|| parent?.kind === 'ExternFunction'
 		|| parent?.kind === 'EnumDeclaration')) return 'declaration';
-	if (isDeclarationKind(kind)) return kind === 'FunctionDeclaration' || kind === 'TopLevelLetDeclaration' ? 'definition' : 'declaration';
+	if (isDeclarationKind(kind)) return kind === 'FunctionDeclaration' || kind === 'ComponentDeclaration' || kind === 'TopLevelLetDeclaration' ? 'definition' : 'declaration';
 	if (parent?.kind === 'CallExpression' && parent.callee === value) return 'call';
 	return 'read';
 }
 
 function isDeclarationKind(kind: unknown): boolean {
 	return kind === 'FunctionDeclaration'
+		|| kind === 'ComponentDeclaration'
 		|| kind === 'RecordDeclaration'
 		|| kind === 'EnumDeclaration'
 		|| kind === 'NewtypeDeclaration'
@@ -707,6 +709,7 @@ function escapeRegExp(value: string): string {
 export function languageServerSymbolKind(kind: IndexedSymbolKind): SymbolKind {
 	switch (kind) {
 		case 'function': return SymbolKind.Function;
+		case 'component': return SymbolKind.Function;
 		case 'extern': return SymbolKind.Function;
 		case 'type': return SymbolKind.Class;
 		case 'variant': return SymbolKind.EnumMember;

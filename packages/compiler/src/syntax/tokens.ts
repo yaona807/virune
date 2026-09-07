@@ -27,6 +27,10 @@ export const KwAs = keyword('KwAs', /as\b/);
 export const KwAsync = keyword('KwAsync', /async\b/);
 export const KwAwait = keyword('KwAwait', /await\b/);
 export const KwBreak = keyword('KwBreak', /break\b/);
+// `children` is contextual View syntax. Keep its distinct token for View parsing while
+// also accepting it anywhere an ordinary identifier is valid for source compatibility.
+export const KwChildren = createToken({ name: 'KwChildren', pattern: /children\b/, longer_alt: Identifier, categories: [Identifier, IdentifierName] });
+export const KwComponent = keyword('KwComponent', /component\b/);
 export const KwConst = keyword('KwConst', /const\b/);
 export const KwContinue = keyword('KwContinue', /continue\b/);
 export const KwDefer = keyword('KwDefer', /defer\b/);
@@ -60,6 +64,7 @@ export const KwTry = keyword('KwTry', /try\b/);
 export const KwType = keyword('KwType', /type\b/);
 export const KwUnsafe = keyword('KwUnsafe', /unsafe\b/);
 export const KwUses = keyword('KwUses', /uses\b/);
+export const KwView = keyword('KwView', /view\b/);
 export const KwWhile = keyword('KwWhile', /while\b/);
 export const KwWith = keyword('KwWith', /with\b/);
 export const KwJs = keyword('KwJs', /js\b/);
@@ -95,9 +100,9 @@ export const allTokens: TokenType[] = [
 	WhiteSpace, ModuleDocumentationComment, DocumentationComment, LineComment, NewLine,
 	FatArrow, ThinArrow, Pipe, EqualEqual, BangEqual, LessEqual, GreaterEqual, AndAnd, OrOr, RangeInclusive, Spread, Bar,
 	IdentifierName,
-	KwAs, KwAsync, KwAwait, KwBreak, KwConst, KwContinue, KwDefer, KwDerives, KwDiscard, KwElse, KwEnum, KwExtern, KwFalse, KwFn, KwFor,
+	KwAs, KwAsync, KwAwait, KwBreak, KwChildren, KwComponent, KwConst, KwContinue, KwDefer, KwDerives, KwDiscard, KwElse, KwEnum, KwExtern, KwFalse, KwFn, KwFor,
 	KwFrom, KwIf, KwImport, KwIn, KwLet, KwMatch, KwModule, KwMut, KwNewtype, KwParallel, KwPub, KwRecord,
-	KwReturn, KwTest, KwThen, KwTrue, KwTry, KwType, KwUnsafe, KwUses, KwWhile, KwWith, KwJs,
+	KwReturn, KwTest, KwThen, KwTrue, KwTry, KwType, KwUnsafe, KwUses, KwView, KwWhile, KwWith, KwJs,
 	BigIntLiteral, FloatLiteral, IntLiteral, StringLiteral,
 	Underscore, Identifier,
 	LParen, RParen, LBrace, RBrace, LBracket, RBracket, Comma, Colon, Dot, Question, At, Equals,
@@ -114,7 +119,7 @@ export interface LexResult {
 
 const softAfter = new Set(['Pipe', 'EqualEqual', 'BangEqual', 'LessEqual', 'GreaterEqual', 'AndAnd', 'OrOr', 'Equals', 'Less', 'Greater', 'Plus', 'Minus', 'Star', 'Slash', 'Percent', 'Comma', 'LParen', 'LBracket']);
 const softBefore = new Set(['Pipe', 'EqualEqual', 'BangEqual', 'LessEqual', 'GreaterEqual', 'AndAnd', 'OrOr', 'Less', 'Greater', 'Plus', 'Minus', 'Star', 'Slash', 'Percent', 'RParen', 'RBracket', 'KwElse']);
-const topLevelDeclarationStarts = new Set(['At', 'KwPub', 'KwAsync', 'KwFn', 'KwRecord', 'KwEnum', 'KwNewtype', 'KwType', 'KwExtern', 'KwUnsafe', 'KwTest', 'KwLet', 'KwConst']);
+const topLevelDeclarationStarts = new Set(['At', 'KwPub', 'KwAsync', 'KwFn', 'KwComponent', 'KwRecord', 'KwEnum', 'KwNewtype', 'KwType', 'KwExtern', 'KwUnsafe', 'KwTest', 'KwLet', 'KwConst']);
 
 interface LambdaBlockScope {
 	readonly bodyBraceDepth: number;

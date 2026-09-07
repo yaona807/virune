@@ -113,6 +113,7 @@ export class JavaScriptEmitter {
 		this.#writer.mark(declaration.span, 'name' in declaration ? declaration.name : undefined);
 		switch (declaration.kind) {
 			case 'FunctionDeclaration': this.emitFunction(declaration); break;
+			case 'ComponentDeclaration': return panicEmitter('ComponentDeclaration reached ordinary JavaScript emission before frontend artifact planning');
 			case 'RecordDeclaration': this.emitRecordDeclaration(declaration); break;
 			case 'EnumDeclaration': this.emitEnumDeclaration(declaration); break;
 			case 'NewtypeDeclaration': this.emitNewtypeDeclaration(declaration); break;
@@ -343,6 +344,7 @@ export class JavaScriptEmitter {
 			case 'MatchExpression': return this.match(expression, contextName);
 			case 'LambdaExpression': return this.lambdaExpression(expression, contextName);
 			case 'ParallelExpression': return this.parallelExpression(expression, contextName);
+			case 'ViewExpression': return panicEmitter('ViewExpression reached ordinary JavaScript emission before preserved JSX emission');
 		}
 	}
 
