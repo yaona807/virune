@@ -492,6 +492,7 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 		const sourceFile = program.getSourceFile(virtualPath)
 			?? program.getSourceFiles().find(item => canonicalFilePath(item.fileName) === virtualKey);
 		if (sourceFile === undefined || sourceFile.languageVariant !== ts.LanguageVariant.JSX || !sourceFileContainsJsx(sourceFile)) return undefined;
+		if (sourceFileContainsUnsafeJsxValueTag(sourceFile, program.getTypeChecker())) return undefined;
 		return Object.freeze({ accepted: true });
 	}
 
@@ -975,6 +976,25 @@ function sourceFileContainsJsx(sourceFile: ts.SourceFile): boolean {
 		if (ts.isJsxElement(node) || ts.isJsxSelfClosingElement(node) || ts.isJsxFragment(node)) {
 			found = true;
 			return;
+		}
+		ts.forEachChild(node, visit);
+	};
+	visit(sourceFile);
+	return found;
+}
+
+function sourceFileContainsUnsafeJsxValueTag(sourceFile: ts.SourceFile, checker: ts.TypeChecker): boolean {
+	let found = false;
+	const visit = (node: ts.Node): void => {
+		if (found) return;
+		if (ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) {
+			const tagName = node.tagName;
+			const intrinsic = ts.isJsxNamespacedName(tagName)
+				|| ts.isIdentifier(tagName) && (/^[a-z]/u.test(tagName.text) || tagName.text.includes('-'));
+			if (!intrinsic && (checker.getTypeAtLocation(tagName).getFlags() & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) !== 0) {
+				found = true;
+				return;
+			}
 		}
 		ts.forEachChild(node, visit);
 	};
