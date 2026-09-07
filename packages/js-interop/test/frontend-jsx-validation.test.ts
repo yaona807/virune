@@ -18,6 +18,7 @@ const declarations = `declare global {
 	const AmbientCard: (props: { label: "ambient" }) => JSX.Element;
 }
 
+export interface Marker { readonly marker: true; }
 export declare function Card(props: { label: "ok"; children?: string }): JSX.Element;
 export declare const ui: {
 	Tile: (props: { tone: "warm" }) => JSX.Element;
@@ -28,7 +29,7 @@ export declare const __viruneView0: number;
 
 async function project() {
 	const root = await fixtureRoot();
-	await writeFile(join(root, 'tsconfig.json'), JSON.stringify({ compilerOptions: { jsx: 'preserve' }, include: ['src/**/*'] }), 'utf8');
+	await writeFile(join(root, 'tsconfig.json'), JSON.stringify({ compilerOptions: { jsx: 'preserve', noUnusedLocals: true }, include: ['src/**/*'] }), 'utf8');
 	await writeFile(join(root, 'src/library.d.ts'), declarations, 'utf8');
 	await writeFile(join(root, 'src/library.js'), 'export const Card = () => null; export const ui = { Tile: () => null }; export const __viruneValue0 = 0; export const __viruneView0 = 0;\n', 'utf8');
 	return root;
@@ -47,7 +48,8 @@ async function compile(text: string) {
 const errors = (result: Awaited<ReturnType<typeof compile>>) => result.diagnostics.filter(item => item.severity === 'error');
 
 test('View intrinsic usage is accepted only through the declaration-driven JSX contract', async () => {
-	const accepted = await compile(`import js { Card } from "./library.js"
+	const accepted = await compile(`import js type { Marker } from "./library.js"
+import js { Card } from "./library.js"
 
 component Page(label: String) uses JavaScript {
 	return view {
