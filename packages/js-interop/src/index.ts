@@ -1011,7 +1011,9 @@ function jsxValueTagType(tagName: ts.JsxTagNameExpression, checker: ts.TypeCheck
 		const symbol = checker.getSymbolAtLocation(location);
 		if (symbol === undefined) return undefined;
 		const target = (symbol.flags & ts.SymbolFlags.Alias) === 0 ? symbol : checker.getAliasedSymbol(symbol);
-		return checker.getTypeOfSymbolAtLocation(target, location);
+		const declaration = target.valueDeclaration ?? target.declarations?.[0];
+		if (declaration === undefined) return undefined;
+		return checker.getTypeOfSymbolAtLocation(target, declaration);
 	} catch {
 		return undefined;
 	}
