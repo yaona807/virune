@@ -30,7 +30,35 @@ function lowerExpression(expression: A.Expression): A.Expression {
 		case 'MatchExpression': return { ...expression, target: lowerExpression(expression.target), arms: expression.arms.map(arm => ({ ...arm, ...(arm.guard === undefined ? {} : { guard: lowerExpression(arm.guard) }), expression: lowerExpression(arm.expression) })) };
 		case 'LambdaExpression': return { ...expression, body: expression.expressionBody ? lowerExpression(expression.body as A.Expression) : lowerBlock(expression.body as A.BlockStatement) };
 		case 'ParallelExpression': return { ...expression, entries: expression.entries.map(entry => ({ ...entry, value: lowerExpression(entry.value) })) };
+		case 'ViewExpression': return { ...expression, body: lowerViewBlock(expression.body) };
 		default: return expression;
+	}
+}
+
+function lowerViewBlock(block: A.ViewBlock): A.ViewBlock {
+	return { ...block, children: block.children.map(lowerViewChild) };
+}
+
+function lowerViewChild(child: A.ViewChild): A.ViewChild {
+	switch (child.kind) {
+		case 'ViewTextChild':
+		case 'ViewChildrenSlot':
+			return child;
+		case 'ViewExpressionChild':
+			return { ...child, expression: lowerExpression(child.expression) };
+		case 'ViewElement':
+			return {
+				...child,
+				properties: child.properties.map(property => ({ ...property, value: lowerExpression(property.value) })),
+				...(child.children === undefined ? {} : { children: lowerViewBlock(child.children) }),
+			};
+		case 'ViewConditional':
+			return {
+				...child,
+				condition: lowerExpression(child.condition),
+				thenBlock: lowerViewBlock(child.thenBlock),
+				...(child.elseBranch === undefined ? {} : { elseBranch: child.elseBranch.kind === 'ViewBlock' ? lowerViewBlock(child.elseBranch) : lowerViewChild(child.elseBranch) as A.ViewConditional }),
+			};
 	}
 }
 
@@ -56,6 +84,7 @@ function lowerBlock(block: A.BlockStatement): A.BlockStatement { return { ...blo
 export function lowerToHir(module: A.ModuleNode, semantic: SemanticModel): HirModule {
 	const declarations = module.declarations.map(declaration => {
 		if (declaration.kind === 'FunctionDeclaration') return { ...declaration, body: declaration.expressionBody ? lowerExpression(declaration.body as A.Expression) : lowerBlock(declaration.body as A.BlockStatement) };
+		if (declaration.kind === 'ComponentDeclaration') return { ...declaration, body: lowerBlock(declaration.body) };
 		if (declaration.kind === 'TopLevelLetDeclaration') return { ...declaration, value: lowerExpression(declaration.value) };
 		if (declaration.kind === 'TestDeclaration') return { ...declaration, body: lowerBlock(declaration.body) };
 		return declaration;
