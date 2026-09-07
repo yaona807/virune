@@ -168,7 +168,7 @@ component Page() uses JavaScript {
 	}
 }
 `);
-	assert.ok(errors(unsafeDirect).some(item => item.code === 'L4308'));
+	assert.ok(errors(unsafeDirect).some(item => item.code === 'L4212'));
 
 	const unsafeDotted = await compile(`import js { unsafeUi } from "./library.js"
 
