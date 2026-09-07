@@ -1378,14 +1378,29 @@ fn parseViewChild(stateValue: CoreState, tokens: List<FrontendToken>) -> CorePar
 		state = consumeViewLineEnd(advance(state), tokens, "a View text child")
 		return addNode(state, tokens, "ViewTextChild", text, start, state.index, [], [])
 	}
-	if text == "=" {
+	if text == "{" {
 		let expression = parseExpression(advance(state), tokens, 1, false)
-		state = consumeViewLineEnd(expression.state, tokens, "a View expression child")
+		state = expression.state
 		let mut children: List<Int> = []
 		if expression.id >= 0 {
 			children = List.append(children, expression.id)
 		}
-		return addNode(state, tokens, "ViewExpressionChild", "=", start, state.index, children, [])
+		if isText(state, tokens, "}") {
+			state = consumeViewLineEnd(advance(state), tokens, "a View expression child")
+		} else {
+			state = addDiagnosticAt(state, tokens, "L0002", "Expected } to end a View expression child", state.index)
+			while !atEnd(state, tokens)
+				&& currentKind(state, tokens) != FrontendTokenKind.NewLine
+				&& !isText(state, tokens, "}") {
+				state = advance(state)
+			}
+			if isText(state, tokens, "}") {
+				state = consumeViewLineEnd(advance(state), tokens, "a View expression child")
+			} else {
+				state = skipNewLines(state, tokens)
+			}
+		}
+		return addNode(state, tokens, "ViewExpressionChild", "{}", start, state.index, children, [])
 	}
 	if currentKind(state, tokens) == FrontendTokenKind.Identifier {
 		return parseViewElement(state, tokens)
