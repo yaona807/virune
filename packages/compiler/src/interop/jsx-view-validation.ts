@@ -118,6 +118,18 @@ function renderViewBlock(block: A.ViewBlock, context: RenderContext): string | u
 	return `<>${children.join('')}</>`;
 }
 
+function renderViewBlockExpression(block: A.ViewBlock, context: RenderContext): string | undefined {
+	if (block.children.length !== 1) return renderViewBlock(block, context);
+	const child = block.children[0]!;
+	switch (child.kind) {
+		case 'ViewTextChild': return JSON.stringify(child.value);
+		case 'ViewExpressionChild': return renderViewValue(child.expression, context);
+		case 'ViewChildrenSlot': return fail(context, child.span, 'compiler-managed children slots require the native component boundary and are not part of this validation slice');
+		case 'ViewElement': return renderViewElement(child, context);
+		case 'ViewConditional': return renderConditionalExpression(child, context);
+	}
+}
+
 function renderViewChild(child: A.ViewChild, context: RenderContext): string | undefined {
 	switch (child.kind) {
 		case 'ViewTextChild': return `{${JSON.stringify(child.value)}}`;
@@ -160,10 +172,10 @@ function renderViewConditional(conditional: A.ViewConditional, context: RenderCo
 	if (conditional.elseBranch === undefined) return fail(context, conditional.span, 'View if without else is deferred until preserved JSX absence semantics are implemented');
 	const condition = renderViewValue(conditional.condition, context);
 	if (condition === undefined) return undefined;
-	const thenBranch = renderViewBlock(conditional.thenBlock, context);
+	const thenBranch = renderViewBlockExpression(conditional.thenBlock, context);
 	if (thenBranch === undefined) return undefined;
 	const elseBranch = conditional.elseBranch.kind === 'ViewBlock'
-		? renderViewBlock(conditional.elseBranch, context)
+		? renderViewBlockExpression(conditional.elseBranch, context)
 		: renderConditionalExpression(conditional.elseBranch, context);
 	return elseBranch === undefined ? undefined : `{${condition} ? ${thenBranch} : ${elseBranch}}`;
 }
@@ -172,10 +184,10 @@ function renderConditionalExpression(conditional: A.ViewConditional, context: Re
 	if (conditional.elseBranch === undefined) return fail(context, conditional.span, 'View if without else is deferred until preserved JSX absence semantics are implemented');
 	const condition = renderViewValue(conditional.condition, context);
 	if (condition === undefined) return undefined;
-	const thenBranch = renderViewBlock(conditional.thenBlock, context);
+	const thenBranch = renderViewBlockExpression(conditional.thenBlock, context);
 	if (thenBranch === undefined) return undefined;
 	const elseBranch = conditional.elseBranch.kind === 'ViewBlock'
-		? renderViewBlock(conditional.elseBranch, context)
+		? renderViewBlockExpression(conditional.elseBranch, context)
 		: renderConditionalExpression(conditional.elseBranch, context);
 	return elseBranch === undefined ? undefined : `(${condition} ? ${thenBranch} : ${elseBranch})`;
 }
