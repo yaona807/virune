@@ -61,7 +61,7 @@ test('same-project modules can import and execute an internal runtime binding', 
 
 test('same-project modules can import an internal component signature before frontend emission', async () => {
 	await withProject(async root => {
-		await writeFile(join(root, 'src/card.virune'), 'internal component Card(title: String) uses JavaScript {\n\treturn view {\n\t\tdiv() {\n\t\t\t= title\n\t\t}\n\t}\n}\n', 'utf8');
+		await writeFile(join(root, 'src/card.virune'), 'internal component Card(title: String) uses JavaScript {\n\treturn view {\n\t\tdiv() {\n\t\t\t{ title }\n\t\t}\n\t}\n}\n', 'utf8');
 		await writeFile(join(root, 'src/main.virune'), 'import { Card } from "./card.virune"\n\npub fn run() -> Unit {\n\treturn Unit\n}\n', 'utf8');
 		const result = await buildProject(root, { write: false, jsInteropProvider: jsxValidationProvider });
 		const codes = errorCodes(result);
