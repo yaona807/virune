@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import test from 'node:test';
-import { compileSource } from '@virune/compiler/experimental';
+import { compileSource, type JsInteropProvider } from '@virune/compiler/experimental';
 import ts from 'typescript';
 import { TypeScriptInteropProvider } from '../src/index.js';
 import { fixtureRoot } from './fixture.js';
@@ -16,7 +16,7 @@ test('Array and ReadonlyArray provide stable indexed repetition evidence', async
 		'export declare const readonlyValues: ReadonlyArray<string>;',
 		'',
 	].join('\n'), 'utf8');
-	const provider = new TypeScriptInteropProvider({ projectRoot: root });
+	const provider: JsInteropProvider = new TypeScriptInteropProvider({ projectRoot: root });
 	for (const importedName of ['mutableValues', 'readonlyValues']) {
 		const imported = provider.resolveImport({
 			containingFile: join(root, 'src/main.virune'),
