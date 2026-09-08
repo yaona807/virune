@@ -216,7 +216,7 @@ export class JavaScriptEmitter {
 		this.#writer.indent(() => {
 			const validated = declaration.parameters.map((parameter, index) => {
 				const local = `$arg_${safeName(parameter.name)}`;
-				this.#writer.line(`const ${local} = $viruneValidateSafeFfiValue(${rawParameters[index]}, ${this.safeFfiBoundary(this.typeDescriptor(parameter.type))}, ${JSON.stringify(`$.${parameter.name}`)})`);
+				this.#writer.line(`const ${local} = $viruneValidateSafeFfiValue(${rawParameters[index]}, ${this.safeFfiBoundary(this.typeDescriptor(parameter.type))}, ${JSON.stringify(`$.${parameter.name}`)});`);
 				return local;
 			});
 			const call = `${implementationName}(${[...validated, 'rootTaskContext()'].join(', ')})`;
@@ -452,7 +452,7 @@ export class JavaScriptEmitter {
 			`${prefix}const ${lengthName} = ${sourceName}.length;`,
 			`${prefix}for (let ${sourceIndexName} = 0; ${sourceIndexName} < ${lengthName}; ${sourceIndexName}++) {`,
 		];
-		if (repetition.sourceKind === 'external-array') lines.push(`${prefix}\tif (!(${sourceIndexName} in ${sourceName})) continue;`);
+		if (repetition.sourceKind === 'external-array') lines.push(`${prefix}\tif (!Object.prototype.hasOwnProperty.call(${sourceName}, ${sourceIndexName})) continue;`);
 		lines.push(`${prefix}\tconst ${itemName} = ${sourceName}[${sourceIndexName}];`);
 		if (repetition.indexName !== undefined && repetition.indexSymbolId !== undefined) lines.push(`${prefix}\tconst ${this.nameOf(repetition.indexSymbolId, repetition.indexName)} = ${sourceIndexName};`);
 		lines.push(...this.viewRepetitionBlockLines(repetition.body, target, contextName, indent + 1));
