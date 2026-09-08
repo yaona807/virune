@@ -40,7 +40,7 @@ A View result may be consumed only as:
 
 - the direct return value of a `component`;
 - nested View child structure;
-- a View-local declarative conditional branch; or
+- a View-local declarative conditional or repetition body; or
 - the compiler-managed native-component child slot defined below.
 
 A View result cannot be stored in `let`/`const`, records, lists, tuples, or other ordinary values; passed to an ordinary call; exported as an ordinary API value; field- or index-accessed; projected to a general External value; or returned from an ordinary `fn`.
@@ -134,11 +134,41 @@ That slot is not an ordinary parameter, callable, External value, React `props.c
 
 The eventual compiler-owned transport/lowering must preserve the source evaluation and laziness required by the actual frontend framework without exposing a general View value.
 
-## `[frontend.no-generic-repetition]` No generic View `for`
+## `[frontend.view-repetition]` Declarative View repetition
 
-Virune 1.0 intentionally defines no generic View `for` form. Repetition identity and reactivity differ materially across frontend systems. Framework/library repetition primitives remain ordinary External APIs/components unless a later specification proves a framework-neutral semantic contract.
+A View-local `for` is a dedicated declarative View construct and is distinct from the ordinary imperative `ForStatement`:
 
-This absence is an intentional semantic boundary, not an invitation for the compiler to lower ordinary Virune `for` statements into frontend repetition heuristics.
+```virune
+view {
+    for user in users {
+        UserRow(user: user)
+    }
+
+    for user, index in users {
+        UserRow(user: user, position: index + 1)
+    }
+}
+```
+
+The source expression is evaluated exactly once for one downstream-host evaluation of the repetition. Items are visited in ascending zero-based source-index order and each visited item is read exactly once. The optional index binding denotes that source index, not the ordinal of emitted children.
+
+Each item's View body is evaluated in source order. If one item contributes multiple View children, those children are appended to one compiler-owned flat ordered child sequence. Virune does not give the item an implicit Fragment/group identity and does not rely on framework-specific array flattening to define this ordering.
+
+Repetition is not defined as `source.map(...)` or another overrideable collection method. The compiler must not hoist, snapshot, or cache a host-sensitive source expression outside its downstream-host evaluation position. A `key` property inside the body remains an ordinary downstream View property and has no Virune Core identity or reconciliation semantics.
+
+## `[frontend.view-repetition-source]` Repetition source boundary
+
+The initial repetition sources are limited to host-safe native `List<T>` and JavaScript External `Array<T>` / `ReadonlyArray<T>` whose array and indexed-element shape is proven from the current interop provider snapshot.
+
+External arrays are not implicitly converted to native `List`. `any`, `unknown`, unsupported collections, or unresolved, stale, partial, or ambiguous provider evidence fail closed.
+
+For an External array, one repetition evaluation observes the initial `length` exactly once. It visits indexes from zero up to that observed length, skips sparse-array holes, and reads each visited element exactly once. The checker commits provider-independent repetition evidence before emission; emission does not re-query TypeScript and does not infer array semantics from display text or package/framework heuristics.
+
+Generic `Iterable`, `AsyncIterable`, `Set`, `Map`, and arbitrary array-like values are outside this initial contract.
+
+## `[frontend.view-repetition-children]` Repetition child boundary
+
+The compiler-managed standalone `children` slot is rejected anywhere inside a repetition subtree, including through nested View conditionals or nested repetitions. Repetition does not introduce `break`, `continue`, assignment, or imperative loop-body semantics.
 
 ## `[frontend.framework-neutral]` Framework-neutral core
 
