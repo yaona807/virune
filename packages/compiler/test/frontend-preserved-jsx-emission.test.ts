@@ -170,7 +170,7 @@ test('View conditionals without else preserve zero-child absence in JSX proof an
 });
 
 test('no-else conditional fails closed when an empty fragment would become an observable External child', () => {
-	const result = compileSource(source(`import js { Card } from "./library.js"
+	const direct = compileSource(source(`import js { Card } from "./library.js"
 
 component Page(flag: Bool) uses JavaScript {
 	return view {
@@ -182,8 +182,26 @@ component Page(flag: Bool) uses JavaScript {
 	}
 }
 `), { jsInteropProvider: externalJsxProvider });
-	assert.ok(result.diagnostics.some(item => item.code === 'L4308' && item.severity === 'error' && /empty fragment observable as a child/u.test(item.message)));
-	assert.equal(result.output, undefined);
+	assert.ok(direct.diagnostics.some(item => item.code === 'L4308' && item.severity === 'error' && /empty fragment observable as a child/u.test(item.message)));
+	assert.equal(direct.output, undefined);
+
+	const nestedIntrinsic = compileSource(source(`import js { Card } from "./library.js"
+
+component Page(flag: Bool) uses JavaScript {
+	return view {
+		Card(label: "ok") {
+			main() {
+				if flag {
+					span()
+				}
+			}
+		}
+	}
+}
+`), { jsInteropProvider: externalJsxProvider });
+	assert.deepEqual(nestedIntrinsic.diagnostics.filter(item => item.severity === 'error'), []);
+	assert.ok(nestedIntrinsic.output);
+	assert.ok(nestedIntrinsic.output.code.includes('? <span /> : <></>}</main>'));
 });
 
 test('host-backed component props cannot bypass use-site validation through string interpolation', () => {
