@@ -109,6 +109,8 @@ Its condition is an ordinary Virune expression. The branches are View blocks. If
 
 The compiler must preserve the conditional's source/evaluation position for downstream frontend processing, including the no-`else` absence branch. It must not eagerly hoist, snapshot, or cache the conditional or host-sensitive branch expressions in a way that changes framework-owned reactivity or laziness.
 
+An empty fragment must not be used as an absence value when it would become an observable child of a JavaScript-imported External component. Until zero-child absence can be preserved at that boundary without changing the downstream component's children/slot semantics, a no-`else` conditional in that direct External child structure is rejected rather than guessed into success.
+
 ## `[frontend.children-slot]` Compiler-managed native children slot
 
 Inside View structure, standalone `children` denotes the compiler-managed child slot of the current Virune-native component:
