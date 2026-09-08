@@ -177,6 +177,20 @@
       "mutations": []
     },
     {
+      "id": "valid-view-repetition",
+      "tags": [
+        "valid",
+        "component",
+        "view",
+        "repetition"
+      ],
+      "source": "component Rows(items: List<Int>) uses JavaScript {\n\treturn view {\n\t\tfor item, index in items {\n\t\t\tspan(value: item, position: index)\n\t\t}\n\t}\n}\n",
+      "mutations": [
+        "remove-first-comma",
+        "remove-last-rbrace"
+      ]
+    },
+    {
       "id": "invalid-lex-character",
       "tags": [
         "invalid",
