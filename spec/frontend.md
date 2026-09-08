@@ -170,6 +170,8 @@ Generic `Iterable`, `AsyncIterable`, `Set`, `Map`, and arbitrary array-like valu
 
 The compiler-managed standalone `children` slot is rejected anywhere inside a repetition subtree, including through nested View conditionals or nested repetitions. Repetition does not introduce `break`, `continue`, assignment, or imperative loop-body semantics.
 
+A repetition-generated collection must not become the observable direct child value of a JavaScript-imported External component. Until the zero-or-more flat child contribution can be preserved at that boundary without changing downstream children/slot shape, repetition in that direct External child structure is rejected. Repetition nested under an intrinsic element that is itself below an External component remains eligible for normal validation.
+
 ## `[frontend.framework-neutral]` Framework-neutral core
 
 The component/View grammar does not select a framework. Virune Core does not define framework-name enums, package-name heuristics, a Virune frontend VDOM/runtime, universal state/effect/router APIs, property-vocabulary rewrites, or framework-specific JSX lowering.
