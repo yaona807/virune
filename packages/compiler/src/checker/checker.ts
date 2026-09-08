@@ -200,12 +200,12 @@ export class TypeChecker {
 		this.#namedTypes.set('ByteOrder', byteOrder);
 		const bytesError = this.arena.add({ kind: 'named', name: 'BytesError', definitionId: 'std:BytesError', declarationKind: 'record', arguments: [], fields: new Map([['message', this.arena.string]]), derives: new Set(['Eq', 'Hash', 'Debug']) });
 		this.#namedTypes.set('BytesError', bytesError);
-		const integerRangeError = this.arena.add({ kind: 'named', name: 'IntegerRangeError', definitionId: 'std:IntegerRangeError', declarationKind: 'record', arguments: [], fields: new Map([['type', this.arena.string], ['value', this.arena.string]]), derives: new Set(['Eq', 'Hash', 'Debug']) });
+		const integerRangeError = this.arena.add({ kind: 'named', name: 'IntegerRangeError', definitionId: 'std:IntegerRangeError', declarationKind: 'record', arguments: [], fields: new Map([['type', this.arena.string], ['value', this.arena.string], ['message', this.arena.string]]), derives: new Set(['Eq', 'Hash', 'Debug']) });
 		this.#namedTypes.set('IntegerRangeError', integerRangeError);
 		for (const [name, underlying] of [['Byte', this.arena.int], ['Int8', this.arena.int], ['UInt8', this.arena.int], ['Int16', this.arena.int], ['UInt16', this.arena.int], ['Int32', this.arena.int], ['UInt32', this.arena.int], ['Int64', this.arena.bigint], ['UInt64', this.arena.bigint]] as const) {
 			this.#namedTypes.set(name, this.arena.add({ kind: 'named', name, definitionId: `std:${name}`, declarationKind: 'newtype', arguments: [], underlying, derives: new Set(['Eq', 'Hash', 'Debug']) }));
 		}
-		const httpBody = this.arena.add({ kind: 'named', name: 'HttpBody', definitionId: 'std:HttpBody', declarationKind: 'enum', arguments: [], variants: new Map([['Empty', []], ['Text', [this.arena.string]], ['Bytes', [bytes]]]), derives: new Set(['Eq', 'Hash', 'Debug']) });
+		const httpBody = this.arena.add({ kind: 'named', name: 'HttpBody', definitionId: 'std:HttpBody', declarationKind: 'enum', arguments: [], variants: new Map([['Empty', []], ['Text', [this.arena.string]], ['Bytes', [bytes]]), derives: new Set(['Eq', 'Hash', 'Debug']) });
 		this.#namedTypes.set('HttpBody', httpBody);
 		const httpResponse = this.arena.add({ kind: 'named', name: 'HttpResponse', definitionId: 'std:HttpResponse', declarationKind: 'record', arguments: [], fields: new Map([
 			['status', this.arena.int], ['ok', this.arena.bool], ['headers', this.arena.map(this.arena.string, this.arena.string)], ['body', httpBody],
@@ -522,7 +522,7 @@ export class TypeChecker {
 						continue;
 					}
 					const name = String(argument.value);
-					if (jsonNames.has(name)) this.diagnostics.error('L2081', `Duplicate JSON field name ${name}`, attribute.span);
+					if (jsonNames.has(name)) this.diagnostics.error('L2081', `Duplicate JSON field name ${name}`, argument.span);
 					jsonNames.add(name);
 				} else if (attribute.name === 'jsonDefault') {
 					const argument = attribute.arguments[0];
@@ -751,34 +751,72 @@ export class TypeChecker {
 		this.checkViewBlock(expression.body, scope);
 	}
 
-	private checkViewBlock(block: A.ViewBlock, scope: Scope): void {
+	private checkViewBlock(block: A.ViewBlock, scope: Scope, insideRepetition = false): void {
 		for (const child of block.children) {
 			switch (child.kind) {
 				case 'ViewTextChild': break;
 				case 'ViewExpressionChild': this.checkExpression(child.expression, scope); break;
 				case 'ViewChildrenSlot':
+					if (insideRepetition) {
+						this.diagnostics.error('L4311', 'children cannot appear inside View repetition', child.span);
+						break;
+					}
 					this.#currentComponentChildrenSlots++;
 					if (this.#currentComponentChildrenSlots > 1) this.diagnostics.error('L4306', 'A component may contain at most one children slot', child.span);
 					break;
 				case 'ViewElement':
 					for (const property of child.properties) this.checkExpression(property.value, scope);
-					if (child.children !== undefined) this.checkViewBlock(child.children, scope);
+					if (child.children !== undefined) this.checkViewBlock(child.children, scope, insideRepetition);
 					break;
 				case 'ViewConditional':
 					this.requireBool(this.checkExpression(child.condition, scope), child.condition.span);
-					this.checkViewBlock(child.thenBlock, scope);
-					if (child.elseBranch?.kind === 'ViewBlock') this.checkViewBlock(child.elseBranch, scope);
-					else if (child.elseBranch !== undefined) this.checkViewConditional(child.elseBranch, scope);
+					this.checkViewBlock(child.thenBlock, scope, insideRepetition);
+					if (child.elseBranch?.kind === 'ViewBlock') this.checkViewBlock(child.elseBranch, scope, insideRepetition);
+					else if (child.elseBranch !== undefined) this.checkViewConditional(child.elseBranch, scope, insideRepetition);
 					break;
+				case 'ViewRepetition': this.checkViewRepetition(child, scope); break;
 			}
 		}
 	}
 
-	private checkViewConditional(conditional: A.ViewConditional, scope: Scope): void {
+	private checkViewConditional(conditional: A.ViewConditional, scope: Scope, insideRepetition = false): void {
 		this.requireBool(this.checkExpression(conditional.condition, scope), conditional.condition.span);
-		this.checkViewBlock(conditional.thenBlock, scope);
-		if (conditional.elseBranch?.kind === 'ViewBlock') this.checkViewBlock(conditional.elseBranch, scope);
-		else if (conditional.elseBranch !== undefined) this.checkViewConditional(conditional.elseBranch, scope);
+		this.checkViewBlock(conditional.thenBlock, scope, insideRepetition);
+		if (conditional.elseBranch?.kind === 'ViewBlock') this.checkViewBlock(conditional.elseBranch, scope, insideRepetition);
+		else if (conditional.elseBranch !== undefined) this.checkViewConditional(conditional.elseBranch, scope, insideRepetition);
+	}
+
+	private checkViewRepetition(repetition: A.ViewRepetition, scope: Scope): void {
+		const sourceTypeId = this.checkExpression(repetition.source, scope);
+		const sourceType = this.arena.get(sourceTypeId);
+		let itemType = this.arena.error;
+		if (sourceType.kind === 'list') {
+			repetition.sourceKind = 'native-list';
+			itemType = sourceType.element;
+		} else if (sourceType.kind === 'foreign' && sourceType.snapshot.category === 'array') {
+			const provider = this.currentInteropProvider(sourceType.snapshot);
+			let resolution: import('../interop/types.js').ForeignIndexResolution | undefined;
+			if (provider?.resolveIndexUsage !== undefined) {
+				try { resolution = provider.resolveIndexUsage(sourceType.ref, { index: { kind: 'native-primitive', primitive: 'Int' } }); } catch { resolution = undefined; }
+			}
+			if (provider !== undefined && this.isCurrentForeignSnapshot(resolution?.result, provider, false)) {
+				this.requireEffects(['JavaScript'], repetition.span);
+				repetition.sourceKind = 'external-array';
+				itemType = this.arena.foreign(resolution.result);
+			}
+		}
+		if (repetition.sourceKind === undefined) this.diagnostics.error('L4310', 'View repetition requires a native List or proven External Array source', repetition.source.span);
+
+		const childScope = new Scope(scope);
+		const item = this.#factory.create(repetition.itemName, 'variable', itemType, repetition.span, { declaration: repetition });
+		if (!childScope.define(item)) this.diagnostics.error('L1008', `View repetition item ${repetition.itemName} shadows an existing name`, repetition.span);
+		else { repetition.itemSymbolId = item.id; this.#symbols.set(item.id, item); }
+		if (repetition.indexName !== undefined) {
+			const index = this.#factory.create(repetition.indexName, 'variable', this.arena.int, repetition.span, { declaration: repetition });
+			if (!childScope.define(index)) this.diagnostics.error('L1008', `View repetition index ${repetition.indexName} shadows an existing name`, repetition.span);
+			else { repetition.indexSymbolId = index.id; this.#symbols.set(index.id, index); }
+		}
+		this.checkViewBlock(repetition.body, childScope, true);
 	}
 
 	private checkContextualAggregate(expression: A.ContextualAggregateExpression, scope: Scope, expected: TypeId | undefined): TypeId {
