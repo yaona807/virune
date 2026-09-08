@@ -88,34 +88,39 @@ function validateSingleFileComponentBoundary(module: ModuleNode, semantic: Seman
 			const display = symbol === undefined ? '<unresolved>' : semantic.arena.display(symbol.typeId);
 			diagnostics.error('L4309', `Component parameter ${parameter.name} has type ${display}; single-file JSX emission currently supports only Bool, Int, Float, BigInt, and String host props`, parameter.span);
 		}
-		const interpolation = findHostParameterInterpolation(declaration.body, parameterNames);
-		if (interpolation !== undefined) {
+		const interpolation = findUnsupportedComponentInterpolation(declaration.body, parameterNames);
+		if (interpolation?.kind === 'view-text') {
+			diagnostics.error('L4309', 'Interpolated View text children are not available in single-file JSX emission; use an explicit View expression child instead', interpolation.span);
+		} else if (interpolation !== undefined) {
 			diagnostics.error('L4309', `Component parameter ${interpolation.name} cannot be referenced directly through string interpolation because component parameters remain host-backed at each use site; bind it to an explicit local value first`, interpolation.span);
 		}
 	}
 }
 
-function findHostParameterInterpolation(value: unknown, parameterNames: ReadonlySet<string>): { readonly name: string; readonly span: SourceSpan } | undefined {
+function findUnsupportedComponentInterpolation(value: unknown, parameterNames: ReadonlySet<string>): { readonly kind: 'view-text'; readonly span: SourceSpan } | { readonly kind: 'host-parameter'; readonly name: string; readonly span: SourceSpan } | undefined {
 	if (Array.isArray(value)) {
 		for (const item of value) {
-			const found = findHostParameterInterpolation(item, parameterNames);
+			const found = findUnsupportedComponentInterpolation(item, parameterNames);
 			if (found !== undefined) return found;
 		}
 		return undefined;
 	}
 	if (value === null || typeof value !== 'object') return undefined;
 	const node = value as Record<string, unknown>;
+	if (node.kind === 'ViewTextChild' && typeof node.value === 'string' && /(?<!\{)\{[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*\}(?!\})/u.test(node.value)) {
+		return { kind: 'view-text', span: node.span as SourceSpan };
+	}
 	if (node.kind === 'LiteralExpression' && node.literalKind === 'String' && typeof node.value === 'string') {
 		for (const match of node.value.matchAll(/(?<!\{)\{([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*)\}(?!\})/gu)) {
 			const path = match[1];
 			if (path === undefined) continue;
 			const name = path.split('.')[0]!;
-			if (parameterNames.has(name)) return { name, span: node.span as SourceSpan };
+			if (parameterNames.has(name)) return { kind: 'host-parameter', name, span: node.span as SourceSpan };
 		}
 	}
 	for (const [key, child] of Object.entries(node)) {
 		if (key === 'span') continue;
-		const found = findHostParameterInterpolation(child, parameterNames);
+		const found = findUnsupportedComponentInterpolation(child, parameterNames);
 		if (found !== undefined) return found;
 	}
 	return undefined;
