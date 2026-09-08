@@ -579,6 +579,7 @@ export class ViruneParser extends CstParser {
 		$.RULE('viewChild', () => {
 			$.OR([
 				{ GATE: () => this.LA(1).tokenType === KwIf, ALT: () => $.SUBRULE($.viewConditional) },
+				{ GATE: () => this.LA(1).tokenType === KwFor, ALT: () => $.SUBRULE($.viewRepetition) },
 				{ GATE: () => this.LA(1).tokenType === KwChildren && this.LA(2).tokenType === NewLine, ALT: () => $.SUBRULE($.viewChildrenSlot) },
 				{ GATE: () => this.LA(1).tokenType === StringLiteral, ALT: () => $.SUBRULE($.viewTextChild) },
 				{ GATE: () => this.LA(1).tokenType === LBrace, ALT: () => $.SUBRULE($.viewExpressionChild) },
@@ -633,6 +634,15 @@ export class ViruneParser extends CstParser {
 					{ ALT: () => $.SUBRULE2($.viewConditional) },
 				]);
 			});
+		});
+
+		$.RULE('viewRepetition', () => {
+			$.CONSUME(KwFor);
+			$.CONSUME(Identifier);
+			$.OPTION(() => { $.CONSUME(Comma); $.CONSUME2(Identifier); });
+			$.CONSUME(KwIn);
+			$.SUBRULE($.expression);
+			$.SUBRULE($.viewBlock);
 		});
 
 		$.RULE('viewTextChild', () => {
@@ -999,6 +1009,7 @@ export class ViruneParser extends CstParser {
 	public viewPropertyList!: () => CstNode;
 	public viewProperty!: () => CstNode;
 	public viewConditional!: () => CstNode;
+	public viewRepetition!: () => CstNode;
 	public viewTextChild!: () => CstNode;
 	public viewExpressionChild!: () => CstNode;
 	public viewChildrenSlot!: () => CstNode;
