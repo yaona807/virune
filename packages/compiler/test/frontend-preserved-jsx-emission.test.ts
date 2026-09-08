@@ -139,6 +139,36 @@ internal component Details(title: String, count: Int, ready: Bool, ratio: Float,
 	assert.match(code, /: <span>\{/u);
 });
 
+test('View conditionals without else preserve zero-child absence in JSX proof and emission', () => {
+	let proofSource = '';
+	const provider: JsInteropProvider = {
+		...jsxValidationProvider,
+		resolveJsxUsage(usage) {
+			proofSource = usage.sourceText;
+			return { accepted: true };
+		},
+	};
+	const result = compileSource(source(`component Card(ready: Bool, nested: Bool) uses JavaScript {
+	return view {
+		if ready {
+			span()
+		}
+		main() {
+			if nested {
+				strong()
+			}
+		}
+	}
+}
+`), { jsInteropProvider: provider });
+	assert.deepEqual(result.diagnostics.filter(item => item.severity === 'error'), []);
+	assert.ok(result.output);
+	assert.ok(proofSource.includes('{(false as boolean) ? <span /> : <></>}'));
+	assert.ok(proofSource.includes('<main>{(false as boolean) ? <strong /> : <></>}</main>'));
+	assert.match(result.output.code, /\? <span \/> : <>\<\/>/u);
+	assert.match(result.output.code, /<main>\{[^}]+\? <strong \/> : <>\<\/>\}<\/main>/u);
+});
+
 test('host-backed component props cannot bypass use-site validation through string interpolation', () => {
 	const direct = compile(`component Card(title: String) uses JavaScript {
 	return view {
