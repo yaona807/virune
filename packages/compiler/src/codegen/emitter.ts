@@ -18,6 +18,7 @@ export class JavaScriptEmitter {
 	readonly #source: SourceFile;
 	readonly #outputFile: string;
 	readonly #symbolNames = new Map<SymbolId, string>();
+	readonly #componentParameterReads = new Map<SymbolId, string>();
 	readonly #sourceMap: boolean;
 	#contextName = '$ctx';
 	#temporary = 0;
@@ -113,7 +114,7 @@ export class JavaScriptEmitter {
 		this.#writer.mark(declaration.span, 'name' in declaration ? declaration.name : undefined);
 		switch (declaration.kind) {
 			case 'FunctionDeclaration': this.emitFunction(declaration); break;
-			case 'ComponentDeclaration': return panicEmitter('ComponentDeclaration reached ordinary JavaScript emission before frontend artifact planning');
+			case 'ComponentDeclaration': this.emitComponent(declaration); break;
 			case 'RecordDeclaration': this.emitRecordDeclaration(declaration); break;
 			case 'EnumDeclaration': this.emitEnumDeclaration(declaration); break;
 			case 'NewtypeDeclaration': this.emitNewtypeDeclaration(declaration); break;
@@ -177,6 +178,36 @@ export class JavaScriptEmitter {
 		this.#currentAsync = previousAsync;
 		this.#contextName = previousContextName;
 		if (jsExport) this.emitJsExportWrapper(declaration, name);
+	}
+
+	private emitComponent(declaration: A.ComponentDeclaration): void {
+		const prefix = this.moduleExported(declaration) ? 'export ' : '';
+		const name = this.nameOf(declaration.symbolId, declaration.name);
+		this.#componentParameterReads.clear();
+		for (const parameter of declaration.parameters) {
+			if (parameter.symbolId === undefined) return panicEmitter(`Component parameter ${parameter.name} reached emission without a symbol`);
+			this.#componentParameterReads.set(parameter.symbolId, `$viruneValidateSafeFfiValue($props[${JSON.stringify(parameter.name)}], ${this.safeFfiBoundary(this.typeDescriptor(parameter.type))}, ${JSON.stringify(`$.${parameter.name}`)})`);
+		}
+		const previousAsync = this.#currentAsync;
+		const previousContextName = this.#contextName;
+		this.#currentAsync = false;
+		this.#contextName = '$ctx';
+		this.#writer.line(`${prefix}function ${name}($props) {`);
+		this.#writer.indent(() => {
+			this.#writer.line('const $ctx = rootTaskContext();');
+			this.#writer.line('try {');
+			this.#writer.indent(() => this.emitBlock(declaration.body));
+			this.#writer.line('} catch ($error) {');
+			this.#writer.indent(() => {
+				this.#writer.line('if (isPropagation($error)) return $error.value;');
+				this.#writer.line('throw $error;');
+			});
+			this.#writer.line('}');
+		});
+		this.#writer.line('}');
+		this.#currentAsync = previousAsync;
+		this.#contextName = previousContextName;
+		this.#componentParameterReads.clear();
 	}
 
 	private emitJsExportWrapper(declaration: A.FunctionDeclaration, implementationName: string): void {
@@ -344,8 +375,54 @@ export class JavaScriptEmitter {
 			case 'MatchExpression': return this.match(expression, contextName);
 			case 'LambdaExpression': return this.lambdaExpression(expression, contextName);
 			case 'ParallelExpression': return this.parallelExpression(expression, contextName);
-			case 'ViewExpression': return panicEmitter('ViewExpression reached ordinary JavaScript emission before preserved JSX emission');
+			case 'ViewExpression': return this.viewBlockExpression(expression.body, contextName);
 		}
+	}
+
+	private viewBlockExpression(block: A.ViewBlock, contextName: string): string {
+		if (block.children.length === 1) return this.viewChildExpression(block.children[0]!, contextName);
+		return `<>${block.children.map(child => this.viewChild(child, contextName)).join('')}</>`;
+	}
+
+	private viewBlockContents(block: A.ViewBlock, contextName: string): string {
+		return block.children.map(child => this.viewChild(child, contextName)).join('');
+	}
+
+	private viewChild(child: A.ViewChild, contextName: string): string {
+		switch (child.kind) {
+			case 'ViewTextChild': return `{${javascriptStringLiteral(child.value)}}`;
+			case 'ViewExpressionChild': return `{${this.expression(child.expression, contextName)}}`;
+			case 'ViewChildrenSlot': return panicEmitter('View children slot reached preserved JSX emission before native component transport');
+			case 'ViewElement': return this.viewElement(child, contextName);
+			case 'ViewConditional': return `{${this.viewConditionalExpression(child, contextName)}}`;
+		}
+	}
+
+	private viewChildExpression(child: A.ViewChild, contextName: string): string {
+		switch (child.kind) {
+			case 'ViewTextChild': return javascriptStringLiteral(child.value);
+			case 'ViewExpressionChild': return this.expression(child.expression, contextName);
+			case 'ViewChildrenSlot': return panicEmitter('View children slot reached preserved JSX emission before native component transport');
+			case 'ViewElement': return this.viewElement(child, contextName);
+			case 'ViewConditional': return `(${this.viewConditionalExpression(child, contextName)})`;
+		}
+	}
+
+	private viewElement(element: A.ViewElement, contextName: string): string {
+		const tag = element.tag.join('.');
+		const properties = element.properties.map(property => `${property.name}={${this.expression(property.value, contextName)}}`);
+		const attributes = properties.length === 0 ? '' : ` ${properties.join(' ')}`;
+		if (element.children === undefined) return `<${tag}${attributes} />`;
+		return `<${tag}${attributes}>${this.viewBlockContents(element.children, contextName)}</${tag}>`;
+	}
+
+	private viewConditionalExpression(conditional: A.ViewConditional, contextName: string): string {
+		if (conditional.elseBranch === undefined) return panicEmitter('View conditional without else reached preserved JSX emission before absence semantics were proven');
+		const thenBranch = this.viewBlockExpression(conditional.thenBlock, contextName);
+		const elseBranch = conditional.elseBranch.kind === 'ViewBlock'
+			? this.viewBlockExpression(conditional.elseBranch, contextName)
+			: `(${this.viewConditionalExpression(conditional.elseBranch, contextName)})`;
+		return `${this.expression(conditional.condition, contextName)} ? ${thenBranch} : ${elseBranch}`;
 	}
 
 	private contextualAggregate(expression: A.ContextualAggregateExpression, contextName: string): string {
@@ -441,6 +518,10 @@ export class JavaScriptEmitter {
 	}
 
 	private identifier(expression: A.IdentifierExpression): string {
+		if (expression.symbolId !== undefined) {
+			const componentRead = this.#componentParameterReads.get(expression.symbolId);
+			if (componentRead !== undefined) return componentRead;
+		}
 		if (expression.name === 'Unit') return 'undefined';
 		if (expression.name === 'expect') return '$viruneExpect';
 		if (['Some', 'None', 'Ok', 'Err', 'panic'].includes(expression.name)) return expression.name;

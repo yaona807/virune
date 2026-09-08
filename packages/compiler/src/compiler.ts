@@ -30,6 +30,8 @@ export interface CompileResult {
 	readonly output?: EmitResult;
 }
 
+const frontendPrimitiveParameters = new Set(['Bool', 'Int', 'Float', 'BigInt', 'String']);
+
 export function compileSource(source: SourceFile, options: CompileOptions = {}): CompileResult {
 	const diagnostics = new DiagnosticBag();
 	const lexResult = lex(source.text);
@@ -62,17 +64,66 @@ export function compileSource(source: SourceFile, options: CompileOptions = {}):
 	if (diagnostics.hasErrors || options.emit === false) return { source, diagnostics: diagnostics.items, ast, semantic };
 	const component = ast.declarations.find(declaration => declaration.kind === 'ComponentDeclaration');
 	if (component !== undefined) {
-		diagnostics.error('L4307', 'Component emission is unavailable until frontend JSX usage and preserved artifact emission are implemented', component.span);
-		return { source, diagnostics: diagnostics.items, ast, semantic };
+		validateSingleFileComponentBoundary(ast, semantic, diagnostics);
+		if (diagnostics.hasErrors) return { source, diagnostics: diagnostics.items, ast, semantic };
 	}
 	const hir = lowerToHir(ast, semantic);
-	const outputFile = options.outputFile ?? source.path.replace(/\.virune$/u, '.js');
+	const outputFile = options.outputFile ?? source.path.replace(/\.virune$/u, component === undefined ? '.js' : '.jsx');
 	const output = emitJavaScript(hir, source, outputFile, {
 		...(options.sourceMap === undefined ? {} : { sourceMap: options.sourceMap }),
 		...(options.sourcesContent === undefined ? {} : { sourcesContent: options.sourcesContent }),
 		...(options.sourcePath === undefined ? {} : { sourcePath: options.sourcePath }),
 	});
 	return { source, diagnostics: diagnostics.items, ast, semantic, output };
+}
+
+function validateSingleFileComponentBoundary(module: ModuleNode, semantic: SemanticModel, diagnostics: DiagnosticBag): void {
+	for (const declaration of module.declarations) {
+		if (declaration.kind !== 'ComponentDeclaration') continue;
+		const parameterNames = new Set(declaration.parameters.map(parameter => parameter.name));
+		for (const parameter of declaration.parameters) {
+			const symbol = parameter.symbolId === undefined ? undefined : semantic.symbols.get(parameter.symbolId);
+			const type = symbol === undefined ? undefined : semantic.arena.get(symbol.typeId);
+			if (type?.kind === 'primitive' && frontendPrimitiveParameters.has(type.name)) continue;
+			const display = symbol === undefined ? '<unresolved>' : semantic.arena.display(symbol.typeId);
+			diagnostics.error('L4309', `Component parameter ${parameter.name} has type ${display}; single-file JSX emission currently supports only Bool, Int, Float, BigInt, and String host props`, parameter.span);
+		}
+		const interpolation = findUnsupportedComponentInterpolation(declaration.body, parameterNames);
+		if (interpolation?.kind === 'view-text') {
+			diagnostics.error('L4309', 'Interpolated View text children are not available in single-file JSX emission; use an explicit View expression child instead', interpolation.span);
+		} else if (interpolation !== undefined) {
+			diagnostics.error('L4309', `Component parameter ${interpolation.name} cannot be referenced directly through string interpolation because component parameters remain host-backed at each use site; bind it to an explicit local value first`, interpolation.span);
+		}
+	}
+}
+
+function findUnsupportedComponentInterpolation(value: unknown, parameterNames: ReadonlySet<string>): { readonly kind: 'view-text'; readonly span: SourceSpan } | { readonly kind: 'host-parameter'; readonly name: string; readonly span: SourceSpan } | undefined {
+	if (Array.isArray(value)) {
+		for (const item of value) {
+			const found = findUnsupportedComponentInterpolation(item, parameterNames);
+			if (found !== undefined) return found;
+		}
+		return undefined;
+	}
+	if (value === null || typeof value !== 'object') return undefined;
+	const node = value as Record<string, unknown>;
+	if (node.kind === 'ViewTextChild' && typeof node.value === 'string' && /(?<!\{)\{[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*\}(?!\})/u.test(node.value)) {
+		return { kind: 'view-text', span: node.span as SourceSpan };
+	}
+	if (node.kind === 'LiteralExpression' && node.literalKind === 'String' && typeof node.value === 'string') {
+		for (const match of node.value.matchAll(/(?<!\{)\{([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*)\}(?!\})/gu)) {
+			const path = match[1];
+			if (path === undefined) continue;
+			const name = path.split('.')[0]!;
+			if (parameterNames.has(name)) return { kind: 'host-parameter', name, span: node.span as SourceSpan };
+		}
+	}
+	for (const [key, child] of Object.entries(node)) {
+		if (key === 'span') continue;
+		const found = findUnsupportedComponentInterpolation(child, parameterNames);
+		if (found !== undefined) return found;
+	}
+	return undefined;
 }
 
 function parserDiagnostic(source: SourceFile, error: IRecognitionException): Diagnostic {
