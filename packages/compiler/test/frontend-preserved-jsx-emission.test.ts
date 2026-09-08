@@ -60,6 +60,7 @@ test('single-file components emit preserved JSX and a matching default JSX sourc
 	return view {
 		main(class: "page", "data-state": "ready", "a:b": "namespaced") {
 			"hello"
+			"{{ready}}"
 			span()
 		}
 	}
@@ -69,7 +70,7 @@ test('single-file components emit preserved JSX and a matching default JSX sourc
 	assert.ok(result.output);
 	assert.match(result.output.code, /export function Card\(\$props\)/u);
 	assert.match(result.output.code, /const \$ctx = rootTaskContext\(\);/u);
-	assert.ok(result.output.code.includes('return <main class={"page"} data-state={"ready"} a:b={"namespaced"}>{"hello"}<span /></main>;'));
+	assert.ok(result.output.code.includes('return <main class={"page"} data-state={"ready"} a:b={"namespaced"}>{"hello"}{"{ready}"}<span /></main>;'));
 	assert.ok(result.output.code.endsWith('//# sourceMappingURL=frontend-emission.jsx.map\n'));
 	assert.equal(JSON.parse(result.output.map).file, 'frontend-emission.jsx');
 });
@@ -161,6 +162,20 @@ test('host-backed component props cannot bypass use-site validation through stri
 	assert.ok(snapshot.output.code.includes('label={`Hello ${localTitle}`}'));
 });
 
+test('interpolated View text fails closed instead of inventing text-child name resolution', () => {
+	const result = compile(`component Card(title: String) uses JavaScript {
+	let localTitle = title
+	return view {
+		main() {
+			"Hello {localTitle}"
+		}
+	}
+}
+`);
+	assert.ok(result.diagnostics.some(item => item.code === 'L4309' && item.severity === 'error' && /explicit View expression child/u.test(item.message)));
+	assert.equal(result.output, undefined);
+});
+
 test('JSX proof widens interpolated strings and normalizes escaped braces like emission', () => {
 	let proofSource = '';
 	const provider: JsInteropProvider = {
@@ -172,13 +187,17 @@ test('JSX proof widens interpolated strings and normalizes escaped braces like e
 	};
 	const result = compileSource(source(`component Card(title: String) uses JavaScript {
 	return view {
-		main(label: "Hello {title}", brace: "{{ready}}")
+		main(label: "Hello {title}", brace: "{{ready}}") {
+			"{{child}}"
+			"Hello {title}"
+		}
 	}
 }
 `), { emit: false, jsInteropProvider: provider });
 	assert.deepEqual(result.diagnostics.filter(item => item.severity === 'error'), []);
 	assert.ok(proofSource.includes('label={("" as string)}'));
 	assert.ok(proofSource.includes('brace={"{ready}"}'));
+	assert.ok(proofSource.includes('>{"{child}"}{("" as string)}</main>'));
 });
 
 test('unsupported component parameter transport fails closed before emission', () => {
