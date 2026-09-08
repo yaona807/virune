@@ -26,7 +26,7 @@ test "frontend parser builds a deterministic flat module AST" {
 }
 
 test "frontend parser preserves the component and View surface" {
-	let source = "internal component Card(title: String) uses JavaScript {\n\treturn view {\n\t\tUi.Card(\"aria-label\": title) {\n\t\t\t\"hello\"\n\t\t\t{ title }\n\t\t\tif true {\n\t\t\t\tchildren\n\t\t\t} else {\n\t\t\t\tUi.Empty()\n\t\t\t}\n\t\t}\n\t}\n}\n"
+	let source = "internal component Card(title: String, items: List<String>) uses JavaScript {\n\treturn view {\n\t\tUi.Card(\"aria-label\": title) {\n\t\t\t\"hello\"\n\t\t\t{ title }\n\t\t\tif true {\n\t\t\t\tchildren\n\t\t\t} else {\n\t\t\t\tUi.Empty()\n\t\t\t}\n\t\t\tfor item in items {\n\t\t\t\tUi.Row(value: item)\n\t\t\t}\n\t\t\tfor item, index in items {\n\t\t\t\tUi.Row(value: item, position: index)\n\t\t\t}\n\t\t}\n\t}\n}\n"
 	let result = encoded(source)
 	expect(String.contains(result, "\"accepted\":true"))
 	expect(String.contains(result, "\"kind\":\"ComponentDeclaration\""))
@@ -36,6 +36,8 @@ test "frontend parser preserves the component and View surface" {
 	expect(String.contains(result, "\"kind\":\"ViewTextChild\""))
 	expect(String.contains(result, "\"kind\":\"ViewExpressionChild\""))
 	expect(String.contains(result, "\"kind\":\"ViewConditional\""))
+	expect(String.contains(result, "\"kind\":\"ViewRepetition\""))
+	expect(String.contains(result, "\"text\":\"item,index\""))
 	expect(String.contains(result, "\"kind\":\"ViewChildrenSlot\""))
 
 	expect(String.contains(encoded("component Legacy(title: String) uses JavaScript {\n\treturn view {\n\t\t= title\n\t}\n}\n"), "\"accepted\":false"))
