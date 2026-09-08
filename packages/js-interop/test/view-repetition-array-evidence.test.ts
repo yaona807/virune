@@ -7,9 +7,7 @@ import ts from 'typescript';
 import { TypeScriptInteropProvider } from '../src/index.js';
 import { fixtureRoot } from './fixture.js';
 
-const indexUsage = { index: { kind: 'native-primitive', primitive: 'Int' } } as const;
-
-test('Array and ReadonlyArray provide stable indexed repetition evidence', async () => {
+test('Array and ReadonlyArray provide stable repetition element evidence', async () => {
 	const root = await fixtureRoot();
 	await writeFile(join(root, 'src/library.d.ts'), [
 		'export declare const mutableValues: string[];',
@@ -27,9 +25,9 @@ test('Array and ReadonlyArray provide stable indexed repetition evidence', async
 		});
 		assert.equal(imported.type?.category, 'array', importedName);
 		assert.ok(imported.type);
-		const indexed = provider.resolveIndexUsage?.(imported.type.ref, indexUsage);
-		assert.equal(indexed?.result.category, 'primitive', importedName);
-		assert.equal(indexed?.result.primitive, 'string', importedName);
+		const element = provider.resolveArrayElement?.(imported.type.ref);
+		assert.equal(element?.category, 'primitive', importedName);
+		assert.equal(element?.primitive, 'string', importedName);
 	}
 });
 
@@ -59,7 +57,7 @@ test('ReadonlyArray repetition emits stable source-index traversal without map s
 	const code = result.output.code;
 	assert.match(code, /const \$viewSource\d+ = readonlyValues;/u);
 	assert.match(code, /const \$viewLength\d+ = \$viewSource\d+\.length;/u);
-	assert.match(code, /if \(!\(\$viewIndex\d+ in \$viewSource\d+\)\) continue;/u);
+	assert.match(code, /if \(!Object\.prototype\.hasOwnProperty\.call\(\$viewSource\d+, \$viewIndex\d+\)\) continue;/u);
 	assert.match(code, /const value = \$viewSource\d+\[\$viewIndex\d+\];/u);
 	assert.match(code, /const index = \$viewIndex\d+;/u);
 	assert.ok(code.includes('.push(<span value={value} index={index} />);'));
