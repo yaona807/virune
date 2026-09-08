@@ -260,7 +260,7 @@ function printDeclaration(printer: Printer, declaration: Declaration): void {
 			break;
 		}
 		case 'ComponentDeclaration': {
-			const parameters = declaration.parameters.map(parameter => `${parameter.name}${parameter.optional ? '?' : ''}: ${printType(parameter.type)}`);
+			const parameters = declaration.parameters.map(parameter => `${parameter.name}${parameter.optional ? '?' : `: ${printType(parameter.type)}`}`);
 			printer.line(`${visibilityPrefix(declaration)}component ${declaration.name}${printDelimited(parameters, '(', ')')} ${printUses(declaration.effects)} {`);
 			printer.indent(() => printBlockContents(printer, declaration.body));
 			printer.line('}');
@@ -366,6 +366,7 @@ function printViewChild(child: ViewChild, indent: number): string {
 			return child.children === undefined ? head : `${head} ${printViewBlock(child.children, indent)}`;
 		}
 		case 'ViewConditional': return printViewConditional(child, indent);
+		case 'ViewRepetition': return `${prefix}for ${child.itemName}${child.indexName === undefined ? '' : `, ${child.indexName}`} in ${printExpression(child.source)} ${printViewBlock(child.body, indent)}`;
 	}
 }
 
