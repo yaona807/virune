@@ -317,6 +317,9 @@ function renderViewElement(element: A.ViewElement, context: RenderContext): stri
 	if (external && containsDirectConditionalAbsence(element.children)) {
 		return fail(context, element.span, `View if without else beneath JavaScript-imported External component ${tag} cannot preserve zero-child absence without making the empty fragment observable as a child`);
 	}
+	if (external && containsDirectRepetition(element.children)) {
+		return fail(context, element.span, `View repetition beneath JavaScript-imported External component ${tag} cannot preserve flat child expansion without making the generated collection observable as a child`);
+	}
 	const children = renderViewBlockContents(element.children, context);
 	return children === undefined ? undefined : `<${tag}${attributes}>${children}</${tag}>`;
 }
@@ -341,6 +344,18 @@ function conditionalContainsAbsence(conditional: A.ViewConditional): boolean {
 	return conditional.elseBranch.kind === 'ViewBlock'
 		? containsDirectConditionalAbsence(conditional.elseBranch)
 		: conditionalContainsAbsence(conditional.elseBranch);
+}
+
+function containsDirectRepetition(block: A.ViewBlock): boolean {
+	return block.children.some(child => child.kind === 'ViewRepetition' || (child.kind === 'ViewConditional' && conditionalContainsDirectRepetition(child)));
+}
+
+function conditionalContainsDirectRepetition(conditional: A.ViewConditional): boolean {
+	if (containsDirectRepetition(conditional.thenBlock)) return true;
+	if (conditional.elseBranch === undefined) return false;
+	return conditional.elseBranch.kind === 'ViewBlock'
+		? containsDirectRepetition(conditional.elseBranch)
+		: conditionalContainsDirectRepetition(conditional.elseBranch);
 }
 
 function renderViewConditional(conditional: A.ViewConditional, context: RenderContext): string | undefined {
