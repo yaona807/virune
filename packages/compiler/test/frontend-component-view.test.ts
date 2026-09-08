@@ -225,14 +225,55 @@ fn preserveChildren(children: Int) -> Int {
 	assert.deepEqual(ordinary.diagnostics.filter(item => item.severity === 'error'), []);
 });
 
-// @virune-rule {"id":"frontend.no-generic-repetition","runner":"unit","file":"packages/compiler/test/frontend-component-view.test.ts","case":"generic View repetition syntax is not part of the grammar","kind":"negative","platform":"common"}
-test('generic View repetition syntax is not part of the grammar', () => {
-	assert.ok(errorCodes(`component ListView(items: List<Int>) uses JavaScript {
+// @virune-rule {"id":"frontend.view-repetition","runner":"unit","file":"packages/compiler/test/frontend-component-view.test.ts","case":"View repetition accepts native List with source index","kind":"positive","platform":"common"}
+test('View repetition accepts native List with source index', () => {
+	const result = checkSource(`component ListView(items: List<Int>) uses JavaScript {
+	return view {
+		for item, index in items {
+			span(value: item)
+			if true {
+				strong(position: index)
+			}
+		}
+	}
+}
+`);
+	assert.deepEqual(result.diagnostics.filter(item => item.severity === 'error'), []);
+	const component = result.ast?.declarations.find((declaration): declaration is ComponentDeclaration => declaration.kind === 'ComponentDeclaration');
+	assert.ok(component);
+	const returned = component.body.statements[0] as ReturnStatement;
+	const view = returned.value as ViewExpression;
+	const repetition = view.body.children[0];
+	assert.equal(repetition?.kind, 'ViewRepetition');
+	if (repetition?.kind !== 'ViewRepetition') throw new Error('expected ViewRepetition');
+	assert.equal(repetition.sourceKind, 'native-list');
+	assert.ok(repetition.itemSymbolId !== undefined);
+	assert.ok(repetition.indexSymbolId !== undefined);
+	assert.equal(repetition.body.children.length, 2);
+});
+
+// @virune-rule {"id":"frontend.view-repetition-source","runner":"unit","file":"packages/compiler/test/frontend-component-view.test.ts","case":"View repetition rejects unsupported native collection sources","kind":"negative","platform":"common"}
+test('View repetition rejects unsupported native collection sources', () => {
+	assert.ok(errorCodes(`component SetView(items: Set<Int>) uses JavaScript {
 	return view {
 		for item in items {
 			span()
 		}
 	}
 }
-`).includes('L0002'));
+`).includes('L4310'));
+});
+
+// @virune-rule {"id":"frontend.view-repetition-children","runner":"unit","file":"packages/compiler/test/frontend-component-view.test.ts","case":"View repetition rejects nested compiler-managed children slots","kind":"negative","platform":"common"}
+test('View repetition rejects nested compiler-managed children slots', () => {
+	assert.ok(errorCodes(`component RepeatedChildren(items: List<Int>) uses JavaScript {
+	return view {
+		for item in items {
+			if true {
+				children
+			}
+		}
+	}
+}
+`).includes('L4311'));
 });
