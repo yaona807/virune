@@ -169,6 +169,49 @@ test('View conditionals without else preserve zero-child absence in JSX proof an
 	assert.ok(result.output.code.includes('? <strong /> : <></>}'));
 });
 
+test('View repetition emits one flat compiler-owned sequence without overrideable collection helpers', () => {
+	let proofSource = '';
+	const provider: JsInteropProvider = {
+		...jsxValidationProvider,
+		resolveJsxUsage(usage) {
+			proofSource = usage.sourceText;
+			return { accepted: true };
+		},
+	};
+	const result = compileSource(source(`component ListView() uses JavaScript {
+	let items = [1, 2]
+	return view {
+		for item, index in items {
+			span(value: item)
+			if index > 0 {
+				strong(position: index)
+			}
+			for nested in items {
+				em(value: nested)
+			}
+		}
+	}
+}
+`), { jsInteropProvider: provider });
+	assert.deepEqual(result.diagnostics.filter(item => item.severity === 'error'), []);
+	assert.ok(result.output);
+	const code = result.output.code;
+	assert.equal((code.match(/const \$viewChildren\d+ = \[\];/gu) ?? []).length, 1);
+	assert.equal((code.match(/const \$viewSource\d+ = items;/gu) ?? []).length, 2);
+	assert.match(code, /const \$viewLength\d+ = \$viewSource\d+\.length;/u);
+	assert.match(code, /for \(let \$viewIndex\d+ = 0; \$viewIndex\d+ < \$viewLength\d+; \$viewIndex\d+\+\+\) \{/u);
+	assert.match(code, /const item = \$viewSource\d+\[\$viewIndex\d+\];/u);
+	assert.match(code, /const index = \$viewIndex\d+;/u);
+	assert.ok(code.includes('.push(<span value={item} />);'));
+	assert.ok(code.includes('.push(<strong position={index} />);'));
+	assert.ok(code.includes('.push(<em value={nested} />);'));
+	assert.ok(!code.includes('.map('));
+	assert.ok(!code.includes('<></>'));
+	assert.ok(proofSource.includes('$viruneViewChildren'));
+	assert.ok(proofSource.includes('.push(<span value={$viruneViewItem'));
+	assert.ok(!proofSource.includes('.map('));
+});
+
 test('no-else conditional fails closed when an empty fragment would become an observable External child', () => {
 	const direct = compileSource(source(`import js { Card } from "./library.js"
 
