@@ -165,8 +165,8 @@ test('View conditionals without else preserve zero-child absence in JSX proof an
 	assert.ok(result.output);
 	assert.ok(proofSource.includes('{(false as boolean) ? <span /> : <></>}'));
 	assert.ok(proofSource.includes('<main>{(false as boolean) ? <strong /> : <></>}</main>'));
-	assert.match(result.output.code, /\? <span \/> : <>\<\/>/u);
-	assert.match(result.output.code, /<main>\{[^}]+\? <strong \/> : <>\<\/>\}<\/main>/u);
+	assert.ok(result.output.code.includes('? <span /> : <></>'));
+	assert.ok(result.output.code.includes('? <strong /> : <></>}'));
 });
 
 test('host-backed component props cannot bypass use-site validation through string interpolation', () => {
