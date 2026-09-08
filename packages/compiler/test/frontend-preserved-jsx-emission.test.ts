@@ -169,6 +169,23 @@ test('View conditionals without else preserve zero-child absence in JSX proof an
 	assert.ok(result.output.code.includes('? <strong /> : <></>}'));
 });
 
+test('no-else conditional fails closed when an empty fragment would become an observable External child', () => {
+	const result = compileSource(source(`import js { Card } from "./library.js"
+
+component Page(flag: Bool) uses JavaScript {
+	return view {
+		Card(label: "ok") {
+			if flag {
+				"hello"
+			}
+		}
+	}
+}
+`), { jsInteropProvider: externalJsxProvider });
+	assert.ok(result.diagnostics.some(item => item.code === 'L4308' && item.severity === 'error' && /empty fragment observable as a child/u.test(item.message)));
+	assert.equal(result.output, undefined);
+});
+
 test('host-backed component props cannot bypass use-site validation through string interpolation', () => {
 	const direct = compile(`component Card(title: String) uses JavaScript {
 	return view {
