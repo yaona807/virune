@@ -170,6 +170,8 @@ Generic `Iterable`、`AsyncIterable`、`Set`、`Map`、arbitrary array-likeは�
 
 compiler-managed standalone `children` slotは、nested View conditionalやnested repetitionを経由する場合も含め、repetition subtree内のどこにあってもrejectする。repetitionは`break`、`continue`、assignment、imperative loop-body semanticsを導入しない。
 
+repetitionが生成するcollectionを、JavaScript-imported External componentから観測可能なdirect child valueにしてはならない。zero-or-more個のflat child contributionをdownstreamのchildren/slot shapeを変えずに保存できることが証明されるまで、そのdirect External child structure内のrepetitionはrejectする。External componentの下でもintrinsic elementを1段挟んだ内側のrepetitionは、通常のvalidation対象として扱える。
+
 ## `[frontend.framework-neutral]` Framework-neutral core
 
 component/View grammarはframeworkを選択しない。Virune Coreはframework-name enum、package-name heuristic、Virune frontend VDOM/runtime、universal state/effect/router API、property vocabulary rewrite、framework固有JSX loweringを定義しない。
