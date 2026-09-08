@@ -140,7 +140,7 @@ function renderViewBlockExpression(block: A.ViewBlock, context: RenderContext): 
 	if (block.children.length !== 1) return renderViewBlock(block, context);
 	const child = block.children[0]!;
 	switch (child.kind) {
-		case 'ViewTextChild': return JSON.stringify(child.value);
+		case 'ViewTextChild': return renderStringValue(child.value);
 		case 'ViewExpressionChild': return renderViewValue(child.expression, context);
 		case 'ViewChildrenSlot': return fail(context, child.span, 'compiler-managed children slots require the native component boundary and are not part of this validation slice');
 		case 'ViewElement': return renderViewElement(child, context);
@@ -150,7 +150,7 @@ function renderViewBlockExpression(block: A.ViewBlock, context: RenderContext): 
 
 function renderViewChild(child: A.ViewChild, context: RenderContext): string | undefined {
 	switch (child.kind) {
-		case 'ViewTextChild': return `{${JSON.stringify(child.value)}}`;
+		case 'ViewTextChild': return `{${renderStringValue(child.value)}}`;
 		case 'ViewExpressionChild': {
 			const value = renderViewValue(child.expression, context);
 			return value === undefined ? undefined : `{${value}}`;
@@ -249,11 +249,7 @@ function renderViewValue(expression: A.Expression, context: RenderContext): stri
 
 function renderLiteral(expression: A.LiteralExpression, context: RenderContext): string | undefined {
 	switch (expression.literalKind) {
-		case 'String': {
-			const value = String(expression.value);
-			if (stringInterpolationPlaceholder.test(value)) return '("" as string)';
-			return JSON.stringify(value.replaceAll('{{', '{').replaceAll('}}', '}'));
-		}
+		case 'String': return renderStringValue(String(expression.value));
 		case 'Bool': return expression.value === true ? 'true' : 'false';
 		case 'Int':
 		case 'Float':
@@ -265,6 +261,11 @@ function renderLiteral(expression: A.LiteralExpression, context: RenderContext):
 				? `${expression.value}n`
 				: fail(context, expression.span, 'invalid bigint literal cannot be represented in JSX validation');
 	}
+}
+
+function renderStringValue(value: string): string {
+	if (stringInterpolationPlaceholder.test(value)) return '("" as string)';
+	return JSON.stringify(value.replaceAll('{{', '{').replaceAll('}}', '}'));
 }
 
 function fail(context: RenderContext, span: SourceSpan, message: string): undefined {
