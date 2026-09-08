@@ -260,7 +260,7 @@ function printDeclaration(printer: Printer, declaration: Declaration): void {
 			break;
 		}
 		case 'ComponentDeclaration': {
-			const parameters = declaration.parameters.map(parameter => `${parameter.name}${parameter.optional ? '?' : `: ${printType(parameter.type)}`}`);
+			const parameters = declaration.parameters.map(parameter => `${parameter.name}${parameter.optional ? '?' : ''}: ${printType(parameter.type)}`);
 			printer.line(`${visibilityPrefix(declaration)}component ${declaration.name}${printDelimited(parameters, '(', ')')} ${printUses(declaration.effects)} {`);
 			printer.indent(() => printBlockContents(printer, declaration.body));
 			printer.line('}');
