@@ -417,11 +417,12 @@ export class JavaScriptEmitter {
 	}
 
 	private viewConditionalExpression(conditional: A.ViewConditional, contextName: string): string {
-		if (conditional.elseBranch === undefined) return panicEmitter('View conditional without else reached preserved JSX emission before absence semantics were proven');
 		const thenBranch = this.viewBlockExpression(conditional.thenBlock, contextName);
-		const elseBranch = conditional.elseBranch.kind === 'ViewBlock'
-			? this.viewBlockExpression(conditional.elseBranch, contextName)
-			: `(${this.viewConditionalExpression(conditional.elseBranch, contextName)})`;
+		const elseBranch = conditional.elseBranch === undefined
+			? '<></>'
+			: conditional.elseBranch.kind === 'ViewBlock'
+				? this.viewBlockExpression(conditional.elseBranch, contextName)
+				: `(${this.viewConditionalExpression(conditional.elseBranch, contextName)})`;
 		return `${this.expression(conditional.condition, contextName)} ? ${thenBranch} : ${elseBranch}`;
 	}
 
