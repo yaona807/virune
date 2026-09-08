@@ -197,9 +197,9 @@ function renderViewRepetition(repetition: A.ViewRepetition, context: RenderConte
 		else context.repetitionValues.delete(repetition.indexSymbolId);
 	}
 	if (body === undefined) return undefined;
-	const holeGuard = repetition.sourceKind === 'external-array' ? `\n\t\tif (!(${indexName} in ${sourceName})) continue;` : '';
+	const holeGuard = repetition.sourceKind === 'external-array' ? `\n\t\tif (!Object.prototype.hasOwnProperty.call(${sourceName}, ${indexName})) continue;` : '';
 	const bodyText = body.length === 0 ? '' : `\n${body}`;
-	return `(() => {\n\tconst ${sourceName} = ${source};\n\tconst ${lengthName} = ${sourceName}.length;\n\tconst ${childrenName} = [];\n\tfor (let ${indexName} = 0; ${indexName} < ${lengthName}; ${indexName}++) {${holeGuard}\n\t\tconst ${itemName} = ${sourceName}[${indexName}];${bodyText}\n\t}\n\treturn ${childrenName};\n})()`;
+	return `(() => {\n\tconst ${sourceName} = ${source};\n\tconst ${lengthName} = ${sourceName}.length;\n\tconst ${childrenName} = [];\n\tfor (let ${indexName} = 0; ${indexName} < ${lengthName}; ${indexName}++) {${holeGuard}\n\t\tconst ${itemName} = ${sourceName}[${indexName}] as (typeof ${sourceName})[number];${bodyText}\n\t}\n\treturn ${childrenName};\n})()`;
 }
 
 function renderExternalRepetitionSource(expression: A.Expression, context: RenderContext): string | undefined {
