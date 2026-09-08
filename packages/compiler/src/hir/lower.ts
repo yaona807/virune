@@ -42,6 +42,7 @@ function lowerViewBlock(block: A.ViewBlock): A.ViewBlock {
 function lowerViewChild(child: A.ViewChild): A.ViewChild {
 	switch (child.kind) {
 		case 'ViewTextChild':
+			return { ...child, value: child.value.replaceAll('{{', '{').replaceAll('}}', '}') };
 		case 'ViewChildrenSlot':
 			return child;
 		case 'ViewExpressionChild':
