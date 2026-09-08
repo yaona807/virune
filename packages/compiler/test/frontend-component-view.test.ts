@@ -227,7 +227,8 @@ fn preserveChildren(children: Int) -> Int {
 
 // @virune-rule {"id":"frontend.view-repetition","runner":"unit","file":"packages/compiler/test/frontend-component-view.test.ts","case":"View repetition accepts native List with source index","kind":"positive","platform":"common"}
 test('View repetition accepts native List with source index', () => {
-	const result = checkSource(`component ListView(items: List<Int>) uses JavaScript {
+	const result = checkSource(`component ListView() uses JavaScript {
+	let items = [1, 2]
 	return view {
 		for item, index in items {
 			span(value: item)
@@ -241,7 +242,7 @@ test('View repetition accepts native List with source index', () => {
 	assert.deepEqual(result.diagnostics.filter(item => item.severity === 'error'), []);
 	const component = result.ast?.declarations.find((declaration): declaration is ComponentDeclaration => declaration.kind === 'ComponentDeclaration');
 	assert.ok(component);
-	const returned = component.body.statements[0] as ReturnStatement;
+	const returned = component.body.statements[1] as ReturnStatement;
 	const view = returned.value as ViewExpression;
 	const repetition = view.body.children[0];
 	assert.equal(repetition?.kind, 'ViewRepetition');
