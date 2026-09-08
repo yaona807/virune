@@ -139,6 +139,71 @@ internal component Details(title: String, count: Int, ready: Bool, ratio: Float,
 	assert.match(code, /: <span>\{/u);
 });
 
+test('View conditionals without else preserve zero-child absence in JSX proof and emission', () => {
+	let proofSource = '';
+	const provider: JsInteropProvider = {
+		...jsxValidationProvider,
+		resolveJsxUsage(usage) {
+			proofSource = usage.sourceText;
+			return { accepted: true };
+		},
+	};
+	const result = compileSource(source(`component Card(ready: Bool, nested: Bool) uses JavaScript {
+	return view {
+		if ready {
+			span()
+		}
+		main() {
+			if nested {
+				strong()
+			}
+		}
+	}
+}
+`), { jsInteropProvider: provider });
+	assert.deepEqual(result.diagnostics.filter(item => item.severity === 'error'), []);
+	assert.ok(result.output);
+	assert.ok(proofSource.includes('{(false as boolean) ? <span /> : <></>}'));
+	assert.ok(proofSource.includes('<main>{(false as boolean) ? <strong /> : <></>}</main>'));
+	assert.ok(result.output.code.includes('? <span /> : <></>'));
+	assert.ok(result.output.code.includes('? <strong /> : <></>}'));
+});
+
+test('no-else conditional fails closed when an empty fragment would become an observable External child', () => {
+	const direct = compileSource(source(`import js { Card } from "./library.js"
+
+component Page(flag: Bool) uses JavaScript {
+	return view {
+		Card(label: "ok") {
+			if flag {
+				"hello"
+			}
+		}
+	}
+}
+`), { jsInteropProvider: externalJsxProvider });
+	assert.ok(direct.diagnostics.some(item => item.code === 'L4308' && item.severity === 'error' && /empty fragment observable as a child/u.test(item.message)));
+	assert.equal(direct.output, undefined);
+
+	const nestedIntrinsic = compileSource(source(`import js { Card } from "./library.js"
+
+component Page(flag: Bool) uses JavaScript {
+	return view {
+		Card(label: "ok") {
+			main() {
+				if flag {
+					span()
+				}
+			}
+		}
+	}
+}
+`), { jsInteropProvider: externalJsxProvider });
+	assert.deepEqual(nestedIntrinsic.diagnostics.filter(item => item.severity === 'error'), []);
+	assert.ok(nestedIntrinsic.output);
+	assert.ok(nestedIntrinsic.output.code.includes('? <span /> : <></>}</main>'));
+});
+
 test('host-backed component props cannot bypass use-site validation through string interpolation', () => {
 	const direct = compile(`component Card(title: String) uses JavaScript {
 	return view {

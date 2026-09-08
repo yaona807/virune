@@ -105,7 +105,11 @@ view {
 }
 ```
 
-conditionは通常のVirune expressionであり、branchはView blockである。compilerはdownstream frontend processingのためconditionalのsource/evaluation positionを保存しなければならない。frameworkが所有するreactivity/lazinessを変える形でconditionalやhost-sensitive branch expressionを先行hoist、snapshot、cacheしてはならない。
+conditionは通常のVirune expressionであり、branchはView blockである。`else`を省略しconditionがfalseの場合、そのconditionalはView childを0個だけ寄与する。この不在はfragment-equivalentなstructural outputであり、fallback valueを評価または合成するものではない。
+
+compilerはdownstream frontend processingのため、no-`else`のabsence branchを含めconditionalのsource/evaluation positionを保存しなければならない。frameworkが所有するreactivity/lazinessを変える形でconditionalやhost-sensitive branch expressionを先行hoist、snapshot、cacheしてはならない。
+
+no-`else`のabsence branchのために導入するempty Fragmentは、JavaScript-imported External componentから観測可能なchild valueになる位置では使用してはならない。downstream componentのchildren/slot semanticsを変えずにzero-child absenceを保存できることが証明されるまで、そのdirect External child structure内のno-`else` conditionalは成功へ推測せずrejectする。
 
 ## `[frontend.children-slot]` Compiler-managed native children slot
 
