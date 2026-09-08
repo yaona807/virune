@@ -105,7 +105,9 @@ view {
 }
 ```
 
-Its condition is an ordinary Virune expression. The branches are View blocks. The compiler must preserve the conditional's source/evaluation position for downstream frontend processing; it must not eagerly hoist, snapshot, or cache the conditional or host-sensitive branch expressions in a way that changes framework-owned reactivity or laziness.
+Its condition is an ordinary Virune expression. The branches are View blocks. If `else` is omitted and the condition is false, the conditional contributes zero View children. That absence is fragment-equivalent structural output; Virune does not evaluate or synthesize a fallback value.
+
+The compiler must preserve the conditional's source/evaluation position for downstream frontend processing, including the no-`else` absence branch. It must not eagerly hoist, snapshot, or cache the conditional or host-sensitive branch expressions in a way that changes framework-owned reactivity or laziness.
 
 ## `[frontend.children-slot]` Compiler-managed native children slot
 
