@@ -200,12 +200,12 @@ export class TypeChecker {
 		this.#namedTypes.set('ByteOrder', byteOrder);
 		const bytesError = this.arena.add({ kind: 'named', name: 'BytesError', definitionId: 'std:BytesError', declarationKind: 'record', arguments: [], fields: new Map([['message', this.arena.string]]), derives: new Set(['Eq', 'Hash', 'Debug']) });
 		this.#namedTypes.set('BytesError', bytesError);
-		const integerRangeError = this.arena.add({ kind: 'named', name: 'IntegerRangeError', definitionId: 'std:IntegerRangeError', declarationKind: 'record', arguments: [], fields: new Map([['type', this.arena.string], ['value', this.arena.string], ['message', this.arena.string]]), derives: new Set(['Eq', 'Hash', 'Debug']) });
+		const integerRangeError = this.arena.add({ kind: 'named', name: 'IntegerRangeError', definitionId: 'std:IntegerRangeError', declarationKind: 'record', arguments: [], fields: new Map([['type', this.arena.string], ['value', this.arena.string]]), derives: new Set(['Eq', 'Hash', 'Debug']) });
 		this.#namedTypes.set('IntegerRangeError', integerRangeError);
 		for (const [name, underlying] of [['Byte', this.arena.int], ['Int8', this.arena.int], ['UInt8', this.arena.int], ['Int16', this.arena.int], ['UInt16', this.arena.int], ['Int32', this.arena.int], ['UInt32', this.arena.int], ['Int64', this.arena.bigint], ['UInt64', this.arena.bigint]] as const) {
 			this.#namedTypes.set(name, this.arena.add({ kind: 'named', name, definitionId: `std:${name}`, declarationKind: 'newtype', arguments: [], underlying, derives: new Set(['Eq', 'Hash', 'Debug']) }));
 		}
-		const httpBody = this.arena.add({ kind: 'named', name: 'HttpBody', definitionId: 'std:HttpBody', declarationKind: 'enum', arguments: [], variants: new Map([['Empty', []], ['Text', [this.arena.string]], ['Bytes', [bytes]]), derives: new Set(['Eq', 'Hash', 'Debug']) });
+		const httpBody = this.arena.add({ kind: 'named', name: 'HttpBody', definitionId: 'std:HttpBody', declarationKind: 'enum', arguments: [], variants: new Map([['Empty', []], ['Text', [this.arena.string]], ['Bytes', [bytes]]]), derives: new Set(['Eq', 'Hash', 'Debug']) });
 		this.#namedTypes.set('HttpBody', httpBody);
 		const httpResponse = this.arena.add({ kind: 'named', name: 'HttpResponse', definitionId: 'std:HttpResponse', declarationKind: 'record', arguments: [], fields: new Map([
 			['status', this.arena.int], ['ok', this.arena.bool], ['headers', this.arena.map(this.arena.string, this.arena.string)], ['body', httpBody],
@@ -522,7 +522,7 @@ export class TypeChecker {
 						continue;
 					}
 					const name = String(argument.value);
-					if (jsonNames.has(name)) this.diagnostics.error('L2081', `Duplicate JSON field name ${name}`, argument.span);
+					if (jsonNames.has(name)) this.diagnostics.error('L2081', `Duplicate JSON field name ${name}`, attribute.span);
 					jsonNames.add(name);
 				} else if (attribute.name === 'jsonDefault') {
 					const argument = attribute.arguments[0];
