@@ -194,8 +194,6 @@ export interface JsInteropProvider {
 	resolveConstructUsage?(type: ForeignTypeRef, usage: InteropCallUsage): ForeignCallResolution | undefined;
 	/** Whole-usage index resolver. Unknown/unsupported receiver or key evidence must return undefined. */
 	resolveIndexUsage?(type: ForeignTypeRef, usage: InteropIndexUsage): ForeignIndexResolution | undefined;
-	/** Declared element resolver for a proven Array or ReadonlyArray repetition source. */
-	resolveArrayElement?(type: ForeignTypeRef): ForeignTypeSnapshot | undefined;
 	/** Whole-usage writable-facet resolver. Unknown/readonly/inaccessible evidence must return undefined. */
 	resolveWriteUsage?(type: ForeignTypeRef, usage: InteropWriteUsage): ForeignWriteResolution | undefined;
 	/** Contextual object resolver for an already-known External expected type. */

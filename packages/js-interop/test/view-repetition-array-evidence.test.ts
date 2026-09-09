@@ -7,7 +7,7 @@ import ts from 'typescript';
 import { TypeScriptInteropProvider } from '../src/index.js';
 import { fixtureRoot } from './fixture.js';
 
-test('Array and ReadonlyArray provide stable repetition element evidence', async () => {
+test('Array and ReadonlyArray provide stable repetition index evidence', async () => {
 	const root = await fixtureRoot();
 	await writeFile(join(root, 'src/library.d.ts'), [
 		'export declare const mutableValues: string[];',
@@ -25,9 +25,9 @@ test('Array and ReadonlyArray provide stable repetition element evidence', async
 		});
 		assert.equal(imported.type?.category, 'array', importedName);
 		assert.ok(imported.type);
-		const element = provider.resolveArrayElement?.(imported.type.ref);
-		assert.equal(element?.category, 'primitive', importedName);
-		assert.equal(element?.primitive, 'string', importedName);
+		const indexed = provider.resolveIndexUsage?.(imported.type.ref, { index: { kind: 'native-primitive', primitive: 'Int' } });
+		assert.equal(indexed?.result.category, 'primitive', importedName);
+		assert.equal(indexed?.result.primitive, 'string', importedName);
 	}
 });
 
