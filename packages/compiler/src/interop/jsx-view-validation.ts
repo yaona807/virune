@@ -208,8 +208,9 @@ function renderExternalRepetitionSource(expression: A.Expression, context: Rende
 		if (symbol?.kind === 'import' && !symbol.typeOnly) return expression.name;
 		if (symbol?.kind === 'variable' && !symbol.mutable) {
 			const declaration = symbol.declaration;
-			if (declaration?.kind === 'LetStatement' && declaration.annotation === undefined) {
-				return renderExternalRepetitionSource(declaration.value, context);
+			if (declaration?.kind === 'LetStatement') {
+				const letStatement = declaration as A.LetStatement;
+				if (letStatement.annotation === undefined) return renderExternalRepetitionSource(letStatement.value, context);
 			}
 		}
 	}
