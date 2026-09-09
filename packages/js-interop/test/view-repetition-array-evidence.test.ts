@@ -35,13 +35,12 @@ test('ReadonlyArray repetition emits stable source-index traversal without map s
 	const root = await fixtureRoot();
 	await writeFile(join(root, 'src/library.d.ts'), [
 		'export declare const readonlyValues: ReadonlyArray<string>;',
-		'',
-	].join('\n'), 'utf8');
-	await writeFile(join(root, 'src/jsx.d.ts'), [
-		'declare namespace JSX {',
-		'\tinterface Element { readonly __jsxElementBrand: unique symbol; }',
-		'\tinterface IntrinsicElements {',
-		'\t\tspan: { value: string; index: number };',
+		'declare global {',
+		'\tnamespace JSX {',
+		'\t\tinterface Element { readonly __jsxElementBrand: unique symbol; }',
+		'\t\tinterface IntrinsicElements {',
+		'\t\t\tspan: { value: string; index: number };',
+		'\t\t}',
 		'\t}',
 		'}',
 		'',
