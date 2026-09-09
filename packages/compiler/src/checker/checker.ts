@@ -795,14 +795,14 @@ export class TypeChecker {
 			itemType = sourceType.element;
 		} else if (sourceType.kind === 'foreign' && sourceType.snapshot.category === 'array') {
 			const provider = this.currentInteropProvider(sourceType.snapshot);
-			let resolution: import('../interop/types.js').ForeignIndexResolution | undefined;
-			if (provider?.resolveIndexUsage !== undefined) {
-				try { resolution = provider.resolveIndexUsage(sourceType.ref, { index: { kind: 'native-primitive', primitive: 'Int' } }); } catch { resolution = undefined; }
+			let element: ForeignTypeSnapshot | undefined;
+			if (provider?.resolveArrayElement !== undefined) {
+				try { element = provider.resolveArrayElement(sourceType.ref); } catch { element = undefined; }
 			}
-			if (provider !== undefined && this.isCurrentForeignSnapshot(resolution?.result, provider, false)) {
+			if (provider !== undefined && this.isCurrentForeignSnapshot(element, provider, false)) {
 				this.requireEffects(['JavaScript'], repetition.span);
 				repetition.sourceKind = 'external-array';
-				itemType = this.arena.foreign(resolution.result);
+				itemType = this.arena.foreign(element);
 			}
 		}
 		if (repetition.sourceKind === undefined) this.diagnostics.error('L4310', 'View repetition requires a native List or proven External Array source', repetition.source.span);
