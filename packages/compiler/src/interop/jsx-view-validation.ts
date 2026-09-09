@@ -206,8 +206,11 @@ function renderExternalRepetitionSource(expression: A.Expression, context: Rende
 	if (expression.kind === 'IdentifierExpression' && expression.symbolId !== undefined) {
 		const symbol = context.semantic.symbols.get(expression.symbolId);
 		if (symbol?.kind === 'import' && !symbol.typeOnly) return expression.name;
-		if (symbol?.kind === 'variable' && !symbol.mutable && symbol.declaration?.kind === 'LetStatement' && symbol.declaration.annotation === undefined) {
-			return renderExternalRepetitionSource(symbol.declaration.value, context);
+		if (symbol?.kind === 'variable' && !symbol.mutable) {
+			const declaration = symbol.declaration;
+			if (declaration?.kind === 'LetStatement' && declaration.annotation === undefined) {
+				return renderExternalRepetitionSource(declaration.value, context);
+			}
 		}
 	}
 	if (expression.kind === 'FieldExpression') {
