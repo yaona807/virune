@@ -162,6 +162,7 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 			['resolveCallUsage', (reference: ForeignTypeRef, usage: InteropCallUsage) => this.resolveInvocationUsage(reference, usage, false)],
 			['resolveConstructUsage', (reference: ForeignTypeRef, usage: InteropCallUsage) => this.resolveInvocationUsage(reference, usage, true)],
 			['resolveIndexUsage', (reference: ForeignTypeRef, usage: InteropIndexUsage) => this.resolveIndexUsageInternal(reference, usage)],
+			['resolveArrayElement', (reference: ForeignTypeRef) => this.resolveArrayElementInternal(reference)],
 			['resolveWriteUsage', (reference: ForeignTypeRef, usage: InteropWriteUsage) => this.resolveWriteUsageInternal(reference, usage)],
 			['resolveObjectUsage', (reference: ForeignTypeRef, usage: InteropObjectUsage) => this.resolveObjectUsageInternal(reference, usage)],
 			['resolveJsxUsage', (usage: InteropJsxUsage) => this.resolveJsxUsageInternal(usage)],
@@ -238,7 +239,7 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 		);
 	}
 
-	public resolveArrayElement(reference: ForeignTypeRef): ForeignTypeSnapshot | undefined {
+	private resolveArrayElementInternal(reference: ForeignTypeRef): ForeignTypeSnapshot | undefined {
 		const stored = this.requireType(reference);
 		if (!stored.checker.isArrayType(stored.type) || stored.usageProjection === undefined) return undefined;
 		const element = stored.checker.getIndexTypeOfType(stored.type, ts.IndexKind.Number);
