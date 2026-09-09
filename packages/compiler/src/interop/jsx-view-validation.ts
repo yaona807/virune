@@ -211,6 +211,10 @@ function renderExternalRepetitionSource(expression: A.Expression, context: Rende
 		const target = renderExternalRepetitionSource(expression.target, context);
 		return target === undefined ? undefined : `${target}.${expression.field}`;
 	}
+	if (expression.kind === 'CallExpression' && expression.foreignCall === true && expression.typeArguments.length === 0 && expression.arguments.length === 0) {
+		const callee = renderExternalRepetitionSource(expression.callee, context);
+		return callee === undefined ? undefined : `${callee}()`;
+	}
 	return fail(context, expression.span, 'External Array repetition source cannot be represented in the current JSX validation slice without guessing its TypeScript type');
 }
 
