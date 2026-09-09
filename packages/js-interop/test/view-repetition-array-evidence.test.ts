@@ -86,6 +86,18 @@ test('External Array call result can be repeated directly in View', async () => 
 	assert.deepEqual(result.diagnostics.filter(item => item.severity === 'error'), []);
 	assert.ok(result.output);
 	assert.match(result.output.code, /const \$viewSource\d+ = getValues\(\);/u);
+
+	const snapshot = compileSource({
+		id: 2,
+		path: join(root, 'src/snapshot.virune'),
+		text: `import js { getValues } from "./library.js"\n\ncomponent Snapshot() uses JavaScript {\n\tlet values = getValues()\n\treturn view {\n\t\tfor value in values {\n\t\t\tspan(value: value)\n\t\t}\n\t}\n}\n`,
+	}, { platform: 'node', jsInteropProvider: provider });
+	assert.deepEqual(snapshot.diagnostics.filter(item => item.severity === 'error'), []);
+	assert.ok(snapshot.output);
+	const snapshotCode = snapshot.output.code;
+	assert.equal((snapshotCode.match(/getValues\(\)/gu) ?? []).length, 1);
+	assert.match(snapshotCode, /const values = getValues\(\);/u);
+	assert.match(snapshotCode, /const \$viewSource\d+ = values;/u);
 });
 
 test('empty native List repetition remains valid without collection helpers', () => {
