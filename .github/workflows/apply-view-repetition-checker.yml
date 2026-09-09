@@ -26,8 +26,30 @@ jobs:
           const { execFileSync } = require('node:child_process');
           const actualBlob = execFileSync('git', ['hash-object', path], { encoding: 'utf8' }).trim();
           if (actualBlob !== expectedBlob) throw new Error(`Unexpected checker blob ${actualBlob}`);
-          const oldBlock = String.raw`\t\t} else if (sourceType.kind === 'foreign' && sourceType.snapshot.category === 'array') {\n\t\t\tconst provider = this.currentInteropProvider(sourceType.snapshot);\n\t\t\tlet resolution: import('../interop/types.js').ForeignIndexResolution | undefined;\n\t\t\tif (provider?.resolveIndexUsage !== undefined) {\n\t\t\t\ttry { resolution = provider.resolveIndexUsage(sourceType.ref, { index: { kind: 'native-primitive', primitive: 'Int' } }); } catch { resolution = undefined; }\n\t\t\t}\n\t\t\tif (provider !== undefined && this.isCurrentForeignSnapshot(resolution?.result, provider, false)) {\n\t\t\t\tthis.requireEffects(['JavaScript'], repetition.span);\n\t\t\t\trepetition.sourceKind = 'external-array';\n\t\t\t\titemType = this.arena.foreign(resolution.result);\n\t\t\t}\n\t\t}`;
-          const newBlock = String.raw`\t\t} else if (sourceType.kind === 'foreign' && sourceType.snapshot.category === 'array') {\n\t\t\tconst provider = this.currentInteropProvider(sourceType.snapshot);\n\t\t\tlet element: ForeignTypeSnapshot | undefined;\n\t\t\tif (provider?.resolveArrayElement !== undefined) {\n\t\t\t\ttry { element = provider.resolveArrayElement(sourceType.ref); } catch { element = undefined; }\n\t\t\t}\n\t\t\tif (provider !== undefined && this.isCurrentForeignSnapshot(element, provider, false)) {\n\t\t\t\tthis.requireEffects(['JavaScript'], repetition.span);\n\t\t\t\trepetition.sourceKind = 'external-array';\n\t\t\t\titemType = this.arena.foreign(element);\n\t\t\t}\n\t\t}`;
+          const oldBlock = `		} else if (sourceType.kind === 'foreign' && sourceType.snapshot.category === 'array') {
+			const provider = this.currentInteropProvider(sourceType.snapshot);
+			let resolution: import('../interop/types.js').ForeignIndexResolution | undefined;
+			if (provider?.resolveIndexUsage !== undefined) {
+				try { resolution = provider.resolveIndexUsage(sourceType.ref, { index: { kind: 'native-primitive', primitive: 'Int' } }); } catch { resolution = undefined; }
+			}
+			if (provider !== undefined && this.isCurrentForeignSnapshot(resolution?.result, provider, false)) {
+				this.requireEffects(['JavaScript'], repetition.span);
+				repetition.sourceKind = 'external-array';
+				itemType = this.arena.foreign(resolution.result);
+			}
+		}`;
+          const newBlock = `		} else if (sourceType.kind === 'foreign' && sourceType.snapshot.category === 'array') {
+			const provider = this.currentInteropProvider(sourceType.snapshot);
+			let element: ForeignTypeSnapshot | undefined;
+			if (provider?.resolveArrayElement !== undefined) {
+				try { element = provider.resolveArrayElement(sourceType.ref); } catch { element = undefined; }
+			}
+			if (provider !== undefined && this.isCurrentForeignSnapshot(element, provider, false)) {
+				this.requireEffects(['JavaScript'], repetition.span);
+				repetition.sourceKind = 'external-array';
+				itemType = this.arena.foreign(element);
+			}
+		}`;
           const text = fs.readFileSync(path, 'utf8');
           const parts = text.split(oldBlock);
           if (parts.length !== 2) throw new Error(`Expected exactly one checker block, found ${parts.length - 1}`);
