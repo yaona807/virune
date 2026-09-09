@@ -62,3 +62,27 @@ test('ReadonlyArray repetition emits stable source-index traversal without map s
 	assert.ok(code.includes('.push(<span value={value} index={index} />);'));
 	assert.ok(!code.includes('.map('));
 });
+
+test('empty native List repetition remains valid without collection helpers', () => {
+	const provider: JsInteropProvider = {
+		id: 'view-repetition-test',
+		version: '1',
+		generation: 1,
+		resolveImport: () => { throw new Error('unexpected import'); },
+		getProperty: () => undefined,
+		resolveCall: () => undefined,
+		resolveConstruct: () => undefined,
+		getAwaitedType: () => undefined,
+		display: () => '<unused>',
+		resolveJsxUsage: () => ({ accepted: true }),
+	};
+	const result = compileSource({
+		id: 1,
+		path: 'empty-view-repetition.virune',
+		text: `component EmptyView() uses JavaScript {\n\tlet items: List<Int> = []\n\treturn view {\n\t\tfor item in items {\n\t\t\tspan(value: item)\n\t\t}\n\t}\n}\n`,
+	}, { jsInteropProvider: provider });
+	assert.deepEqual(result.diagnostics.filter(item => item.severity === 'error'), []);
+	assert.ok(result.output);
+	assert.match(result.output.code, /const \$viewSource\d+ = items;/u);
+	assert.ok(!result.output.code.includes('.map('));
+});
