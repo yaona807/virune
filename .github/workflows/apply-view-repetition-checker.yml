@@ -21,35 +21,39 @@ jobs:
         run: |
           node <<'NODE'
           const fs = require('node:fs');
+          const { execFileSync } = require('node:child_process');
           const path = 'packages/compiler/src/checker/checker.ts';
           const expectedBlob = 'af74f5706e45a953c25b0cbfb82c4fd7e482b96a';
-          const { execFileSync } = require('node:child_process');
           const actualBlob = execFileSync('git', ['hash-object', path], { encoding: 'utf8' }).trim();
           if (actualBlob !== expectedBlob) throw new Error(`Unexpected checker blob ${actualBlob}`);
-          const oldBlock = `		} else if (sourceType.kind === 'foreign' && sourceType.snapshot.category === 'array') {
-			const provider = this.currentInteropProvider(sourceType.snapshot);
-			let resolution: import('../interop/types.js').ForeignIndexResolution | undefined;
-			if (provider?.resolveIndexUsage !== undefined) {
-				try { resolution = provider.resolveIndexUsage(sourceType.ref, { index: { kind: 'native-primitive', primitive: 'Int' } }); } catch { resolution = undefined; }
-			}
-			if (provider !== undefined && this.isCurrentForeignSnapshot(resolution?.result, provider, false)) {
-				this.requireEffects(['JavaScript'], repetition.span);
-				repetition.sourceKind = 'external-array';
-				itemType = this.arena.foreign(resolution.result);
-			}
-		}`;
-          const newBlock = `		} else if (sourceType.kind === 'foreign' && sourceType.snapshot.category === 'array') {
-			const provider = this.currentInteropProvider(sourceType.snapshot);
-			let element: ForeignTypeSnapshot | undefined;
-			if (provider?.resolveArrayElement !== undefined) {
-				try { element = provider.resolveArrayElement(sourceType.ref); } catch { element = undefined; }
-			}
-			if (provider !== undefined && this.isCurrentForeignSnapshot(element, provider, false)) {
-				this.requireEffects(['JavaScript'], repetition.span);
-				repetition.sourceKind = 'external-array';
-				itemType = this.arena.foreign(element);
-			}
-		}`;
+          const oldBlock = [
+            "\t\t} else if (sourceType.kind === 'foreign' && sourceType.snapshot.category === 'array') {",
+            "\t\t\tconst provider = this.currentInteropProvider(sourceType.snapshot);",
+            "\t\t\tlet resolution: import('../interop/types.js').ForeignIndexResolution | undefined;",
+            "\t\t\tif (provider?.resolveIndexUsage !== undefined) {",
+            "\t\t\t\ttry { resolution = provider.resolveIndexUsage(sourceType.ref, { index: { kind: 'native-primitive', primitive: 'Int' } }); } catch { resolution = undefined; }",
+            "\t\t\t}",
+            "\t\t\tif (provider !== undefined && this.isCurrentForeignSnapshot(resolution?.result, provider, false)) {",
+            "\t\t\t\tthis.requireEffects(['JavaScript'], repetition.span);",
+            "\t\t\t\trepetition.sourceKind = 'external-array';",
+            "\t\t\t\titemType = this.arena.foreign(resolution.result);",
+            "\t\t\t}",
+            "\t\t}",
+          ].join('\n');
+          const newBlock = [
+            "\t\t} else if (sourceType.kind === 'foreign' && sourceType.snapshot.category === 'array') {",
+            "\t\t\tconst provider = this.currentInteropProvider(sourceType.snapshot);",
+            "\t\t\tlet element: ForeignTypeSnapshot | undefined;",
+            "\t\t\tif (provider?.resolveArrayElement !== undefined) {",
+            "\t\t\t\ttry { element = provider.resolveArrayElement(sourceType.ref); } catch { element = undefined; }",
+            "\t\t\t}",
+            "\t\t\tif (provider !== undefined && this.isCurrentForeignSnapshot(element, provider, false)) {",
+            "\t\t\t\tthis.requireEffects(['JavaScript'], repetition.span);",
+            "\t\t\t\trepetition.sourceKind = 'external-array';",
+            "\t\t\t\titemType = this.arena.foreign(element);",
+            "\t\t\t}",
+            "\t\t}",
+          ].join('\n');
           const text = fs.readFileSync(path, 'utf8');
           const parts = text.split(oldBlock);
           if (parts.length !== 2) throw new Error(`Expected exactly one checker block, found ${parts.length - 1}`);
