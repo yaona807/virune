@@ -231,22 +231,23 @@ export class AstBuilder extends baseCstVisitorConstructor {
 				const typeArguments = typeArgsNode === undefined ? [] : this.visitNode<A.TypeReferenceNode[]>(typeArgsNode);
 				result = { id: this.id(), kind: 'CallExpression', span: this.mergeSpan(result.span, nodeSpan(this.#fileId, suffix)), callee: result, typeArguments, arguments: args };
 			} else if (event.kind === 'field') {
-				const field = fieldTokens.find(token => token.startOffset > event.offset) ?? fieldTokens[0];
+				const field = fieldTokens.find(token => token.startOffset > event.offset);
 				result = { id: this.id(), kind: 'FieldExpression', span: this.mergeSpan(result.span, tokenSpan(this.#fileId, field)), target: result, field: field?.image ?? '' };
 			} else if (event.kind === 'index') {
-				const index = this.visitNode<A.Expression>(firstNode(event.node!.children as Ctx, 'expression'));
-				result = { id: this.id(), kind: 'IndexExpression', span: this.mergeSpan(result.span, nodeSpan(this.#fileId, event.node)), target: result, index };
-			} else if (event.kind === 'try') result = { id: this.id(), kind: 'TryExpression', span: this.mergeSpan(result.span, tokenSpan(this.#fileId, event.token)), operand: result };
-			else {
-				const updateNode = updateNodes.shift();
-				const entries = updateNode === undefined ? [] : this.visitNode<A.RecordEntryNode[]>(updateNode);
-				result = { id: this.id(), kind: 'RecordUpdateExpression', span: this.mergeSpan(result.span, nodeSpan(this.#fileId, updateNode)), base: result, entries };
+				const suffix = event.node!;
+				const index = this.visitNode<A.Expression>(firstNode(suffix.children as Ctx, 'expression'));
+				result = { id: this.id(), kind: 'IndexExpression', span: this.mergeSpan(result.span, nodeSpan(this.#fileId, suffix)), target: result, index };
+			} else if (event.kind === 'try') {
+				result = { id: this.id(), kind: 'TryExpression', span: this.mergeSpan(result.span, tokenSpan(this.#fileId, event.token)), operand: result };
+			} else {
+				const update = updateNodes.find(node => (node.location?.startOffset ?? -1) > event.offset);
+				result = { id: this.id(), kind: 'RecordUpdateExpression', span: this.mergeSpan(result.span, nodeSpan(this.#fileId, update)), base: result, entries: this.visitNode<A.RecordEntryNode[]>(update) };
 			}
 		}
 		return result;
 	}
+
 	public indexSuffix(ctx: Ctx): A.Expression { return this.visitNode(firstNode(ctx, 'expression')); }
-	public callSuffix(): undefined { return undefined; }
 	public typeArguments(ctx: Ctx): A.TypeReferenceNode[] { return this.visitNodes(nodes(ctx, 'typeReference')); }
 
 	public argumentList(ctx: Ctx): A.Expression[] { return this.visitNodes(nodes(ctx, 'expression')); }
