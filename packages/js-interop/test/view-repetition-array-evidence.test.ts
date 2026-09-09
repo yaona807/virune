@@ -63,6 +63,31 @@ test('ReadonlyArray repetition emits stable source-index traversal without map s
 	assert.ok(!code.includes('.map('));
 });
 
+test('External Array call result can be repeated directly in View', async () => {
+	const root = await fixtureRoot();
+	await writeFile(join(root, 'src/library.d.ts'), [
+		'export declare function getValues(): ReadonlyArray<string>;',
+		'declare global {',
+		'\tnamespace JSX {',
+		'\t\tinterface Element { readonly __jsxElementBrand: unique symbol; }',
+		'\t\tinterface IntrinsicElements {',
+		'\t\t\tspan: { value: string };',
+		'\t\t}',
+		'\t}',
+		'}',
+		'',
+	].join('\n'), 'utf8');
+	const provider = new TypeScriptInteropProvider({ projectRoot: root, compilerOptions: { jsx: ts.JsxEmit.Preserve } });
+	const result = compileSource({
+		id: 1,
+		path: join(root, 'src/main.virune'),
+		text: `import js { getValues } from "./library.js"\n\ncomponent Values() uses JavaScript {\n\treturn view {\n\t\tfor value in getValues() {\n\t\t\tspan(value: value)\n\t\t}\n\t}\n}\n`,
+	}, { platform: 'node', jsInteropProvider: provider });
+	assert.deepEqual(result.diagnostics.filter(item => item.severity === 'error'), []);
+	assert.ok(result.output);
+	assert.match(result.output.code, /const \$viewSource\d+ = getValues\(\);/u);
+});
+
 test('empty native List repetition remains valid without collection helpers', () => {
 	const provider: JsInteropProvider = {
 		id: 'view-repetition-test',
