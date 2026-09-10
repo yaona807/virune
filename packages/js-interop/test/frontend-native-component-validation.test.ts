@@ -143,7 +143,7 @@ component Page() uses JavaScript {
 test('native component may forward its compiler-managed children slot', async () => {
 	const result = await compile(`component Inner() uses JavaScript {
 	return view {
-		section() {
+		div() {
 			children
 		}
 	}
