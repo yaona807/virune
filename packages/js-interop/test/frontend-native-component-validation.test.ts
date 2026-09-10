@@ -116,8 +116,7 @@ component Page(title: String) uses JavaScript {
 `, true);
 	assert.deepEqual(errors(result), []);
 	assert.ok(result.output);
-	assert.match(result.output.code, /<Card \$viruneChildren=\{\(\) => <><span>\{/u);
-	assert.match(result.output.code, /\$viruneValidateSafeFfiValue\(\$props\["title"\]/u);
+	assert.match(result.output.code, /<Card \$viruneChildren=\{\(\) => <span>\{\$viruneValidateSafeFfiValue\(\$props\["title"\]/u);
 	assert.match(result.output.code, /const \$slot = \$props\["\$viruneChildren"\]; return \$slot === undefined \? <><\/> : \$slot\(\);/u);
 });
 
@@ -168,7 +167,7 @@ component Page() uses JavaScript {
 `, true);
 	assert.deepEqual(errors(result), []);
 	assert.ok(result.output);
-	assert.ok((result.output.code.match(/\$viruneChildren=\{\(\) => <>/gu) ?? []).length >= 2);
+	assert.ok((result.output.code.match(/\$viruneChildren=\{\(\) => /gu) ?? []).length >= 2);
 });
 
 test('compiler-managed children slot does not become a direct External component child value', async () => {
