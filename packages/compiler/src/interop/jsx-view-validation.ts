@@ -19,7 +19,8 @@ interface RenderContext {
 	readonly semantic: SemanticModel;
 	readonly types: TypeOperations;
 	readonly externalTagRoots: ReadonlySet<string>;
-	readonly nativeTagRoots: ReadonlySet<string>;
+	readonly nativeTagProofs: ReadonlyMap<string, string>;
+	readonly usedNativeTags: Set<string>;
 	readonly repetitionValues: Map<number, string>;
 	failure?: RenderFailure;
 }
@@ -52,12 +53,11 @@ export function validateFrontendJsxUsage(module: A.ModuleNode, semantic: Semanti
 		const proof = renderNativeComponentProof(component, semantic);
 		if (proof !== undefined) nativeTagProofs.set(component.name, proof);
 	}
-	const nativeTagRoots = new Set(nativeTagProofs.keys());
 	const types = new TypeOperations({ arena: semantic.arena, diagnostics: semantic.diagnostics });
 	for (const component of components) {
 		const views: A.ViewExpression[] = [];
 		collectViewReturns(component.body, views);
-		const context: RenderContext = { semantic, types, externalTagRoots, nativeTagRoots, repetitionValues: new Map() };
+		const context: RenderContext = { semantic, types, externalTagRoots, nativeTagProofs, usedNativeTags: new Set(), repetitionValues: new Map() };
 		const renderedViews: string[] = [];
 		for (const view of views) {
 			const onlyChild = view.body.children.length === 1 ? view.body.children[0] : undefined;
@@ -71,9 +71,8 @@ export function validateFrontendJsxUsage(module: A.ModuleNode, semantic: Semanti
 		}
 		const sourceText = [
 			...imports,
-			...(nativeTagProofs.size === 0 ? [] : ['export {};']),
-			...nativeTagProofs.values(),
-			...[...externalTagRoots, ...nativeTagRoots].map(name => `void ${name};`),
+			...[...context.usedNativeTags].map(name => nativeTagProofs.get(name)!),
+			...[...externalTagRoots].map(name => `void ${name};`),
 			...renderedViews.map(view => `${view};`),
 		].join('\n');
 		let resolution: { readonly accepted: true } | undefined;
@@ -344,7 +343,7 @@ function renderRepetitionConditional(conditional: A.ViewConditional, target: str
 function renderViewElement(element: A.ViewElement, context: RenderContext): string | undefined {
 	const root = element.tag[0]!;
 	const symbol = context.semantic.globalScope.lookup(root);
-	const native = element.tag.length === 1 && symbol?.kind === 'component' && context.nativeTagRoots.has(root);
+	const native = element.tag.length === 1 && symbol?.kind === 'component' && context.nativeTagProofs.has(root);
 	if (symbol?.kind === 'component' && !native) {
 		if (element.tag.length === 1 && /^[a-z]/u.test(root)) return fail(context, element.span, `lowercase Virune-native component tag ${root} would be interpreted as a JSX intrinsic tag`);
 		return fail(context, element.span, `Virune-native component tag ${element.tag.join('.')} requires a native component boundary that is not implemented in this validation slice`);
@@ -359,6 +358,7 @@ function renderViewElement(element: A.ViewElement, context: RenderContext): stri
 		const declaration = symbol?.declaration;
 		if (declaration?.kind !== 'ComponentDeclaration') return fail(context, element.span, `Virune-native component tag ${root} has no checked component declaration`);
 		if (!validateNativeComponentProperties(element, declaration as A.ComponentDeclaration, context)) return undefined;
+		context.usedNativeTags.add(root);
 	}
 	const properties: string[] = [];
 	for (const property of element.properties) {
