@@ -59,17 +59,16 @@ test('same-project modules can import and execute an internal runtime binding', 
 	});
 });
 
-test('same-project modules can import an internal component signature before frontend emission', async () => {
+test('same-project modules can import an internal component runtime binding', async () => {
 	await withProject(async root => {
 		await writeFile(join(root, 'src/card.virune'), 'internal component Card(title: String) uses JavaScript {\n\treturn view {\n\t\tdiv() {\n\t\t\t{ title }\n\t\t}\n\t}\n}\n', 'utf8');
 		await writeFile(join(root, 'src/main.virune'), 'import { Card } from "./card.virune"\n\npub fn run() -> Unit {\n\treturn Unit\n}\n', 'utf8');
 		const result = await buildProject(root, { write: false, jsInteropProvider: jsxValidationProvider });
-		const codes = errorCodes(result);
-		assert.ok(codes.includes('L4307'));
-		assert.ok(!codes.includes('L4004'));
-		assert.ok(!codes.includes('L4304'));
+		assert.deepEqual(errorCodes(result), []);
 		const card = result.modules.find(module => module.source.path === resolve(root, 'src/card.virune'));
-		assert.equal(card?.output, undefined);
+		const main = result.modules.find(module => module.source.path === resolve(root, 'src/main.virune'));
+		assert.equal(card?.outputPath, resolve(root, 'dist/card.jsx'));
+		assert.ok(main?.output?.code.includes('from "./card.jsx";'));
 	});
 });
 
