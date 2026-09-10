@@ -418,11 +418,20 @@ export class JavaScriptEmitter {
 		const tag = element.tag.join('.');
 		const root = element.tag[0];
 		const native = element.tag.length === 1 && root !== undefined && this.#semantic.globalScope.lookup(root)?.kind === 'component';
-		const properties = element.properties.map(property => `${property.name}={${this.expression(property.value, contextName)}}`);
+		const properties = element.properties.map(property => `${property.name}={${native ? this.nativeComponentPropertyValue(property.value, contextName) : this.expression(property.value, contextName)}}`);
 		if (native && element.children !== undefined) properties.push(`${nativeChildrenProperty}={() => ${this.viewBlockExpression(element.children, contextName)}}`);
 		const attributes = properties.length === 0 ? '' : ` ${properties.join(' ')}`;
 		if (element.children === undefined || native) return `<${tag}${attributes} />`;
 		return `<${tag}${attributes}>${this.viewBlockContents(element.children, contextName)}</${tag}>`;
+	}
+
+	private nativeComponentPropertyValue(expression: A.Expression, contextName: string): string {
+		const value = this.expression(expression, contextName);
+		const typeId = expression.inferredTypeId;
+		if (typeId === undefined) return value;
+		const type = this.#semantic.arena.get(typeId);
+		if (type.kind !== 'named' || type.declarationKind !== 'record') return value;
+		return `encodeFfiValue(${value}, ${this.safeFfiBoundary(this.typeDescriptorFromTypeId(typeId))})`;
 	}
 
 	private viewConditionalExpression(conditional: A.ViewConditional, contextName: string): string {
