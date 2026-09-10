@@ -60,6 +60,8 @@ function lowerViewChild(child: A.ViewChild): A.ViewChild {
 				thenBlock: lowerViewBlock(child.thenBlock),
 				...(child.elseBranch === undefined ? {} : { elseBranch: child.elseBranch.kind === 'ViewBlock' ? lowerViewBlock(child.elseBranch) : lowerViewChild(child.elseBranch) as A.ViewConditional }),
 			};
+		case 'ViewRepetition':
+			return { ...child, source: lowerExpression(child.source), body: lowerViewBlock(child.body) };
 	}
 }
 

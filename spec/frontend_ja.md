@@ -40,7 +40,7 @@ View resultは次の用途に限ってconsumeできる。
 
 - `component`のdirect return value
 - nested View child structure
-- View-local declarative conditional branch
+- View-local declarative conditionalまたはrepetition body
 - 下記で定義するcompiler-managed native-component child slot
 
 View resultは、`let`/`const`、record、list、tupleその他の通常valueへ保存できない。通常callへ渡せず、通常API valueとしてexportできず、field/index accessできず、general External valueへprojectできず、通常の`fn`からreturnできない。
@@ -134,11 +134,43 @@ internal component Panel(title: String) uses JavaScript {
 
 後段のcompiler-owned transport/loweringは、general View valueを公開せず、実frontend frameworkに必要なsource evaluation/lazinessを保存しなければならない。
 
-## `[frontend.no-generic-repetition]` Generic View `for`を定義しない
+## `[frontend.view-repetition]` Declarative View repetition
 
-Virune 1.0はgeneric View `for` formを意図的に定義しない。repetitionのidentity/reactivity semanticsはfrontend system間で実質的に異なる。後のspecificationでframework-neutralなsemantic contractが証明されない限り、framework/library固有のrepetition primitiveを通常のExternal API/componentとして使用する。
+View-local `for`は専用のdeclarative View constructであり、通常のimperative `ForStatement`とは別物である。
 
-この不在は意図的なsemantic boundaryであり、compilerが通常のVirune `for` statementをfrontend repetition heuristicへlowerしてよいという意味ではない。
+```virune
+view {
+    for user in users {
+        UserRow(user: user)
+    }
+
+    for user, index in users {
+        UserRow(user: user, position: index + 1)
+    }
+}
+```
+
+1回のdownstream-host repetition evaluationにつきsource expressionは正確に1回だけ評価する。itemは0始まりのsource index昇順でvisitし、visitしたitemは各1回だけreadする。optionalなindex bindingはemitted childのordinalではなく、そのsource indexを表す。
+
+各itemのView bodyはsource orderで評価する。1 itemが複数のView childを生成する場合、それらはcompiler-ownedな1本のflat ordered child sequenceへ順番に追加する。Viruneはitemごとの暗黙Fragment/group identityを定義せず、framework固有のarray flatteningにこの順序の意味を委ねない。
+
+repetitionを`source.map(...)`その他のoverride可能なcollection methodとして定義しない。compilerはhost-sensitiveなsource expressionをdownstream-host evaluation位置の外へhoist、snapshot、cacheしてはならない。body内の`key` propertyは通常のdownstream View propertyのままであり、Virune Coreのidentity/reconciliation semanticsを持たない。
+
+## `[frontend.view-repetition-source]` Repetition source boundary
+
+初期repetition sourceはhost-safeなnative `List<T>`と、現在のinterop provider snapshotからarray shapeおよびindexed element shapeが証明されたJavaScript External `Array<T>` / `ReadonlyArray<T>`に限定する。
+
+External arrayをnative `List`へ暗黙変換しない。`any`、`unknown`、unsupported collection、またはunresolved、stale、partial、ambiguousなprovider evidenceはfail closedとする。
+
+External arrayでは、1回のrepetition evaluationにつきinitial `length`を正確に1回観測する。その観測済みlengthまでindex 0から順にvisitし、sparse-array holeはskipし、visitしたelementは各1回だけreadする。checkerはemission前にprovider-independentなrepetition evidenceを確定し、emitterはTypeScriptを再照会せず、display textやpackage/framework heuristicからarray semanticsを推測しない。
+
+Generic `Iterable`、`AsyncIterable`、`Set`、`Map`、arbitrary array-likeはこの初期contractの対象外である。
+
+## `[frontend.view-repetition-children]` Repetition child boundary
+
+compiler-managed standalone `children` slotは、nested View conditionalやnested repetitionを経由する場合も含め、repetition subtree内のどこにあってもrejectする。repetitionは`break`、`continue`、assignment、imperative loop-body semanticsを導入しない。
+
+repetitionが生成するcollectionを、JavaScript-imported External componentから観測可能なdirect child valueにしてはならない。zero-or-more個のflat child contributionをdownstreamのchildren/slot shapeを変えずに保存できることが証明されるまで、そのdirect External child structure内のrepetitionはrejectする。External componentの下でもintrinsic elementを1段挟んだ内側のrepetitionは、通常のvalidation対象として扱える。
 
 ## `[frontend.framework-neutral]` Framework-neutral core
 

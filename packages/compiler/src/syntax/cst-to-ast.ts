@@ -266,7 +266,7 @@ export class AstBuilder extends baseCstVisitorConstructor {
 	public viewExpression(ctx: Ctx): A.ViewExpression { return { id: this.id(), kind: 'ViewExpression', span: contextSpan(this.#fileId, ctx), body: this.visitNode(firstNode(ctx, 'viewBlock')) }; }
 	public viewBlock(ctx: Ctx): A.ViewBlock { return { id: this.id(), kind: 'ViewBlock', span: contextSpan(this.#fileId, ctx), children: this.visitNodes(nodes(ctx, 'viewChild')) }; }
 	public viewChild(ctx: Ctx): A.ViewChild {
-		for (const name of ['viewElement', 'viewConditional', 'viewTextChild', 'viewExpressionChild', 'viewChildrenSlot']) {
+		for (const name of ['viewElement', 'viewConditional', 'viewRepetition', 'viewTextChild', 'viewExpressionChild', 'viewChildrenSlot']) {
 			const child = firstNode(ctx, name); if (child !== undefined) return this.visitNode(child);
 		}
 		throw new Error('Missing View child during AST construction');
@@ -283,6 +283,14 @@ export class AstBuilder extends baseCstVisitorConstructor {
 		const blocks = nodes(ctx, 'viewBlock');
 		const nested = firstNode(ctx, 'viewConditional');
 		return { id: this.id(), kind: 'ViewConditional', span: contextSpan(this.#fileId, ctx), condition: this.visitNode(firstNode(ctx, 'expression')), thenBlock: this.visitNode(blocks[0]), ...(blocks[1] === undefined && nested === undefined ? {} : { elseBranch: blocks[1] === undefined ? this.visitNode<A.ViewConditional>(nested) : this.visitNode<A.ViewBlock>(blocks[1]) }) };
+	}
+	public viewRepetition(ctx: Ctx): A.ViewRepetition {
+		const identifiers = tokens(ctx, 'Identifier');
+		return {
+			id: this.id(), kind: 'ViewRepetition', span: contextSpan(this.#fileId, ctx), itemName: identifiers[0]?.image ?? '',
+			...(identifiers[1] === undefined ? {} : { indexName: identifiers[1].image }),
+			source: this.visitNode(firstNode(ctx, 'expression')), body: this.visitNode(firstNode(ctx, 'viewBlock')),
+		};
 	}
 	public viewTextChild(ctx: Ctx): A.ViewTextChild { const token = firstToken(ctx, 'StringLiteral'); return { id: this.id(), kind: 'ViewTextChild', span: contextSpan(this.#fileId, ctx), value: unquote(token?.image ?? '""') }; }
 	public viewExpressionChild(ctx: Ctx): A.ViewExpressionChild { return { id: this.id(), kind: 'ViewExpressionChild', span: contextSpan(this.#fileId, ctx), expression: this.visitNode(firstNode(ctx, 'expression')) }; }

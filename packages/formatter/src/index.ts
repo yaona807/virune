@@ -366,6 +366,7 @@ function printViewChild(child: ViewChild, indent: number): string {
 			return child.children === undefined ? head : `${head} ${printViewBlock(child.children, indent)}`;
 		}
 		case 'ViewConditional': return printViewConditional(child, indent);
+		case 'ViewRepetition': return `${prefix}for ${child.itemName}${child.indexName === undefined ? '' : `, ${child.indexName}`} in ${printExpression(child.source)} ${printViewBlock(child.body, indent)}`;
 	}
 }
 
