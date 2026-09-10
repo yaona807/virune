@@ -10,7 +10,7 @@ import { SourceWriter } from './writer.js';
 export interface EmitResult { readonly code: string; readonly map: string; }
 export interface EmitOptions { readonly sourceMap?: boolean; readonly sourcesContent?: boolean; readonly sourcePath?: string; }
 
-
+const nativeChildrenProperty = '$viruneChildren';
 
 export class JavaScriptEmitter {
 	readonly #writer: SourceWriter;
@@ -392,7 +392,7 @@ export class JavaScriptEmitter {
 		switch (child.kind) {
 			case 'ViewTextChild': return `{${javascriptStringLiteral(child.value)}}`;
 			case 'ViewExpressionChild': return `{${this.expression(child.expression, contextName)}}`;
-			case 'ViewChildrenSlot': return panicEmitter('View children slot reached preserved JSX emission before native component transport');
+			case 'ViewChildrenSlot': return `{${this.nativeChildrenSlotExpression()}}`;
 			case 'ViewElement': return this.viewElement(child, contextName);
 			case 'ViewConditional': return `{${this.viewConditionalExpression(child, contextName)}}`;
 			case 'ViewRepetition': return `{${this.viewRepetitionExpression(child, contextName)}}`;
@@ -403,18 +403,25 @@ export class JavaScriptEmitter {
 		switch (child.kind) {
 			case 'ViewTextChild': return javascriptStringLiteral(child.value);
 			case 'ViewExpressionChild': return this.expression(child.expression, contextName);
-			case 'ViewChildrenSlot': return panicEmitter('View children slot reached preserved JSX emission before native component transport');
+			case 'ViewChildrenSlot': return this.nativeChildrenSlotExpression();
 			case 'ViewElement': return this.viewElement(child, contextName);
 			case 'ViewConditional': return `(${this.viewConditionalExpression(child, contextName)})`;
 			case 'ViewRepetition': return this.viewRepetitionExpression(child, contextName);
 		}
 	}
 
+	private nativeChildrenSlotExpression(): string {
+		return `(() => { const $slot = $props[${javascriptStringLiteral(nativeChildrenProperty)}]; return $slot === undefined ? <></> : $slot(); })()`;
+	}
+
 	private viewElement(element: A.ViewElement, contextName: string): string {
 		const tag = element.tag.join('.');
+		const root = element.tag[0];
+		const native = element.tag.length === 1 && root !== undefined && this.#semantic.globalScope.lookup(root)?.kind === 'component';
 		const properties = element.properties.map(property => `${property.name}={${this.expression(property.value, contextName)}}`);
+		if (native && element.children !== undefined) properties.push(`${nativeChildrenProperty}={() => <>${this.viewBlockContents(element.children, contextName)}</>}`);
 		const attributes = properties.length === 0 ? '' : ` ${properties.join(' ')}`;
-		if (element.children === undefined) return `<${tag}${attributes} />`;
+		if (element.children === undefined || native) return `<${tag}${attributes} />`;
 		return `<${tag}${attributes}>${this.viewBlockContents(element.children, contextName)}</${tag}>`;
 	}
 

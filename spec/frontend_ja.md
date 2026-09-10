@@ -134,6 +134,8 @@ internal component Panel(title: String) uses JavaScript {
 
 後段のcompiler-owned transport/loweringは、general View valueを公開せず、実frontend frameworkに必要なsource evaluation/lazinessを保存しなければならない。
 
+compiler-managed slotをJavaScript-imported External componentから観測可能なdirect child valueにしてはならない。downstreamのchildren/slot semanticsを変えずにそのzero-or-more child contributionを保存できることが証明されるまで、そのdirect External child structure内のstandalone `children`はrejectする。External componentの下でもintrinsic element配下にnestedされたslotは、通常のView validation対象として引き続き利用できる。
+
 ## `[frontend.view-repetition]` Declarative View repetition
 
 View-local `for`は専用のdeclarative View constructであり、通常のimperative `ForStatement`とは別物である。

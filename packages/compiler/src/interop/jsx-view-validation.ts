@@ -26,6 +26,7 @@ interface RenderContext {
 
 const jsxAttributeName = /^[A-Za-z_$][A-Za-z0-9_$-]*(?::[A-Za-z_$][A-Za-z0-9_$-]*)?$/u;
 const stringInterpolationPlaceholder = /(?<!\{)\{[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*\}(?!\})/u;
+const nativeChildrenProperty = '$viruneChildren';
 
 /**
  * Validate checked View structure against the project's real TypeScript JSX
@@ -107,6 +108,7 @@ function renderNativeComponentProof(component: A.ComponentDeclaration, semantic:
 		}
 		properties.push(`${JSON.stringify(parameter.name)}: ${rendered};`);
 	}
+	properties.push(`${JSON.stringify(nativeChildrenProperty)}?: () => unknown;`);
 	return `declare function ${component.name}(props: { ${properties.join(' ')} }): never;`;
 }
 
@@ -175,7 +177,7 @@ function renderViewBlockExpression(block: A.ViewBlock, context: RenderContext): 
 	switch (child.kind) {
 		case 'ViewTextChild': return renderStringValue(child.value);
 		case 'ViewExpressionChild': return renderViewValue(child.expression, context);
-		case 'ViewChildrenSlot': return fail(context, child.span, 'compiler-managed children slots require the native component boundary and are not part of this validation slice');
+		case 'ViewChildrenSlot': return '<></>';
 		case 'ViewElement': return renderViewElement(child, context);
 		case 'ViewConditional': return renderConditionalExpression(child, context);
 		case 'ViewRepetition': return renderViewRepetition(child, context);
@@ -189,7 +191,7 @@ function renderViewChild(child: A.ViewChild, context: RenderContext): string | u
 			const value = renderViewValue(child.expression, context);
 			return value === undefined ? undefined : `{${value}}`;
 		}
-		case 'ViewChildrenSlot': return fail(context, child.span, 'compiler-managed children slots require the native component boundary and are not part of this validation slice');
+		case 'ViewChildrenSlot': return '{<></>}';
 		case 'ViewElement': return renderViewElement(child, context);
 		case 'ViewConditional': return renderViewConditional(child, context);
 		case 'ViewRepetition': {
@@ -367,9 +369,16 @@ function renderViewElement(element: A.ViewElement, context: RenderContext): stri
 		properties.push(`${property.name}={${value}}`);
 	}
 	const tag = element.tag.join('.');
+	if (native && element.children !== undefined) {
+		const children = renderViewBlock(element.children, context);
+		if (children === undefined) return undefined;
+		properties.push(`${nativeChildrenProperty}={() => ${children}}`);
+	}
 	const attributes = properties.length === 0 ? '' : ` ${properties.join(' ')}`;
-	if (element.children === undefined) return `<${tag}${attributes} />`;
-	if (native) return fail(context, element.span, `Virune-native component ${tag} children require compiler-managed native child transport that is not implemented in this validation slice`);
+	if (element.children === undefined || native) return `<${tag}${attributes} />`;
+	if (external && containsDirectChildrenSlot(element.children)) {
+		return fail(context, element.span, `compiler-managed children slot beneath JavaScript-imported External component ${tag} cannot preserve zero-or-more child contribution without changing the downstream children shape`);
+	}
 	if (external && containsDirectConditionalAbsence(element.children)) {
 		return fail(context, element.span, `View if without else beneath JavaScript-imported External component ${tag} cannot preserve zero-child absence without making the empty fragment observable as a child`);
 	}
@@ -430,6 +439,18 @@ function renderViewBlockContents(block: A.ViewBlock, context: RenderContext): st
 		children.push(rendered);
 	}
 	return children.join('');
+}
+
+function containsDirectChildrenSlot(block: A.ViewBlock): boolean {
+	return block.children.some(child => child.kind === 'ViewChildrenSlot' || (child.kind === 'ViewConditional' && conditionalContainsDirectChildrenSlot(child)));
+}
+
+function conditionalContainsDirectChildrenSlot(conditional: A.ViewConditional): boolean {
+	if (containsDirectChildrenSlot(conditional.thenBlock)) return true;
+	if (conditional.elseBranch === undefined) return false;
+	return conditional.elseBranch.kind === 'ViewBlock'
+		? containsDirectChildrenSlot(conditional.elseBranch)
+		: conditionalContainsDirectChildrenSlot(conditional.elseBranch);
 }
 
 function containsDirectConditionalAbsence(block: A.ViewBlock): boolean {

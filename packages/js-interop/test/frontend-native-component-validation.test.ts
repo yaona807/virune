@@ -18,6 +18,7 @@ async function compile(text: string, emit = false) {
 }
 
 export interface Marker { readonly marker: true; }
+export const ExternalCard: (props: { children?: unknown }) => JSX.Element;
 `, 'utf8');
 	const provider = new TypeScriptInteropProvider({ projectRoot: root });
 	try {
@@ -48,10 +49,11 @@ component Page(title: String) uses JavaScript {
 	assert.match(result.output.code, /<Card title=\{/u);
 });
 
-test('native component prop usage rejects missing, extra, duplicate, and Virune-type-incompatible values', async () => {
+test('native component prop usage rejects missing, extra, duplicate, synthetic, and Virune-type-incompatible values', async () => {
 	for (const usage of [
 		'Card(title: "ok")',
 		'Card(title: "ok", count: 1, extra: "no")',
+		'Card(title: "ok", count: 1, "$viruneChildren": "no")',
 		'Card(title: "ok", count: 1, count: 2)',
 		'Card(title: "ok", count: 1.5)',
 	]) {
@@ -93,24 +95,114 @@ component Page() uses JavaScript {
 	assert.match(diagnostic.message, /requires a native component boundary/u);
 });
 
-test('native component children remain fail-closed until child transport exists', async () => {
+test('native component children use a lazy compiler-managed slot', async () => {
 	const result = await compile(`component Card() uses JavaScript {
 	return view {
-		div()
+		div() {
+			children
+		}
+	}
+}
+
+component Page(title: String) uses JavaScript {
+	return view {
+		Card() {
+			span() {
+				{ title }
+			}
+		}
+	}
+}
+`, true);
+	assert.deepEqual(errors(result), []);
+	assert.ok(result.output);
+	assert.match(result.output.code, /<Card \$viruneChildren=\{\(\) => <><span>\{/u);
+	assert.match(result.output.code, /\$viruneValidateSafeFfiValue\(\$props\["title"\]/u);
+	assert.match(result.output.code, /const \$slot = \$props\["\$viruneChildren"\]; return \$slot === undefined \? <><\/> : \$slot\(\);/u);
+});
+
+test('native component children slot contributes zero children when no block is supplied', async () => {
+	const result = await compile(`component Card() uses JavaScript {
+	return view {
+		div() {
+			children
+		}
 	}
 }
 
 component Page() uses JavaScript {
 	return view {
-		Card() {
+		Card()
+	}
+}
+`, true);
+	assert.deepEqual(errors(result), []);
+	assert.ok(result.output);
+	assert.match(result.output.code, /return \$slot === undefined \? <><\/> : \$slot\(\);/u);
+});
+
+test('native component may forward its compiler-managed children slot', async () => {
+	const result = await compile(`component Inner() uses JavaScript {
+	return view {
+		section() {
+			children
+		}
+	}
+}
+
+component Outer() uses JavaScript {
+	return view {
+		Inner() {
+			children
+		}
+	}
+}
+
+component Page() uses JavaScript {
+	return view {
+		Outer() {
 			span()
+		}
+	}
+}
+`, true);
+	assert.deepEqual(errors(result), []);
+	assert.ok(result.output);
+	assert.ok((result.output.code.match(/\$viruneChildren=\{\(\) => <>/gu) ?? []).length >= 2);
+});
+
+test('compiler-managed children slot does not become a direct External component child value', async () => {
+	const result = await compile(`import js { ExternalCard } from "./library.js"
+
+component Wrapper() uses JavaScript {
+	return view {
+		ExternalCard() {
+			children
 		}
 	}
 }
 `);
 	const diagnostic = errors(result).find(item => item.code === 'L4308');
 	assert.ok(diagnostic);
-	assert.match(diagnostic.message, /children require compiler-managed native child transport/u);
+	assert.match(diagnostic.message, /compiler-managed children slot beneath JavaScript-imported External component ExternalCard/u);
+});
+
+test('compiler-managed children slot remains valid beneath an intrinsic inside an External component', async () => {
+	const result = await compile(`import js { ExternalCard } from "./library.js"
+
+component Wrapper() uses JavaScript {
+	return view {
+		ExternalCard() {
+			div() {
+				children
+			}
+		}
+	}
+}
+`, true);
+	assert.deepEqual(errors(result), []);
+	assert.ok(result.output);
+	assert.match(result.output.code, /<ExternalCard><div>\{\(\(\) => \{ const \$slot = \$props\["\$viruneChildren"\]/u);
 });
 
 test('lowercase native component tags remain distinct from JSX intrinsic tags', async () => {
