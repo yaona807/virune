@@ -1,9 +1,34 @@
 import type * as A from '../ast/nodes.js';
 import type { SemanticModel } from '../checker/checker.js';
 import type { DiagnosticBag } from '../diagnostics/diagnostic.js';
-import type { SourceSpan } from '../source.js';
+import type { SourceSpan, TypeId } from '../source.js';
 
-const frontendPrimitiveParameters = new Set(['Bool', 'Int', 'Float', 'BigInt', 'String']);
+type FrontendHostPrimitiveName = 'Bool' | 'Int' | 'Float' | 'BigInt' | 'String';
+
+function directFrontendHostPrimitiveName(typeId: TypeId, semantic: SemanticModel): FrontendHostPrimitiveName | undefined {
+	const type = semantic.arena.get(typeId);
+	if (type.kind !== 'primitive') return undefined;
+	switch (type.name) {
+		case 'Bool':
+		case 'Int':
+		case 'Float':
+		case 'BigInt':
+		case 'String':
+			return type.name;
+		default:
+			return undefined;
+	}
+}
+
+export function frontendHostPrimitiveName(typeId: TypeId, semantic: SemanticModel): FrontendHostPrimitiveName | undefined {
+	const direct = directFrontendHostPrimitiveName(typeId, semantic);
+	if (direct !== undefined) return direct;
+	const type = semantic.arena.get(typeId);
+	if (type.kind !== 'named' || type.declarationKind !== 'newtype' || type.underlying === undefined || type.mustUse === true) return undefined;
+	const symbol = semantic.globalScope.lookup(type.name);
+	if (symbol?.kind !== 'type' || symbol.declaration?.kind !== 'NewtypeDeclaration') return undefined;
+	return directFrontendHostPrimitiveName(type.underlying, semantic);
+}
 
 /**
  * Keep host-facing component values within the frontend boundary currently
@@ -20,10 +45,9 @@ export function validateFrontendComponentEmissionBoundary(
 		const parameterNames = new Set(declaration.parameters.map(parameter => parameter.name));
 		for (const parameter of declaration.parameters) {
 			const symbol = parameter.symbolId === undefined ? undefined : semantic.symbols.get(parameter.symbolId);
-			const type = symbol === undefined ? undefined : semantic.arena.get(symbol.typeId);
-			if (type?.kind === 'primitive' && frontendPrimitiveParameters.has(type.name)) continue;
+			if (symbol !== undefined && frontendHostPrimitiveName(symbol.typeId, semantic) !== undefined) continue;
 			const display = symbol === undefined ? '<unresolved>' : semantic.arena.display(symbol.typeId);
-			diagnostics.error('L4309', `Component parameter ${parameter.name} has type ${display}; frontend JSX emission currently supports only Bool, Int, Float, BigInt, and String host props`, parameter.span);
+			diagnostics.error('L4309', `Component parameter ${parameter.name} has type ${display}; frontend JSX emission currently supports Bool, Int, Float, BigInt, String, and direct non-mustUse source newtypes backed by those primitives`, parameter.span);
 		}
 		const interpolation = findUnsupportedComponentInterpolation(declaration.body, parameterNames);
 		if (interpolation?.kind === 'view-text') {

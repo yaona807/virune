@@ -85,7 +85,7 @@ component Page(config: Config) uses JavaScript {
 }
 `, 'utf8');
 		const result = await buildProject(root, { write: false, jsInteropProvider: jsxValidationProvider });
-		assert.ok(errors(result).some(item => item.code === 'L4309' && /frontend JSX emission currently supports only/u.test(item.message)));
+		assert.ok(errors(result).some(item => item.code === 'L4309' && /frontend JSX emission currently supports/u.test(item.message)));
 		const main = result.modules.find(module => module.source.path === resolve(root, 'src/main.virune'));
 		assert.equal(main?.output, undefined);
 	});
@@ -122,6 +122,45 @@ component Page() uses JavaScript {
 		assert.ok(main.output.code.includes('Card as LocalCard'));
 		assert.ok(main.output.code.includes('from "./helper.jsx";'));
 		assert.ok(main.output.code.includes('<LocalCard'));
+	});
+});
+
+test('project build routes primitive-backed newtype props through existing native component signatures', async () => {
+	await withProject(async root => {
+		await writeFile(join(root, 'src/helper.virune'), `internal newtype UserId = Int
+
+internal fn sampleUserId() -> UserId {
+	return UserId.create(7)
+}
+
+internal component Card(userId: UserId) uses JavaScript {
+	let snapshot = userId
+	return view {
+		div()
+	}
+}
+`, 'utf8');
+		await writeFile(join(root, 'src/main.virune'), `import { Card as LocalCard, sampleUserId } from "./helper.virune"
+
+component Page() uses JavaScript {
+	let userId = sampleUserId()
+	return view {
+		LocalCard(userId: userId)
+	}
+}
+`, 'utf8');
+		const result = await buildProject(root, { write: false, jsInteropProvider: jsxValidationProvider });
+		assert.deepEqual(errors(result), []);
+		const main = result.modules.find(module => module.source.path === resolve(root, 'src/main.virune'));
+		const helper = result.modules.find(module => module.source.path === resolve(root, 'src/helper.virune'));
+		assert.equal(main?.outputPath, resolve(root, 'dist/main.jsx'));
+		assert.equal(helper?.outputPath, resolve(root, 'dist/helper.jsx'));
+		assert.ok(main?.output);
+		assert.ok(helper?.output);
+		assert.ok(main.output.code.includes('Card as LocalCard'));
+		assert.ok(main.output.code.includes('from "./helper.jsx";'));
+		assert.match(main.output.code, /<LocalCard userId=\{/u);
+		assert.ok(helper.output.code.includes(`$viruneValidateSafeFfiValue($props["userId"], { version: 'virune-safe-ffi/v1', type: { kind: 'int' } }, "$.userId")`));
 	});
 });
 

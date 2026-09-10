@@ -49,6 +49,73 @@ component Page(title: String) uses JavaScript {
 	assert.match(result.output.code, /<Card title=\{/u);
 });
 
+test('same-module native component props accept direct primitive-backed newtypes', async () => {
+	const result = await compile(`newtype UserId = Int
+
+component Card(userId: UserId) uses JavaScript {
+	let snapshot = userId
+	return view {
+		div()
+	}
+}
+
+component Page() uses JavaScript {
+	let userId = UserId.create(7)
+	return view {
+		Card(userId: userId)
+	}
+}
+`, true);
+	assert.deepEqual(errors(result), []);
+	assert.ok(result.output);
+	assert.match(result.output.code, /<Card userId=\{/u);
+	assert.ok(result.output.code.includes(`$viruneValidateSafeFfiValue($props["userId"], { version: 'virune-safe-ffi/v1', type: { kind: 'int' } }, "$.userId")`));
+});
+
+test('native component newtype props preserve nominal assignability', async () => {
+	for (const [value, expected] of [
+		['7', /property userId has type Int; expected UserId/u],
+		['OrderId.create(7)', /property userId has type OrderId; expected UserId/u],
+	] as const) {
+		const result = await compile(`newtype UserId = Int
+newtype OrderId = Int
+
+component Card(userId: UserId) uses JavaScript {
+	return view {
+		div()
+	}
+}
+
+component Page() uses JavaScript {
+	return view {
+		Card(userId: ${value})
+	}
+}
+`);
+		assert.ok(errors(result).some(item => item.code === 'L4308' && expected.test(item.message)), value);
+	}
+});
+
+test('unsupported native component newtypes remain outside the host-prop boundary', async () => {
+	for (const { declaration, type } of [
+		{ declaration: 'newtype Payload = Unknown', type: 'Payload' },
+		{ declaration: '@mustUse\nnewtype Payload = Int', type: 'Payload' },
+		{ declaration: '', type: 'Byte' },
+	] as const) {
+		const result = await compile(`${declaration}
+
+component Card(payload: ${type}) uses JavaScript {
+	return view {
+		div()
+	}
+}
+`, true);
+		const diagnostic = errors(result).find(item => item.code === 'L4309');
+		assert.ok(diagnostic, type);
+		assert.match(diagnostic.message, /direct non-mustUse source newtypes backed by those primitives/u);
+	}
+});
+
 test('native component prop usage rejects missing, extra, duplicate, synthetic, and Virune-type-incompatible values', async () => {
 	for (const usage of [
 		'Card(title: "ok")',
