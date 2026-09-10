@@ -97,21 +97,22 @@ component Page() uses JavaScript {
 });
 
 test('unsupported native component newtypes remain outside the host-prop boundary', async () => {
-	for (const declaration of [
-		'newtype Payload = Unknown',
-		'@mustUse\nnewtype Payload = Int',
+	for (const { declaration, type } of [
+		{ declaration: 'newtype Payload = Unknown', type: 'Payload' },
+		{ declaration: '@mustUse\nnewtype Payload = Int', type: 'Payload' },
+		{ declaration: '', type: 'Byte' },
 	] as const) {
 		const result = await compile(`${declaration}
 
-component Card(payload: Payload) uses JavaScript {
+component Card(payload: ${type}) uses JavaScript {
 	return view {
 		div()
 	}
 }
 `, true);
 		const diagnostic = errors(result).find(item => item.code === 'L4309');
-		assert.ok(diagnostic, declaration);
-		assert.match(diagnostic.message, /direct non-mustUse newtypes backed by those primitives/u);
+		assert.ok(diagnostic, type);
+		assert.match(diagnostic.message, /direct non-mustUse source newtypes backed by those primitives/u);
 	}
 });
 
