@@ -14,6 +14,7 @@ async function compile(text: string, emit = false) {
 		interface Element { readonly __viruneJsxElement: unique symbol; }
 		interface IntrinsicElements { div: {}; span: {}; child: {}; }
 	}
+	const Card: (props: { ambient: true }) => JSX.Element;
 }
 
 export interface Marker { readonly marker: true; }
