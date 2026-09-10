@@ -1,5 +1,6 @@
 import type * as A from '../ast/nodes.js';
 import type { SemanticModel } from '../checker/checker.js';
+import { TypeOperations } from '../checker/type-operations.js';
 import type { JsInteropProvider } from './types.js';
 import type { SourceSpan } from '../source.js';
 
@@ -16,6 +17,7 @@ interface RenderFailure {
 
 interface RenderContext {
 	readonly semantic: SemanticModel;
+	readonly types: TypeOperations;
 	readonly externalTagRoots: ReadonlySet<string>;
 	readonly nativeTagRoots: ReadonlySet<string>;
 	readonly repetitionValues: Map<number, string>;
@@ -51,10 +53,11 @@ export function validateFrontendJsxUsage(module: A.ModuleNode, semantic: Semanti
 		if (proof !== undefined) nativeTagProofs.set(component.name, proof);
 	}
 	const nativeTagRoots = new Set(nativeTagProofs.keys());
+	const types = new TypeOperations({ arena: semantic.arena, diagnostics: semantic.diagnostics });
 	for (const component of components) {
 		const views: A.ViewExpression[] = [];
 		collectViewReturns(component.body, views);
-		const context: RenderContext = { semantic, externalTagRoots, nativeTagRoots, repetitionValues: new Map() };
+		const context: RenderContext = { semantic, types, externalTagRoots, nativeTagRoots, repetitionValues: new Map() };
 		const renderedViews: string[] = [];
 		for (const view of views) {
 			const onlyChild = view.body.children.length === 1 ? view.body.children[0] : undefined;
@@ -68,6 +71,7 @@ export function validateFrontendJsxUsage(module: A.ModuleNode, semantic: Semanti
 		}
 		const sourceText = [
 			...imports,
+			...(nativeTagProofs.size === 0 ? [] : ['export {};']),
 			...nativeTagProofs.values(),
 			...[...externalTagRoots, ...nativeTagRoots].map(name => `void ${name};`),
 			...renderedViews.map(view => `${view};`),
@@ -351,6 +355,11 @@ function renderViewElement(element: A.ViewElement, context: RenderContext): stri
 	if (!native && !intrinsic && !external) {
 		return fail(context, element.span, `View tag ${element.tag.join('.')} is neither intrinsic nor rooted in a JavaScript-imported External binding`);
 	}
+	if (native) {
+		const declaration = symbol?.declaration;
+		if (declaration?.kind !== 'ComponentDeclaration') return fail(context, element.span, `Virune-native component tag ${root} has no checked component declaration`);
+		if (!validateNativeComponentProperties(element, declaration as A.ComponentDeclaration, context)) return undefined;
+	}
 	const properties: string[] = [];
 	for (const property of element.properties) {
 		if (!jsxAttributeName.test(property.name)) return fail(context, property.span, `property ${JSON.stringify(property.name)} cannot be represented as a preserved JSX attribute without speculative lowering`);
@@ -370,6 +379,39 @@ function renderViewElement(element: A.ViewElement, context: RenderContext): stri
 	}
 	const children = renderViewBlockContents(element.children, context);
 	return children === undefined ? undefined : `<${tag}${attributes}>${children}</${tag}>`;
+}
+
+function validateNativeComponentProperties(element: A.ViewElement, component: A.ComponentDeclaration, context: RenderContext): boolean {
+	const parameters = new Map(component.parameters.map(parameter => [parameter.name, parameter]));
+	const seen = new Set<string>();
+	for (const property of element.properties) {
+		if (seen.has(property.name)) {
+			fail(context, property.span, `Virune-native component ${component.name} property ${property.name} is duplicated`);
+			return false;
+		}
+		seen.add(property.name);
+		const parameter = parameters.get(property.name);
+		if (parameter === undefined) {
+			fail(context, property.span, `Virune-native component ${component.name} has no property ${property.name}`);
+			return false;
+		}
+		const expected = parameter.symbolId === undefined ? undefined : context.semantic.symbols.get(parameter.symbolId)?.typeId;
+		const actual = property.value.inferredTypeId;
+		if (expected === undefined || actual === undefined) {
+			fail(context, property.span, `Virune-native component ${component.name} property ${property.name} lacks checked type evidence`);
+			return false;
+		}
+		if (!context.types.isAssignable(actual, expected)) {
+			fail(context, property.span, `Virune-native component ${component.name} property ${property.name} has type ${context.semantic.arena.display(actual)}; expected ${context.semantic.arena.display(expected)}`);
+			return false;
+		}
+	}
+	for (const parameter of component.parameters) {
+		if (seen.has(parameter.name)) continue;
+		fail(context, element.span, `Virune-native component ${component.name} requires property ${parameter.name}`);
+		return false;
+	}
+	return true;
 }
 
 function renderViewBlockContents(block: A.ViewBlock, context: RenderContext): string | undefined {
