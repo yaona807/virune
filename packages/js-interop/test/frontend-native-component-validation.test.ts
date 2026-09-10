@@ -72,6 +72,42 @@ component Page() uses JavaScript {
 	assert.ok(result.output.code.includes(`$viruneValidateSafeFfiValue($props["userId"], { version: 'virune-safe-ffi/v1', type: { kind: 'int' } }, "$.userId")`));
 });
 
+test('same-module native component props transport scalar records through existing Safe FFI', async () => {
+	const result = await compile(`newtype UserId = Int
+
+record User {
+	id: UserId
+	name: String
+	active: Bool
+}
+
+component Card(user: User) uses JavaScript {
+	let snapshot = user
+	return view {
+		div()
+	}
+}
+
+component Page() uses JavaScript {
+	let user = User {
+		id: UserId.create(7),
+		name: "Ada",
+		active: true,
+	}
+	return view {
+		Card(user: user)
+	}
+}
+`, true);
+	assert.deepEqual(errors(result), []);
+	assert.ok(result.output);
+	assert.match(result.output.code, /<Card user=\{encodeFfiValue\(user, \{ version: 'virune-safe-ffi\/v1', type: \{ kind: 'record', name: "User"/u);
+	assert.ok(result.output.code.includes(`["id"]: { kind: 'int' }`));
+	assert.ok(result.output.code.includes(`["name"]: { kind: 'string' }`));
+	assert.ok(result.output.code.includes(`["active"]: { kind: 'bool' }`));
+	assert.match(result.output.code, /\$viruneValidateSafeFfiValue\(\$props\["user"\], \{ version: 'virune-safe-ffi\/v1', type: \{ kind: 'record', name: "User"/u);
+});
+
 test('native component newtype props preserve nominal assignability', async () => {
 	for (const [value, expected] of [
 		['7', /property userId has type Int; expected UserId/u],
@@ -96,6 +132,31 @@ component Page() uses JavaScript {
 	}
 });
 
+test('native component record props preserve nominal assignability', async () => {
+	const result = await compile(`record User {
+	name: String
+}
+
+record Other {
+	name: String
+}
+
+component Card(user: User) uses JavaScript {
+	return view {
+		div()
+	}
+}
+
+component Page() uses JavaScript {
+	let other = Other { name: "Ada" }
+	return view {
+		Card(user: other)
+	}
+}
+`);
+	assert.ok(errors(result).some(item => item.code === 'L4308' && /property user has type Other; expected User/u.test(item.message)));
+});
+
 test('unsupported native component newtypes remain outside the host-prop boundary', async () => {
 	for (const { declaration, type } of [
 		{ declaration: 'newtype Payload = Unknown', type: 'Payload' },
@@ -113,6 +174,28 @@ component Card(payload: ${type}) uses JavaScript {
 		const diagnostic = errors(result).find(item => item.code === 'L4309');
 		assert.ok(diagnostic, type);
 		assert.match(diagnostic.message, /direct non-mustUse source newtypes backed by those primitives/u);
+	}
+});
+
+test('unsupported source records remain outside the native component host-prop boundary', async () => {
+	for (const { declaration, type } of [
+		{ declaration: 'record Config {\n\tlabels: List<String>\n}', type: 'Config' },
+		{ declaration: '@mustUse\nrecord Config {\n\tlabel: String\n}', type: 'Config' },
+		{ declaration: '@json(strict)\nrecord Config derives Json {\n\tlabel: String\n}', type: 'Config' },
+		{ declaration: 'record Nested {\n\tlabel: String\n}\nrecord Config {\n\tnested: Nested\n}', type: 'Config' },
+		{ declaration: 'record Config<T> {\n\tvalue: T\n}', type: 'Config<String>' },
+	] as const) {
+		const result = await compile(`${declaration}
+
+component Card(config: ${type}) uses JavaScript {
+	return view {
+		div()
+	}
+}
+`, true);
+		const diagnostic = errors(result).find(item => item.code === 'L4309');
+		assert.ok(diagnostic, type);
+		assert.match(diagnostic.message, /non-generic unattributed source records containing only those scalar fields/u);
 	}
 });
 
@@ -142,7 +225,7 @@ component Page() uses JavaScript {
 
 test('unsupported native component prop shapes remain outside the proof boundary', async () => {
 	const result = await compile(`record Config {
-	label: String
+	labels: List<String>
 }
 
 component Card(config: Config) uses JavaScript {
