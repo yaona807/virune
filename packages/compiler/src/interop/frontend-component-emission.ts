@@ -26,8 +26,8 @@ export function frontendHostPrimitiveName(typeId: TypeId, semantic: SemanticMode
 	const type = semantic.arena.get(typeId);
 	if (type.kind !== 'named' || type.declarationKind !== 'newtype' || type.underlying === undefined || type.mustUse === true) return undefined;
 	const symbol = semantic.globalScope.lookup(type.name);
-	const declaration = symbol?.declaration;
-	if (symbol?.kind !== 'type' || declaration?.kind !== 'NewtypeDeclaration') return undefined;
+	if (symbol?.kind !== 'type' || symbol.declaration?.kind !== 'NewtypeDeclaration') return undefined;
+	const declaration = symbol.declaration as A.NewtypeDeclaration;
 	const primitive = directFrontendHostPrimitiveName(type.underlying, semantic);
 	return primitive !== undefined && declaration.underlying.name === primitive ? primitive : undefined;
 }
