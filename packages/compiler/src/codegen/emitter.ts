@@ -419,7 +419,7 @@ export class JavaScriptEmitter {
 		const root = element.tag[0];
 		const native = element.tag.length === 1 && root !== undefined && this.#semantic.globalScope.lookup(root)?.kind === 'component';
 		const properties = element.properties.map(property => `${property.name}={${this.expression(property.value, contextName)}}`);
-		if (native && element.children !== undefined) properties.push(`${nativeChildrenProperty}={() => <>${this.viewBlockContents(element.children, contextName)}</>}`);
+		if (native && element.children !== undefined) properties.push(`${nativeChildrenProperty}={() => ${this.viewBlockExpression(element.children, contextName)}}`);
 		const attributes = properties.length === 0 ? '' : ` ${properties.join(' ')}`;
 		if (element.children === undefined || native) return `<${tag}${attributes} />`;
 		return `<${tag}${attributes}>${this.viewBlockContents(element.children, contextName)}</${tag}>`;
