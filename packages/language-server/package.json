@@ -20,7 +20,7 @@
 		"@virune/formatter": "1.0.0",
 		"@virune/js-interop": "1.0.0",
 		"vscode-languageserver": "10.1.0",
-		"vscode-languageserver-textdocument": "1.0.12"
+		"vscode-languageserver-textdocument": "1.0.14"
 	},
 	"scripts": {
 		"build": "tsc -b",
