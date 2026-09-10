@@ -98,7 +98,7 @@ test('project build routes imported primitive native components to JSX artifacts
 internal component Card(title: String, count: Int, active: Bool) uses JavaScript {
 	return view {
 		div(title: title) {
-			title
+			{ title }
 		}
 	}
 }
