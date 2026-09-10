@@ -142,7 +142,7 @@ component Page() uses JavaScript {
 }
 `, 'utf8');
 		const result = await buildProject(root, { write: false, jsInteropProvider: jsxValidationProvider });
-		assert.ok(errors(result).some(item => item.code === 'L4308'));
+		assert.ok(errors(result).some(item => item.code === 'L4308' && /property count has type Float; expected Int/u.test(item.message)));
 	});
 });
 

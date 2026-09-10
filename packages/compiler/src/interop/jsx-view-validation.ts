@@ -84,13 +84,17 @@ export function validateFrontendJsxUsage(module: A.ModuleNode, semantic: Semanti
 }
 
 function renderNativeComponentProof(component: A.ComponentDeclaration, semantic: SemanticModel): string | undefined {
-	if (/^[a-z]/u.test(component.name)) return undefined;
+	if (/^[a-z]/u.test(component.name) || component.symbolId === undefined) return undefined;
+	const componentSymbol = semantic.symbols.get(component.symbolId);
+	if (componentSymbol?.kind !== 'component') return undefined;
+	const componentType = semantic.arena.get(componentSymbol.typeId);
+	if (componentType.kind !== 'function' || componentType.parameters.length !== component.parameters.length) return undefined;
 	const properties: string[] = [];
-	for (const parameter of component.parameters) {
-		if (parameter.symbolId === undefined) return undefined;
-		const symbol = semantic.symbols.get(parameter.symbolId);
-		if (symbol === undefined) return undefined;
-		const type = semantic.arena.get(symbol.typeId);
+	for (let index = 0; index < component.parameters.length; index += 1) {
+		const parameter = component.parameters[index]!;
+		const typeId = componentType.parameters[index];
+		if (typeId === undefined) return undefined;
+		const type = semantic.arena.get(typeId);
 		if (type.kind !== 'primitive') return undefined;
 		let rendered: string;
 		switch (type.name) {
@@ -377,7 +381,17 @@ function renderViewElement(element: A.ViewElement, context: RenderContext): stri
 }
 
 function validateNativeComponentProperties(element: A.ViewElement, component: A.ComponentDeclaration, context: RenderContext): boolean {
-	const parameters = new Map(component.parameters.map(parameter => [parameter.name, parameter]));
+	if (component.symbolId === undefined) {
+		fail(context, element.span, `Virune-native component ${component.name} lacks checked signature evidence`);
+		return false;
+	}
+	const componentSymbol = context.semantic.symbols.get(component.symbolId);
+	const componentType = componentSymbol?.kind === 'component' ? context.semantic.arena.get(componentSymbol.typeId) : undefined;
+	if (componentType?.kind !== 'function' || componentType.parameters.length !== component.parameters.length) {
+		fail(context, element.span, `Virune-native component ${component.name} lacks checked signature evidence`);
+		return false;
+	}
+	const parameters = new Map(component.parameters.map((parameter, index) => [parameter.name, componentType.parameters[index]!]));
 	const seen = new Set<string>();
 	for (const property of element.properties) {
 		if (seen.has(property.name)) {
@@ -385,14 +399,13 @@ function validateNativeComponentProperties(element: A.ViewElement, component: A.
 			return false;
 		}
 		seen.add(property.name);
-		const parameter = parameters.get(property.name);
-		if (parameter === undefined) {
+		const expected = parameters.get(property.name);
+		if (expected === undefined) {
 			fail(context, property.span, `Virune-native component ${component.name} has no property ${property.name}`);
 			return false;
 		}
-		const expected = parameter.symbolId === undefined ? undefined : context.semantic.symbols.get(parameter.symbolId)?.typeId;
 		const actual = property.value.inferredTypeId;
-		if (expected === undefined || actual === undefined) {
+		if (actual === undefined) {
 			fail(context, property.span, `Virune-native component ${component.name} property ${property.name} lacks checked type evidence`);
 			return false;
 		}
