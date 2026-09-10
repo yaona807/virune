@@ -19,7 +19,6 @@ interface RenderContext {
 	readonly semantic: SemanticModel;
 	readonly types: TypeOperations;
 	readonly externalTagRoots: ReadonlySet<string>;
-	readonly nativeTagProofs: ReadonlyMap<string, string>;
 	readonly usedNativeProofs: Set<string>;
 	readonly repetitionValues: Map<number, string>;
 	failure?: RenderFailure;
@@ -48,16 +47,11 @@ export function validateFrontendJsxUsage(module: A.ModuleNode, semantic: Semanti
 	}
 	const imports = module.imports.filter(item => item.sourceKind === 'javascript').map(renderJavaScriptImport);
 	const externalTagRoots = javaScriptValueImportNames(module);
-	const nativeTagProofs = new Map<string, string>();
-	for (const component of components) {
-		const proof = renderNativeComponentProof(component, semantic);
-		if (proof !== undefined) nativeTagProofs.set(component.name, proof);
-	}
 	const types = new TypeOperations({ arena: semantic.arena, diagnostics: semantic.diagnostics });
 	for (const component of components) {
 		const views: A.ViewExpression[] = [];
 		collectViewReturns(component.body, views);
-		const context: RenderContext = { semantic, types, externalTagRoots, nativeTagProofs, usedNativeProofs: new Set(), repetitionValues: new Map() };
+		const context: RenderContext = { semantic, types, externalTagRoots, usedNativeProofs: new Set(), repetitionValues: new Map() };
 		const renderedViews: string[] = [];
 		for (const view of views) {
 			const onlyChild = view.body.children.length === 1 ? view.body.children[0] : undefined;
@@ -343,7 +337,9 @@ function renderRepetitionConditional(conditional: A.ViewConditional, target: str
 function renderViewElement(element: A.ViewElement, context: RenderContext): string | undefined {
 	const root = element.tag[0]!;
 	const symbol = context.semantic.globalScope.lookup(root);
-	const nativeProof = element.tag.length === 1 && symbol?.kind === 'component' ? context.nativeTagProofs.get(root) : undefined;
+	let nativeComponent: A.ComponentDeclaration | undefined;
+	if (element.tag.length === 1 && symbol?.kind === 'component' && symbol.declaration?.kind === 'ComponentDeclaration') nativeComponent = symbol.declaration as A.ComponentDeclaration;
+	const nativeProof = nativeComponent === undefined ? undefined : renderNativeComponentProof(nativeComponent, context.semantic);
 	const native = nativeProof !== undefined;
 	if (symbol?.kind === 'component' && !native) {
 		if (element.tag.length === 1 && /^[a-z]/u.test(root)) return fail(context, element.span, `lowercase Virune-native component tag ${root} would be interpreted as a JSX intrinsic tag`);
@@ -356,9 +352,7 @@ function renderViewElement(element: A.ViewElement, context: RenderContext): stri
 		return fail(context, element.span, `View tag ${element.tag.join('.')} is neither intrinsic nor rooted in a JavaScript-imported External binding`);
 	}
 	if (native) {
-		const declaration = symbol?.declaration;
-		if (declaration?.kind !== 'ComponentDeclaration') return fail(context, element.span, `Virune-native component tag ${root} has no checked component declaration`);
-		if (!validateNativeComponentProperties(element, declaration as A.ComponentDeclaration, context)) return undefined;
+		if (!validateNativeComponentProperties(element, nativeComponent, context)) return undefined;
 		context.usedNativeProofs.add(nativeProof);
 	}
 	const properties: string[] = [];
