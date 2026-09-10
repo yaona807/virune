@@ -108,6 +108,7 @@ jobs:
           	"artifacts": []
           }
           JSON
+          git add -A
           node scripts/verify-selfhost-temporary-artifacts.mjs --require-clean
           expected="$(printf '%s\n' \
             packages/compiler/src/compiler.ts \
@@ -115,13 +116,12 @@ jobs:
             packages/compiler/src/project/project.ts \
             packages/compiler/test/project-frontend-jsx-emission.test.ts \
             packages/js-interop/test/frontend-jsx-validation.test.ts | sort)"
-          actual="$(git diff --name-only origin/main | sort)"
+          actual="$(git diff --cached --name-only origin/main | sort)"
           if [ "$actual" != "$expected" ]; then
             printf 'Unexpected final diff paths:\n%s\n' "$actual"
             exit 1
           fi
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add -A
           git commit -m 'feat(frontend): emit standalone project components as JSX'
           git push origin HEAD:feat/frontend-project-jsx-emission
