@@ -6,6 +6,7 @@ import { checkModule, type SemanticModel } from '../checker/checker.js';
 import { emitJavaScript, type EmitResult } from '../codegen/emitter.js';
 import { DiagnosticBag, type Diagnostic } from '../diagnostics/diagnostic.js';
 import { lowerToHir } from '../hir/lower.js';
+import { validateFrontendComponentEmissionBoundary } from '../interop/frontend-component-emission.js';
 import { validateFrontendJsxUsage } from '../interop/jsx-view-validation.js';
 import { buildAst } from '../syntax/cst-to-ast.js';
 import { attachDocumentation } from '../syntax/documentation.js';
@@ -268,6 +269,7 @@ export async function buildProject(
 	};
 	if (includeConfigEntry) await visit(entry);
 	for (const additionalEntry of additionalEntries) await visit(isAbsolute(additionalEntry) ? additionalEntry : resolve(root, additionalEntry));
+	const importedModulePaths = new Set([...dependenciesByPath.values()].flat());
 	const moduleInterfaces = await buildModuleInterfaces(root, order, parsedByPath, projectDiagnostics, host);
 	const interfaceHashes = new Map<string, string>();
 	for (const path of order) interfaceHashes.set(path, moduleInterfaceHash(moduleInterfaces.get(path)));
@@ -277,8 +279,10 @@ export async function buildProject(
 	let cloneId = -1;
 	for (const path of order) {
 		const parsed = parsedByPath.get(path)!;
+		const component = parsed.ast?.declarations.find(declaration => declaration.kind === 'ComponentDeclaration');
+		const importedComponent = component !== undefined && importedModulePaths.has(path);
 		const dependencySignature = contentHash((dependenciesByPath.get(path) ?? []).map(dependency => `${dependency}:${interfaceHashes.get(dependency) ?? ''}`).sort().join('|'));
-		const buildFingerprint = contentHash(`${sourceHashes.get(path) ?? ''}|${dependencySignature}|${configFingerprint}`);
+		const buildFingerprint = contentHash(`${sourceHashes.get(path) ?? ''}|${dependencySignature}|${importedComponent ? 'component-imported' : ''}|${configFingerprint}`);
 		const cached = cache?.get(path);
 		if (cached?.buildFingerprint === buildFingerprint) {
 			builtByPath.set(path, cached.built);
@@ -302,15 +306,16 @@ export async function buildProject(
 			const semantic = checkModule(synthetic, { signatureOnlyNodeIds: signatureOnly, typeOnlyNodeIds, platform: config.platform, moduleId: moduleIdentity(root, path), containingFile: path, ...(jsInteropProvider === undefined ? {} : { jsInteropProvider }) });
 			validateFrontendJsxUsage(parsed.ast, semantic, { containingFile: path, platform: config.platform, ...(jsInteropProvider === undefined ? {} : { jsInteropProvider }) });
 			mutableStats.checkedModules++;
-			const component = parsed.ast.declarations.find(declaration => declaration.kind === 'ComponentDeclaration');
-			if (!semantic.diagnostics.hasErrors && component !== undefined && isWithin(resolve(root, config.sourceDir), path)) {
-				semantic.diagnostics.error('L4307', 'Component emission is unavailable until frontend JSX usage and preserved artifact emission are implemented', component.span);
+			const inSourceDirectory = isWithin(resolve(root, config.sourceDir), path);
+			if (!semantic.diagnostics.hasErrors && component !== undefined && inSourceDirectory) {
+				if (importedComponent) semantic.diagnostics.error('L4307', 'Component module emission is unavailable while another Virune module imports it; cross-module preserved JSX artifact routing is not implemented', component.span);
+				else validateFrontendComponentEmissionBoundary(parsed.ast, semantic, semantic.diagnostics);
 			}
 			const diagnostics = [...parsed.diagnostics, ...semantic.diagnostics.items];
 			let output: EmitResult | undefined; let outputPath: string | undefined;
-			if (!diagnostics.some(item => item.severity === 'error') && isWithin(resolve(root, config.sourceDir), path)) {
+			if (!diagnostics.some(item => item.severity === 'error') && inSourceDirectory) {
 				const relativePath = relative(resolve(root, config.sourceDir), path);
-				outputPath = resolve(root, config.outDir, relativePath.replace(/\.virune$/u, '.js'));
+				outputPath = resolve(root, config.outDir, relativePath.replace(/\.virune$/u, component === undefined ? '.js' : '.jsx'));
 				const emissionModule: A.ModuleNode = { ...parsed.ast, imports: emissionImports };
 				output = emitJavaScript(lowerToHir(emissionModule, semantic), parsed.source, outputPath, { sourceMap: config.sourceMap, sourcesContent: config.sourcesContent, sourcePath: relative(root, path).replaceAll('\\', '/') });
 				mutableStats.emittedModules++;

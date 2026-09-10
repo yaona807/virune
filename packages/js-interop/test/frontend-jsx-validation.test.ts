@@ -334,7 +334,7 @@ test('a supplied provider without JSX whole-usage support cannot approve a compo
 	assert.ok(result.diagnostics.some(item => item.severity === 'error' && item.code === 'L4308' && /does not support JSX whole-usage validation/u.test(item.message)));
 });
 
-test('project builds reuse the same JSX oracle validation before the existing emission gate', async () => {
+test('project builds preserve JSX output after the JSX oracle accepts usage', async () => {
 	const root = await project();
 	const provider = new TypeScriptInteropProvider({ projectRoot: root });
 	try {
@@ -348,7 +348,10 @@ component Page() uses JavaScript {
 `, 'utf8');
 		const accepted = await buildProject(root, { write: false, jsInteropProvider: provider });
 		assert.equal(accepted.diagnostics.some(item => item.code === 'L4308'), false);
-		assert.ok(accepted.diagnostics.some(item => item.code === 'L4307'));
+		assert.equal(accepted.diagnostics.some(item => item.code === 'L4307'), false);
+		const acceptedModule = accepted.modules.find(module => module.source.path === join(root, 'src/main.virune'));
+		assert.equal(acceptedModule?.outputPath, join(root, 'dist/main.jsx'));
+		assert.ok(acceptedModule?.output);
 
 		await writeFile(join(root, 'src/main.virune'), `import js { Card } from "./library.js"
 
