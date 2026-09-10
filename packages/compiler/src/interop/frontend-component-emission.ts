@@ -27,7 +27,8 @@ export function frontendHostPrimitiveName(typeId: TypeId, semantic: SemanticMode
 	if (type.kind !== 'named' || type.declarationKind !== 'newtype' || type.underlying === undefined || type.mustUse === true) return undefined;
 	const symbol = semantic.globalScope.lookup(type.name);
 	if (symbol?.kind !== 'type' || symbol.declaration?.kind !== 'NewtypeDeclaration') return undefined;
-	return directFrontendHostPrimitiveName(type.underlying, semantic);
+	const primitive = directFrontendHostPrimitiveName(type.underlying, semantic);
+	return primitive !== undefined && symbol.declaration.underlying.name === primitive ? primitive : undefined;
 }
 
 export function frontendScalarRecordFields(
