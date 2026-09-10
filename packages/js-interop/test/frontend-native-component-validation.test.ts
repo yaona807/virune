@@ -184,6 +184,7 @@ test('unsupported source records remain outside the native component host-prop b
 		{ declaration: '@json(strict)\nrecord Config derives Json {\n\tlabel: String\n}', type: 'Config' },
 		{ declaration: 'record Nested {\n\tlabel: String\n}\nrecord Config {\n\tnested: Nested\n}', type: 'Config' },
 		{ declaration: 'record Config<T> {\n\tvalue: T\n}', type: 'Config<String>' },
+		{ declaration: 'record Actual {\n\tlabel: String\n}\ntype Config = Actual', type: 'Config' },
 	] as const) {
 		const result = await compile(`${declaration}
 
