@@ -2,6 +2,7 @@ import type * as A from '../ast/nodes.js';
 import type { SemanticModel } from '../checker/checker.js';
 import { TypeOperations } from '../checker/type-operations.js';
 import type { JsInteropProvider } from './types.js';
+import { frontendHostPrimitiveName } from './frontend-component-emission.js';
 import type { SourceSpan } from '../source.js';
 
 interface FrontendJsxValidationOptions {
@@ -84,6 +85,17 @@ export function validateFrontendJsxUsage(module: A.ModuleNode, semantic: Semanti
 	}
 }
 
+function renderFrontendHostPrimitive(typeId: number, semantic: SemanticModel): string | undefined {
+	switch (frontendHostPrimitiveName(typeId, semantic)) {
+		case 'Bool': return 'boolean';
+		case 'Int':
+		case 'Float': return 'number';
+		case 'BigInt': return 'bigint';
+		case 'String': return 'string';
+		default: return undefined;
+	}
+}
+
 function renderNativeComponentProof(component: A.ComponentDeclaration, semantic: SemanticModel): string | undefined {
 	if (/^[a-z]/u.test(component.name) || component.symbolId === undefined) return undefined;
 	const componentSymbol = semantic.symbols.get(component.symbolId);
@@ -95,17 +107,8 @@ function renderNativeComponentProof(component: A.ComponentDeclaration, semantic:
 		const parameter = component.parameters[index]!;
 		const typeId = componentType.parameters[index];
 		if (typeId === undefined) return undefined;
-		const type = semantic.arena.get(typeId);
-		if (type.kind !== 'primitive') return undefined;
-		let rendered: string;
-		switch (type.name) {
-			case 'Bool': rendered = 'boolean'; break;
-			case 'Int':
-			case 'Float': rendered = 'number'; break;
-			case 'BigInt': rendered = 'bigint'; break;
-			case 'String': rendered = 'string'; break;
-			default: return undefined;
-		}
+		const rendered = renderFrontendHostPrimitive(typeId, semantic);
+		if (rendered === undefined) return undefined;
 		properties.push(`${JSON.stringify(parameter.name)}: ${rendered};`);
 	}
 	properties.push(`${JSON.stringify(nativeChildrenProperty)}?: () => unknown;`);
@@ -364,7 +367,7 @@ function renderViewElement(element: A.ViewElement, context: RenderContext): stri
 	const properties: string[] = [];
 	for (const property of element.properties) {
 		if (!jsxAttributeName.test(property.name)) return fail(context, property.span, `property ${JSON.stringify(property.name)} cannot be represented as a preserved JSX attribute without speculative lowering`);
-		const value = renderViewValue(property.value, context);
+		const value = native ? renderNativeComponentPropertyValue(property.value, context) : renderViewValue(property.value, context);
 		if (value === undefined) return undefined;
 		properties.push(`${property.name}={${value}}`);
 	}
@@ -387,6 +390,23 @@ function renderViewElement(element: A.ViewElement, context: RenderContext): stri
 	}
 	const children = renderViewBlockContents(element.children, context);
 	return children === undefined ? undefined : `<${tag}${attributes}>${children}</${tag}>`;
+}
+
+function renderNativeComponentPropertyValue(expression: A.Expression, context: RenderContext): string | undefined {
+	const typeId = expression.inferredTypeId;
+	if (typeId !== undefined) {
+		const type = context.semantic.arena.get(typeId);
+		if (type.kind === 'named' && type.declarationKind === 'newtype') {
+			switch (frontendHostPrimitiveName(typeId, context.semantic)) {
+				case 'Bool': return '(false as boolean)';
+				case 'Int':
+				case 'Float': return '(0 as number)';
+				case 'BigInt': return '(0n as bigint)';
+				case 'String': return '("" as string)';
+			}
+		}
+	}
+	return renderViewValue(expression, context);
 }
 
 function validateNativeComponentProperties(element: A.ViewElement, component: A.ComponentDeclaration, context: RenderContext): boolean {
