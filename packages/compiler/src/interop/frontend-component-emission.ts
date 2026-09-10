@@ -26,9 +26,10 @@ export function frontendHostPrimitiveName(typeId: TypeId, semantic: SemanticMode
 	const type = semantic.arena.get(typeId);
 	if (type.kind !== 'named' || type.declarationKind !== 'newtype' || type.underlying === undefined || type.mustUse === true) return undefined;
 	const symbol = semantic.globalScope.lookup(type.name);
-	if (symbol?.kind !== 'type' || symbol.declaration?.kind !== 'NewtypeDeclaration') return undefined;
+	const declaration = symbol?.declaration;
+	if (symbol?.kind !== 'type' || declaration?.kind !== 'NewtypeDeclaration') return undefined;
 	const primitive = directFrontendHostPrimitiveName(type.underlying, semantic);
-	return primitive !== undefined && symbol.declaration.underlying.name === primitive ? primitive : undefined;
+	return primitive !== undefined && declaration.underlying.name === primitive ? primitive : undefined;
 }
 
 export function frontendScalarRecordFields(
