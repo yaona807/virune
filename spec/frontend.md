@@ -134,6 +134,8 @@ That slot is not an ordinary parameter, callable, External value, React `props.c
 
 The eventual compiler-owned transport/lowering must preserve the source evaluation and laziness required by the actual frontend framework without exposing a general View value.
 
+The compiler-managed slot must not become an observable direct child value of a JavaScript-imported External component. Until its zero-or-more child contribution can be preserved at that boundary without changing downstream children/slot semantics, standalone `children` in that direct External child structure is rejected. A slot nested beneath an intrinsic element below an External component remains eligible for ordinary View validation.
+
 ## `[frontend.view-repetition]` Declarative View repetition
 
 A View-local `for` is a dedicated declarative View construct and is distinct from the ordinary imperative `ForStatement`:

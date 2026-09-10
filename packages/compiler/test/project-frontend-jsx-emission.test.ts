@@ -125,6 +125,42 @@ component Page() uses JavaScript {
 	});
 });
 
+test('project build transports imported native component children through the existing JSX route', async () => {
+	await withProject(async root => {
+		await writeFile(join(root, 'src/helper.virune'), `internal component Panel() uses JavaScript {
+	return view {
+		section() {
+			children
+		}
+	}
+}
+`, 'utf8');
+		await writeFile(join(root, 'src/main.virune'), `import { Panel } from "./helper.virune"
+
+component Page(title: String) uses JavaScript {
+	return view {
+		Panel() {
+			span() {
+				{ title }
+			}
+		}
+	}
+}
+`, 'utf8');
+		const result = await buildProject(root, { write: false, jsInteropProvider: jsxValidationProvider });
+		assert.deepEqual(errors(result), []);
+		const main = result.modules.find(module => module.source.path === resolve(root, 'src/main.virune'));
+		const helper = result.modules.find(module => module.source.path === resolve(root, 'src/helper.virune'));
+		assert.equal(main?.outputPath, resolve(root, 'dist/main.jsx'));
+		assert.equal(helper?.outputPath, resolve(root, 'dist/helper.jsx'));
+		assert.ok(main?.output);
+		assert.ok(helper?.output);
+		assert.ok(main.output.code.includes('from "./helper.jsx";'));
+		assert.match(main.output.code, /<Panel \$viruneChildren=\{\(\) => <span>\{\$viruneValidateSafeFfiValue\(\$props\["title"\]/u);
+		assert.match(helper.output.code, /const \$slot = \$props\["\$viruneChildren"\]; return \$slot === undefined \? <><\/> : \$slot\(\);/u);
+	});
+});
+
 test('imported native component props keep the existing fail-closed type checks', async () => {
 	await withProject(async root => {
 		await writeFile(join(root, 'src/helper.virune'), `internal component Card(title: String, count: Int) uses JavaScript {
