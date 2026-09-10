@@ -356,6 +356,9 @@ function publicSignatureAst(declaration: A.Declaration): unknown {
 			const { value: _value, attributes: _attributes, ...signature } = declaration;
 			return signature;
 		}
+		case 'RecordDeclaration':
+		case 'NewtypeDeclaration':
+			return declaration;
 		default: {
 			const { attributes: _attributes, ...signature } = declaration;
 			return signature;
@@ -758,9 +761,9 @@ function cloneTypeSignature(
 ): A.Declaration {
 	const id = next();
 	switch (declaration.kind) {
-		case 'RecordDeclaration': return { ...declaration, id, name: localName, definitionId, public: false, attributes: [], fields: declaration.fields.map(field => ({ ...field, type: cloneTypeReference(field.type, rename, next), attributes: [] })) };
+		case 'RecordDeclaration': return { ...declaration, id, name: localName, definitionId, public: false, attributes: declaration.attributes, fields: declaration.fields.map(field => ({ ...field, type: cloneTypeReference(field.type, rename, next), attributes: field.attributes })) };
 		case 'EnumDeclaration': return { ...declaration, id, name: localName, definitionId, public: false, attributes: [], variants: declaration.variants.map(variant => ({ ...variant, values: variant.values.map(value => cloneTypeReference(value, rename, next)) })) };
-		case 'NewtypeDeclaration': return { ...declaration, id, name: localName, definitionId, public: false, attributes: [], underlying: cloneTypeReference(declaration.underlying, rename, next) };
+		case 'NewtypeDeclaration': return { ...declaration, id, name: localName, definitionId, public: false, attributes: declaration.attributes, underlying: cloneTypeReference(declaration.underlying, rename, next) };
 		case 'TypeAliasDeclaration': return { ...declaration, id, name: localName, definitionId, public: false, attributes: [], target: cloneTypeReference(declaration.target, rename, next) };
 	}
 }
