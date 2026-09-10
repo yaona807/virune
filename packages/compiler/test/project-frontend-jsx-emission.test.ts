@@ -300,6 +300,56 @@ component Page() uses JavaScript {
 	});
 });
 
+test('incremental cache invalidates imported scalar record safety evidence in both directions', async () => {
+	await withProject(async root => {
+		const helperPath = join(root, 'src/helper.virune');
+		const eligibleHelper = `internal newtype UserId = Int
+
+internal record User {
+	id: UserId
+	name: String
+}
+
+internal fn sampleUser() -> User {
+	return User {
+		id: UserId.create(7),
+		name: "Ada",
+	}
+}
+
+internal component Card(user: User) uses JavaScript {
+	return view {
+		div()
+	}
+}
+`;
+		await writeFile(helperPath, eligibleHelper, 'utf8');
+		await writeFile(join(root, 'src/main.virune'), `import { Card, sampleUser } from "./helper.virune"
+
+component Page() uses JavaScript {
+	let user = sampleUser()
+	return view {
+		Card(user: user)
+	}
+}
+`, 'utf8');
+		const cache = new ProjectBuildCache();
+		const first = await buildProject(root, { write: false, incrementalCache: cache, jsInteropProvider: jsxValidationProvider });
+		assert.deepEqual(errors(first), []);
+		assert.ok(first.modules.find(module => module.source.path === resolve(root, 'src/main.virune'))?.output);
+
+		await writeFile(helperPath, eligibleHelper.replace('internal newtype UserId = Int', '@mustUse\ninternal newtype UserId = Int'), 'utf8');
+		const second = await buildProject(root, { write: false, incrementalCache: cache, jsInteropProvider: jsxValidationProvider });
+		assert.ok(errors(second).some(item => item.code === 'L4309'));
+		assert.equal(second.modules.find(module => module.source.path === resolve(root, 'src/main.virune'))?.output, undefined);
+
+		await writeFile(helperPath, eligibleHelper, 'utf8');
+		const third = await buildProject(root, { write: false, incrementalCache: cache, jsInteropProvider: jsxValidationProvider });
+		assert.deepEqual(errors(third), []);
+		assert.ok(third.modules.find(module => module.source.path === resolve(root, 'src/main.virune'))?.output);
+	});
+});
+
 test('incremental cache follows dependency JS and JSX artifact changes in both directions', async () => {
 	await withProject(async root => {
 		const helperPath = join(root, 'src/helper.virune');
