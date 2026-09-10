@@ -75,7 +75,7 @@ component Page(title: String) uses JavaScript {
 test('project component emission reuses the existing host-prop boundary', async () => {
 	await withProject(async root => {
 		await writeFile(join(root, 'src/main.virune'), `record Config {
-	label: String
+	labels: List<String>
 }
 
 component Page(config: Config) uses JavaScript {
@@ -164,6 +164,58 @@ component Page() uses JavaScript {
 	});
 });
 
+test('project build transports scalar record props through existing component routing', async () => {
+	await withProject(async root => {
+		await writeFile(join(root, 'src/helper.virune'), `internal newtype UserId = Int
+
+internal record User {
+	id: UserId
+	name: String
+	active: Bool
+}
+
+internal fn sampleUser() -> User {
+	return User {
+		id: UserId.create(7),
+		name: "Ada",
+		active: true,
+	}
+}
+
+internal component Card(user: User) uses JavaScript {
+	let snapshot = user
+	return view {
+		div()
+	}
+}
+`, 'utf8');
+		await writeFile(join(root, 'src/main.virune'), `import { Card as LocalCard, sampleUser } from "./helper.virune"
+
+component Page() uses JavaScript {
+	let user = sampleUser()
+	return view {
+		LocalCard(user: user)
+	}
+}
+`, 'utf8');
+		const result = await buildProject(root, { write: false, jsInteropProvider: jsxValidationProvider });
+		assert.deepEqual(errors(result), []);
+		const main = result.modules.find(module => module.source.path === resolve(root, 'src/main.virune'));
+		const helper = result.modules.find(module => module.source.path === resolve(root, 'src/helper.virune'));
+		assert.equal(main?.outputPath, resolve(root, 'dist/main.jsx'));
+		assert.equal(helper?.outputPath, resolve(root, 'dist/helper.jsx'));
+		assert.ok(main?.output);
+		assert.ok(helper?.output);
+		assert.ok(main.output.code.includes('Card as LocalCard'));
+		assert.ok(main.output.code.includes('from "./helper.jsx";'));
+		assert.match(main.output.code, /<LocalCard user=\{encodeFfiValue\(user, \{ version: 'virune-safe-ffi\/v1', type: \{ kind: 'record'/u);
+		assert.ok(main.output.code.includes(`["id"]: { kind: 'int' }`));
+		assert.ok(main.output.code.includes(`["name"]: { kind: 'string' }`));
+		assert.ok(main.output.code.includes(`["active"]: { kind: 'bool' }`));
+		assert.match(helper.output.code, /\$viruneValidateSafeFfiValue\(\$props\["user"\], \{ version: 'virune-safe-ffi\/v1', type: \{ kind: 'record', name: "User"/u);
+	});
+});
+
 test('project build transports imported native component children through the existing JSX route', async () => {
 	await withProject(async root => {
 		await writeFile(join(root, 'src/helper.virune'), `internal component Panel() uses JavaScript {
@@ -224,7 +276,7 @@ component Page() uses JavaScript {
 test('imported component modules still require the existing host-prop boundary', async () => {
 	await withProject(async root => {
 		await writeFile(join(root, 'src/helper.virune'), `internal record Config {
-	label: String
+	labels: List<String>
 }
 
 internal component Card(config: Config) uses JavaScript {
