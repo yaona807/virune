@@ -46,13 +46,13 @@ component Page(title: String) uses JavaScript {
 	assert.match(result.output.code, /<Card title=\{/u);
 });
 
-test('native component prop usage fails closed for missing, extra, and incompatible values', async () => {
+test('native component prop usage rejects missing, extra, and Virune-type-incompatible values', async () => {
 	for (const usage of [
-		'Card()',
-		'Card(title: "ok", extra: "no")',
-		'Card(title: true)',
+		'Card(title: "ok")',
+		'Card(title: "ok", count: 1, extra: "no")',
+		'Card(title: "ok", count: 1.5)',
 	]) {
-		const result = await compile(`component Card(title: String) uses JavaScript {
+		const result = await compile(`component Card(title: String, count: Int) uses JavaScript {
 	return view {
 		div()
 	}
