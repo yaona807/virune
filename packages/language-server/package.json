@@ -19,7 +19,7 @@
 		"@virune/compiler": "1.0.0",
 		"@virune/formatter": "1.0.0",
 		"@virune/js-interop": "1.0.0",
-		"vscode-languageserver": "10.1.0",
+		"vscode-languageserver": "10.1.1",
 		"vscode-languageserver-textdocument": "1.0.12"
 	},
 	"scripts": {
