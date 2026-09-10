@@ -91,37 +91,126 @@ component Page(config: Config) uses JavaScript {
 	});
 });
 
-test('incremental cache follows incoming Virune import changes in both directions', async () => {
+test('project build routes imported primitive native components to JSX artifacts', async () => {
 	await withProject(async root => {
-		await writeFile(join(root, 'src/main.virune'), `internal component Page() uses JavaScript {
+		await writeFile(join(root, 'src/helper.virune'), `internal fn label() -> String => "ok"
+
+internal component Card(title: String, count: Int, active: Bool) uses JavaScript {
+	return view {
+		div(title: title) {
+			title
+		}
+	}
+}
+`, 'utf8');
+		await writeFile(join(root, 'src/main.virune'), `import { Card as LocalCard, label } from "./helper.virune"
+
+component Page() uses JavaScript {
+	let title = label()
+	return view {
+		LocalCard(title: title, count: 1, active: true)
+	}
+}
+`, 'utf8');
+		const result = await buildProject(root, { write: false, jsInteropProvider: jsxValidationProvider });
+		assert.deepEqual(errors(result), []);
+		const main = result.modules.find(module => module.source.path === resolve(root, 'src/main.virune'));
+		const helper = result.modules.find(module => module.source.path === resolve(root, 'src/helper.virune'));
+		assert.equal(main?.outputPath, resolve(root, 'dist/main.jsx'));
+		assert.equal(helper?.outputPath, resolve(root, 'dist/helper.jsx'));
+		assert.ok(main?.output);
+		assert.ok(main.output.code.includes('Card as LocalCard'));
+		assert.ok(main.output.code.includes('from "./helper.jsx";'));
+		assert.ok(main.output.code.includes('<LocalCard'));
+	});
+});
+
+test('imported native component props keep the existing fail-closed type checks', async () => {
+	await withProject(async root => {
+		await writeFile(join(root, 'src/helper.virune'), `internal component Card(title: String, count: Int) uses JavaScript {
 	return view {
 		div()
+	}
+}
+`, 'utf8');
+		await writeFile(join(root, 'src/main.virune'), `import { Card } from "./helper.virune"
+
+component Page() uses JavaScript {
+	return view {
+		Card(title: "ok", count: 1.5)
+	}
+}
+`, 'utf8');
+		const result = await buildProject(root, { write: false, jsInteropProvider: jsxValidationProvider });
+		assert.ok(errors(result).some(item => item.code === 'L4308'));
+	});
+});
+
+test('imported component modules still require the existing host-prop boundary', async () => {
+	await withProject(async root => {
+		await writeFile(join(root, 'src/helper.virune'), `internal record Config {
+	label: String
+}
+
+internal component Card(config: Config) uses JavaScript {
+	return view {
+		div()
+	}
+}
+`, 'utf8');
+		await writeFile(join(root, 'src/main.virune'), `import { Card } from "./helper.virune"
+
+component Page() uses JavaScript {
+	return view {
+		div()
+	}
+}
+`, 'utf8');
+		const result = await buildProject(root, { write: false, jsInteropProvider: jsxValidationProvider });
+		assert.ok(errors(result).some(item => item.code === 'L4309'));
+		const helper = result.modules.find(module => module.source.path === resolve(root, 'src/helper.virune'));
+		assert.equal(helper?.output, undefined);
+	});
+});
+
+test('incremental cache follows dependency JS and JSX artifact changes in both directions', async () => {
+	await withProject(async root => {
+		const helperPath = join(root, 'src/helper.virune');
+		const plainHelper = 'internal fn label() -> String => "ok"\n';
+		await writeFile(helperPath, plainHelper, 'utf8');
+		await writeFile(join(root, 'src/main.virune'), `import { label } from "./helper.virune"
+
+component Page() uses JavaScript {
+	return view {
+		div(title: label())
 	}
 }
 `, 'utf8');
 		const cache = new ProjectBuildCache();
 		const first = await buildProject(root, { write: false, incrementalCache: cache, jsInteropProvider: jsxValidationProvider });
 		assert.deepEqual(errors(first), []);
-		assert.equal(first.modules.find(module => module.source.path === resolve(root, 'src/main.virune'))?.outputPath, resolve(root, 'dist/main.jsx'));
+		const firstMain = first.modules.find(module => module.source.path === resolve(root, 'src/main.virune'));
+		assert.equal(first.modules.find(module => module.source.path === resolve(root, 'src/helper.virune'))?.outputPath, resolve(root, 'dist/helper.js'));
+		assert.ok(firstMain?.output?.code.includes('from "./helper.js";'));
 
-		const consumer = join(root, 'src/consumer.virune');
-		await writeFile(consumer, `import { Page } from "./main.virune"
-
-pub fn usePage() -> Unit {
-	return Unit
+		await writeFile(helperPath, `${plainHelper}
+component Hidden() uses JavaScript {
+	return view {
+		div()
+	}
 }
 `, 'utf8');
-		const second = await buildProject(root, { write: false, additionalEntries: [consumer], incrementalCache: cache, jsInteropProvider: jsxValidationProvider });
-		assert.ok(errors(second).some(item => item.code === 'L4307'));
-		const importedMain = second.modules.find(module => module.source.path === resolve(root, 'src/main.virune'));
-		assert.equal(importedMain?.output, undefined);
+		const second = await buildProject(root, { write: false, incrementalCache: cache, jsInteropProvider: jsxValidationProvider });
+		assert.deepEqual(errors(second), []);
+		const secondMain = second.modules.find(module => module.source.path === resolve(root, 'src/main.virune'));
+		assert.equal(second.modules.find(module => module.source.path === resolve(root, 'src/helper.virune'))?.outputPath, resolve(root, 'dist/helper.jsx'));
+		assert.ok(secondMain?.output?.code.includes('from "./helper.jsx";'));
 
-		await writeFile(consumer, `pub fn usePage() -> Unit {
-	return Unit
-}
-`, 'utf8');
-		const third = await buildProject(root, { write: false, additionalEntries: [consumer], incrementalCache: cache, jsInteropProvider: jsxValidationProvider });
+		await writeFile(helperPath, plainHelper, 'utf8');
+		const third = await buildProject(root, { write: false, incrementalCache: cache, jsInteropProvider: jsxValidationProvider });
 		assert.deepEqual(errors(third), []);
-		assert.equal(third.modules.find(module => module.source.path === resolve(root, 'src/main.virune'))?.outputPath, resolve(root, 'dist/main.jsx'));
+		const thirdMain = third.modules.find(module => module.source.path === resolve(root, 'src/main.virune'));
+		assert.equal(third.modules.find(module => module.source.path === resolve(root, 'src/helper.virune'))?.outputPath, resolve(root, 'dist/helper.js'));
+		assert.ok(thirdMain?.output?.code.includes('from "./helper.js";'));
 	});
 });
