@@ -17,6 +17,7 @@ interface RenderFailure {
 interface RenderContext {
 	readonly semantic: SemanticModel;
 	readonly externalTagRoots: ReadonlySet<string>;
+	readonly nativeTagRoots: ReadonlySet<string>;
 	readonly repetitionValues: Map<number, string>;
 	failure?: RenderFailure;
 }
@@ -44,10 +45,16 @@ export function validateFrontendJsxUsage(module: A.ModuleNode, semantic: Semanti
 	}
 	const imports = module.imports.filter(item => item.sourceKind === 'javascript').map(renderJavaScriptImport);
 	const externalTagRoots = javaScriptValueImportNames(module);
+	const nativeTagProofs = new Map<string, string>();
+	for (const component of components) {
+		const proof = renderNativeComponentProof(component, semantic);
+		if (proof !== undefined) nativeTagProofs.set(component.name, proof);
+	}
+	const nativeTagRoots = new Set(nativeTagProofs.keys());
 	for (const component of components) {
 		const views: A.ViewExpression[] = [];
 		collectViewReturns(component.body, views);
-		const context: RenderContext = { semantic, externalTagRoots, repetitionValues: new Map() };
+		const context: RenderContext = { semantic, externalTagRoots, nativeTagRoots, repetitionValues: new Map() };
 		const renderedViews: string[] = [];
 		for (const view of views) {
 			const onlyChild = view.body.children.length === 1 ? view.body.children[0] : undefined;
@@ -61,7 +68,8 @@ export function validateFrontendJsxUsage(module: A.ModuleNode, semantic: Semanti
 		}
 		const sourceText = [
 			...imports,
-			...[...externalTagRoots].map(name => `void ${name};`),
+			...nativeTagProofs.values(),
+			...[...externalTagRoots, ...nativeTagRoots].map(name => `void ${name};`),
 			...renderedViews.map(view => `${view};`),
 		].join('\n');
 		let resolution: { readonly accepted: true } | undefined;
@@ -76,6 +84,29 @@ export function validateFrontendJsxUsage(module: A.ModuleNode, semantic: Semanti
 		}
 		if (resolution?.accepted !== true) semantic.diagnostics.error('L4308', `TypeScript JSX whole-usage validation rejected component ${component.name}`, component.span);
 	}
+}
+
+function renderNativeComponentProof(component: A.ComponentDeclaration, semantic: SemanticModel): string | undefined {
+	if (/^[a-z]/u.test(component.name)) return undefined;
+	const properties: string[] = [];
+	for (const parameter of component.parameters) {
+		if (parameter.symbolId === undefined) return undefined;
+		const symbol = semantic.symbols.get(parameter.symbolId);
+		if (symbol === undefined) return undefined;
+		const type = semantic.arena.get(symbol.typeId);
+		if (type.kind !== 'primitive') return undefined;
+		let rendered: string;
+		switch (type.name) {
+			case 'Bool': rendered = 'boolean'; break;
+			case 'Int':
+			case 'Float': rendered = 'number'; break;
+			case 'BigInt': rendered = 'bigint'; break;
+			case 'String': rendered = 'string'; break;
+			default: return undefined;
+		}
+		properties.push(`${JSON.stringify(parameter.name)}: ${rendered};`);
+	}
+	return `declare function ${component.name}(props: { ${properties.join(' ')} }): never;`;
 }
 
 function renderJavaScriptImport(declaration: A.ImportDeclaration): string {
@@ -308,11 +339,16 @@ function renderRepetitionConditional(conditional: A.ViewConditional, target: str
 
 function renderViewElement(element: A.ViewElement, context: RenderContext): string | undefined {
 	const root = element.tag[0]!;
-	if (context.semantic.globalScope.lookup(root)?.kind === 'component') return fail(context, element.span, `Virune-native component tag ${element.tag.join('.')} requires a native component boundary that is not implemented in this validation slice`);
+	const symbol = context.semantic.globalScope.lookup(root);
+	const native = element.tag.length === 1 && symbol?.kind === 'component' && context.nativeTagRoots.has(root);
+	if (symbol?.kind === 'component' && !native) {
+		if (element.tag.length === 1 && /^[a-z]/u.test(root)) return fail(context, element.span, `lowercase Virune-native component tag ${root} would be interpreted as a JSX intrinsic tag`);
+		return fail(context, element.span, `Virune-native component tag ${element.tag.join('.')} requires a native component boundary that is not implemented in this validation slice`);
+	}
 	const intrinsic = element.tag.length === 1 && /^[a-z]/u.test(root);
 	const external = context.externalTagRoots.has(root);
 	if (intrinsic && external) return fail(context, element.span, `lowercase JavaScript-imported View tag ${root} is ambiguous with JSX intrinsic syntax`);
-	if (!intrinsic && !external) {
+	if (!native && !intrinsic && !external) {
 		return fail(context, element.span, `View tag ${element.tag.join('.')} is neither intrinsic nor rooted in a JavaScript-imported External binding`);
 	}
 	const properties: string[] = [];
@@ -325,6 +361,7 @@ function renderViewElement(element: A.ViewElement, context: RenderContext): stri
 	const tag = element.tag.join('.');
 	const attributes = properties.length === 0 ? '' : ` ${properties.join(' ')}`;
 	if (element.children === undefined) return `<${tag}${attributes} />`;
+	if (native) return fail(context, element.span, `Virune-native component ${tag} children require compiler-managed native child transport that is not implemented in this validation slice`);
 	if (external && containsDirectConditionalAbsence(element.children)) {
 		return fail(context, element.span, `View if without else beneath JavaScript-imported External component ${tag} cannot preserve zero-child absence without making the empty fragment observable as a child`);
 	}
