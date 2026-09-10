@@ -9,17 +9,18 @@ import { fixtureRoot } from './fixture.js';
 async function compile(text: string, emit = false) {
 	const root = await fixtureRoot();
 	await writeFile(join(root, 'tsconfig.json'), JSON.stringify({ compilerOptions: { jsx: 'preserve', noUnusedLocals: true }, include: ['src/**/*'] }), 'utf8');
-	await writeFile(join(root, 'src/jsx.d.ts'), `declare global {
+	await writeFile(join(root, 'src/library.d.ts'), `declare global {
 	namespace JSX {
 		interface Element { readonly __viruneJsxElement: unique symbol; }
 		interface IntrinsicElements { div: {}; span: {}; child: {}; }
 	}
 }
-export {};
+
+export interface Marker { readonly marker: true; }
 `, 'utf8');
 	const provider = new TypeScriptInteropProvider({ projectRoot: root });
 	try {
-		return compileSource({ id: 1, path: join(root, 'src/main.virune'), text }, { emit, platform: 'browser', jsInteropProvider: provider });
+		return compileSource({ id: 1, path: join(root, 'src/main.virune'), text: `import js type { Marker } from "./library.js"\n${text}` }, { emit, platform: 'browser', jsInteropProvider: provider });
 	} finally {
 		provider.dispose();
 	}
