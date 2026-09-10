@@ -269,7 +269,6 @@ export async function buildProject(
 	};
 	if (includeConfigEntry) await visit(entry);
 	for (const additionalEntry of additionalEntries) await visit(isAbsolute(additionalEntry) ? additionalEntry : resolve(root, additionalEntry));
-	const importedModulePaths = new Set([...dependenciesByPath.values()].flat());
 	const moduleInterfaces = await buildModuleInterfaces(root, order, parsedByPath, projectDiagnostics, host);
 	const interfaceHashes = new Map<string, string>();
 	for (const path of order) interfaceHashes.set(path, moduleInterfaceHash(moduleInterfaces.get(path)));
@@ -280,9 +279,8 @@ export async function buildProject(
 	for (const path of order) {
 		const parsed = parsedByPath.get(path)!;
 		const component = parsed.ast?.declarations.find(declaration => declaration.kind === 'ComponentDeclaration');
-		const importedComponent = component !== undefined && importedModulePaths.has(path);
-		const dependencySignature = contentHash((dependenciesByPath.get(path) ?? []).map(dependency => `${dependency}:${interfaceHashes.get(dependency) ?? ''}`).sort().join('|'));
-		const buildFingerprint = contentHash(`${sourceHashes.get(path) ?? ''}|${dependencySignature}|${importedComponent ? 'component-imported' : ''}|${configFingerprint}`);
+		const dependencySignature = contentHash((dependenciesByPath.get(path) ?? []).map(dependency => `${dependency}:${interfaceHashes.get(dependency) ?? ''}:${parsedByPath.get(dependency)?.ast?.declarations.some(declaration => declaration.kind === 'ComponentDeclaration') === true ? 'jsx' : 'js'}`).sort().join('|'));
+		const buildFingerprint = contentHash(`${sourceHashes.get(path) ?? ''}|${dependencySignature}|${configFingerprint}`);
 		const cached = cache?.get(path);
 		if (cached?.buildFingerprint === buildFingerprint) {
 			builtByPath.set(path, cached.built);
@@ -308,8 +306,7 @@ export async function buildProject(
 			mutableStats.checkedModules++;
 			const inSourceDirectory = isWithin(resolve(root, config.sourceDir), path);
 			if (!semantic.diagnostics.hasErrors && component !== undefined && inSourceDirectory) {
-				if (importedComponent) semantic.diagnostics.error('L4307', 'Component module emission is unavailable while another Virune module imports it; cross-module preserved JSX artifact routing is not implemented', component.span);
-				else validateFrontendComponentEmissionBoundary(parsed.ast, semantic, semantic.diagnostics);
+				validateFrontendComponentEmissionBoundary(parsed.ast, semantic, semantic.diagnostics);
 			}
 			const diagnostics = [...parsed.diagnostics, ...semantic.diagnostics.items];
 			let output: EmitResult | undefined; let outputPath: string | undefined;
@@ -493,7 +490,7 @@ function validateModulePolicy(root: string, config: ViruneConfig, path: string, 
 }
 
 function declarationHasRuntimeExport(declaration: A.Declaration): boolean {
-	return declaration.kind === 'FunctionDeclaration' || declaration.kind === 'RecordDeclaration' || declaration.kind === 'EnumDeclaration' || declaration.kind === 'NewtypeDeclaration' || (declaration.kind === 'TopLevelLetDeclaration' && (declaration.public || declaration.internal === true));
+	return declaration.kind === 'FunctionDeclaration' || declaration.kind === 'ComponentDeclaration' || declaration.kind === 'RecordDeclaration' || declaration.kind === 'EnumDeclaration' || declaration.kind === 'NewtypeDeclaration' || (declaration.kind === 'TopLevelLetDeclaration' && (declaration.public || declaration.internal === true));
 }
 
 type ExportVisibility = 'internal' | 'public';
@@ -651,7 +648,9 @@ async function buildImportModel(
 			}
 		}
 		if (runtimeItems.length > 0) {
-			emissionImports.push({ ...importDeclaration, items: runtimeItems });
+			const componentDependency = parsedByPath.get(dependencyPath)?.ast?.declarations.some(declaration => declaration.kind === 'ComponentDeclaration') === true;
+			const source = componentDependency && importDeclaration.source.endsWith('.virune') ? `${importDeclaration.source.slice(0, -7)}.jsx` : importDeclaration.source;
+			emissionImports.push({ ...importDeclaration, source, items: runtimeItems });
 			if (importDeclaration.source.endsWith('.virune') && !runtimeDependencyPaths.includes(dependencyPath)) runtimeDependencyPaths.push(dependencyPath);
 		}
 	}
