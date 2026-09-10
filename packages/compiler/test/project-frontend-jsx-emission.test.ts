@@ -91,7 +91,7 @@ component Page(config: Config) uses JavaScript {
 	});
 });
 
-test('incremental cache cannot reuse standalone JSX after an incoming Virune import appears', async () => {
+test('incremental cache follows incoming Virune import changes in both directions', async () => {
 	await withProject(async root => {
 		await writeFile(join(root, 'src/main.virune'), `internal component Page() uses JavaScript {
 	return view {
@@ -113,7 +113,15 @@ pub fn usePage() -> Unit {
 `, 'utf8');
 		const second = await buildProject(root, { write: false, additionalEntries: [consumer], incrementalCache: cache, jsInteropProvider: jsxValidationProvider });
 		assert.ok(errors(second).some(item => item.code === 'L4307'));
-		const main = second.modules.find(module => module.source.path === resolve(root, 'src/main.virune'));
-		assert.equal(main?.output, undefined);
+		const importedMain = second.modules.find(module => module.source.path === resolve(root, 'src/main.virune'));
+		assert.equal(importedMain?.output, undefined);
+
+		await writeFile(consumer, `pub fn usePage() -> Unit {
+	return Unit
+}
+`, 'utf8');
+		const third = await buildProject(root, { write: false, additionalEntries: [consumer], incrementalCache: cache, jsInteropProvider: jsxValidationProvider });
+		assert.deepEqual(errors(third), []);
+		assert.equal(third.modules.find(module => module.source.path === resolve(root, 'src/main.virune'))?.outputPath, resolve(root, 'dist/main.jsx'));
 	});
 });
