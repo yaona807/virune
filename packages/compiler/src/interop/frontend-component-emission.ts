@@ -3,7 +3,7 @@ import type { SemanticModel } from '../checker/checker.js';
 import type { DiagnosticBag } from '../diagnostics/diagnostic.js';
 import type { SourceSpan, TypeId } from '../source.js';
 
-type FrontendHostPrimitiveName = 'Bool' | 'Int' | 'Float' | 'BigInt' | 'String';
+export type FrontendHostPrimitiveName = 'Bool' | 'Int' | 'Float' | 'BigInt' | 'String';
 
 function directFrontendHostPrimitiveName(typeId: TypeId, semantic: SemanticModel): FrontendHostPrimitiveName | undefined {
 	const type = semantic.arena.get(typeId);
@@ -30,6 +30,28 @@ export function frontendHostPrimitiveName(typeId: TypeId, semantic: SemanticMode
 	return directFrontendHostPrimitiveName(type.underlying, semantic);
 }
 
+export function frontendScalarRecordFields(
+	typeId: TypeId,
+	semantic: SemanticModel,
+): readonly { readonly name: string; readonly primitive: FrontendHostPrimitiveName }[] | undefined {
+	const type = semantic.arena.get(typeId);
+	if (type.kind !== 'named' || type.declarationKind !== 'record' || type.fields === undefined || type.mustUse === true) return undefined;
+	const symbol = semantic.globalScope.lookup(type.name);
+	if (symbol?.kind !== 'type' || symbol.declaration?.kind !== 'RecordDeclaration') return undefined;
+	const declaration = symbol.declaration as A.RecordDeclaration;
+	if (declaration.typeParameters.length > 0 || declaration.attributes.length > 0 || declaration.fields.some(field => field.attributes.length > 0)) return undefined;
+	if (type.fields.size !== declaration.fields.length) return undefined;
+	const fields: { name: string; primitive: FrontendHostPrimitiveName }[] = [];
+	for (const field of declaration.fields) {
+		const fieldType = type.fields.get(field.name);
+		if (fieldType === undefined) return undefined;
+		const primitive = frontendHostPrimitiveName(fieldType, semantic);
+		if (primitive === undefined) return undefined;
+		fields.push({ name: field.name, primitive });
+	}
+	return fields;
+}
+
 /**
  * Keep host-facing component values within the frontend boundary currently
  * supported by preserved JSX emission. This check is shared by single-file and
@@ -45,9 +67,9 @@ export function validateFrontendComponentEmissionBoundary(
 		const parameterNames = new Set(declaration.parameters.map(parameter => parameter.name));
 		for (const parameter of declaration.parameters) {
 			const symbol = parameter.symbolId === undefined ? undefined : semantic.symbols.get(parameter.symbolId);
-			if (symbol !== undefined && frontendHostPrimitiveName(symbol.typeId, semantic) !== undefined) continue;
+			if (symbol !== undefined && (frontendHostPrimitiveName(symbol.typeId, semantic) !== undefined || frontendScalarRecordFields(symbol.typeId, semantic) !== undefined)) continue;
 			const display = symbol === undefined ? '<unresolved>' : semantic.arena.display(symbol.typeId);
-			diagnostics.error('L4309', `Component parameter ${parameter.name} has type ${display}; frontend JSX emission currently supports Bool, Int, Float, BigInt, String, and direct non-mustUse source newtypes backed by those primitives`, parameter.span);
+			diagnostics.error('L4309', `Component parameter ${parameter.name} has type ${display}; frontend JSX emission currently supports Bool, Int, Float, BigInt, String, direct non-mustUse source newtypes backed by those primitives, and non-generic unattributed source records containing only those scalar fields`, parameter.span);
 		}
 		const interpolation = findUnsupportedComponentInterpolation(declaration.body, parameterNames);
 		if (interpolation?.kind === 'view-text') {
