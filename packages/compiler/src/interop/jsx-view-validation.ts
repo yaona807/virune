@@ -370,7 +370,7 @@ function renderViewElement(element: A.ViewElement, context: RenderContext): stri
 	}
 	const tag = element.tag.join('.');
 	if (native && element.children !== undefined) {
-		const children = renderViewBlock(element.children, context);
+		const children = renderViewBlockExpression(element.children, context);
 		if (children === undefined) return undefined;
 		properties.push(`${nativeChildrenProperty}={() => ${children}}`);
 	}
