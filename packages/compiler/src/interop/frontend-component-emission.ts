@@ -25,6 +25,8 @@ export function frontendHostPrimitiveName(typeId: TypeId, semantic: SemanticMode
 	if (direct !== undefined) return direct;
 	const type = semantic.arena.get(typeId);
 	if (type.kind !== 'named' || type.declarationKind !== 'newtype' || type.underlying === undefined || type.mustUse === true) return undefined;
+	const symbol = semantic.globalScope.lookup(type.name);
+	if (symbol?.kind !== 'type' || symbol.declaration?.kind !== 'NewtypeDeclaration') return undefined;
 	return directFrontendHostPrimitiveName(type.underlying, semantic);
 }
 
@@ -45,7 +47,7 @@ export function validateFrontendComponentEmissionBoundary(
 			const symbol = parameter.symbolId === undefined ? undefined : semantic.symbols.get(parameter.symbolId);
 			if (symbol !== undefined && frontendHostPrimitiveName(symbol.typeId, semantic) !== undefined) continue;
 			const display = symbol === undefined ? '<unresolved>' : semantic.arena.display(symbol.typeId);
-			diagnostics.error('L4309', `Component parameter ${parameter.name} has type ${display}; frontend JSX emission currently supports Bool, Int, Float, BigInt, String, and direct non-mustUse newtypes backed by those primitives`, parameter.span);
+			diagnostics.error('L4309', `Component parameter ${parameter.name} has type ${display}; frontend JSX emission currently supports Bool, Int, Float, BigInt, String, and direct non-mustUse source newtypes backed by those primitives`, parameter.span);
 		}
 		const interpolation = findUnsupportedComponentInterpolation(declaration.body, parameterNames);
 		if (interpolation?.kind === 'view-text') {
