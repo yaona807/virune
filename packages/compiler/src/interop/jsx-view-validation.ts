@@ -351,7 +351,7 @@ function renderViewElement(element: A.ViewElement, context: RenderContext): stri
 	if (!native && !intrinsic && !external) {
 		return fail(context, element.span, `View tag ${element.tag.join('.')} is neither intrinsic nor rooted in a JavaScript-imported External binding`);
 	}
-	if (native) {
+	if (nativeProof !== undefined && nativeComponent !== undefined) {
 		if (!validateNativeComponentProperties(element, nativeComponent, context)) return undefined;
 		context.usedNativeProofs.add(nativeProof);
 	}
