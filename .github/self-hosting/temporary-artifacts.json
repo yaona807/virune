@@ -1,12 +1,4 @@
 {
 	"schemaVersion": 1,
-	"artifacts": [
-		{
-			"id": "pr-654-frontend-project-emission",
-			"path": ".github/workflows/tmp-654-frontend-project-emission.yml",
-			"responsiblePullRequest": 654,
-			"removalTrigger": "Remove in the source/test patch commit before final review",
-			"mergeDisposition": "do-not-merge"
-		}
-	]
+	"artifacts": []
 }
