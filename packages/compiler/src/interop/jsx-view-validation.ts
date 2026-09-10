@@ -2,7 +2,7 @@ import type * as A from '../ast/nodes.js';
 import type { SemanticModel } from '../checker/checker.js';
 import { TypeOperations } from '../checker/type-operations.js';
 import type { JsInteropProvider } from './types.js';
-import { frontendHostPrimitiveName } from './frontend-component-emission.js';
+import { frontendHostPrimitiveName, frontendScalarRecordFields, type FrontendHostPrimitiveName } from './frontend-component-emission.js';
 import type { SourceSpan } from '../source.js';
 
 interface FrontendJsxValidationOptions {
@@ -85,15 +85,40 @@ export function validateFrontendJsxUsage(module: A.ModuleNode, semantic: Semanti
 	}
 }
 
-function renderFrontendHostPrimitive(typeId: number, semantic: SemanticModel): string | undefined {
-	switch (frontendHostPrimitiveName(typeId, semantic)) {
+function renderFrontendHostPrimitiveName(name: FrontendHostPrimitiveName): string {
+	switch (name) {
 		case 'Bool': return 'boolean';
 		case 'Int':
 		case 'Float': return 'number';
 		case 'BigInt': return 'bigint';
 		case 'String': return 'string';
-		default: return undefined;
 	}
+}
+
+function renderFrontendHostPrimitiveValue(name: FrontendHostPrimitiveName): string {
+	switch (name) {
+		case 'Bool': return '(false as boolean)';
+		case 'Int':
+		case 'Float': return '(0 as number)';
+		case 'BigInt': return '(0n as bigint)';
+		case 'String': return '("" as string)';
+	}
+}
+
+function renderFrontendHostType(typeId: number, semantic: SemanticModel): string | undefined {
+	const primitive = frontendHostPrimitiveName(typeId, semantic);
+	if (primitive !== undefined) return renderFrontendHostPrimitiveName(primitive);
+	const fields = frontendScalarRecordFields(typeId, semantic);
+	if (fields === undefined) return undefined;
+	return `{ ${fields.map(field => `${JSON.stringify(field.name)}: ${renderFrontendHostPrimitiveName(field.primitive)};`).join(' ')} }`;
+}
+
+function renderFrontendHostValue(typeId: number, semantic: SemanticModel): string | undefined {
+	const primitive = frontendHostPrimitiveName(typeId, semantic);
+	if (primitive !== undefined) return renderFrontendHostPrimitiveValue(primitive);
+	const fields = frontendScalarRecordFields(typeId, semantic);
+	if (fields === undefined) return undefined;
+	return `({ ${fields.map(field => `${JSON.stringify(field.name)}: ${renderFrontendHostPrimitiveValue(field.primitive)}`).join(', ')} })`;
 }
 
 function renderNativeComponentProof(component: A.ComponentDeclaration, semantic: SemanticModel): string | undefined {
@@ -107,7 +132,7 @@ function renderNativeComponentProof(component: A.ComponentDeclaration, semantic:
 		const parameter = component.parameters[index]!;
 		const typeId = componentType.parameters[index];
 		if (typeId === undefined) return undefined;
-		const rendered = renderFrontendHostPrimitive(typeId, semantic);
+		const rendered = renderFrontendHostType(typeId, semantic);
 		if (rendered === undefined) return undefined;
 		properties.push(`${JSON.stringify(parameter.name)}: ${rendered};`);
 	}
@@ -396,14 +421,9 @@ function renderNativeComponentPropertyValue(expression: A.Expression, context: R
 	const typeId = expression.inferredTypeId;
 	if (typeId !== undefined) {
 		const type = context.semantic.arena.get(typeId);
-		if (type.kind === 'named' && type.declarationKind === 'newtype') {
-			switch (frontendHostPrimitiveName(typeId, context.semantic)) {
-				case 'Bool': return '(false as boolean)';
-				case 'Int':
-				case 'Float': return '(0 as number)';
-				case 'BigInt': return '(0n as bigint)';
-				case 'String': return '("" as string)';
-			}
+		if (type.kind === 'named' && (type.declarationKind === 'newtype' || type.declarationKind === 'record')) {
+			const rendered = renderFrontendHostValue(typeId, context.semantic);
+			if (rendered !== undefined) return rendered;
 		}
 	}
 	return renderViewValue(expression, context);
