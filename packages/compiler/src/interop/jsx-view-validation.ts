@@ -105,10 +105,10 @@ function renderFrontendHostPrimitiveValue(name: FrontendHostPrimitiveName): stri
 	}
 }
 
-function renderFrontendHostType(typeId: number, semantic: SemanticModel): string | undefined {
+function renderFrontendHostType(typeId: number, semantic: SemanticModel, directTypeName?: string): string | undefined {
 	const primitive = frontendHostPrimitiveName(typeId, semantic);
 	if (primitive !== undefined) return renderFrontendHostPrimitiveName(primitive);
-	const fields = frontendScalarRecordFields(typeId, semantic);
+	const fields = frontendScalarRecordFields(typeId, semantic, directTypeName);
 	if (fields === undefined) return undefined;
 	return `{ ${fields.map(field => `${JSON.stringify(field.name)}: ${renderFrontendHostPrimitiveName(field.primitive)};`).join(' ')} }`;
 }
@@ -132,7 +132,7 @@ function renderNativeComponentProof(component: A.ComponentDeclaration, semantic:
 		const parameter = component.parameters[index]!;
 		const typeId = componentType.parameters[index];
 		if (typeId === undefined) return undefined;
-		const rendered = renderFrontendHostType(typeId, semantic);
+		const rendered = renderFrontendHostType(typeId, semantic, parameter.type.name);
 		if (rendered === undefined) return undefined;
 		properties.push(`${JSON.stringify(parameter.name)}: ${rendered};`);
 	}
