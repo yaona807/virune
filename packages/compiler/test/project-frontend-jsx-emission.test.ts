@@ -156,8 +156,7 @@ component Page(title: String) uses JavaScript {
 		assert.ok(main?.output);
 		assert.ok(helper?.output);
 		assert.ok(main.output.code.includes('from "./helper.jsx";'));
-		assert.match(main.output.code, /<Panel \$viruneChildren=\{\(\) => <><span>\{/u);
-		assert.match(main.output.code, /\$viruneValidateSafeFfiValue\(\$props\["title"\]/u);
+		assert.match(main.output.code, /<Panel \$viruneChildren=\{\(\) => <span>\{\$viruneValidateSafeFfiValue\(\$props\["title"\]/u);
 		assert.match(helper.output.code, /const \$slot = \$props\["\$viruneChildren"\]; return \$slot === undefined \? <><\/> : \$slot\(\);/u);
 	});
 });
