@@ -184,6 +184,7 @@ test('unsupported source records remain outside the native component host-prop b
 		{ declaration: '@json(strict)\nrecord Config derives Json {\n\tlabel: String\n}', type: 'Config' },
 		{ declaration: 'record Nested {\n\tlabel: String\n}\nrecord Config {\n\tnested: Nested\n}', type: 'Config' },
 		{ declaration: 'record Config<T> {\n\tvalue: T\n}', type: 'Config<String>' },
+		{ declaration: 'type Label = String\nrecord Config {\n\tlabel: Label\n}', type: 'Config' },
 		{ declaration: 'record Actual {\n\tlabel: String\n}\ntype Config = Actual', type: 'Config' },
 	] as const) {
 		const result = await compile(`${declaration}
@@ -330,7 +331,6 @@ component Wrapper() uses JavaScript {
 			children
 		}
 	}
-}
 `);
 	const diagnostic = errors(result).find(item => item.code === 'L4308');
 	assert.ok(diagnostic);
@@ -348,7 +348,6 @@ component Wrapper() uses JavaScript {
 			}
 		}
 	}
-}
 `, true);
 	assert.deepEqual(errors(result), []);
 	assert.ok(result.output);
