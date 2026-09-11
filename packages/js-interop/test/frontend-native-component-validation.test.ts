@@ -331,6 +331,7 @@ component Wrapper() uses JavaScript {
 			children
 		}
 	}
+}
 `);
 	const diagnostic = errors(result).find(item => item.code === 'L4308');
 	assert.ok(diagnostic);
@@ -348,6 +349,7 @@ component Wrapper() uses JavaScript {
 			}
 		}
 	}
+}
 `, true);
 	assert.deepEqual(errors(result), []);
 	assert.ok(result.output);
