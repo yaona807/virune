@@ -367,9 +367,10 @@ test('JSX proof widens interpolated strings and normalizes escaped braces like e
 
 test('unsupported component parameter transport fails closed before emission', () => {
 	for (const [declaration, type] of [
-		['record User {\n\tname: String\n}\n\n', 'User'],
+		['record User {\n\tlabels: List<String>\n}\n\n', 'User'],
 		['', 'Unknown'],
 		['', 'List<Int>'],
+		['type Scalar = Int\nnewtype AliasId = Scalar\n\n', 'AliasId'],
 	] as const) {
 		const result = compile(`${declaration}component Card(value: ${type}) uses JavaScript {
 	return view {
