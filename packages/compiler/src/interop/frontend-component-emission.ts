@@ -49,6 +49,13 @@ export function frontendScalarRecordFields(
 	for (const field of declaration.fields) {
 		const fieldType = type.fields.get(field.name);
 		if (fieldType === undefined) return undefined;
+		const resolvedFieldType = semantic.arena.get(fieldType);
+		const directFieldTypeName = resolvedFieldType.kind === 'primitive'
+			? resolvedFieldType.name
+			: resolvedFieldType.kind === 'named' && resolvedFieldType.declarationKind === 'newtype'
+				? resolvedFieldType.name
+				: undefined;
+		if (directFieldTypeName === undefined || field.type.name !== directFieldTypeName) return undefined;
 		const primitive = frontendHostPrimitiveName(fieldType, semantic);
 		if (primitive === undefined) return undefined;
 		fields.push({ name: field.name, primitive });
