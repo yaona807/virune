@@ -38,7 +38,7 @@ jobs:
           \t\tconst sourceTypeId = this.checkExpression(repetition.source, scope);
           """,
               """\tprivate checkViewRepetition(repetition: A.ViewRepetition, scope: Scope): void {
-          \t\trepetition.checkedEvidence = undefined;
+          \t\tdelete repetition.checkedEvidence;
           \t\tconst sourceTypeId = this.checkExpression(repetition.source, scope);
           """,
           )
