@@ -1,0 +1,131 @@
+name: Frontend callable props boundary fix
+
+on:
+  push:
+    branches:
+      - feat/frontend-view-callable-props
+    paths:
+      - .github/workflows/frontend-callable-props-boundary-fix.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: feat/frontend-view-callable-props
+          fetch-depth: 0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 24
+          cache: npm
+      - name: Apply exact boundary fix
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path: str, old: str, new: str) -> None:
+              p = Path(path)
+              text = p.read_text()
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{path}: expected exactly one replacement target, found {count}')
+              p.write_text(text.replace(old, new, 1))
+
+          emitter = 'packages/compiler/src/codegen/emitter.ts'
+          replace_once(
+              emitter,
+              """\tprivate emitHeader(module: A.ModuleNode): void {\n\t\tfor (const line of runtimeImportLines(module)) this.#writer.line(line);\n\t\tif ((this.#semantic.interop.callableProjections?.length ?? 0) > 0 || (this.#semantic.interop.objectCallableProjections?.length ?? 0) > 0 || this.#semantic.frontendCallableProjections.length > 0) {""",
+              """\tprivate emitHeader(module: A.ModuleNode): void {\n\t\tconst hasCallableProjection = (this.#semantic.interop.callableProjections?.length ?? 0) > 0 || (this.#semantic.interop.objectCallableProjections?.length ?? 0) > 0 || this.#semantic.frontendCallableProjections.length > 0;\n\t\tfor (const line of runtimeImportLines(module, hasCallableProjection)) this.#writer.line(line);\n\t\tif (hasCallableProjection) {""",
+          )
+
+          runtime_imports = 'packages/compiler/src/codegen/runtime-imports.ts'
+          replace_once(
+              runtime_imports,
+              "export function runtimeImportLines(module: A.ModuleNode): readonly string[] {",
+              "export function runtimeImportLines(module: A.ModuleNode, requiresJavaScriptBoundary = false): readonly string[] {",
+          )
+          replace_once(
+              runtime_imports,
+              """\tconst hasJavaScriptBoundary = module.imports.some(item => item.sourceKind === 'javascript') || module.declarations.some(item =>""",
+              """\tconst hasJavaScriptBoundary = requiresJavaScriptBoundary || module.imports.some(item => item.sourceKind === 'javascript') || module.declarations.some(item =>""",
+          )
+
+          test_path = Path('packages/js-interop/test/frontend-view-callable-props.test.ts')
+          text = test_path.read_text()
+          old_import = "import { writeFile } from 'node:fs/promises';"
+          new_import = "import { mkdir, writeFile } from 'node:fs/promises';"
+          if text.count(old_import) != 1:
+              raise SystemExit(f'test import replacement target count: {text.count(old_import)}')
+          text = text.replace(old_import, new_import, 1)
+          marker = "test('intrinsic View callback props reuse the existing callable shim'"
+          if marker not in text:
+              raise SystemExit('intrinsic callback test marker missing')
+          helper = r'''
+async function compileIntrinsicWithoutViruneJavaScriptImport(text: string, emit = false) {
+	const root = await fixtureRoot();
+	await mkdir(join(root, 'src/jsx'), { recursive: true });
+	await writeFile(join(root, 'tsconfig.json'), JSON.stringify({ compilerOptions: { jsx: 'react-jsx', jsxImportSource: './jsx', noUnusedLocals: true }, include: ['src/**/*'] }), 'utf8');
+	await writeFile(join(root, 'src/jsx/jsx-runtime.d.ts'), `export namespace JSX {
+	interface Element { readonly __viruneJsxElement: unique symbol; }
+	interface IntrinsicElements { button: { onClick?: () => void }; }
+}
+export function jsx(type: unknown, props: unknown, key?: unknown): JSX.Element;
+export const jsxs: typeof jsx;
+export const Fragment: unknown;
+`, 'utf8');
+	const provider = new TypeScriptInteropProvider({ projectRoot: root });
+	try {
+		return compileSource({ id: 1, path: join(root, 'src/main.virune'), text }, { emit, platform: 'browser', jsInteropProvider: provider });
+	} finally {
+		provider.dispose();
+	}
+}
+
+'''
+          if 'compileIntrinsicWithoutViruneJavaScriptImport' in text:
+              raise SystemExit('intrinsic-only helper already exists')
+          text = text.replace(marker, helper + marker, 1)
+          regression = r'''
+
+test('intrinsic callback projection emits the complete callable boundary without a Virune JavaScript import', async () => {
+	const result = await compileIntrinsicWithoutViruneJavaScriptImport(`fn handle() -> Unit {
+	return Unit
+}
+
+component Page() uses JavaScript {
+	return view {
+		button(onClick: handle)
+	}
+}
+`, true);
+	assert.deepEqual(errors(result), []);
+	assert.ok(result.output);
+	assert.match(result.output.code, /function \$viruneProjectCallable\(/u);
+	assert.match(result.output.code, /function \$viruneExternalizeInteropError\(/u);
+	assert.match(result.output.code, /<button onClick=\{\$viruneProjectCallable\(handle,/u);
+});
+'''
+          text += regression
+          test_path.write_text(text)
+          PY
+      - name: Focused validation
+        run: |
+          npm ci
+          npm run build
+          node --test packages/js-interop/dist/test/frontend-view-callable-props.test.js
+      - name: Commit validated fix and remove temporary workflow
+        shell: bash
+        run: |
+          rm .github/workflows/frontend-callable-props-boundary-fix.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "fix(frontend): emit complete callable prop boundary"
+          git push origin HEAD:feat/frontend-view-callable-props
