@@ -1,0 +1,86 @@
+name: Returned native callable review fix
+
+on:
+  push:
+    branches:
+      - feat/interop-returned-native-callable
+    paths:
+      - .github/workflows/returned-native-callable-review-fix.yml
+
+permissions:
+  contents: write
+
+jobs:
+  fix-and-validate:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/interop-returned-native-callable
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Verify expected parent
+        run: test "$(git rev-parse HEAD^)" = "ba5278c4ff0ad6823805c407cf65ec1508951aec"
+      - run: npm ci
+      - name: Apply focused nested-effect fix and regression
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          checker = Path('packages/compiler/src/checker/checker.ts')
+          text = checker.read_text()
+          old = """\t\tfor (const projection of pendingProjections) {\n\t\t\tthis.requireEffects(projection.descriptor.effects, projection.prepared.expression.span);\n\t\t\tthis.#objectCallableProjections.push({\n"""
+          new = """\t\tfor (const projection of pendingProjections) {\n\t\t\tthis.requireEffects(projection.descriptor.effects, projection.prepared.expression.span);\n\t\t\tif (projection.descriptor.version === 'virune-callable-shim/v3') this.requireEffects(projection.descriptor.result.effects, projection.prepared.expression.span);\n\t\t\tthis.#objectCallableProjections.push({\n"""
+          if text.count(old) != 1:
+              raise SystemExit('unexpected commitContextualObjects shape')
+          checker.write_text(text.replace(old, new))
+
+          test = Path('packages/js-interop/test/callable-boundary-regressions.test.ts')
+          text = test.read_text()
+          marker = "contextual object V3 requires latent cleanup effects"
+          if marker in text:
+              raise SystemExit('regression already present')
+          anchor = "\n\n test('deeper nested native callable results remain fail closed'"
+          if text.count(anchor) != 1:
+              raise SystemExit('unexpected callable regression anchor')
+          regression = r'''
+
+test('contextual object V3 requires latent cleanup effects', async () => {
+	const result = await compileFixture(
+		'library',
+		'export declare function register(config: { factory: (value: string) => () => void }): void;\n',
+		`import js { register } from "./library.js"\n\ntype Cleanup = fn() -> Unit uses Console\n\nfn cleanup() -> Unit uses Console {\n\tConsole.print("cleanup")\n\treturn Unit\n}\n\nfn factory(value: String) -> Cleanup {\n\treturn cleanup\n}\n\nfn main() -> Unit uses JavaScript {\n\tdiscard register({\n\t\tfactory: factory,\n\t})\n\treturn Unit\n}\n`,
+	);
+	assert.ok(result.diagnostics.some(item => item.code === 'L2076' && item.message.includes('Console')));
+});
+
+test('deeper nested native callable results remain fail closed' '''
+          text = text.replace(anchor, regression, 1)
+          test.write_text(text)
+          PY
+      - name: Build
+        run: npm run build
+      - name: Focused callable regressions
+        run: node --test packages/js-interop/dist/test/callable-boundary-regressions.test.js
+      - name: Existing contextual object callbacks
+        run: node --test packages/js-interop/dist/test/contextual-object-callback.test.js
+      - name: API check
+        run: npm run api:check
+      - name: ABI check
+        run: npm run abi:check
+      - name: Diff check
+        run: |
+          git diff --check
+          test "$(git diff --name-only | sort | tr '\n' ' ')" = "packages/compiler/src/checker/checker.ts packages/js-interop/test/callable-boundary-regressions.test.ts "
+      - name: Commit validated review fix and remove temporary workflow
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          rm .github/workflows/returned-native-callable-review-fix.yml
+          git add -A
+          git commit -m "fix(interop): require returned callable effects in contextual objects"
+          git push origin HEAD:feat/interop-returned-native-callable
