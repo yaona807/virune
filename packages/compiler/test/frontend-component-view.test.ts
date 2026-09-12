@@ -255,16 +255,29 @@ test('View repetition accepts native List with source index', () => {
 
 // @virune-rule {"id":"frontend.view-repetition-source","runner":"unit","file":"packages/compiler/test/frontend-component-view.test.ts","case":"View repetition rejects unsupported native collection sources","kind":"negative","platform":"common"}
 test('View repetition rejects unsupported native collection sources', () => {
-	const codes = errorCodes(`component SetView(items: Set<Int>) uses JavaScript {
+	const parsed = parseSource(source(`component SetView(items: Set<Int>) uses JavaScript {
 	return view {
 		for item, index in items {
 			span(value: item, position: index)
 		}
 	}
 }
-`);
+`));
+	assert.ok(parsed.ast);
+	assert.deepEqual(parsed.diagnostics.filter(item => item.severity === 'error'), []);
+	const component = parsed.ast.declarations.find((declaration): declaration is ComponentDeclaration => declaration.kind === 'ComponentDeclaration');
+	assert.ok(component);
+	const returned = component.body.statements[0] as ReturnStatement;
+	const view = returned.value as ViewExpression;
+	const repetition = view.body.children[0];
+	assert.equal(repetition?.kind, 'ViewRepetition');
+	if (repetition?.kind !== 'ViewRepetition') throw new Error('expected ViewRepetition');
+	repetition.checkedEvidence = { sourceKind: 'native-list', itemSymbolId: 999999, indexSymbolId: 999998 };
+	const semantic = checkModule(parsed.ast, { containingFile: parsed.source.path });
+	const codes = semantic.diagnostics.items.filter(item => item.severity === 'error').map(item => item.code);
 	assert.ok(codes.includes('L4310'));
 	assert.ok(!codes.includes('L1009'));
+	assert.equal(repetition.checkedEvidence, undefined);
 });
 
 // @virune-rule {"id":"frontend.view-repetition-children","runner":"unit","file":"packages/compiler/test/frontend-component-view.test.ts","case":"View repetition rejects nested compiler-managed children slots","kind":"negative","platform":"common"}

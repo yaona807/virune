@@ -807,6 +807,7 @@ export class TypeChecker {
 	}
 
 	private checkViewRepetition(repetition: A.ViewRepetition, scope: Scope): void {
+		delete repetition.checkedEvidence;
 		const sourceTypeId = this.checkExpression(repetition.source, scope);
 		const sourceType = this.arena.get(sourceTypeId);
 		let sourceKind: A.ViewRepetitionEvidence['sourceKind'] | undefined;
