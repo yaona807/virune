@@ -781,7 +781,7 @@ export class TypeChecker {
 						const typeId = this.checkExpression(property.value, scope);
 						if (native) continue;
 						const boundary = this.nativeCallableBoundary(typeId, property.value);
-						if (boundary === undefined || boundary.parameters.includes('Int')) continue;
+						if (boundary === undefined || boundary.version !== 'virune-callable-shim/v1' || boundary.parameters.includes('Int')) continue;
 						this.requireEffects(boundary.effects, property.value.span);
 						this.#frontendCallableProjections.push({ viewElementNodeId: child.id, propertyIndex, property: property.name, descriptor: boundary });
 					}
@@ -1017,6 +1017,7 @@ export class TypeChecker {
 				return this.arena.error;
 			}
 			this.requireEffects(boundary.effects, argument.span);
+			if (boundary.version === 'virune-callable-shim/v3') this.requireEffects(boundary.result.effects, argument.span);
 			this.#callableProjections.push({
 				callNodeId: expression.id,
 				argumentIndex: evidence.index,
@@ -1055,9 +1056,14 @@ export class TypeChecker {
 		}
 		const typeId = this.checkExpression(expression, scope);
 		const boundary = this.nativeCallableBoundary(typeId, expression, allowInlineZeroArgument);
-		const argument: InteropArgumentType = boundary === undefined
+		const callable: import('../interop/types.js').NativeCallableTypeTemplate | undefined = boundary === undefined
+			? undefined
+			: boundary.version === 'virune-callable-shim/v3'
+				? { parameters: boundary.parameters, result: { kind: 'callable', callable: { parameters: boundary.result.parameters, result: boundary.result.result, async: false } }, async: false }
+				: { parameters: boundary.parameters, result: boundary.result, async: boundary.async };
+		const argument: InteropArgumentType = callable === undefined
 			? this.interopArgumentType(typeId, expression, expression.span)
-			: { kind: 'native-callable', callable: { parameters: boundary.parameters, result: boundary.result, async: boundary.async } };
+			: { kind: 'native-callable', callable };
 		return { expression, argument, ...(boundary === undefined ? {} : { boundary }), point: this.semanticPoint() };
 	}
 
@@ -1193,7 +1199,7 @@ export class TypeChecker {
 				const callable = entry.callable;
 				if (!isRecord(callable) || !hasExactEnumerableKeys(callable, ['parameters', 'result']) || !Array.isArray(callable.parameters)) return undefined;
 				let parameters: readonly InteropCallableArgumentResolution['target']['parameters'][number][];
-				if (preparedEntry.boundary.version === 'virune-callable-shim/v1') {
+				if (preparedEntry.boundary.version === 'virune-callable-shim/v1' || preparedEntry.boundary.version === 'virune-callable-shim/v3') {
 					const primitives: ContextualCallablePrimitiveKind[] = [];
 					for (const parameter of callable.parameters) {
 						if (!isContextualCallablePrimitive(parameter)) return undefined;
@@ -1337,7 +1343,7 @@ export class TypeChecker {
 		return !construct || resolution.receiverMode === 'none';
 	}
 
-	private nativeCallableBoundary(typeId: TypeId, expression: A.Expression, allowInlineZeroArgument = false): Extract<NativeCallableBoundaryDescriptor, { readonly version: 'virune-callable-shim/v1' }> | undefined {
+	private nativeCallableBoundary(typeId: TypeId, expression: A.Expression, allowInlineZeroArgument = false): Exclude<NativeCallableBoundaryDescriptor, { readonly version: 'virune-callable-shim/v2' }> | undefined {
 		const type = this.arena.get(typeId);
 		if (type.kind !== 'function' || type.typeParameters.length !== 0 || type.effects.some(effect => effect === '*' || !this.#effects.has(effect))) return undefined;
 		if (expression.kind === 'LambdaExpression') {
@@ -1357,13 +1363,42 @@ export class TypeChecker {
 			parameters.push(primitive);
 		}
 		const result = this.nativeCallablePrimitive(type.result);
-		if (result === undefined) return undefined;
+		const effects = Object.freeze([...new Set(type.effects)].sort(compareText));
+		if (result !== undefined) {
+			return Object.freeze({
+				version: 'virune-callable-shim/v1',
+				parameters: Object.freeze(parameters),
+				result,
+				async: type.async,
+				effects,
+				contextMode: 'root-argument',
+			});
+		}
+		if (type.async) return undefined;
+		const nested = this.arena.get(type.result);
+		if (nested.kind !== 'function' || nested.async || nested.typeParameters.length !== 0 || nested.effects.some(effect => effect === '*' || !this.#effects.has(effect))) return undefined;
+		const nestedParameters: NativeCallablePrimitiveKind[] = [];
+		for (const parameter of nested.parameters) {
+			const primitive = this.nativeCallablePrimitive(parameter);
+			if (primitive === undefined) return undefined;
+			nestedParameters.push(primitive);
+		}
+		const nestedResult = this.nativeCallablePrimitive(nested.result);
+		if (nestedResult === undefined) return undefined;
+		const nestedBoundary = Object.freeze({
+			version: 'virune-callable-shim/v1' as const,
+			parameters: Object.freeze(nestedParameters),
+			result: nestedResult,
+			async: false,
+			effects: Object.freeze([...new Set(nested.effects)].sort(compareText)),
+			contextMode: 'root-argument' as const,
+		});
 		return Object.freeze({
-			version: 'virune-callable-shim/v1',
+			version: 'virune-callable-shim/v3',
 			parameters: Object.freeze(parameters),
-			result,
-			async: type.async,
-			effects: Object.freeze([...new Set(type.effects)].sort(compareText)),
+			result: nestedBoundary,
+			async: false,
+			effects,
 			contextMode: 'root-argument',
 		});
 	}
@@ -1465,7 +1500,7 @@ export class TypeChecker {
 			const contextualResult = canonicalContextualCallableResult(target.result);
 			if (contextualResult === undefined) return undefined;
 			let parameters: readonly InteropCallableArgumentResolution['target']['parameters'][number][];
-			if (boundary.version === 'virune-callable-shim/v1') {
+			if (boundary.version === 'virune-callable-shim/v1' || boundary.version === 'virune-callable-shim/v3') {
 				const primitives: ContextualCallablePrimitiveKind[] = [];
 				for (const parameter of target.parameters) {
 					if (!isContextualCallablePrimitive(parameter)) return undefined;
@@ -1494,6 +1529,11 @@ export class TypeChecker {
 		result: ContextualCallableResult,
 	): boolean {
 		if (boundary.parameters.length !== parameters.length || result.kind === 'deferred') return false;
+		if (boundary.version === 'virune-callable-shim/v3') {
+			if (boundary.async || result.kind !== 'callable' || parameters.some(parameter => typeof parameter !== 'string')) return false;
+			if (boundary.parameters.some((parameter, index) => !callableParameterMatchesContext(parameter, parameters[index] as ContextualCallablePrimitiveKind))) return false;
+			return this.callableBoundaryMatchesContext(boundary.result, result.callable.parameters, result.callable.result);
+		}
 		if (boundary.version === 'virune-callable-shim/v2') {
 			return boundary.parameters.every(parameter => parameter === 'External')
 				&& parameters.every(parameter => typeof parameter !== 'string')
@@ -1501,7 +1541,7 @@ export class TypeChecker {
 		}
 		if (parameters.some(parameter => typeof parameter !== 'string')) return false;
 		if (boundary.parameters.some((parameter, index) => !callableParameterMatchesContext(parameter, parameters[index] as ContextualCallablePrimitiveKind))) return false;
-		if (result.kind === 'external') return false;
+		if (result.kind === 'external' || result.kind === 'callable') return false;
 		if (result.kind === 'void') return !boundary.async && boundary.result === 'Unit';
 		if (boundary.async !== (result.kind === 'promise')) return false;
 		if (boundary.result === 'Unit') return result.value === 'undefined' || result.kind === 'promise' && result.value === 'void';
@@ -2134,6 +2174,17 @@ function isContextualCallablePrimitive(value: unknown): value is ContextualCalla
 function canonicalContextualCallableResult(value: unknown): ContextualCallableResult | undefined {
 	if (!isRecord(value) || typeof value.kind !== 'string') return undefined;
 	if (value.kind === 'void' || value.kind === 'external' || value.kind === 'deferred') return hasExactEnumerableKeys(value, ['kind']) ? Object.freeze({ kind: value.kind }) as ContextualCallableResult : undefined;
+	if (value.kind === 'callable') {
+		if (!hasExactEnumerableKeys(value, ['callable', 'kind']) || !isRecord(value.callable) || !hasExactEnumerableKeys(value.callable, ['parameters', 'result']) || !Array.isArray(value.callable.parameters)) return undefined;
+		const parameters: ContextualCallablePrimitiveKind[] = [];
+		for (const parameter of value.callable.parameters) {
+			if (!isContextualCallablePrimitive(parameter)) return undefined;
+			parameters.push(parameter);
+		}
+		const result = canonicalContextualCallableResult(value.callable.result);
+		if (result === undefined || (result.kind !== 'void' && result.kind !== 'value')) return undefined;
+		return Object.freeze({ kind: 'callable', callable: Object.freeze({ parameters: Object.freeze(parameters), result }) });
+	}
 	if (value.kind !== 'value' && value.kind !== 'promise') return undefined;
 	if (!hasExactEnumerableKeys(value, ['kind', 'value'])) return undefined;
 	if (value.kind === 'promise' && value.value === 'void') return Object.freeze({ kind: 'promise', value: 'void' });
