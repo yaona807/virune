@@ -66,51 +66,11 @@ jobs:
           marker = "test('intrinsic View callback props reuse the existing callable shim'"
           if marker not in text:
               raise SystemExit('intrinsic callback test marker missing')
-          helper = r'''
-async function compileIntrinsicWithoutViruneJavaScriptImport(text: string, emit = false) {
-	const root = await fixtureRoot();
-	await mkdir(join(root, 'src/jsx'), { recursive: true });
-	await writeFile(join(root, 'tsconfig.json'), JSON.stringify({ compilerOptions: { jsx: 'react-jsx', jsxImportSource: './jsx', noUnusedLocals: true }, include: ['src/**/*'] }), 'utf8');
-	await writeFile(join(root, 'src/jsx/jsx-runtime.d.ts'), `export namespace JSX {
-	interface Element { readonly __viruneJsxElement: unique symbol; }
-	interface IntrinsicElements { button: { onClick?: () => void }; }
-}
-export function jsx(type: unknown, props: unknown, key?: unknown): JSX.Element;
-export const jsxs: typeof jsx;
-export const Fragment: unknown;
-`, 'utf8');
-	const provider = new TypeScriptInteropProvider({ projectRoot: root });
-	try {
-		return compileSource({ id: 1, path: join(root, 'src/main.virune'), text }, { emit, platform: 'browser', jsInteropProvider: provider });
-	} finally {
-		provider.dispose();
-	}
-}
-
-'''
+          helper = '''\nasync function compileIntrinsicWithoutViruneJavaScriptImport(text: string, emit = false) {\n\tconst root = await fixtureRoot();\n\tawait mkdir(join(root, 'src/jsx'), { recursive: true });\n\tawait writeFile(join(root, 'tsconfig.json'), JSON.stringify({ compilerOptions: { jsx: 'react-jsx', jsxImportSource: './jsx', noUnusedLocals: true }, include: ['src/**/*'] }), 'utf8');\n\tawait writeFile(join(root, 'src/jsx/jsx-runtime.d.ts'), `export namespace JSX {\n\tinterface Element { readonly __viruneJsxElement: unique symbol; }\n\tinterface IntrinsicElements { button: { onClick?: () => void }; }\n}\nexport function jsx(type: unknown, props: unknown, key?: unknown): JSX.Element;\nexport const jsxs: typeof jsx;\nexport const Fragment: unknown;\n`, 'utf8');\n\tconst provider = new TypeScriptInteropProvider({ projectRoot: root });\n\ttry {\n\t\treturn compileSource({ id: 1, path: join(root, 'src/main.virune'), text }, { emit, platform: 'browser', jsInteropProvider: provider });\n\t} finally {\n\t\tprovider.dispose();\n\t}\n}\n\n'''
           if 'compileIntrinsicWithoutViruneJavaScriptImport' in text:
               raise SystemExit('intrinsic-only helper already exists')
           text = text.replace(marker, helper + marker, 1)
-          regression = r'''
-
-test('intrinsic callback projection emits the complete callable boundary without a Virune JavaScript import', async () => {
-	const result = await compileIntrinsicWithoutViruneJavaScriptImport(`fn handle() -> Unit {
-	return Unit
-}
-
-component Page() uses JavaScript {
-	return view {
-		button(onClick: handle)
-	}
-}
-`, true);
-	assert.deepEqual(errors(result), []);
-	assert.ok(result.output);
-	assert.match(result.output.code, /function \$viruneProjectCallable\(/u);
-	assert.match(result.output.code, /function \$viruneExternalizeInteropError\(/u);
-	assert.match(result.output.code, /<button onClick=\{\$viruneProjectCallable\(handle,/u);
-});
-'''
+          regression = '''\n\ntest('intrinsic callback projection emits the complete callable boundary without a Virune JavaScript import', async () => {\n\tconst result = await compileIntrinsicWithoutViruneJavaScriptImport(`fn handle() -> Unit {\n\treturn Unit\n}\n\ncomponent Page() uses JavaScript {\n\treturn view {\n\t\tbutton(onClick: handle)\n\t}\n}\n`, true);\n\tassert.deepEqual(errors(result), []);\n\tassert.ok(result.output);\n\tassert.match(result.output.code, /function \\$viruneProjectCallable\\(/u);\n\tassert.match(result.output.code, /function \\$viruneExternalizeInteropError\\(/u);\n\tassert.match(result.output.code, /<button onClick=\\{\\$viruneProjectCallable\\(handle,/u);\n});\n'''
           text += regression
           test_path.write_text(text)
           PY
