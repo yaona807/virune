@@ -52,8 +52,9 @@ export class JavaScriptEmitter {
 	}
 
 	private emitHeader(module: A.ModuleNode): void {
-		for (const line of runtimeImportLines(module)) this.#writer.line(line);
-		if ((this.#semantic.interop.callableProjections?.length ?? 0) > 0 || (this.#semantic.interop.objectCallableProjections?.length ?? 0) > 0) {
+		const hasCallableProjection = (this.#semantic.interop.callableProjections?.length ?? 0) > 0 || (this.#semantic.interop.objectCallableProjections?.length ?? 0) > 0 || this.#semantic.frontendCallableProjections.length > 0;
+		for (const line of runtimeImportLines(module, hasCallableProjection)) this.#writer.line(line);
+		if (hasCallableProjection) {
 			this.#writer.line("const $viruneCallableShimCacheKey = '$virune.callable-shim.cache/v1';");
 			this.#writer.line('const $viruneCallableShimObject = ({}).constructor;');
 			this.#writer.line('function $viruneProjectCallable($fn, $descriptor, $factory) {');
@@ -418,11 +419,17 @@ export class JavaScriptEmitter {
 		const tag = element.tag.join('.');
 		const root = element.tag[0];
 		const native = element.tag.length === 1 && root !== undefined && this.#semantic.globalScope.lookup(root)?.kind === 'component';
-		const properties = element.properties.map(property => `${property.name}={${native ? this.nativeComponentPropertyValue(property.value, contextName) : this.expression(property.value, contextName)}}`);
+		const properties = element.properties.map((property, propertyIndex) => `${property.name}={${native ? this.nativeComponentPropertyValue(property.value, contextName) : this.frontendViewPropertyValue(element.id, propertyIndex, property, contextName)}}`);
 		if (native && element.children !== undefined) properties.push(`${nativeChildrenProperty}={() => ${this.viewBlockExpression(element.children, contextName)}}`);
 		const attributes = properties.length === 0 ? '' : ` ${properties.join(' ')}`;
 		if (element.children === undefined || native) return `<${tag}${attributes} />`;
 		return `<${tag}${attributes}>${this.viewBlockContents(element.children, contextName)}</${tag}>`;
+	}
+
+	private frontendViewPropertyValue(elementId: number, propertyIndex: number, property: A.ViewProperty, contextName: string): string {
+		const raw = this.expression(property.value, contextName);
+		const projection = this.#semantic.frontendCallableProjections.find(item => item.viewElementNodeId === elementId && item.propertyIndex === propertyIndex && item.property === property.name);
+		return projection === undefined ? raw : this.callableProjection(raw, projection.descriptor);
 	}
 
 	private nativeComponentPropertyValue(expression: A.Expression, contextName: string): string {
