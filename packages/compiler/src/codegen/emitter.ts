@@ -451,8 +451,14 @@ export class JavaScriptEmitter {
 		return `${this.expression(conditional.condition, contextName)} ? ${thenBranch} : ${elseBranch}`;
 	}
 
+	private checkedViewRepetitionEvidence(repetition: A.ViewRepetition): A.ViewRepetitionEvidence {
+		const evidence = repetition.checkedEvidence;
+		if (evidence === undefined || (repetition.indexName === undefined) !== (evidence.indexSymbolId === undefined)) return panicEmitter('View repetition reached emission without matching checked repetition evidence');
+		return evidence;
+	}
+
 	private viewRepetitionExpression(repetition: A.ViewRepetition, contextName: string): string {
-		if (repetition.sourceKind === undefined || repetition.itemSymbolId === undefined || (repetition.indexName !== undefined && repetition.indexSymbolId === undefined)) return panicEmitter('View repetition reached emission without checked repetition evidence');
+		this.checkedViewRepetitionEvidence(repetition);
 		const target = `$viewChildren${this.#temporary++}`;
 		return [
 			'(() => {',
@@ -464,20 +470,20 @@ export class JavaScriptEmitter {
 	}
 
 	private viewRepetitionLines(repetition: A.ViewRepetition, target: string, contextName: string, indent: number): string[] {
-		if (repetition.sourceKind === undefined || repetition.itemSymbolId === undefined || (repetition.indexName !== undefined && repetition.indexSymbolId === undefined)) return panicEmitter('View repetition reached emission without checked repetition evidence');
+		const evidence = this.checkedViewRepetitionEvidence(repetition);
 		const prefix = '\t'.repeat(indent);
 		const sourceName = `$viewSource${this.#temporary++}`;
 		const lengthName = `$viewLength${this.#temporary++}`;
 		const sourceIndexName = `$viewIndex${this.#temporary++}`;
-		const itemName = this.nameOf(repetition.itemSymbolId, repetition.itemName);
+		const itemName = this.nameOf(evidence.itemSymbolId, repetition.itemName);
 		const lines = [
 			`${prefix}const ${sourceName} = ${this.expression(repetition.source, contextName)};`,
 			`${prefix}const ${lengthName} = ${sourceName}.length;`,
 			`${prefix}for (let ${sourceIndexName} = 0; ${sourceIndexName} < ${lengthName}; ${sourceIndexName}++) {`,
 		];
-		if (repetition.sourceKind === 'external-array') lines.push(`${prefix}\tif (!Object.prototype.hasOwnProperty.call(${sourceName}, ${sourceIndexName})) continue;`);
+		if (evidence.sourceKind === 'external-array') lines.push(`${prefix}\tif (!Object.prototype.hasOwnProperty.call(${sourceName}, ${sourceIndexName})) continue;`);
 		lines.push(`${prefix}\tconst ${itemName} = ${sourceName}[${sourceIndexName}];`);
-		if (repetition.indexName !== undefined && repetition.indexSymbolId !== undefined) lines.push(`${prefix}\tconst ${this.nameOf(repetition.indexSymbolId, repetition.indexName)} = ${sourceIndexName};`);
+		if (repetition.indexName !== undefined) lines.push(`${prefix}\tconst ${this.nameOf(evidence.indexSymbolId, repetition.indexName)} = ${sourceIndexName};`);
 		lines.push(...this.viewRepetitionBlockLines(repetition.body, target, contextName, indent + 1));
 		lines.push(`${prefix}}`);
 		return lines;

@@ -230,36 +230,37 @@ function renderViewChild(child: A.ViewChild, context: RenderContext): string | u
 }
 
 function renderViewRepetition(repetition: A.ViewRepetition, context: RenderContext): string | undefined {
-	if (repetition.itemSymbolId === undefined || repetition.sourceKind === undefined) return fail(context, repetition.span, 'View repetition reached JSX validation without checked repetition evidence');
-	if (repetition.indexName !== undefined && repetition.indexSymbolId === undefined) return fail(context, repetition.span, 'View repetition index reached JSX validation without a checked binding');
-	const source = repetition.sourceKind === 'external-array'
+	const evidence = repetition.checkedEvidence;
+	if (evidence === undefined) return fail(context, repetition.span, 'View repetition reached JSX validation without checked repetition evidence');
+	if ((repetition.indexName === undefined) !== (evidence.indexSymbolId === undefined)) return fail(context, repetition.span, 'View repetition checked evidence does not match its source index binding');
+	const source = evidence.sourceKind === 'external-array'
 		? renderExternalRepetitionSource(repetition.source, context)
-		: renderNativeRepetitionSource(repetition, context);
+		: renderNativeRepetitionSource(repetition, evidence, context);
 	if (source === undefined) return undefined;
 	const sourceName = `$viruneViewSource${repetition.id}`;
 	const lengthName = `$viruneViewLength${repetition.id}`;
 	const indexName = `$viruneViewIndex${repetition.id}`;
 	const itemName = `$viruneViewItem${repetition.id}`;
 	const childrenName = `$viruneViewChildren${repetition.id}`;
-	const previousItem = context.repetitionValues.get(repetition.itemSymbolId);
-	const hadItem = context.repetitionValues.has(repetition.itemSymbolId);
-	context.repetitionValues.set(repetition.itemSymbolId, itemName);
+	const previousItem = context.repetitionValues.get(evidence.itemSymbolId);
+	const hadItem = context.repetitionValues.has(evidence.itemSymbolId);
+	context.repetitionValues.set(evidence.itemSymbolId, itemName);
 	let previousIndex: string | undefined;
 	let hadIndex = false;
-	if (repetition.indexSymbolId !== undefined) {
-		previousIndex = context.repetitionValues.get(repetition.indexSymbolId);
-		hadIndex = context.repetitionValues.has(repetition.indexSymbolId);
-		context.repetitionValues.set(repetition.indexSymbolId, indexName);
+	if (evidence.indexSymbolId !== undefined) {
+		previousIndex = context.repetitionValues.get(evidence.indexSymbolId);
+		hadIndex = context.repetitionValues.has(evidence.indexSymbolId);
+		context.repetitionValues.set(evidence.indexSymbolId, indexName);
 	}
 	const body = renderRepetitionBlock(repetition.body, childrenName, context, 2);
-	if (hadItem) context.repetitionValues.set(repetition.itemSymbolId, previousItem!);
-	else context.repetitionValues.delete(repetition.itemSymbolId);
-	if (repetition.indexSymbolId !== undefined) {
-		if (hadIndex) context.repetitionValues.set(repetition.indexSymbolId, previousIndex!);
-		else context.repetitionValues.delete(repetition.indexSymbolId);
+	if (hadItem) context.repetitionValues.set(evidence.itemSymbolId, previousItem!);
+	else context.repetitionValues.delete(evidence.itemSymbolId);
+	if (evidence.indexSymbolId !== undefined) {
+		if (hadIndex) context.repetitionValues.set(evidence.indexSymbolId, previousIndex!);
+		else context.repetitionValues.delete(evidence.indexSymbolId);
 	}
 	if (body === undefined) return undefined;
-	const holeGuard = repetition.sourceKind === 'external-array' ? `\n\t\tif (!Object.prototype.hasOwnProperty.call(${sourceName}, ${indexName})) continue;` : '';
+	const holeGuard = evidence.sourceKind === 'external-array' ? `\n\t\tif (!Object.prototype.hasOwnProperty.call(${sourceName}, ${indexName})) continue;` : '';
 	const bodyText = body.length === 0 ? '' : `\n${body}`;
 	return `(() => {\n\tconst ${sourceName} = ${source};\n\tconst ${lengthName} = ${sourceName}.length;\n\tconst ${childrenName} = [];\n\tfor (let ${indexName} = 0; ${indexName} < ${lengthName}; ${indexName}++) {${holeGuard}\n\t\tconst ${itemName} = ${sourceName}[${indexName}] as (typeof ${sourceName})[number];${bodyText}\n\t}\n\treturn ${childrenName};\n})()`;
 }
@@ -287,7 +288,7 @@ function renderExternalRepetitionSource(expression: A.Expression, context: Rende
 	return fail(context, expression.span, 'External Array repetition source cannot be represented in the current JSX validation slice without guessing its TypeScript type');
 }
 
-function renderNativeRepetitionSource(repetition: A.ViewRepetition, context: RenderContext): string | undefined {
+function renderNativeRepetitionSource(repetition: A.ViewRepetition, evidence: A.ViewRepetitionEvidence, context: RenderContext): string | undefined {
 	if (repetition.source.kind === 'ListExpression' && repetition.source.items.length > 0) {
 		const items: string[] = [];
 		for (const item of repetition.source.items) {
@@ -297,8 +298,7 @@ function renderNativeRepetitionSource(repetition: A.ViewRepetition, context: Ren
 		}
 		return `[${items.join(', ')}]`;
 	}
-	if (repetition.itemSymbolId === undefined) return fail(context, repetition.span, 'native View repetition item has no checked binding');
-	const symbol = context.semantic.symbols.get(repetition.itemSymbolId);
+	const symbol = context.semantic.symbols.get(evidence.itemSymbolId);
 	if (symbol === undefined) return fail(context, repetition.span, 'native View repetition item binding is unavailable to JSX validation');
 	const probe = renderTypeProbe(symbol.typeId, context, repetition.span);
 	return probe === undefined ? undefined : `[${probe}]`;

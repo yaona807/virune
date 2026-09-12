@@ -807,11 +807,13 @@ export class TypeChecker {
 	}
 
 	private checkViewRepetition(repetition: A.ViewRepetition, scope: Scope): void {
+		delete repetition.checkedEvidence;
 		const sourceTypeId = this.checkExpression(repetition.source, scope);
 		const sourceType = this.arena.get(sourceTypeId);
+		let sourceKind: A.ViewRepetitionEvidence['sourceKind'] | undefined;
 		let itemType = this.arena.error;
 		if (sourceType.kind === 'list') {
-			repetition.sourceKind = 'native-list';
+			sourceKind = 'native-list';
 			itemType = sourceType.element;
 		} else if (sourceType.kind === 'foreign' && sourceType.snapshot.category === 'array') {
 			const provider = this.currentInteropProvider(sourceType.snapshot);
@@ -821,20 +823,25 @@ export class TypeChecker {
 			}
 			if (provider !== undefined && this.isCurrentForeignSnapshot(element, provider, false)) {
 				this.requireEffects(['JavaScript'], repetition.span);
-				repetition.sourceKind = 'external-array';
+				sourceKind = 'external-array';
 				itemType = this.arena.foreign(element);
 			}
 		}
-		if (repetition.sourceKind === undefined) this.diagnostics.error('L4310', 'View repetition requires a native List or proven External Array source', repetition.source.span);
+		if (sourceKind === undefined) this.diagnostics.error('L4310', 'View repetition requires a native List or proven External Array source', repetition.source.span);
 
 		const childScope = new Scope(scope);
 		const item = this.#factory.create(repetition.itemName, 'variable', itemType, repetition.span, { declaration: repetition });
+		let itemSymbolId: SymbolId | undefined;
 		if (!childScope.define(item)) this.diagnostics.error('L1008', `View repetition item ${repetition.itemName} shadows an existing name`, repetition.span);
-		else { repetition.itemSymbolId = item.id; this.#symbols.set(item.id, item); }
+		else { itemSymbolId = item.id; this.#symbols.set(item.id, item); }
+		let indexSymbolId: SymbolId | undefined;
 		if (repetition.indexName !== undefined) {
 			const index = this.#factory.create(repetition.indexName, 'variable', this.arena.int, repetition.span, { declaration: repetition });
 			if (!childScope.define(index)) this.diagnostics.error('L1008', `View repetition index ${repetition.indexName} shadows an existing name`, repetition.span);
-			else { repetition.indexSymbolId = index.id; this.#symbols.set(index.id, index); }
+			else { indexSymbolId = index.id; this.#symbols.set(index.id, index); }
+		}
+		if (sourceKind !== undefined && itemSymbolId !== undefined && (repetition.indexName === undefined || indexSymbolId !== undefined)) {
+			repetition.checkedEvidence = { sourceKind, itemSymbolId, indexSymbolId };
 		}
 		this.checkViewBlock(repetition.body, childScope, true);
 	}
