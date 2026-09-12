@@ -1618,8 +1618,20 @@ function contextualNestedPrimitiveCallable(
 	location: ts.Node,
 	callable: Extract<NativeCallableTypeTemplate['result'], { readonly kind: 'callable' }>['callable'],
 ): Extract<ContextualCallableResult, { readonly kind: 'callable' }>['callable'] | undefined {
-	const signatures = type.getCallSignatures();
-	if (signatures.length !== 1 || type.getConstructSignatures().length !== 0) return undefined;
+	let callableType = type;
+	if (type.isUnion()) {
+		let candidate: ts.Type | undefined;
+		for (const branch of type.types) {
+			const flags = branch.getFlags();
+			if ((flags & (ts.TypeFlags.Void | ts.TypeFlags.Undefined)) !== 0) continue;
+			if (candidate !== undefined) return undefined;
+			candidate = branch;
+		}
+		if (candidate === undefined) return undefined;
+		callableType = candidate;
+	}
+	const signatures = callableType.getCallSignatures();
+	if (signatures.length !== 1 || callableType.getConstructSignatures().length !== 0) return undefined;
 	const signature = signatures[0]!;
 	if ((signature.typeParameters?.length ?? 0) !== 0 || signature.parameters.length !== callable.parameters.length || callable.async !== false) return undefined;
 	const parameters: ContextualCallablePrimitiveKind[] = [];

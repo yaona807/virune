@@ -82,6 +82,36 @@ test('projects one-level native cleanup callable results through the existing sh
 	assert.match(result.output?.code ?? '', /const \$result = \$fn\(validateFfiValue\(\$raw0,/u);
 	assert.match(result.output?.code ?? '', /\$viruneProjectCallable\(\$result,/u);
 });
+
+test('projects returned cleanup callable through void-or-callable contextual unions', async () => {
+	for (const resultType of ['void | (() => void)', 'void | undefined | (() => void)']) {
+		const result = await compileFixture(
+			'library',
+			 `export declare function register(callback: () => ${resultType}): void;\n`,
+			`import js { register } from "./library.js"\n\nfn cleanup() -> Unit {\n\treturn Unit\n}\n\nfn install() -> fn() -> Unit {\n\treturn cleanup\n}\n\nfn main() -> Unit uses JavaScript {\n\tdiscard register(install)\n\treturn Unit\n}\n`,
+		);
+		assert.deepEqual(result.diagnostics.filter(item => item.severity === 'error'), []);
+		const projection = result.semantic?.interop.callableProjections?.[0];
+		assert.ok(projection);
+		assert.equal(projection.descriptor.version, 'virune-callable-shim/v3');
+	}
+});
+
+test('returned cleanup callable contextual unions reject additional result branches', async () => {
+	for (const resultType of [
+		'void | (() => void) | string',
+		'void | (() => void) | ((value: string) => void)',
+	]) {
+		const result = await compileFixture(
+			'library',
+			`export declare function register(callback: () => ${resultType}): void;\n`,
+			`import js { register } from "./library.js"\n\nfn cleanup() -> Unit {\n\treturn Unit\n}\n\nfn install() -> fn() -> Unit {\n\treturn cleanup\n}\n\nfn main() -> Unit uses JavaScript {\n\tdiscard register(install)\n\treturn Unit\n}\n`,
+		);
+		assert.ok(result.diagnostics.some(item => item.code === 'L4204' || item.code === 'L4206'));
+		assert.equal(result.semantic?.interop.callableProjections?.length ?? 0, 0);
+	}
+});
+
 test('contextual object V3 requires latent cleanup effects', async () => {
 	const result = await compileFixture(
 		'library',
