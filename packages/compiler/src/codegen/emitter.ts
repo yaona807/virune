@@ -427,8 +427,9 @@ export class JavaScriptEmitter {
 	}
 
 	private frontendViewPropertyValue(elementId: number, propertyIndex: number, property: A.ViewProperty, contextName: string): string {
-		const raw = this.expression(property.value, contextName);
 		const projection = this.#semantic.frontendCallableProjections.find(item => item.viewElementNodeId === elementId && item.propertyIndex === propertyIndex && item.property === property.name);
+		const projectedSyncExternal = property.value.kind === 'LambdaExpression' && projection?.descriptor.async === false;
+		const raw = projectedSyncExternal ? this.lambdaExpression(property.value, contextName, true) : this.expression(property.value, contextName);
 		return projection === undefined ? raw : this.callableProjection(raw, projection.descriptor);
 	}
 
