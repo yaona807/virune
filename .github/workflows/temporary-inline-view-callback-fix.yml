@@ -26,8 +26,8 @@ jobs:
 
           emitter_path = Path('packages/compiler/src/codegen/emitter.ts')
           emitter = emitter_path.read_text()
-          old = """\t\tconst raw = this.expression(property.value, contextName);\n\t\tconst projection = this.#semantic.frontendCallableProjections.find(item => item.viewElementNodeId === elementId && item.propertyIndex === propertyIndex && item.property === property.name);\n\t\treturn projection === undefined ? raw : this.callableProjection(raw, projection.descriptor);"""
-          new = """\t\tconst projection = this.#semantic.frontendCallableProjections.find(item => item.viewElementNodeId === elementId && item.propertyIndex === propertyIndex && item.property === property.name);\n\t\tconst projectedSyncExternal = property.value.kind === 'LambdaExpression' && projection?.descriptor.async === false;\n\t\tconst raw = projectedSyncExternal ? this.lambdaExpression(property.value, contextName, true) : this.expression(property.value, contextName);\n\t\treturn projection === undefined ? raw : this.callableProjection(raw, projection.descriptor);"""
+          old = "\t\tconst raw = this.expression(property.value, contextName);\n\t\tconst projection = this.#semantic.frontendCallableProjections.find(item => item.viewElementNodeId === elementId && item.propertyIndex === propertyIndex && item.property === property.name);\n\t\treturn projection === undefined ? raw : this.callableProjection(raw, projection.descriptor);"
+          new = "\t\tconst projection = this.#semantic.frontendCallableProjections.find(item => item.viewElementNodeId === elementId && item.propertyIndex === propertyIndex && item.property === property.name);\n\t\tconst projectedSyncExternal = property.value.kind === 'LambdaExpression' && projection?.descriptor.async === false;\n\t\tconst raw = projectedSyncExternal ? this.lambdaExpression(property.value, contextName, true) : this.expression(property.value, contextName);\n\t\treturn projection === undefined ? raw : this.callableProjection(raw, projection.descriptor);"
           if emitter.count(old) != 1:
               raise SystemExit(f'frontendViewPropertyValue target count={emitter.count(old)}')
           emitter_path.write_text(emitter.replace(old, new, 1))
@@ -38,41 +38,42 @@ jobs:
           if test.count(decl_old) != 1:
               raise SystemExit(f'fixture declaration target count={test.count(decl_old)}')
           test = test.replace(decl_old, decl_old + 'export function setMode(value: string): void;\n', 1)
-
           start_marker = "test('zero-argument inline View callback props reuse the existing callable shim with captures', async () => {"
           end_marker = "\n\ntest('TypeScript JSX whole-usage proof rejects incompatible projected callbacks'"
           start = test.find(start_marker)
           end = test.find(end_marker, start)
           if start < 0 or end < 0:
               raise SystemExit('inline callback regression target not found')
-          replacement = r'''test('zero-argument inline View callback props reuse the existing callable shim with captures and root context', async () => {
-	const result = await compile(`import js { setMode } from "./library.js"
-
-component Page() uses JavaScript {
-	let label = "captured"
-	return view {
-		button(onClick: fn() -> Unit uses JavaScript {
-			discard setMode(label)
-			return Unit
-		})
-	}
-}
-`, true);
-	assert.deepEqual(errors(result), []);
-	assert.ok(result.output);
-	const code = result.output.code;
-	assert.match(code, /<button onClick=\{\$viruneProjectCallable\(\(\(\$lambdaCtx\d+ = rootTaskContext\(\)\) => \{/u);
-	assert.match(code, /\$viruneProjectCallable\(\(\(\$lambdaCtx\d+ = rootTaskContext\(\)\) => \{[\s\S]*?setMode\(label\)[\s\S]*?\}\),/u);
-	assert.equal(result.semantic?.frontendCallableProjections.length, 1);
-	assert.deepEqual(result.semantic?.frontendCallableProjections[0]?.descriptor, {
-		version: 'virune-callable-shim/v1',
-		parameters: [],
-		result: 'Unit',
-		async: false,
-		effects: ['JavaScript'],
-		contextMode: 'root-argument',
-	});
-});'''
+          replacement = "\n".join([
+              "test('zero-argument inline View callback props reuse the existing callable shim with captures and root context', async () => {",
+              "\tconst result = await compile(`import js { setMode } from \"./library.js\"",
+              "",
+              "component Page() uses JavaScript {",
+              "\tlet label = \"captured\"",
+              "\treturn view {",
+              "\t\tbutton(onClick: fn() -> Unit uses JavaScript {",
+              "\t\t\tdiscard setMode(label)",
+              "\t\t\treturn Unit",
+              "\t\t})",
+              "\t}",
+              "}",
+              "`, true);",
+              "\tassert.deepEqual(errors(result), []);",
+              "\tassert.ok(result.output);",
+              "\tconst code = result.output.code;",
+              "\tassert.match(code, /<button onClick=\\{\\$viruneProjectCallable\\(\\(\\(\\$lambdaCtx\\d+ = rootTaskContext\\(\\)\\) => \\{/u);",
+              "\tassert.match(code, /\\$viruneProjectCallable\\(\\(\\(\\$lambdaCtx\\d+ = rootTaskContext\\(\\)\\) => \\{[\\s\\S]*?setMode\\(label\\)[\\s\\S]*?\\}\\),/u);",
+              "\tassert.equal(result.semantic?.frontendCallableProjections.length, 1);",
+              "\tassert.deepEqual(result.semantic?.frontendCallableProjections[0]?.descriptor, {",
+              "\t\tversion: 'virune-callable-shim/v1',",
+              "\t\tparameters: [],",
+              "\t\tresult: 'Unit',",
+              "\t\tasync: false,",
+              "\t\teffects: ['JavaScript'],",
+              "\t\tcontextMode: 'root-argument',",
+              "\t});",
+              "});",
+          ])
           test_path.write_text(test[:start] + replacement + test[end:])
           PY
           git diff --check
