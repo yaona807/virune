@@ -17,6 +17,10 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: fix/frontend-external-string-child
+      - name: Use Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
       - name: Apply focused proof-renderer fix and regression
         shell: bash
         run: |
@@ -40,7 +44,7 @@ jobs:
           test = test.replace(decl_marker, decl_marker + 'export declare function currentText(): string;\n', 1)
 
           runtime_marker = "export const Card = () => null; export const child = () => null; export const ui = { Tile: () => null }; export const UnsafeCard = () => null; export const unsafeUi = { Tile: () => null }; export const UnknownValue = undefined;\\n"
-          runtime_replacement = "export const Card = () => null; export const child = () => null; export const ui = { Tile: () => null }; export const UnsafeCard = () => null; export const unsafeUi = { Tile: () => null }; export const UnknownValue = undefined; export const currentText = () => 'external';\\n"
+          runtime_replacement = 'export const Card = () => null; export const child = () => null; export const ui = { Tile: () => null }; export const UnsafeCard = () => null; export const unsafeUi = { Tile: () => null }; export const UnknownValue = undefined; export const currentText = () => "external";\\n'
           if test.count(runtime_marker) != 1:
               raise SystemExit(f'runtime marker count={test.count(runtime_marker)}')
           test = test.replace(runtime_marker, runtime_replacement, 1)
