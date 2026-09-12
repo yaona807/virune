@@ -97,6 +97,39 @@ test('projects returned cleanup callable through void-or-callable contextual uni
 	}
 });
 
+test('projects synchronous Unit cleanup through a contextual void-or-sentinel result union', async () => {
+	const result = await compileFixture(
+		'library',
+		`declare const undefinedVoidOnly: unique symbol;
+type Destructor = () => void | { [undefinedVoidOnly]: never };
+export declare function register(callback: () => void | Destructor): void;
+`,
+		`import js { register } from "./library.js"
+
+fn cleanup() -> Unit {
+	return Unit
+}
+
+fn install() -> fn() -> Unit {
+	return cleanup
+}
+
+fn main() -> Unit uses JavaScript {
+	discard register(install)
+	return Unit
+}
+`,
+	);
+	assert.deepEqual(result.diagnostics.filter(item => item.severity === 'error'), []);
+	const projection = result.semantic?.interop.callableProjections?.[0];
+	assert.ok(projection);
+	assert.equal(projection.descriptor.version, 'virune-callable-shim/v3');
+	if (projection.descriptor.version !== 'virune-callable-shim/v3') assert.fail('expected V3 callable descriptor');
+	assert.equal(projection.descriptor.result.version, 'virune-callable-shim/v1');
+	assert.equal(projection.descriptor.result.result, 'Unit');
+	assert.match(result.output?.code ?? '', /return \$viruneProjectCallable\(\$result,/u);
+});
+
 test('returned cleanup callable contextual unions reject additional result branches', async () => {
 	for (const resultType of [
 		'void | (() => void) | string',
