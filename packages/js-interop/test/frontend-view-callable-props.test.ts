@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { writeFile } from 'node:fs/promises';
+import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import test from 'node:test';
 import { compileSource } from '@virune/compiler/experimental';
@@ -35,6 +35,27 @@ export const ExternalButton: (props: { onClick: () => void }) => JSX.Element;
 }
 
 const errors = (result: Awaited<ReturnType<typeof compile>>) => result.diagnostics.filter(item => item.severity === 'error');
+
+
+async function compileIntrinsicWithoutViruneJavaScriptImport(text: string, emit = false) {
+	const root = await fixtureRoot();
+	await mkdir(join(root, 'src/jsx'), { recursive: true });
+	await writeFile(join(root, 'tsconfig.json'), JSON.stringify({ compilerOptions: { jsx: 'react-jsx', jsxImportSource: './jsx', noUnusedLocals: true }, include: ['src/**/*'] }), 'utf8');
+	await writeFile(join(root, 'src/jsx/jsx-runtime.d.ts'), `export namespace JSX {
+	interface Element { readonly __viruneJsxElement: unique symbol; }
+	interface IntrinsicElements { button: { onClick?: () => void }; }
+}
+export function jsx(type: unknown, props: unknown, key?: unknown): JSX.Element;
+export const jsxs: typeof jsx;
+export const Fragment: unknown;
+`, 'utf8');
+	const provider = new TypeScriptInteropProvider({ projectRoot: root });
+	try {
+		return compileSource({ id: 1, path: join(root, 'src/main.virune'), text }, { emit, platform: 'browser', jsInteropProvider: provider });
+	} finally {
+		provider.dispose();
+	}
+}
 
 test('intrinsic View callback props reuse the existing callable shim', async () => {
 	const result = await compile(`fn handle() -> Unit {
@@ -141,4 +162,23 @@ component Page() uses JavaScript {
 	assert.deepEqual(errors(second), []);
 	assert.deepEqual(first.semantic?.frontendCallableProjections, second.semantic?.frontendCallableProjections);
 	assert.equal(first.output?.code, second.output?.code);
+});
+
+
+test('intrinsic callback projection emits the complete callable boundary without a Virune JavaScript import', async () => {
+	const result = await compileIntrinsicWithoutViruneJavaScriptImport(`fn handle() -> Unit {
+	return Unit
+}
+
+component Page() uses JavaScript {
+	return view {
+		button(onClick: handle)
+	}
+}
+`, true);
+	assert.deepEqual(errors(result), []);
+	assert.ok(result.output);
+	assert.match(result.output.code, /function \$viruneProjectCallable\(/u);
+	assert.match(result.output.code, /function \$viruneExternalizeInteropError\(/u);
+	assert.match(result.output.code, /<button onClick=\{\$viruneProjectCallable\(handle,/u);
 });

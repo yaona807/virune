@@ -52,8 +52,9 @@ export class JavaScriptEmitter {
 	}
 
 	private emitHeader(module: A.ModuleNode): void {
-		for (const line of runtimeImportLines(module)) this.#writer.line(line);
-		if ((this.#semantic.interop.callableProjections?.length ?? 0) > 0 || (this.#semantic.interop.objectCallableProjections?.length ?? 0) > 0 || this.#semantic.frontendCallableProjections.length > 0) {
+		const hasCallableProjection = (this.#semantic.interop.callableProjections?.length ?? 0) > 0 || (this.#semantic.interop.objectCallableProjections?.length ?? 0) > 0 || this.#semantic.frontendCallableProjections.length > 0;
+		for (const line of runtimeImportLines(module, hasCallableProjection)) this.#writer.line(line);
+		if (hasCallableProjection) {
 			this.#writer.line("const $viruneCallableShimCacheKey = '$virune.callable-shim.cache/v1';");
 			this.#writer.line('const $viruneCallableShimObject = ({}).constructor;');
 			this.#writer.line('function $viruneProjectCallable($fn, $descriptor, $factory) {');
