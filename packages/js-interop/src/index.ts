@@ -429,6 +429,7 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 	private renderNativeCallableValue(value: NativeCallableTypeTemplate['result'], context: UsageProbeContext, allowNever: boolean): string | undefined {
 		if (value === 'Never') return allowNever ? 'never' : undefined;
 		if (typeof value === 'string') return allowNever ? typescriptCallableResultName(value) : typescriptCallbackParameterName(value);
+		if (value.kind === 'callable') return allowNever ? this.renderNativeCallableType(value.callable, context) : undefined;
 		const source = this.lookupType(value.type);
 		if (source === undefined || source.workspace !== context.workspace || source.usageProjection === undefined || source.usageProjection.directory !== context.directory) return undefined;
 		if (source.usageProjection.declaration !== undefined) context.imports.add(source.usageProjection.declaration);
@@ -460,8 +461,15 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 		}
 		let result: ContextualCallableResult;
 		if (callable === undefined) result = Object.freeze({ kind: 'deferred' });
-		else if (callable.result === 'Never' || typeof callable.result !== 'string') result = Object.freeze({ kind: 'external' });
-		else {
+		else if (callable.result === 'Never') result = Object.freeze({ kind: 'external' });
+		else if (typeof callable.result !== 'string') {
+			if (callable.result.kind !== 'callable') result = Object.freeze({ kind: 'external' });
+			else {
+				const nested = contextualNestedPrimitiveCallable(checker.getReturnTypeOfSignature(signature), checker, location, callable.result.callable);
+				if (nested === undefined) return undefined;
+				result = Object.freeze({ kind: 'callable', callable: nested });
+			}
+		} else {
 			const resultType = checker.getReturnTypeOfSignature(signature);
 			const contextual = contextualCallbackResultForNativeCallable(resultType, checker, callable);
 			if (contextual === undefined) return undefined;
@@ -1602,6 +1610,28 @@ function contextualCallbackResult(type: ts.Type, checker: ts.TypeChecker): Conte
 	}
 	const value = contextualPrimitiveKind(type);
 	return value === undefined ? undefined : Object.freeze({ kind: 'value', value });
+}
+
+function contextualNestedPrimitiveCallable(
+	type: ts.Type,
+	checker: ts.TypeChecker,
+	location: ts.Node,
+	callable: Extract<NativeCallableTypeTemplate['result'], { readonly kind: 'callable' }>['callable'],
+): Extract<ContextualCallableResult, { readonly kind: 'callable' }>['callable'] | undefined {
+	const signatures = type.getCallSignatures();
+	if (signatures.length !== 1 || type.getConstructSignatures().length !== 0) return undefined;
+	const signature = signatures[0]!;
+	if ((signature.typeParameters?.length ?? 0) !== 0 || signature.parameters.length !== callable.parameters.length || callable.async !== false) return undefined;
+	const parameters: ContextualCallablePrimitiveKind[] = [];
+	for (const parameter of signature.parameters) {
+		const declaration = parameter.valueDeclaration ?? parameter.declarations?.[0] ?? location;
+		const primitive = contextualPrimitiveKind(checker.getTypeOfSymbolAtLocation(parameter, declaration));
+		if (primitive === undefined) return undefined;
+		parameters.push(primitive);
+	}
+	const result = contextualCallbackResultForNativeCallable(checker.getReturnTypeOfSignature(signature), checker, callable);
+	if (result === undefined || (result.kind !== 'void' && result.kind !== 'value')) return undefined;
+	return Object.freeze({ parameters: Object.freeze(parameters), result });
 }
 
 function contextualCallbackResultForNativeCallable(type: ts.Type, checker: ts.TypeChecker, callable: NativeCallableTypeTemplate): ContextualCallableResult | undefined {

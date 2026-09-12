@@ -55,11 +55,47 @@ test('native generic callable remains fail closed without a concrete monomorphic
 	assert.equal(result.semantic?.interop.callableProjections?.length ?? 0, 0);
 });
 
-test('nested cleanup callable result remains fail closed until nested callable descriptors are supported', async () => {
+test('projects one-level native cleanup callable results through the existing shim', async () => {
 	const result = await compileFixture(
 		'library',
 		'export declare function register(callback: (value: string) => () => void): void;\n',
 		`import js { register } from "./library.js"\n\nfn cleanup() -> Unit {\n\treturn Unit\n}\n\nfn factory(value: String) -> fn() -> Unit {\n\treturn cleanup\n}\n\nfn main() -> Unit uses JavaScript {\n\tdiscard register(factory)\n\treturn Unit\n}\n`,
+	);
+	assert.deepEqual(result.diagnostics.filter(item => item.severity === 'error'), []);
+	const projection = result.semantic?.interop.callableProjections?.[0];
+	assert.ok(projection);
+	assert.deepEqual(projection.descriptor, {
+		version: 'virune-callable-shim/v3',
+		parameters: ['String'],
+		result: {
+			version: 'virune-callable-shim/v1',
+			parameters: [],
+			result: 'Unit',
+			async: false,
+			effects: [],
+			contextMode: 'root-argument',
+		},
+		async: false,
+		effects: [],
+		contextMode: 'root-argument',
+	});
+	assert.match(result.output?.code ?? '', /const \$result = \$fn\(validateFfiValue\(\$raw0,/u);
+	assert.match(result.output?.code ?? '', /\$viruneProjectCallable\(\$result,/u);
+});
+test('contextual object V3 requires latent cleanup effects', async () => {
+	const result = await compileFixture(
+		'library',
+		'export declare function register(config: { factory: (value: string) => () => void }): void;\n',
+		`import js { register } from "./library.js"\n\ntype Cleanup = fn() -> Unit uses Console\n\nfn cleanup() -> Unit uses Console {\n\tConsole.print("cleanup")\n\treturn Unit\n}\n\nfn factory(value: String) -> Cleanup {\n\treturn cleanup\n}\n\nfn main() -> Unit uses JavaScript {\n\tdiscard register({\n\t\tfactory: factory,\n\t})\n\treturn Unit\n}\n`,
+	);
+	assert.ok(result.diagnostics.some(item => item.code === 'L2076' && item.message.includes('Console')));
+});
+
+test('deeper nested native callable results remain fail closed' , async () => {
+	const result = await compileFixture(
+		'library',
+		'export declare function register(callback: () => () => () => void): void;\n',
+		`import js { register } from "./library.js"\n\nfn leaf() -> Unit {\n\treturn Unit\n}\n\nfn middle() -> fn() -> Unit {\n\treturn leaf\n}\n\nfn factory() -> fn() -> fn() -> Unit {\n\treturn middle\n}\n\nfn main() -> Unit uses JavaScript {\n\tdiscard register(factory)\n\treturn Unit\n}\n`,
 	);
 	assert.ok(result.diagnostics.some(item => item.code === 'L4204' || item.code === 'L4206'));
 	assert.equal(result.semantic?.interop.callableProjections?.length ?? 0, 0);

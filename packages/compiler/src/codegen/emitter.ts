@@ -650,6 +650,10 @@ export class JavaScriptEmitter {
 			const invocation = `$fn(${[...validated, 'rootTaskContext()'].join(', ')})`;
 			const result = descriptor.async ? `await ${invocation}` : invocation;
 			body = `return encodeFfiValue(${result}, ${this.callableFfiDescriptor(descriptor.result)});`;
+		} else if (descriptor.version === 'virune-callable-shim/v3') {
+			const validated = descriptor.parameters.map((parameter, index) => `validateFfiValue(${rawParameters[index]}, ${this.callableFfiDescriptor(parameter)}, ${javascriptStringLiteral(`$[${index}]`)})`);
+			const invocation = `$fn(${[...validated, 'rootTaskContext()'].join(', ')})`;
+			body = `const $result = ${invocation}; return ${this.callableProjection('$result', descriptor.result)};`;
 		} else {
 			const invocation = `$fn(${[...rawParameters, 'rootTaskContext()'].join(', ')})`;
 			const result = descriptor.async ? `await ${invocation}` : invocation;

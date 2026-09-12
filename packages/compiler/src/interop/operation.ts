@@ -525,7 +525,7 @@ function canonicalObjectCallableProjections(
 }
 
 function canonicalCallableDescriptor(descriptor: NativeCallableBoundaryDescriptor): NativeCallableBoundaryDescriptor {
-	if (descriptor.version !== 'virune-callable-shim/v1' && descriptor.version !== 'virune-callable-shim/v2') throw new Error('Unknown native callable boundary descriptor version');
+	if (descriptor.version !== 'virune-callable-shim/v1' && descriptor.version !== 'virune-callable-shim/v2' && descriptor.version !== 'virune-callable-shim/v3') throw new Error('Unknown native callable boundary descriptor version');
 	if (!Array.isArray(descriptor.parameters)) throw new Error('Native callable boundary parameters must be an array');
 	if (typeof descriptor.async !== 'boolean') throw new Error('Native callable boundary async flag must be boolean');
 	if (descriptor.contextMode !== 'root-argument') throw new Error('Native callable boundary requires external-root invocation');
@@ -541,6 +541,17 @@ function canonicalCallableDescriptor(descriptor: NativeCallableBoundaryDescripto
 		});
 		assertKnown(CALLABLE_PRIMITIVES, descriptor.result, 'native callable result primitive');
 		return Object.freeze({ version: 'virune-callable-shim/v1', parameters: Object.freeze(parameters), result: descriptor.result, async: descriptor.async, effects: Object.freeze(canonicalEffects), contextMode: 'root-argument' });
+	}
+	if (descriptor.version === 'virune-callable-shim/v3') {
+		if (descriptor.async !== false) throw new Error('Native callable boundary v3 must be synchronous');
+		const parameters = descriptor.parameters.map(parameter => {
+			assertKnown(CALLABLE_PRIMITIVES, parameter, 'native callable primitive');
+			return parameter;
+		});
+		if (descriptor.result.version !== 'virune-callable-shim/v1' || descriptor.result.async !== false) throw new Error('Native callable boundary v3 result must be a synchronous v1 callable');
+		const result = canonicalCallableDescriptor(descriptor.result);
+		if (result.version !== 'virune-callable-shim/v1' || result.async !== false) throw new Error('Native callable boundary v3 result must canonicalize to a synchronous v1 callable');
+		return Object.freeze({ version: 'virune-callable-shim/v3', parameters: Object.freeze(parameters), result, async: false, effects: Object.freeze(canonicalEffects), contextMode: 'root-argument' });
 	}
 	if (descriptor.parameters.some(parameter => parameter !== 'External') || (descriptor.result !== 'External' && descriptor.result !== 'Never')) {
 		throw new Error('Native callable boundary v2 only supports External callbacks');

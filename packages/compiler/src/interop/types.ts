@@ -87,7 +87,17 @@ export type InteropLiteralValue =
 /** Provider-facing native callable template. Compiler-owned effects and provenance are intentionally excluded. */
 export interface NativeCallableTypeTemplate {
 	readonly parameters: readonly (NativeCallablePrimitiveKind | { readonly kind: 'foreign'; readonly type: ForeignTypeRef })[];
-	readonly result: NativeCallablePrimitiveKind | { readonly kind: 'foreign'; readonly type: ForeignTypeRef } | 'Never';
+	readonly result: NativeCallablePrimitiveKind
+		| { readonly kind: 'foreign'; readonly type: ForeignTypeRef }
+		| {
+			readonly kind: 'callable';
+			readonly callable: {
+				readonly parameters: readonly NativeCallablePrimitiveKind[];
+				readonly result: NativeCallablePrimitiveKind;
+				readonly async: false;
+			};
+		}
+		| 'Never';
 	readonly async: boolean;
 }
 
@@ -130,6 +140,15 @@ export type ContextualCallableResult =
 	| { readonly kind: 'void' }
 	| { readonly kind: 'value'; readonly value: ContextualCallablePrimitiveKind }
 	| { readonly kind: 'promise'; readonly value: ContextualCallablePrimitiveKind | 'void' }
+	| {
+		readonly kind: 'callable';
+		readonly callable: {
+			readonly parameters: readonly ContextualCallablePrimitiveKind[];
+			readonly result:
+				| { readonly kind: 'void' }
+				| { readonly kind: 'value'; readonly value: ContextualCallablePrimitiveKind };
+		};
+	}
 	| { readonly kind: 'external' }
 	| { readonly kind: 'deferred' };
 
@@ -235,7 +254,16 @@ interface NativeCallableBoundaryDescriptorV2 {
 	readonly contextMode: 'root-argument';
 }
 
-export type NativeCallableBoundaryDescriptor = NativeCallableBoundaryDescriptorV1 | NativeCallableBoundaryDescriptorV2;
+interface NativeCallableBoundaryDescriptorV3 {
+	readonly version: 'virune-callable-shim/v3';
+	readonly parameters: readonly NativeCallablePrimitiveKind[];
+	readonly result: NativeCallableBoundaryDescriptorV1;
+	readonly async: false;
+	readonly effects: readonly string[];
+	readonly contextMode: 'root-argument';
+}
+
+export type NativeCallableBoundaryDescriptor = NativeCallableBoundaryDescriptorV1 | NativeCallableBoundaryDescriptorV2 | NativeCallableBoundaryDescriptorV3;
 
 /** Ordering evidence for a callable projection performed while evaluating a JavaScript call argument. */
 export interface CallableProjectionEvidence {
