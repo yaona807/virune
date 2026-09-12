@@ -25,6 +25,7 @@ async function compile(text: string, emit = false) {
 
 export interface Marker { readonly marker: true; }
 export const ExternalButton: (props: { onClick: () => void }) => JSX.Element;
+export function setMode(value: string): void;
 `, 'utf8');
 	const provider = new TypeScriptInteropProvider({ projectRoot: root });
 	try {
@@ -99,6 +100,35 @@ component Page() uses JavaScript {
 	assert.ok(result.output);
 	assert.match(result.output.code, /<ExternalButton onClick=\{\$viruneProjectCallable\(handle,/u);
 	assert.equal(result.semantic?.frontendCallableProjections.length, 1);
+});
+
+test('zero-argument inline View callback props reuse the existing callable shim with captures and root context', async () => {
+	const result = await compile(`import js { setMode } from "./library.js"
+
+component Page() uses JavaScript {
+	let label = "captured"
+	return view {
+		button(onClick: fn() -> Unit uses JavaScript {
+			discard setMode(label)
+			return Unit
+		})
+	}
+}
+`, true);
+	assert.deepEqual(errors(result), []);
+	assert.ok(result.output);
+	const code = result.output.code;
+	assert.match(code, /<button onClick=\{\$viruneProjectCallable\(\(\(\$lambdaCtx\d+ = rootTaskContext\(\)\) => \{/u);
+	assert.match(code, /\$viruneProjectCallable\(\(\(\$lambdaCtx\d+ = rootTaskContext\(\)\) => \{[\s\S]*?setMode\(label\)[\s\S]*?\}\),/u);
+	assert.equal(result.semantic?.frontendCallableProjections.length, 1);
+	assert.deepEqual(result.semantic?.frontendCallableProjections[0]?.descriptor, {
+		version: 'virune-callable-shim/v1',
+		parameters: [],
+		result: 'Unit',
+		async: false,
+		effects: ['JavaScript'],
+		contextMode: 'root-argument',
+	});
 });
 
 test('TypeScript JSX whole-usage proof rejects incompatible projected callbacks', async () => {

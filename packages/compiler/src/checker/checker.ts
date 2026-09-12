@@ -780,7 +780,7 @@ export class TypeChecker {
 						const property = child.properties[propertyIndex]!;
 						const typeId = this.checkExpression(property.value, scope);
 						if (native) continue;
-						const boundary = this.nativeCallableBoundary(typeId, property.value);
+						const boundary = this.nativeCallableBoundary(typeId, property.value, true);
 						if (boundary === undefined || boundary.version !== 'virune-callable-shim/v1' || boundary.parameters.includes('Int')) continue;
 						this.requireEffects(boundary.effects, property.value.span);
 						this.#frontendCallableProjections.push({ viewElementNodeId: child.id, propertyIndex, property: property.name, descriptor: boundary });
