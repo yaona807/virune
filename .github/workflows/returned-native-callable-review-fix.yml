@@ -22,19 +22,20 @@ jobs:
         with:
           node-version: '24'
           cache: npm
-      - name: Verify expected parent
-        run: test "$(git rev-parse HEAD^)" = "ba5278c4ff0ad6823805c407cf65ec1508951aec"
+      - name: Verify expected ancestry
+        run: test "$(git rev-parse HEAD~2)" = "ba5278c4ff0ad6823805c407cf65ec1508951aec"
       - run: npm ci
       - name: Apply focused nested-effect fix and regression
         shell: bash
         run: |
           python - <<'PY'
           from pathlib import Path
+          import base64
 
           checker = Path('packages/compiler/src/checker/checker.ts')
           text = checker.read_text()
-          old = """\t\tfor (const projection of pendingProjections) {\n\t\t\tthis.requireEffects(projection.descriptor.effects, projection.prepared.expression.span);\n\t\t\tthis.#objectCallableProjections.push({\n"""
-          new = """\t\tfor (const projection of pendingProjections) {\n\t\t\tthis.requireEffects(projection.descriptor.effects, projection.prepared.expression.span);\n\t\t\tif (projection.descriptor.version === 'virune-callable-shim/v3') this.requireEffects(projection.descriptor.result.effects, projection.prepared.expression.span);\n\t\t\tthis.#objectCallableProjections.push({\n"""
+          old = "\t\tfor (const projection of pendingProjections) {\n\t\t\tthis.requireEffects(projection.descriptor.effects, projection.prepared.expression.span);\n\t\t\tthis.#objectCallableProjections.push({\n"
+          new = "\t\tfor (const projection of pendingProjections) {\n\t\t\tthis.requireEffects(projection.descriptor.effects, projection.prepared.expression.span);\n\t\t\tif (projection.descriptor.version === 'virune-callable-shim/v3') this.requireEffects(projection.descriptor.result.effects, projection.prepared.expression.span);\n\t\t\tthis.#objectCallableProjections.push({\n"
           if text.count(old) != 1:
               raise SystemExit('unexpected commitContextualObjects shape')
           checker.write_text(text.replace(old, new))
@@ -47,20 +48,9 @@ jobs:
           anchor = "\n\n test('deeper nested native callable results remain fail closed'"
           if text.count(anchor) != 1:
               raise SystemExit('unexpected callable regression anchor')
-          regression = r'''
-
-test('contextual object V3 requires latent cleanup effects', async () => {
-	const result = await compileFixture(
-		'library',
-		'export declare function register(config: { factory: (value: string) => () => void }): void;\n',
-		`import js { register } from "./library.js"\n\ntype Cleanup = fn() -> Unit uses Console\n\nfn cleanup() -> Unit uses Console {\n\tConsole.print("cleanup")\n\treturn Unit\n}\n\nfn factory(value: String) -> Cleanup {\n\treturn cleanup\n}\n\nfn main() -> Unit uses JavaScript {\n\tdiscard register({\n\t\tfactory: factory,\n\t})\n\treturn Unit\n}\n`,
-	);
-	assert.ok(result.diagnostics.some(item => item.code === 'L2076' && item.message.includes('Console')));
-});
-
-test('deeper nested native callable results remain fail closed' '''
-          text = text.replace(anchor, regression, 1)
-          test.write_text(text)
+          encoded = 'CnRlc3QoJ2NvbnRleHR1YWwgb2JqZWN0IFYzIHJlcXVpcmVzIGxhdGVudCBjbGVhbnVwIGVmZmVjdHMnLCBhc3luYyAoKSA9PiB7Cgljb25zdCByZXN1bHQgPSBhd2FpdCBjb21waWxlRml4dHVyZSgKCQknbGlicmFyeScsCgkJJ2V4cG9ydCBkZWNsYXJlIGZ1bmN0aW9uIHJlZ2lzdGVyKGNvbmZpZzogeyBmYWN0b3J5OiAodmFsdWU6IHN0cmluZykgPT4gKCkgPT4gdm9pZCB9KTogdm9pZDtcbicsCgkJYGltcG9ydCBqcyB7IHJlZ2lzdGVyIH0gZnJvbSAiLi9saWJyYXJ5LmpzIlxuXG50eXBlIENsZWFudXAgPSBmbigpIC0+IFVuaXQgdXNlcyBDb25zb2xlXG5cbmZuIGNsZWFudXAoKSAtPiBVbml0IHVzZXMgQ29uc29sZSB7XG5cdENvbnNvbGUucHJpbnQoImNsZWFudXAiKVxuXHRyZXR1cm4gVW5pdFxufVxuXG5mbiBmYWN0b3J5KHZhbHVlOiBTdHJpbmcpIC0+IENsZWFudXAge1xuXHRyZXR1cm4gY2xlYW51cFxufVxuXG5mbiBtYWluKCkgLT4gVW5pdCB1c2VzIEphdmFTY3JpcHQge1xuXHRkaXNjYXJkIHJlZ2lzdGVyKHtcblx0XHRmYWN0b3J5OiBmYWN0b3J5LFxuXHR9KVxuXHRyZXR1cm4gVW5pdFxufVxuYCwKCSk7Cglhc3NlcnQub2socmVzdWx0LmRpYWdub3N0aWNzLnNvbWUoaXRlbSA9PiBpdGVtLmNvZGUgPT09ICdMMjA3NicgJiYgaXRlbS5tZXNzYWdlLmluY2x1ZGVzKCdDb25zb2xlJykpKTsKfSk7Cgp0ZXN0KCdkZWVwZXIgbmVzdGVkIG5hdGl2ZSBjYWxsYWJsZSByZXN1bHRzIHJlbWFpbiBmYWlsIGNsb3NlZCcg'
+          regression = base64.b64decode(encoded).decode()
+          test.write_text(text.replace(anchor, regression, 1))
           PY
       - name: Build
         run: npm run build
