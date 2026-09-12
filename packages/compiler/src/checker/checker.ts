@@ -1265,6 +1265,7 @@ export class TypeChecker {
 		}
 		for (const projection of pendingProjections) {
 			this.requireEffects(projection.descriptor.effects, projection.prepared.expression.span);
+			if (projection.descriptor.version === 'virune-callable-shim/v3') this.requireEffects(projection.descriptor.result.effects, projection.prepared.expression.span);
 			this.#objectCallableProjections.push({
 				objectNodeId: projection.owner.expression.id,
 				entryIndex: projection.entryIndex,

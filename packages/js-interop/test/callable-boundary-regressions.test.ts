@@ -82,8 +82,16 @@ test('projects one-level native cleanup callable results through the existing sh
 	assert.match(result.output?.code ?? '', /const \$result = \$fn\(validateFfiValue\(\$raw0,/u);
 	assert.match(result.output?.code ?? '', /\$viruneProjectCallable\(\$result,/u);
 });
+test('contextual object V3 requires latent cleanup effects', async () => {
+	const result = await compileFixture(
+		'library',
+		'export declare function register(config: { factory: (value: string) => () => void }): void;\n',
+		`import js { register } from "./library.js"\n\ntype Cleanup = fn() -> Unit uses Console\n\nfn cleanup() -> Unit uses Console {\n\tConsole.print("cleanup")\n\treturn Unit\n}\n\nfn factory(value: String) -> Cleanup {\n\treturn cleanup\n}\n\nfn main() -> Unit uses JavaScript {\n\tdiscard register({\n\t\tfactory: factory,\n\t})\n\treturn Unit\n}\n`,
+	);
+	assert.ok(result.diagnostics.some(item => item.code === 'L2076' && item.message.includes('Console')));
+});
 
- test('deeper nested native callable results remain fail closed', async () => {
+test('deeper nested native callable results remain fail closed' , async () => {
 	const result = await compileFixture(
 		'library',
 		'export declare function register(callback: () => () => () => void): void;\n',
