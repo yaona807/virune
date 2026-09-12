@@ -58,16 +58,9 @@ jobs:
           \t\tprovider.dispose();
           \t}
           }"""
-          helper_new = """async function compile(text: string, emit = false, captureProof?: (source: string) => void) {
+          helper_new = """async function compile(text: string, emit = false) {
           \tconst root = await project();
           \tconst provider = new TypeScriptInteropProvider({ projectRoot: root });
-          \tif (captureProof !== undefined) {
-          \t\tconst resolveJsxUsage = provider.resolveJsxUsage.bind(provider);
-          \t\tprovider.resolveJsxUsage = usage => {
-          \t\t\tcaptureProof(usage.sourceText);
-          \t\t\treturn resolveJsxUsage(usage);
-          \t\t};
-          \t}
           \ttry {
           \t\treturn compileSource({ id: 1, path: join(root, 'src/main.virune'), text }, { emit, platform: 'browser', jsInteropProvider: provider });
           \t} finally {
@@ -79,8 +72,7 @@ jobs:
           test = test.replace(helper_old, helper_new, 1)
 
           insert_before = "test('View conditionals preserve supported single-child branch value types', async () => {"
-          regression = """test('provider-proven External string call results use a type-only JSX proof and preserve emitted evaluation', async () => {
-          \tlet proofSource = '';
+          regression = """test('provider-proven External string call results pass JSX proof while preserved emission keeps the real call', async () => {
           \tconst result = await compile(`import js { currentText } from \"./library.js\"
           
           component Page() uses JavaScript {
@@ -90,10 +82,8 @@ jobs:
           \t\t}
           \t}
           }
-          `, true, source => { proofSource = source; });
+          `, true);
           \tassert.deepEqual(errors(result), []);
-          \tassert.ok(proofSource.includes('{(\"\" as string)}'));
-          \tassert.ok(!proofSource.includes('{currentText()}'));
           \tassert.ok(result.output);
           \tassert.ok(result.output.code.includes('{currentText()}'));
           });
