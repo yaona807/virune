@@ -101,6 +101,32 @@ component Page() uses JavaScript {
 	assert.equal(result.semantic?.frontendCallableProjections.length, 1);
 });
 
+test('zero-argument inline View callback props reuse the existing callable shim with captures', async () => {
+	const result = await compile(`component Page() uses JavaScript {
+	let label = "captured"
+	return view {
+		button(onClick: fn() -> Unit {
+			discard label
+			return Unit
+		})
+	}
+}
+`, true);
+	assert.deepEqual(errors(result), []);
+	assert.ok(result.output);
+	assert.match(result.output.code, /<button onClick=\{\$viruneProjectCallable\(/u);
+	assert.ok(result.output.code.includes('label'));
+	assert.equal(result.semantic?.frontendCallableProjections.length, 1);
+	assert.deepEqual(result.semantic?.frontendCallableProjections[0]?.descriptor, {
+		version: 'virune-callable-shim/v1',
+		parameters: [],
+		result: 'Unit',
+		async: false,
+		effects: [],
+		contextMode: 'root-argument',
+	});
+});
+
 test('TypeScript JSX whole-usage proof rejects incompatible projected callbacks', async () => {
 	const result = await compile(`fn handle(value: Float) -> Unit {
 	return Unit
