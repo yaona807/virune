@@ -65,12 +65,20 @@ interface PendingObjectUsage {
 	readonly usage: import('../interop/types.js').ForeignUsage;
 }
 
+export interface FrontendCallableProjectionEvidence {
+	readonly viewElementNodeId: number;
+	readonly propertyIndex: number;
+	readonly property: string;
+	readonly descriptor: Extract<NativeCallableBoundaryDescriptor, { readonly version: 'virune-callable-shim/v1' }>;
+}
+
 export interface SemanticModel {
 	readonly arena: TypeArena;
 	readonly diagnostics: DiagnosticBag;
 	readonly globalScope: Scope;
 	readonly symbols: ReadonlyMap<SymbolId, SymbolInfo>;
 	readonly namedTypes: ReadonlyMap<string, TypeId>;
+	readonly frontendCallableProjections: readonly FrontendCallableProjectionEvidence[];
 	readonly interop: InteropSemanticModel;
 }
 
@@ -109,6 +117,7 @@ export class TypeChecker {
 	readonly #interopUsages: import('../interop/types.js').ForeignUsage[] = [];
 	readonly #callableProjections: import('../interop/types.js').CallableProjectionEvidence[] = [];
 	readonly #objectCallableProjections: import('../interop/types.js').ObjectCallableProjectionEvidence[] = [];
+	readonly #frontendCallableProjections: FrontendCallableProjectionEvidence[] = [];
 	readonly #moduleWitnesses: import('../interop/types.js').ModuleResolutionWitness[] = [];
 	#semanticOrder = 0;
 	#requiresJavaScriptInitialization = false;
@@ -130,7 +139,7 @@ export class TypeChecker {
 		this.finalizeTypes();
 		this.registerValues(module);
 		for (const declaration of module.declarations) this.checkDeclaration(declaration);
-		return { arena: this.arena, diagnostics: this.diagnostics, globalScope: this.globalScope, symbols: this.#symbols, namedTypes: this.#namedTypes, interop: { usages: this.#interopUsages, usageIR: this.#interopUsages.map(stableForeignUsage), callableProjections: this.#callableProjections, objectCallableProjections: this.#objectCallableProjections, moduleWitnesses: this.#moduleWitnesses, requiresJavaScriptInitialization: this.#requiresJavaScriptInitialization } };
+		return { arena: this.arena, diagnostics: this.diagnostics, globalScope: this.globalScope, symbols: this.#symbols, namedTypes: this.#namedTypes, frontendCallableProjections: this.#frontendCallableProjections, interop: { usages: this.#interopUsages, usageIR: this.#interopUsages.map(stableForeignUsage), callableProjections: this.#callableProjections, objectCallableProjections: this.#objectCallableProjections, moduleWitnesses: this.#moduleWitnesses, requiresJavaScriptInitialization: this.#requiresJavaScriptInitialization } };
 	}
 
 	private registerForeignImports(module: A.ModuleNode): void {
@@ -764,10 +773,21 @@ export class TypeChecker {
 					this.#currentComponentChildrenSlots++;
 					if (this.#currentComponentChildrenSlots > 1) this.diagnostics.error('L4306', 'A component may contain at most one children slot', child.span);
 					break;
-				case 'ViewElement':
-					for (const property of child.properties) this.checkExpression(property.value, scope);
+				case 'ViewElement': {
+					const root = child.tag[0];
+					const native = child.tag.length === 1 && root !== undefined && this.globalScope.lookup(root)?.kind === 'component';
+					for (let propertyIndex = 0; propertyIndex < child.properties.length; propertyIndex += 1) {
+						const property = child.properties[propertyIndex]!;
+						const typeId = this.checkExpression(property.value, scope);
+						if (native) continue;
+						const boundary = this.nativeCallableBoundary(typeId, property.value);
+						if (boundary === undefined || boundary.parameters.includes('Int')) continue;
+						this.requireEffects(boundary.effects, property.value.span);
+						this.#frontendCallableProjections.push({ viewElementNodeId: child.id, propertyIndex, property: property.name, descriptor: boundary });
+					}
 					if (child.children !== undefined) this.checkViewBlock(child.children, scope, insideRepetition);
 					break;
+				}
 				case 'ViewConditional':
 					this.requireBool(this.checkExpression(child.condition, scope), child.condition.span);
 					this.checkViewBlock(child.thenBlock, scope, insideRepetition);

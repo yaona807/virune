@@ -390,9 +390,19 @@ function renderViewElement(element: A.ViewElement, context: RenderContext): stri
 		context.usedNativeProofs.add(nativeProof);
 	}
 	const properties: string[] = [];
-	for (const property of element.properties) {
+	for (let propertyIndex = 0; propertyIndex < element.properties.length; propertyIndex += 1) {
+		const property = element.properties[propertyIndex]!;
 		if (!jsxAttributeName.test(property.name)) return fail(context, property.span, `property ${JSON.stringify(property.name)} cannot be represented as a preserved JSX attribute without speculative lowering`);
-		const value = native ? renderNativeComponentPropertyValue(property.value, context) : renderViewValue(property.value, context);
+		let value: string | undefined;
+		if (native) value = renderNativeComponentPropertyValue(property.value, context);
+		else {
+			const projection = context.semantic.frontendCallableProjections.find(item => item.viewElementNodeId === element.id && item.propertyIndex === propertyIndex && item.property === property.name);
+			if (projection === undefined) value = renderViewValue(property.value, context);
+			else {
+				value = renderFrontendCallableValue(projection.descriptor);
+				if (value === undefined) return fail(context, property.span, `native callable property ${property.name} has unsupported frontend projection evidence`);
+			}
+		}
 		if (value === undefined) return undefined;
 		properties.push(`${property.name}={${value}}`);
 	}
@@ -415,6 +425,45 @@ function renderViewElement(element: A.ViewElement, context: RenderContext): stri
 	}
 	const children = renderViewBlockContents(element.children, context);
 	return children === undefined ? undefined : `<${tag}${attributes}>${children}</${tag}>`;
+}
+
+function renderFrontendCallablePrimitiveType(primitive: string, parameter: boolean): string | undefined {
+	switch (primitive) {
+		case 'Bool': return 'boolean';
+		case 'Int': return parameter ? undefined : 'number';
+		case 'Float': return 'number';
+		case 'BigInt': return 'bigint';
+		case 'String': return 'string';
+		case 'Unit': return 'undefined';
+		default: return undefined;
+	}
+}
+
+function renderFrontendCallablePrimitiveValue(primitive: string): string | undefined {
+	switch (primitive) {
+		case 'Bool': return 'false';
+		case 'Int':
+		case 'Float': return '0';
+		case 'BigInt': return '0n';
+		case 'String': return '""';
+		case 'Unit': return 'undefined';
+		default: return undefined;
+	}
+}
+
+function renderFrontendCallableValue(descriptor: SemanticModel['frontendCallableProjections'][number]['descriptor']): string | undefined {
+	const parameters: string[] = [];
+	for (let index = 0; index < descriptor.parameters.length; index += 1) {
+		const type = renderFrontendCallablePrimitiveType(descriptor.parameters[index]!, true);
+		if (type === undefined) return undefined;
+		parameters.push(`$p${index}: ${type}`);
+	}
+	const resultType = renderFrontendCallablePrimitiveType(descriptor.result, false);
+	const resultValue = renderFrontendCallablePrimitiveValue(descriptor.result);
+	if (resultType === undefined || resultValue === undefined) return undefined;
+	return descriptor.async
+		? `(async (${parameters.join(', ')}): Promise<${resultType}> => ${resultValue})`
+		: `((${parameters.join(', ')}): ${resultType} => ${resultValue})`;
 }
 
 function renderNativeComponentPropertyValue(expression: A.Expression, context: RenderContext): string | undefined {
