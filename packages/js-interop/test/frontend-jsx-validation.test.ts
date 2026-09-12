@@ -30,21 +30,22 @@ export declare const unsafeUi: {
 	Tile: any;
 };
 export declare const UnknownValue: unknown;
+export declare function currentText(): string;
 `;
 
 async function project() {
 	const root = await fixtureRoot();
 	await writeFile(join(root, 'tsconfig.json'), JSON.stringify({ compilerOptions: { jsx: 'preserve', noUnusedLocals: true }, include: ['src/**/*'] }), 'utf8');
 	await writeFile(join(root, 'src/library.d.ts'), declarations, 'utf8');
-	await writeFile(join(root, 'src/library.js'), 'export const Card = () => null; export const child = () => null; export const ui = { Tile: () => null }; export const UnsafeCard = () => null; export const unsafeUi = { Tile: () => null }; export const UnknownValue = undefined;\n', 'utf8');
+	await writeFile(join(root, 'src/library.js'), 'export const Card = () => null; export const child = () => null; export const ui = { Tile: () => null }; export const UnsafeCard = () => null; export const unsafeUi = { Tile: () => null }; export const UnknownValue = undefined; export const currentText = () => "external";\n', 'utf8');
 	return root;
 }
 
-async function compile(text: string) {
+async function compile(text: string, emit = false) {
 	const root = await project();
 	const provider = new TypeScriptInteropProvider({ projectRoot: root });
 	try {
-		return compileSource({ id: 1, path: join(root, 'src/main.virune'), text }, { emit: false, platform: 'browser', jsInteropProvider: provider });
+		return compileSource({ id: 1, path: join(root, 'src/main.virune'), text }, { emit, platform: 'browser', jsInteropProvider: provider });
 	} finally {
 		provider.dispose();
 	}
@@ -117,6 +118,22 @@ component Page() uses JavaScript {
 }
 `);
 	assert.ok(errors(invalidTag).some(item => item.code === 'L4308'));
+});
+
+test('provider-proven External string call results pass JSX proof while preserved emission keeps the real call', async () => {
+	const result = await compile(`import js { currentText } from "./library.js"
+
+component Page() uses JavaScript {
+	return view {
+		panel(tone: "warm") {
+			{ currentText() }
+		}
+	}
+}
+`, true);
+	assert.deepEqual(errors(result), []);
+	assert.ok(result.output);
+	assert.ok(result.output.code.includes('{currentText()}'));
 });
 
 test('View conditionals preserve supported single-child branch value types', async () => {

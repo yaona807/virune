@@ -615,6 +615,7 @@ function renderViewValue(expression: A.Expression, context: RenderContext): stri
 			default: return fail(context, expression.span, `View value type ${context.semantic.arena.display(typeId)} is not safely projectable in this validation slice`);
 		}
 	}
+	if (type.kind === 'foreign' && type.snapshot.category === 'primitive' && type.snapshot.primitive === 'string') return '("" as string)';
 	if (type.kind === 'foreign' && expression.kind === 'IdentifierExpression' && expression.symbolId !== undefined) {
 		const symbol = context.semantic.symbols.get(expression.symbolId);
 		if (symbol?.kind === 'import' && !symbol.typeOnly) {
