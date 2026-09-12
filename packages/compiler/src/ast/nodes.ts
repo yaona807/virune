@@ -113,9 +113,14 @@ export interface ViewElement extends AstNode {
 }
 export interface ViewProperty { readonly name: string; readonly quoted: boolean; readonly value: Expression; readonly span: SourceSpan; }
 export interface ViewConditional extends AstNode { readonly kind: 'ViewConditional'; readonly condition: Expression; readonly thenBlock: ViewBlock; readonly elseBranch?: ViewBlock | ViewConditional; }
+export interface ViewRepetitionEvidence {
+	readonly sourceKind: 'native-list' | 'external-array';
+	readonly itemSymbolId: SymbolId;
+	readonly indexSymbolId: SymbolId | undefined;
+}
 export interface ViewRepetition extends AstNode {
 	readonly kind: 'ViewRepetition'; readonly itemName: string; readonly indexName?: string; readonly source: Expression; readonly body: ViewBlock;
-	itemSymbolId?: SymbolId; indexSymbolId?: SymbolId; sourceKind?: 'native-list' | 'external-array';
+	checkedEvidence?: ViewRepetitionEvidence;
 }
 export interface ViewTextChild extends AstNode { readonly kind: 'ViewTextChild'; readonly value: string; }
 export interface ViewExpressionChild extends AstNode { readonly kind: 'ViewExpressionChild'; readonly expression: Expression; }

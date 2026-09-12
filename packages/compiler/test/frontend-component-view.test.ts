@@ -247,22 +247,24 @@ test('View repetition accepts native List with source index', () => {
 	const repetition = view.body.children[0];
 	assert.equal(repetition?.kind, 'ViewRepetition');
 	if (repetition?.kind !== 'ViewRepetition') throw new Error('expected ViewRepetition');
-	assert.equal(repetition.sourceKind, 'native-list');
-	assert.ok(repetition.itemSymbolId !== undefined);
-	assert.ok(repetition.indexSymbolId !== undefined);
+	assert.equal(repetition.checkedEvidence?.sourceKind, 'native-list');
+	assert.ok(repetition.checkedEvidence?.itemSymbolId !== undefined);
+	assert.ok(repetition.checkedEvidence?.indexSymbolId !== undefined);
 	assert.equal(repetition.body.children.length, 2);
 });
 
 // @virune-rule {"id":"frontend.view-repetition-source","runner":"unit","file":"packages/compiler/test/frontend-component-view.test.ts","case":"View repetition rejects unsupported native collection sources","kind":"negative","platform":"common"}
 test('View repetition rejects unsupported native collection sources', () => {
-	assert.ok(errorCodes(`component SetView(items: Set<Int>) uses JavaScript {
+	const codes = errorCodes(`component SetView(items: Set<Int>) uses JavaScript {
 	return view {
-		for item in items {
-			span()
+		for item, index in items {
+			span(value: item, position: index)
 		}
 	}
 }
-`).includes('L4310'));
+`);
+	assert.ok(codes.includes('L4310'));
+	assert.ok(!codes.includes('L1009'));
 });
 
 // @virune-rule {"id":"frontend.view-repetition-children","runner":"unit","file":"packages/compiler/test/frontend-component-view.test.ts","case":"View repetition rejects nested compiler-managed children slots","kind":"negative","platform":"common"}
