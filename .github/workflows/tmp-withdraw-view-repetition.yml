@@ -46,7 +46,6 @@ jobs:
               _, right = rest.split(end, 1)
               write(path, left + end + right)
 
-          # AST: View repetition was a dedicated frontend-only node.
           replace_once(
               'packages/compiler/src/ast/nodes.ts',
               'export type ViewChild = ViewElement | ViewConditional | ViewRepetition | ViewTextChild | ViewExpressionChild | ViewChildrenSlot;',
@@ -58,7 +57,6 @@ jobs:
               'export interface ViewTextChild',
           )
 
-          # Legacy parser/CST conversion: keep KwFor/KwIn because ordinary imperative for still uses them.
           replace_once(
               'packages/compiler/src/syntax/parser.ts',
               "\t\t\t\t{ GATE: () => this.LA(1).tokenType === KwFor, ALT: () => $.SUBRULE($.viewRepetition) },\n",
@@ -80,7 +78,6 @@ jobs:
               '\n\tpublic viewTextChild',
           )
 
-          # Checker: repetition-specific child-slot state and source/evidence checking disappear together.
           replace_once(
               'packages/compiler/src/checker/checker.ts',
               '\tprivate checkViewBlock(block: A.ViewBlock, scope: Scope, insideRepetition = false): void {',
@@ -109,7 +106,6 @@ jobs:
               '\n\tprivate checkContextualAggregate',
           )
 
-          # HIR and emission no longer carry/reconstruct View repetition.
           replace_once(
               'packages/compiler/src/hir/lower.ts',
               "\t\tcase 'ViewRepetition':\n\t\t\treturn { ...child, source: lowerExpression(child.source), body: lowerViewBlock(child.body) };\n",
@@ -126,7 +122,6 @@ jobs:
               '\n\tprivate nativeChildrenSlotExpression',
           )
 
-          # JSX proof renderer: remove all repetition-only synthetic collection state/helpers.
           replace_once(
               'packages/compiler/src/interop/jsx-view-validation.ts',
               '\treadonly repetitionValues: Map<number, string>;\n',
@@ -158,7 +153,6 @@ jobs:
               '',
           )
 
-          # Repetition-only provider method is not a Stable Compiler API surface and has no other consumer.
           replace_once(
               'packages/compiler/src/interop/types.ts',
               '\t/** Declared element resolver for a proven Array or ReadonlyArray repetition source. */\n\tresolveArrayElement?(type: ForeignTypeRef): ForeignTypeSnapshot | undefined;\n',
@@ -176,14 +170,12 @@ jobs:
           )
           Path('packages/js-interop/test/view-repetition-array-evidence.test.ts').unlink()
 
-          # Formatter no longer has a View-local for branch; ordinary ForStatement formatting is untouched.
           replace_once(
               'packages/formatter/src/index.ts',
               "\t\tcase 'ViewRepetition': return `${prefix}for ${child.itemName}${child.indexName === undefined ? '' : `, ${child.indexName}`} in ${printExpression(child.source)} ${printViewBlock(child.body, indent)}`;\n",
               '',
           )
 
-          # Self-host frontend parser parity: remove only View repetition, preserve ordinary statement for parsing.
           remove_between(
               'selfhost/mvp/src/frontend-parser-core.virune',
               '\nfn parseViewRepetition(stateValue: CoreState, tokens: List<FrontendToken>) -> CoreParsedNode {',
@@ -195,13 +187,15 @@ jobs:
               '',
           )
 
-          # Self-host parser fixture: remove accepted repetition examples and assert View-local for is rejected.
           path = 'selfhost/mvp/src/frontend-parser.spec.virune'
           text = read(path)
+          old = text
           text = text.replace(r'\t\t\tfor item in items {\n\t\t\t\tUi.Row(value: item)\n\t\t\t}\n', '')
           text = text.replace(r'\t\t\tfor item, index in items {\n\t\t\t\tUi.Row(value: item, position: index)\n\t\t\t}\n', '')
           text = text.replace('\n\texpect(String.contains(result, "\\\"kind\\\":\\\"ViewRepetition\\\""))', '')
           text = text.replace('\n\texpect(String.contains(result, "\\\"text\\\":\\\"item,index\\\""))', '')
+          if text == old:
+              raise SystemExit('selfhost parser spec: repetition fixture did not change')
           anchor = '\n\texpect(String.contains(result, "\\\"kind\\\":\\\"ViewChildrenSlot\\\""))\n'
           if text.count(anchor) != 1:
               raise SystemExit('selfhost parser spec: expected ViewChildrenSlot anchor once')
@@ -209,7 +203,6 @@ jobs:
           text = text.replace(anchor, anchor + rejection, 1)
           write(path, text)
 
-          # Normative grammar/spec: restore the conservative no-generic-repetition boundary.
           replace_once('spec/grammar.ebnf', '                        | ViewRepetition\n', '')
           replace_once('spec/grammar.ebnf', 'ViewRepetition          = "for" Identifier [ "," Identifier ] "in" Expression ViewBlock ;\n', '')
 
@@ -241,44 +234,42 @@ jobs:
               write(path, text)
               replace_once(path, framework_old, framework_new)
 
-          # Focused compiler regression: View-local for rejected; ordinary imperative for unchanged.
           path = 'packages/compiler/test/frontend-component-view.test.ts'
           text = read(path)
           marker = '// @virune-rule {"id":"frontend.view-repetition"'
           if text.count(marker) != 1:
               raise SystemExit('frontend component test: repetition test marker mismatch')
-          text = text.split(marker, 1)[0].rstrip() + r'''
-
-
-test('View-local for is not part of the frontend authoring syntax', () => {
-	assert.ok(parseErrorCodes(`component ListView() uses JavaScript {
-	let items = [1, 2]
-	return view {
-		for item in items {
-			span(value: item)
-		}
-	}
-}
-`).length > 0);
-});
-
-test('ordinary imperative for remains valid after View repetition withdrawal', () => {
-	const result = compileSource(source(`fn sum(items: List<Int>) -> Int {
-	let mut total = 0
-	for item in items {
-		total = total + item
-	}
-	return total
-}
-`), { emit: false });
-	assert.deepEqual(result.diagnostics.filter(item => item.severity === 'error'), []);
-});
-'''
-          write(path, text)
+          replacement = '\n'.join([
+              '',
+              '',
+              "test('View-local for is not part of the frontend authoring syntax', () => {",
+              '\tassert.ok(parseErrorCodes(`component ListView() uses JavaScript {',
+              '\tlet items = [1, 2]',
+              '\treturn view {',
+              '\t\tfor item in items {',
+              '\t\t\tspan(value: item)',
+              '\t\t}',
+              '\t}',
+              '}',
+              '`).length > 0);',
+              '});',
+              '',
+              "test('ordinary imperative for remains valid after View repetition withdrawal', () => {",
+              '\tconst result = compileSource(source(`fn sum(items: List<Int>) -> Int {',
+              '\tlet mut total = 0',
+              '\tfor item in items {',
+              '\t\ttotal = total + item',
+              '\t}',
+              '\treturn total',
+              '}',
+              '`), { emit: false });',
+              "\tassert.deepEqual(result.diagnostics.filter(item => item.severity === 'error'), []);",
+              '});',
+              '',
+          ])
+          write(path, text.split(marker, 1)[0].rstrip() + replacement)
           PY
 
-          # Fail closed on stale feature artifacts. Generic prose may still use the word "repetition";
-          # these exact implementation/rule identifiers must be gone.
           if git grep -n -E 'ViewRepetition|viewRepetition|resolveArrayElement|repetitionValues|frontend\.view-repetition|L4311' -- ':!*.lock'; then
             echo 'stale View repetition implementation artifact remains' >&2
             exit 1
