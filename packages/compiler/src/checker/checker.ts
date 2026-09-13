@@ -335,7 +335,7 @@ export class TypeChecker {
 				const valueTypes = type.variants.get(variant.name) ?? [];
 				const typeId = valueTypes.length === 0 ? constructedEnumType : this.arena.function(valueTypes, constructedEnumType, declaration.typeParameters.map(item => item.name));
 				const symbol = this.defineValue(variant.name, 'variant', typeId, variant.span, declaration.public, declaration);
-				if (symbol !== undefined) { variant.symbolId = symbol.id; this.#symbols.set(symbol.id, symbol); }
+				if (symbol !== undefined) { variant.symbolId = symbol.id; this.#variants.set(variant.name, { enumType: constructedEnumType, valueTypes, symbol }); }
 			}
 		}
 	}
@@ -397,6 +397,7 @@ export class TypeChecker {
 			}
 			if (context.returnType !== undefined && this.containsForeignType(context.returnType)) this.diagnostics.error('L4209', `Public function ${declaration.name} cannot return JavaScript foreign type ${this.arena.display(context.returnType)}; wrap it in a Virune newtype`, declaration.span);
 		}
+
 		if (declaration.attributes.some(attribute => attribute.name === 'jsExport')) {
 			for (const parameter of declaration.parameters) {
 				const symbol = parameter.symbolId === undefined ? undefined : this.#symbols.get(parameter.symbolId);
@@ -839,14 +840,7 @@ export class TypeChecker {
 			if (!childScope.define(index)) this.diagnostics.error('L1008', `View repetition index ${repetition.indexName} shadows an existing name`, repetition.span);
 			else { indexSymbolId = index.id; this.#symbols.set(index.id, index); }
 		}
-		let identityValid = true;
-		if (repetition.identity !== undefined) {
-			const identityTypeId = this.checkExpression(repetition.identity, childScope);
-			const identityType = this.arena.get(identityTypeId);
-			identityValid = identityTypeId !== this.arena.error && identityType.kind === 'primitive' && (identityType.name === 'String' || identityType.name === 'Int');
-			if (identityTypeId !== this.arena.error && !identityValid) this.diagnostics.error('L4312', `View repetition identity must be String or Int, received ${this.arena.display(identityTypeId)}`, repetition.identity.span);
-		}
-		if (identityValid && sourceKind !== undefined && itemSymbolId !== undefined && (repetition.indexName === undefined || indexSymbolId !== undefined)) {
+		if (sourceKind !== undefined && itemSymbolId !== undefined && (repetition.indexName === undefined || indexSymbolId !== undefined)) {
 			repetition.checkedEvidence = { sourceKind, itemSymbolId, indexSymbolId };
 		}
 		this.checkViewBlock(repetition.body, childScope, true);
@@ -2070,6 +2064,7 @@ export class TypeChecker {
 		}
 		const resolvedNamed = this.arena.get(typeId);
 		if (resolvedNamed.kind === 'named' && resolvedNamed.declarationKind === 'alias' && resolvedNamed.underlying !== undefined) typeId = resolvedNamed.underlying;
+
 		if (reference.optional) typeId = this.arena.option(typeId);
 		reference.resolvedTypeId = typeId; return typeId;
 	}
@@ -2136,6 +2131,7 @@ export class TypeChecker {
 	}
 
 	private invalidArity(reference: A.TypeReferenceNode, expected: number, actual: number): TypeId { this.diagnostics.error('L2041', `${reference.name} expects ${expected} type arguments, received ${actual}`, reference.span); return this.arena.error; }
+
 	private isAssignable(source: TypeId, target: TypeId): boolean { return this.#types.isAssignable(source, target); }
 	private listElementOf(typeId: TypeId | undefined): TypeId | undefined { return this.#types.listElementOf(typeId); }
 	private setElementOf(typeId: TypeId | undefined): TypeId | undefined { return this.#types.setElementOf(typeId); }
@@ -2164,6 +2160,7 @@ export class TypeChecker {
 
 	private requireBool(typeId: TypeId, span: SourceSpan): void { if (!this.arena.equals(typeId, this.arena.bool)) this.typeMismatch(typeId, this.arena.bool, span); }
 	private typeMismatch(actual: TypeId, expected: TypeId, span: SourceSpan): void { this.diagnostics.error('L2043', `${this.arena.display(actual)} cannot be used as ${this.arena.display(expected)}`, span); }
+
 	private unify(pattern: TypeId, actual: TypeId, substitutions: Map<string, TypeId>): void { this.#types.unify(pattern, actual, substitutions); }
 	private substitute(typeId: TypeId, substitutions: ReadonlyMap<string, TypeId>): TypeId { return this.#types.substitute(typeId, substitutions); }
 }
