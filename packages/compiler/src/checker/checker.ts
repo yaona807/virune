@@ -358,7 +358,6 @@ export class TypeChecker {
 				const annotated = declaration.annotation === undefined ? undefined : this.resolveTypeReference(declaration.annotation, new Map());
 				const valueType = this.checkExpression(declaration.value, this.globalScope, annotated);
 				const expected = annotated ?? valueType;
-				if (this.containsOpenEffect(expected)) this.diagnostics.error('L2113', 'uses * callbacks are non-escaping and cannot be stored in top-level declarations', declaration.span);
 				if (!this.isAssignable(valueType, expected)) this.typeMismatch(valueType, expected, declaration.value.span);
 				if (declaration.constant && !this.isConstantExpression(declaration.value)) this.diagnostics.error('L2082', 'const initializer must be evaluable without function calls, mutable state, async work, or external values', declaration.value.span);
 				declaration.inferredTypeId = expected; if (declaration.symbolId !== undefined) this.#symbols.get(declaration.symbolId)!.typeId = expected;
@@ -840,7 +839,14 @@ export class TypeChecker {
 			if (!childScope.define(index)) this.diagnostics.error('L1008', `View repetition index ${repetition.indexName} shadows an existing name`, repetition.span);
 			else { indexSymbolId = index.id; this.#symbols.set(index.id, index); }
 		}
-		if (sourceKind !== undefined && itemSymbolId !== undefined && (repetition.indexName === undefined || indexSymbolId !== undefined)) {
+		let identityValid = true;
+		if (repetition.identity !== undefined) {
+			const identityTypeId = this.checkExpression(repetition.identity, childScope);
+			const identityType = this.arena.get(identityTypeId);
+			identityValid = identityTypeId !== this.arena.error && identityType.kind === 'primitive' && (identityType.name === 'String' || identityType.name === 'Int');
+			if (identityTypeId !== this.arena.error && !identityValid) this.diagnostics.error('L4312', `View repetition identity must be String or Int, received ${this.arena.display(identityTypeId)}`, repetition.identity.span);
+		}
+		if (identityValid && sourceKind !== undefined && itemSymbolId !== undefined && (repetition.indexName === undefined || indexSymbolId !== undefined)) {
 			repetition.checkedEvidence = { sourceKind, itemSymbolId, indexSymbolId };
 		}
 		this.checkViewBlock(repetition.body, childScope, true);
