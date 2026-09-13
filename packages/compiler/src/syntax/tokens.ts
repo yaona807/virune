@@ -27,9 +27,6 @@ export const KwAs = keyword('KwAs', /as\b/);
 export const KwAsync = keyword('KwAsync', /async\b/);
 export const KwAwait = keyword('KwAwait', /await\b/);
 export const KwBreak = keyword('KwBreak', /break\b/);
-// `by` is contextual View repetition syntax. Keep it usable anywhere an ordinary
-// identifier is valid so this prototype does not reserve a new language keyword.
-export const KwBy = createToken({ name: 'KwBy', pattern: /by\b/, longer_alt: Identifier, categories: [Identifier, IdentifierName] });
 // `children` is contextual View syntax. Keep its distinct token for View parsing while
 // also accepting it anywhere an ordinary identifier is valid for source compatibility.
 export const KwChildren = createToken({ name: 'KwChildren', pattern: /children\b/, longer_alt: Identifier, categories: [Identifier, IdentifierName] });
@@ -103,7 +100,7 @@ export const allTokens: TokenType[] = [
 	WhiteSpace, ModuleDocumentationComment, DocumentationComment, LineComment, NewLine,
 	FatArrow, ThinArrow, Pipe, EqualEqual, BangEqual, LessEqual, GreaterEqual, AndAnd, OrOr, RangeInclusive, Spread, Bar,
 	IdentifierName,
-	KwAs, KwAsync, KwAwait, KwBreak, KwBy, KwChildren, KwComponent, KwConst, KwContinue, KwDefer, KwDerives, KwDiscard, KwElse, KwEnum, KwExtern, KwFalse, KwFn, KwFor,
+	KwAs, KwAsync, KwAwait, KwBreak, KwChildren, KwComponent, KwConst, KwContinue, KwDefer, KwDerives, KwDiscard, KwElse, KwEnum, KwExtern, KwFalse, KwFn, KwFor,
 	KwFrom, KwIf, KwImport, KwIn, KwLet, KwMatch, KwModule, KwMut, KwNewtype, KwParallel, KwPub, KwRecord,
 	KwReturn, KwTest, KwThen, KwTrue, KwTry, KwType, KwUnsafe, KwUses, KwView, KwWhile, KwWith, KwJs,
 	BigIntLiteral, FloatLiteral, IntLiteral, StringLiteral,
