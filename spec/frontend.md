@@ -40,7 +40,7 @@ A View result may be consumed only as:
 
 - the direct return value of a `component`;
 - nested View child structure;
-- a View-local declarative conditional or repetition body; or
+- a View-local declarative conditional branch; or
 - the compiler-managed native-component child slot defined below.
 
 A View result cannot be stored in `let`/`const`, records, lists, tuples, or other ordinary values; passed to an ordinary call; exported as an ordinary API value; field- or index-accessed; projected to a general External value; or returned from an ordinary `fn`.
@@ -136,46 +136,8 @@ The eventual compiler-owned transport/lowering must preserve the source evaluati
 
 The compiler-managed slot must not become an observable direct child value of a JavaScript-imported External component. Until its zero-or-more child contribution can be preserved at that boundary without changing downstream children/slot semantics, standalone `children` in that direct External child structure is rejected. A slot nested beneath an intrinsic element below an External component remains eligible for ordinary View validation.
 
-## `[frontend.view-repetition]` Declarative View repetition
-
-A View-local `for` is a dedicated declarative View construct and is distinct from the ordinary imperative `ForStatement`:
-
-```virune
-view {
-    for user in users {
-        UserRow(user: user)
-    }
-
-    for user, index in users {
-        UserRow(user: user, position: index + 1)
-    }
-}
-```
-
-The source expression is evaluated exactly once for one downstream-host evaluation of the repetition. Items are visited in ascending zero-based source-index order and each visited item is read exactly once. The optional index binding denotes that source index, not the ordinal of emitted children.
-
-Each item's View body is evaluated in source order. If one item contributes multiple View children, those children are appended to one compiler-owned flat ordered child sequence. Virune does not give the item an implicit Fragment/group identity and does not rely on framework-specific array flattening to define this ordering.
-
-Repetition is not defined as `source.map(...)` or another overrideable collection method. The compiler must not hoist, snapshot, or cache a host-sensitive source expression outside its downstream-host evaluation position. A `key` property inside the body remains an ordinary downstream View property and has no Virune Core identity or reconciliation semantics.
-
-## `[frontend.view-repetition-source]` Repetition source boundary
-
-The initial repetition sources are limited to host-safe native `List<T>` and JavaScript External `Array<T>` / `ReadonlyArray<T>` whose array and indexed-element shape is proven from the current interop provider snapshot.
-
-External arrays are not implicitly converted to native `List`. `any`, `unknown`, unsupported collections, or unresolved, stale, partial, or ambiguous provider evidence fail closed.
-
-For an External array, one repetition evaluation observes the initial `length` exactly once. It visits indexes from zero up to that observed length, skips sparse-array holes, and reads each visited element exactly once. The checker commits provider-independent repetition evidence before emission; emission does not re-query TypeScript and does not infer array semantics from display text or package/framework heuristics.
-
-Generic `Iterable`, `AsyncIterable`, `Set`, `Map`, and arbitrary array-like values are outside this initial contract.
-
-## `[frontend.view-repetition-children]` Repetition child boundary
-
-The compiler-managed standalone `children` slot is rejected anywhere inside a repetition subtree, including through nested View conditionals or nested repetitions. Repetition does not introduce `break`, `continue`, assignment, or imperative loop-body semantics.
-
-A repetition-generated collection must not become the observable direct child value of a JavaScript-imported External component. Until the zero-or-more flat child contribution can be preserved at that boundary without changing downstream children/slot shape, repetition in that direct External child structure is rejected. Repetition nested under an intrinsic element that is itself below an External component remains eligible for normal validation.
-
 ## `[frontend.framework-neutral]` Framework-neutral core
 
-The component/View grammar does not select a framework. Virune Core does not define framework-name enums, package-name heuristics, a Virune frontend VDOM/runtime, universal state/effect/router APIs, property-vocabulary rewrites, or framework-specific JSX lowering.
+The component/View grammar does not select a framework. Virune Core does not define framework-name enums, package-name heuristics, a Virune frontend VDOM/runtime, universal state/effect/router APIs, property-vocabulary rewrites, framework-specific JSX lowering, or framework-neutral list reconciliation. Virune 1.0 does not define a View-local repetition construct; list rendering that depends on identity or lifecycle remains owned by downstream framework/library APIs consumed through ordinary External JSX/API interoperability.
 
 External component validity, props, children, overloads, generics, and contextual callback typing are proven through the project's actual TypeScript JSX environment and the JavaScript interoperability contract. Unknown, stale, partial, or ambiguous JavaScript/TypeScript evidence remains fail-closed.

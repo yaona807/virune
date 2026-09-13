@@ -225,71 +225,26 @@ fn preserveChildren(children: Int) -> Int {
 	assert.deepEqual(ordinary.diagnostics.filter(item => item.severity === 'error'), []);
 });
 
-// @virune-rule {"id":"frontend.view-repetition","runner":"unit","file":"packages/compiler/test/frontend-component-view.test.ts","case":"View repetition accepts native List with source index","kind":"positive","platform":"common"}
-test('View repetition accepts native List with source index', () => {
-	const result = checkSource(`component ListView() uses JavaScript {
+test('View-local for is not part of the frontend authoring syntax', () => {
+	assert.ok(parseErrorCodes(`component ListView() uses JavaScript {
 	let items = [1, 2]
 	return view {
-		for item, index in items {
-			span(value: item)
-			if true {
-				strong(position: index)
-			}
-		}
-	}
-}
-`);
-	assert.deepEqual(result.diagnostics.filter(item => item.severity === 'error'), []);
-	const component = result.ast?.declarations.find((declaration): declaration is ComponentDeclaration => declaration.kind === 'ComponentDeclaration');
-	assert.ok(component);
-	const returned = component.body.statements[1] as ReturnStatement;
-	const view = returned.value as ViewExpression;
-	const repetition = view.body.children[0];
-	assert.equal(repetition?.kind, 'ViewRepetition');
-	if (repetition?.kind !== 'ViewRepetition') throw new Error('expected ViewRepetition');
-	assert.equal(repetition.checkedEvidence?.sourceKind, 'native-list');
-	assert.ok(repetition.checkedEvidence?.itemSymbolId !== undefined);
-	assert.ok(repetition.checkedEvidence?.indexSymbolId !== undefined);
-	assert.equal(repetition.body.children.length, 2);
-});
-
-// @virune-rule {"id":"frontend.view-repetition-source","runner":"unit","file":"packages/compiler/test/frontend-component-view.test.ts","case":"View repetition rejects unsupported native collection sources","kind":"negative","platform":"common"}
-test('View repetition rejects unsupported native collection sources', () => {
-	const parsed = parseSource(source(`component SetView(items: Set<Int>) uses JavaScript {
-	return view {
-		for item, index in items {
-			span(value: item, position: index)
-		}
-	}
-}
-`));
-	assert.ok(parsed.ast);
-	assert.deepEqual(parsed.diagnostics.filter(item => item.severity === 'error'), []);
-	const component = parsed.ast.declarations.find((declaration): declaration is ComponentDeclaration => declaration.kind === 'ComponentDeclaration');
-	assert.ok(component);
-	const returned = component.body.statements[0] as ReturnStatement;
-	const view = returned.value as ViewExpression;
-	const repetition = view.body.children[0];
-	assert.equal(repetition?.kind, 'ViewRepetition');
-	if (repetition?.kind !== 'ViewRepetition') throw new Error('expected ViewRepetition');
-	repetition.checkedEvidence = { sourceKind: 'native-list', itemSymbolId: 999999, indexSymbolId: 999998 };
-	const semantic = checkModule(parsed.ast, { containingFile: parsed.source.path });
-	const codes = semantic.diagnostics.items.filter(item => item.severity === 'error').map(item => item.code);
-	assert.ok(codes.includes('L4310'));
-	assert.ok(!codes.includes('L1009'));
-	assert.equal(repetition.checkedEvidence, undefined);
-});
-
-// @virune-rule {"id":"frontend.view-repetition-children","runner":"unit","file":"packages/compiler/test/frontend-component-view.test.ts","case":"View repetition rejects nested compiler-managed children slots","kind":"negative","platform":"common"}
-test('View repetition rejects nested compiler-managed children slots', () => {
-	assert.ok(errorCodes(`component RepeatedChildren(items: List<Int>) uses JavaScript {
-	return view {
 		for item in items {
-			if true {
-				children
-			}
+			span(value: item)
 		}
 	}
 }
-`).includes('L4311'));
+`).length > 0);
+});
+
+test('ordinary imperative for remains valid after View repetition withdrawal', () => {
+	const result = compileSource(source(`fn sum(items: List<Int>) -> Int {
+	let mut total = 0
+	for item in items {
+		total = total + item
+	}
+	return total
+}
+`), { emit: false });
+	assert.deepEqual(result.diagnostics.filter(item => item.severity === 'error'), []);
 });

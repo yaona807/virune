@@ -162,7 +162,6 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 			['resolveCallUsage', (reference: ForeignTypeRef, usage: InteropCallUsage) => this.resolveInvocationUsage(reference, usage, false)],
 			['resolveConstructUsage', (reference: ForeignTypeRef, usage: InteropCallUsage) => this.resolveInvocationUsage(reference, usage, true)],
 			['resolveIndexUsage', (reference: ForeignTypeRef, usage: InteropIndexUsage) => this.resolveIndexUsageInternal(reference, usage)],
-			['resolveArrayElement', (reference: ForeignTypeRef) => this.resolveArrayElementInternal(reference)],
 			['resolveWriteUsage', (reference: ForeignTypeRef, usage: InteropWriteUsage) => this.resolveWriteUsageInternal(reference, usage)],
 			['resolveObjectUsage', (reference: ForeignTypeRef, usage: InteropObjectUsage) => this.resolveObjectUsageInternal(reference, usage)],
 			['resolveJsxUsage', (usage: InteropJsxUsage) => this.resolveJsxUsageInternal(usage)],
@@ -237,19 +236,6 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 			stored.workspace,
 			usageProjection,
 		);
-	}
-
-	private resolveArrayElementInternal(reference: ForeignTypeRef): ForeignTypeSnapshot | undefined {
-		const stored = this.requireType(reference);
-		if (!stored.checker.isArrayType(stored.type) || stored.usageProjection === undefined) return undefined;
-		const element = stored.checker.getIndexTypeOfType(stored.type, ts.IndexKind.Number);
-		if (element === undefined || (element.getFlags() & (ts.TypeFlags.Any | ts.TypeFlags.Unknown | ts.TypeFlags.Never | ts.TypeFlags.TypeParameter)) !== 0) return undefined;
-		if (typeContainsUnresolvedGenericResult(element, stored.checker, stored.location)) return undefined;
-		return this.store(element, stored.checker, stored.location, stored.origin, stored.workspace, {
-			typeExpression: `(${stored.usageProjection.typeExpression})[number]`,
-			directory: stored.usageProjection.directory,
-			...(stored.usageProjection.declaration === undefined ? {} : { declaration: stored.usageProjection.declaration }),
-		});
 	}
 
 	private resolveIndexUsageInternal(reference: ForeignTypeRef, usage: InteropIndexUsage): ForeignIndexResolution | undefined {

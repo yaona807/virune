@@ -21,7 +21,6 @@ interface RenderContext {
 	readonly types: TypeOperations;
 	readonly externalTagRoots: ReadonlySet<string>;
 	readonly usedNativeProofs: Set<string>;
-	readonly repetitionValues: Map<number, string>;
 	failure?: RenderFailure;
 }
 
@@ -53,7 +52,7 @@ export function validateFrontendJsxUsage(module: A.ModuleNode, semantic: Semanti
 	for (const component of components) {
 		const views: A.ViewExpression[] = [];
 		collectViewReturns(component.body, views);
-		const context: RenderContext = { semantic, types, externalTagRoots, usedNativeProofs: new Set(), repetitionValues: new Map() };
+		const context: RenderContext = { semantic, types, externalTagRoots, usedNativeProofs: new Set() };
 		const renderedViews: string[] = [];
 		for (const view of views) {
 			const onlyChild = view.body.children.length === 1 ? view.body.children[0] : undefined;
@@ -208,7 +207,6 @@ function renderViewBlockExpression(block: A.ViewBlock, context: RenderContext): 
 		case 'ViewChildrenSlot': return '<></>';
 		case 'ViewElement': return renderViewElement(child, context);
 		case 'ViewConditional': return renderConditionalExpression(child, context);
-		case 'ViewRepetition': return renderViewRepetition(child, context);
 	}
 }
 
@@ -222,150 +220,7 @@ function renderViewChild(child: A.ViewChild, context: RenderContext): string | u
 		case 'ViewChildrenSlot': return '{<></>}';
 		case 'ViewElement': return renderViewElement(child, context);
 		case 'ViewConditional': return renderViewConditional(child, context);
-		case 'ViewRepetition': {
-			const value = renderViewRepetition(child, context);
-			return value === undefined ? undefined : `{${value}}`;
-		}
 	}
-}
-
-function renderViewRepetition(repetition: A.ViewRepetition, context: RenderContext): string | undefined {
-	const evidence = repetition.checkedEvidence;
-	if (evidence === undefined) return fail(context, repetition.span, 'View repetition reached JSX validation without checked repetition evidence');
-	if ((repetition.indexName === undefined) !== (evidence.indexSymbolId === undefined)) return fail(context, repetition.span, 'View repetition checked evidence does not match its source index binding');
-	const source = evidence.sourceKind === 'external-array'
-		? renderExternalRepetitionSource(repetition.source, context)
-		: renderNativeRepetitionSource(repetition, evidence, context);
-	if (source === undefined) return undefined;
-	const sourceName = `$viruneViewSource${repetition.id}`;
-	const lengthName = `$viruneViewLength${repetition.id}`;
-	const indexName = `$viruneViewIndex${repetition.id}`;
-	const itemName = `$viruneViewItem${repetition.id}`;
-	const childrenName = `$viruneViewChildren${repetition.id}`;
-	const previousItem = context.repetitionValues.get(evidence.itemSymbolId);
-	const hadItem = context.repetitionValues.has(evidence.itemSymbolId);
-	context.repetitionValues.set(evidence.itemSymbolId, itemName);
-	let previousIndex: string | undefined;
-	let hadIndex = false;
-	if (evidence.indexSymbolId !== undefined) {
-		previousIndex = context.repetitionValues.get(evidence.indexSymbolId);
-		hadIndex = context.repetitionValues.has(evidence.indexSymbolId);
-		context.repetitionValues.set(evidence.indexSymbolId, indexName);
-	}
-	const body = renderRepetitionBlock(repetition.body, childrenName, context, 2);
-	if (hadItem) context.repetitionValues.set(evidence.itemSymbolId, previousItem!);
-	else context.repetitionValues.delete(evidence.itemSymbolId);
-	if (evidence.indexSymbolId !== undefined) {
-		if (hadIndex) context.repetitionValues.set(evidence.indexSymbolId, previousIndex!);
-		else context.repetitionValues.delete(evidence.indexSymbolId);
-	}
-	if (body === undefined) return undefined;
-	const holeGuard = evidence.sourceKind === 'external-array' ? `\n\t\tif (!Object.prototype.hasOwnProperty.call(${sourceName}, ${indexName})) continue;` : '';
-	const bodyText = body.length === 0 ? '' : `\n${body}`;
-	return `(() => {\n\tconst ${sourceName} = ${source};\n\tconst ${lengthName} = ${sourceName}.length;\n\tconst ${childrenName} = [];\n\tfor (let ${indexName} = 0; ${indexName} < ${lengthName}; ${indexName}++) {${holeGuard}\n\t\tconst ${itemName} = ${sourceName}[${indexName}] as (typeof ${sourceName})[number];${bodyText}\n\t}\n\treturn ${childrenName};\n})()`;
-}
-
-function renderExternalRepetitionSource(expression: A.Expression, context: RenderContext): string | undefined {
-	if (expression.kind === 'IdentifierExpression' && expression.symbolId !== undefined) {
-		const symbol = context.semantic.symbols.get(expression.symbolId);
-		if (symbol?.kind === 'import' && !symbol.typeOnly) return expression.name;
-		if (symbol?.kind === 'variable' && !symbol.mutable) {
-			const declaration = symbol.declaration;
-			if (declaration?.kind === 'LetStatement') {
-				const letStatement = declaration as A.LetStatement;
-				if (letStatement.annotation === undefined) return renderExternalRepetitionSource(letStatement.value, context);
-			}
-		}
-	}
-	if (expression.kind === 'FieldExpression') {
-		const target = renderExternalRepetitionSource(expression.target, context);
-		return target === undefined ? undefined : `${target}.${expression.field}`;
-	}
-	if (expression.kind === 'CallExpression' && expression.foreignCall === true && expression.typeArguments.length === 0 && expression.arguments.length === 0) {
-		const callee = renderExternalRepetitionSource(expression.callee, context);
-		return callee === undefined ? undefined : `${callee}()`;
-	}
-	return fail(context, expression.span, 'External Array repetition source cannot be represented in the current JSX validation slice without guessing its TypeScript type');
-}
-
-function renderNativeRepetitionSource(repetition: A.ViewRepetition, evidence: A.ViewRepetitionEvidence, context: RenderContext): string | undefined {
-	if (repetition.source.kind === 'ListExpression' && repetition.source.items.length > 0) {
-		const items: string[] = [];
-		for (const item of repetition.source.items) {
-			const rendered = renderViewValue(item, context);
-			if (rendered === undefined) return undefined;
-			items.push(rendered);
-		}
-		return `[${items.join(', ')}]`;
-	}
-	const symbol = context.semantic.symbols.get(evidence.itemSymbolId);
-	if (symbol === undefined) return fail(context, repetition.span, 'native View repetition item binding is unavailable to JSX validation');
-	const probe = renderTypeProbe(symbol.typeId, context, repetition.span);
-	return probe === undefined ? undefined : `[${probe}]`;
-}
-
-function renderTypeProbe(typeId: number, context: RenderContext, span: SourceSpan): string | undefined {
-	const type = context.semantic.arena.get(typeId);
-	if (type.kind === 'primitive') {
-		switch (type.name) {
-			case 'Bool': return '(false as boolean)';
-			case 'Int':
-			case 'Float': return '(0 as number)';
-			case 'BigInt': return '(0n as bigint)';
-			case 'String': return '("" as string)';
-		}
-	}
-	return fail(context, span, `native View repetition item type ${context.semantic.arena.display(typeId)} is not safely projectable in this validation slice`);
-}
-
-function renderRepetitionBlock(block: A.ViewBlock, target: string, context: RenderContext, indent: number): string | undefined {
-	const lines: string[] = [];
-	for (const child of block.children) {
-		const rendered = renderRepetitionChild(child, target, context, indent);
-		if (rendered === undefined) return undefined;
-		if (rendered.length > 0) lines.push(rendered);
-	}
-	return lines.join('\n');
-}
-
-function renderRepetitionChild(child: A.ViewChild, target: string, context: RenderContext, indent: number): string | undefined {
-	const prefix = '\t'.repeat(indent);
-	switch (child.kind) {
-		case 'ViewTextChild': return `${prefix}${target}.push(${renderStringValue(child.value)});`;
-		case 'ViewExpressionChild': {
-			const value = renderViewValue(child.expression, context);
-			return value === undefined ? undefined : `${prefix}${target}.push(${value});`;
-		}
-		case 'ViewChildrenSlot': return fail(context, child.span, 'compiler-managed children slots cannot appear inside View repetition');
-		case 'ViewElement': {
-			const value = renderViewElement(child, context);
-			return value === undefined ? undefined : `${prefix}${target}.push(${value});`;
-		}
-		case 'ViewConditional': return renderRepetitionConditional(child, target, context, indent);
-		case 'ViewRepetition': {
-			const value = renderViewRepetition(child, context);
-			return value === undefined ? undefined : `${prefix}${target}.push(...${value});`;
-		}
-	}
-}
-
-function renderRepetitionConditional(conditional: A.ViewConditional, target: string, context: RenderContext, indent: number): string | undefined {
-	const condition = renderViewValue(conditional.condition, context);
-	if (condition === undefined) return undefined;
-	const prefix = '\t'.repeat(indent);
-	const thenBranch = renderRepetitionBlock(conditional.thenBlock, target, context, indent + 1);
-	if (thenBranch === undefined) return undefined;
-	const thenText = thenBranch.length === 0 ? '' : `\n${thenBranch}`;
-	let text = `${prefix}if (${condition}) {${thenText}\n${prefix}}`;
-	if (conditional.elseBranch === undefined) return text;
-	if (conditional.elseBranch.kind === 'ViewBlock') {
-		const elseBranch = renderRepetitionBlock(conditional.elseBranch, target, context, indent + 1);
-		if (elseBranch === undefined) return undefined;
-		const elseText = elseBranch.length === 0 ? '' : `\n${elseBranch}`;
-		return `${text} else {${elseText}\n${prefix}}`;
-	}
-	const nested = renderRepetitionConditional(conditional.elseBranch, target, context, indent);
-	return nested === undefined ? undefined : `${text} else ${nested.slice(prefix.length)}`;
 }
 
 function renderViewElement(element: A.ViewElement, context: RenderContext): string | undefined {
@@ -419,9 +274,6 @@ function renderViewElement(element: A.ViewElement, context: RenderContext): stri
 	}
 	if (external && containsDirectConditionalAbsence(element.children)) {
 		return fail(context, element.span, `View if without else beneath JavaScript-imported External component ${tag} cannot preserve zero-child absence without making the empty fragment observable as a child`);
-	}
-	if (external && containsDirectRepetition(element.children)) {
-		return fail(context, element.span, `View repetition beneath JavaScript-imported External component ${tag} cannot preserve flat child expansion without making the generated collection observable as a child`);
 	}
 	const children = renderViewBlockContents(element.children, context);
 	return children === undefined ? undefined : `<${tag}${attributes}>${children}</${tag}>`;
@@ -554,18 +406,6 @@ function conditionalContainsAbsence(conditional: A.ViewConditional): boolean {
 		: conditionalContainsAbsence(conditional.elseBranch);
 }
 
-function containsDirectRepetition(block: A.ViewBlock): boolean {
-	return block.children.some(child => child.kind === 'ViewRepetition' || (child.kind === 'ViewConditional' && conditionalContainsDirectRepetition(child)));
-}
-
-function conditionalContainsDirectRepetition(conditional: A.ViewConditional): boolean {
-	if (containsDirectRepetition(conditional.thenBlock)) return true;
-	if (conditional.elseBranch === undefined) return false;
-	return conditional.elseBranch.kind === 'ViewBlock'
-		? containsDirectRepetition(conditional.elseBranch)
-		: conditionalContainsDirectRepetition(conditional.elseBranch);
-}
-
 function renderViewConditional(conditional: A.ViewConditional, context: RenderContext): string | undefined {
 	const condition = renderViewValue(conditional.condition, context);
 	if (condition === undefined) return undefined;
@@ -593,10 +433,6 @@ function renderConditionalExpression(conditional: A.ViewConditional, context: Re
 }
 
 function renderViewValue(expression: A.Expression, context: RenderContext): string | undefined {
-	if (expression.kind === 'IdentifierExpression' && expression.symbolId !== undefined) {
-		const repetitionValue = context.repetitionValues.get(expression.symbolId);
-		if (repetitionValue !== undefined) return repetitionValue;
-	}
 	if (expression.kind === 'LiteralExpression') return renderLiteral(expression, context);
 	if (expression.kind === 'UnaryExpression' && expression.operator === '-' && expression.operand.kind === 'LiteralExpression' && ['Int', 'Float', 'BigInt'].includes(expression.operand.literalKind)) {
 		const literal = renderLiteral(expression.operand, context);

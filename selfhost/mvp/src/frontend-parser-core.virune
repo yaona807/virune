@@ -1363,54 +1363,12 @@ fn parseViewConditional(stateValue: CoreState, tokens: List<FrontendToken>) -> C
 	return addNode(state, tokens, "ViewConditional", "if", start, state.index, children, [])
 }
 
-fn parseViewRepetition(stateValue: CoreState, tokens: List<FrontendToken>) -> CoreParsedNode {
-	let start = stateValue.index
-	let mut state = advance(stateValue)
-	let validItem = currentKind(state, tokens) == FrontendTokenKind.Identifier
-	let itemName = if validItem then currentText(state, tokens) else ""
-	if validItem {
-		state = advance(state)
-	} else {
-		state = addDiagnosticAt(state, tokens, "L0002", "Expected a View repetition item binding", state.index)
-	}
-	let mut bindingText = itemName
-	if isText(state, tokens, ",") {
-		state = advance(state)
-		let validIndex = currentKind(state, tokens) == FrontendTokenKind.Identifier
-		let indexName = if validIndex then currentText(state, tokens) else ""
-		if validIndex {
-			state = advance(state)
-			bindingText = itemName + "," + indexName
-		} else {
-			state = addDiagnosticAt(state, tokens, "L0002", "Expected a View repetition index binding", state.index)
-		}
-	}
-	if isText(state, tokens, "in") {
-		state = advance(state)
-	} else {
-		state = addDiagnosticAt(state, tokens, "L0002", "Expected in in a View repetition", state.index)
-	}
-	let source = parseExpression(state, tokens, 1, true)
-	state = source.state
-	let mut children: List<Int> = []
-	if source.id >= 0 {
-		children = List.append(children, source.id)
-	}
-	let body = parseViewBlock(state, tokens)
-	state = body.state
-	children = List.append(children, body.id)
-	return addNode(state, tokens, "ViewRepetition", bindingText, start, state.index, children, [])
-}
-
 fn parseViewChild(stateValue: CoreState, tokens: List<FrontendToken>) -> CoreParsedNode {
 	let start = stateValue.index
 	let mut state = stateValue
 	let text = currentText(state, tokens)
 	if text == "if" {
 		return parseViewConditional(state, tokens)
-	}
-	if text == "for" {
-		return parseViewRepetition(state, tokens)
 	}
 	if text == "children" && tokenAt(tokens, state.index + 1).kind == FrontendTokenKind.NewLine {
 		state = consumeViewLineEnd(advance(state), tokens, "the children slot")

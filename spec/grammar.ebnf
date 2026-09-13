@@ -139,7 +139,6 @@ ViewExpression          = "view" ViewBlock ;
 ViewBlock               = "{" NewLine* { ViewChild NewLine* } "}" ;
 ViewChild               = ViewElement
                         | ViewConditional
-                        | ViewRepetition
                         | ViewChildrenSlot
                         | StringLiteral LineEnd
                         | ViewExpressionChild ;
@@ -152,7 +151,6 @@ ViewProperty            = ViewPropertyName ":" Expression ;
 ViewPropertyName        = IdentifierName | StringLiteral ;
 ViewConditional         = "if" Expression ViewBlock
                           [ "else" ( ViewBlock | ViewConditional ) ] ;
-ViewRepetition          = "for" Identifier [ "," Identifier ] "in" Expression ViewBlock ;
 ViewChildrenSlot        = "children" LineEnd ;
 (* "children" is contextual: the exact standalone form above is reserved in a
  * ViewBlock, while Identifier may still spell "children" outside that form. *)

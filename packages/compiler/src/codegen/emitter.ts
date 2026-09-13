@@ -396,7 +396,6 @@ export class JavaScriptEmitter {
 			case 'ViewChildrenSlot': return `{${this.nativeChildrenSlotExpression()}}`;
 			case 'ViewElement': return this.viewElement(child, contextName);
 			case 'ViewConditional': return `{${this.viewConditionalExpression(child, contextName)}}`;
-			case 'ViewRepetition': return `{${this.viewRepetitionExpression(child, contextName)}}`;
 		}
 	}
 
@@ -407,7 +406,6 @@ export class JavaScriptEmitter {
 			case 'ViewChildrenSlot': return this.nativeChildrenSlotExpression();
 			case 'ViewElement': return this.viewElement(child, contextName);
 			case 'ViewConditional': return `(${this.viewConditionalExpression(child, contextName)})`;
-			case 'ViewRepetition': return this.viewRepetitionExpression(child, contextName);
 		}
 	}
 
@@ -450,70 +448,6 @@ export class JavaScriptEmitter {
 				? this.viewBlockExpression(conditional.elseBranch, contextName)
 				: `(${this.viewConditionalExpression(conditional.elseBranch, contextName)})`;
 		return `${this.expression(conditional.condition, contextName)} ? ${thenBranch} : ${elseBranch}`;
-	}
-
-	private checkedViewRepetitionEvidence(repetition: A.ViewRepetition): A.ViewRepetitionEvidence {
-		const evidence = repetition.checkedEvidence;
-		if (evidence === undefined || (repetition.indexName === undefined) !== (evidence.indexSymbolId === undefined)) return panicEmitter('View repetition reached emission without matching checked repetition evidence');
-		return evidence;
-	}
-
-	private viewRepetitionExpression(repetition: A.ViewRepetition, contextName: string): string {
-		this.checkedViewRepetitionEvidence(repetition);
-		const target = `$viewChildren${this.#temporary++}`;
-		return [
-			'(() => {',
-			`\tconst ${target} = [];`,
-			...this.viewRepetitionLines(repetition, target, contextName, 1),
-			`\treturn ${target};`,
-			'})()',
-		].join('\n');
-	}
-
-	private viewRepetitionLines(repetition: A.ViewRepetition, target: string, contextName: string, indent: number): string[] {
-		const evidence = this.checkedViewRepetitionEvidence(repetition);
-		const prefix = '\t'.repeat(indent);
-		const sourceName = `$viewSource${this.#temporary++}`;
-		const lengthName = `$viewLength${this.#temporary++}`;
-		const sourceIndexName = `$viewIndex${this.#temporary++}`;
-		const itemName = this.nameOf(evidence.itemSymbolId, repetition.itemName);
-		const lines = [
-			`${prefix}const ${sourceName} = ${this.expression(repetition.source, contextName)};`,
-			`${prefix}const ${lengthName} = ${sourceName}.length;`,
-			`${prefix}for (let ${sourceIndexName} = 0; ${sourceIndexName} < ${lengthName}; ${sourceIndexName}++) {`,
-		];
-		if (evidence.sourceKind === 'external-array') lines.push(`${prefix}\tif (!Object.prototype.hasOwnProperty.call(${sourceName}, ${sourceIndexName})) continue;`);
-		lines.push(`${prefix}\tconst ${itemName} = ${sourceName}[${sourceIndexName}];`);
-		if (repetition.indexName !== undefined) lines.push(`${prefix}\tconst ${this.nameOf(evidence.indexSymbolId, repetition.indexName)} = ${sourceIndexName};`);
-		lines.push(...this.viewRepetitionBlockLines(repetition.body, target, contextName, indent + 1));
-		lines.push(`${prefix}}`);
-		return lines;
-	}
-
-	private viewRepetitionBlockLines(block: A.ViewBlock, target: string, contextName: string, indent: number): string[] {
-		const lines: string[] = [];
-		for (const child of block.children) lines.push(...this.viewRepetitionChildLines(child, target, contextName, indent));
-		return lines;
-	}
-
-	private viewRepetitionChildLines(child: A.ViewChild, target: string, contextName: string, indent: number): string[] {
-		const prefix = '\t'.repeat(indent);
-		switch (child.kind) {
-			case 'ViewTextChild': return [`${prefix}${target}.push(${javascriptStringLiteral(child.value)});`];
-			case 'ViewExpressionChild': return [`${prefix}${target}.push(${this.expression(child.expression, contextName)});`];
-			case 'ViewChildrenSlot': return panicEmitter('View children slot reached repetition emission after checker rejection');
-			case 'ViewElement': return [`${prefix}${target}.push(${this.viewElement(child, contextName)});`];
-			case 'ViewConditional': return this.viewRepetitionConditionalLines(child, target, contextName, indent);
-			case 'ViewRepetition': return this.viewRepetitionLines(child, target, contextName, indent);
-		}
-	}
-
-	private viewRepetitionConditionalLines(conditional: A.ViewConditional, target: string, contextName: string, indent: number): string[] {
-		const prefix = '\t'.repeat(indent);
-		const lines = [`${prefix}if (${this.expression(conditional.condition, contextName)}) {`, ...this.viewRepetitionBlockLines(conditional.thenBlock, target, contextName, indent + 1)];
-		if (conditional.elseBranch === undefined) return [...lines, `${prefix}}`];
-		if (conditional.elseBranch.kind === 'ViewBlock') return [...lines, `${prefix}} else {`, ...this.viewRepetitionBlockLines(conditional.elseBranch, target, contextName, indent + 1), `${prefix}}`];
-		return [...lines, `${prefix}} else {`, ...this.viewRepetitionConditionalLines(conditional.elseBranch, target, contextName, indent + 1), `${prefix}}`];
 	}
 
 	private contextualAggregate(expression: A.ContextualAggregateExpression, contextName: string): string {
