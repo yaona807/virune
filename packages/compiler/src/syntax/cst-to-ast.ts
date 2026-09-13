@@ -286,10 +286,13 @@ export class AstBuilder extends baseCstVisitorConstructor {
 	}
 	public viewRepetition(ctx: Ctx): A.ViewRepetition {
 		const identifiers = tokens(ctx, 'Identifier');
+		const expressions = nodes(ctx, 'expression');
 		return {
 			id: this.id(), kind: 'ViewRepetition', span: contextSpan(this.#fileId, ctx), itemName: identifiers[0]?.image ?? '',
-			...(identifiers[1] === undefined ? {} : { indexName: identifiers[1].image }),
-			source: this.visitNode(firstNode(ctx, 'expression')), body: this.visitNode(firstNode(ctx, 'viewBlock')),
+			...(firstToken(ctx, 'Comma') === undefined || identifiers[1] === undefined ? {} : { indexName: identifiers[1].image }),
+			source: this.visitNode(expressions[0]),
+			...(expressions[1] === undefined ? {} : { identity: this.visitNode<A.Expression>(expressions[1]) }),
+			body: this.visitNode(firstNode(ctx, 'viewBlock')),
 		};
 	}
 	public viewTextChild(ctx: Ctx): A.ViewTextChild { const token = firstToken(ctx, 'StringLiteral'); return { id: this.id(), kind: 'ViewTextChild', span: contextSpan(this.#fileId, ctx), value: unquote(token?.image ?? '""') }; }
