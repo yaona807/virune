@@ -1,0 +1,87 @@
+name: Temporary View Repetition Withdrawal v5
+
+on:
+  push:
+    branches: [fix/frontend-withdraw-view-repetition]
+
+permissions:
+  contents: write
+
+jobs:
+  patch-and-validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 24
+          cache: npm
+      - name: Apply withdrawal patch and remove stale fixtures
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          from textwrap import dedent
+
+          workflow = Path('.github/workflows/tmp-withdraw-view-repetition-v4.yml').read_text()
+          start = "          python3 - <<'PY'\n"
+          end = "\n          PY\n\n          rm .github/workflows/tmp-withdraw-view-repetition.yml"
+          if workflow.count(start) != 1 or workflow.count(end) != 1:
+              raise SystemExit('cannot locate v4 patch script exactly once')
+          script = dedent(workflow.split(start, 1)[1].split(end, 1)[0])
+          exec(compile(script, '<withdraw-view-repetition-v4>', 'exec'), {})
+
+          path = Path('packages/formatter/test/formatter.test.ts')
+          text = path.read_text()
+          fixture = "for item,index in items {\nUi.Row(value:item,position:index)\n}\n"
+          if text.count(fixture) != 1:
+              raise SystemExit(f'expected one stale formatter repetition fixture, found {text.count(fixture)}')
+          text = text.replace(fixture, '', 1)
+          lines = text.splitlines(keepends=True)
+          matches = [index for index, line in enumerate(lines) if 'assert.match(first.text' in line and 'for item, index in items' in line]
+          if len(matches) != 1:
+              raise SystemExit(f'expected one stale formatter repetition assertion, found {len(matches)}')
+          del lines[matches[0]]
+          path.write_text(''.join(lines))
+          PY
+
+          rm .github/workflows/tmp-withdraw-view-repetition*.yml
+
+          if git grep -n -E 'ViewRepetition|viewRepetition|resolveArrayElement|repetitionValues|frontend\.view-repetition|L4311|View repetition emits one flat|generated collection observable as a child|for item,index in items|Ui\.Row\(value:item,position:index\)' -- ':!*.lock'; then
+            echo 'stale View repetition implementation/test artifact remains' >&2
+            exit 1
+          fi
+          git diff --check
+      - name: Install dependencies
+        run: npm ci
+      - name: TypeScript build/check
+        run: npm run check
+      - name: Focused frontend and formatter regressions
+        run: |
+          node --test packages/compiler/dist/test/frontend-component-view.test.js
+          node --test packages/compiler/dist/test/frontend-preserved-jsx-emission.test.js
+          node --test packages/formatter/dist/test/formatter.test.js
+      - name: Specification and compatibility checks
+        run: |
+          npm run spec:check
+          npm run api:check
+          npm run abi:check
+      - name: Self-host frontend/parser parity
+        run: |
+          npm run selfhost:mvp:check
+          npm run selfhost:parser:parity
+      - name: Core tests
+        run: npm run test:core:built
+      - name: Commit validated source change
+        shell: bash
+        run: |
+          git diff --check
+          git status --short
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'fix(frontend): withdraw generic View repetition'
+          git push origin HEAD:fix/frontend-withdraw-view-repetition
