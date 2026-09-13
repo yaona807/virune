@@ -119,7 +119,7 @@ export interface ViewRepetitionEvidence {
 	readonly indexSymbolId: SymbolId | undefined;
 }
 export interface ViewRepetition extends AstNode {
-	readonly kind: 'ViewRepetition'; readonly itemName: string; readonly indexName?: string; readonly source: Expression; readonly body: ViewBlock;
+	readonly kind: 'ViewRepetition'; readonly itemName: string; readonly indexName?: string; readonly source: Expression; readonly identity?: Expression; readonly body: ViewBlock;
 	checkedEvidence?: ViewRepetitionEvidence;
 }
 export interface ViewTextChild extends AstNode { readonly kind: 'ViewTextChild'; readonly value: string; }
