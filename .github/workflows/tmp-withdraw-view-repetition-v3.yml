@@ -1,0 +1,102 @@
+name: Temporary View Repetition Withdrawal v3
+
+on:
+  push:
+    branches: [fix/frontend-withdraw-view-repetition]
+
+permissions:
+  contents: write
+
+jobs:
+  patch-and-validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 24
+          cache: npm
+      - name: Apply complete fail-closed withdrawal patch
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          from textwrap import dedent
+
+          workflow = Path('.github/workflows/tmp-withdraw-view-repetition.yml').read_text()
+          start = "          python3 - <<'PY'\n"
+          end = "\n          PY\n\n          if git grep"
+          if workflow.count(start) != 1 or workflow.count(end) != 1:
+              raise SystemExit('cannot locate original patch script exactly once')
+          script = dedent(workflow.split(start, 1)[1].split(end, 1)[0])
+          old = r'\n\tprivate nativeChildrenSlotExpression'
+          new = r'\n\tprivate contextualAggregate'
+          if script.count(old) != 1:
+              raise SystemExit(f'expected one stale emitter endpoint, found {script.count(old)}')
+          script = script.replace(old, new, 1)
+          namespace = {}
+          exec(compile(script, '<withdraw-view-repetition>', 'exec'), namespace)
+          replace_once = namespace['replace_once']
+          remove_between = namespace['remove_between']
+
+          replace_once(
+              'packages/compiler/src/codegen/emitter.ts',
+              "\t\t\tcase 'ViewRepetition': return this.viewRepetitionExpression(child, contextName);\n",
+              '',
+          )
+          replace_once(
+              'packages/compiler/src/syntax/parser.ts',
+              '\tpublic viewRepetition!: () => CstNode;\n',
+              '',
+          )
+          replace_once(
+              'packages/compiler/src/interop/jsx-view-validation.ts',
+              "\tif (external && containsDirectRepetition(element.children)) {\n\t\treturn fail(context, element.span, `View repetition beneath JavaScript-imported External component ${tag} cannot preserve flat child expansion without making the generated collection observable as a child`);\n\t}\n",
+              '',
+          )
+          remove_between(
+              'packages/compiler/src/interop/jsx-view-validation.ts',
+              '\nfunction containsDirectRepetition(block: A.ViewBlock): boolean {',
+              '\nfunction renderViewConditional',
+          )
+          PY
+
+          rm .github/workflows/tmp-withdraw-view-repetition.yml
+          rm .github/workflows/tmp-withdraw-view-repetition-v2.yml
+          rm .github/workflows/tmp-withdraw-view-repetition-v3.yml
+
+          if git grep -n -E 'ViewRepetition|viewRepetition|resolveArrayElement|repetitionValues|frontend\.view-repetition|L4311' -- ':!*.lock'; then
+            echo 'stale View repetition implementation artifact remains' >&2
+            exit 1
+          fi
+          git diff --check
+      - name: Install dependencies
+        run: npm ci
+      - name: TypeScript build/check
+        run: npm run check
+      - name: Focused frontend compiler regression
+        run: node --test packages/compiler/dist/test/frontend-component-view.test.js
+      - name: Specification and compatibility checks
+        run: |
+          npm run spec:check
+          npm run api:check
+          npm run abi:check
+      - name: Self-host frontend/parser parity
+        run: |
+          npm run selfhost:mvp:check
+          npm run selfhost:parser:parity
+      - name: Core tests
+        run: npm run test:core:built
+      - name: Commit validated source change
+        shell: bash
+        run: |
+          git diff --check
+          git status --short
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'fix(frontend): withdraw generic View repetition'
+          git push origin HEAD:fix/frontend-withdraw-view-repetition
