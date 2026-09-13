@@ -64,7 +64,7 @@ test('View repetition by works without an index binding', () => {
 	assert.equal(repetition.identity?.kind, 'IdentifierExpression');
 });
 
-// @virune-rule {"id":"frontend.view-repetition","runner":"unit","file":"packages/compiler/test/view-repetition-identity-syntax.test.ts","case":"View repetition identity accepts only String and Int primitives","kind":"positive","platform":"common"}
+// @virune-rule {"id":"frontend.view-repetition","runner":"unit","file":"packages/compiler/test/view-repetition-identity-syntax.test.ts","case":"View repetition identity accepts String, Int, and the Int source index","kind":"positive","platform":"common"}
 test('View repetition identity accepts String, Int, and the Int source index', () => {
 	for (const text of [
 		`component ListView() uses JavaScript {
