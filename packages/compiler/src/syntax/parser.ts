@@ -642,6 +642,7 @@ export class ViruneParser extends CstParser {
 			$.OPTION(() => { $.CONSUME(Comma); $.CONSUME2(Identifier); });
 			$.CONSUME(KwIn);
 			$.SUBRULE($.expression);
+			$.OPTION2({ GATE: () => this.LA(1).image === 'by', DEF: () => { $.CONSUME3(Identifier); $.SUBRULE2($.expression); } });
 			$.SUBRULE($.viewBlock);
 		});
 
