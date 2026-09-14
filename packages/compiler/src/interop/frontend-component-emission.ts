@@ -63,6 +63,76 @@ export function frontendScalarRecordFields(
 	return fields;
 }
 
+function hostDeferredCaptureTypeIsSafe(typeId: TypeId, semantic: SemanticModel): boolean {
+	if (frontendHostPrimitiveName(typeId, semantic) !== undefined || frontendScalarRecordFields(typeId, semantic) !== undefined) return true;
+	const type = semantic.arena.get(typeId);
+	if (type.kind === 'foreign') return true;
+	return type.kind === 'list' && hostDeferredCaptureTypeIsSafe(type.element, semantic);
+}
+
+function hostDeferredCaptureSymbolIsSafe(symbolId: number, semantic: SemanticModel): boolean {
+	const symbol = semantic.symbols.get(symbolId);
+	if (symbol === undefined) return false;
+	if (symbol.kind === 'builtin' || symbol.kind === 'component' || symbol.kind === 'function' || symbol.kind === 'extern' || symbol.kind === 'type' || symbol.kind === 'variant') return true;
+	const type = semantic.arena.get(symbol.typeId);
+	if (symbol.kind === 'import' && (type.kind === 'foreign' || type.kind === 'function')) return true;
+	if (symbol.mutable) return false;
+	return hostDeferredCaptureTypeIsSafe(symbol.typeId, semantic);
+}
+
+function findUnsafeHostDeferredCapture(
+	root: A.ViewRepetition,
+	value: unknown,
+	semantic: SemanticModel,
+): { readonly name: string; readonly type: string; readonly mutable: boolean; readonly span: SourceSpan } | undefined {
+	if (Array.isArray(value)) {
+		for (const item of value) {
+			const found = findUnsafeHostDeferredCapture(root, item, semantic);
+			if (found !== undefined) return found;
+		}
+		return undefined;
+	}
+	if (value === null || typeof value !== 'object') return undefined;
+	const node = value as Record<string, unknown>;
+	if (node !== root && node.kind === 'ViewRepetition' && node.identity !== undefined) return undefined;
+	if (node.kind === 'IdentifierExpression' && typeof node.symbolId === 'number' && !hostDeferredCaptureSymbolIsSafe(node.symbolId, semantic)) {
+		const symbol = semantic.symbols.get(node.symbolId);
+		return {
+			name: typeof node.name === 'string' ? node.name : symbol?.name ?? '<unresolved>',
+			type: symbol === undefined ? '<unresolved>' : semantic.arena.display(symbol.typeId),
+			mutable: symbol?.mutable === true,
+			span: node.span as SourceSpan,
+		};
+	}
+	for (const [key, child] of Object.entries(node)) {
+		if (key === 'span' || key === 'checkedEvidence') continue;
+		const found = findUnsafeHostDeferredCapture(root, child, semantic);
+		if (found !== undefined) return found;
+	}
+	return undefined;
+}
+
+function validateHostDeferredViewRepetitions(value: unknown, semantic: SemanticModel, diagnostics: DiagnosticBag): void {
+	if (Array.isArray(value)) {
+		for (const item of value) validateHostDeferredViewRepetitions(item, semantic, diagnostics);
+		return;
+	}
+	if (value === null || typeof value !== 'object') return;
+	const node = value as Record<string, unknown>;
+	if (node.kind === 'ViewRepetition' && node.identity !== undefined) {
+		const repetition = node as unknown as A.ViewRepetition;
+		const capture = findUnsafeHostDeferredCapture(repetition, repetition, semantic);
+		if (capture !== undefined) {
+			const detail = capture.mutable ? `mutable value ${capture.name}` : `${capture.name} of type ${capture.type}`;
+			diagnostics.error('L4309', `Host-deferred View repetition cannot capture ${detail}; use an immutable frontend-safe value, current External value, or stable module callable`, capture.span);
+		}
+	}
+	for (const [key, child] of Object.entries(node)) {
+		if (key === 'span' || key === 'checkedEvidence') continue;
+		validateHostDeferredViewRepetitions(child, semantic, diagnostics);
+	}
+}
+
 /**
  * Keep host-facing component values within the frontend boundary currently
  * supported by preserved JSX emission. This check is shared by single-file and
@@ -88,6 +158,7 @@ export function validateFrontendComponentEmissionBoundary(
 		} else if (interpolation !== undefined) {
 			diagnostics.error('L4309', `Component parameter ${interpolation.name} cannot be referenced directly through string interpolation because component parameters remain host-backed at each use site; bind it to an explicit local value first`, interpolation.span);
 		}
+		validateHostDeferredViewRepetitions(declaration.body, semantic, diagnostics);
 	}
 }
 
