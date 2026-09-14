@@ -477,14 +477,26 @@ export class JavaScriptEmitter {
 		const lengthName = `$viewLength${this.#temporary++}`;
 		const sourceIndexName = `$viewIndex${this.#temporary++}`;
 		const itemName = this.nameOf(evidence.itemSymbolId, repetition.itemName);
+		const identity = repetition.identity;
+		const identityType = identity?.inferredTypeId === undefined ? undefined : this.#semantic.arena.get(identity.inferredTypeId);
+		if (identity !== undefined && (identityType?.kind !== 'primitive' || (identityType.name !== 'String' && identityType.name !== 'Int'))) return panicEmitter('View repetition identity reached emission without checked String or Int evidence');
+		const identitySeenName = identity === undefined ? undefined : `$viewIdentitySeen${this.#temporary++}`;
 		const lines = [
 			`${prefix}const ${sourceName} = ${this.expression(repetition.source, contextName)};`,
 			`${prefix}const ${lengthName} = ${sourceName}.length;`,
+			...(identitySeenName === undefined ? [] : [`${prefix}const ${identitySeenName} = new Set();`]),
 			`${prefix}for (let ${sourceIndexName} = 0; ${sourceIndexName} < ${lengthName}; ${sourceIndexName}++) {`,
 		];
 		if (evidence.sourceKind === 'external-array') lines.push(`${prefix}\tif (!Object.prototype.hasOwnProperty.call(${sourceName}, ${sourceIndexName})) continue;`);
 		lines.push(`${prefix}\tconst ${itemName} = ${sourceName}[${sourceIndexName}];`);
 		if (repetition.indexName !== undefined) lines.push(`${prefix}\tconst ${this.nameOf(evidence.indexSymbolId, repetition.indexName)} = ${sourceIndexName};`);
+		if (identity !== undefined && identityType?.kind === 'primitive' && identitySeenName !== undefined) {
+			const identityName = `$viewIdentity${this.#temporary++}`;
+			const tag = identityType.name === 'String' ? 's:' : 'i:';
+			lines.push(`${prefix}\tconst ${identityName} = ${JSON.stringify(tag)} + (${this.expression(identity, contextName)});`);
+			lines.push(`${prefix}\tif (${identitySeenName}.has(${identityName})) throw new Error('Duplicate View repetition identity');`);
+			lines.push(`${prefix}\t${identitySeenName}.add(${identityName});`);
+		}
 		lines.push(...this.viewRepetitionBlockLines(repetition.body, target, contextName, indent + 1));
 		lines.push(`${prefix}}`);
 		return lines;
