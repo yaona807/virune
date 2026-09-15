@@ -350,6 +350,75 @@
 				"emit": { "target": "es2022", "sourceMap": false, "sourcesContent": true }
 			},
 			"expectedDivergences": []
+		},
+		{
+			"id": "project-multimodule-alias-import",
+			"tags": ["project", "multi-module", "runtime", "import"],
+			"input": {
+				"contractVersion": "1",
+				"languageVersion": "1.0",
+				"platform": "node",
+				"entryPath": "src/main.virune",
+				"sources": [
+					{
+						"path": "src/helper.virune",
+						"text": "pub fn double(value: Int) -> Int {\n\treturn value + value\n}\n"
+					},
+					{
+						"path": "src/main.virune",
+						"text": "import { double as twice } from \"./helper.virune\"\n\npub fn main() -> Int {\n\treturn twice(21)\n}\n"
+					}
+				],
+				"interopManifest": { "version": "1", "modules": [] },
+				"emit": { "target": "es2022", "sourceMap": false, "sourcesContent": true }
+			},
+			"expectedDivergences": []
+		},
+		{
+			"id": "project-multimodule-type-only-import",
+			"tags": ["project", "multi-module", "runtime", "import", "type-only"],
+			"input": {
+				"contractVersion": "1",
+				"languageVersion": "1.0",
+				"platform": "node",
+				"entryPath": "src/main.virune",
+				"sources": [
+					{
+						"path": "src/domain.virune",
+						"text": "pub record User {\n\tname: String\n}\n"
+					},
+					{
+						"path": "src/main.virune",
+						"text": "import type { User } from \"./domain.virune\"\n\nfn name(user: User) -> String {\n\treturn user.name\n}\n\npub fn main() -> Int {\n\treturn 7\n}\n"
+					}
+				],
+				"interopManifest": { "version": "1", "modules": [] },
+				"emit": { "target": "es2022", "sourceMap": false, "sourcesContent": true }
+			},
+			"expectedDivergences": []
+		},
+		{
+			"id": "project-multimodule-public-enum",
+			"tags": ["project", "multi-module", "runtime", "conformance"],
+			"input": {
+				"contractVersion": "1",
+				"languageVersion": "1.0",
+				"platform": "node",
+				"entryPath": "src/main.virune",
+				"sources": [
+					{
+						"path": "src/domain.virune",
+						"text": "pub enum Status {\n\tPending\n\tFailed(String)\n}\n"
+					},
+					{
+						"path": "src/main.virune",
+						"text": "import { Status } from \"./domain.virune\"\n\npub fn main() -> Status {\n\treturn Status.Pending\n}\n"
+					}
+				],
+				"interopManifest": { "version": "1", "modules": [] },
+				"emit": { "target": "es2022", "sourceMap": false, "sourcesContent": true }
+			},
+			"expectedDivergences": []
 		}
 	]
 }
