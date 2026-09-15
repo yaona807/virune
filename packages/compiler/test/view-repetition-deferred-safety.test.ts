@@ -16,9 +16,31 @@ const provider: JsInteropProvider = {
 	display: () => '<unused>',
 	resolveJsxUsage: () => ({ accepted: true }),
 };
+const externalProvider: JsInteropProvider = {
+	...provider,
+	resolveImport(request) {
+		return {
+			type: {
+				ref: { providerId: provider.id, generation: provider.generation, id: 'external-value' },
+				display: 'ExternalValue',
+				category: 'object',
+				origin: { moduleSpecifier: request.moduleSpecifier, exportName: request.importedName ?? 'externalValue' },
+			},
+			runtime: { kind: 'named', importedName: request.importedName ?? 'externalValue' },
+			witness: {
+				moduleSpecifier: request.moduleSpecifier,
+				runtimeEntry: 'dist/library.js',
+				runtimeFormat: 'esm',
+				conditions: ['import', 'node'],
+				platform: request.platform,
+				providerVersion: 'view-repetition-deferred-safety-test-1',
+			},
+		};
+	},
+};
 
-function compile(text: string) {
-	return compileSource(source(text), { jsInteropProvider: provider });
+function compile(text: string, jsInteropProvider: JsInteropProvider = provider) {
+	return compileSource(source(text), { jsInteropProvider });
 }
 
 function codes(result: ReturnType<typeof compile>): string[] {
@@ -40,6 +62,22 @@ test('Host-deferred repetition accepts immutable frontend-safe captures', () => 
 	}
 }
 `);
+	assert.deepEqual(result.diagnostics.filter(item => item.severity === 'error'), []);
+	assert.ok(result.output);
+});
+
+// @virune-rule {"id":"frontend.view-repetition","runner":"unit","file":"packages/compiler/test/view-repetition-deferred-safety.test.ts","case":"Host-deferred repetition accepts current External captures","kind":"positive","platform":"common"}
+test('Host-deferred repetition accepts current External captures', () => {
+	const result = compile(`import js { externalValue } from "./library.js"
+
+component ListView() uses JavaScript {
+	return view {
+		for item in [1] by item {
+			span() { { externalValue } }
+		}
+	}
+}
+`, externalProvider);
 	assert.deepEqual(result.diagnostics.filter(item => item.severity === 'error'), []);
 	assert.ok(result.output);
 });
