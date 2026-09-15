@@ -135,7 +135,7 @@ function validateHostDeferredViewRepetitions(value: unknown, semantic: SemanticM
 			diagnostics.error('L4309', 'Host-deferred View repetition cannot use string interpolation because interpolation captures are not symbol-bound at this boundary; use an explicit View expression instead', capture.span);
 		} else if (capture !== undefined) {
 			const detail = capture.mutable ? `mutable value ${capture.name}` : `${capture.name} of type ${capture.type}`;
-			diagnostics.error('L4309', `Host-deferred View repetition cannot capture ${detail}; use an immutable frontend-safe value or current External value`, capture.span);
+			diagnostics.error('L4309', `Host-deferred View repetition cannot capture ${detail}; use an immutable frontend-safe value or a current resolved non-mustUse External value`, capture.span);
 		}
 	}
 	for (const [key, child] of Object.entries(node)) {
