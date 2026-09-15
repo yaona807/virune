@@ -88,6 +88,23 @@ test('Host-deferred repetition rejects raw local callable captures', () => {
 	assert.ok(result.diagnostics.some(item => item.code === 'L4309' && item.message.includes('identityFn of type fn(Int) -> Int')));
 });
 
+// @virune-rule {"id":"frontend.view-repetition","runner":"unit","file":"packages/compiler/test/view-repetition-deferred-safety.test.ts","case":"Host-deferred repetition rejects raw module callable captures","kind":"negative","platform":"common"}
+test('Host-deferred repetition rejects raw module callable captures', () => {
+	const result = compile(`fn identityFn(value: Int) -> Int {
+	return value
+}
+
+component ListView() uses JavaScript {
+	return view {
+		for item in [1] by item {
+			span() { { identityFn(item) } }
+		}
+	}
+}
+`);
+	assert.ok(result.diagnostics.some(item => item.code === 'L4309' && item.message.includes('identityFn of type fn(Int) -> Int')));
+});
+
 // @virune-rule {"id":"frontend.view-repetition","runner":"unit","file":"packages/compiler/test/view-repetition-deferred-safety.test.ts","case":"Structural repetition without identity keeps existing capture semantics","kind":"positive","platform":"common"}
 test('Structural repetition without identity keeps existing capture semantics', () => {
 	const result = compile(`component ListView() uses JavaScript {
