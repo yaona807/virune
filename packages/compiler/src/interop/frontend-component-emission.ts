@@ -73,10 +73,11 @@ function hostDeferredCaptureTypeIsSafe(typeId: TypeId, semantic: SemanticModel):
 function hostDeferredCaptureSymbolIsSafe(symbolId: number, semantic: SemanticModel): boolean {
 	const symbol = semantic.symbols.get(symbolId);
 	if (symbol === undefined) return false;
-	if (symbol.kind === 'builtin' || symbol.kind === 'component' || symbol.kind === 'function' || symbol.kind === 'extern' || symbol.kind === 'type' || symbol.kind === 'variant') return true;
 	const type = semantic.arena.get(symbol.typeId);
-	if (symbol.kind === 'import' && (type.kind === 'foreign' || type.kind === 'function')) return true;
 	if (symbol.mutable) return false;
+	if (symbol.kind === 'import') return type.kind === 'foreign';
+	if (symbol.kind === 'builtin' || symbol.kind === 'type') return true;
+	if (type.kind === 'function') return false;
 	return hostDeferredCaptureTypeIsSafe(symbol.typeId, semantic);
 }
 
@@ -94,7 +95,7 @@ function findUnsafeHostDeferredCapture(
 	}
 	if (value === null || typeof value !== 'object') return undefined;
 	const node = value as Record<string, unknown>;
-	if (node !== root && node.kind === 'ViewRepetition' && node.identity !== undefined) return undefined;
+	if (value !== root && node.kind === 'ViewRepetition' && node.identity !== undefined) return undefined;
 	if (node.kind === 'IdentifierExpression' && typeof node.symbolId === 'number' && !hostDeferredCaptureSymbolIsSafe(node.symbolId, semantic)) {
 		const symbol = semantic.symbols.get(node.symbolId);
 		return {
@@ -124,7 +125,7 @@ function validateHostDeferredViewRepetitions(value: unknown, semantic: SemanticM
 		const capture = findUnsafeHostDeferredCapture(repetition, repetition, semantic);
 		if (capture !== undefined) {
 			const detail = capture.mutable ? `mutable value ${capture.name}` : `${capture.name} of type ${capture.type}`;
-			diagnostics.error('L4309', `Host-deferred View repetition cannot capture ${detail}; use an immutable frontend-safe value, current External value, or stable module callable`, capture.span);
+			diagnostics.error('L4309', `Host-deferred View repetition cannot capture ${detail}; use an immutable frontend-safe value or current External value`, capture.span);
 		}
 	}
 	for (const [key, child] of Object.entries(node)) {
