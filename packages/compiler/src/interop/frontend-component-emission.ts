@@ -81,11 +81,15 @@ function hostDeferredCaptureSymbolIsSafe(symbolId: number, semantic: SemanticMod
 	return hostDeferredCaptureTypeIsSafe(symbol.typeId, semantic);
 }
 
+type UnsafeHostDeferredCapture =
+	| { readonly kind: 'symbol'; readonly name: string; readonly type: string; readonly mutable: boolean; readonly span: SourceSpan }
+	| { readonly kind: 'interpolation'; readonly span: SourceSpan };
+
 function findUnsafeHostDeferredCapture(
 	root: A.ViewRepetition,
 	value: unknown,
 	semantic: SemanticModel,
-): { readonly name: string; readonly type: string; readonly mutable: boolean; readonly span: SourceSpan } | undefined {
+): UnsafeHostDeferredCapture | undefined {
 	if (Array.isArray(value)) {
 		for (const item of value) {
 			const found = findUnsafeHostDeferredCapture(root, item, semantic);
@@ -96,9 +100,13 @@ function findUnsafeHostDeferredCapture(
 	if (value === null || typeof value !== 'object') return undefined;
 	const node = value as Record<string, unknown>;
 	if (value !== root && node.kind === 'ViewRepetition' && node.identity !== undefined) return undefined;
+	if (node.kind === 'LiteralExpression' && node.literalKind === 'String' && typeof node.value === 'string' && /(?<!\{)\{[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*\}(?!\})/u.test(node.value)) {
+		return { kind: 'interpolation', span: node.span as SourceSpan };
+	}
 	if (node.kind === 'IdentifierExpression' && typeof node.symbolId === 'number' && !hostDeferredCaptureSymbolIsSafe(node.symbolId, semantic)) {
 		const symbol = semantic.symbols.get(node.symbolId);
 		return {
+			kind: 'symbol',
 			name: typeof node.name === 'string' ? node.name : symbol?.name ?? '<unresolved>',
 			type: symbol === undefined ? '<unresolved>' : semantic.arena.display(symbol.typeId),
 			mutable: symbol?.mutable === true,
@@ -123,7 +131,9 @@ function validateHostDeferredViewRepetitions(value: unknown, semantic: SemanticM
 	if (node.kind === 'ViewRepetition' && node.identity !== undefined) {
 		const repetition = node as unknown as A.ViewRepetition;
 		const capture = findUnsafeHostDeferredCapture(repetition, repetition, semantic);
-		if (capture !== undefined) {
+		if (capture?.kind === 'interpolation') {
+			diagnostics.error('L4309', 'Host-deferred View repetition cannot use string interpolation because interpolation captures are not symbol-bound at this boundary; use an explicit View expression instead', capture.span);
+		} else if (capture !== undefined) {
 			const detail = capture.mutable ? `mutable value ${capture.name}` : `${capture.name} of type ${capture.type}`;
 			diagnostics.error('L4309', `Host-deferred View repetition cannot capture ${detail}; use an immutable frontend-safe value or current External value`, capture.span);
 		}
