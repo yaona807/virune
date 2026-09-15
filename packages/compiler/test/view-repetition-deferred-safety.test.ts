@@ -16,28 +16,34 @@ const provider: JsInteropProvider = {
 	display: () => '<unused>',
 	resolveJsxUsage: () => ({ accepted: true }),
 };
-const externalProvider: JsInteropProvider = {
-	...provider,
-	resolveImport(request) {
-		return {
-			type: {
-				ref: { providerId: provider.id, generation: provider.generation, id: 'external-value' },
-				display: 'ExternalValue',
-				category: 'object',
-				origin: { moduleSpecifier: request.moduleSpecifier, exportName: request.importedName ?? 'externalValue' },
-			},
-			runtime: { kind: 'named', importedName: request.importedName ?? 'externalValue' },
-			witness: {
-				moduleSpecifier: request.moduleSpecifier,
-				runtimeEntry: 'dist/library.js',
-				runtimeFormat: 'esm',
-				conditions: ['import', 'node'],
-				platform: request.platform,
-				providerVersion: 'view-repetition-deferred-safety-test-1',
-			},
-		};
-	},
-};
+
+function externalCaptureProvider(category: 'object' | 'unknown' | 'any' = 'object', mustUse?: boolean): JsInteropProvider {
+	return {
+		...provider,
+		resolveImport(request) {
+			return {
+				type: {
+					ref: { providerId: provider.id, generation: provider.generation, id: 'external-value' },
+					display: 'ExternalValue',
+					category,
+					...(mustUse === undefined ? {} : { mustUse }),
+					origin: { moduleSpecifier: request.moduleSpecifier, exportName: request.importedName ?? 'externalValue' },
+				},
+				runtime: { kind: 'named', importedName: request.importedName ?? 'externalValue' },
+				witness: {
+					moduleSpecifier: request.moduleSpecifier,
+					runtimeEntry: 'dist/library.js',
+					runtimeFormat: 'esm',
+					conditions: ['import', 'node'],
+					platform: request.platform,
+					providerVersion: 'view-repetition-deferred-safety-test-1',
+				},
+			};
+		},
+	};
+}
+
+const externalProvider = externalCaptureProvider();
 
 function compile(text: string, jsInteropProvider: JsInteropProvider = provider) {
 	return compileSource(source(text), { jsInteropProvider });
@@ -80,6 +86,40 @@ component ListView() uses JavaScript {
 `, externalProvider);
 	assert.deepEqual(result.diagnostics.filter(item => item.severity === 'error'), []);
 	assert.ok(result.output);
+});
+
+// @virune-rule {"id":"frontend.view-repetition","runner":"unit","file":"packages/compiler/test/view-repetition-deferred-safety.test.ts","case":"Host-deferred repetition rejects must-use External captures","kind":"negative","platform":"common"}
+test('Host-deferred repetition rejects must-use External captures', () => {
+	const result = compile(`import js { externalValue } from "./library.js"
+
+component ListView() uses JavaScript {
+	return view {
+		for item in [1] by item {
+			span() { { externalValue } }
+		}
+	}
+}
+`, externalCaptureProvider('object', true));
+	assert.ok(result.diagnostics.some(item => item.code === 'L4309' && item.message.includes('externalValue')));
+	assert.equal(result.output, undefined);
+});
+
+// @virune-rule {"id":"frontend.view-repetition","runner":"unit","file":"packages/compiler/test/view-repetition-deferred-safety.test.ts","case":"Host-deferred repetition rejects unresolved External captures","kind":"negative","platform":"common"}
+test('Host-deferred repetition rejects unresolved External captures', () => {
+	for (const category of ['unknown', 'any'] as const) {
+		const result = compile(`import js { externalValue } from "./library.js"
+
+component ListView() uses JavaScript {
+	return view {
+		for item in [1] by item {
+			span() { { externalValue } }
+		}
+	}
+}
+`, externalCaptureProvider(category));
+		assert.ok(result.diagnostics.some(item => item.code === 'L4309' && item.message.includes('externalValue')), category);
+		assert.equal(result.output, undefined, category);
+	}
 });
 
 // @virune-rule {"id":"frontend.view-repetition","runner":"unit","file":"packages/compiler/test/view-repetition-deferred-safety.test.ts","case":"Host-deferred repetition rejects unbound string interpolation captures","kind":"negative","platform":"common"}
