@@ -66,7 +66,7 @@ export function frontendScalarRecordFields(
 function hostDeferredCaptureTypeIsSafe(typeId: TypeId, semantic: SemanticModel): boolean {
 	if (frontendHostPrimitiveName(typeId, semantic) !== undefined || frontendScalarRecordFields(typeId, semantic) !== undefined) return true;
 	const type = semantic.arena.get(typeId);
-	if (type.kind === 'foreign') return true;
+	if (type.kind === 'foreign') return type.snapshot.mustUse !== true && type.snapshot.category !== 'unknown' && type.snapshot.category !== 'any';
 	return type.kind === 'list' && hostDeferredCaptureTypeIsSafe(type.element, semantic);
 }
 
@@ -75,7 +75,7 @@ function hostDeferredCaptureSymbolIsSafe(symbolId: number, semantic: SemanticMod
 	if (symbol === undefined) return false;
 	const type = semantic.arena.get(symbol.typeId);
 	if (symbol.mutable) return false;
-	if (symbol.kind === 'import') return type.kind === 'foreign';
+	if (symbol.kind === 'import') return hostDeferredCaptureTypeIsSafe(symbol.typeId, semantic);
 	if (symbol.kind === 'builtin' || symbol.kind === 'type') return true;
 	if (type.kind === 'function') return false;
 	return hostDeferredCaptureTypeIsSafe(symbol.typeId, semantic);
