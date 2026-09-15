@@ -17,7 +17,7 @@ const provider: JsInteropProvider = {
 	resolveJsxUsage: () => ({ accepted: true }),
 };
 
-function externalCaptureProvider(category: 'object' | 'unknown' | 'any' = 'object', mustUse?: boolean): JsInteropProvider {
+function externalCaptureProvider(category: 'object' | 'unknown' | 'any' = 'object', mustUse?: boolean, callable = false): JsInteropProvider {
 	return {
 		...provider,
 		resolveImport(request) {
@@ -40,6 +40,21 @@ function externalCaptureProvider(category: 'object' | 'unknown' | 'any' = 'objec
 				},
 			};
 		},
+		resolveCall: callable
+			? () => ({
+				result: {
+					ref: { providerId: provider.id, generation: provider.generation, id: 'external-call-result' },
+					display: 'string',
+					category: 'primitive',
+					primitive: 'string',
+				},
+				parameterCount: 0,
+				optionalParameterCount: 0,
+				rest: false,
+				mayReject: false,
+				receiverMode: 'none',
+			})
+			: () => undefined,
 	};
 }
 
@@ -104,10 +119,25 @@ component ListView() uses JavaScript {
 	assert.equal(result.output, undefined);
 });
 
-// @virune-rule {"id":"frontend.view-repetition","runner":"unit","file":"packages/compiler/test/view-repetition-deferred-safety.test.ts","case":"Host-deferred repetition rejects unresolved External captures","kind":"negative","platform":"common"}
-test('Host-deferred repetition rejects unresolved External captures', () => {
-	for (const category of ['unknown', 'any'] as const) {
-		const result = compile(`import js { externalValue } from "./library.js"
+// @virune-rule {"id":"frontend.view-repetition","runner":"unit","file":"packages/compiler/test/view-repetition-deferred-safety.test.ts","case":"Host-deferred repetition rejects unresolved External captures after supported use-site projection","kind":"negative","platform":"common"}
+test('Host-deferred repetition rejects unresolved External captures after supported use-site projection', () => {
+	const result = compile(`import js { externalValue } from "./library.js"
+
+component ListView() uses JavaScript {
+	return view {
+		for item in [1] by item {
+			span() { { externalValue() } }
+		}
+	}
+}
+`, externalCaptureProvider('unknown', undefined, true));
+	assert.ok(result.diagnostics.some(item => item.code === 'L4309' && item.message.includes('externalValue')));
+	assert.equal(result.output, undefined);
+});
+
+// @virune-rule {"id":"frontend.view-repetition","runner":"unit","file":"packages/compiler/test/view-repetition-deferred-safety.test.ts","case":"External any remains rejected before deferred capture validation","kind":"negative","platform":"common"}
+test('External any remains rejected before deferred capture validation', () => {
+	const result = compile(`import js { externalValue } from "./library.js"
 
 component ListView() uses JavaScript {
 	return view {
@@ -116,10 +146,9 @@ component ListView() uses JavaScript {
 		}
 	}
 }
-`, externalCaptureProvider(category));
-		assert.ok(result.diagnostics.some(item => item.code === 'L4309' && item.message.includes('externalValue')), category);
-		assert.equal(result.output, undefined, category);
-	}
+`, externalCaptureProvider('any'));
+	assert.ok(codes(result).includes('L4212'));
+	assert.equal(result.output, undefined);
 });
 
 // @virune-rule {"id":"frontend.view-repetition","runner":"unit","file":"packages/compiler/test/view-repetition-deferred-safety.test.ts","case":"Host-deferred repetition rejects unbound string interpolation captures","kind":"negative","platform":"common"}
