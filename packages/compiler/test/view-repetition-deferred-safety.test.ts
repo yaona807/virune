@@ -82,6 +82,20 @@ component ListView() uses JavaScript {
 	assert.ok(result.output);
 });
 
+// @virune-rule {"id":"frontend.view-repetition","runner":"unit","file":"packages/compiler/test/view-repetition-deferred-safety.test.ts","case":"Host-deferred repetition rejects unbound string interpolation captures","kind":"negative","platform":"common"}
+test('Host-deferred repetition rejects unbound string interpolation captures', () => {
+	const result = compile(`component ListView() uses JavaScript {
+	let prefix = "row"
+	return view {
+		for item in [1] by item {
+			span(label: "{prefix}")
+		}
+	}
+}
+`);
+	assert.ok(result.diagnostics.some(item => item.code === 'L4309' && item.message.includes('string interpolation')));
+});
+
 // @virune-rule {"id":"frontend.view-repetition","runner":"unit","file":"packages/compiler/test/view-repetition-deferred-safety.test.ts","case":"Host-deferred repetition rejects mutable captures","kind":"negative","platform":"common"}
 test('Host-deferred repetition rejects mutable captures', () => {
 	const result = compile(`component ListView() uses JavaScript {
