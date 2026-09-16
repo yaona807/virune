@@ -87,6 +87,39 @@ test('Host-deferred repetition accepts immutable frontend-safe captures', () => 
 	assert.ok(result.output);
 });
 
+// @virune-rule {"id":"frontend.view-repetition","runner":"unit","file":"packages/compiler/test/view-repetition-deferred-safety.test.ts","case":"Host-deferred repetition does not classify eager source evaluation as a capture","kind":"positive","platform":"common"}
+test('Host-deferred repetition does not classify eager source evaluation as a capture', () => {
+	const result = compile(`component ListView() uses JavaScript {
+	let mut items = [1, 2]
+	return view {
+		for item in items by item {
+			span() { { item } }
+		}
+	}
+}
+`);
+	assert.deepEqual(result.diagnostics.filter(item => item.severity === 'error'), []);
+	assert.ok(result.output);
+});
+
+// @virune-rule {"id":"frontend.view-repetition","runner":"unit","file":"packages/compiler/test/view-repetition-deferred-safety.test.ts","case":"Host-deferred repetition does not classify eager identity evaluation as a capture","kind":"positive","platform":"common"}
+test('Host-deferred repetition does not classify eager identity evaluation as a capture', () => {
+	const result = compile(`fn identityFn(value: Int) -> Int {
+	return value
+}
+
+component ListView() uses JavaScript {
+	return view {
+		for item in [1, 2] by identityFn(item) {
+			span() { { item } }
+		}
+	}
+}
+`);
+	assert.deepEqual(result.diagnostics.filter(item => item.severity === 'error'), []);
+	assert.ok(result.output);
+});
+
 // @virune-rule {"id":"frontend.view-repetition","runner":"unit","file":"packages/compiler/test/view-repetition-deferred-safety.test.ts","case":"Host-deferred repetition accepts current External captures","kind":"positive","platform":"common"}
 test('Host-deferred repetition accepts current External captures', () => {
 	const result = compile(`import js { externalValue } from "./library.js"

@@ -130,7 +130,7 @@ function validateHostDeferredViewRepetitions(value: unknown, semantic: SemanticM
 	const node = value as Record<string, unknown>;
 	if (node.kind === 'ViewRepetition' && node.identity !== undefined) {
 		const repetition = node as unknown as A.ViewRepetition;
-		const capture = findUnsafeHostDeferredCapture(repetition, repetition, semantic);
+		const capture = findUnsafeHostDeferredCapture(repetition, repetition.body, semantic);
 		if (capture?.kind === 'interpolation') {
 			diagnostics.error('L4309', 'Host-deferred View repetition cannot use string interpolation because interpolation captures are not symbol-bound at this boundary; use an explicit View expression instead', capture.span);
 		} else if (capture !== undefined) {
