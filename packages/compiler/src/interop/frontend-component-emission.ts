@@ -99,7 +99,11 @@ function findUnsafeHostDeferredCapture(
 	}
 	if (value === null || typeof value !== 'object') return undefined;
 	const node = value as Record<string, unknown>;
-	if (value !== root && node.kind === 'ViewRepetition' && node.identity !== undefined) return undefined;
+	if (value !== root && node.kind === 'ViewRepetition' && node.identity !== undefined) {
+		const repetition = node as unknown as A.ViewRepetition;
+		const sourceCapture = findUnsafeHostDeferredCapture(root, repetition.source, semantic);
+		return sourceCapture ?? findUnsafeHostDeferredCapture(root, repetition.identity, semantic);
+	}
 	if (node.kind === 'LiteralExpression' && node.literalKind === 'String' && typeof node.value === 'string' && /(?<!\{)\{[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*\}(?!\})/u.test(node.value)) {
 		return { kind: 'interpolation', span: node.span as SourceSpan };
 	}

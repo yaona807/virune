@@ -120,6 +120,22 @@ component ListView() uses JavaScript {
 	assert.ok(result.output);
 });
 
+// @virune-rule {"id":"frontend.view-repetition","runner":"unit","file":"packages/compiler/test/view-repetition-deferred-safety.test.ts","case":"Outer Host-deferred repetition validates captures used by nested eager source evaluation","kind":"negative","platform":"common"}
+test('Outer Host-deferred repetition validates captures used by nested eager source evaluation', () => {
+	const result = compile(`component ListView() uses JavaScript {
+	let mut nestedItems = [1, 2]
+	return view {
+		for outer in [1] by outer {
+			for inner in nestedItems by inner {
+				span() { { inner } }
+			}
+		}
+	}
+}
+`);
+	assert.ok(result.diagnostics.some(item => item.code === 'L4309' && item.message.includes('mutable value nestedItems')));
+});
+
 // @virune-rule {"id":"frontend.view-repetition","runner":"unit","file":"packages/compiler/test/view-repetition-deferred-safety.test.ts","case":"Host-deferred repetition accepts current External captures","kind":"positive","platform":"common"}
 test('Host-deferred repetition accepts current External captures', () => {
 	const result = compile(`import js { externalValue } from "./library.js"
