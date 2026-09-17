@@ -8,6 +8,7 @@ import { DiagnosticBag, type Diagnostic } from '../diagnostics/diagnostic.js';
 import { lowerToHir } from '../hir/lower.js';
 import { validateFrontendComponentEmissionBoundary } from '../interop/frontend-component-emission.js';
 import { validateFrontendJsxUsage } from '../interop/jsx-view-validation.js';
+import { discoverRepetitionHostLocator } from '../interop/repetition-host-locator.js';
 import { buildAst } from '../syntax/cst-to-ast.js';
 import { attachDocumentation } from '../syntax/documentation.js';
 import { parse } from '../syntax/parser.js';
@@ -269,6 +270,12 @@ export async function buildProject(
 	};
 	if (includeConfigEntry) await visit(entry);
 	for (const additionalEntry of additionalEntries) await visit(isAbsolute(additionalEntry) ? additionalEntry : resolve(root, additionalEntry));
+	const repetitionHostLocator = discoverRepetitionHostLocator(
+		order.flatMap(path => parsedByPath.get(path)?.ast === undefined ? [] : [parsedByPath.get(path)!.ast!]),
+	);
+	if (repetitionHostLocator.status === 'ambiguous') {
+		for (const locator of repetitionHostLocator.locators) projectDiagnostics.error('L2134', 'Project defines multiple @repetitionHost locators', locator.span);
+	}
 	const moduleInterfaces = await buildModuleInterfaces(root, order, parsedByPath, projectDiagnostics, host);
 	const interfaceHashes = new Map<string, string>();
 	for (const path of order) interfaceHashes.set(path, moduleInterfaceHash(moduleInterfaces.get(path)));
