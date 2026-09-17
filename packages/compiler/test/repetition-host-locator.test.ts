@@ -47,7 +47,10 @@ test('repetition Host locator rejects invalid declaration targets, arguments, ve
 test('duplicate repetition Host attributes keep existing duplicate-attribute diagnostics authoritative', () => {
 	const result = compileSource(source('@repetitionHost("render", 1)\n@repetitionHost("render", 1)\nextern js "./host.js" {}\n'), { emit: false });
 	assert.equal(errorCodes(result).filter(code => code === 'L2051').length, 1);
-	assert.equal(errorCodes(result).includes('L2134'), false);
+	assert.ok(result.ast);
+	const resolution = discoverRepetitionHostLocator([result.ast]);
+	assert.equal(resolution.status, 'ready');
+	if (resolution.status === 'ready') assert.equal(resolution.locator.exportName, 'render');
 });
 
 test('project build rejects more than one valid repetition Host locator deterministically', async () => {
