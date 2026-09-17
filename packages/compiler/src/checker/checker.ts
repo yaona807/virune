@@ -504,6 +504,18 @@ export class TypeChecker {
 					if (!strict) this.diagnostics.error('L2057', '@json currently accepts only the strict argument', attribute.span);
 					if (!declaration.derives.includes('Json')) this.diagnostics.error('L2058', '@json(strict) requires derives Json', attribute.span);
 				}
+			} else if (attribute.name === 'repetitionHost') {
+				if (declaration.kind !== 'ExternDeclaration') this.diagnostics.error('L2130', '@repetitionHost can be used only on extern js declarations', attribute.span);
+				else {
+					const exportName = attribute.arguments[0];
+					const version = attribute.arguments[1];
+					const validShape = attribute.arguments.length === 2
+						&& exportName?.kind === 'LiteralExpression' && exportName.literalKind === 'String'
+						&& version?.kind === 'LiteralExpression' && version.literalKind === 'Int';
+					if (!validShape) this.diagnostics.error('L2131', '@repetitionHost requires exactly a String literal export name and Int literal protocol version', attribute.span);
+					else if (version.value !== 1) this.diagnostics.error('L2132', '@repetitionHost currently supports only protocol version 1', attribute.span);
+					if (declaration.unsafe) this.diagnostics.error('L2133', '@repetitionHost cannot target unsafe extern js declarations', attribute.span);
+				}
 			} else this.diagnostics.error('L2059', `Unknown attribute @${attribute.name}`, attribute.span);
 		}
 	}
