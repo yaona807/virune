@@ -84,7 +84,9 @@ test('structural View repetition remains on the existing path without a Host loc
 		await writeFile(join(root, 'src/main.virune'), `component Page() uses JavaScript {
 	return view {
 		for item in [1, 2] {
-			span() { { item } }
+			span() {
+				{ item }
+			}
 		}
 	}
 }
@@ -103,7 +105,9 @@ test('identity-bearing View repetition fails closed without a project Host locat
 		await writeFile(join(root, 'src/main.virune'), `component Page() uses JavaScript {
 	return view {
 		for item in [1, 2] by item {
-			span() { { item } }
+			span() {
+				{ item }
+			}
 		}
 	}
 }
@@ -124,7 +128,9 @@ import "./second.virune"
 component Page() uses JavaScript {
 	return view {
 		for item in [1, 2] by item {
-			span() { { item } }
+			span() {
+				{ item }
+			}
 		}
 	}
 }
@@ -145,11 +151,17 @@ test('identity repetition emits the uniform Host protocol with rebased locator p
 component Page() uses JavaScript {
 	return view {
 		for item, index in [1, 2] by item {
-			span() { { item } }
-			span() { { index } }
+			span() {
+				{ item }
+			}
+			span() {
+				{ index }
+			}
 		}
 		for label in ["a", "b"] by label {
-			span() { { label } }
+			span() {
+				{ label }
+			}
 		}
 	}
 }
@@ -208,7 +220,9 @@ component Page() uses JavaScript {
 	return view {
 		for outer, outerIndex in [[1, 2]] by outerIndex {
 			for inner in outer by inner {
-				span() { { inner } }
+				span() {
+					{ inner }
+				}
 			}
 		}
 	}
@@ -232,7 +246,9 @@ test('changing only Host locator evidence invalidates cached identity repetition
 component Page() uses JavaScript {
 	return view {
 		for item in [1, 2] by item {
-			span() { { item } }
+			span() {
+				{ item }
+			}
 		}
 	}
 }
