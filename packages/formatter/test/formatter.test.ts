@@ -18,6 +18,15 @@ test('formatter round-trips the prototype repetition Host locator attribute', ()
 	assert.equal(formatSource(first.text).text, first.text);
 });
 
+test('formatter round-trips the prototype repetition Host locator attribute', () => {
+	const input = '@repetitionHost("render",1)\nextern js "./host.js"{}\n';
+	const first = formatSource(input);
+	assert.deepEqual(first.errors, []);
+	assert.equal(first.text, '@repetitionHost("render", 1)\nextern js "./host.js" {\n}\n');
+	assert.equal(formatSource(first.text).text, first.text);
+});
+
+
 test('formatter supports newtypes, type aliases, strategy records, loop control, and discard', () => {
 	const source = '@mustUse\nrecord Token{value:String,}\nnewtype TokenId=Int\ntype Display=fn(Token)->String\nrecord TokenDisplay{display:Display,}\nfn run(values:List<Int>,strategy:TokenDisplay)->Unit{for value in values{if value==0{continue\n}\nif value==1{break\n}\n}\ndiscard strategy.display(Token{value:"ok"})\ndiscard Ok<Int,String>(1)\nreturn Unit\n}\n';
 	const first = formatSource(source);
