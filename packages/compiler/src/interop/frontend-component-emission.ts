@@ -83,6 +83,7 @@ function hostDeferredCaptureSymbolIsSafe(symbolId: number, semantic: SemanticMod
 
 type UnsafeHostDeferredCapture =
 	| { readonly kind: 'symbol'; readonly name: string; readonly type: string; readonly mutable: boolean; readonly span: SourceSpan }
+	| { readonly kind: 'transport'; readonly name: string; readonly type: string; readonly span: SourceSpan }
 	| { readonly kind: 'interpolation'; readonly span: SourceSpan };
 
 function unsafeHostDeferredSymbolCapture(symbolId: number, name: string, span: SourceSpan, semantic: SemanticModel): UnsafeHostDeferredCapture | undefined {
@@ -93,6 +94,17 @@ function unsafeHostDeferredSymbolCapture(symbolId: number, name: string, span: S
 		name: symbol?.name ?? name,
 		type: symbol === undefined ? '<unresolved>' : semantic.arena.display(symbol.typeId),
 		mutable: symbol?.mutable === true,
+		span,
+	};
+}
+
+function unsafeHostDeferredItemTransport(symbolId: number, name: string, span: SourceSpan, semantic: SemanticModel): UnsafeHostDeferredCapture | undefined {
+	const symbol = semantic.symbols.get(symbolId);
+	if (symbol !== undefined && hostDeferredCaptureTypeIsSafe(symbol.typeId, semantic)) return undefined;
+	return {
+		kind: 'transport',
+		name: symbol?.name ?? name,
+		type: symbol === undefined ? '<unresolved>' : semantic.arena.display(symbol.typeId),
 		span,
 	};
 }
@@ -131,6 +143,8 @@ function findUnsafeHostDeferredCapture(
 function reportUnsafeHostDeferredCapture(capture: UnsafeHostDeferredCapture | undefined, diagnostics: DiagnosticBag): void {
 	if (capture?.kind === 'interpolation') {
 		diagnostics.error('L4309', 'Host-deferred View repetition cannot use string interpolation because interpolation captures are not symbol-bound at this boundary; use an explicit View expression instead', capture.span);
+	} else if (capture?.kind === 'transport') {
+		diagnostics.error('L4309', `Host-deferred View repetition item ${capture.name} has type ${capture.type}; Host snapshot transport requires a frontend-safe value or a current resolved non-mustUse External value`, capture.span);
 	} else if (capture !== undefined) {
 		const detail = capture.mutable ? `mutable value ${capture.name}` : `${capture.name} of type ${capture.type}`;
 		diagnostics.error('L4309', `Host-deferred View repetition cannot capture ${detail}; use an immutable frontend-safe value or a current resolved non-mustUse External value`, capture.span);
@@ -151,7 +165,7 @@ function validateHostDeferredViewRepetitions(value: unknown, semantic: SemanticM
 		if (itemSymbolId !== undefined) localSymbols.add(itemSymbolId);
 		if (repetition.checkedEvidence?.indexSymbolId !== undefined) localSymbols.add(repetition.checkedEvidence.indexSymbolId);
 		const capture = findUnsafeHostDeferredCapture(repetition, repetition.source, semantic, new Set())
-			?? (itemSymbolId === undefined ? undefined : unsafeHostDeferredSymbolCapture(itemSymbolId, repetition.itemName, repetition.span, semantic))
+			?? (itemSymbolId === undefined ? undefined : unsafeHostDeferredItemTransport(itemSymbolId, repetition.itemName, repetition.span, semantic))
 			?? findUnsafeHostDeferredCapture(repetition, repetition.identity, semantic, localSymbols)
 			?? findUnsafeHostDeferredCapture(repetition, repetition.body, semantic, localSymbols);
 		reportUnsafeHostDeferredCapture(capture, diagnostics);
