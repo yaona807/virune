@@ -325,7 +325,8 @@ test('Structural repetition without identity keeps existing capture semantics', 
 	}
 }
 `);
-	assert.ok(!result.diagnostics.some(item => item.code === 'L4309' && item.message.includes('Host-deferred View repetition')));
+	assert.deepEqual(result.diagnostics.filter(item => item.severity === 'error'), []);
+	assert.ok(result.output);
 });
 
 // @virune-rule {"id":"frontend.view-repetition","runner":"unit","file":"packages/compiler/test/view-repetition-deferred-safety.test.ts","case":"Question-mark propagation remains rejected inside component View repetition","kind":"negative","platform":"common"}
