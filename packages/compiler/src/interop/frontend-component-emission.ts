@@ -144,7 +144,7 @@ function reportUnsafeHostDeferredCapture(capture: UnsafeHostDeferredCapture | un
 	if (capture?.kind === 'interpolation') {
 		diagnostics.error('L4309', 'Host-deferred View repetition cannot use string interpolation because interpolation captures are not symbol-bound at this boundary; use an explicit View expression instead', capture.span);
 	} else if (capture?.kind === 'transport') {
-		diagnostics.error('L4309', `Host-deferred View repetition item ${capture.name} has type ${capture.type}; Host snapshot transport requires a frontend-safe value or a current resolved non-mustUse External value`, capture.span);
+		diagnostics.error('L4309', `Host-deferred View repetition Host snapshot cannot transport ${capture.name} of type ${capture.type}; use a frontend-safe value or a current resolved non-mustUse External value`, capture.span);
 	} else if (capture !== undefined) {
 		const detail = capture.mutable ? `mutable value ${capture.name}` : `${capture.name} of type ${capture.type}`;
 		diagnostics.error('L4309', `Host-deferred View repetition cannot capture ${detail}; use an immutable frontend-safe value or a current resolved non-mustUse External value`, capture.span);
