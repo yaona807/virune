@@ -334,7 +334,7 @@ export async function buildProject(
 				outputPath = resolve(root, config.outDir, relativePath.replace(/\.virune$/u, component === undefined ? '.js' : '.jsx'));
 				const emissionModule: A.ModuleNode = { ...parsed.ast, imports: emissionImports };
 				const repetitionHost = identityRepetitions.length > 0 && repetitionHostLocator.status === 'ready'
-					? { moduleSpecifier: rebaseRepetitionHostModuleSpecifier(repetitionHostLocator.locator, outputPath), exportName: repetitionHostLocator.locator.exportName }
+					? { moduleSpecifier: rebaseRepetitionHostModuleSpecifier(repetitionHostLocator.locator, path), exportName: repetitionHostLocator.locator.exportName }
 					: undefined;
 				output = emitJavaScript(lowerToHir(emissionModule, semantic), parsed.source, outputPath, {
 					sourceMap: config.sourceMap,
@@ -368,10 +368,10 @@ function fingerprintRepetitionHostResolution(resolution: RepetitionHostLocatorRe
 	return contentHash(`ambiguous\u0000${resolution.locators.map(locatorKey).sort().join('\u0001')}`);
 }
 
-function rebaseRepetitionHostModuleSpecifier(locator: RepetitionHostLocator, outputPath: string): string {
+function rebaseRepetitionHostModuleSpecifier(locator: RepetitionHostLocator, consumerSourcePath: string): string {
 	if (!locator.module.startsWith('.')) return locator.module;
 	const absoluteTarget = resolve(dirname(locator.declarationFile), locator.module);
-	const rebased = relative(dirname(outputPath), absoluteTarget).replaceAll('\\', '/');
+	const rebased = relative(dirname(consumerSourcePath), absoluteTarget).replaceAll('\\', '/');
 	return rebased.startsWith('.') ? rebased : `./${rebased}`;
 }
 
