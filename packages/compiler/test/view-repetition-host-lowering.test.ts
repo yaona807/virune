@@ -118,6 +118,9 @@ component Page() uses JavaScript {
 			span() { { item } }
 			span() { { index } }
 		}
+		for label in ["a", "b"] by label {
+			span() { { label } }
+		}
 	}
 }
 `, 'utf8');
@@ -130,6 +133,7 @@ component Page() uses JavaScript {
 		assert.match(code, /const \$viewSnapshotCtx\d+ = rootTaskContext\(\);/u);
 		assert.match(code, /const \$viewBodyCtx\d+ = rootTaskContext\(\);/u);
 		assert.match(code, /"i:" \+ \(item\)/u);
+		assert.match(code, /"s:" \+ \(label\)/u);
 		assert.match(code, /\.push\(\{ id: \$viewIdentity\d+, index: \$viewIndex\d+, value: item \}\);/u);
 		const duplicateGuard = code.indexOf('.has($viewIdentity');
 		const snapshotPush = code.indexOf('.push({ id: $viewIdentity');
