@@ -158,7 +158,7 @@ component Page() uses JavaScript {
 		assert.deepEqual(errors(result), []);
 		const code = moduleOutput(result, root);
 		assert.ok(code);
-		assert.ok(code.includes('import * as $viruneRepetitionHostModule from "../src/infra/repetition-host.js";'));
+		assert.ok(code.includes('import * as $viruneRepetitionHostModule from "./infra/repetition-host.js";'));
 		assert.ok(code.includes('$viruneRepetitionHostModule["render"]('));
 		assert.match(code, /const \$viewSnapshotCtx\d+ = rootTaskContext\(\);/u);
 		assert.match(code, /const \$viewBodyCtx\d+ = rootTaskContext\(\);/u);
