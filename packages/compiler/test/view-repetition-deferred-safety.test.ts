@@ -112,7 +112,7 @@ test('Host-deferred repetition rejects unsafe inline snapshot item transport', (
 	}
 }
 `);
-	assert.ok(result.diagnostics.some(item => item.code === 'L4309' && item.message.includes('item of type MutableBytes')));
+	assert.ok(result.diagnostics.some(item => item.code === 'L4309' && item.message.includes('item item has type MutableBytes')));
 	assert.equal(result.output, undefined);
 });
 
