@@ -8,7 +8,7 @@ import { runtimeImportLines } from './runtime-imports.js';
 import { SourceWriter } from './writer.js';
 
 export interface EmitResult { readonly code: string; readonly map: string; }
-export interface RepetitionHostEmitBinding { readonly moduleSpecifier: string; readonly exportName: string; }
+interface RepetitionHostEmitBinding { readonly moduleSpecifier: string; readonly exportName: string; }
 export interface EmitOptions {
 	readonly sourceMap?: boolean;
 	readonly sourcesContent?: boolean;
