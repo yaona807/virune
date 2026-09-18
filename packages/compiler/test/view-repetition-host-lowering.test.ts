@@ -29,6 +29,36 @@ const jsxValidationProvider: JsInteropProvider = {
 	resolveJsxUsage: () => ({ accepted: true }),
 };
 
+const externalArrayProvider: JsInteropProvider = {
+	...jsxValidationProvider,
+	id: 'view-repetition-host-lowering-array-test',
+	resolveImport(request) {
+		return {
+			type: {
+				ref: { providerId: 'view-repetition-host-lowering-array-test', generation: 1, id: 'values-array' },
+				display: 'ReadonlyArray<number>',
+				category: 'array',
+				origin: { moduleSpecifier: request.moduleSpecifier, exportName: request.importedName ?? 'values' },
+			},
+			runtime: { kind: 'named', importedName: request.importedName ?? 'values' },
+			witness: {
+				moduleSpecifier: request.moduleSpecifier,
+				runtimeEntry: 'dist/library.js',
+				runtimeFormat: 'esm',
+				conditions: ['import', 'browser'],
+				platform: request.platform,
+				providerVersion: 'view-repetition-host-lowering-array-test-1',
+			},
+		};
+	},
+	resolveArrayElement: () => ({
+		ref: { providerId: 'view-repetition-host-lowering-array-test', generation: 1, id: 'values-element' },
+		display: 'number',
+		category: 'primitive',
+		primitive: 'number',
+	}),
+};
+
 async function withProject(run: (root: string) => Promise<void>): Promise<void> {
 	await mkdir(resolve('.cache'), { recursive: true });
 	const root = await mkdtemp(join(resolve('.cache'), 'view-repetition-host-lowering-'));
@@ -142,6 +172,30 @@ component Page() uses JavaScript {
 		assert.match(code, /\$viewReadValue\d+\(\)/u);
 		assert.match(code, /\$viewReadIndex\d+\(\)/u);
 		assert.match(code, /return <>/u);
+	});
+});
+
+test('Host snapshot preserves sparse External Array source-index traversal', async () => {
+	await withProject(async root => {
+		await writeFile(join(root, 'src/locator.virune'), '@repetitionHost("render", 1)\nextern js "./repetition-host.js" {}\n', 'utf8');
+		await writeFile(join(root, 'src/main.virune'), `import "./locator.virune"
+import js { values } from "./library.js"
+
+component Page() uses JavaScript {
+	return view {
+		for value, index in values by index {
+			"body"
+		}
+	}
+}
+`, 'utf8');
+		const result = await buildProject(root, { write: false, jsInteropProvider: externalArrayProvider });
+		assert.deepEqual(errors(result), []);
+		const code = moduleOutput(result, root);
+		assert.ok(code);
+		assert.match(code, /if \(!Object\.prototype\.hasOwnProperty\.call\(\$viewSource\d+, \$viewIndex\d+\)\) continue;/u);
+		assert.match(code, /const value = \$viewSource\d+\[\$viewIndex\d+\];/u);
+		assert.match(code, /\.push\(\{ id: \$viewIdentity\d+, index: \$viewIndex\d+, value: value \}\);/u);
 	});
 });
 
