@@ -85,6 +85,18 @@ type UnsafeHostDeferredCapture =
 	| { readonly kind: 'symbol'; readonly name: string; readonly type: string; readonly mutable: boolean; readonly span: SourceSpan }
 	| { readonly kind: 'interpolation'; readonly span: SourceSpan };
 
+function unsafeHostDeferredSymbolCapture(symbolId: number, name: string, span: SourceSpan, semantic: SemanticModel): UnsafeHostDeferredCapture | undefined {
+	if (hostDeferredCaptureSymbolIsSafe(symbolId, semantic)) return undefined;
+	const symbol = semantic.symbols.get(symbolId);
+	return {
+		kind: 'symbol',
+		name: symbol?.name ?? name,
+		type: symbol === undefined ? '<unresolved>' : semantic.arena.display(symbol.typeId),
+		mutable: symbol?.mutable === true,
+		span,
+	};
+}
+
 function findUnsafeHostDeferredCapture(
 	root: A.ViewRepetition,
 	value: unknown,
@@ -104,15 +116,9 @@ function findUnsafeHostDeferredCapture(
 	if (node.kind === 'LiteralExpression' && node.literalKind === 'String' && typeof node.value === 'string' && /(?<!\{)\{[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*\}(?!\})/u.test(node.value)) {
 		return { kind: 'interpolation', span: node.span as SourceSpan };
 	}
-	if (node.kind === 'IdentifierExpression' && typeof node.symbolId === 'number' && !localSymbols.has(node.symbolId) && !hostDeferredCaptureSymbolIsSafe(node.symbolId, semantic)) {
-		const symbol = semantic.symbols.get(node.symbolId);
-		return {
-			kind: 'symbol',
-			name: typeof node.name === 'string' ? node.name : symbol?.name ?? '<unresolved>',
-			type: symbol === undefined ? '<unresolved>' : semantic.arena.display(symbol.typeId),
-			mutable: symbol?.mutable === true,
-			span: node.span as SourceSpan,
-		};
+	if (node.kind === 'IdentifierExpression' && typeof node.symbolId === 'number' && !localSymbols.has(node.symbolId)) {
+		const capture = unsafeHostDeferredSymbolCapture(node.symbolId, typeof node.name === 'string' ? node.name : '<unresolved>', node.span as SourceSpan, semantic);
+		if (capture !== undefined) return capture;
 	}
 	for (const [key, child] of Object.entries(node)) {
 		if (key === 'span' || key === 'checkedEvidence') continue;
@@ -141,11 +147,14 @@ function validateHostDeferredViewRepetitions(value: unknown, semantic: SemanticM
 	if (node.kind === 'ViewRepetition' && node.identity !== undefined) {
 		const repetition = node as unknown as A.ViewRepetition;
 		const localSymbols = new Set<number>();
-		if (repetition.checkedEvidence?.itemSymbolId !== undefined) localSymbols.add(repetition.checkedEvidence.itemSymbolId);
+		const itemSymbolId = repetition.checkedEvidence?.itemSymbolId;
+		if (itemSymbolId !== undefined) localSymbols.add(itemSymbolId);
 		if (repetition.checkedEvidence?.indexSymbolId !== undefined) localSymbols.add(repetition.checkedEvidence.indexSymbolId);
-		reportUnsafeHostDeferredCapture(findUnsafeHostDeferredCapture(repetition, repetition.source, semantic, new Set()), diagnostics);
-		reportUnsafeHostDeferredCapture(findUnsafeHostDeferredCapture(repetition, repetition.identity, semantic, localSymbols), diagnostics);
-		reportUnsafeHostDeferredCapture(findUnsafeHostDeferredCapture(repetition, repetition.body, semantic, localSymbols), diagnostics);
+		const capture = findUnsafeHostDeferredCapture(repetition, repetition.source, semantic, new Set())
+			?? (itemSymbolId === undefined ? undefined : unsafeHostDeferredSymbolCapture(itemSymbolId, repetition.itemName, repetition.span, semantic))
+			?? findUnsafeHostDeferredCapture(repetition, repetition.identity, semantic, localSymbols)
+			?? findUnsafeHostDeferredCapture(repetition, repetition.body, semantic, localSymbols);
+		reportUnsafeHostDeferredCapture(capture, diagnostics);
 	}
 	for (const [key, child] of Object.entries(node)) {
 		if (key === 'span' || key === 'checkedEvidence') continue;
