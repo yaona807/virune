@@ -89,25 +89,22 @@ function findUnsafeHostDeferredCapture(
 	root: A.ViewRepetition,
 	value: unknown,
 	semantic: SemanticModel,
+	localSymbols: ReadonlySet<number>,
 ): UnsafeHostDeferredCapture | undefined {
 	if (Array.isArray(value)) {
 		for (const item of value) {
-			const found = findUnsafeHostDeferredCapture(root, item, semantic);
+			const found = findUnsafeHostDeferredCapture(root, item, semantic, localSymbols);
 			if (found !== undefined) return found;
 		}
 		return undefined;
 	}
 	if (value === null || typeof value !== 'object') return undefined;
 	const node = value as Record<string, unknown>;
-	if (value !== root && node.kind === 'ViewRepetition' && node.identity !== undefined) {
-		const repetition = node as unknown as A.ViewRepetition;
-		const sourceCapture = findUnsafeHostDeferredCapture(root, repetition.source, semantic);
-		return sourceCapture ?? findUnsafeHostDeferredCapture(root, repetition.identity, semantic);
-	}
+	if (value !== root && node.kind === 'ViewRepetition' && node.identity !== undefined) return undefined;
 	if (node.kind === 'LiteralExpression' && node.literalKind === 'String' && typeof node.value === 'string' && /(?<!\{)\{[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*\}(?!\})/u.test(node.value)) {
 		return { kind: 'interpolation', span: node.span as SourceSpan };
 	}
-	if (node.kind === 'IdentifierExpression' && typeof node.symbolId === 'number' && !hostDeferredCaptureSymbolIsSafe(node.symbolId, semantic)) {
+	if (node.kind === 'IdentifierExpression' && typeof node.symbolId === 'number' && !localSymbols.has(node.symbolId) && !hostDeferredCaptureSymbolIsSafe(node.symbolId, semantic)) {
 		const symbol = semantic.symbols.get(node.symbolId);
 		return {
 			kind: 'symbol',
@@ -119,10 +116,19 @@ function findUnsafeHostDeferredCapture(
 	}
 	for (const [key, child] of Object.entries(node)) {
 		if (key === 'span' || key === 'checkedEvidence') continue;
-		const found = findUnsafeHostDeferredCapture(root, child, semantic);
+		const found = findUnsafeHostDeferredCapture(root, child, semantic, localSymbols);
 		if (found !== undefined) return found;
 	}
 	return undefined;
+}
+
+function reportUnsafeHostDeferredCapture(capture: UnsafeHostDeferredCapture | undefined, diagnostics: DiagnosticBag): void {
+	if (capture?.kind === 'interpolation') {
+		diagnostics.error('L4309', 'Host-deferred View repetition cannot use string interpolation because interpolation captures are not symbol-bound at this boundary; use an explicit View expression instead', capture.span);
+	} else if (capture !== undefined) {
+		const detail = capture.mutable ? `mutable value ${capture.name}` : `${capture.name} of type ${capture.type}`;
+		diagnostics.error('L4309', `Host-deferred View repetition cannot capture ${detail}; use an immutable frontend-safe value or a current resolved non-mustUse External value`, capture.span);
+	}
 }
 
 function validateHostDeferredViewRepetitions(value: unknown, semantic: SemanticModel, diagnostics: DiagnosticBag): void {
@@ -134,13 +140,12 @@ function validateHostDeferredViewRepetitions(value: unknown, semantic: SemanticM
 	const node = value as Record<string, unknown>;
 	if (node.kind === 'ViewRepetition' && node.identity !== undefined) {
 		const repetition = node as unknown as A.ViewRepetition;
-		const capture = findUnsafeHostDeferredCapture(repetition, repetition.body, semantic);
-		if (capture?.kind === 'interpolation') {
-			diagnostics.error('L4309', 'Host-deferred View repetition cannot use string interpolation because interpolation captures are not symbol-bound at this boundary; use an explicit View expression instead', capture.span);
-		} else if (capture !== undefined) {
-			const detail = capture.mutable ? `mutable value ${capture.name}` : `${capture.name} of type ${capture.type}`;
-			diagnostics.error('L4309', `Host-deferred View repetition cannot capture ${detail}; use an immutable frontend-safe value or a current resolved non-mustUse External value`, capture.span);
-		}
+		const localSymbols = new Set<number>();
+		if (repetition.checkedEvidence?.itemSymbolId !== undefined) localSymbols.add(repetition.checkedEvidence.itemSymbolId);
+		if (repetition.checkedEvidence?.indexSymbolId !== undefined) localSymbols.add(repetition.checkedEvidence.indexSymbolId);
+		reportUnsafeHostDeferredCapture(findUnsafeHostDeferredCapture(repetition, repetition.source, semantic, new Set()), diagnostics);
+		reportUnsafeHostDeferredCapture(findUnsafeHostDeferredCapture(repetition, repetition.identity, semantic, localSymbols), diagnostics);
+		reportUnsafeHostDeferredCapture(findUnsafeHostDeferredCapture(repetition, repetition.body, semantic, localSymbols), diagnostics);
 	}
 	for (const [key, child] of Object.entries(node)) {
 		if (key === 'span' || key === 'checkedEvidence') continue;
