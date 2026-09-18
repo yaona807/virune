@@ -93,7 +93,9 @@ test('Host-deferred repetition rejects mutable snapshot-source captures', () => 
 	let mut items = [1, 2]
 	return view {
 		for item in items by item {
-			span() { { item } }
+			span() {
+				{ item }
+			}
 		}
 	}
 }
@@ -125,7 +127,9 @@ test('Host-deferred repetition rejects raw module callable captures in snapshot 
 component ListView() uses JavaScript {
 	return view {
 		for item in [1, 2] by identityFn(item) {
-			span() { { item } }
+			span() {
+				{ item }
+			}
 		}
 	}
 }
@@ -141,7 +145,9 @@ test('Nested Host-deferred repetition validates captures used by its snapshot so
 	return view {
 		for outer in [1] by outer {
 			for inner in nestedItems by inner {
-				span() { { inner } }
+				span() {
+					{ inner }
+				}
 			}
 		}
 	}
@@ -157,7 +163,9 @@ test('Host-deferred repetition accepts current External captures', () => {
 component ListView() uses JavaScript {
 	return view {
 		for item in [1] by item {
-			span() { { externalValue } }
+			span() {
+				{ externalValue }
+			}
 		}
 	}
 }
@@ -173,7 +181,9 @@ test('Host-deferred repetition rejects must-use External captures', () => {
 component ListView() uses JavaScript {
 	return view {
 		for item in [1] by item {
-			span() { { externalValue } }
+			span() {
+				{ externalValue }
+			}
 		}
 	}
 }
@@ -189,7 +199,9 @@ test('Host-deferred repetition rejects unresolved External captures after suppor
 component ListView() uses JavaScript {
 	return view {
 		for item in [1] by item {
-			span() { { externalValue() } }
+			span() {
+				{ externalValue() }
+			}
 		}
 	}
 }
@@ -205,7 +217,9 @@ test('External any remains rejected before deferred capture validation', () => {
 component ListView() uses JavaScript {
 	return view {
 		for item in [1] by item {
-			span() { { externalValue } }
+			span() {
+				{ externalValue }
+			}
 		}
 	}
 }
@@ -235,7 +249,9 @@ test('Host-deferred repetition rejects mutable captures', () => {
 	let mut prefix = "row"
 	return view {
 		for item in items by item {
-			span() { { prefix } }
+			span() {
+				{ prefix }
+			}
 		}
 	}
 }
@@ -250,7 +266,9 @@ test('Host-deferred repetition rejects lifetime-bound native captures', () => {
 	let bytes = MutableBytes.create(4)
 	return view {
 		for item in [1] by item {
-			span() { { Debug.format(bytes) } }
+			span() {
+				{ Debug.format(bytes) }
+			}
 		}
 	}
 }
@@ -264,7 +282,9 @@ test('Host-deferred repetition rejects raw local callable captures', () => {
 	let identityFn = fn(value: Int) -> Int => value
 	return view {
 		for item in [1] by item {
-			span() { { identityFn(item) } }
+			span() {
+				{ identityFn(item) }
+			}
 		}
 	}
 }
@@ -281,7 +301,9 @@ test('Host-deferred repetition rejects raw module callable captures', () => {
 component ListView() uses JavaScript {
 	return view {
 		for item in [1] by item {
-			span() { { identityFn(item) } }
+			span() {
+				{ identityFn(item) }
+			}
 		}
 	}
 }
@@ -296,7 +318,9 @@ test('Structural repetition without identity keeps existing capture semantics', 
 	let mut prefix = "row"
 	return view {
 		for item in items {
-			span() { { prefix } }
+			span() {
+				{ prefix }
+			}
 		}
 	}
 }
@@ -313,7 +337,9 @@ test('Question-mark propagation remains rejected inside component View repetitio
 component ListView() uses JavaScript {
 	return view {
 		for item in [1] by item {
-			span() { { checked(item)? } }
+			span() {
+				{ checked(item)? }
+			}
 		}
 	}
 }
