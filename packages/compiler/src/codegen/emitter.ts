@@ -8,7 +8,13 @@ import { runtimeImportLines } from './runtime-imports.js';
 import { SourceWriter } from './writer.js';
 
 export interface EmitResult { readonly code: string; readonly map: string; }
-export interface EmitOptions { readonly sourceMap?: boolean; readonly sourcesContent?: boolean; readonly sourcePath?: string; }
+export interface RepetitionHostEmitBinding { readonly moduleSpecifier: string; readonly exportName: string; }
+export interface EmitOptions {
+	readonly sourceMap?: boolean;
+	readonly sourcesContent?: boolean;
+	readonly sourcePath?: string;
+	readonly repetitionHost?: RepetitionHostEmitBinding;
+}
 
 const nativeChildrenProperty = '$viruneChildren';
 
@@ -19,6 +25,8 @@ export class JavaScriptEmitter {
 	readonly #outputFile: string;
 	readonly #symbolNames = new Map<SymbolId, string>();
 	readonly #componentParameterReads = new Map<SymbolId, string>();
+	readonly #repetitionReads = new Map<SymbolId, string>();
+	readonly #repetitionHost: RepetitionHostEmitBinding | undefined;
 	readonly #sourceMap: boolean;
 	#contextName = '$ctx';
 	#temporary = 0;
@@ -29,6 +37,7 @@ export class JavaScriptEmitter {
 		this.#semantic = hir.semantic;
 		this.#source = source;
 		this.#outputFile = outputFile;
+		this.#repetitionHost = options.repetitionHost;
 		this.#sourceMap = options.sourceMap ?? true;
 		this.#writer = new SourceWriter(source, outputFile, options.sourcePath ?? source.path, options.sourcesContent ?? true);
 		for (const [id, symbol] of hir.semantic.symbols) this.#symbolNames.set(id, safeName(symbol.name));
@@ -42,7 +51,8 @@ export class JavaScriptEmitter {
 		this.emitHeader(module);
 		for (const declaration of module.imports) this.emitImport(declaration);
 		this.emitExternImports(module.declarations);
-		if (module.imports.length > 0 || module.declarations.some(item => item.kind === 'ExternDeclaration')) this.#writer.line();
+		if (this.#repetitionHost !== undefined) this.#writer.line(`import * as $viruneRepetitionHostModule from ${JSON.stringify(this.#repetitionHost.moduleSpecifier)};`);
+		if (module.imports.length > 0 || module.declarations.some(item => item.kind === 'ExternDeclaration') || this.#repetitionHost !== undefined) this.#writer.line();
 		for (const declaration of module.declarations) {
 			this.emitDeclaration(declaration);
 			this.#writer.line();
@@ -460,6 +470,7 @@ export class JavaScriptEmitter {
 
 	private viewRepetitionExpression(repetition: A.ViewRepetition, contextName: string): string {
 		this.checkedViewRepetitionEvidence(repetition);
+		if (repetition.identity !== undefined && this.#repetitionHost !== undefined) return this.hostViewRepetitionExpression(repetition);
 		const target = `$viewChildren${this.#temporary++}`;
 		return [
 			'(() => {',
@@ -468,6 +479,75 @@ export class JavaScriptEmitter {
 			`\treturn ${target};`,
 			'})()',
 		].join('\n');
+	}
+
+	private hostViewRepetitionExpression(repetition: A.ViewRepetition): string {
+		const evidence = this.checkedViewRepetitionEvidence(repetition);
+		const identity = repetition.identity;
+		if (identity === undefined || this.#repetitionHost === undefined) return panicEmitter('Host View repetition reached emission without identity and Host binding');
+		const identityType = identity.inferredTypeId === undefined ? undefined : this.#semantic.arena.get(identity.inferredTypeId);
+		if (identityType?.kind !== 'primitive' || (identityType.name !== 'String' && identityType.name !== 'Int')) return panicEmitter('Host View repetition identity reached emission without checked String or Int evidence');
+
+		const sourceName = `$viewSource${this.#temporary++}`;
+		const lengthName = `$viewLength${this.#temporary++}`;
+		const sourceIndexName = `$viewIndex${this.#temporary++}`;
+		const itemName = this.nameOf(evidence.itemSymbolId, repetition.itemName);
+		const indexName = repetition.indexName === undefined ? undefined : this.nameOf(evidence.indexSymbolId, repetition.indexName);
+		const identitySeenName = `$viewIdentitySeen${this.#temporary++}`;
+		const identityName = `$viewIdentity${this.#temporary++}`;
+		const entriesName = `$viewEntries${this.#temporary++}`;
+		const snapshotContextName = `$viewSnapshotCtx${this.#temporary++}`;
+		const readValueName = `$viewReadValue${this.#temporary++}`;
+		const readIndexName = `$viewReadIndex${this.#temporary++}`;
+		const groupIdentityName = `$viewGroupIdentity${this.#temporary++}`;
+		const bodyContextName = `$viewBodyCtx${this.#temporary++}`;
+		const tag = identityType.name === 'String' ? 's:' : 'i:';
+
+		const lines = [
+			`$viruneRepetitionHostModule[${javascriptStringLiteral(this.#repetitionHost.exportName)}](`,
+			'\t() => {',
+			`\t\tconst ${snapshotContextName} = rootTaskContext();`,
+			`\t\tconst ${sourceName} = ${this.expression(repetition.source, snapshotContextName)};`,
+			`\t\tconst ${lengthName} = ${sourceName}.length;`,
+			`\t\tconst ${identitySeenName} = new Set();`,
+			`\t\tconst ${entriesName} = [];`,
+			`\t\tfor (let ${sourceIndexName} = 0; ${sourceIndexName} < ${lengthName}; ${sourceIndexName}++) {`,
+		];
+		if (evidence.sourceKind === 'external-array') lines.push(`\t\t\tif (!Object.prototype.hasOwnProperty.call(${sourceName}, ${sourceIndexName})) continue;`);
+		lines.push(`\t\t\tconst ${itemName} = ${sourceName}[${sourceIndexName}];`);
+		if (indexName !== undefined) lines.push(`\t\t\tconst ${indexName} = ${sourceIndexName};`);
+		lines.push(`\t\t\tconst ${identityName} = ${JSON.stringify(tag)} + (${this.expression(identity, snapshotContextName)});`);
+		lines.push(`\t\t\tif (${identitySeenName}.has(${identityName})) throw new Error('Duplicate View repetition identity');`);
+		lines.push(`\t\t\t${identitySeenName}.add(${identityName});`);
+		lines.push(`\t\t\t${entriesName}.push({ id: ${identityName}, index: ${sourceIndexName}, value: ${itemName} });`);
+		lines.push('\t\t}', `\t\treturn ${entriesName};`, '\t},');
+
+		const previousItem = this.#repetitionReads.get(evidence.itemSymbolId);
+		const hadItem = this.#repetitionReads.has(evidence.itemSymbolId);
+		this.#repetitionReads.set(evidence.itemSymbolId, `${readValueName}()`);
+		let previousIndex: string | undefined;
+		let hadIndex = false;
+		if (evidence.indexSymbolId !== undefined) {
+			previousIndex = this.#repetitionReads.get(evidence.indexSymbolId);
+			hadIndex = this.#repetitionReads.has(evidence.indexSymbolId);
+			this.#repetitionReads.set(evidence.indexSymbolId, `${readIndexName}()`);
+		}
+		const body = this.viewBlockExpression(repetition.body, bodyContextName);
+		if (hadItem) this.#repetitionReads.set(evidence.itemSymbolId, previousItem!);
+		else this.#repetitionReads.delete(evidence.itemSymbolId);
+		if (evidence.indexSymbolId !== undefined) {
+			if (hadIndex) this.#repetitionReads.set(evidence.indexSymbolId, previousIndex!);
+			else this.#repetitionReads.delete(evidence.indexSymbolId);
+		}
+
+		lines.push(
+			`\t(${readValueName}, ${readIndexName}, ${groupIdentityName}) => {`,
+			`\t\tconst ${bodyContextName} = rootTaskContext();`,
+			`\t\treturn ${body};`,
+			'\t},',
+			')',
+		);
+		return lines.join('\n');
 	}
 
 	private viewRepetitionLines(repetition: A.ViewRepetition, target: string, contextName: string, indent: number): string[] {
@@ -622,6 +702,8 @@ export class JavaScriptEmitter {
 
 	private identifier(expression: A.IdentifierExpression): string {
 		if (expression.symbolId !== undefined) {
+			const repetitionRead = this.#repetitionReads.get(expression.symbolId);
+			if (repetitionRead !== undefined) return repetitionRead;
 			const componentRead = this.#componentParameterReads.get(expression.symbolId);
 			if (componentRead !== undefined) return componentRead;
 		}
