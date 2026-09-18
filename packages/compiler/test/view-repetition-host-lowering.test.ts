@@ -187,6 +187,34 @@ component Page() uses JavaScript {
 	});
 });
 
+test('multiple View children remain one identity-owned Host body group', async () => {
+	await withProject(async root => {
+		await writeFile(join(root, 'src/locator.virune'), '@repetitionHost("render", 1)\nextern js "./repetition-host.js" {}\n', 'utf8');
+		await writeFile(join(root, 'src/main.virune'), `import "./locator.virune"
+
+component Page() uses JavaScript {
+	return view {
+		for item in [1] by item {
+			span() {
+				"first"
+			}
+			strong() {
+				"second"
+			}
+		}
+	}
+}
+`, 'utf8');
+		const result = await buildProject(root, { write: false, jsInteropProvider: jsxValidationProvider });
+		assert.deepEqual(errors(result), []);
+		const code = moduleOutput(result, root);
+		assert.ok(code);
+		assert.equal((code.match(/\$viruneRepetitionHostModule\["render"\]\(/gu) ?? []).length, 1);
+		assert.equal((code.match(/return <>/gu) ?? []).length, 1);
+		assert.match(code, /return <><span>\{"first"\}<\/span><strong>\{"second"\}<\/strong><\/>;/u);
+	});
+});
+
 test('Host snapshot preserves sparse External Array source-index traversal', async () => {
 	await withProject(async root => {
 		await writeFile(join(root, 'src/locator.virune'), '@repetitionHost("render", 1)\nextern js "./repetition-host.js" {}\n', 'utf8');
