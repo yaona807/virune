@@ -102,6 +102,20 @@ test('Host-deferred repetition rejects mutable snapshot-source captures', () => 
 	assert.equal(result.output, undefined);
 });
 
+// @virune-rule {"id":"frontend.view-repetition","runner":"unit","file":"packages/compiler/test/view-repetition-deferred-safety.test.ts","case":"Host-deferred repetition rejects unsafe inline snapshot item transport","kind":"negative","platform":"common"}
+test('Host-deferred repetition rejects unsafe inline snapshot item transport', () => {
+	const result = compile(`component ListView() uses JavaScript {
+	return view {
+		for item in [MutableBytes.create(4)] by 1 {
+			"body"
+		}
+	}
+}
+`);
+	assert.ok(result.diagnostics.some(item => item.code === 'L4309' && item.message.includes('item of type MutableBytes')));
+	assert.equal(result.output, undefined);
+});
+
 // @virune-rule {"id":"frontend.view-repetition","runner":"unit","file":"packages/compiler/test/view-repetition-deferred-safety.test.ts","case":"Host-deferred repetition rejects raw module callable captures in snapshot identity evaluation","kind":"negative","platform":"common"}
 test('Host-deferred repetition rejects raw module callable captures in snapshot identity evaluation', () => {
 	const result = compile(`fn identityFn(value: Int) -> Int {
