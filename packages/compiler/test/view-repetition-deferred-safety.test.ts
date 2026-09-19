@@ -117,7 +117,10 @@ test('Host-deferred repetition rejects unsafe inline snapshot item transport', (
 	}
 }
 `);
-	assert.ok(result.diagnostics.some(item => item.code === 'L4309' && item.message.includes('cannot transport item of type MutableBytes')));
+	assert.ok(
+		result.diagnostics.some(item => item.code === 'L4309' && item.message.includes('cannot transport item of type MutableBytes')),
+		JSON.stringify(result.diagnostics.map(item => ({ code: item.code, message: item.message }))),
+	);
 	assert.equal(result.output, undefined);
 });
 
@@ -276,7 +279,10 @@ test('Host-deferred repetition rejects lifetime-bound native captures', () => {
 	}
 }
 `);
-	assert.ok(result.diagnostics.some(item => item.code === 'L4309' && item.message.includes('bytes of type MutableBytes')));
+	assert.ok(
+		result.diagnostics.some(item => item.code === 'L4309' && item.message.includes('bytes of type MutableBytes')),
+		JSON.stringify(result.diagnostics.map(item => ({ code: item.code, message: item.message }))),
+	);
 });
 
 // @virune-rule {"id":"frontend.view-repetition","runner":"unit","file":"packages/compiler/test/view-repetition-deferred-safety.test.ts","case":"Host-deferred repetition rejects raw local callable captures","kind":"negative","platform":"common"}
