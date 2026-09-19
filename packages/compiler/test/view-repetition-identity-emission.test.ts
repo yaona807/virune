@@ -46,9 +46,9 @@ test('View repetition emission type-tags checked identities and guards each iter
 	}
 });
 
-// @virune-rule {"id":"frontend.view-repetition","runner":"unit","file":"packages/compiler/test/view-repetition-identity-emission.test.ts","case":"View repetition identity pipelines are lowered and evaluated once after item and index binding","kind":"positive","platform":"common"}
-test('View repetition identity pipelines are lowered and evaluated once after item and index binding', () => {
-	const code = emitted(`fn identity(value: Int) -> Int {
+// @virune-rule {"id":"frontend.view-repetition","runner":"unit","file":"packages/compiler/test/view-repetition-identity-emission.test.ts","case":"View repetition identity pipelines reject raw module callables at the deferred Host boundary","kind":"negative","platform":"common"}
+test('View repetition identity pipelines reject raw module callables at the deferred Host boundary', () => {
+	const result = compileSource(source(`fn identity(value: Int) -> Int {
 	return value
 }
 
@@ -60,12 +60,9 @@ component ListView() uses JavaScript {
 		}
 	}
 }
-`);
-	const indexBinding = code.search(/const index = \$viewIndex\d+;/u);
-	const identity = code.indexOf('"i:" + (identity(index, $ctx))');
-	assert.ok(indexBinding >= 0);
-	assert.ok(identity > indexBinding);
-	assert.equal(code.split('"i:" + (identity(index, $ctx))').length - 1, 1);
+`), { jsInteropProvider: provider });
+	assert.ok(result.diagnostics.some(item => item.code === 'L4309' && item.message.includes('identity of type fn(Int) -> Int')));
+	assert.equal(result.output, undefined);
 });
 
 test('View repetition without identity preserves the existing lowering path', () => {
