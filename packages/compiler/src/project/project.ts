@@ -9,6 +9,7 @@ import { lowerToHir } from '../hir/lower.js';
 import { validateFrontendComponentEmissionBoundary } from '../interop/frontend-component-emission.js';
 import { validateFrontendJsxUsage } from '../interop/jsx-view-validation.js';
 import { collectIdentityViewRepetitions, discoverRepetitionHostLocator, type RepetitionHostLocator, type RepetitionHostLocatorResolution } from '../interop/repetition-host-locator.js';
+import { validateRepetitionHostTypeScriptUsage } from '../interop/repetition-host-usage-validation.js';
 import { buildAst } from '../syntax/cst-to-ast.js';
 import { attachDocumentation } from '../syntax/documentation.js';
 import { parse } from '../syntax/parser.js';
@@ -327,6 +328,18 @@ export async function buildProject(
 					: 'Identity-bearing View repetition cannot emit while the project @repetitionHost locator is ambiguous';
 				for (const repetition of identityRepetitions) semantic.diagnostics.error('L2135', message, repetition.span);
 			}
+			if (!semantic.diagnostics.hasErrors && identityRepetitions.length > 0 && inSourceDirectory && repetitionHostLocator.status === 'ready') {
+				const accepted = validateRepetitionHostTypeScriptUsage({
+					containingFile: path,
+					platform: config.platform,
+					moduleSpecifier: rebaseRepetitionHostModuleSpecifierForValidation(repetitionHostLocator.locator, path),
+					exportName: repetitionHostLocator.locator.exportName,
+					...(jsInteropProvider === undefined ? {} : { jsInteropProvider }),
+				});
+				if (!accepted) {
+					for (const repetition of identityRepetitions) semantic.diagnostics.error('L2136', 'TypeScript whole-usage validation rejected the project @repetitionHost export', repetition.span);
+				}
+			}
 			const diagnostics = [...parsed.diagnostics, ...semantic.diagnostics.items];
 			let output: EmitResult | undefined; let outputPath: string | undefined;
 			if (!diagnostics.some(item => item.severity === 'error') && inSourceDirectory) {
@@ -376,6 +389,13 @@ function rebaseRepetitionHostModuleSpecifier(locator: RepetitionHostLocator, out
 		? resolve(root, config.outDir, relative(sourceRoot, absoluteTarget))
 		: absoluteTarget;
 	const rebased = relative(dirname(outputPath), emittedTarget).replaceAll('\\', '/');
+	return rebased.startsWith('.') ? rebased : `./${rebased}`;
+}
+
+function rebaseRepetitionHostModuleSpecifierForValidation(locator: RepetitionHostLocator, containingFile: string): string {
+	if (!locator.module.startsWith('.')) return locator.module;
+	const absoluteTarget = resolve(dirname(locator.declarationFile), locator.module);
+	const rebased = relative(dirname(containingFile), absoluteTarget).replaceAll('\\', '/');
 	return rebased.startsWith('.') ? rebased : `./${rebased}`;
 }
 
