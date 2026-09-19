@@ -21,7 +21,7 @@ export function validateRepetitionHostTypeScriptUsage(options: RepetitionHostTyp
 		'type __ViruneIsUnknown<T> = __ViruneIsAny<T> extends true ? false : unknown extends T ? ([keyof T] extends [never] ? true : false) : false;',
 		'type __ViruneSafe<T> = __ViruneIsAny<T> extends true ? never : __ViruneIsUnknown<T> extends true ? never : true;',
 		'function __viruneRequireSafe<T>(_proof: __ViruneSafe<T>): void {}',
-		'declare function __ViruneProbeComponent(): any;',
+		'declare function __ViruneProbeComponent(): never;',
 		'__viruneRequireSafe<typeof __viruneRepetitionHost>(true);',
 		'type __ViruneHostParameters = Parameters<typeof __viruneRepetitionHost>;',
 		'__viruneRequireSafe<__ViruneHostParameters[0]>(true);',
