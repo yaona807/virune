@@ -100,7 +100,7 @@ test('Repetition Host whole-usage validation rejects missing and incompatible ex
 	];
 	for (const [name, declarations] of cases) {
 		const result = await runWithHost(declarations);
-		assert.ok(result.errors.some(item => item.code === 'L2136'), name);
+		assert.deepEqual(result.errors, [{ code: 'L2136' }], name);
 		assert.equal(result.emitted, false, name);
 	}
 });
@@ -126,7 +126,7 @@ test('Repetition Host whole-usage validation rejects any and unknown signature e
 	];
 	for (const [name, declarations] of cases) {
 		const result = await runWithHost(declarations);
-		assert.ok(result.errors.some(item => item.code === 'L2136'), name);
+		assert.deepEqual(result.errors, [{ code: 'L2136' }], name);
 		assert.equal(result.emitted, false, name);
 	}
 });
