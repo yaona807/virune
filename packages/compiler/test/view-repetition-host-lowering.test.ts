@@ -57,6 +57,11 @@ const externalArrayProvider: JsInteropProvider = {
 		category: 'primitive',
 		primitive: 'number',
 	}),
+	display(ref) {
+		if (ref.id === 'values-array') return 'ReadonlyArray<number>';
+		if (ref.id === 'values-element') return 'number';
+		return '<unused>';
+	},
 };
 
 async function withProject(run: (root: string) => Promise<void>): Promise<void> {
