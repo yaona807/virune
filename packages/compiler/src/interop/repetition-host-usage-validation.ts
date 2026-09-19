@@ -17,9 +17,10 @@ export function validateRepetitionHostTypeScriptUsage(options: RepetitionHostTyp
 	const sourceText = [
 		`import * as __viruneRepetitionHostModule from ${moduleSpecifier};`,
 		`const __viruneRepetitionHost = __viruneRepetitionHostModule[${exportName}];`,
+		'type __ViruneIsNever<T> = [T] extends [never] ? true : false;',
 		'type __ViruneIsAny<T> = 0 extends (1 & T) ? true : false;',
 		'type __ViruneIsUnknown<T> = __ViruneIsAny<T> extends true ? false : unknown extends T ? ([keyof T] extends [never] ? true : false) : false;',
-		'type __ViruneSafe<T> = __ViruneIsAny<T> extends true ? never : __ViruneIsUnknown<T> extends true ? never : true;',
+		'type __ViruneSafe<T> = __ViruneIsNever<T> extends true ? never : __ViruneIsAny<T> extends true ? never : __ViruneIsUnknown<T> extends true ? never : true;',
 		'function __viruneRequireSafe<T>(_proof: __ViruneSafe<T>): void {}',
 		'declare function __ViruneProbeComponent(): never;',
 		'__viruneRequireSafe<typeof __viruneRepetitionHost>(true);',

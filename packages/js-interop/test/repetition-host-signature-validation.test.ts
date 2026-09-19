@@ -112,6 +112,7 @@ test('Repetition Host whole-usage validation rejects any and unknown signature e
 		['body index any', 'export declare function render<T>(readSnapshot: () => Array<{ id: string; index: number; value: T }>, renderGroup: (readValue: () => T, readIndex: () => any, id: string) => JSX.Element): JSX.Element;\n'],
 		['body id any', 'export declare function render<T>(readSnapshot: () => Array<{ id: string; index: number; value: T }>, renderGroup: (readValue: () => T, readIndex: () => number, id: any) => JSX.Element): JSX.Element;\n'],
 		['result any', 'export declare function render<T>(readSnapshot: () => Array<{ id: string; index: number; value: T }>, renderGroup: (readValue: () => T, readIndex: () => number, id: string) => JSX.Element): any;\n'],
+		['result never', 'export declare function render<T>(readSnapshot: () => Array<{ id: string; index: number; value: T }>, renderGroup: (readValue: () => T, readIndex: () => number, id: string) => JSX.Element): never;\n'],
 	];
 	for (const [name, declarations] of cases) {
 		const result = await runWithHost(declarations);
