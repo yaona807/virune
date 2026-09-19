@@ -289,19 +289,21 @@ function renderExternalRepetitionSource(expression: A.Expression, context: Rende
 }
 
 function renderNativeRepetitionSource(repetition: A.ViewRepetition, evidence: A.ViewRepetitionEvidence, context: RenderContext): string | undefined {
-	if (repetition.source.kind === 'ListExpression' && repetition.source.items.length > 0) {
-		const items: string[] = [];
-		for (const item of repetition.source.items) {
-			const rendered = renderViewValue(item, context);
-			if (rendered === undefined) return undefined;
-			items.push(rendered);
-		}
-		return `[${items.join(', ')}]`;
-	}
+	if (repetition.source.kind === 'ListExpression' && repetition.source.items.length > 0) return renderNativeRepetitionList(repetition.source, context);
 	const symbol = context.semantic.symbols.get(evidence.itemSymbolId);
 	if (symbol === undefined) return fail(context, repetition.span, 'native View repetition item binding is unavailable to JSX validation');
 	const probe = renderTypeProbe(symbol.typeId, context, repetition.span);
 	return probe === undefined ? undefined : `[${probe}]`;
+}
+
+function renderNativeRepetitionList(expression: A.ListExpression, context: RenderContext): string | undefined {
+	const items: string[] = [];
+	for (const item of expression.items) {
+		const rendered = item.kind === 'ListExpression' ? renderNativeRepetitionList(item, context) : renderViewValue(item, context);
+		if (rendered === undefined) return undefined;
+		items.push(rendered);
+	}
+	return `[${items.join(', ')}]`;
 }
 
 function renderTypeProbe(typeId: number, context: RenderContext, span: SourceSpan): string | undefined {
