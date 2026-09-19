@@ -34,7 +34,6 @@ declare global {
 		interface Element { readonly __viruneElement: unique symbol; }
 		interface IntrinsicElements {
 			span: {};
-			"virune-probe": {};
 		}
 	}
 }

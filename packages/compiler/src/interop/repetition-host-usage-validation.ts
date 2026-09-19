@@ -21,6 +21,7 @@ export function validateRepetitionHostTypeScriptUsage(options: RepetitionHostTyp
 		'type __ViruneIsUnknown<T> = __ViruneIsAny<T> extends true ? false : unknown extends T ? ([keyof T] extends [never] ? true : false) : false;',
 		'type __ViruneSafe<T> = __ViruneIsAny<T> extends true ? never : __ViruneIsUnknown<T> extends true ? never : true;',
 		'function __viruneRequireSafe<T>(_proof: __ViruneSafe<T>): void {}',
+		'declare const __viruneProbeElement: JSX.Element;',
 		'__viruneRequireSafe<typeof __viruneRepetitionHost>(true);',
 		'type __ViruneHostParameters = Parameters<typeof __viruneRepetitionHost>;',
 		'__viruneRequireSafe<__ViruneHostParameters[0]>(true);',
@@ -52,7 +53,7 @@ export function validateRepetitionHostTypeScriptUsage(options: RepetitionHostTyp
 		'      const __viruneRoundTripId: string = __viruneGroupIdentity;',
 		'      const __viruneIdRoundTrip: typeof __viruneGroupIdentity = __viruneSnapshotIdentity;',
 		'      void __viruneRoundTripValue; void __viruneValueRoundTrip; void __viruneRoundTripIndex; void __viruneIndexRoundTrip; void __viruneRoundTripId; void __viruneIdRoundTrip;',
-		'      return <virune-probe />;',
+		'      return __viruneProbeElement;',
 		'    },',
 		'  );',
 		'  void __viruneGenericResult;',
@@ -70,12 +71,11 @@ export function validateRepetitionHostTypeScriptUsage(options: RepetitionHostTyp
 		'    const __viruneIndex: number = __viruneReadIndex();',
 		'    const __viruneId: string = __viruneIdentity;',
 		'    void __viruneMarker; void __viruneIndex; void __viruneId;',
-		'    return <virune-probe />;',
+		'    return __viruneProbeElement;',
 		'  },',
 		');',
 		'__viruneRequireSafe<typeof __viruneRepetitionHostResult>(true);',
 		'void __viruneRepetitionHostResult;',
-		'declare global { namespace JSX { interface IntrinsicElements { "virune-probe": Record<string, never>; } } }',
 	].join('\n');
 	try {
 		return resolver.call(provider, {
