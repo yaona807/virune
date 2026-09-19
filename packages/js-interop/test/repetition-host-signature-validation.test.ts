@@ -109,17 +109,19 @@ test('Repetition Host whole-usage validation rejects any and unknown signature e
 	const cases: Array<[string, string]> = [
 		['host any', 'export declare const render: any;\n'],
 		['host unknown', 'export declare const render: unknown;\n'],
-		['callback accessors any', 'export declare function render(readSnapshot: any, renderGroup: (readValue: any, readIndex: any, id: any) => any): any;\n'],
-		['snapshot result any', 'export declare function render(readSnapshot: () => any, renderGroup: (readValue: () => { marker: string }, readIndex: () => number, id: string) => JSX.Element): JSX.Element;\n'],
+		['callback accessors any', 'export declare function render<T>(readSnapshot: () => ReadonlyArray<{ id: string; index: number; value: T }>, renderGroup: (readValue: any, readIndex: any, id: string) => JSX.Element): JSX.Element;\n'],
+		['snapshot result any', 'export declare function render<T>(readSnapshot: () => any, renderGroup: (readValue: () => T, readIndex: () => number, id: string) => JSX.Element): JSX.Element;\n'],
+		['snapshot result unknown', 'export declare function render<T>(readSnapshot: () => unknown, renderGroup: (readValue: () => T, readIndex: () => number, id: string) => JSX.Element): JSX.Element;\n'],
 		['snapshot id any', 'export declare function render<T>(readSnapshot: () => ReadonlyArray<{ id: any; index: number; value: T }>, renderGroup: (readValue: () => T, readIndex: () => number, id: string) => JSX.Element): JSX.Element;\n'],
 		['snapshot index unknown', 'export declare function render<T>(readSnapshot: () => ReadonlyArray<{ id: string; index: unknown; value: T }>, renderGroup: (readValue: () => T, readIndex: () => number, id: string) => JSX.Element): JSX.Element;\n'],
-		['body read value any', 'export declare function render(readSnapshot: () => ReadonlyArray<{ id: string; index: number; value: { marker: string } }>, renderGroup: (readValue: () => any, readIndex: () => number, id: string) => JSX.Element): JSX.Element;\n'],
+		['body read value any', 'export declare function render<T>(readSnapshot: () => ReadonlyArray<{ id: string; index: number; value: T }>, renderGroup: (readValue: () => any, readIndex: () => number, id: string) => JSX.Element): JSX.Element;\n'],
 		['body index any', 'export declare function render<T>(readSnapshot: () => ReadonlyArray<{ id: string; index: number; value: T }>, renderGroup: (readValue: () => T, readIndex: () => any, id: string) => JSX.Element): JSX.Element;\n'],
 		['body id any', 'export declare function render<T>(readSnapshot: () => ReadonlyArray<{ id: string; index: number; value: T }>, renderGroup: (readValue: () => T, readIndex: () => number, id: any) => JSX.Element): JSX.Element;\n'],
 		['body result any', 'export declare function render<T>(readSnapshot: () => ReadonlyArray<{ id: string; index: number; value: T }>, renderGroup: (readValue: () => T, readIndex: () => number, id: string) => any): JSX.Element;\n'],
 		['body result unknown', 'export declare function render<T>(readSnapshot: () => ReadonlyArray<{ id: string; index: number; value: T }>, renderGroup: (readValue: () => T, readIndex: () => number, id: string) => unknown): JSX.Element;\n'],
 		['body result never', 'export declare function render<T>(readSnapshot: () => ReadonlyArray<{ id: string; index: number; value: T }>, renderGroup: (readValue: () => T, readIndex: () => number, id: string) => never): JSX.Element;\n'],
 		['result any', 'export declare function render<T>(readSnapshot: () => ReadonlyArray<{ id: string; index: number; value: T }>, renderGroup: (readValue: () => T, readIndex: () => number, id: string) => JSX.Element): any;\n'],
+		['result unknown', 'export declare function render<T>(readSnapshot: () => ReadonlyArray<{ id: string; index: number; value: T }>, renderGroup: (readValue: () => T, readIndex: () => number, id: string) => JSX.Element): unknown;\n'],
 		['result never', 'export declare function render<T>(readSnapshot: () => ReadonlyArray<{ id: string; index: number; value: T }>, renderGroup: (readValue: () => T, readIndex: () => number, id: string) => JSX.Element): never;\n'],
 	];
 	for (const [name, declarations] of cases) {
