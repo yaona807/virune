@@ -105,6 +105,33 @@ test('structural View repetition remains on the existing path without a Host loc
 	});
 });
 
+test('dependency packages cannot provide the project-owned repetition Host locator', async () => {
+	await withProject(async root => {
+		await mkdir(join(root, 'node_modules/locator-package'), { recursive: true });
+		await writeFile(join(root, 'node_modules/locator-package/package.json'), JSON.stringify({
+			name: 'locator-package',
+			version: '1.0.0',
+			virune: './index.virune',
+		}), 'utf8');
+		await writeFile(join(root, 'node_modules/locator-package/index.virune'), '@repetitionHost("render", 1)\nextern js "./repetition-host.js" {}\n', 'utf8');
+		await writeFile(join(root, 'src/main.virune'), `import "locator-package"
+
+component Page() uses JavaScript {
+	return view {
+		for item in [1, 2] by item {
+			span() {
+				{ item }
+			}
+		}
+	}
+}
+`, 'utf8');
+		const result = await buildProject(root, { write: false, jsInteropProvider: jsxValidationProvider });
+		assert.ok(errors(result).some(item => item.code === 'L2135' && item.message.includes('requires exactly one project @repetitionHost locator')));
+		assert.equal(moduleOutput(result, root), undefined);
+	});
+});
+
 test('identity-bearing View repetition fails closed without a project Host locator', async () => {
 	await withProject(async root => {
 		await writeFile(join(root, 'src/main.virune'), `component Page() uses JavaScript {
