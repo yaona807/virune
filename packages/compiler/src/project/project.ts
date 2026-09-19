@@ -315,12 +315,12 @@ export async function buildProject(
 			moduleRuntimeDependencies = importModel.runtimeDependencies;
 			const synthetic: A.ModuleNode = { ...parsed.ast, imports: parsed.ast.imports.filter(item => item.sourceKind === 'javascript'), declarations: [...importedDeclarations, ...parsed.ast.declarations] };
 			const semantic = checkModule(synthetic, { signatureOnlyNodeIds: signatureOnly, typeOnlyNodeIds, platform: config.platform, moduleId: moduleIdentity(root, path), containingFile: path, ...(jsInteropProvider === undefined ? {} : { jsInteropProvider }) });
-			validateFrontendJsxUsage(parsed.ast, semantic, { containingFile: path, platform: config.platform, ...(jsInteropProvider === undefined ? {} : { jsInteropProvider }) });
 			mutableStats.checkedModules++;
 			const inSourceDirectory = isWithin(resolve(root, config.sourceDir), path);
 			if (!semantic.diagnostics.hasErrors && component !== undefined && inSourceDirectory) {
 				validateFrontendComponentEmissionBoundary(parsed.ast, semantic, semantic.diagnostics);
 			}
+			if (!semantic.diagnostics.hasErrors) validateFrontendJsxUsage(parsed.ast, semantic, { containingFile: path, platform: config.platform, ...(jsInteropProvider === undefined ? {} : { jsInteropProvider }) });
 			if (!semantic.diagnostics.hasErrors && identityRepetitions.length > 0 && inSourceDirectory && repetitionHostLocator.status !== 'ready') {
 				const message = repetitionHostLocator.status === 'none'
 					? 'Identity-bearing View repetition requires exactly one project @repetitionHost locator'
