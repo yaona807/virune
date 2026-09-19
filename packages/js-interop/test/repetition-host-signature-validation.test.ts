@@ -85,8 +85,8 @@ test('Repetition Host whole-usage validation rejects missing and incompatible ex
 		['wrong arity', 'export declare function render(readSnapshot: () => unknown[]): JSX.Element;\n'],
 		['wrong snapshot', 'export declare function render(readSnapshot: () => Array<{ key: number }>, renderGroup: (readValue: () => number, readIndex: () => number, id: string) => JSX.Element): JSX.Element;\n'],
 		['wrong body id', 'export declare function render<T>(readSnapshot: () => Array<{ id: string; index: number; value: T }>, renderGroup: (readValue: () => T, readIndex: () => number, id: number) => JSX.Element): JSX.Element;\n'],
-		['monomorphic value', 'export declare function render(readSnapshot: () => Array<{ id: string; index: number; value: { marker: string } }>, renderGroup: (readValue: () => { marker: string }, readIndex: () => number, id: string) => JSX.Element): JSX.Element;\\n'],
-		['constrained generic value', 'export declare function render<T extends { marker: string }>(readSnapshot: () => Array<{ id: string; index: number; value: T }>, renderGroup: (readValue: () => T, readIndex: () => number, id: string) => JSX.Element): JSX.Element;\\n'],
+		['monomorphic value', 'export declare function render(readSnapshot: () => Array<{ id: string; index: number; value: { marker: string } }>, renderGroup: (readValue: () => { marker: string }, readIndex: () => number, id: string) => JSX.Element): JSX.Element;\n'],
+		['constrained generic value', 'export declare function render<T extends { marker: string }>(readSnapshot: () => Array<{ id: string; index: number; value: T }>, renderGroup: (readValue: () => T, readIndex: () => number, id: string) => JSX.Element): JSX.Element;\n'],
 		['unresolved declaration', 'export declare const render: MissingHostType;\n'],
 	];
 	for (const [name, declarations] of cases) {
