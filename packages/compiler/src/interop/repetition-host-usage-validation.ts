@@ -25,6 +25,8 @@ export function validateRepetitionHostTypeScriptUsage(options: RepetitionHostTyp
 		'type __ViruneHostParameters = Parameters<typeof __viruneRepetitionHost>;',
 		'__viruneRequireSafe<__ViruneHostParameters[0]>(true);',
 		'__viruneRequireSafe<__ViruneHostParameters[1]>(true);',
+		'type __ViruneSnapshotResult = __ViruneHostParameters[0] extends (...args: never[]) => infer TResult ? TResult : never;',
+		'__viruneRequireSafe<__ViruneSnapshotResult>(true);',
 		'const __viruneRepetitionHostResult = __viruneRepetitionHost(',
 		'  () => [{ id: "s:virune-probe", index: 0, value: { marker: "virune-probe" } }],',
 		'  (__viruneReadValue, __viruneReadIndex, __viruneIdentity) => {',
