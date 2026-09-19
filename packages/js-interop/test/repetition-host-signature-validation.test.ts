@@ -18,6 +18,7 @@ const config = JSON.stringify({
 });
 
 const viruneSource = `import "../infra/locator.virune"
+import js "../infra/jsx-env.js"
 
 component Page() uses JavaScript {
 	return view {
@@ -52,10 +53,11 @@ async function runWithHost(declarations: string | undefined): Promise<{ readonly
 		await mkdir(join(root, 'src/infra'), { recursive: true });
 		await writeFile(join(root, 'virune.json'), config, 'utf8');
 		await writeFile(join(root, 'tsconfig.json'), JSON.stringify({ compilerOptions: { jsx: 'preserve', strict: true }, include: ['src/**/*'] }), 'utf8');
-		await writeFile(join(root, 'src/jsx.d.ts'), jsxDeclarations, 'utf8');
+		await writeFile(join(root, 'src/infra/jsx-env.js'), 'export {};\n', 'utf8');
+		await writeFile(join(root, 'src/infra/jsx-env.d.ts'), jsxDeclarations, 'utf8');
 		await writeFile(join(root, 'src/infra/locator.virune'), '@repetitionHost("render", 1)\nextern js "./repetition-host.js" {}\n', 'utf8');
 		await writeFile(join(root, 'src/pages/page.virune'), viruneSource, 'utf8');
-		if (declarations !== undefined) await writeFile(join(root, 'src/infra/repetition-host.d.ts'), declarations, 'utf8');
+		if (declarations !== undefined) await writeFile(join(root, 'src/infra/repetition-host.d.ts'), `import "./jsx-env.js";\n${declarations}`, 'utf8');
 		const provider = new TypeScriptInteropProvider({ projectRoot: root });
 		try {
 			const result = await buildProject(root, { write: false, jsInteropProvider: provider });
