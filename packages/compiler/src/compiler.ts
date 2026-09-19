@@ -58,14 +58,11 @@ export function compileSource(source: SourceFile, options: CompileOptions = {}):
 	}
 	if (diagnostics.hasErrors) return { source, diagnostics: diagnostics.items, ast };
 	const semantic = checkModule(ast, { ...(options.platform === undefined ? {} : { platform: options.platform }), containingFile: source.path, ...(options.jsInteropProvider === undefined ? {} : { jsInteropProvider: options.jsInteropProvider }) });
-	validateFrontendJsxUsage(ast, semantic, { containingFile: source.path, platform: options.platform ?? 'neutral', ...(options.jsInteropProvider === undefined ? {} : { jsInteropProvider: options.jsInteropProvider }) });
+	const component = ast.declarations.find(declaration => declaration.kind === 'ComponentDeclaration');
+	if (options.emit !== false && !semantic.diagnostics.hasErrors && component !== undefined) validateFrontendComponentEmissionBoundary(ast, semantic, semantic.diagnostics);
+	if (!semantic.diagnostics.hasErrors) validateFrontendJsxUsage(ast, semantic, { containingFile: source.path, platform: options.platform ?? 'neutral', ...(options.jsInteropProvider === undefined ? {} : { jsInteropProvider: options.jsInteropProvider }) });
 	for (const diagnostic of semantic.diagnostics.items) diagnostics.add(diagnostic);
 	if (diagnostics.hasErrors || options.emit === false) return { source, diagnostics: diagnostics.items, ast, semantic };
-	const component = ast.declarations.find(declaration => declaration.kind === 'ComponentDeclaration');
-	if (component !== undefined) {
-		validateFrontendComponentEmissionBoundary(ast, semantic, diagnostics);
-		if (diagnostics.hasErrors) return { source, diagnostics: diagnostics.items, ast, semantic };
-	}
 	const hir = lowerToHir(ast, semantic);
 	const outputFile = options.outputFile ?? source.path.replace(/\.virune$/u, component === undefined ? '.js' : '.jsx');
 	const output = emitJavaScript(hir, source, outputFile, {

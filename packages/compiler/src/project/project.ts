@@ -8,6 +8,8 @@ import { DiagnosticBag, type Diagnostic } from '../diagnostics/diagnostic.js';
 import { lowerToHir } from '../hir/lower.js';
 import { validateFrontendComponentEmissionBoundary } from '../interop/frontend-component-emission.js';
 import { validateFrontendJsxUsage } from '../interop/jsx-view-validation.js';
+import { collectIdentityViewRepetitions, discoverRepetitionHostLocator, type RepetitionHostLocator, type RepetitionHostLocatorResolution } from '../interop/repetition-host-locator.js';
+import { validateRepetitionHostTypeScriptUsage } from '../interop/repetition-host-usage-validation.js';
 import { buildAst } from '../syntax/cst-to-ast.js';
 import { attachDocumentation } from '../syntax/documentation.js';
 import { parse } from '../syntax/parser.js';
@@ -269,6 +271,16 @@ export async function buildProject(
 	};
 	if (includeConfigEntry) await visit(entry);
 	for (const additionalEntry of additionalEntries) await visit(isAbsolute(additionalEntry) ? additionalEntry : resolve(root, additionalEntry));
+	const repetitionHostLocator = discoverRepetitionHostLocator(
+		order.flatMap(path => {
+			const ast = parsedByPath.get(path)?.ast;
+			return ast === undefined || modulePackageScope(root, path) !== 'project' ? [] : [{ path, ast }];
+		}),
+	);
+	if (repetitionHostLocator.status === 'ambiguous') {
+		for (const locator of repetitionHostLocator.locators) projectDiagnostics.error('L2134', 'Project defines multiple @repetitionHost locators', locator.span);
+	}
+	const repetitionHostFingerprint = fingerprintRepetitionHostResolution(repetitionHostLocator);
 	const moduleInterfaces = await buildModuleInterfaces(root, order, parsedByPath, projectDiagnostics, host);
 	const interfaceHashes = new Map<string, string>();
 	for (const path of order) interfaceHashes.set(path, moduleInterfaceHash(moduleInterfaces.get(path)));
@@ -279,8 +291,10 @@ export async function buildProject(
 	for (const path of order) {
 		const parsed = parsedByPath.get(path)!;
 		const component = parsed.ast?.declarations.find(declaration => declaration.kind === 'ComponentDeclaration');
+		const identityRepetitions = parsed.ast === undefined ? [] : collectIdentityViewRepetitions(parsed.ast);
 		const dependencySignature = contentHash((dependenciesByPath.get(path) ?? []).map(dependency => `${dependency}:${interfaceHashes.get(dependency) ?? ''}:${parsedByPath.get(dependency)?.ast?.declarations.some(declaration => declaration.kind === 'ComponentDeclaration') === true ? 'jsx' : 'js'}`).sort().join('|'));
-		const buildFingerprint = contentHash(`${sourceHashes.get(path) ?? ''}|${dependencySignature}|${configFingerprint}`);
+		const hostResolutionFingerprint = identityRepetitions.length === 0 ? '' : repetitionHostFingerprint;
+		const buildFingerprint = contentHash(`${sourceHashes.get(path) ?? ''}|${dependencySignature}|${configFingerprint}|${hostResolutionFingerprint}`);
 		const cached = cache?.get(path);
 		if (cached?.buildFingerprint === buildFingerprint) {
 			builtByPath.set(path, cached.built);
@@ -302,11 +316,29 @@ export async function buildProject(
 			moduleRuntimeDependencies = importModel.runtimeDependencies;
 			const synthetic: A.ModuleNode = { ...parsed.ast, imports: parsed.ast.imports.filter(item => item.sourceKind === 'javascript'), declarations: [...importedDeclarations, ...parsed.ast.declarations] };
 			const semantic = checkModule(synthetic, { signatureOnlyNodeIds: signatureOnly, typeOnlyNodeIds, platform: config.platform, moduleId: moduleIdentity(root, path), containingFile: path, ...(jsInteropProvider === undefined ? {} : { jsInteropProvider }) });
-			validateFrontendJsxUsage(parsed.ast, semantic, { containingFile: path, platform: config.platform, ...(jsInteropProvider === undefined ? {} : { jsInteropProvider }) });
 			mutableStats.checkedModules++;
 			const inSourceDirectory = isWithin(resolve(root, config.sourceDir), path);
 			if (!semantic.diagnostics.hasErrors && component !== undefined && inSourceDirectory) {
 				validateFrontendComponentEmissionBoundary(parsed.ast, semantic, semantic.diagnostics);
+			}
+			if (!semantic.diagnostics.hasErrors) validateFrontendJsxUsage(parsed.ast, semantic, { containingFile: path, platform: config.platform, ...(jsInteropProvider === undefined ? {} : { jsInteropProvider }) });
+			if (!semantic.diagnostics.hasErrors && identityRepetitions.length > 0 && inSourceDirectory && repetitionHostLocator.status !== 'ready') {
+				const message = repetitionHostLocator.status === 'none'
+					? 'Identity-bearing View repetition requires exactly one project @repetitionHost locator'
+					: 'Identity-bearing View repetition cannot emit while the project @repetitionHost locator is ambiguous';
+				for (const repetition of identityRepetitions) semantic.diagnostics.error('L2135', message, repetition.span);
+			}
+			if (!semantic.diagnostics.hasErrors && identityRepetitions.length > 0 && inSourceDirectory && repetitionHostLocator.status === 'ready') {
+				const accepted = validateRepetitionHostTypeScriptUsage({
+					containingFile: path,
+					platform: config.platform,
+					moduleSpecifier: rebaseRepetitionHostModuleSpecifierForValidation(repetitionHostLocator.locator, path),
+					exportName: repetitionHostLocator.locator.exportName,
+					...(jsInteropProvider === undefined ? {} : { jsInteropProvider }),
+				});
+				if (!accepted) {
+					for (const repetition of identityRepetitions) semantic.diagnostics.error('L2136', 'TypeScript whole-usage validation rejected the project @repetitionHost export', repetition.span);
+				}
 			}
 			const diagnostics = [...parsed.diagnostics, ...semantic.diagnostics.items];
 			let output: EmitResult | undefined; let outputPath: string | undefined;
@@ -314,7 +346,15 @@ export async function buildProject(
 				const relativePath = relative(resolve(root, config.sourceDir), path);
 				outputPath = resolve(root, config.outDir, relativePath.replace(/\.virune$/u, component === undefined ? '.js' : '.jsx'));
 				const emissionModule: A.ModuleNode = { ...parsed.ast, imports: emissionImports };
-				output = emitJavaScript(lowerToHir(emissionModule, semantic), parsed.source, outputPath, { sourceMap: config.sourceMap, sourcesContent: config.sourcesContent, sourcePath: relative(root, path).replaceAll('\\', '/') });
+				const repetitionHost = identityRepetitions.length > 0 && repetitionHostLocator.status === 'ready'
+					? { moduleSpecifier: rebaseRepetitionHostModuleSpecifier(repetitionHostLocator.locator, outputPath, root, config), exportName: repetitionHostLocator.locator.exportName }
+					: undefined;
+				output = emitJavaScript(lowerToHir(emissionModule, semantic), parsed.source, outputPath, {
+					sourceMap: config.sourceMap,
+					sourcesContent: config.sourcesContent,
+					sourcePath: relative(root, path).replaceAll('\\', '/'),
+					...(repetitionHost === undefined ? {} : { repetitionHost }),
+				});
 				mutableStats.emittedModules++;
 				if (write) await writeEmitOutput(outputPath, output, config.sourceMap);
 			}
@@ -332,6 +372,31 @@ export async function buildProject(
 
 function contentHash(value: string): string {
 	return createHash('sha256').update(value).digest('hex');
+}
+
+function fingerprintRepetitionHostResolution(resolution: RepetitionHostLocatorResolution): string {
+	if (resolution.status === 'none') return contentHash('none');
+	const locatorKey = (locator: RepetitionHostLocator) => `${locator.declarationFile}\u0000${locator.module}\u0000${locator.exportName}\u0000${locator.protocolVersion}`;
+	if (resolution.status === 'ready') return contentHash(`ready\u0000${locatorKey(resolution.locator)}`);
+	return contentHash(`ambiguous\u0000${resolution.locators.map(locatorKey).sort().join('\u0001')}`);
+}
+
+function rebaseRepetitionHostModuleSpecifier(locator: RepetitionHostLocator, outputPath: string, root: string, config: ViruneConfig): string {
+	if (!locator.module.startsWith('.')) return locator.module;
+	const absoluteTarget = resolve(dirname(locator.declarationFile), locator.module);
+	const sourceRoot = resolve(root, config.sourceDir);
+	const emittedTarget = isWithin(sourceRoot, absoluteTarget)
+		? resolve(root, config.outDir, relative(sourceRoot, absoluteTarget))
+		: absoluteTarget;
+	const rebased = relative(dirname(outputPath), emittedTarget).replaceAll('\\', '/');
+	return rebased.startsWith('.') ? rebased : `./${rebased}`;
+}
+
+function rebaseRepetitionHostModuleSpecifierForValidation(locator: RepetitionHostLocator, containingFile: string): string {
+	if (!locator.module.startsWith('.')) return locator.module;
+	const absoluteTarget = resolve(dirname(locator.declarationFile), locator.module);
+	const rebased = relative(dirname(containingFile), absoluteTarget).replaceAll('\\', '/');
+	return rebased.startsWith('.') ? rebased : `./${rebased}`;
 }
 
 function moduleInterfaceHash(moduleInterface: ModuleInterface | undefined): string {
