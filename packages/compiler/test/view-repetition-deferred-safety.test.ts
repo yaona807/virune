@@ -122,6 +122,7 @@ component ListView() uses JavaScript {
 }
 `);
 	assert.ok(result.diagnostics.some(item => item.code === 'L4309' && item.message.includes('cannot transport item of type DeferredPayload')));
+	assert.equal(codes(result).includes('L4308'), false);
 	assert.equal(result.output, undefined);
 });
 
