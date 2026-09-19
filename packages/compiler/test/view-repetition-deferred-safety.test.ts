@@ -55,6 +55,9 @@ function externalCaptureProvider(category: 'object' | 'unknown' | 'any' = 'objec
 				receiverMode: 'none',
 			})
 			: () => undefined,
+		display(ref) {
+			return ref.id === 'external-call-result' ? 'string' : 'ExternalValue';
+		},
 	};
 }
 
@@ -108,7 +111,7 @@ test('Host-deferred repetition rejects mutable snapshot-source captures', () => 
 test('Host-deferred repetition rejects unsafe inline snapshot item transport', () => {
 	const result = compile(`component ListView() uses JavaScript {
 	return view {
-		for item in [MutableBytes.create(4)] by 1 {
+		for item in [MutableBytes.fromBytes(Bytes.fromUtf8("x"))] by 1 {
 			"body"
 		}
 	}
@@ -263,7 +266,7 @@ test('Host-deferred repetition rejects mutable captures', () => {
 // @virune-rule {"id":"frontend.view-repetition","runner":"unit","file":"packages/compiler/test/view-repetition-deferred-safety.test.ts","case":"Host-deferred repetition rejects lifetime-bound native captures","kind":"negative","platform":"common"}
 test('Host-deferred repetition rejects lifetime-bound native captures', () => {
 	const result = compile(`component ListView() uses JavaScript {
-	let bytes = MutableBytes.create(4)
+	let bytes = MutableBytes.fromBytes(Bytes.fromUtf8("x"))
 	return view {
 		for item in [1] by item {
 			span() {
