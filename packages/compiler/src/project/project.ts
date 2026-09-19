@@ -273,7 +273,7 @@ export async function buildProject(
 	const repetitionHostLocator = discoverRepetitionHostLocator(
 		order.flatMap(path => {
 			const ast = parsedByPath.get(path)?.ast;
-			return ast === undefined ? [] : [{ path, ast }];
+			return ast === undefined || modulePackageScope(root, path) !== 'project' ? [] : [{ path, ast }];
 		}),
 	);
 	if (repetitionHostLocator.status === 'ambiguous') {
