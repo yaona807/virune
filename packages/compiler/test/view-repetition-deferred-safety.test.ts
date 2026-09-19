@@ -280,7 +280,7 @@ component ListView() uses JavaScript {
 	return view {
 		for item in [1] by item {
 			span() {
-				{ Debug.format(handle) }
+				{ handle.id }
 			}
 		}
 	}
