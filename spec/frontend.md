@@ -138,33 +138,55 @@ The compiler-managed slot must not become an observable direct child value of a 
 
 ## `[frontend.view-repetition]` Declarative View repetition
 
-A View-local `for` is a dedicated declarative View construct and is distinct from the ordinary imperative `ForStatement`:
+A View-local `for` is a dedicated declarative View construct and is distinct from the ordinary imperative `ForStatement`. View repetition requires an explicit logical identity:
 
 ```virune
 view {
-    for user in users {
-        UserRow(user: user)
-    }
-
-    for user, index in users {
-        UserRow(user: user, position: index + 1)
+    for user, index in users by user.id {
+        UserRow(user: user, position: index)
     }
 }
 ```
 
-The source expression is evaluated exactly once for one downstream-host evaluation of the repetition. Items are visited in ascending zero-based source-index order and each visited item is read exactly once. The optional index binding denotes that source index, not the ordinal of emitted children.
+`by` is contextual to View repetition and remains available as an ordinary identifier elsewhere. The identity expression is evaluated after the current item and optional source-index bindings exist. Its checked type must be `String` or `Int`; unresolved or unsupported identity evidence is rejected. String and Int identities occupy distinct tagged domains. Two visited items that produce the same tagged identity in one snapshot are rejected before Host reconciliation or View-body execution.
 
-Each item's View body is evaluated in source order. If one item contributes multiple View children, those children are appended to one compiler-owned flat ordered child sequence. Virune does not give the item an implicit Fragment/group identity and does not rely on framework-specific array flattening to define this ordering.
+Virune does not infer identity from the source index, transported JavaScript object identity, a child property such as `key`, a field name such as `id`, or framework/package conventions. Identity-free View repetition is not part of the stable language surface.
 
-Repetition is not defined as `source.map(...)` or another overrideable collection method. The compiler must not hoist, snapshot, or cache a host-sensitive source expression outside its downstream-host evaluation position. A `key` property inside the body remains an ordinary downstream View property and has no Virune Core identity or reconciliation semantics.
+Identity-bearing repetition is evaluated through exactly one project-owned Repetition Host. The project declares the Host through the existing declaration-attribute and `extern js` surface:
+
+```virune
+@repetitionHost("render", 1)
+extern js "./repetition-host.js" {}
+```
+
+For protocol version 1, the compiler-visible call shape is conceptually:
+
+```ts
+repetitionHost(
+  readSnapshot: () => readonly { id: string; index: number; value: T }[],
+  renderGroup: (
+    readValue: () => T,
+    readIndex: () => number,
+    id: string,
+  ) => FrameworkOwnedView,
+)
+```
+
+The compiler owns snapshot traversal, identity encoding, duplicate detection, safe transport/capture checks, and the Host call. The project Host and downstream framework own reconciliation, keyed representation, scheduling, lifecycle, and rendering. Callback invocation count is not a Virune guarantee.
+
+The Host locator is project-owned. A dependency package cannot silently select the project's repetition Host. Missing, malformed, unsupported, ambiguous, or otherwise unprovable Host evidence fails closed and suppresses affected output. Relative Host modules are resolved from the locator declaration and rebased for the emitted consumer. The located export is validated through the project's current TypeScript whole-usage environment; Virune does not reimplement TypeScript function assignability or choose a framework by name.
+
+One logical identity owns the complete View result of one iteration. If an iteration contributes multiple children, those children remain one identity-owned group for downstream reconciliation. Nested identity repetition composes through the same Host contract.
 
 ## `[frontend.view-repetition-source]` Repetition source boundary
 
-The initial repetition sources are limited to host-safe native `List<T>` and JavaScript External `Array<T>` / `ReadonlyArray<T>` whose array and indexed-element shape is proven from the current interop provider snapshot.
+Initial repetition sources are limited to host-safe native `List<T>` and JavaScript External `Array<T>` / `ReadonlyArray<T>` whose array and indexed-element shape is proven from the current interop provider snapshot.
 
 External arrays are not implicitly converted to native `List`. `any`, `unknown`, unsupported collections, or unresolved, stale, partial, or ambiguous provider evidence fail closed.
 
-For an External array, one repetition evaluation observes the initial `length` exactly once. It visits indexes from zero up to that observed length, skips sparse-array holes, and reads each visited element exactly once. The checker commits provider-independent repetition evidence before emission; emission does not re-query TypeScript and does not infer array semantics from display text or package/framework heuristics.
+For each Host-triggered `readSnapshot()` evaluation, the source expression is evaluated exactly once. An External array's initial `length` is observed exactly once; indexes are visited from zero to that observed length, sparse holes are skipped, and each visited item is read once. The optional index binding is the zero-based source index, not an output ordinal.
+
+The source, transported item, identity expression, and View body all cross Host-deferred boundaries and therefore must satisfy the frontend lifetime/transport safety rules. Resource/capability values, raw native callables, lifetime-bound or must-use values, unresolved/open shapes, and other values whose deferred safety cannot be proven are rejected. Explicit user-authored snapshots remain ordinary Virune semantics and are not moved back into a reactive Host position.
 
 Generic `Iterable`, `AsyncIterable`, `Set`, `Map`, and arbitrary array-like values are outside this initial contract.
 
@@ -172,7 +194,7 @@ Generic `Iterable`, `AsyncIterable`, `Set`, `Map`, and arbitrary array-like valu
 
 The compiler-managed standalone `children` slot is rejected anywhere inside a repetition subtree, including through nested View conditionals or nested repetitions. Repetition does not introduce `break`, `continue`, assignment, or imperative loop-body semantics.
 
-A repetition-generated collection must not become the observable direct child value of a JavaScript-imported External component. Until the zero-or-more flat child contribution can be preserved at that boundary without changing downstream children/slot shape, repetition in that direct External child structure is rejected. Repetition nested under an intrinsic element that is itself below an External component remains eligible for normal validation.
+A Host-backed repetition used as the direct child of a JavaScript-imported External component remains fail-closed until the exact Host result can be proven against that directly observable downstream children shape. Repetition nested under an intrinsic element below an External component remains eligible for normal validation. This restriction is a conservative proof boundary; it is not permission to restore compiler-owned structural array expansion or framework-specific lowering.
 
 ## `[frontend.framework-neutral]` Framework-neutral core
 
