@@ -159,6 +159,8 @@ identity-bearing repetitionは、project-ownedなRepetition Hostを正確に1つ
 extern js "./repetition-host.js" {}
 ```
 
+`@repetitionHost` attributeはsafeな`extern js` declarationにだけ指定できる。引数は正確に2つのliteral、すなわちStringのexport nameとIntのprotocol version `1`でなければならない。それ以外のargument shapeまたはprotocol versionはrejectする。View repetitionをemitするprojectはvalidなproject-owned locatorを正確に1つresolveしなければならず、複数のvalid locatorはambiguousとしてfail closedとする。
+
 protocol version 1のcompiler-visibleなcall shapeは概念上次の通りである。
 
 ```ts
