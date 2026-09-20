@@ -159,6 +159,8 @@ Identity-bearing repetition is evaluated through exactly one project-owned Repet
 extern js "./repetition-host.js" {}
 ```
 
+The `@repetitionHost` attribute is valid only on a safe `extern js` declaration. It takes exactly two literal arguments: a String export name and the Int protocol version `1`. Any other argument shape or protocol version is rejected. A project that emits View repetition must resolve exactly one valid project-owned locator; multiple valid project locators are ambiguous and fail closed.
+
 For protocol version 1, the compiler-visible call shape is conceptually:
 
 ```ts
