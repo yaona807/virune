@@ -15,7 +15,7 @@ const errorCodes = (text: string): readonly string[] => {
 	return diagnostics.filter(item => item.severity === 'error').map(item => item.code);
 };
 
-// @virune-rule {"id":"frontend.view-repetition","runner":"unit","file":"packages/compiler/test/view-repetition-identity-syntax.test.ts","case":"View repetition requires explicit by identity expression","kind":"positive","platform":"common"}
+// @virune-rule {"id":"frontend.view-repetition","runner":"unit","file":"packages/compiler/test/view-repetition-identity-syntax.test.ts","case":"View repetition preserves required by identity expression","kind":"positive","platform":"common"}
 test('View repetition preserves required by identity expression', () => {
 	const parsed = parseSource(source(`component ListView() uses JavaScript {
 	let items = [1, 2]
