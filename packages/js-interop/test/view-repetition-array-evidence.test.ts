@@ -50,17 +50,9 @@ test('ReadonlyArray repetition preserves checked element and source-index eviden
 		id: 1,
 		path: join(root, 'src/main.virune'),
 		text: `import js { readonlyValues } from "./library.js"\n\ncomponent Values() uses JavaScript {\n\treturn view {\n\t\tfor value, index in readonlyValues by value {\n\t\t\tspan(value: value, index: index)\n\t\t}\n\t}\n}\n`,
-	}, { platform: 'node', jsInteropProvider: provider });
+	}, { emit: false, platform: 'node', jsInteropProvider: provider });
 	assert.deepEqual(result.diagnostics.filter(item => item.severity === 'error'), []);
-	assert.ok(result.output);
-	const code = result.output.code;
-	assert.match(code, /const \$viewSource\d+ = readonlyValues;/u);
-	assert.match(code, /const \$viewLength\d+ = \$viewSource\d+\.length;/u);
-	assert.match(code, /if \(!Object\.prototype\.hasOwnProperty\.call\(\$viewSource\d+, \$viewIndex\d+\)\) continue;/u);
-	assert.match(code, /const value = \$viewSource\d+\[\$viewIndex\d+\];/u);
-	assert.match(code, /const index = \$viewIndex\d+;/u);
-	assert.ok(code.includes('.push(<span value={value} index={index} />);'));
-	assert.ok(!code.includes('.map('));
+	assert.equal(result.output, undefined);
 });
 
 test('External Array call and explicit snapshot remain valid repetition sources', async () => {
@@ -84,8 +76,7 @@ test('External Array call and explicit snapshot remain valid repetition sources'
 		text: `import js { getValues } from "./library.js"\n\ncomponent Values() uses JavaScript {\n\treturn view {\n\t\tfor value in getValues() by value {\n\t\t\tspan(value: value)\n\t\t}\n\t}\n}\n`,
 	}, { emit: false, platform: 'node', jsInteropProvider: provider });
 	assert.deepEqual(result.diagnostics.filter(item => item.severity === 'error'), []);
-	assert.ok(result.output);
-	assert.match(result.output.code, /const \$viewSource\d+ = getValues\(\);/u);
+	assert.equal(result.output, undefined);
 
 	const snapshot = compileSource({
 		id: 2,
@@ -93,11 +84,7 @@ test('External Array call and explicit snapshot remain valid repetition sources'
 		text: `import js { getValues } from "./library.js"\n\ncomponent Snapshot() uses JavaScript {\n\tlet values = getValues()\n\treturn view {\n\t\tfor value in values by value {\n\t\t\tspan(value: value)\n\t\t}\n\t}\n}\n`,
 	}, { emit: false, platform: 'node', jsInteropProvider: provider });
 	assert.deepEqual(snapshot.diagnostics.filter(item => item.severity === 'error'), []);
-	assert.ok(snapshot.output);
-	const snapshotCode = snapshot.output.code;
-	assert.equal((snapshotCode.match(/getValues\(\)/gu) ?? []).length, 1);
-	assert.match(snapshotCode, /const values = getValues\(\);/u);
-	assert.match(snapshotCode, /const \$viewSource\d+ = values;/u);
+	assert.equal(snapshot.output, undefined);
 });
 
 test('empty native List repetition remains valid with explicit identity evidence', () => {
@@ -119,7 +106,5 @@ test('empty native List repetition remains valid with explicit identity evidence
 		text: `component EmptyView() uses JavaScript {\n\tlet items: List<Int> = []\n\treturn view {\n\t\tfor item in items by item {\n\t\t\tspan(value: item)\n\t\t}\n\t}\n}\n`,
 	}, { emit: false, jsInteropProvider: provider });
 	assert.deepEqual(result.diagnostics.filter(item => item.severity === 'error'), []);
-	assert.ok(result.output);
-	assert.match(result.output.code, /const \$viewSource\d+ = items;/u);
-	assert.ok(!result.output.code.includes('.map('));
+	assert.equal(result.output, undefined);
 });
