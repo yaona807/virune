@@ -169,64 +169,38 @@ test('View conditionals without else preserve zero-child absence in JSX proof an
 	assert.ok(result.output.code.includes('? <strong /> : <></>}'));
 });
 
-test('View repetition emits one flat compiler-owned sequence without overrideable collection helpers', () => {
-	let proofSource = '';
-	const provider: JsInteropProvider = {
-		...jsxValidationProvider,
-		resolveJsxUsage(usage) {
-			proofSource = usage.sourceText;
-			return { accepted: true };
-		},
-	};
+test('single-file emission refuses Host-backed View repetition without project Host discovery', () => {
 	const result = compileSource(source(`component ListView() uses JavaScript {
 	let items = [1, 2]
 	return view {
-		for item, index in items {
+		for item, index in items by item {
 			span(value: item)
 			if index > 0 {
 				strong(position: index)
 			}
-			for nested in items {
-				em(value: nested)
-			}
 		}
 	}
 }
-`), { jsInteropProvider: provider });
-	assert.deepEqual(result.diagnostics.filter(item => item.severity === 'error'), []);
-	assert.ok(result.output);
-	const code = result.output.code;
-	assert.equal((code.match(/const \$viewChildren\d+ = \[\];/gu) ?? []).length, 1);
-	assert.equal((code.match(/const \$viewSource\d+ = items;/gu) ?? []).length, 2);
-	assert.match(code, /const \$viewLength\d+ = \$viewSource\d+\.length;/u);
-	assert.match(code, /for \(let \$viewIndex\d+ = 0; \$viewIndex\d+ < \$viewLength\d+; \$viewIndex\d+\+\+\) \{/u);
-	assert.match(code, /const item = \$viewSource\d+\[\$viewIndex\d+\];/u);
-	assert.match(code, /const index = \$viewIndex\d+;/u);
-	assert.ok(code.includes('.push(<span value={item} />);'));
-	assert.ok(code.includes('.push(<strong position={index} />);'));
-	assert.ok(code.includes('.push(<em value={nested} />);'));
-	assert.ok(!code.includes('.map('));
-	assert.ok(!code.includes('<></>'));
-	assert.ok(proofSource.includes('$viruneViewChildren'));
-	assert.ok(proofSource.includes('.push(<span value={$viruneViewItem'));
-	assert.ok(!proofSource.includes('.map('));
+`), { jsInteropProvider: jsxValidationProvider });
+	assert.ok(result.diagnostics.some(item => item.code === 'L2135' && item.severity === 'error' && /project build/u.test(item.message)));
+	assert.equal(result.output, undefined);
 });
 
-test('View repetition fails closed when its generated collection would become an observable External child', () => {
+test('View repetition direct External child remains fail closed until Host result child shape is proven', () => {
 	const direct = compileSource(source(`import js { Card } from "./library.js"
 
 component Page() uses JavaScript {
 	let items = [1, 2]
 	return view {
 		Card(label: "ok") {
-			for item in items {
+			for item in items by item {
 				span(value: item)
 			}
 		}
 	}
 }
-`), { jsInteropProvider: externalJsxProvider });
-	assert.ok(direct.diagnostics.some(item => item.code === 'L4308' && item.severity === 'error' && /generated collection observable as a child/u.test(item.message)));
+`), { emit: false, jsInteropProvider: externalJsxProvider });
+	assert.ok(direct.diagnostics.some(item => item.code === 'L4308' && item.severity === 'error' && /Host result.*downstream direct-child shape/u.test(item.message)));
 	assert.equal(direct.output, undefined);
 
 	const conditional = compileSource(source(`import js { Card } from "./library.js"
@@ -236,7 +210,7 @@ component Page(flag: Bool) uses JavaScript {
 	return view {
 		Card(label: "ok") {
 			if flag {
-				for item in items {
+				for item in items by item {
 					span(value: item)
 				}
 			} else {
@@ -245,8 +219,8 @@ component Page(flag: Bool) uses JavaScript {
 		}
 	}
 }
-`), { jsInteropProvider: externalJsxProvider });
-	assert.ok(conditional.diagnostics.some(item => item.code === 'L4308' && item.severity === 'error' && /generated collection observable as a child/u.test(item.message)));
+`), { emit: false, jsInteropProvider: externalJsxProvider });
+	assert.ok(conditional.diagnostics.some(item => item.code === 'L4308' && item.severity === 'error' && /Host result.*downstream direct-child shape/u.test(item.message)));
 	assert.equal(conditional.output, undefined);
 
 	const nestedIntrinsic = compileSource(source(`import js { Card } from "./library.js"
@@ -256,17 +230,16 @@ component Page() uses JavaScript {
 	return view {
 		Card(label: "ok") {
 			main() {
-				for item in items {
+				for item in items by item {
 					span(value: item)
 				}
 			}
 		}
 	}
 }
-`), { jsInteropProvider: externalJsxProvider });
+`), { emit: false, jsInteropProvider: externalJsxProvider });
 	assert.deepEqual(nestedIntrinsic.diagnostics.filter(item => item.severity === 'error'), []);
-	assert.ok(nestedIntrinsic.output);
-	assert.ok(nestedIntrinsic.output.code.includes('<main>{(() => {'));
+	assert.equal(nestedIntrinsic.output, undefined);
 });
 
 test('no-else conditional fails closed when an empty fragment would become an observable External child', () => {
