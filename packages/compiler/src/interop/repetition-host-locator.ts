@@ -62,7 +62,7 @@ function collectIdentityViewRepetitionsFromValue(value: unknown, repetitions: A.
 	}
 	if (value === null || typeof value !== 'object') return;
 	const node = value as Record<string, unknown>;
-	if (node.kind === 'ViewRepetition' && node.identity !== undefined) repetitions.push(node as unknown as A.ViewRepetition);
+	if (node.kind === 'ViewRepetition') repetitions.push(node as unknown as A.ViewRepetition);
 	for (const [key, child] of Object.entries(node)) {
 		if (key === 'span' || key === 'checkedEvidence' || key === 'documentation') continue;
 		collectIdentityViewRepetitionsFromValue(child, repetitions);
