@@ -138,33 +138,55 @@ compiler-managed slotをJavaScript-imported External componentから観測可能
 
 ## `[frontend.view-repetition]` Declarative View repetition
 
-View-local `for`は専用のdeclarative View constructであり、通常のimperative `ForStatement`とは別物である。
+View-local `for`は専用のdeclarative View constructであり、通常のimperative `ForStatement`とは別物である。View repetitionには明示的なlogical identityが必須である。
 
 ```virune
 view {
-    for user in users {
-        UserRow(user: user)
-    }
-
-    for user, index in users {
-        UserRow(user: user, position: index + 1)
+    for user, index in users by user.id {
+        UserRow(user: user, position: index)
     }
 }
 ```
 
-1回のdownstream-host repetition evaluationにつきsource expressionは正確に1回だけ評価する。itemは0始まりのsource index昇順でvisitし、visitしたitemは各1回だけreadする。optionalなindex bindingはemitted childのordinalではなく、そのsource indexを表す。
+`by`はView repetition内だけのcontextual syntaxであり、それ以外では通常のidentifierとして利用できる。identity expressionはcurrent itemとoptional source-index bindingが利用可能になった後に評価する。checked typeは`String`または`Int`でなければならず、unresolvedまたはunsupportedなidentity evidenceはrejectする。StringとIntのidentityは異なるtagged domainとして扱う。1 snapshot内で2つのvisited itemが同じtagged identityを生成した場合、Host reconciliationやView body executionより前にrejectする。
 
-各itemのView bodyはsource orderで評価する。1 itemが複数のView childを生成する場合、それらはcompiler-ownedな1本のflat ordered child sequenceへ順番に追加する。Viruneはitemごとの暗黙Fragment/group identityを定義せず、framework固有のarray flatteningにこの順序の意味を委ねない。
+Viruneはsource index、transportされたJavaScript object identity、`key`等のchild property、`id`等のfield名、framework/package conventionからidentityを推論しない。identity-freeなView repetitionはstable language surfaceに含めない。
 
-repetitionを`source.map(...)`その他のoverride可能なcollection methodとして定義しない。compilerはhost-sensitiveなsource expressionをdownstream-host evaluation位置の外へhoist、snapshot、cacheしてはならない。body内の`key` propertyは通常のdownstream View propertyのままであり、Virune Coreのidentity/reconciliation semanticsを持たない。
+identity-bearing repetitionは、project-ownedなRepetition Hostを正確に1つ通して評価する。projectは既存のdeclaration attributeと`extern js` surfaceを使ってHostを宣言する。
+
+```virune
+@repetitionHost("render", 1)
+extern js "./repetition-host.js" {}
+```
+
+protocol version 1のcompiler-visibleなcall shapeは概念上次の通りである。
+
+```ts
+repetitionHost(
+  readSnapshot: () => readonly { id: string; index: number; value: T }[],
+  renderGroup: (
+    readValue: () => T,
+    readIndex: () => number,
+    id: string,
+  ) => FrameworkOwnedView,
+)
+```
+
+compilerはsnapshot traversal、identity encoding、duplicate detection、安全なtransport/capture check、およびHost callを所有する。project Hostとdownstream frameworkはreconciliation、keyed representation、scheduling、lifecycle、renderingを所有する。callback invocation countはViruneの保証ではない。
+
+Host locatorはproject-ownedである。dependency packageがprojectのrepetition Hostを暗黙選択してはならない。missing、malformed、unsupported、ambiguous、その他証明不能なHost evidenceはfail closedとし、affected outputを抑止する。relative Host moduleはlocator declarationを基準にresolveし、emitted consumer向けにrebaseする。located exportはprojectのcurrent TypeScript whole-usage environmentでvalidateし、ViruneはTypeScript function assignabilityを再実装せず、framework名でも分岐しない。
+
+1つのlogical identityは1 iterationの完全なView resultを所有する。1 iterationが複数childを生成する場合、それらはdownstream reconciliation上も1つのidentity-owned groupとして保持される。nested identity repetitionは同じHost contractを通してcomposeする。
 
 ## `[frontend.view-repetition-source]` Repetition source boundary
 
-初期repetition sourceはhost-safeなnative `List<T>`と、現在のinterop provider snapshotからarray shapeおよびindexed element shapeが証明されたJavaScript External `Array<T>` / `ReadonlyArray<T>`に限定する。
+初期repetition sourceはhost-safeなnative `List<T>`と、current interop provider snapshotからarray shapeおよびindexed-element shapeが証明されたJavaScript External `Array<T>` / `ReadonlyArray<T>`に限定する。
 
 External arrayをnative `List`へ暗黙変換しない。`any`、`unknown`、unsupported collection、またはunresolved、stale、partial、ambiguousなprovider evidenceはfail closedとする。
 
-External arrayでは、1回のrepetition evaluationにつきinitial `length`を正確に1回観測する。その観測済みlengthまでindex 0から順にvisitし、sparse-array holeはskipし、visitしたelementは各1回だけreadする。checkerはemission前にprovider-independentなrepetition evidenceを確定し、emitterはTypeScriptを再照会せず、display textやpackage/framework heuristicからarray semanticsを推測しない。
+Host-triggeredな各`readSnapshot()` evaluationにつきsource expressionは正確に1回だけ評価する。External arrayではinitial `length`を正確に1回観測し、その観測済みlengthまでindex 0から順にvisitし、sparse holeをskipし、visited itemは各1回だけreadする。optional index bindingはoutput ordinalではなく0始まりのsource indexである。
+
+source、transportされるitem、identity expression、View bodyはいずれもHost-deferred boundaryを跨ぐため、frontend lifetime/transport safety ruleを満たさなければならない。Resource/capability value、raw native callable、lifetime-boundまたはmust-use value、unresolved/open shapeその他deferred safetyを証明できない値はrejectする。userが明示的に作成したsnapshotは通常のVirune semanticsのままとし、compilerがreactive Host位置へ戻してはならない。
 
 Generic `Iterable`、`AsyncIterable`、`Set`、`Map`、arbitrary array-likeはこの初期contractの対象外である。
 
@@ -172,7 +194,7 @@ Generic `Iterable`、`AsyncIterable`、`Set`、`Map`、arbitrary array-likeは�
 
 compiler-managed standalone `children` slotは、nested View conditionalやnested repetitionを経由する場合も含め、repetition subtree内のどこにあってもrejectする。repetitionは`break`、`continue`、assignment、imperative loop-body semanticsを導入しない。
 
-repetitionが生成するcollectionを、JavaScript-imported External componentから観測可能なdirect child valueにしてはならない。zero-or-more個のflat child contributionをdownstreamのchildren/slot shapeを変えずに保存できることが証明されるまで、そのdirect External child structure内のrepetitionはrejectする。External componentの下でもintrinsic elementを1段挟んだ内側のrepetitionは、通常のvalidation対象として扱える。
+Host-backed repetitionをJavaScript-imported External componentのdirect childとして使う場合、exact Host resultがその直接観測可能なdownstream children shapeに適合することを証明できるまではfail closedとする。External componentの下でもintrinsic element配下にnestedされたrepetitionは通常のvalidation対象として扱える。この制約は保守的なproof boundaryであり、compiler-owned structural array expansionやframework-specific loweringを復活させる根拠にはならない。
 
 ## `[frontend.framework-neutral]` Framework-neutral core
 
