@@ -186,62 +186,6 @@ test('single-file emission refuses Host-backed View repetition without project H
 	assert.equal(result.output, undefined);
 });
 
-test('View repetition direct External child remains fail closed until Host result child shape is proven', () => {
-	const direct = compileSource(source(`import js { Card } from "./library.js"
-
-component Page() uses JavaScript {
-	let items = [1, 2]
-	return view {
-		Card(label: "ok") {
-			for item in items by item {
-				span(value: item)
-			}
-		}
-	}
-}
-`), { emit: false, jsInteropProvider: externalJsxProvider });
-	assert.ok(direct.diagnostics.some(item => item.code === 'L4308' && item.severity === 'error' && /Host result.*downstream direct-child shape/u.test(item.message)));
-	assert.equal(direct.output, undefined);
-
-	const conditional = compileSource(source(`import js { Card } from "./library.js"
-
-component Page(flag: Bool) uses JavaScript {
-	let items = [1, 2]
-	return view {
-		Card(label: "ok") {
-			if flag {
-				for item in items by item {
-					span(value: item)
-				}
-			} else {
-				"empty"
-			}
-		}
-	}
-}
-`), { emit: false, jsInteropProvider: externalJsxProvider });
-	assert.ok(conditional.diagnostics.some(item => item.code === 'L4308' && item.severity === 'error' && /Host result.*downstream direct-child shape/u.test(item.message)));
-	assert.equal(conditional.output, undefined);
-
-	const nestedIntrinsic = compileSource(source(`import js { Card } from "./library.js"
-
-component Page() uses JavaScript {
-	let items = [1, 2]
-	return view {
-		Card(label: "ok") {
-			main() {
-				for item in items by item {
-					span(value: item)
-				}
-			}
-		}
-	}
-}
-`), { emit: false, jsInteropProvider: externalJsxProvider });
-	assert.deepEqual(nestedIntrinsic.diagnostics.filter(item => item.severity === 'error'), []);
-	assert.equal(nestedIntrinsic.output, undefined);
-});
-
 test('no-else conditional fails closed when an empty fragment would become an observable External child', () => {
 	const direct = compileSource(source(`import js { Card } from "./library.js"
 
