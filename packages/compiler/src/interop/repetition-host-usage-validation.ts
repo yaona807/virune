@@ -81,7 +81,8 @@ export function validateRepetitionHostTypeScriptUsage(options: RepetitionHostTyp
 		'  },',
 		');',
 		'__viruneRequireSafe<typeof __viruneRepetitionHostResult>(true);',
-		'void __viruneRepetitionHostResult;',
+		'const __viruneHostResultAsBody: __ViruneBodyResult = __viruneRepetitionHostResult;',
+		'void __viruneHostResultAsBody; void __viruneRepetitionHostResult;',
 	].join('\n');
 	try {
 		return resolver.call(provider, {
