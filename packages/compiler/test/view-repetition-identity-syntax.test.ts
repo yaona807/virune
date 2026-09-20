@@ -15,8 +15,8 @@ const errorCodes = (text: string): readonly string[] => {
 	return diagnostics.filter(item => item.severity === 'error').map(item => item.code);
 };
 
-// @virune-rule {"id":"frontend.view-repetition","runner":"unit","file":"packages/compiler/test/view-repetition-identity-syntax.test.ts","case":"View repetition preserves optional by identity expression","kind":"positive","platform":"common"}
-test('View repetition preserves optional by identity expression', () => {
+// @virune-rule {"id":"frontend.view-repetition","runner":"unit","file":"packages/compiler/test/view-repetition-identity-syntax.test.ts","case":"View repetition requires explicit by identity expression","kind":"positive","platform":"common"}
+test('View repetition preserves required by identity expression', () => {
 	const parsed = parseSource(source(`component ListView() uses JavaScript {
 	let items = [1, 2]
 	return view {
@@ -40,6 +40,18 @@ test('View repetition preserves optional by identity expression', () => {
 	assert.equal(repetition.source.kind === 'IdentifierExpression' ? repetition.source.name : undefined, 'items');
 	assert.equal(repetition.identity?.kind, 'IdentifierExpression');
 	assert.equal(repetition.identity?.kind === 'IdentifierExpression' ? repetition.identity.name : undefined, 'item');
+});
+
+test('View repetition rejects missing identity syntax', () => {
+	assert.ok(parseErrors(`component ListView() uses JavaScript {
+	let items = [1, 2]
+	return view {
+		for item in items {
+			span(value: item)
+		}
+	}
+}
+`).length > 0);
 });
 
 test('View repetition by works without an index binding', () => {
