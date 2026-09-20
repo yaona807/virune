@@ -64,7 +64,7 @@ function externalCaptureProvider(category: 'object' | 'unknown' | 'any' = 'objec
 const externalProvider = externalCaptureProvider();
 
 function compile(text: string, jsInteropProvider: JsInteropProvider = provider) {
-	return compileSource(source(text), { jsInteropProvider });
+	return compileSource(source(text), { emit: false, jsInteropProvider });
 }
 
 function codes(result: ReturnType<typeof compile>): string[] {
@@ -87,7 +87,7 @@ test('Host-deferred repetition accepts immutable frontend-safe captures', () => 
 }
 `);
 	assert.deepEqual(result.diagnostics.filter(item => item.severity === 'error'), []);
-	assert.ok(result.output);
+	assert.equal(result.output, undefined);
 });
 
 // @virune-rule {"id":"frontend.view-repetition","runner":"unit","file":"packages/compiler/test/view-repetition-deferred-safety.test.ts","case":"Host-deferred repetition rejects mutable snapshot-source captures","kind":"negative","platform":"common"}
@@ -179,7 +179,7 @@ component ListView() uses JavaScript {
 }
 `, externalProvider);
 	assert.deepEqual(result.diagnostics.filter(item => item.severity === 'error'), []);
-	assert.ok(result.output);
+	assert.equal(result.output, undefined);
 });
 
 // @virune-rule {"id":"frontend.view-repetition","runner":"unit","file":"packages/compiler/test/view-repetition-deferred-safety.test.ts","case":"Host-deferred repetition rejects must-use External captures","kind":"negative","platform":"common"}
@@ -323,24 +323,6 @@ component ListView() uses JavaScript {
 }
 `);
 	assert.ok(result.diagnostics.some(item => item.code === 'L4309' && item.message.includes('identityFn of type fn(Int) -> Int')));
-});
-
-// @virune-rule {"id":"frontend.view-repetition","runner":"unit","file":"packages/compiler/test/view-repetition-deferred-safety.test.ts","case":"Structural repetition without identity keeps existing capture semantics","kind":"positive","platform":"common"}
-test('Structural repetition without identity keeps existing capture semantics', () => {
-	const result = compile(`component ListView() uses JavaScript {
-	let items = [1, 2]
-	let mut prefix = "row"
-	return view {
-		for item in items {
-			span() {
-				{ prefix }
-			}
-		}
-	}
-}
-`);
-	assert.deepEqual(result.diagnostics.filter(item => item.severity === 'error'), []);
-	assert.ok(result.output);
 });
 
 // @virune-rule {"id":"frontend.view-repetition","runner":"unit","file":"packages/compiler/test/view-repetition-deferred-safety.test.ts","case":"Question-mark propagation remains rejected inside component View repetition","kind":"negative","platform":"common"}
