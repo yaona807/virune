@@ -10,6 +10,7 @@ import { DiagnosticBag, diagnosticCause, type Diagnostic } from './diagnostics/d
 import type { ModuleNode } from './ast/nodes.js';
 import { validateFrontendComponentEmissionBoundary } from './interop/frontend-component-emission.js';
 import { validateFrontendJsxUsage } from './interop/jsx-view-validation.js';
+import { collectIdentityViewRepetitions } from './interop/repetition-host-locator.js';
 import type { JsInteropProvider } from './interop/types.js';
 import type { SourceFile, SourceSpan } from './source.js';
 
@@ -61,6 +62,11 @@ export function compileSource(source: SourceFile, options: CompileOptions = {}):
 	const component = ast.declarations.find(declaration => declaration.kind === 'ComponentDeclaration');
 	if (options.emit !== false && !semantic.diagnostics.hasErrors && component !== undefined) validateFrontendComponentEmissionBoundary(ast, semantic, semantic.diagnostics);
 	if (!semantic.diagnostics.hasErrors) validateFrontendJsxUsage(ast, semantic, { containingFile: source.path, platform: options.platform ?? 'neutral', ...(options.jsInteropProvider === undefined ? {} : { jsInteropProvider: options.jsInteropProvider }) });
+	if (options.emit !== false && !semantic.diagnostics.hasErrors) {
+		for (const repetition of collectIdentityViewRepetitions(ast)) {
+			semantic.diagnostics.error('L2135', 'Identity-bearing View repetition requires a project build with exactly one project @repetitionHost locator', repetition.span);
+		}
+	}
 	for (const diagnostic of semantic.diagnostics.items) diagnostics.add(diagnostic);
 	if (diagnostics.hasErrors || options.emit === false) return { source, diagnostics: diagnostics.items, ast, semantic };
 	const hir = lowerToHir(ast, semantic);
