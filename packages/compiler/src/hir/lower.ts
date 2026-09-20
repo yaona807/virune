@@ -61,7 +61,7 @@ function lowerViewChild(child: A.ViewChild): A.ViewChild {
 				...(child.elseBranch === undefined ? {} : { elseBranch: child.elseBranch.kind === 'ViewBlock' ? lowerViewBlock(child.elseBranch) : lowerViewChild(child.elseBranch) as A.ViewConditional }),
 			};
 		case 'ViewRepetition':
-			return { ...child, source: lowerExpression(child.source), ...(child.identity === undefined ? {} : { identity: lowerExpression(child.identity) }), body: lowerViewBlock(child.body) };
+			return { ...child, source: lowerExpression(child.source), identity: lowerExpression(child.identity), body: lowerViewBlock(child.body) };
 	}
 }
 
