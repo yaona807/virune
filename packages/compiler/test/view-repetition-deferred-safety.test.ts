@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { compileSource } from '../src/compiler.js';
+import { checkModule } from '../src/checker/checker.js';
 import { validateFrontendComponentEmissionBoundary } from '../src/interop/frontend-component-emission.js';
 import type { JsInteropProvider } from '../src/interop/types.js';
+import { parseSource } from '../src/project/project.js';
 
 const source = (text: string) => ({ id: 1, path: 'view-repetition-deferred-safety.virune', text });
 const provider: JsInteropProvider = {
@@ -65,13 +66,17 @@ function externalCaptureProvider(category: 'object' | 'unknown' | 'any' = 'objec
 const externalProvider = externalCaptureProvider();
 
 function compile(text: string, jsInteropProvider: JsInteropProvider = provider) {
-	const result = compileSource(source(text), { emit: false, jsInteropProvider });
-	if (result.ast !== undefined && result.semantic !== undefined && !result.semantic.diagnostics.hasErrors) {
-		validateFrontendComponentEmissionBoundary(result.ast, result.semantic, result.semantic.diagnostics);
+	const parsed = parseSource(source(text));
+	if (parsed.ast === undefined || parsed.diagnostics.some(item => item.severity === 'error')) {
+		return { diagnostics: parsed.diagnostics, output: undefined };
+	}
+	const semantic = checkModule(parsed.ast, { containingFile: parsed.source.path, jsInteropProvider });
+	if (!semantic.diagnostics.hasErrors) {
+		validateFrontendComponentEmissionBoundary(parsed.ast, semantic, semantic.diagnostics);
 	}
 	return {
-		...result,
-		diagnostics: result.semantic?.diagnostics.items ?? result.diagnostics,
+		diagnostics: [...parsed.diagnostics, ...semantic.diagnostics.items],
+		output: undefined,
 	};
 }
 
