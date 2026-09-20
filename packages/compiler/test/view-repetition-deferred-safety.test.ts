@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { compileSource } from '../src/compiler.js';
+import { validateFrontendComponentEmissionBoundary } from '../src/interop/frontend-component-emission.js';
 import type { JsInteropProvider } from '../src/interop/types.js';
 
 const source = (text: string) => ({ id: 1, path: 'view-repetition-deferred-safety.virune', text });
@@ -64,7 +65,14 @@ function externalCaptureProvider(category: 'object' | 'unknown' | 'any' = 'objec
 const externalProvider = externalCaptureProvider();
 
 function compile(text: string, jsInteropProvider: JsInteropProvider = provider) {
-	return compileSource(source(text), { emit: false, jsInteropProvider });
+	const result = compileSource(source(text), { emit: false, jsInteropProvider });
+	if (result.ast !== undefined && result.semantic !== undefined && !result.semantic.diagnostics.hasErrors) {
+		validateFrontendComponentEmissionBoundary(result.ast, result.semantic, result.semantic.diagnostics);
+	}
+	return {
+		...result,
+		diagnostics: result.semantic?.diagnostics.items ?? result.diagnostics,
+	};
 }
 
 function codes(result: ReturnType<typeof compile>): string[] {
