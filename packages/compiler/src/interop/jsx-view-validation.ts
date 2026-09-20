@@ -9,6 +9,10 @@ interface FrontendJsxValidationOptions {
 	readonly containingFile: string;
 	readonly platform: 'node' | 'browser' | 'neutral';
 	readonly jsInteropProvider?: JsInteropProvider;
+	readonly repetitionHost?: {
+		readonly moduleSpecifier: string;
+		readonly exportName: string;
+	};
 }
 
 interface RenderFailure {
@@ -22,6 +26,7 @@ interface RenderContext {
 	readonly externalTagRoots: ReadonlySet<string>;
 	readonly usedNativeProofs: Set<string>;
 	readonly repetitionValues: Map<number, string>;
+	readonly repetitionHostExpression?: string;
 	failure?: RenderFailure;
 }
 
@@ -48,12 +53,25 @@ export function validateFrontendJsxUsage(module: A.ModuleNode, semantic: Semanti
 		return;
 	}
 	const imports = module.imports.filter(item => item.sourceKind === 'javascript').map(renderJavaScriptImport);
+	const repetitionHostImport = options.repetitionHost === undefined
+		? undefined
+		: `import * as $viruneRepetitionHostProof from ${JSON.stringify(options.repetitionHost.moduleSpecifier)};`;
+	const repetitionHostExpression = options.repetitionHost === undefined
+		? undefined
+		: `$viruneRepetitionHostProof[${JSON.stringify(options.repetitionHost.exportName)}]`;
 	const externalTagRoots = javaScriptValueImportNames(module);
 	const types = new TypeOperations({ arena: semantic.arena, diagnostics: semantic.diagnostics });
 	for (const component of components) {
 		const views: A.ViewExpression[] = [];
 		collectViewReturns(component.body, views);
-		const context: RenderContext = { semantic, types, externalTagRoots, usedNativeProofs: new Set(), repetitionValues: new Map() };
+		const context: RenderContext = {
+			semantic,
+			types,
+			externalTagRoots,
+			usedNativeProofs: new Set(),
+			repetitionValues: new Map(),
+			...(repetitionHostExpression === undefined ? {} : { repetitionHostExpression }),
+		};
 		const renderedViews: string[] = [];
 		for (const view of views) {
 			const onlyChild = view.body.children.length === 1 ? view.body.children[0] : undefined;
@@ -67,6 +85,7 @@ export function validateFrontendJsxUsage(module: A.ModuleNode, semantic: Semanti
 		}
 		const sourceText = [
 			...imports,
+			...(repetitionHostImport === undefined ? [] : [repetitionHostImport]),
 			...context.usedNativeProofs,
 			...[...externalTagRoots].map(name => `void ${name};`),
 			...renderedViews.map(view => `${view};`),
@@ -230,6 +249,7 @@ function renderViewChild(child: A.ViewChild, context: RenderContext): string | u
 }
 
 function renderViewRepetition(repetition: A.ViewRepetition, context: RenderContext): string | undefined {
+	if (context.repetitionHostExpression !== undefined) return renderHostViewRepetition(repetition, context);
 	const evidence = repetition.checkedEvidence;
 	if (evidence === undefined) return fail(context, repetition.span, 'View repetition reached JSX validation without checked repetition evidence');
 	if ((repetition.indexName === undefined) !== (evidence.indexSymbolId === undefined)) return fail(context, repetition.span, 'View repetition checked evidence does not match its source index binding');
@@ -263,6 +283,66 @@ function renderViewRepetition(repetition: A.ViewRepetition, context: RenderConte
 	const holeGuard = evidence.sourceKind === 'external-array' ? `\n\t\tif (!Object.prototype.hasOwnProperty.call(${sourceName}, ${indexName})) continue;` : '';
 	const bodyText = body.length === 0 ? '' : `\n${body}`;
 	return `(() => {\n\tconst ${sourceName} = ${source};\n\tconst ${lengthName} = ${sourceName}.length;\n\tconst ${childrenName} = [];\n\tfor (let ${indexName} = 0; ${indexName} < ${lengthName}; ${indexName}++) {${holeGuard}\n\t\tconst ${itemName} = ${sourceName}[${indexName}] as (typeof ${sourceName})[number];${bodyText}\n\t}\n\treturn ${childrenName};\n})()`;
+}
+
+
+function renderHostViewRepetition(repetition: A.ViewRepetition, context: RenderContext): string | undefined {
+	const evidence = repetition.checkedEvidence;
+	const host = context.repetitionHostExpression;
+	if (evidence === undefined || host === undefined) return fail(context, repetition.span, 'Host View repetition reached JSX validation without checked Host evidence');
+	if ((repetition.indexName === undefined) !== (evidence.indexSymbolId === undefined)) return fail(context, repetition.span, 'View repetition checked evidence does not match its source index binding');
+	const source = evidence.sourceKind === 'external-array'
+		? renderExternalRepetitionSource(repetition.source, context)
+		: renderNativeRepetitionSource(repetition, evidence, context);
+	if (source === undefined) return undefined;
+
+	const sourceName = `$viruneHostSource${repetition.id}`;
+	const lengthName = `$viruneHostLength${repetition.id}`;
+	const indexName = `$viruneHostIndex${repetition.id}`;
+	const itemName = `$viruneHostItem${repetition.id}`;
+	const entriesName = `$viruneHostEntries${repetition.id}`;
+	const readValueName = `$viruneHostReadValue${repetition.id}`;
+	const readIndexName = `$viruneHostReadIndex${repetition.id}`;
+	const groupIdName = `$viruneHostGroupId${repetition.id}`;
+
+	const previousItem = context.repetitionValues.get(evidence.itemSymbolId);
+	const hadItem = context.repetitionValues.has(evidence.itemSymbolId);
+	context.repetitionValues.set(evidence.itemSymbolId, `${readValueName}()`);
+	let previousIndex: string | undefined;
+	let hadIndex = false;
+	if (evidence.indexSymbolId !== undefined) {
+		previousIndex = context.repetitionValues.get(evidence.indexSymbolId);
+		hadIndex = context.repetitionValues.has(evidence.indexSymbolId);
+		context.repetitionValues.set(evidence.indexSymbolId, `${readIndexName}()`);
+	}
+	const body = renderViewBlockExpression(repetition.body, context);
+	if (hadItem) context.repetitionValues.set(evidence.itemSymbolId, previousItem!);
+	else context.repetitionValues.delete(evidence.itemSymbolId);
+	if (evidence.indexSymbolId !== undefined) {
+		if (hadIndex) context.repetitionValues.set(evidence.indexSymbolId, previousIndex!);
+		else context.repetitionValues.delete(evidence.indexSymbolId);
+	}
+	if (body === undefined) return undefined;
+
+	const holeGuard = evidence.sourceKind === 'external-array'
+		? `\n\t\t\tif (!Object.prototype.hasOwnProperty.call(${sourceName}, ${indexName})) continue;`
+		: '';
+	return `${host}(
+	() => {
+		const ${sourceName} = ${source};
+		const ${lengthName} = ${sourceName}.length;
+		const ${entriesName} = [];
+		for (let ${indexName} = 0; ${indexName} < ${lengthName}; ${indexName}++) {${holeGuard}
+			const ${itemName} = ${sourceName}[${indexName}] as (typeof ${sourceName})[number];
+			${entriesName}.push({ id: ("" as string), index: ${indexName}, value: ${itemName} });
+		}
+		return ${entriesName};
+	},
+	(${readValueName}, ${readIndexName}, ${groupIdName}) => {
+		void ${groupIdName};
+		return ${body};
+	},
+)`;
 }
 
 function renderExternalRepetitionSource(expression: A.Expression, context: RenderContext): string | undefined {
