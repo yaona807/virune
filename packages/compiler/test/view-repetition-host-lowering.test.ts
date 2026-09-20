@@ -84,7 +84,7 @@ function moduleOutput(result: Awaited<ReturnType<typeof buildProject>>, root: st
 	return result.modules.find(module => module.source.path === resolve(root, path))?.output?.code;
 }
 
-test('structural View repetition remains on the existing path without a Host locator', async () => {
+test('identity-free View repetition is rejected instead of falling back to structural emission', async () => {
 	await withProject(async root => {
 		await writeFile(join(root, 'src/main.virune'), `component Page() uses JavaScript {
 	return view {
@@ -97,11 +97,8 @@ test('structural View repetition remains on the existing path without a Host loc
 }
 `, 'utf8');
 		const result = await buildProject(root, { write: false, jsInteropProvider: jsxValidationProvider });
-		assert.deepEqual(errors(result), []);
-		const code = moduleOutput(result, root);
-		assert.ok(code);
-		assert.ok(!code.includes('$viruneRepetitionHostModule'));
-		assert.match(code, /for \(let \$viewIndex\d+ = 0;/u);
+		assert.ok(errors(result).some(item => item.code === 'L0002'));
+		assert.equal(moduleOutput(result, root), undefined);
 	});
 });
 
