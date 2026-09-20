@@ -21,8 +21,10 @@ export type RepetitionHostLocatorResolution =
 
 function locatorFromDeclaration(declaration: A.Declaration, declarationFile: string): RepetitionHostLocator | undefined {
 	if (declaration.kind !== 'ExternDeclaration' || declaration.unsafe) return undefined;
-	const attribute = declaration.attributes.find(item => item.name === 'repetitionHost');
-	if (attribute === undefined || attribute.arguments.length !== 2) return undefined;
+	const attributes = declaration.attributes.filter(item => item.name === 'repetitionHost');
+	if (attributes.length !== 1) return undefined;
+	const attribute = attributes[0]!;
+	if (attribute.arguments.length !== 2) return undefined;
 	const exportName = attribute.arguments[0];
 	const version = attribute.arguments[1];
 	if (exportName?.kind !== 'LiteralExpression' || exportName.literalKind !== 'String') return undefined;
