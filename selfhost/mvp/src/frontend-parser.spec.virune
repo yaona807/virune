@@ -39,7 +39,7 @@ test "frontend parser preserves the component and View surface" {
 	expect(String.contains(result, "\"kind\":\"ViewRepetition\""))
 	expect(String.contains(result, "\"text\":\"item,index\""))
 	expect(String.contains(result, "\"kind\":\"ViewChildrenSlot\""))
-	expect(String.contains(encoded("component MissingIdentity(items: List<Int>) uses JavaScript {\\n\\treturn view {\\n\\t\\tfor item in items {\\n\\t\\t\\tspan()\\n\\t\\t}\\n\\t}\\n}\\n"), "\"accepted\":false"))
+	expect(String.contains(encoded("component MissingIdentity(items: List<Int>) uses JavaScript {\n\treturn view {\n\t\tfor item in items {\n\t\t\tspan()\n\t\t}\n\t}\n}\n"), "\"accepted\":false"))
 
 	expect(String.contains(encoded("component Legacy(title: String) uses JavaScript {\n\treturn view {\n\t\t= title\n\t}\n}\n"), "\"accepted\":false"))
 	let missingClose = encoded("component BrokenHole(title: String) uses JavaScript {\n\treturn view {\n\t\t{ title\n\t\tspan()\n\t\tif true {\n\t\t\tem()\n\t\t} else {\n\t\t\tstrong()\n\t\t}\n\t}\n}\n")

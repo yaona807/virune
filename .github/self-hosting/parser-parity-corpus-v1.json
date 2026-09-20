@@ -265,7 +265,7 @@
         "repetition",
         "diagnostic"
       ],
-      "source": "component Rows(items: List<Int>) uses JavaScript {\\n\\treturn view {\\n\\t\\tfor item in items {\\n\\t\\t\\tspan(value: item)\\n\\t\\t}\\n\\t}\\n}\\n",
+      "source": "component Rows(items: List<Int>) uses JavaScript {\n\treturn view {\n\t\tfor item in items {\n\t\t\tspan(value: item)\n\t\t}\n\t}\n}\n",
       "comparePrimaryDiagnostic": true,
       "mutations": []
     }
