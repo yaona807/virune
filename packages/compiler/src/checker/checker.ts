@@ -852,8 +852,10 @@ export class TypeChecker {
 			if (!childScope.define(index)) this.diagnostics.error('L1008', `View repetition index ${repetition.indexName} shadows an existing name`, repetition.span);
 			else { indexSymbolId = index.id; this.#symbols.set(index.id, index); }
 		}
-		let identityValid = true;
-		if (repetition.identity !== undefined) {
+		let identityValid = false;
+		if (repetition.identity === undefined) {
+			this.diagnostics.error('L4313', 'View repetition requires an explicit identity expression', repetition.span);
+		} else {
 			const identityTypeId = this.checkExpression(repetition.identity, childScope);
 			const identityType = this.arena.get(identityTypeId);
 			identityValid = identityTypeId !== this.arena.error && identityType.kind === 'primitive' && (identityType.name === 'String' || identityType.name === 'Int');
