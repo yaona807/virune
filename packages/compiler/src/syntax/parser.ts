@@ -1,7 +1,7 @@
 import { CstParser, type CstNode, type IParserErrorMessageProvider, type IRecognitionException, type IToken } from 'chevrotain';
 import {
 	allTokens, AndAnd, At, Bang, BangEqual, Bar, BigIntLiteral, Colon, Comma, Dot, EqualEqual, Equals, FatArrow,
-	FloatLiteral, Greater, GreaterEqual, Identifier, IdentifierName, IntLiteral, KwAs, KwAsync, KwAwait, KwBreak, KwChildren, KwComponent, KwConst, KwContinue, KwDerives,
+	FloatLiteral, Greater, GreaterEqual, Identifier, IdentifierName, IntLiteral, KwAs, KwAsync, KwAwait, KwBreak, KwBy, KwChildren, KwComponent, KwConst, KwContinue, KwDerives,
 	KwDefer, KwDiscard, KwElse, KwEnum, KwExtern, KwFalse, KwFn, KwFor, KwFrom, KwIf, KwImport, KwIn, KwJs, KwLet, KwMatch, KwModule,
 	KwMut, KwNewtype, KwParallel, KwPub, KwRecord, KwReturn, KwTest, KwThen, KwTrue, KwTry, KwType,
 	KwUnsafe, KwUses, KwView, KwWhile, KwWith, LBrace, LBracket, Less, LessEqual, LParen, Minus, NewLine, OrOr,
@@ -642,7 +642,8 @@ export class ViruneParser extends CstParser {
 			$.OPTION(() => { $.CONSUME(Comma); $.CONSUME2(Identifier); });
 			$.CONSUME(KwIn);
 			$.SUBRULE($.expression);
-			$.OPTION2({ GATE: () => this.LA(1).image === 'by', DEF: () => { $.CONSUME3(Identifier); $.SUBRULE2($.expression); } });
+			$.CONSUME(KwBy);
+			$.SUBRULE2($.expression);
 			$.SUBRULE($.viewBlock);
 		});
 
