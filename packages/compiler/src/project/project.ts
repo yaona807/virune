@@ -321,24 +321,36 @@ export async function buildProject(
 			if (!semantic.diagnostics.hasErrors && component !== undefined && inSourceDirectory) {
 				validateFrontendComponentEmissionBoundary(parsed.ast, semantic, semantic.diagnostics);
 			}
-			if (!semantic.diagnostics.hasErrors) validateFrontendJsxUsage(parsed.ast, semantic, { containingFile: path, platform: config.platform, ...(jsInteropProvider === undefined ? {} : { jsInteropProvider }) });
 			if (!semantic.diagnostics.hasErrors && identityRepetitions.length > 0 && inSourceDirectory && repetitionHostLocator.status !== 'ready') {
 				const message = repetitionHostLocator.status === 'none'
 					? 'Identity-bearing View repetition requires exactly one project @repetitionHost locator'
 					: 'Identity-bearing View repetition cannot emit while the project @repetitionHost locator is ambiguous';
 				for (const repetition of identityRepetitions) semantic.diagnostics.error('L2135', message, repetition.span);
 			}
-			if (!semantic.diagnostics.hasErrors && identityRepetitions.length > 0 && inSourceDirectory && repetitionHostLocator.status === 'ready') {
+			const repetitionHostValidation = identityRepetitions.length > 0 && inSourceDirectory && repetitionHostLocator.status === 'ready'
+				? {
+					moduleSpecifier: rebaseRepetitionHostModuleSpecifierForValidation(repetitionHostLocator.locator, path),
+					exportName: repetitionHostLocator.locator.exportName,
+				}
+				: undefined;
+			if (!semantic.diagnostics.hasErrors && repetitionHostValidation !== undefined) {
 				const accepted = validateRepetitionHostTypeScriptUsage({
 					containingFile: path,
 					platform: config.platform,
-					moduleSpecifier: rebaseRepetitionHostModuleSpecifierForValidation(repetitionHostLocator.locator, path),
-					exportName: repetitionHostLocator.locator.exportName,
+					...repetitionHostValidation,
 					...(jsInteropProvider === undefined ? {} : { jsInteropProvider }),
 				});
 				if (!accepted) {
 					for (const repetition of identityRepetitions) semantic.diagnostics.error('L2136', 'TypeScript whole-usage validation rejected the project @repetitionHost export', repetition.span);
 				}
+			}
+			if (!semantic.diagnostics.hasErrors) {
+				validateFrontendJsxUsage(parsed.ast, semantic, {
+					containingFile: path,
+					platform: config.platform,
+					...(jsInteropProvider === undefined ? {} : { jsInteropProvider }),
+					...(repetitionHostValidation === undefined ? {} : { repetitionHost: repetitionHostValidation }),
+				});
 			}
 			const diagnostics = [...parsed.diagnostics, ...semantic.diagnostics.items];
 			let output: EmitResult | undefined; let outputPath: string | undefined;
