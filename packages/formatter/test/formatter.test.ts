@@ -227,7 +227,7 @@ children
 } else {
 Ui.Empty()
 }
-for item,index in items {
+for item,index in items by item {
 Ui.Row(value:item,position:index)
 }
 }
