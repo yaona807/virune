@@ -194,7 +194,7 @@ Generic `Iterable`、`AsyncIterable`、`Set`、`Map`、arbitrary array-likeは�
 
 compiler-managed standalone `children` slotは、nested View conditionalやnested repetitionを経由する場合も含め、repetition subtree内のどこにあってもrejectする。repetitionは`break`、`continue`、assignment、imperative loop-body semanticsを導入しない。
 
-Host-backed repetitionをJavaScript-imported External componentのdirect childとして使う場合、exact Host resultがその直接観測可能なdownstream children shapeに適合することを証明できるまではfail closedとする。External componentの下でもintrinsic element配下にnestedされたrepetitionは通常のvalidation対象として扱える。この制約は保守的なproof boundaryであり、compiler-owned structural array expansionやframework-specific loweringを復活させる根拠にはならない。
+生成されるHost callは、projectのTypeScript whole-usage environmentへactual parent JSX positionのまま提出する。JavaScript-imported External componentのdirect childも同様であり、acceptanceは具体的なHost resultとdownstream children contractで決まり、compiler-generated structural arrayやframework-specific exceptionには依存しない。
 
 ## `[frontend.framework-neutral]` Framework-neutral core
 
