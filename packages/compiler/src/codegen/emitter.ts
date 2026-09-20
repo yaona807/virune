@@ -470,7 +470,6 @@ export class JavaScriptEmitter {
 
 	private viewRepetitionExpression(repetition: A.ViewRepetition): string {
 		this.checkedViewRepetitionEvidence(repetition);
-		if (repetition.identity === undefined) return panicEmitter('View repetition reached emission without explicit identity');
 		if (this.#repetitionHost === undefined) return panicEmitter('View repetition reached emission without a project Repetition Host binding');
 		return this.hostViewRepetitionExpression(repetition);
 	}
@@ -478,7 +477,7 @@ export class JavaScriptEmitter {
 	private hostViewRepetitionExpression(repetition: A.ViewRepetition): string {
 		const evidence = this.checkedViewRepetitionEvidence(repetition);
 		const identity = repetition.identity;
-		if (identity === undefined || this.#repetitionHost === undefined) return panicEmitter('Host View repetition reached emission without identity and Host binding');
+		if (this.#repetitionHost === undefined) return panicEmitter('Host View repetition reached emission without Host binding');
 		const identityType = identity.inferredTypeId === undefined ? undefined : this.#semantic.arena.get(identity.inferredTypeId);
 		if (identityType?.kind !== 'primitive' || (identityType.name !== 'String' && identityType.name !== 'Int')) return panicEmitter('Host View repetition identity reached emission without checked String or Int evidence');
 
