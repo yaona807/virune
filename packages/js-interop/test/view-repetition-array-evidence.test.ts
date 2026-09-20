@@ -31,7 +31,7 @@ test('Array and ReadonlyArray provide stable repetition element evidence', async
 	}
 });
 
-test('ReadonlyArray repetition emits stable source-index traversal without map semantics', async () => {
+test('ReadonlyArray repetition preserves checked element and source-index evidence', async () => {
 	const root = await fixtureRoot();
 	await writeFile(join(root, 'src/library.d.ts'), [
 		'export declare const readonlyValues: ReadonlyArray<string>;',
@@ -49,7 +49,7 @@ test('ReadonlyArray repetition emits stable source-index traversal without map s
 	const result = compileSource({
 		id: 1,
 		path: join(root, 'src/main.virune'),
-		text: `import js { readonlyValues } from "./library.js"\n\ncomponent Values() uses JavaScript {\n\treturn view {\n\t\tfor value, index in readonlyValues {\n\t\t\tspan(value: value, index: index)\n\t\t}\n\t}\n}\n`,
+		text: `import js { readonlyValues } from "./library.js"\n\ncomponent Values() uses JavaScript {\n\treturn view {\n\t\tfor value, index in readonlyValues by value {\n\t\t\tspan(value: value, index: index)\n\t\t}\n\t}\n}\n`,
 	}, { platform: 'node', jsInteropProvider: provider });
 	assert.deepEqual(result.diagnostics.filter(item => item.severity === 'error'), []);
 	assert.ok(result.output);
@@ -63,7 +63,7 @@ test('ReadonlyArray repetition emits stable source-index traversal without map s
 	assert.ok(!code.includes('.map('));
 });
 
-test('External Array call result can be repeated directly in View', async () => {
+test('External Array call and explicit snapshot remain valid repetition sources', async () => {
 	const root = await fixtureRoot();
 	await writeFile(join(root, 'src/library.d.ts'), [
 		'export declare function getValues(): ReadonlyArray<string>;',
@@ -81,8 +81,8 @@ test('External Array call result can be repeated directly in View', async () => 
 	const result = compileSource({
 		id: 1,
 		path: join(root, 'src/main.virune'),
-		text: `import js { getValues } from "./library.js"\n\ncomponent Values() uses JavaScript {\n\treturn view {\n\t\tfor value in getValues() {\n\t\t\tspan(value: value)\n\t\t}\n\t}\n}\n`,
-	}, { platform: 'node', jsInteropProvider: provider });
+		text: `import js { getValues } from "./library.js"\n\ncomponent Values() uses JavaScript {\n\treturn view {\n\t\tfor value in getValues() by value {\n\t\t\tspan(value: value)\n\t\t}\n\t}\n}\n`,
+	}, { emit: false, platform: 'node', jsInteropProvider: provider });
 	assert.deepEqual(result.diagnostics.filter(item => item.severity === 'error'), []);
 	assert.ok(result.output);
 	assert.match(result.output.code, /const \$viewSource\d+ = getValues\(\);/u);
@@ -90,8 +90,8 @@ test('External Array call result can be repeated directly in View', async () => 
 	const snapshot = compileSource({
 		id: 2,
 		path: join(root, 'src/snapshot.virune'),
-		text: `import js { getValues } from "./library.js"\n\ncomponent Snapshot() uses JavaScript {\n\tlet values = getValues()\n\treturn view {\n\t\tfor value in values {\n\t\t\tspan(value: value)\n\t\t}\n\t}\n}\n`,
-	}, { platform: 'node', jsInteropProvider: provider });
+		text: `import js { getValues } from "./library.js"\n\ncomponent Snapshot() uses JavaScript {\n\tlet values = getValues()\n\treturn view {\n\t\tfor value in values by value {\n\t\t\tspan(value: value)\n\t\t}\n\t}\n}\n`,
+	}, { emit: false, platform: 'node', jsInteropProvider: provider });
 	assert.deepEqual(snapshot.diagnostics.filter(item => item.severity === 'error'), []);
 	assert.ok(snapshot.output);
 	const snapshotCode = snapshot.output.code;
@@ -100,7 +100,7 @@ test('External Array call result can be repeated directly in View', async () => 
 	assert.match(snapshotCode, /const \$viewSource\d+ = values;/u);
 });
 
-test('empty native List repetition remains valid without collection helpers', () => {
+test('empty native List repetition remains valid with explicit identity evidence', () => {
 	const provider: JsInteropProvider = {
 		id: 'view-repetition-test',
 		version: '1',
@@ -116,8 +116,8 @@ test('empty native List repetition remains valid without collection helpers', ()
 	const result = compileSource({
 		id: 1,
 		path: 'empty-view-repetition.virune',
-		text: `component EmptyView() uses JavaScript {\n\tlet items: List<Int> = []\n\treturn view {\n\t\tfor item in items {\n\t\t\tspan(value: item)\n\t\t}\n\t}\n}\n`,
-	}, { jsInteropProvider: provider });
+		text: `component EmptyView() uses JavaScript {\n\tlet items: List<Int> = []\n\treturn view {\n\t\tfor item in items by item {\n\t\t\tspan(value: item)\n\t\t}\n\t}\n}\n`,
+	}, { emit: false, jsInteropProvider: provider });
 	assert.deepEqual(result.diagnostics.filter(item => item.severity === 'error'), []);
 	assert.ok(result.output);
 	assert.match(result.output.code, /const \$viewSource\d+ = items;/u);
