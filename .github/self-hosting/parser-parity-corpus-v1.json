@@ -184,7 +184,7 @@
         "view",
         "repetition"
       ],
-      "source": "component Rows(items: List<Int>) uses JavaScript {\n\treturn view {\n\t\tfor item, index in items {\n\t\t\tspan(value: item, position: index)\n\t\t}\n\t}\n}\n",
+      "source": "component Rows(items: List<Int>) uses JavaScript {\n\treturn view {\n\t\tfor item, index in items by item {\n\t\t\tspan(value: item, position: index)\n\t\t}\n\t}\n}\n",
       "mutations": [
         "remove-first-comma",
         "remove-last-rbrace"
@@ -254,6 +254,19 @@
       ],
       "source": "extern js \"pkg\" {\n\tfn broken(value: Int) -> Int =\n\tfn recovered(value: Int) -> Int = \"ok\"\n}\n",
       "comparePrimaryDiagnostic": false,
+      "mutations": []
+    },
+    {
+      "id": "invalid-view-repetition-missing-identity",
+      "tags": [
+        "invalid",
+        "component",
+        "view",
+        "repetition",
+        "diagnostic"
+      ],
+      "source": "component Rows(items: List<Int>) uses JavaScript {\\n\\treturn view {\\n\\t\\tfor item in items {\\n\\t\\t\\tspan(value: item)\\n\\t\\t}\\n\\t}\\n}\\n",
+      "comparePrimaryDiagnostic": true,
       "mutations": []
     }
   ],
