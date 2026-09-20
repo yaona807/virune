@@ -194,7 +194,7 @@ Generic `Iterable`, `AsyncIterable`, `Set`, `Map`, and arbitrary array-like valu
 
 The compiler-managed standalone `children` slot is rejected anywhere inside a repetition subtree, including through nested View conditionals or nested repetitions. Repetition does not introduce `break`, `continue`, assignment, or imperative loop-body semantics.
 
-A Host-backed repetition used as the direct child of a JavaScript-imported External component remains fail-closed until the exact Host result can be proven against that directly observable downstream children shape. Repetition nested under an intrinsic element below an External component remains eligible for normal validation. This restriction is a conservative proof boundary; it is not permission to restore compiler-owned structural array expansion or framework-specific lowering.
+The generated Host call is submitted in its actual parent JSX position to the project's TypeScript whole-usage environment. This includes direct children of JavaScript-imported External components: acceptance depends on the concrete Host result and downstream children contract, not on a compiler-generated structural array or a framework-specific exception.
 
 ## `[frontend.framework-neutral]` Framework-neutral core
 
