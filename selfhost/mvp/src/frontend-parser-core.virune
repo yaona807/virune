@@ -1396,6 +1396,16 @@ fn parseViewRepetition(stateValue: CoreState, tokens: List<FrontendToken>) -> Co
 	if source.id >= 0 {
 		children = List.append(children, source.id)
 	}
+	if isText(state, tokens, "by") {
+		state = advance(state)
+		let identity = parseExpression(state, tokens, 1, true)
+		state = identity.state
+		if identity.id >= 0 {
+			children = List.append(children, identity.id)
+		}
+	} else {
+		state = addDiagnosticAt(state, tokens, "L0002", "Expected by and an explicit identity in a View repetition", state.index)
+	}
 	let body = parseViewBlock(state, tokens)
 	state = body.state
 	children = List.append(children, body.id)
