@@ -49,7 +49,7 @@ test('ReadonlyArray repetition preserves checked element and source-index eviden
 	const result = compileSource({
 		id: 1,
 		path: join(root, 'src/main.virune'),
-		text: `import js { readonlyValues } from "./library.js"\n\ncomponent Values() uses JavaScript {\n\treturn view {\n\t\tfor value, index in readonlyValues by value {\n\t\t\tspan(value: value, index: index)\n\t\t}\n\t}\n}\n`,
+		text: `import js { readonlyValues } from "./library.js"\n\ncomponent Values() uses JavaScript {\n\treturn view {\n\t\tfor value, index in readonlyValues by index {\n\t\t\tspan(value: value, index: index)\n\t\t}\n\t}\n}\n`,
 	}, { emit: false, platform: 'node', jsInteropProvider: provider });
 	assert.deepEqual(result.diagnostics.filter(item => item.severity === 'error'), []);
 	assert.equal(result.output, undefined);
@@ -73,7 +73,7 @@ test('External Array call and explicit snapshot remain valid repetition sources'
 	const result = compileSource({
 		id: 1,
 		path: join(root, 'src/main.virune'),
-		text: `import js { getValues } from "./library.js"\n\ncomponent Values() uses JavaScript {\n\treturn view {\n\t\tfor value in getValues() by value {\n\t\t\tspan(value: value)\n\t\t}\n\t}\n}\n`,
+		text: `import js { getValues } from "./library.js"\n\ncomponent Values() uses JavaScript {\n\treturn view {\n\t\tfor value, index in getValues() by index {\n\t\t\tspan(value: value)\n\t\t}\n\t}\n}\n`,
 	}, { emit: false, platform: 'node', jsInteropProvider: provider });
 	assert.deepEqual(result.diagnostics.filter(item => item.severity === 'error'), []);
 	assert.equal(result.output, undefined);
@@ -81,7 +81,7 @@ test('External Array call and explicit snapshot remain valid repetition sources'
 	const snapshot = compileSource({
 		id: 2,
 		path: join(root, 'src/snapshot.virune'),
-		text: `import js { getValues } from "./library.js"\n\ncomponent Snapshot() uses JavaScript {\n\tlet values = getValues()\n\treturn view {\n\t\tfor value in values by value {\n\t\t\tspan(value: value)\n\t\t}\n\t}\n}\n`,
+		text: `import js { getValues } from "./library.js"\n\ncomponent Snapshot() uses JavaScript {\n\tlet values = getValues()\n\treturn view {\n\t\tfor value, index in values by index {\n\t\t\tspan(value: value)\n\t\t}\n\t}\n}\n`,
 	}, { emit: false, platform: 'node', jsInteropProvider: provider });
 	assert.deepEqual(snapshot.diagnostics.filter(item => item.severity === 'error'), []);
 	assert.equal(snapshot.output, undefined);
