@@ -46,7 +46,7 @@ const validHost = `export declare function render<T>(
 ): JSX.Element;
 `;
 
-async function runWithHost(declarations: string | undefined): Promise<{ readonly errors: readonly { readonly code: string }[]; readonly emitted: boolean }> {
+async function runWithHost(declarations: string | undefined, options: { readonly source?: string; readonly jsx?: string } = {}): Promise<{ readonly errors: readonly { readonly code: string }[]; readonly emitted: boolean }> {
 	const root = await fixtureRoot();
 	try {
 		await mkdir(join(root, 'src/pages'), { recursive: true });
@@ -54,9 +54,9 @@ async function runWithHost(declarations: string | undefined): Promise<{ readonly
 		await writeFile(join(root, 'virune.json'), config, 'utf8');
 		await writeFile(join(root, 'tsconfig.json'), JSON.stringify({ compilerOptions: { jsx: 'preserve', strict: true }, include: ['src/**/*'] }), 'utf8');
 		await writeFile(join(root, 'src/infra/jsx-env.js'), 'export {};\n', 'utf8');
-		await writeFile(join(root, 'src/infra/jsx-env.d.ts'), jsxDeclarations, 'utf8');
+		await writeFile(join(root, 'src/infra/jsx-env.d.ts'), options.jsx ?? jsxDeclarations, 'utf8');
 		await writeFile(join(root, 'src/infra/locator.virune'), '@repetitionHost("render", 1)\nextern js "./repetition-host.js" {}\n', 'utf8');
-		await writeFile(join(root, 'src/pages/page.virune'), viruneSource, 'utf8');
+		await writeFile(join(root, 'src/pages/page.virune'), options.source ?? viruneSource, 'utf8');
 		if (declarations !== undefined) await writeFile(join(root, 'src/infra/repetition-host.d.ts'), `import "./jsx-env.js";\n${declarations}`, 'utf8');
 		const provider = new TypeScriptInteropProvider({ projectRoot: root });
 		try {
@@ -77,6 +77,37 @@ test('Repetition Host whole-usage validation accepts a compatible generic TypeSc
 	const result = await runWithHost(validHost);
 	assert.deepEqual(result.errors, []);
 	assert.equal(result.emitted, true);
+});
+
+test('Repetition Host result is validated in the actual parent JSX child position', async () => {
+	const source = `import "../infra/locator.virune"
+import js "../infra/jsx-env.js"
+
+component Page() uses JavaScript {
+	return view {
+		box() {
+			for item in [1, 2] by item {
+				span()
+			}
+		}
+	}
+}
+`;
+	const jsx = `export {};
+declare global {
+	namespace JSX {
+		interface Element { readonly __viruneElement: unique symbol; }
+		interface ElementChildrenAttribute { children: {}; }
+		interface IntrinsicElements {
+			box: { children: readonly Element[] };
+			span: {};
+		}
+	}
+}
+`;
+	const result = await runWithHost(validHost, { source, jsx });
+	assert.deepEqual(result.errors, [{ code: 'L4308' }]);
+	assert.equal(result.emitted, false);
 });
 
 test('Repetition Host whole-usage validation rejects missing and incompatible exports', async () => {
