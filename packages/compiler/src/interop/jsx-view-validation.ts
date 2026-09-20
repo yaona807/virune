@@ -423,7 +423,7 @@ function renderViewElement(element: A.ViewElement, context: RenderContext): stri
 		return fail(context, element.span, `View if without else beneath JavaScript-imported External component ${tag} cannot preserve zero-child absence without making the empty fragment observable as a child`);
 	}
 	if (external && containsDirectRepetition(element.children)) {
-		return fail(context, element.span, `View repetition beneath JavaScript-imported External component ${tag} cannot preserve flat child expansion without making the generated collection observable as a child`);
+		return fail(context, element.span, `View repetition beneath JavaScript-imported External component ${tag} cannot yet prove the Host result against the downstream direct-child shape`);
 	}
 	const children = renderViewBlockContents(element.children, context);
 	return children === undefined ? undefined : `<${tag}${attributes}>${children}</${tag}>`;
