@@ -244,7 +244,7 @@ Ui.Row(value:item,position:index)
 	assert.match(first.text, /\n\t\t\t"hello"\n\t\t\t\{ title \}\n/u);
 	assert.match(first.text, /\n\t\t\t\{ \{\n\t\t\t\tname: title,\n\t\t\t\} \}\n/u);
 	assert.match(first.text, /\n\t\t\t\tchildren\n/u);
-	assert.match(first.text, /\n\t\t\tfor item, index in items \{\n\t\t\t\tUi\.Row\(value: item, position: index\)\n\t\t\t\}\n/u);
+	assert.match(first.text, /\n\t\t\tfor item, index in items by item \{\n\t\t\t\tUi\.Row\(value: item, position: index\)\n\t\t\t\}\n/u);
 	const rejected = formatSource('component Rejected(value?:String) uses JavaScript {\nreturn view {}\n}\n');
 	assert.deepEqual(rejected.errors, []);
 	assert.match(rejected.text, /component Rejected\(value\?: String\) uses JavaScript/u);
