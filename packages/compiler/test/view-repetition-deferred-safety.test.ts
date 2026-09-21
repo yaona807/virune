@@ -320,6 +320,22 @@ test('Host-deferred repetition does not treat callback-local mutable values as c
 	assert.deepEqual(result.diagnostics.filter(item => item.severity === 'error'), []);
 });
 
+test('Host-deferred repetition still rejects mutable values captured from outside a callback', () => {
+	const result = compile(`component ListView() uses JavaScript {
+	let mut prefix = 0
+	return view {
+		for item in [1] by item {
+			button(onClick: fn() -> Unit {
+				discard prefix
+				return Unit
+			})
+		}
+	}
+}
+`);
+	assert.ok(result.diagnostics.some(item => item.code === 'L4309' && item.message.includes('mutable value prefix')));
+});
+
 // @virune-rule {"id":"frontend.view-repetition","runner":"unit","file":"packages/compiler/test/view-repetition-deferred-safety.test.ts","case":"Host-deferred repetition rejects raw local callable captures","kind":"negative","platform":"common"}
 test('Host-deferred repetition rejects raw local callable captures', () => {
 	const result = compile(`component ListView() uses JavaScript {
