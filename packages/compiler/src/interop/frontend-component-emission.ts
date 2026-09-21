@@ -114,13 +114,23 @@ function hostDeferredLambdaLocalSymbols(
 	semantic: SemanticModel,
 	inherited: ReadonlySet<number>,
 ): ReadonlySet<number> {
+	const declarations = new Set<object>();
+	const collect = (value: unknown): void => {
+		if (Array.isArray(value)) {
+			for (const item of value) collect(item);
+			return;
+		}
+		if (value === null || typeof value !== 'object') return;
+		declarations.add(value);
+		for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
+			if (key === 'span' || key === 'checkedEvidence') continue;
+			collect(child);
+		}
+	};
+	collect(lambda);
 	const result = new Set(inherited);
 	for (const [symbolId, symbol] of semantic.symbols) {
-		const declaration = symbol.declaration;
-		if (declaration === undefined) continue;
-		const span = declaration.span;
-		if (span.fileId !== lambda.span.fileId || span.start.offset < lambda.span.start.offset || span.end.offset > lambda.span.end.offset) continue;
-		result.add(symbolId);
+		if (symbol.declaration !== undefined && declarations.has(symbol.declaration)) result.add(symbolId);
 	}
 	return result;
 }
