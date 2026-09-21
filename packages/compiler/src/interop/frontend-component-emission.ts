@@ -109,6 +109,22 @@ function unsafeHostDeferredItemTransport(symbolId: number, name: string, span: S
 	};
 }
 
+function hostDeferredLambdaLocalSymbols(
+	lambda: A.LambdaExpression,
+	semantic: SemanticModel,
+	inherited: ReadonlySet<number>,
+): ReadonlySet<number> {
+	const result = new Set(inherited);
+	for (const [symbolId, symbol] of semantic.symbols) {
+		const declaration = symbol.declaration;
+		if (declaration === undefined) continue;
+		const span = declaration.span;
+		if (span.fileId !== lambda.span.fileId || span.start.offset < lambda.span.start.offset || span.end.offset > lambda.span.end.offset) continue;
+		result.add(symbolId);
+	}
+	return result;
+}
+
 function findUnsafeHostDeferredCapture(
 	root: A.ViewRepetition,
 	value: unknown,
@@ -125,16 +141,19 @@ function findUnsafeHostDeferredCapture(
 	if (value === null || typeof value !== 'object') return undefined;
 	const node = value as Record<string, unknown>;
 	if (value !== root && node.kind === 'ViewRepetition' && node.identity !== undefined) return undefined;
+	const scopedLocalSymbols = node.kind === 'LambdaExpression'
+		? hostDeferredLambdaLocalSymbols(value as A.LambdaExpression, semantic, localSymbols)
+		: localSymbols;
 	if (node.kind === 'LiteralExpression' && node.literalKind === 'String' && typeof node.value === 'string' && /(?<!\{)\{[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*\}(?!\})/u.test(node.value)) {
 		return { kind: 'interpolation', span: node.span as SourceSpan };
 	}
-	if (node.kind === 'IdentifierExpression' && typeof node.symbolId === 'number' && !localSymbols.has(node.symbolId)) {
+	if (node.kind === 'IdentifierExpression' && typeof node.symbolId === 'number' && !scopedLocalSymbols.has(node.symbolId)) {
 		const capture = unsafeHostDeferredSymbolCapture(node.symbolId, typeof node.name === 'string' ? node.name : '<unresolved>', node.span as SourceSpan, semantic);
 		if (capture !== undefined) return capture;
 	}
 	for (const [key, child] of Object.entries(node)) {
 		if (key === 'span' || key === 'checkedEvidence') continue;
-		const found = findUnsafeHostDeferredCapture(root, child, semantic, localSymbols);
+		const found = findUnsafeHostDeferredCapture(root, child, semantic, scopedLocalSymbols);
 		if (found !== undefined) return found;
 	}
 	return undefined;
