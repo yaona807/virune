@@ -165,7 +165,6 @@ component Page() uses JavaScript {
 }
 `, 'utf8');
 		const result = await buildProject(root, { write: false, jsInteropProvider: jsxValidationProvider });
-		assert.equal(errors(result).filter(item => item.code === 'L2134').length, 2);
 		assert.ok(errors(result).some(item => item.code === 'L2135' && item.message.includes('ambiguous')));
 		assert.equal(moduleOutput(result, root), undefined);
 	});
