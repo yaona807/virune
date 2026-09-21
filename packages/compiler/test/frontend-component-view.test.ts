@@ -225,12 +225,12 @@ fn preserveChildren(children: Int) -> Int {
 	assert.deepEqual(ordinary.diagnostics.filter(item => item.severity === 'error'), []);
 });
 
-// @virune-rule {"id":"frontend.view-repetition","runner":"unit","file":"packages/compiler/test/frontend-component-view.test.ts","case":"View repetition accepts native List with source index","kind":"positive","platform":"common"}
-test('View repetition accepts native List with source index', () => {
+// @virune-rule {"id":"frontend.view-repetition","runner":"unit","file":"packages/compiler/test/frontend-component-view.test.ts","case":"View repetition accepts explicit identity with native List source index","kind":"positive","platform":"common"}
+test('View repetition accepts explicit identity with native List source index', () => {
 	const result = checkSource(`component ListView() uses JavaScript {
 	let items = [1, 2]
 	return view {
-		for item, index in items {
+		for item, index in items by item {
 			span(value: item)
 			if true {
 				strong(position: index)
@@ -257,7 +257,7 @@ test('View repetition accepts native List with source index', () => {
 test('View repetition rejects unsupported native collection sources', () => {
 	const parsed = parseSource(source(`component SetView(items: Set<Int>) uses JavaScript {
 	return view {
-		for item, index in items {
+		for item, index in items by item {
 			span(value: item, position: index)
 		}
 	}
@@ -284,7 +284,7 @@ test('View repetition rejects unsupported native collection sources', () => {
 test('View repetition rejects nested compiler-managed children slots', () => {
 	assert.ok(errorCodes(`component RepeatedChildren(items: List<Int>) uses JavaScript {
 	return view {
-		for item in items {
+		for item in items by item {
 			if true {
 				children
 			}

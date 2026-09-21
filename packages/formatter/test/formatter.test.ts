@@ -10,6 +10,14 @@ test('formatter is idempotent', () => {
 	assert.equal(second.text, first.text);
 });
 
+test('formatter round-trips the prototype repetition Host locator attribute', () => {
+	const input = '@repetitionHost("render",1)\nextern js "./host.js"{}\n';
+	const first = formatSource(input);
+	assert.deepEqual(first.errors, []);
+	assert.equal(first.text, '@repetitionHost("render", 1)\nextern js "./host.js" {\n}\n');
+	assert.equal(formatSource(first.text).text, first.text);
+});
+
 test('formatter supports newtypes, type aliases, strategy records, loop control, and discard', () => {
 	const source = '@mustUse\nrecord Token{value:String,}\nnewtype TokenId=Int\ntype Display=fn(Token)->String\nrecord TokenDisplay{display:Display,}\nfn run(values:List<Int>,strategy:TokenDisplay)->Unit{for value in values{if value==0{continue\n}\nif value==1{break\n}\n}\ndiscard strategy.display(Token{value:"ok"})\ndiscard Ok<Int,String>(1)\nreturn Unit\n}\n';
 	const first = formatSource(source);
@@ -219,7 +227,7 @@ children
 } else {
 Ui.Empty()
 }
-for item,index in items {
+for item,index in items by item {
 Ui.Row(value:item,position:index)
 }
 }
@@ -236,7 +244,7 @@ Ui.Row(value:item,position:index)
 	assert.match(first.text, /\n\t\t\t"hello"\n\t\t\t\{ title \}\n/u);
 	assert.match(first.text, /\n\t\t\t\{ \{\n\t\t\t\tname: title,\n\t\t\t\} \}\n/u);
 	assert.match(first.text, /\n\t\t\t\tchildren\n/u);
-	assert.match(first.text, /\n\t\t\tfor item, index in items \{\n\t\t\t\tUi\.Row\(value: item, position: index\)\n\t\t\t\}\n/u);
+	assert.match(first.text, /\n\t\t\tfor item, index in items by item \{\n\t\t\t\tUi\.Row\(value: item, position: index\)\n\t\t\t\}\n/u);
 	const rejected = formatSource('component Rejected(value?:String) uses JavaScript {\nreturn view {}\n}\n');
 	assert.deepEqual(rejected.errors, []);
 	assert.match(rejected.text, /component Rejected\(value\?: String\) uses JavaScript/u);

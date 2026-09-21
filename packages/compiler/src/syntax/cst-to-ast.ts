@@ -291,7 +291,7 @@ export class AstBuilder extends baseCstVisitorConstructor {
 			id: this.id(), kind: 'ViewRepetition', span: contextSpan(this.#fileId, ctx), itemName: identifiers[0]?.image ?? '',
 			...(firstToken(ctx, 'Comma') === undefined || identifiers[1] === undefined ? {} : { indexName: identifiers[1].image }),
 			source: this.visitNode(expressions[0]),
-			...(expressions[1] === undefined ? {} : { identity: this.visitNode<A.Expression>(expressions[1]) }),
+			identity: this.visitNode<A.Expression>(expressions[1]),
 			body: this.visitNode(firstNode(ctx, 'viewBlock')),
 		};
 	}
