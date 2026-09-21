@@ -303,7 +303,7 @@ component ListView() uses JavaScript {
 	assert.equal(result.output, undefined);
 });
 
-// @virune-rule {"id":"frontend.view-repetition","runner":"unit","file":"packages/compiler/test/view-repetition-deferred-safety.test.ts","case":"Host-deferred repetition keeps callback-local mutable state inside the callback scope","kind":"positive","platform":"common"}
+// @virune-rule {"id":"frontend.view-repetition","runner":"unit","file":"packages/compiler/test/view-repetition-deferred-safety.test.ts","case":"Host-deferred repetition does not treat callback-local mutable values as cross-Host captures","kind":"positive","platform":"common"}
 test('Host-deferred repetition does not treat callback-local mutable values as cross-Host captures', () => {
 	const result = compile(`component ListView() uses JavaScript {
 	return view {
