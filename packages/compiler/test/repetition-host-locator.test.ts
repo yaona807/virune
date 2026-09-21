@@ -52,7 +52,7 @@ test('duplicate repetition Host attributes remain invalid locator evidence', () 
 	assert.deepEqual(discoverRepetitionHostLocator([{ path: '/project/src/locator.virune', ast: result.ast }]), { status: 'none' });
 });
 
-test('project build rejects more than one valid repetition Host locator deterministically', async () => {
+test('project Host ambiguity fails closed only when identity repetition needs Host resolution', async () => {
 	const root = await mkdtemp(join(tmpdir(), 'virune-repetition-host-locator-'));
 	try {
 		await mkdir(join(root, 'src'), { recursive: true });
@@ -66,11 +66,30 @@ test('project build rejects more than one valid repetition Host locator determin
 			sourceMap: true,
 			sourcesContent: true,
 		}));
-		await writeFile(join(root, 'src/main.virune'), 'import "./first.virune"\nimport "./second.virune"\nfn main() -> Int => 0\n');
+		const main = join(root, 'src/main.virune');
+		await writeFile(main, 'import "./first.virune"\nimport "./second.virune"\nfn main() -> Int => 0\n');
 		await writeFile(join(root, 'src/first.virune'), '@repetitionHost("renderFirst", 1)\nextern js "./first-host.js" {}\n');
 		await writeFile(join(root, 'src/second.virune'), '@repetitionHost("renderSecond", 1)\nextern js "./second-host.js" {}\n');
-		const result = await buildProject(root, { write: false });
-		assert.equal(result.diagnostics.filter(item => item.severity === 'error' && item.code === 'L2134').length, 2);
+
+		const unused = await buildProject(root, { write: false });
+		assert.deepEqual(errorCodes(unused), []);
+
+		await writeFile(main, `import "./first.virune"
+import "./second.virune"
+
+component Page() uses JavaScript {
+	return view {
+		for item in [1, 2] by item {
+			span()
+		}
+	}
+}
+`);
+		const used = await buildProject(root, { write: false });
+		assert.equal(
+			used.diagnostics.filter(item => item.severity === 'error' && item.code === 'L2135' && /ambiguous/u.test(item.message)).length,
+			1,
+		);
 	} finally {
 		await rm(root, { recursive: true, force: true });
 	}
