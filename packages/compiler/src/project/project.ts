@@ -277,9 +277,6 @@ export async function buildProject(
 			return ast === undefined || modulePackageScope(root, path) !== 'project' ? [] : [{ path, ast }];
 		}),
 	);
-	if (repetitionHostLocator.status === 'ambiguous') {
-		for (const locator of repetitionHostLocator.locators) projectDiagnostics.error('L2134', 'Project defines multiple @repetitionHost locators', locator.span);
-	}
 	const repetitionHostFingerprint = fingerprintRepetitionHostResolution(repetitionHostLocator);
 	const moduleInterfaces = await buildModuleInterfaces(root, order, parsedByPath, projectDiagnostics, host);
 	const interfaceHashes = new Map<string, string>();
