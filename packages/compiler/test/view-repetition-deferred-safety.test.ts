@@ -303,6 +303,23 @@ component ListView() uses JavaScript {
 	assert.equal(result.output, undefined);
 });
 
+// @virune-rule {"id":"frontend.view-repetition","runner":"unit","file":"packages/compiler/test/view-repetition-deferred-safety.test.ts","case":"Host-deferred repetition keeps callback-local mutable state inside the callback scope","kind":"positive","platform":"common"}
+test('Host-deferred repetition does not treat callback-local mutable values as cross-Host captures', () => {
+	const result = compile(`component ListView() uses JavaScript {
+	return view {
+		for item in [1] by item {
+			button(onClick: fn() -> Unit {
+				let mut local = 0
+				discard local
+				return Unit
+			})
+		}
+	}
+}
+`);
+	assert.deepEqual(result.diagnostics.filter(item => item.severity === 'error'), []);
+});
+
 // @virune-rule {"id":"frontend.view-repetition","runner":"unit","file":"packages/compiler/test/view-repetition-deferred-safety.test.ts","case":"Host-deferred repetition rejects raw local callable captures","kind":"negative","platform":"common"}
 test('Host-deferred repetition rejects raw local callable captures', () => {
 	const result = compile(`component ListView() uses JavaScript {
