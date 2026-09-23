@@ -30,6 +30,8 @@ export const ExternalButton: (props: { onClick: () => void }) => JSX.Element;
 export const ExternalList: <T>(props: { items: readonly T[]; children: (item: T) => JSX.Element }) => JSX.Element;
 export const ExternalStringRenderer: (props: { children: (item: Item) => string }) => JSX.Element;
 export const ExternalAnyRenderer: (props: { children: (item: any) => JSX.Element }) => JSX.Element;
+export function ExternalOverloaded(props: { mode: "a"; children: (item: Item) => JSX.Element }): JSX.Element;
+export function ExternalOverloaded(props: { mode: "b"; children: (item: Item) => JSX.Element }): JSX.Element;
 export function setMode(value: string): void;
 `, 'utf8');
 	const provider = new TypeScriptInteropProvider({ projectRoot: root });
@@ -168,6 +170,23 @@ component Page() uses JavaScript {
 	return view {
 		ExternalAnyRenderer(children: fn(item) uses JavaScript => view {
 			div()
+		})
+	}
+}
+`);
+	assert.ok(errors(result).some(item => item.code === 'L4308'));
+	assert.equal(result.semantic?.frontendCallableProjections.length, 0);
+});
+
+test('External JSX contextual View callbacks reject ambiguous component overloads', async () => {
+	const result = await compile(`import js { ExternalOverloaded } from "./library.js"
+
+component Page() uses JavaScript {
+	return view {
+		ExternalOverloaded(mode: "a", children: fn(item) uses JavaScript => view {
+			div() {
+				{ item.label }
+			}
 		})
 	}
 }
