@@ -240,6 +240,21 @@ component Page() uses JavaScript {
 	assert.ok(errors(result).some(item => item.code === 'L4308'));
 });
 
+test('View-producing External JSX callbacks reject explicit Virune return types', async () => {
+	const result = await compile(`import js { ExternalStringRenderer } from "./library.js"
+
+component Page() uses JavaScript {
+	return view {
+		ExternalStringRenderer(children: fn(item) -> String uses JavaScript => view {
+			div()
+		})
+	}
+}
+`);
+	assert.ok(errors(result).some(item => item.code === 'L4300' && item.message.includes('cannot declare a Virune return type')));
+	assert.equal(result.semantic?.frontendCallableProjections.length, 0);
+});
+
 test('async View-producing External JSX callbacks remain fail closed', async () => {
 	const result = await compile(`import js { ExternalStringRenderer } from "./library.js"
 
