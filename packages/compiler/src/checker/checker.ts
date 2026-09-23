@@ -896,6 +896,10 @@ export class TypeChecker {
 			this.diagnostics.error('L4300', 'View-producing External JSX callback parameters must use TypeScript contextual typing', lambda.span);
 			return;
 		}
+		if (lambda.returnType !== undefined) {
+			this.diagnostics.error('L4300', 'View-producing External JSX callbacks cannot declare a Virune return type', lambda.returnType.span);
+			return;
+		}
 		const target = this.frontendExternalViewTag(element.tag);
 		const resolver = target?.provider.resolveJsxCallbackUsage;
 		if (target === undefined || resolver === undefined) {
