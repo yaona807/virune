@@ -76,6 +76,10 @@ A property name may be an ordinary identifier name or a quoted string for names 
 
 Property expressions remain ordinary Virune expressions and do not gain View or External escape semantics merely because they occur in a View.
 
+One narrow compiler-controlled exception exists for a JavaScript-imported External element: a synchronous lambda used directly as a property value may have a direct `view { ... }` expression body when the actual project TypeScript JSX environment contextually proves that property as a callback. Unannotated callback parameters are taken only from concrete current provider evidence; the initial boundary accepts provider-proven External object parameters and rejects `any`, `unknown`, `never`, unresolved generic, stale, partial, ambiguous, or otherwise unsupported evidence. The View result remains non-nameable and cannot escape from that exact callback position.
+
+The callback is emitted in its downstream JSX property position, with its View body preserved for the host toolchain. Virune must not hoist or snapshot the View result at component entry. The generated callback reuses the existing JavaScript callback root-context and error-isolation machinery without classifying the View result as a general External value. The complete generated callback usage, including its actual View result, is then validated by the project's TypeScript JSX whole-usage environment. Package names, framework names, and property names do not determine this capability. Async View-producing callbacks are outside this initial contract and are rejected.
+
 ## `[frontend.view-children]` Text and expression children
 
 A string literal is a text child. An ordinary Virune expression becomes an expression child when enclosed by `{` and `}` in View-child position:
