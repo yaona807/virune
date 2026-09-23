@@ -513,7 +513,8 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 			let value: string | undefined;
 			if (index === usage.callbackIndex) {
 				callbackParameterNames = Array.from({ length: usage.parameterCount }, (_, parameterIndex) => `$viruneParam${parameterIndex}`);
-				value = `(${callbackParameterNames.join(', ')}) => { throw new Error("__virune_contextual_jsx_probe"); }`;
+				const parameterUses = callbackParameterNames.map(name => `void ${name};`).join(' ');
+				value = `(${callbackParameterNames.join(', ')}) => { ${parameterUses} throw 0; }`;
 			} else {
 				value = this.renderUsageValue(property.value, context, true, true);
 			}
