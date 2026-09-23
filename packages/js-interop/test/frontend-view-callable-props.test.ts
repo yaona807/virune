@@ -24,7 +24,12 @@ async function compile(text: string, emit = false) {
 }
 
 export interface Marker { readonly marker: true; }
+export interface Item { readonly label: string; }
+export const items: readonly Item[];
 export const ExternalButton: (props: { onClick: () => void }) => JSX.Element;
+export const ExternalList: <T>(props: { items: readonly T[]; children: (item: T) => JSX.Element }) => JSX.Element;
+export const ExternalStringRenderer: (props: { children: (item: Item) => string }) => JSX.Element;
+export const ExternalAnyRenderer: (props: { children: (item: any) => JSX.Element }) => JSX.Element;
 export function setMode(value: string): void;
 `, 'utf8');
 	const provider = new TypeScriptInteropProvider({ projectRoot: root });
@@ -129,6 +134,90 @@ component Page() uses JavaScript {
 		effects: ['JavaScript'],
 		contextMode: 'root-argument',
 	});
+});
+
+test('External JSX contextual View callbacks use sibling props for generic parameter evidence', async () => {
+	const result = await compile(`import js { ExternalList, items } from "./library.js"
+
+component Page() uses JavaScript {
+	return view {
+		ExternalList(items: items, children: fn(item) uses JavaScript => view {
+			div() {
+				{ item.label }
+			}
+		})
+	}
+}
+`, true);
+	assert.deepEqual(errors(result), []);
+	assert.ok(result.output);
+	assert.equal(result.semantic?.frontendCallableProjections.length, 1);
+	assert.deepEqual(result.semantic?.frontendCallableProjections[0]?.viewCallback, {
+		parameterCount: 1,
+		effects: ['JavaScript'],
+	});
+	assert.match(result.output.code, /<ExternalList items=\{items\} children=\{\$viruneProjectCallable\(/u);
+	assert.match(result.output.code, /return <div>\{item\.label\}<\/div>;/u);
+	assert.match(result.output.code, /version\\\":\\\"virune-frontend-view-callback\/v1/u);
+});
+
+test('External JSX contextual View callback parameters fail closed on any evidence', async () => {
+	const result = await compile(`import js { ExternalAnyRenderer } from "./library.js"
+
+component Page() uses JavaScript {
+	return view {
+		ExternalAnyRenderer(children: fn(item) uses JavaScript => view {
+			div()
+		})
+	}
+}
+`);
+	assert.ok(errors(result).some(item => item.code === 'L4308'));
+	assert.equal(result.semantic?.frontendCallableProjections.length, 0);
+});
+
+test('External JSX contextual View callbacks retain actual result validation', async () => {
+	const result = await compile(`import js { ExternalStringRenderer } from "./library.js"
+
+component Page() uses JavaScript {
+	return view {
+		ExternalStringRenderer(children: fn(item) uses JavaScript => view {
+			div() {
+				{ item.label }
+			}
+		})
+	}
+}
+`);
+	assert.ok(errors(result).some(item => item.code === 'L4308'));
+});
+
+test('async View-producing External JSX callbacks remain fail closed', async () => {
+	const result = await compile(`import js { ExternalStringRenderer } from "./library.js"
+
+component Page() uses JavaScript {
+	return view {
+		ExternalStringRenderer(children: async fn(item) uses JavaScript => view {
+			div()
+		})
+	}
+}
+`);
+	assert.ok(errors(result).some(item => item.code === 'L4300'));
+	assert.equal(result.semantic?.frontendCallableProjections.length, 0);
+});
+
+test('View-producing lambdas remain rejected outside the External JSX property boundary', async () => {
+	const result = await compile(`component Page() uses JavaScript {
+	let render = fn(value: String) => view {
+		div()
+	}
+	return view {
+		div()
+	}
+}
+`);
+	assert.ok(errors(result).some(item => item.code === 'L4300'));
 });
 
 test('TypeScript JSX whole-usage proof rejects incompatible projected callbacks', async () => {
