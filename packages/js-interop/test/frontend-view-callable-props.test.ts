@@ -349,6 +349,27 @@ component Page() uses JavaScript {
 	assert.equal(result.semantic?.frontendCallableProjections.length, 0);
 });
 
+test('contextual View callback proof and emission are deterministic', async () => {
+	const source = `import js { ExternalList, items } from "./library.js"
+
+component Page() uses JavaScript {
+	return view {
+		ExternalList(items: items, children: fn(item) uses JavaScript => view {
+			div() {
+				{ item.label }
+			}
+		})
+	}
+}
+`;
+	const first = await compile(source, true, true);
+	const second = await compile(source, true, true);
+	assert.deepEqual(errors(first), []);
+	assert.deepEqual(errors(second), []);
+	assert.deepEqual(first.semantic?.frontendCallableProjections, second.semantic?.frontendCallableProjections);
+	assert.equal(first.output?.code, second.output?.code);
+});
+
 test('frontend callable projection evidence and emission are deterministic', async () => {
 	const source = `fn handle() -> Unit {
 	return Unit
