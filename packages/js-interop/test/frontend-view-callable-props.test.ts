@@ -6,9 +6,9 @@ import { compileSource } from '@virune/compiler/experimental';
 import { TypeScriptInteropProvider } from '../src/index.js';
 import { fixtureRoot } from './fixture.js';
 
-async function compile(text: string, emit = false) {
+async function compile(text: string, emit = false, noUnusedParameters = false) {
 	const root = await fixtureRoot();
-	await writeFile(join(root, 'tsconfig.json'), JSON.stringify({ compilerOptions: { jsx: 'preserve', noUnusedLocals: true }, include: ['src/**/*'] }), 'utf8');
+	await writeFile(join(root, 'tsconfig.json'), JSON.stringify({ compilerOptions: { jsx: 'preserve', noUnusedLocals: true, noUnusedParameters }, include: ['src/**/*'] }), 'utf8');
 	await writeFile(join(root, 'src/library.d.ts'), `declare global {
 	namespace JSX {
 		interface Element { readonly __viruneJsxElement: unique symbol; }
@@ -150,7 +150,7 @@ component Page() uses JavaScript {
 		})
 	}
 }
-`, true);
+`, true, true);
 	assert.deepEqual(errors(result), []);
 	assert.ok(result.output);
 	assert.equal(result.semantic?.frontendCallableProjections.length, 1);
