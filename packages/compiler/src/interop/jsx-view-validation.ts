@@ -348,6 +348,15 @@ function renderHostViewRepetition(repetition: A.ViewRepetition, context: RenderC
 }
 
 function renderExternalRepetitionSource(expression: A.Expression, context: RenderContext): string | undefined {
+	return renderCheckedExternalExpression(
+		expression,
+		context,
+		'External Array repetition source cannot be represented in the current JSX validation slice without guessing its TypeScript type',
+	);
+}
+
+function renderCheckedExternalExpression(expression: A.Expression, context: RenderContext, failureMessage: string, depth = 0): string | undefined {
+	if (depth > 12) return fail(context, expression.span, failureMessage);
 	if (expression.kind === 'IdentifierExpression' && expression.symbolId !== undefined) {
 		const symbol = context.semantic.symbols.get(expression.symbolId);
 		if (symbol?.kind === 'import' && !symbol.typeOnly) return expression.name;
@@ -355,19 +364,48 @@ function renderExternalRepetitionSource(expression: A.Expression, context: Rende
 			const declaration = symbol.declaration;
 			if (declaration?.kind === 'LetStatement') {
 				const letStatement = declaration as A.LetStatement;
-				if (letStatement.annotation === undefined) return renderExternalRepetitionSource(letStatement.value, context);
+				if (letStatement.annotation === undefined) return renderCheckedExternalExpression(letStatement.value, context, failureMessage, depth + 1);
 			}
 		}
 	}
 	if (expression.kind === 'FieldExpression') {
-		const target = renderExternalRepetitionSource(expression.target, context);
+		const target = renderCheckedExternalExpression(expression.target, context, failureMessage, depth + 1);
 		return target === undefined ? undefined : `${target}.${expression.field}`;
 	}
-	if (expression.kind === 'CallExpression' && expression.foreignCall === true && expression.typeArguments.length === 0 && expression.arguments.length === 0) {
-		const callee = renderExternalRepetitionSource(expression.callee, context);
-		return callee === undefined ? undefined : `${callee}()`;
+	if (expression.kind === 'IndexExpression' && expression.foreignIndex === true) {
+		const target = renderCheckedExternalExpression(expression.target, context, failureMessage, depth + 1);
+		if (target === undefined) return undefined;
+		const index = renderCheckedExternalOperationArgument(expression.index, context, failureMessage, depth + 1);
+		return index === undefined ? undefined : `${target}[${index}]`;
 	}
-	return fail(context, expression.span, 'External Array repetition source cannot be represented in the current JSX validation slice without guessing its TypeScript type');
+	if (expression.kind === 'CallExpression' && expression.foreignCall === true && expression.typeArguments.length === 0) {
+		const callee = renderCheckedExternalExpression(expression.callee, context, failureMessage, depth + 1);
+		if (callee === undefined) return undefined;
+		const argumentsList: string[] = [];
+		for (const argument of expression.arguments) {
+			const rendered = renderCheckedExternalOperationArgument(argument, context, failureMessage, depth + 1);
+			if (rendered === undefined) return undefined;
+			argumentsList.push(rendered);
+		}
+		return `${callee}(${argumentsList.join(', ')})`;
+	}
+	return fail(context, expression.span, failureMessage);
+}
+
+function renderCheckedExternalOperationArgument(expression: A.Expression, context: RenderContext, failureMessage: string, depth: number): string | undefined {
+	const typeId = expression.inferredTypeId;
+	if (typeId === undefined) return fail(context, expression.span, failureMessage);
+	const type = context.semantic.arena.get(typeId);
+	if (type.kind === 'foreign') {
+		if (type.snapshot.category === 'unknown' || type.snapshot.category === 'any') return fail(context, expression.span, failureMessage);
+		return renderCheckedExternalExpression(expression, context, failureMessage, depth);
+	}
+	if (expression.kind === 'LiteralExpression') return renderLiteral(expression, context);
+	if (expression.kind === 'UnaryExpression' && expression.operator === '-' && expression.operand.kind === 'LiteralExpression' && ['Int', 'Float', 'BigInt'].includes(expression.operand.literalKind)) {
+		const literal = renderLiteral(expression.operand, context);
+		return literal === undefined ? undefined : `-${literal}`;
+	}
+	return fail(context, expression.span, failureMessage);
 }
 
 function renderNativeRepetitionSource(repetition: A.ViewRepetition, evidence: A.ViewRepetitionEvidence, context: RenderContext): string | undefined {
@@ -718,12 +756,15 @@ function renderViewValue(expression: A.Expression, context: RenderContext): stri
 		}
 	}
 	if (type.kind === 'foreign' && type.snapshot.category === 'primitive' && type.snapshot.primitive === 'string') return '("" as string)';
-	if (type.kind === 'foreign' && expression.kind === 'IdentifierExpression' && expression.symbolId !== undefined) {
-		const symbol = context.semantic.symbols.get(expression.symbolId);
-		if (symbol?.kind === 'import' && !symbol.typeOnly) {
-			if (type.snapshot.category === 'unknown' || type.snapshot.category === 'any') return fail(context, expression.span, `View value type ${context.semantic.arena.display(typeId)} is not safely projectable in this validation slice`);
-			return expression.name;
+	if (type.kind === 'foreign') {
+		if (type.snapshot.category === 'unknown' || type.snapshot.category === 'any') {
+			return fail(context, expression.span, `View value type ${context.semantic.arena.display(typeId)} is not safely projectable in this validation slice`);
 		}
+		return renderCheckedExternalExpression(
+			expression,
+			context,
+			`View value type ${context.semantic.arena.display(typeId)} requires a checked External expression shape not representable in this validation slice`,
+		);
 	}
 	return fail(context, expression.span, `View value type ${context.semantic.arena.display(typeId)} requires a boundary not implemented by this validation slice`);
 }
