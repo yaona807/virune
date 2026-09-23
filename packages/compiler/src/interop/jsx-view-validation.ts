@@ -26,6 +26,7 @@ interface RenderContext {
 	readonly externalTagRoots: ReadonlySet<string>;
 	readonly usedNativeProofs: Set<string>;
 	readonly repetitionValues: Map<number, string>;
+	readonly callbackValues: Map<number, string>;
 	readonly repetitionHostExpression?: string;
 	failure?: RenderFailure;
 }
@@ -70,6 +71,7 @@ export function validateFrontendJsxUsage(module: A.ModuleNode, semantic: Semanti
 			externalTagRoots,
 			usedNativeProofs: new Set(),
 			repetitionValues: new Map(),
+			callbackValues: new Map(),
 			...(repetitionHostExpression === undefined ? {} : { repetitionHostExpression }),
 		};
 		const renderedViews: string[] = [];
@@ -479,11 +481,14 @@ function renderViewElement(element: A.ViewElement, context: RenderContext): stri
 		if (native) value = renderNativeComponentPropertyValue(property.value, context);
 		else {
 			const projection = context.semantic.frontendCallableProjections.find(item => item.viewElementNodeId === element.id && item.propertyIndex === propertyIndex && item.property === property.name);
-			if (projection === undefined) value = renderViewValue(property.value, context);
-			else {
+			if (projection?.viewCallback !== undefined) {
+				if (property.value.kind !== 'LambdaExpression') return fail(context, property.span, `View callback property ${property.name} is missing its checked lambda`);
+				value = renderFrontendViewCallbackValue(property.value, projection.viewCallback, context);
+				if (value === undefined) return undefined;
+			} else if (projection?.descriptor !== undefined) {
 				value = renderFrontendCallableValue(projection.descriptor);
 				if (value === undefined) return fail(context, property.span, `native callable property ${property.name} has unsupported frontend projection evidence`);
-			}
+			} else value = renderViewValue(property.value, context);
 		}
 		if (value === undefined) return undefined;
 		properties.push(`${property.name}={${value}}`);
@@ -530,7 +535,35 @@ function renderFrontendCallablePrimitiveValue(primitive: string): string | undef
 	}
 }
 
-function renderFrontendCallableValue(descriptor: SemanticModel['frontendCallableProjections'][number]['descriptor']): string | undefined {
+function renderFrontendViewCallbackValue(
+	lambda: A.LambdaExpression,
+	evidence: NonNullable<SemanticModel['frontendCallableProjections'][number]['viewCallback']>,
+	context: RenderContext,
+): string | undefined {
+	if (lambda.async || !lambda.expressionBody || lambda.body.kind !== 'ViewExpression' || lambda.parameters.length !== evidence.parameterCount) {
+		return fail(context, lambda.span, 'checked View callback evidence does not match its lambda');
+	}
+	const parameters: string[] = [];
+	const previous = new Map<number, string | undefined>();
+	for (let index = 0; index < lambda.parameters.length; index += 1) {
+		const parameter = lambda.parameters[index]!;
+		if (parameter.symbolId === undefined) return fail(context, parameter.span, `View callback parameter ${parameter.name} lacks checked symbol evidence`);
+		const name = `$viruneCallbackParam${index}`;
+		parameters.push(name);
+		previous.set(parameter.symbolId, context.callbackValues.get(parameter.symbolId));
+		context.callbackValues.set(parameter.symbolId, name);
+	}
+	const body = renderViewBlockExpression(lambda.body.body, context);
+	for (const parameter of lambda.parameters) {
+		if (parameter.symbolId === undefined) continue;
+		const value = previous.get(parameter.symbolId);
+		if (value === undefined) context.callbackValues.delete(parameter.symbolId);
+		else context.callbackValues.set(parameter.symbolId, value);
+	}
+	return body === undefined ? undefined : `((${parameters.join(', ')}) => ${body})`;
+}
+
+function renderFrontendCallableValue(descriptor: NonNullable<SemanticModel['frontendCallableProjections'][number]['descriptor']>): string | undefined {
 	const parameters: string[] = [];
 	for (let index = 0; index < descriptor.parameters.length; index += 1) {
 		const type = renderFrontendCallablePrimitiveType(descriptor.parameters[index]!, true);
@@ -661,6 +694,8 @@ function renderConditionalExpression(conditional: A.ViewConditional, context: Re
 
 function renderViewValue(expression: A.Expression, context: RenderContext): string | undefined {
 	if (expression.kind === 'IdentifierExpression' && expression.symbolId !== undefined) {
+		const callbackValue = context.callbackValues.get(expression.symbolId);
+		if (callbackValue !== undefined) return callbackValue;
 		const repetitionValue = context.repetitionValues.get(expression.symbolId);
 		if (repetitionValue !== undefined) return repetitionValue;
 	}
