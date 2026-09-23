@@ -336,12 +336,13 @@ export class AstBuilder extends baseCstVisitorConstructor {
 	public recordPatternField(ctx: Ctx): A.RecordPatternField { const name = tokenText(ctx, 'Identifier'); const patternNode = firstNode(ctx, 'pattern'); return { name, pattern: patternNode === undefined ? { id: this.id(), kind: 'BindingPattern', span: tokenSpan(this.#fileId, firstToken(ctx, 'Identifier')), name } : this.visitNode(patternNode), span: nodeSpan(this.#fileId, this.currentNode(ctx)) }; }
 	public lambdaExpression(ctx: Ctx): A.LambdaExpression {
 		const block = firstNode(ctx, 'block');
+		const expression = firstNode(ctx, 'viewExpression') ?? firstNode(ctx, 'expression');
 		return {
 			id: this.id(), kind: 'LambdaExpression', span: nodeSpan(this.#fileId, this.currentNode(ctx)), async: firstToken(ctx, 'KwAsync') !== undefined,
 			parameters: firstNode(ctx, 'lambdaParameterList') === undefined ? [] : this.visitNode(firstNode(ctx, 'lambdaParameterList')),
 			...(firstNode(ctx, 'typeReference') === undefined ? {} : { returnType: this.visitNode<A.TypeReferenceNode>(firstNode(ctx, 'typeReference')) }),
 			effects: firstNode(ctx, 'usesClause') === undefined ? [] : this.visitNode<string[]>(firstNode(ctx, 'usesClause')),
-			body: block === undefined ? this.visitNode(firstNode(ctx, 'expression')) : this.visitNode(block), expressionBody: block === undefined,
+			body: block === undefined ? this.visitNode(expression) : this.visitNode(block), expressionBody: block === undefined,
 		};
 	}
 	public lambdaParameterList(ctx: Ctx): A.LambdaParameterNode[] { return this.visitNodes(nodes(ctx, 'lambdaParameter')); }
