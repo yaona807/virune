@@ -848,13 +848,7 @@ export class ViruneParser extends CstParser {
 			$.OPTION3(() => { $.CONSUME(ThinArrow); $.SUBRULE($.typeReference); });
 			$.OPTION4(() => $.SUBRULE($.usesClause));
 			$.OR([
-				{ ALT: () => {
-					$.CONSUME(FatArrow);
-					$.OR2([
-						{ GATE: () => this.LA(1).tokenType === KwView, ALT: () => $.SUBRULE($.viewExpression) },
-						{ ALT: () => $.SUBRULE($.expression) },
-					]);
-				} },
+				{ ALT: () => { $.CONSUME(FatArrow); $.SUBRULE($.expression); } },
 				{ ALT: () => $.SUBRULE($.block) },
 			]);
 		});
