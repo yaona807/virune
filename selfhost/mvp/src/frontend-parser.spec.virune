@@ -52,6 +52,14 @@ test "frontend parser preserves the component and View surface" {
 	expect(String.contains(encoded("component Typed() -> Unit uses JavaScript {\n\treturn view {\n\t}\n}\n"), "\"accepted\":false"))
 }
 
+test "frontend parser accepts a View callback before the closing property list" {
+	let source = "component Page() uses JavaScript {\n\treturn view {\n\t\tExternalList(items: items, children: fn(item) uses JavaScript => view {\n\t\t\tdiv() {\n\t\t\t\t{ item.label }\n\t\t\t}\n\t\t})\n\t}\n}\n"
+	let result = encoded(source)
+	expect(String.contains(result, "\"accepted\":true"))
+	expect(String.contains(result, "\"kind\":\"LambdaExpression\""))
+	expect(String.contains(result, "\"kind\":\"ViewExpression\""))
+}
+
 test "frontend parser recovers and reports multiple malformed constructs" {
 	let source = "pub fn broken() -> Int {\n\tlet =\n\treturn\n}\npub nonsense\npub fn valid() -> Int {\n\treturn 1\n}\n"
 	let result = encoded(source)
