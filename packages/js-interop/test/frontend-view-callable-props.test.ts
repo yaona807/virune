@@ -26,6 +26,7 @@ async function compile(text: string, emit = false, noUnusedParameters = false) {
 export interface Marker { readonly marker: true; }
 export interface Item { readonly label: string; }
 export const items: readonly Item[];
+export function createSignal<T>(value: T): readonly [() => T, (value: T) => void];
 export const ExternalButton: (props: { onClick: () => void }) => JSX.Element;
 export const ExternalList: <T>(props: { items: readonly T[]; children: (item: T) => JSX.Element }) => JSX.Element;
 export const ExternalEmptyRenderer: (props: { children: () => JSX.Element }) => JSX.Element;
@@ -163,6 +164,28 @@ component Page() uses JavaScript {
 	assert.match(result.output.code, /<ExternalList items=\{items\} children=\{\$viruneProjectCallable\(/u);
 	assert.match(result.output.code, /return <div>\{item\.label\}<\/div>;/u);
 	assert.ok(result.output.code.includes('virune-frontend-view-callback\\u002Fv1'));
+});
+
+test('External JSX whole-usage proof preserves checked External call-result sibling props', async () => {
+	const result = await compile(`import js { ExternalList, createSignal, items } from "./library.js"
+
+component Page() uses JavaScript {
+	let state = createSignal(items)
+	let readItems = state[0]
+	return view {
+		ExternalList(items: readItems(), children: fn(item) uses JavaScript => view {
+			div() {
+				{ item.label }
+			}
+		})
+	}
+}
+`, true, true);
+	assert.deepEqual(errors(result), []);
+	assert.ok(result.output);
+	assert.match(result.output.code, /const state = createSignal\(items\);/u);
+	assert.match(result.output.code, /const readItems = state\[0\];/u);
+	assert.match(result.output.code, /<ExternalList items=\{readItems\(\)\} children=\{\$viruneProjectCallable\(/u);
 });
 
 test('zero-parameter External JSX contextual View callbacks remain compiler-controlled', async () => {

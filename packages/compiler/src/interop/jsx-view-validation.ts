@@ -488,7 +488,7 @@ function renderViewElement(element: A.ViewElement, context: RenderContext): stri
 			} else if (projection?.descriptor !== undefined) {
 				value = renderFrontendCallableValue(projection.descriptor);
 				if (value === undefined) return fail(context, property.span, `native callable property ${property.name} has unsupported frontend projection evidence`);
-			} else value = renderViewValue(property.value, context);
+			} else value = external ? renderExternalViewPropertyValue(property.value, context) : renderViewValue(property.value, context);
 		}
 		if (value === undefined) return undefined;
 		properties.push(`${property.name}={${value}}`);
@@ -509,6 +509,74 @@ function renderViewElement(element: A.ViewElement, context: RenderContext): stri
 	}
 	const children = renderViewBlockContents(element.children, context);
 	return children === undefined ? undefined : `<${tag}${attributes}>${children}</${tag}>`;
+}
+
+function renderExternalViewPropertyValue(expression: A.Expression, context: RenderContext): string | undefined {
+	const typeId = expression.inferredTypeId;
+	if (typeId === undefined) return fail(context, expression.span, 'an External JSX property value has no checked type');
+	const type = context.semantic.arena.get(typeId);
+	if (type.kind !== 'foreign' || (type.snapshot.category === 'primitive' && type.snapshot.primitive === 'string')) return renderViewValue(expression, context);
+	if (type.snapshot.category === 'unknown' || type.snapshot.category === 'any') {
+		return fail(context, expression.span, `View value type ${context.semantic.arena.display(typeId)} is not safely projectable in this validation slice`);
+	}
+	return renderCheckedExternalPropertyExpression(
+		expression,
+		context,
+		`External JSX property value type ${context.semantic.arena.display(typeId)} requires a checked expression shape not representable in this validation slice`,
+	);
+}
+
+function renderCheckedExternalPropertyExpression(expression: A.Expression, context: RenderContext, failureMessage: string, depth = 0): string | undefined {
+	if (depth > 12) return fail(context, expression.span, failureMessage);
+	if (expression.kind === 'IdentifierExpression' && expression.symbolId !== undefined) {
+		const symbol = context.semantic.symbols.get(expression.symbolId);
+		if (symbol?.kind === 'import' && !symbol.typeOnly) return expression.name;
+		if (symbol?.kind === 'variable' && !symbol.mutable) {
+			const declaration = symbol.declaration;
+			if (declaration?.kind === 'LetStatement') {
+				const letStatement = declaration as A.LetStatement;
+				if (letStatement.annotation === undefined) return renderCheckedExternalPropertyExpression(letStatement.value, context, failureMessage, depth + 1);
+			}
+		}
+	}
+	if (expression.kind === 'FieldExpression') {
+		const target = renderCheckedExternalPropertyExpression(expression.target, context, failureMessage, depth + 1);
+		return target === undefined ? undefined : `${target}.${expression.field}`;
+	}
+	if (expression.kind === 'IndexExpression' && expression.foreignIndex === true) {
+		const target = renderCheckedExternalPropertyExpression(expression.target, context, failureMessage, depth + 1);
+		if (target === undefined) return undefined;
+		const index = renderCheckedExternalPropertyOperationArgument(expression.index, context, failureMessage, depth + 1);
+		return index === undefined ? undefined : `${target}[${index}]`;
+	}
+	if (expression.kind === 'CallExpression' && expression.foreignCall === true && expression.typeArguments.length === 0) {
+		const callee = renderCheckedExternalPropertyExpression(expression.callee, context, failureMessage, depth + 1);
+		if (callee === undefined) return undefined;
+		const argumentsList: string[] = [];
+		for (const argument of expression.arguments) {
+			const rendered = renderCheckedExternalPropertyOperationArgument(argument, context, failureMessage, depth + 1);
+			if (rendered === undefined) return undefined;
+			argumentsList.push(rendered);
+		}
+		return `${callee}(${argumentsList.join(', ')})`;
+	}
+	return fail(context, expression.span, failureMessage);
+}
+
+function renderCheckedExternalPropertyOperationArgument(expression: A.Expression, context: RenderContext, failureMessage: string, depth: number): string | undefined {
+	const typeId = expression.inferredTypeId;
+	if (typeId === undefined) return fail(context, expression.span, failureMessage);
+	const type = context.semantic.arena.get(typeId);
+	if (type.kind === 'foreign') {
+		if (type.snapshot.category === 'unknown' || type.snapshot.category === 'any') return fail(context, expression.span, failureMessage);
+		return renderCheckedExternalPropertyExpression(expression, context, failureMessage, depth);
+	}
+	if (expression.kind === 'LiteralExpression') return renderLiteral(expression, context);
+	if (expression.kind === 'UnaryExpression' && expression.operator === '-' && expression.operand.kind === 'LiteralExpression' && ['Int', 'Float', 'BigInt'].includes(expression.operand.literalKind)) {
+		const literal = renderLiteral(expression.operand, context);
+		return literal === undefined ? undefined : `-${literal}`;
+	}
+	return fail(context, expression.span, failureMessage);
 }
 
 function renderFrontendCallablePrimitiveType(primitive: string, parameter: boolean): string | undefined {
