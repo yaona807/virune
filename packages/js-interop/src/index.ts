@@ -495,7 +495,7 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 
 	private resolveJsxCallbackUsageInternal(reference: ForeignTypeRef, usage: InteropJsxCallbackUsage): ForeignJsxCallbackResolution | undefined {
 		if (!this.#jsxConfigurationValid || usage.async || !Number.isSafeInteger(usage.callbackIndex) || usage.callbackIndex < 0 || usage.callbackIndex >= usage.properties.length) return undefined;
-		if (!Number.isSafeInteger(usage.parameterCount) || usage.parameterCount <= 0 || usage.parameterCount > 64) return undefined;
+		if (!Number.isSafeInteger(usage.parameterCount) || usage.parameterCount < 0 || usage.parameterCount > 64) return undefined;
 		const context = this.createUsageProbeContext(reference);
 		if (context === undefined) return undefined;
 		const callback = usage.properties[usage.callbackIndex];
