@@ -498,6 +498,9 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 		if (!Number.isSafeInteger(usage.parameterCount) || usage.parameterCount < 0 || usage.parameterCount > 64) return undefined;
 		const context = this.createUsageProbeContext(reference);
 		if (context === undefined) return undefined;
+		const callSignatures = context.stored.type.getCallSignatures();
+		const constructSignatures = context.stored.type.getConstructSignatures();
+		if (callSignatures.length + constructSignatures.length !== 1) return undefined;
 		const callback = usage.properties[usage.callbackIndex];
 		if (callback?.value.kind !== 'contextual-callable' || callback.value.parameterCount !== usage.parameterCount || callback.value.async !== false) return undefined;
 		const attributes: string[] = [];
