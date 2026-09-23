@@ -110,6 +110,22 @@ export interface InteropObjectUsage {
 	readonly entries: readonly InteropObjectEntryUsage[];
 }
 
+export interface InteropJsxPropertyUsage {
+	readonly property: string;
+	readonly value: InteropArgumentType;
+}
+
+export interface InteropJsxCallbackUsage {
+	readonly properties: readonly InteropJsxPropertyUsage[];
+	readonly callbackIndex: number;
+	readonly parameterCount: number;
+	readonly async: boolean;
+}
+
+export interface ForeignJsxCallbackResolution {
+	readonly parameters: readonly ForeignTypeSnapshot[];
+}
+
 export type InteropArgumentType =
 	| { readonly kind: 'foreign'; readonly type: ForeignTypeRef }
 	| { readonly kind: 'native-primitive'; readonly primitive: NativeCallablePrimitiveKind; readonly literal?: InteropLiteralValue }
@@ -219,6 +235,8 @@ export interface JsInteropProvider {
 	resolveWriteUsage?(type: ForeignTypeRef, usage: InteropWriteUsage): ForeignWriteResolution | undefined;
 	/** Contextual object resolver for an already-known External expected type. */
 	resolveObjectUsage?(type: ForeignTypeRef, usage: InteropObjectUsage): ForeignObjectResolution | undefined;
+	/** Contextual callback parameter resolver for one actual External JSX property usage. */
+	resolveJsxCallbackUsage?(type: ForeignTypeRef, usage: InteropJsxCallbackUsage): ForeignJsxCallbackResolution | undefined;
 	/** Whole generated TSX usage resolver. Any syntactic, semantic, or JSX-environment uncertainty must fail closed. */
 	resolveJsxUsage?(usage: { readonly containingFile: string; readonly platform: JsImportRequest['platform']; readonly sourceText: string }): { readonly accepted: true } | undefined;
 	resolveCall(type: ForeignTypeRef, argumentsList: readonly InteropArgumentType[]): ForeignCallResolution | undefined;

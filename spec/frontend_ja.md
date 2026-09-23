@@ -76,6 +76,10 @@ property nameには通常のidentifier name、または通常のVirune identifie
 
 property expressionは通常のVirune expressionであり、View内にあることだけを理由にViewまたはExternal escape semanticsを得ない。
 
+ただしJavaScript-imported External elementには、compiler-controlledな狭い例外を1つだけ設ける。property valueとして直接置かれたsynchronous lambdaは、projectが実際に使用するTypeScript JSX environmentがそのpropertyをcallbackとしてcontextually証明できる場合に限り、directな`view { ... }` expression bodyを持てる。annotationのないcallback parameterはconcreteかつcurrentなprovider evidenceからのみ取得し、初期boundaryではprovider-provenなExternal object parameterだけを受理する。`any`、`unknown`、`never`、unresolved generic、stale、partial、ambiguous、その他unsupportedなevidenceはrejectする。このView resultは引き続きnon-nameableであり、その正確なcallback位置からescapeできない。
+
+callbackはdownstream JSX property positionのままemitし、View bodyをhost toolchain向けにpreserveする。ViruneはView resultをcomponent entryでhoistまたはsnapshotしてはならない。generated callbackは、View resultをgeneral External valueへ分類せず、既存のJavaScript callback root-contextおよびerror-isolation machineryを再利用する。その後、actual View resultを含む完全なgenerated callback usageをprojectのTypeScript JSX whole-usage environmentでvalidateする。package名、framework名、property名によってこのcapabilityを判定してはならない。async View-producing callbackはこの初期contractの対象外でありrejectする。
+
 ## `[frontend.view-children]` Text / expression child
 
 string literalはtext childである。通常のVirune expressionは、View child位置で`{`と`}`に囲んだときexpression childになる。

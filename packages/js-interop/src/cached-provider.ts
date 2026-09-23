@@ -2,6 +2,7 @@ import { resolve } from 'node:path';
 import type {
 	ForeignCallResolution,
 	ForeignIndexResolution,
+	ForeignJsxCallbackResolution,
 	ForeignObjectResolution,
 	ForeignTypeRef,
 	ForeignTypeSnapshot,
@@ -9,6 +10,7 @@ import type {
 	InteropArgumentType,
 	InteropCallUsage,
 	InteropIndexUsage,
+	InteropJsxCallbackUsage,
 	InteropObjectUsage,
 	InteropWriteUsage,
 	JsImportRequest,
@@ -85,6 +87,15 @@ export class CachedTypeScriptInteropProvider implements JsInteropProvider {
 			value: (type: ForeignTypeRef, usage: InteropObjectUsage): ForeignObjectResolution | undefined => {
 				const active: JsInteropProvider = this.#requireProvider();
 				return active.resolveObjectUsage?.(type, usage);
+			},
+			enumerable: false,
+			configurable: false,
+			writable: false,
+		});
+		Object.defineProperty(this, 'resolveJsxCallbackUsage', {
+			value: (type: ForeignTypeRef, usage: InteropJsxCallbackUsage): ForeignJsxCallbackResolution | undefined => {
+				const active: JsInteropProvider = this.#requireProvider();
+				return active.resolveJsxCallbackUsage?.(type, usage);
 			},
 			enumerable: false,
 			configurable: false,

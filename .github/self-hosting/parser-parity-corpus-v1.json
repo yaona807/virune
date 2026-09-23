@@ -177,6 +177,18 @@
       "mutations": []
     },
     {
+      "id": "valid-view-callback-lambda",
+      "tags": [
+        "valid",
+        "component",
+        "view",
+        "lambda",
+        "newline"
+      ],
+      "source": "component Page() uses JavaScript {\n\treturn view {\n\t\tExternalList(items: items, children: fn(item) uses JavaScript => view {\n\t\t\tdiv() {\n\t\t\t\t{ item.label }\n\t\t\t}\n\t\t})\n\t}\n}\n",
+      "mutations": []
+    },
+    {
       "id": "valid-view-repetition",
       "tags": [
         "valid",

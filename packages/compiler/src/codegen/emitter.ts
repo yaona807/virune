@@ -438,9 +438,15 @@ export class JavaScriptEmitter {
 
 	private frontendViewPropertyValue(elementId: number, propertyIndex: number, property: A.ViewProperty, contextName: string): string {
 		const projection = this.#semantic.frontendCallableProjections.find(item => item.viewElementNodeId === elementId && item.propertyIndex === propertyIndex && item.property === property.name);
-		const projectedSyncExternal = property.value.kind === 'LambdaExpression' && projection?.descriptor.async === false;
+		if (projection?.viewCallback !== undefined) {
+			if (property.value.kind !== 'LambdaExpression' || !property.value.expressionBody || property.value.body.kind !== 'ViewExpression') return panicEmitter('View callback projection reached emission without a direct View lambda');
+			const raw = this.lambdaExpression(property.value, contextName, true);
+			return this.frontendViewCallbackProjection(raw, projection.viewCallback);
+		}
+		const descriptor = projection?.descriptor;
+		const projectedSyncExternal = property.value.kind === 'LambdaExpression' && descriptor?.async === false;
 		const raw = projectedSyncExternal ? this.lambdaExpression(property.value, contextName, true) : this.expression(property.value, contextName);
-		return projection === undefined ? raw : this.callableProjection(raw, projection.descriptor);
+		return descriptor === undefined ? raw : this.callableProjection(raw, descriptor);
 	}
 
 	private nativeComponentPropertyValue(expression: A.Expression, contextName: string): string {
@@ -676,6 +682,14 @@ export class JavaScriptEmitter {
 		if (expression.foreignCall !== true && this.acceptsTaskContext(expression.callee)) args.push(contextName);
 		if (callee === '$viruneExpect') return `(${args[0] ?? 'false'} ? undefined : panic('Expectation failed'))`;
 		return `${callee}(${args.join(', ')})`;
+	}
+
+	private frontendViewCallbackProjection(callable: string, evidence: { readonly parameterCount: number; readonly effects: readonly string[] }): string {
+		const rawParameters = Array.from({ length: evidence.parameterCount }, (_, index) => `$raw${index}`);
+		const invocation = `$fn(${[...rawParameters, 'rootTaskContext()'].join(', ')})`;
+		const wrapper = `(${rawParameters.join(', ')}) => { try { return ${invocation}; } catch ($error) { throw $viruneExternalizeInteropError($error); } }`;
+		const descriptorKey = JSON.stringify({ version: 'virune-frontend-view-callback/v1', parameterCount: evidence.parameterCount, effects: evidence.effects });
+		return `$viruneProjectCallable(${callable}, ${javascriptStringLiteral(descriptorKey)}, $fn => (${wrapper}))`;
 	}
 
 	private callableProjection(callable: string, descriptor: NativeCallableBoundaryDescriptor): string {

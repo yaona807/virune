@@ -6,9 +6,9 @@ import { compileSource } from '@virune/compiler/experimental';
 import { TypeScriptInteropProvider } from '../src/index.js';
 import { fixtureRoot } from './fixture.js';
 
-async function compile(text: string, emit = false) {
+async function compile(text: string, emit = false, noUnusedParameters = false) {
 	const root = await fixtureRoot();
-	await writeFile(join(root, 'tsconfig.json'), JSON.stringify({ compilerOptions: { jsx: 'preserve', noUnusedLocals: true }, include: ['src/**/*'] }), 'utf8');
+	await writeFile(join(root, 'tsconfig.json'), JSON.stringify({ compilerOptions: { jsx: 'preserve', noUnusedLocals: true, noUnusedParameters }, include: ['src/**/*'] }), 'utf8');
 	await writeFile(join(root, 'src/library.d.ts'), `declare global {
 	namespace JSX {
 		interface Element { readonly __viruneJsxElement: unique symbol; }
@@ -24,7 +24,16 @@ async function compile(text: string, emit = false) {
 }
 
 export interface Marker { readonly marker: true; }
+export interface Item { readonly label: string; }
+export const items: readonly Item[];
 export const ExternalButton: (props: { onClick: () => void }) => JSX.Element;
+export const ExternalList: <T>(props: { items: readonly T[]; children: (item: T) => JSX.Element }) => JSX.Element;
+export const ExternalEmptyRenderer: (props: { children: () => JSX.Element }) => JSX.Element;
+export const ExternalPair: <T>(props: { items: readonly T[]; primary: (item: T) => JSX.Element; secondary: (item: T) => JSX.Element }) => JSX.Element;
+export const ExternalStringRenderer: (props: { children: (item: Item) => string }) => JSX.Element;
+export const ExternalAnyRenderer: (props: { children: (item: any) => JSX.Element }) => JSX.Element;
+export function ExternalOverloaded(props: { mode: "a"; children: (item: Item) => JSX.Element }): JSX.Element;
+export function ExternalOverloaded(props: { mode: "b"; children: (item: Item) => JSX.Element }): JSX.Element;
 export function setMode(value: string): void;
 `, 'utf8');
 	const provider = new TypeScriptInteropProvider({ projectRoot: root });
@@ -131,6 +140,171 @@ component Page() uses JavaScript {
 	});
 });
 
+test('External JSX contextual View callbacks use sibling props for generic parameter evidence', async () => {
+	const result = await compile(`import js { ExternalList, items } from "./library.js"
+
+component Page() uses JavaScript {
+	return view {
+		ExternalList(items: items, children: fn(item) uses JavaScript => view {
+			div() {
+				{ item.label }
+			}
+		})
+	}
+}
+`, true, true);
+	assert.deepEqual(errors(result), []);
+	assert.ok(result.output);
+	assert.equal(result.semantic?.frontendCallableProjections.length, 1);
+	assert.deepEqual(result.semantic?.frontendCallableProjections[0]?.viewCallback, {
+		parameterCount: 1,
+		effects: ['JavaScript'],
+	});
+	assert.match(result.output.code, /<ExternalList items=\{items\} children=\{\$viruneProjectCallable\(/u);
+	assert.match(result.output.code, /return <div>\{item\.label\}<\/div>;/u);
+	assert.ok(result.output.code.includes('virune-frontend-view-callback\\u002Fv1'));
+});
+
+test('zero-parameter External JSX contextual View callbacks remain compiler-controlled', async () => {
+	const result = await compile(`import js { ExternalEmptyRenderer } from "./library.js"
+
+component Page() uses JavaScript {
+	return view {
+		ExternalEmptyRenderer(children: fn() uses JavaScript => view {
+			div()
+		})
+	}
+}
+`, true, true);
+	assert.deepEqual(errors(result), []);
+	assert.ok(result.output);
+	assert.deepEqual(result.semantic?.frontendCallableProjections[0]?.viewCallback, {
+		parameterCount: 0,
+		effects: ['JavaScript'],
+	});
+	assert.match(result.output.code, /<ExternalEmptyRenderer children=\{\$viruneProjectCallable\(/u);
+	assert.match(result.output.code, /\$fn\(rootTaskContext\(\)\)/u);
+});
+
+test('multiple contextual View callback properties preserve sibling generic evidence', async () => {
+	const result = await compile(`import js { ExternalPair, items } from "./library.js"
+
+component Page() uses JavaScript {
+	return view {
+		ExternalPair(
+			items: items,
+			primary: fn(item) uses JavaScript => view {
+				div() {
+					{ item.label }
+				}
+			},
+			secondary: fn(item) uses JavaScript => view {
+				div() {
+					{ item.label }
+				}
+			}
+		)
+	}
+}
+`, true, true);
+	assert.deepEqual(errors(result), []);
+	assert.ok(result.output);
+	assert.equal(result.semantic?.frontendCallableProjections.filter(item => item.viewCallback !== undefined).length, 2);
+	assert.match(result.output.code, /<ExternalPair items=\{items\} primary=\{\$viruneProjectCallable\(/u);
+	assert.match(result.output.code, /secondary=\{\$viruneProjectCallable\(/u);
+});
+
+test('External JSX contextual View callback parameters fail closed on any evidence', async () => {
+	const result = await compile(`import js { ExternalAnyRenderer } from "./library.js"
+
+component Page() uses JavaScript {
+	return view {
+		ExternalAnyRenderer(children: fn(item) uses JavaScript => view {
+			div()
+		})
+	}
+}
+`);
+	assert.ok(errors(result).some(item => item.code === 'L4308'));
+	assert.equal(result.semantic?.frontendCallableProjections.length, 0);
+});
+
+test('External JSX contextual View callbacks reject ambiguous component overloads', async () => {
+	const result = await compile(`import js { ExternalOverloaded } from "./library.js"
+
+component Page() uses JavaScript {
+	return view {
+		ExternalOverloaded(mode: "a", children: fn(item) uses JavaScript => view {
+			div() {
+				{ item.label }
+			}
+		})
+	}
+}
+`);
+	assert.ok(errors(result).some(item => item.code === 'L4308'));
+	assert.equal(result.semantic?.frontendCallableProjections.length, 0);
+});
+
+test('External JSX contextual View callbacks retain actual result validation', async () => {
+	const result = await compile(`import js { ExternalStringRenderer } from "./library.js"
+
+component Page() uses JavaScript {
+	return view {
+		ExternalStringRenderer(children: fn(item) uses JavaScript => view {
+			div() {
+				{ item.label }
+			}
+		})
+	}
+}
+`);
+	assert.ok(errors(result).some(item => item.code === 'L4308'));
+});
+
+test('View-producing External JSX callbacks reject explicit Virune return types', async () => {
+	const result = await compile(`import js { ExternalStringRenderer } from "./library.js"
+
+component Page() uses JavaScript {
+	return view {
+		ExternalStringRenderer(children: fn(item) -> String uses JavaScript => view {
+			div()
+		})
+	}
+}
+`);
+	assert.ok(errors(result).some(item => item.code === 'L4300' && item.message.includes('cannot declare a Virune return type')));
+	assert.equal(result.semantic?.frontendCallableProjections.length, 0);
+});
+
+test('async View-producing External JSX callbacks remain fail closed', async () => {
+	const result = await compile(`import js { ExternalStringRenderer } from "./library.js"
+
+component Page() uses JavaScript {
+	return view {
+		ExternalStringRenderer(children: async fn(item) uses JavaScript => view {
+			div()
+		})
+	}
+}
+`);
+	assert.ok(errors(result).some(item => item.code === 'L4300'));
+	assert.equal(result.semantic?.frontendCallableProjections.length, 0);
+});
+
+test('View-producing lambdas remain rejected outside the External JSX property boundary', async () => {
+	const result = await compile(`component Page() uses JavaScript {
+	let render = fn(value: String) => view {
+		div()
+	}
+	return view {
+		div()
+	}
+}
+`);
+	assert.ok(errors(result).some(item => item.code === 'L4300'));
+});
+
 test('TypeScript JSX whole-usage proof rejects incompatible projected callbacks', async () => {
 	const result = await compile(`fn handle(value: Float) -> Unit {
 	return Unit
@@ -173,6 +347,27 @@ component Page() uses JavaScript {
 `);
 	assert.ok(errors(result).some(item => item.code === 'L4308'));
 	assert.equal(result.semantic?.frontendCallableProjections.length, 0);
+});
+
+test('contextual View callback proof and emission are deterministic', async () => {
+	const source = `import js { ExternalList, items } from "./library.js"
+
+component Page() uses JavaScript {
+	return view {
+		ExternalList(items: items, children: fn(item) uses JavaScript => view {
+			div() {
+				{ item.label }
+			}
+		})
+	}
+}
+`;
+	const first = await compile(source, true, true);
+	const second = await compile(source, true, true);
+	assert.deepEqual(errors(first), []);
+	assert.deepEqual(errors(second), []);
+	assert.deepEqual(first.semantic?.frontendCallableProjections, second.semantic?.frontendCallableProjections);
+	assert.equal(first.output?.code, second.output?.code);
 });
 
 test('frontend callable projection evidence and emission are deterministic', async () => {
