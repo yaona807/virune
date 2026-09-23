@@ -11,6 +11,7 @@ import type {
 	ContextualCallableResult,
 	ForeignCallResolution,
 	ForeignIndexResolution,
+	ForeignJsxCallbackResolution,
 	ForeignObjectResolution,
 	ForeignPrimitiveKind,
 	ForeignTypeRef,
@@ -21,6 +22,7 @@ import type {
 	InteropCallTarget,
 	InteropCallUsage,
 	InteropIndexUsage,
+	InteropJsxCallbackUsage,
 	InteropObjectArgumentResolution,
 	InteropObjectUsage,
 	InteropWriteUsage,
@@ -165,6 +167,7 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 			['resolveArrayElement', (reference: ForeignTypeRef) => this.resolveArrayElementInternal(reference)],
 			['resolveWriteUsage', (reference: ForeignTypeRef, usage: InteropWriteUsage) => this.resolveWriteUsageInternal(reference, usage)],
 			['resolveObjectUsage', (reference: ForeignTypeRef, usage: InteropObjectUsage) => this.resolveObjectUsageInternal(reference, usage)],
+			['resolveJsxCallbackUsage', (reference: ForeignTypeRef, usage: InteropJsxCallbackUsage) => this.resolveJsxCallbackUsageInternal(reference, usage)],
 			['resolveJsxUsage', (usage: InteropJsxUsage) => this.resolveJsxUsageInternal(usage)],
 		] as const) {
 			Object.defineProperty(this, name, { value, enumerable: false, configurable: false, writable: false });
@@ -488,6 +491,75 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 		const typeExpression = renderContextualTypeExpression(type, checker, location);
 		if (typeExpression === undefined) return undefined;
 		return this.store(type, checker, location, origin, workspace, { typeExpression, directory });
+	}
+
+	private resolveJsxCallbackUsageInternal(reference: ForeignTypeRef, usage: InteropJsxCallbackUsage): ForeignJsxCallbackResolution | undefined {
+		if (!this.#jsxConfigurationValid || usage.async || !Number.isSafeInteger(usage.callbackIndex) || usage.callbackIndex < 0 || usage.callbackIndex >= usage.properties.length) return undefined;
+		if (!Number.isSafeInteger(usage.parameterCount) || usage.parameterCount <= 0 || usage.parameterCount > 64) return undefined;
+		const context = this.createUsageProbeContext(reference);
+		if (context === undefined) return undefined;
+		const callback = usage.properties[usage.callbackIndex];
+		if (callback?.value.kind !== 'contextual-callable' || callback.value.parameterCount !== usage.parameterCount || callback.value.async !== false) return undefined;
+		const attributes: string[] = [];
+		const seen = new Set<string>();
+		let callbackParameterNames: string[] = [];
+		for (let index = 0; index < usage.properties.length; index++) {
+			const property = usage.properties[index]!;
+			if (!/^[A-Za-z_$][A-Za-z0-9_$-]*(?::[A-Za-z_$][A-Za-z0-9_$-]*)?$/u.test(property.property) || seen.has(property.property)) return undefined;
+			seen.add(property.property);
+			let value: string | undefined;
+			if (index === usage.callbackIndex) {
+				callbackParameterNames = Array.from({ length: usage.parameterCount }, (_, parameterIndex) => `$viruneParam${parameterIndex}`);
+				value = `(${callbackParameterNames.join(', ')}) => { throw new Error("__virune_contextual_jsx_probe"); }`;
+			} else {
+				value = this.renderUsageValue(property.value, context, true, true);
+			}
+			if (value === undefined) return undefined;
+			attributes.push(`${property.property}={${value}}`);
+		}
+		context.declarations.push(`const __ViruneJsxTarget = ${context.target};`);
+		const importText = [...context.imports].sort().join('\n');
+		const sourceText = `${importText.length === 0 ? '' : `${importText}\n`}${context.declarations.join('\n')}\nexport const __viruneResult = <__ViruneJsxTarget${attributes.length === 0 ? '' : ` ${attributes.join(' ')}`} />;\n`;
+		const virtualFileName = `.virune-interop-jsx-callback-${hash(sourceText)}.tsx`;
+		const virtualPath = join(context.directory, virtualFileName);
+		const virtualKey = canonicalFilePath(virtualPath);
+		const existing = context.workspace.virtualFiles.get(virtualKey);
+		if (existing === undefined) {
+			context.workspace.virtualFiles.set(virtualKey, { path: virtualPath, text: sourceText, version: 1 });
+			context.workspace.projectVersion++;
+		} else if (existing.text !== sourceText) return undefined;
+		const program = context.workspace.languageService.getProgram();
+		if (program === undefined) return undefined;
+		const diagnostics = [
+			...context.workspace.languageService.getCompilerOptionsDiagnostics(),
+			...context.workspace.languageService.getSyntacticDiagnostics(virtualPath),
+			...context.workspace.languageService.getSemanticDiagnostics(virtualPath),
+		];
+		if (diagnostics.some(item => item.category === ts.DiagnosticCategory.Error)) return undefined;
+		const sourceFile = program.getSourceFile(virtualPath)
+			?? program.getSourceFiles().find(item => canonicalFilePath(item.fileName) === virtualKey);
+		if (sourceFile === undefined || sourceFile.languageVariant !== ts.LanguageVariant.JSX) return undefined;
+		const declaration = sourceFile.statements
+			.filter(ts.isVariableStatement)
+			.flatMap(statement => [...statement.declarationList.declarations])
+			.find(item => ts.isIdentifier(item.name) && item.name.text === '__viruneResult');
+		const initializer = declaration?.initializer;
+		if (initializer === undefined || !ts.isJsxSelfClosingElement(initializer)) return undefined;
+		const attribute = initializer.attributes.properties[usage.callbackIndex];
+		if (attribute === undefined || !ts.isJsxAttribute(attribute) || attribute.initializer === undefined || !ts.isJsxExpression(attribute.initializer)) return undefined;
+		const expression = attribute.initializer.expression;
+		if (expression === undefined || !ts.isArrowFunction(expression) || expression.parameters.length !== usage.parameterCount) return undefined;
+		const checker = program.getTypeChecker();
+		const contextual = checker.getContextualType(expression);
+		if (contextual === undefined) return undefined;
+		const target = this.contextualCallableShape(contextual, checker, expression, usage.parameterCount, undefined, context.workspace, context.stored.origin, context.directory);
+		if (target === undefined || target.result.kind !== 'deferred' || target.parameters.length !== usage.parameterCount) return undefined;
+		const parameters: ForeignTypeSnapshot[] = [];
+		for (const parameter of target.parameters) {
+			if (typeof parameter === 'string' || parameter.category !== 'object') return undefined;
+			parameters.push(parameter);
+		}
+		return Object.freeze({ parameters: Object.freeze(parameters) });
 	}
 
 	private resolveJsxUsageInternal(usage: InteropJsxUsage): ForeignJsxResolution | undefined {
