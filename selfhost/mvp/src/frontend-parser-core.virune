@@ -1306,6 +1306,12 @@ fn parseViewElement(stateValue: CoreState, tokens: List<FrontendToken>) -> CoreP
 		if property.id >= 0 {
 			children = List.append(children, property.id)
 		}
+		if currentKind(state, tokens) == FrontendTokenKind.NewLine {
+			let closing = skipNewLines(state, tokens)
+			if isText(closing, tokens, ")") {
+				state = closing
+			}
+		}
 		if isText(state, tokens, ",") {
 			state = skipNewLines(advance(state), tokens)
 		} else if !isText(state, tokens, ")") {
