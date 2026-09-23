@@ -28,6 +28,7 @@ export interface Item { readonly label: string; }
 export const items: readonly Item[];
 export const ExternalButton: (props: { onClick: () => void }) => JSX.Element;
 export const ExternalList: <T>(props: { items: readonly T[]; children: (item: T) => JSX.Element }) => JSX.Element;
+export const ExternalPair: <T>(props: { items: readonly T[]; primary: (item: T) => JSX.Element; secondary: (item: T) => JSX.Element }) => JSX.Element;
 export const ExternalStringRenderer: (props: { children: (item: Item) => string }) => JSX.Element;
 export const ExternalAnyRenderer: (props: { children: (item: any) => JSX.Element }) => JSX.Element;
 export function ExternalOverloaded(props: { mode: "a"; children: (item: Item) => JSX.Element }): JSX.Element;
@@ -161,6 +162,34 @@ component Page() uses JavaScript {
 	assert.match(result.output.code, /<ExternalList items=\{items\} children=\{\$viruneProjectCallable\(/u);
 	assert.match(result.output.code, /return <div>\{item\.label\}<\/div>;/u);
 	assert.ok(result.output.code.includes('virune-frontend-view-callback\\u002Fv1'));
+});
+
+test('multiple contextual View callback properties preserve sibling generic evidence', async () => {
+	const result = await compile(`import js { ExternalPair, items } from "./library.js"
+
+component Page() uses JavaScript {
+	return view {
+		ExternalPair(
+			items: items,
+			primary: fn(item) uses JavaScript => view {
+				div() {
+					{ item.label }
+				}
+			},
+			secondary: fn(item) uses JavaScript => view {
+				div() {
+					{ item.label }
+				}
+			}
+		)
+	}
+}
+`, true, true);
+	assert.deepEqual(errors(result), []);
+	assert.ok(result.output);
+	assert.equal(result.semantic?.frontendCallableProjections.filter(item => item.viewCallback !== undefined).length, 2);
+	assert.match(result.output.code, /<ExternalPair items=\{items\} primary=\{\$viruneProjectCallable\(/u);
+	assert.match(result.output.code, /secondary=\{\$viruneProjectCallable\(/u);
 });
 
 test('External JSX contextual View callback parameters fail closed on any evidence', async () => {
