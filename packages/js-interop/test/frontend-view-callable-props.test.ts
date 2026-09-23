@@ -160,7 +160,7 @@ component Page() uses JavaScript {
 	});
 	assert.match(result.output.code, /<ExternalList items=\{items\} children=\{\$viruneProjectCallable\(/u);
 	assert.match(result.output.code, /return <div>\{item\.label\}<\/div>;/u);
-	assert.ok(result.output.code.includes('virune-frontend-view-callback/v1'));
+	assert.ok(result.output.code.includes('virune-frontend-view-callback\\u002Fv1'));
 });
 
 test('External JSX contextual View callback parameters fail closed on any evidence', async () => {
