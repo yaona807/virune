@@ -867,7 +867,7 @@ export class TypeChecker {
 		const type = this.arena.get(typeId);
 		if (type.kind === 'foreign') {
 			const provider = this.currentInteropProvider(type.snapshot);
-			return provider !== undefined && this.isCurrentForeignSnapshot(type.snapshot, provider, true)
+			return provider !== undefined && this.isCurrentForeignSnapshot(type.snapshot, provider, false)
 				? { kind: 'foreign', type: type.ref }
 				: undefined;
 		}
