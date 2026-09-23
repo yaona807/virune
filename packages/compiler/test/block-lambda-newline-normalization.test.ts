@@ -50,6 +50,19 @@ test('expression lambdas inside calls keep outer structural newlines soft', () =
 `);
 });
 
+test('expression View lambdas inside View properties preserve structural newlines', () => {
+	assertParses(`component Page() uses JavaScript {
+	return view {
+		ExternalList(items: items, children: fn(item) uses JavaScript => view {
+			div() {
+				{ item.label }
+			}
+		})
+	}
+}
+`);
+});
+
 test('ordinary aggregate and call continuation newlines remain soft without trailing commas', () => {
 	assertParses(`pub fn main() -> Unit {
 	consume(
