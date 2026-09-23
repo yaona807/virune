@@ -398,7 +398,8 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 		if (argument.kind === 'contextual-callable') {
 			if (!allowNativeCallable || !Number.isSafeInteger(argument.parameterCount) || argument.parameterCount < 0 || argument.parameterCount > 64 || typeof argument.async !== 'boolean') return undefined;
 			const parameters = Array.from({ length: argument.parameterCount }, (_, index) => `$arg${index}`);
-			return `${argument.async ? 'async ' : ''}(${parameters.join(', ')}) => { throw new Error("__virune_contextual_probe"); }`;
+			const parameterUses = parameters.map(name => `void ${name};`).join(' ');
+			return `${argument.async ? 'async ' : ''}(${parameters.join(', ')}) => { ${parameterUses} throw 0; }`;
 		}
 		if (argument.kind === 'native-callable') {
 			if (!allowNativeCallable) return undefined;
