@@ -69,7 +69,11 @@ export interface FrontendCallableProjectionEvidence {
 	readonly viewElementNodeId: number;
 	readonly propertyIndex: number;
 	readonly property: string;
-	readonly descriptor: Extract<NativeCallableBoundaryDescriptor, { readonly version: 'virune-callable-shim/v1' }>;
+	readonly descriptor?: Extract<NativeCallableBoundaryDescriptor, { readonly version: 'virune-callable-shim/v1' }>;
+	readonly viewCallback?: {
+		readonly parameterCount: number;
+		readonly effects: readonly string[];
+	};
 }
 
 export interface SemanticModel {
@@ -788,8 +792,13 @@ export class TypeChecker {
 				case 'ViewElement': {
 					const root = child.tag[0];
 					const native = child.tag.length === 1 && root !== undefined && this.globalScope.lookup(root)?.kind === 'component';
+					const viewCallbackIndexes: number[] = [];
 					for (let propertyIndex = 0; propertyIndex < child.properties.length; propertyIndex += 1) {
 						const property = child.properties[propertyIndex]!;
+						if (!native && this.isFrontendViewCallback(property.value)) {
+							viewCallbackIndexes.push(propertyIndex);
+							continue;
+						}
 						const typeId = this.checkExpression(property.value, scope);
 						if (native) continue;
 						const boundary = this.nativeCallableBoundary(typeId, property.value, true);
@@ -797,6 +806,7 @@ export class TypeChecker {
 						this.requireEffects(boundary.effects, property.value.span);
 						this.#frontendCallableProjections.push({ viewElementNodeId: child.id, propertyIndex, property: property.name, descriptor: boundary });
 					}
+					for (const propertyIndex of viewCallbackIndexes) this.checkFrontendViewCallback(child, propertyIndex, scope);
 					if (child.children !== undefined) this.checkViewBlock(child.children, scope, insideRepetition);
 					break;
 				}
@@ -809,6 +819,156 @@ export class TypeChecker {
 				case 'ViewRepetition': this.checkViewRepetition(child, scope); break;
 			}
 		}
+	}
+
+	private isFrontendViewCallback(expression: A.Expression): expression is A.LambdaExpression {
+		return expression.kind === 'LambdaExpression' && expression.expressionBody && expression.body.kind === 'ViewExpression';
+	}
+
+	private frontendExternalViewTag(tag: readonly string[]): { readonly ref: import('../interop/types.js').ForeignTypeRef; readonly provider: JsInteropProvider } | undefined {
+		const root = tag[0];
+		if (root === undefined) return undefined;
+		const symbol = this.globalScope.lookup(root);
+		if (symbol === undefined) return undefined;
+		let type = this.arena.get(symbol.typeId);
+		if (type.kind !== 'foreign') return undefined;
+		const provider = this.currentInteropProvider(type.snapshot);
+		if (provider === undefined) return undefined;
+		let snapshot = type.snapshot;
+		for (const property of tag.slice(1)) {
+			let next: ForeignTypeSnapshot | undefined;
+			try { next = provider.getProperty(snapshot.ref, property); } catch { next = undefined; }
+			if (!this.isCurrentForeignSnapshot(next, provider, false)) return undefined;
+			snapshot = next;
+			type = this.arena.get(this.arena.foreign(snapshot));
+		}
+		return { ref: snapshot.ref, provider };
+	}
+
+	private frontendJsxPropertyArgument(element: A.ViewElement, propertyIndex: number): InteropArgumentType | undefined {
+		const property = element.properties[propertyIndex];
+		if (property === undefined) return undefined;
+		if (this.isFrontendViewCallback(property.value)) {
+			return { kind: 'contextual-callable', parameterCount: property.value.parameters.length, async: property.value.async };
+		}
+		const projection = this.#frontendCallableProjections.find(item => item.viewElementNodeId === element.id && item.propertyIndex === propertyIndex && item.property === property.name);
+		if (projection?.descriptor !== undefined) {
+			return {
+				kind: 'native-callable',
+				callable: {
+					parameters: projection.descriptor.parameters,
+					result: projection.descriptor.result,
+					async: projection.descriptor.async,
+				},
+			};
+		}
+		const typeId = property.value.inferredTypeId;
+		if (typeId === undefined) return undefined;
+		const type = this.arena.get(typeId);
+		if (type.kind === 'foreign') {
+			const provider = this.currentInteropProvider(type.snapshot);
+			return provider !== undefined && this.isCurrentForeignSnapshot(type.snapshot, provider, true)
+				? { kind: 'foreign', type: type.ref }
+				: undefined;
+		}
+		if (type.kind !== 'primitive' || !['Bool', 'Int', 'Float', 'BigInt', 'String', 'Unit'].includes(type.name)) return undefined;
+		const primitive = type.name as NativeCallablePrimitiveKind;
+		const literal = this.interopLiteralValue(property.value);
+		return literal === undefined ? { kind: 'native-primitive', primitive } : { kind: 'native-primitive', primitive, literal };
+	}
+
+	private checkFrontendViewCallback(element: A.ViewElement, propertyIndex: number, scope: Scope): void {
+		const property = element.properties[propertyIndex];
+		if (property === undefined || !this.isFrontendViewCallback(property.value)) return;
+		const lambda = property.value;
+		const root = element.tag[0];
+		const rootSymbol = root === undefined ? undefined : this.globalScope.lookup(root);
+		const rootType = rootSymbol === undefined ? undefined : this.arena.get(rootSymbol.typeId);
+		if (rootType?.kind !== 'foreign') {
+			this.checkExpression(lambda, scope);
+			return;
+		}
+		if (lambda.async) {
+			this.diagnostics.error('L4300', 'View-producing External JSX callbacks must be synchronous', lambda.span);
+			return;
+		}
+		if (lambda.parameters.some(parameter => parameter.annotation !== undefined)) {
+			this.diagnostics.error('L4300', 'View-producing External JSX callback parameters must use TypeScript contextual typing', lambda.span);
+			return;
+		}
+		const target = this.frontendExternalViewTag(element.tag);
+		const resolver = target?.provider.resolveJsxCallbackUsage;
+		if (target === undefined || resolver === undefined) {
+			this.diagnostics.error('L4308', `Cannot resolve contextual View callback for External JSX property ${property.name}`, property.span);
+			return;
+		}
+		const properties: import('../interop/types.js').InteropJsxPropertyUsage[] = [];
+		for (let index = 0; index < element.properties.length; index += 1) {
+			const item = element.properties[index]!;
+			const value = this.frontendJsxPropertyArgument(element, index);
+			if (value === undefined) {
+				this.diagnostics.error('L4308', `Cannot prove sibling JSX property ${item.name} while resolving contextual View callback ${property.name}`, item.span);
+				return;
+			}
+			properties.push({ property: item.name, value });
+		}
+		let resolution: import('../interop/types.js').ForeignJsxCallbackResolution | undefined;
+		try {
+			resolution = resolver.call(target.provider, target.ref, {
+				properties: Object.freeze(properties),
+				callbackIndex: propertyIndex,
+				parameterCount: lambda.parameters.length,
+				async: false,
+			});
+		} catch {
+			resolution = undefined;
+		}
+		if (!isRecord(resolution) || !hasExactEnumerableKeys(resolution, ['parameters']) || !Array.isArray(resolution.parameters) || resolution.parameters.length !== lambda.parameters.length) {
+			this.diagnostics.error('L4308', `Cannot prove contextual View callback parameters for External JSX property ${property.name}`, property.span);
+			return;
+		}
+		const parameterTypes: TypeId[] = [];
+		for (const parameter of resolution.parameters) {
+			if (!this.isCurrentForeignSnapshot(parameter, target.provider, false) || parameter.category !== 'object') {
+				this.diagnostics.error('L4308', `Contextual View callback property ${property.name} requires concrete External object parameter evidence`, property.span);
+				return;
+			}
+			parameterTypes.push(this.arena.foreign(parameter));
+		}
+		this.checkFrontendViewLambda(lambda, scope, parameterTypes);
+		const effects = Object.freeze([...new Set(lambda.effects)].sort(compareText));
+		this.requireEffects(effects, lambda.span);
+		this.#frontendCallableProjections.push({
+			viewElementNodeId: element.id,
+			propertyIndex,
+			property: property.name,
+			viewCallback: { parameterCount: lambda.parameters.length, effects },
+		});
+	}
+
+	private checkFrontendViewLambda(expression: A.LambdaExpression, scope: Scope, contextualParameters: readonly TypeId[]): void {
+		const child = new Scope(scope);
+		expression.parameters.forEach((parameter, index) => {
+			const typeId = contextualParameters[index] ?? this.arena.error;
+			const symbol = this.#factory.create(parameter.name, 'parameter', typeId, parameter.span, { declaration: expression });
+			if (!child.define(symbol)) this.diagnostics.error('L1012', `Lambda parameter ${parameter.name} shadows an existing name`, parameter.span);
+			else {
+				parameter.symbolId = symbol.id;
+				this.#symbols.set(symbol.id, symbol);
+			}
+		});
+		this.validateEffects(expression.effects, expression.span);
+		const previous = this.#currentFunction;
+		this.#currentFunction = {
+			declaration: expression,
+			scope: child,
+			async: false,
+			returnTypes: [],
+			typeParameters: new Map(),
+			effects: new Set(expression.effects),
+		};
+		this.checkViewExpression(expression.body as A.ViewExpression, child);
+		this.#currentFunction = previous;
 	}
 
 	private checkViewConditional(conditional: A.ViewConditional, scope: Scope, insideRepetition = false): void {
