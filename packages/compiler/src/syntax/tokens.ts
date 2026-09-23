@@ -150,6 +150,27 @@ function matchingOpenParenIndex(input: readonly IToken[], closeIndex: number): n
 	return undefined;
 }
 
+function isViewLambdaOpeningBrace(input: readonly IToken[], braceIndex: number): boolean {
+	const viewIndex = previousNonNewLineIndex(input, braceIndex - 1);
+	if (viewIndex === undefined || input[viewIndex]?.tokenType.name !== 'KwView') return false;
+	const arrowIndex = previousNonNewLineIndex(input, viewIndex - 1);
+	if (arrowIndex === undefined || input[arrowIndex]?.tokenType.name !== 'FatArrow') return false;
+	for (let index = arrowIndex - 1; index >= 0; index--) {
+		const name = input[index]?.tokenType.name;
+		if (name === 'NewLine') continue;
+		if (name === 'RParen') {
+			const openIndex = matchingOpenParenIndex(input, index);
+			if (openIndex === undefined) return false;
+			const beforeIndex = previousNonNewLineIndex(input, openIndex - 1);
+			if (beforeIndex !== undefined && input[beforeIndex]?.tokenType.name === 'KwFn') return true;
+			index = openIndex;
+			continue;
+		}
+		if (name === 'FatArrow' || name === 'Equals' || name === 'Colon' || name === 'LBrace' || name === 'RBrace' || name === 'RBracket') return false;
+	}
+	return false;
+}
+
 function isBlockLambdaOpeningBrace(input: readonly IToken[], braceIndex: number): boolean {
 	let index = braceIndex - 1;
 	let angleDepth = 0;
@@ -203,7 +224,9 @@ function normalizeNewLines(input: readonly IToken[]): IToken[] {
 			if (!soft && previous?.tokenType.name !== 'NewLine') output.push(token);
 			continue;
 		}
-		const opensLambdaBlock = name === 'LBrace' && (parenDepth > 0 || bracketDepth > 0) && isBlockLambdaOpeningBrace(input, index);
+		const opensLambdaBlock = name === 'LBrace'
+			&& (parenDepth > 0 || bracketDepth > 0)
+			&& (isBlockLambdaOpeningBrace(input, index) || isViewLambdaOpeningBrace(input, index));
 		output.push(token);
 		if (name === 'LParen') parenDepth++; else if (name === 'RParen') parenDepth = Math.max(0, parenDepth - 1);
 		if (name === 'LBracket') bracketDepth++; else if (name === 'RBracket') bracketDepth = Math.max(0, bracketDepth - 1);
