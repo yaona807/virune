@@ -28,6 +28,7 @@ export interface Item { readonly label: string; }
 export const items: readonly Item[];
 export const ExternalButton: (props: { onClick: () => void }) => JSX.Element;
 export const ExternalList: <T>(props: { items: readonly T[]; children: (item: T) => JSX.Element }) => JSX.Element;
+export const ExternalEmptyRenderer: (props: { children: () => JSX.Element }) => JSX.Element;
 export const ExternalPair: <T>(props: { items: readonly T[]; primary: (item: T) => JSX.Element; secondary: (item: T) => JSX.Element }) => JSX.Element;
 export const ExternalStringRenderer: (props: { children: (item: Item) => string }) => JSX.Element;
 export const ExternalAnyRenderer: (props: { children: (item: any) => JSX.Element }) => JSX.Element;
@@ -162,6 +163,27 @@ component Page() uses JavaScript {
 	assert.match(result.output.code, /<ExternalList items=\{items\} children=\{\$viruneProjectCallable\(/u);
 	assert.match(result.output.code, /return <div>\{item\.label\}<\/div>;/u);
 	assert.ok(result.output.code.includes('virune-frontend-view-callback\\u002Fv1'));
+});
+
+test('zero-parameter External JSX contextual View callbacks remain compiler-controlled', async () => {
+	const result = await compile(`import js { ExternalEmptyRenderer } from "./library.js"
+
+component Page() uses JavaScript {
+	return view {
+		ExternalEmptyRenderer(children: fn() uses JavaScript => view {
+			div()
+		})
+	}
+}
+`, true, true);
+	assert.deepEqual(errors(result), []);
+	assert.ok(result.output);
+	assert.deepEqual(result.semantic?.frontendCallableProjections[0]?.viewCallback, {
+		parameterCount: 0,
+		effects: ['JavaScript'],
+	});
+	assert.match(result.output.code, /<ExternalEmptyRenderer children=\{\$viruneProjectCallable\(/u);
+	assert.match(result.output.code, /\$fn\(rootTaskContext\(\)\)/u);
 });
 
 test('multiple contextual View callback properties preserve sibling generic evidence', async () => {
