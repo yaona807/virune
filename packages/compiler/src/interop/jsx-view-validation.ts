@@ -549,7 +549,7 @@ function renderCheckedExternalPropertyExpression(expression: A.Expression, conte
 		const index = renderCheckedExternalPropertyOperationArgument(expression.index, context, failureMessage, depth + 1);
 		return index === undefined ? undefined : `${target}[${index}]`;
 	}
-	if (expression.kind === 'CallExpression' && expression.foreignCall === true && expression.typeArguments.length === 0) {
+	if (expression.kind === 'CallExpression' && (expression.foreignCall === true || expression.foreignConstruct === true) && expression.typeArguments.length === 0) {
 		const callee = renderCheckedExternalPropertyExpression(expression.callee, context, failureMessage, depth + 1);
 		if (callee === undefined) return undefined;
 		const argumentsList: string[] = [];
@@ -558,7 +558,9 @@ function renderCheckedExternalPropertyExpression(expression: A.Expression, conte
 			if (rendered === undefined) return undefined;
 			argumentsList.push(rendered);
 		}
-		return `${callee}(${argumentsList.join(', ')})`;
+		return expression.foreignConstruct === true
+			? `new (${callee})(${argumentsList.join(', ')})`
+			: `${callee}(${argumentsList.join(', ')})`;
 	}
 	return fail(context, expression.span, failureMessage);
 }

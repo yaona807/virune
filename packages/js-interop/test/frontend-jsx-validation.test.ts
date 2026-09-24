@@ -31,6 +31,8 @@ export declare const unsafeUi: {
 };
 export declare const UnknownValue: unknown;
 export declare function currentText(): string;
+export declare class ExternalClient {}
+export declare function ExternalProvider(props: { client: ExternalClient; children?: string }): JSX.Element;
 `;
 
 async function project() {
@@ -134,6 +136,24 @@ component Page() uses JavaScript {
 	assert.deepEqual(errors(result), []);
 	assert.ok(result.output);
 	assert.ok(result.output.code.includes('{currentText()}'));
+});
+
+test('constructor-created External instances can satisfy checked External JSX properties', async () => {
+	const result = await compile(`import js { ExternalClient, ExternalProvider } from "./library.js"
+
+component Page() uses JavaScript {
+	let client = ExternalClient()
+	return view {
+		ExternalProvider(client: client) {
+			"inside"
+		}
+	}
+}
+`, true);
+	assert.deepEqual(errors(result), []);
+	assert.ok(result.output);
+	assert.ok(result.output.code.includes('const client = new (ExternalClient)();'));
+	assert.ok(result.output.code.includes('<ExternalProvider client={client}>'));
 });
 
 test('View conditionals preserve supported single-child branch value types', async () => {
