@@ -627,7 +627,7 @@ export class TypeChecker {
 				break;
 			}
 			case 'IfStatement':
-				this.requireBool(this.checkExpression(statement.condition, scope), statement.condition.span);
+				this.requireBool(this.checkExpression(statement.condition, scope, this.arena.bool), statement.condition.span);
 				this.checkBlock(statement.thenBlock, scope);
 				if (statement.elseBranch?.kind === 'BlockStatement') this.checkBlock(statement.elseBranch, scope);
 				else if (statement.elseBranch !== undefined) this.checkStatement(statement.elseBranch, scope);
@@ -643,7 +643,7 @@ export class TypeChecker {
 				if (!child.define(symbol)) this.diagnostics.error('L1008', `Loop variable ${statement.name} shadows an existing name`, statement.span); else { statement.symbolId = symbol.id; this.#symbols.set(symbol.id, symbol); }
 				this.#loopDepth++; this.checkBlock(statement.body, child); this.#loopDepth--; break;
 			}
-			case 'WhileStatement': this.requireBool(this.checkExpression(statement.condition, scope), statement.condition.span); this.#loopDepth++; this.checkBlock(statement.body, scope); this.#loopDepth--; break;
+			case 'WhileStatement': this.requireBool(this.checkExpression(statement.condition, scope, this.arena.bool), statement.condition.span); this.#loopDepth++; this.checkBlock(statement.body, scope); this.#loopDepth--; break;
 			case 'BreakStatement': if (this.#loopDepth === 0) this.diagnostics.error('L2095', 'break can be used only inside a loop', statement.span); break;
 			case 'ContinueStatement': if (this.#loopDepth === 0) this.diagnostics.error('L2096', 'continue can be used only inside a loop', statement.span); break;
 			case 'DiscardStatement': this.checkExpression(statement.expression, scope); break;
@@ -759,7 +759,7 @@ export class TypeChecker {
 			case 'ListExpression': typeId = this.checkList(expression, scope, expected); break;
 			case 'TupleExpression': typeId = this.arena.tuple(expression.items.map(item => this.checkExpression(item, scope))); break;
 			case 'ConditionalExpression': {
-				this.requireBool(this.checkExpression(expression.condition, scope), expression.condition.span);
+				this.requireBool(this.checkExpression(expression.condition, scope, this.arena.bool), expression.condition.span);
 				const left = this.checkExpression(expression.thenExpression, scope, expected); const right = this.checkExpression(expression.elseExpression, scope, expected);
 				typeId = this.commonType([left, right], expression.span); break;
 			}
@@ -811,7 +811,7 @@ export class TypeChecker {
 					break;
 				}
 				case 'ViewConditional':
-					this.requireBool(this.checkExpression(child.condition, scope), child.condition.span);
+					this.requireBool(this.checkExpression(child.condition, scope, this.arena.bool), child.condition.span);
 					this.checkViewBlock(child.thenBlock, scope, insideRepetition);
 					if (child.elseBranch?.kind === 'ViewBlock') this.checkViewBlock(child.elseBranch, scope, insideRepetition);
 					else if (child.elseBranch !== undefined) this.checkViewConditional(child.elseBranch, scope, insideRepetition);
@@ -976,7 +976,7 @@ export class TypeChecker {
 	}
 
 	private checkViewConditional(conditional: A.ViewConditional, scope: Scope, insideRepetition = false): void {
-		this.requireBool(this.checkExpression(conditional.condition, scope), conditional.condition.span);
+		this.requireBool(this.checkExpression(conditional.condition, scope, this.arena.bool), conditional.condition.span);
 		this.checkViewBlock(conditional.thenBlock, scope, insideRepetition);
 		if (conditional.elseBranch?.kind === 'ViewBlock') this.checkViewBlock(conditional.elseBranch, scope, insideRepetition);
 		else if (conditional.elseBranch !== undefined) this.checkViewConditional(conditional.elseBranch, scope, insideRepetition);
@@ -1774,6 +1774,8 @@ export class TypeChecker {
 		if (expected === undefined) return actual;
 		const source = this.arena.get(actual);
 		if (source.kind !== 'foreign') return actual;
+		const provider = this.currentInteropProvider(source.snapshot);
+		if (provider === undefined || !this.isCurrentForeignSnapshot(source.snapshot, provider, true)) return actual;
 		const bridge = this.primitiveBridge(source.snapshot, expected);
 		if (bridge === undefined) return actual;
 		expression.foreignBridge = bridge;
@@ -1929,7 +1931,9 @@ export class TypeChecker {
 	}
 
 	private checkBinary(expression: A.BinaryExpression, scope: Scope): TypeId {
-		const left = this.checkExpression(expression.left, scope); const right = this.checkExpression(expression.right, scope);
+		const booleanOperands = expression.operator === '&&' || expression.operator === '||';
+		const left = this.checkExpression(expression.left, scope, booleanOperands ? this.arena.bool : undefined);
+		const right = this.checkExpression(expression.right, scope, booleanOperands ? this.arena.bool : undefined);
 		if (['&&', '||'].includes(expression.operator)) { this.requireBool(left, expression.left.span); this.requireBool(right, expression.right.span); return this.arena.bool; }
 		if (['==', '!='].includes(expression.operator)) {
 			if (!this.arena.equals(left, right)) this.typeMismatch(right, left, expression.right.span);
@@ -1944,7 +1948,7 @@ export class TypeChecker {
 	}
 
 	private checkUnary(expression: A.UnaryExpression, scope: Scope): TypeId {
-		const operand = this.checkExpression(expression.operand, scope);
+		const operand = this.checkExpression(expression.operand, scope, expression.operator === '!' ? this.arena.bool : undefined);
 		if (expression.operator === '!') { this.requireBool(operand, expression.operand.span); return this.arena.bool; }
 		if (![this.arena.int, this.arena.float, this.arena.bigint].includes(operand)) this.diagnostics.error('L2017', 'Unary minus requires a numeric value', expression.span);
 		return operand;
@@ -2069,7 +2073,7 @@ export class TypeChecker {
 				if (seenPatterns.has(key)) this.diagnostics.error('L3002', `Unreachable duplicate pattern ${key}`, arm.pattern.span);
 				seenPatterns.add(key); covered.add(key.includes('(') ? key.slice(0, key.indexOf('(')) : key);
 			}
-			if (arm.guard !== undefined) this.requireBool(this.checkExpression(arm.guard, child), arm.guard.span);
+			if (arm.guard !== undefined) this.requireBool(this.checkExpression(arm.guard, child, this.arena.bool), arm.guard.span);
 			resultTypes.push(this.checkExpression(arm.expression, child, expected));
 		}
 		const targetType = this.arena.get(target);

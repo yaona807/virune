@@ -48,7 +48,7 @@ try {
 async function initProject(root: string): Promise<void> {
 	await mkdir(join(root, 'src'), { recursive: true });
 	await writeFile(join(root, 'virune.json'), JSON.stringify({ languageVersion: '1.0', platform: 'node', sourceDir: 'src', outDir: 'dist', entry: 'src/main.virune', target: 'es2022', sourceMap: true, sourcesContent: true }, null, 2) + '\n', { flag: 'wx' }).catch(ignoreExisting);
-	await writeFile(join(root, 'src/main.virune'), 'pub fn main() -> Unit uses Console {\n\tConsole.print("Hello from Virune")\n\treturn Unit\n}\n', { flag: 'wx' }).catch(ignoreExisting);
+	await writeFile(join(root, 'src/main.virune'), 'pub fn main() -> Unit uses Console {\n\tConsole.print("Hello from Virune")\n}\n', { flag: 'wx' }).catch(ignoreExisting);
 	await writeFile(join(root, 'package.json'), JSON.stringify(buildGeneratedProjectPackageManifest(basename(root), VERSION), null, 2) + '\n', { flag: 'wx' }).catch(ignoreExisting);
 	console.log(`Initialized Virune project in ${root}`);
 }
