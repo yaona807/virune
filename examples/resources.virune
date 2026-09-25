@@ -4,7 +4,6 @@ async fn close(handle: FileHandle) -> Unit uses File {
 		Ok(_) => Unit
 		Err(error) => panic(error.message)
 	}
-	return Unit
 }
 
 pub async fn readPreview(path: String) -> Result<String, JsError> uses File {
