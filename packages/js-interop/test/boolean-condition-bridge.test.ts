@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { writeFile } from 'node:fs/promises';
 import test from 'node:test';
 import { join } from 'node:path';
-import { compileSource } from '@virune/compiler/experimental';
+import { compileSource, type JsInteropProvider } from '@virune/compiler/experimental';
 import { TypeScriptInteropProvider } from '../src/index.js';
 import { fixtureRoot } from './fixture.js';
 
@@ -23,11 +23,26 @@ async function booleanFixtureRoot(): Promise<string> {
 	return root;
 }
 
-function compileCondition(root: string, text: string, provider?: TypeScriptInteropProvider) {
+function compileCondition(root: string, text: string, provider?: JsInteropProvider) {
 	return compileSource(
 		{ id: 1, path: join(root, 'src/main.virune'), text },
 		{ platform: 'node', ...(provider === undefined ? {} : { jsInteropProvider: provider }) },
 	);
+}
+
+function withAcceptedJsx(provider: TypeScriptInteropProvider): JsInteropProvider {
+	return {
+		id: provider.id,
+		version: provider.version,
+		generation: provider.generation,
+		resolveImport: request => provider.resolveImport(request),
+		getProperty: (type, name) => provider.getProperty(type, name),
+		resolveCall: (type, argumentsList) => provider.resolveCall(type, argumentsList),
+		resolveConstruct: (type, argumentsList) => provider.resolveConstruct(type, argumentsList),
+		getAwaitedType: type => provider.getAwaitedType(type),
+		display: type => provider.display(type),
+		resolveJsxUsage: () => ({ accepted: true }),
+	};
 }
 
 const errors = (result: ReturnType<typeof compileCondition>) => result.diagnostics.filter(item => item.severity === 'error');
@@ -35,7 +50,7 @@ const sourceFor = (...lines: string[]) => lines.join('\n');
 
 test('JavaScript boolean properties bridge to Bool in every boolean condition context', async () => {
 	const root = await booleanFixtureRoot();
-	const provider = new TypeScriptInteropProvider({ projectRoot: root });
+	const provider = withAcceptedJsx(new TypeScriptInteropProvider({ projectRoot: root }));
 	const source = sourceFor(
 		'import js { state } from "./library.js"',
 		'',
@@ -87,7 +102,7 @@ test('JavaScript boolean properties bridge to Bool in every boolean condition co
 
 test('non-boolean and ambiguous JavaScript evidence cannot bridge to Bool', async () => {
 	const root = await booleanFixtureRoot();
-	const provider = new TypeScriptInteropProvider({ projectRoot: root });
+	const provider = withAcceptedJsx(new TypeScriptInteropProvider({ projectRoot: root }));
 	const source = sourceFor(
 		'import js { state } from "./library.js"',
 		'',
@@ -133,7 +148,7 @@ test('stale property snapshots cannot bridge and missing evidence fails closed',
 			};
 		}
 	}
-	const staleProvider = new StalePropertyProvider({ projectRoot: root });
+	const staleProvider = withAcceptedJsx(new StalePropertyProvider({ projectRoot: root }));
 	const condition = sourceFor(
 		'import js { state } from "./library.js"',
 		'fn staleCondition() -> Unit uses JavaScript {',
@@ -153,7 +168,7 @@ test('stale property snapshots cannot bridge and missing evidence fails closed',
 		'\t\tdiscard 0',
 		'\t}',
 		'}',
-	), new TypeScriptInteropProvider({ projectRoot: root }));
+	), withAcceptedJsx(new TypeScriptInteropProvider({ projectRoot: root })));
 	assert.ok(errors(unresolved).length > 0);
 
 	const withoutProvider = compileCondition(root, condition);
