@@ -296,7 +296,7 @@ test('public Registry verification is bound to finalized exact public-release ev
 		current => { current.publicReleaseReport.passed = false; },
 		current => { current.publicReleaseReport.expectedCommit = 'b'.repeat(40); },
 		current => { current.publicReleaseReport.tagCommit = 'b'.repeat(40); },
-		current => { current.publicReleaseReport.version = '1.1.0-rc.2'; },
+		current => { current.publicReleaseReport.version = '1.1.0-rc.1'; },
 		current => { current.publicReleaseReport.release.draft = true; },
 		current => { current.publicReleaseReport.release.prerelease = false; },
 		current => { delete current.publicReleaseReport.attestations; },
@@ -364,14 +364,14 @@ test('Registry observations reject missing, malformed, partial and stale metadat
 		current => current.malformedJson.add(`version:${first}`),
 		current => current.malformedJson.add(`package:${first}`),
 		current => { current.metadata.get(first).name = '@virune/wrong'; },
-		current => { current.metadata.get(first).version = '1.1.0-rc.2'; },
+		current => { current.metadata.get(first).version = '1.1.0-rc.1'; },
 		current => { delete current.metadata.get(first).dist; },
 		current => { current.metadata.get(first).dist.tarball = 'https://example.invalid/package.tgz'; },
 		current => { current.metadata.get(first).dist.integrity = 'sha256-invalid'; },
 		current => { current.metadata.get(first).dist.shasum = '0'.repeat(40); },
 		current => { current.packuments.get(first).name = '@virune/wrong'; },
 		current => { delete current.packuments.get(first)['dist-tags']; },
-		current => { current.packuments.get(first)['dist-tags'].next = '1.1.0-rc.2'; },
+		current => { current.packuments.get(first)['dist-tags'].next = '1.1.0-rc.1'; },
 		current => current.failedTarballs.add(first),
 	]) {
 		const current = fixture();
@@ -485,10 +485,10 @@ test('exact-version npm exec acquisition is noninteractive, public-Registry-boun
 test('npm exec generated project fails closed on dependency and script drift independently of global install', async () => {
 	await assert.rejects(
 		() => verifyCleanGlobalCliInstall(version, {
-			runCommand: successfulRunCommand(version, { npxGeneratedVersion: '1.1.0-rc.2' }),
+			runCommand: successfulRunCommand(version, { npxGeneratedVersion: '1.1.0-rc.1' }),
 			platform: 'linux',
 		}),
-		/expected 1\.1\.0-rc\.1/u,
+		/expected 1\.1\.0-rc\.2/u,
 	);
 	await assert.rejects(
 		() => verifyCleanGlobalCliInstall(version, {
@@ -504,7 +504,7 @@ test('npm exec generated project fails closed on dependency and script drift ind
 test('generated project smoke rejects dependency, script, and package.json drift', async () => {
 	await assert.rejects(
 		() => verifyCleanGlobalCliInstall(version, {
-			runCommand: successfulRunCommand(version, { generatedVersion: '1.1.0-rc.2' }),
+			runCommand: successfulRunCommand(version, { generatedVersion: '1.1.0-rc.1' }),
 			platform: 'linux',
 		}),
 		/expected 1\.1\.0-rc\.1/u,
@@ -537,7 +537,7 @@ test('clean global install rejects command failure, npm exec failure, and CLI ve
 		/npm exec failed/u,
 	);
 	await assert.rejects(
-		() => verifyCleanGlobalCliInstall(version, { runCommand: successfulRunCommand('1.1.0-rc.2'), platform: 'linux' }),
-		/expected virune 1\.1\.0-rc\.1/u,
+		() => verifyCleanGlobalCliInstall(version, { runCommand: successfulRunCommand('1.1.0-rc.1'), platform: 'linux' }),
+		/expected virune 1\.1\.0-rc\.2/u,
 	);
 });
