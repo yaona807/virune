@@ -156,7 +156,7 @@ test('bootstrap public Registry verification accepts only the reviewed non-ready
 		distTag: 'next',
 		packages: [{
 			registryName: '@virune/cli',
-			releaseAsset: registryReleaseAssetNameForPackage('virune', version),
+			releaseAsset: registryReleaseAssetNameForPackage('@virune/cli', version),
 			sha256: 'a'.repeat(64),
 			bytes: 1,
 		}],
