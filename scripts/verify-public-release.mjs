@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { basename, join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { registryPolicyForVersion } from './verify-npm-publication-identity.mjs';
+import { registryPolicyForVersion, registryReleaseAssetNameForPackage } from './verify-npm-publication-identity.mjs';
 import { validateGeneratedProjectManifest } from './verify-public-npm-registry.mjs';
 
 const repositoryRoot = resolve(fileURLToPath(new URL('..', import.meta.url)));
@@ -302,7 +302,7 @@ function requiredAssetNames(version, npmPublicationPolicy) {
 		`virune-${version}.tgz`, `virune-compiler-${version}.tgz`, `virune-formatter-${version}.tgz`, `virune-js-interop-${version}.tgz`, `virune-runtime-${version}.tgz`, `virune-stdlib-${version}.tgz`, `virune-vscode-${version}.vsix`,
 	];
 	const registryPolicy = registryPolicyForVersion(version, npmPublicationPolicy.firstStableRegistryRelease, npmPublicationPolicy.distTagPolicy);
-	if (registryPolicy.registryVersionEligible) required.push('PUBLICATION-MANIFEST.json', `virune-npm-${version}.tgz`);
+	if (registryPolicy.registryVersionEligible) required.push('PUBLICATION-MANIFEST.json', registryReleaseAssetNameForPackage('@virune/cli', version));
 	return required;
 }
 
