@@ -36,6 +36,12 @@ test('JavaScript module completion uses declared package dependencies', async t 
 	const scopedItems = await jsImportCompletionItems(root, scoped, scoped.indexOf('@s') + 2);
 	assert.ok(scopedItems);
 	assert.deepEqual(scopedItems.map(item => item.label), ['@scope/beta']);
+
+	const incomplete = 'import js value from "al';
+	const incompleteItems = await jsImportCompletionItems(root, incomplete, incomplete.length);
+	assert.ok(incompleteItems);
+	assert.deepEqual(incompleteItems.map(item => item.label), ['alpha-lib']);
+	assert.equal(incompleteItems[0]?.textEdit?.newText, 'alpha-lib');
 });
 
 test('JavaScript named import completion filters resolved module exports', async t => {
