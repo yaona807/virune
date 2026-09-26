@@ -144,7 +144,7 @@
 	],
 	"devDependencies": {
 		"@types/vscode": "1.100.0",
-		"vscode-languageclient": "10.1.0"
+		"vscode-languageclient": "10.1.1"
 	},
 	"extensionKind": [
 		"workspace"
