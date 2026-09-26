@@ -91,7 +91,7 @@ function identityPackage(value, path) {
 	const item = record(value, path);
 	assertExactKeys(item, ['registryName', 'releaseAsset', 'sha256', 'bytes'], path);
 	const registryName = nonEmptyString(item.registryName, `${path}.registryName`);
-	assert(/^(?:virune|@virune\/[a-z0-9][a-z0-9-]*)$/u.test(registryName), `${path}.registryName`, 'expected virune or an @virune/* package name');
+	assert(/^@virune\/[a-z0-9][a-z0-9-]*$/u.test(registryName), `${path}.registryName`, 'expected an @virune/* package name');
 	const releaseAsset = nonEmptyString(item.releaseAsset, `${path}.releaseAsset`);
 	assert(!releaseAsset.includes('/') && !releaseAsset.includes('\\') && !releaseAsset.includes('..') && releaseAsset.endsWith('.tgz'), `${path}.releaseAsset`, 'expected a canonical Registry candidate tarball basename');
 	const sha256 = nonEmptyString(item.sha256, `${path}.sha256`);
