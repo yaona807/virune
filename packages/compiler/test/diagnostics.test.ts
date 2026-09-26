@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { DIAGNOSTIC_SCHEMA_VERSION, DIAGNOSTIC_SOURCE, diagnosticCategory, diagnosticsToDocument, explainDiagnosticCode, isDiagnosticCode, qualifyDiagnosticCode } from '../src/public-api.js';
+import { DIAGNOSTIC_SCHEMA_VERSION, DIAGNOSTIC_SOURCE, compileSource, diagnosticCategory, diagnosticsToDocument, explainDiagnosticCode, isDiagnosticCode, qualifyDiagnosticCode, renderDiagnostic } from '../src/public-api.js';
+import { DiagnosticBag } from '../src/diagnostics/diagnostic.js';
 import type { Diagnostic, SourceFile } from '../src/public-api.js';
 
 const primary: SourceFile = { id: 1, path: 'src/main.virune', text: 'fn main() -> String {\n\treturn 1\n}\n' };
@@ -75,3 +76,73 @@ test('fixes without explicit IDs receive deterministic qualified IDs', () => {
 	const document = diagnosticsToDocument([diagnostic], new Map([[primary.id, primary]]));
 	assert.deepEqual(document.diagnostics[0]?.fixIds, ['virune/L2043/fix-1']);
 });
+
+
+test('high-frequency safety diagnostics provide actionable help without changing their stable identity', () => {
+	const effectSource: SourceFile = {
+		id: 3,
+		path: 'effect.virune',
+		text: 'fn writeMessage(message: String) -> Unit {\n\tConsole.print(message)\n\treturn Unit\n}\n',
+	};
+	const effect = compileSource(effectSource, { emit: false }).diagnostics.find(item => item.code === 'L2076');
+	assert.ok(effect);
+	assert.equal(effect.severity, 'error');
+	assert.match(effect.help ?? '', /uses clause/u);
+	assert.equal(effect.fixes, undefined);
+
+	const mustUseSource: SourceFile = {
+		id: 4,
+		path: 'must-use.virune',
+		text: 'fn loadValue() -> Result<Int, String> {\n\treturn Ok(1)\n}\n\nfn main() -> Unit {\n\tloadValue()\n\treturn Unit\n}\n',
+	};
+	const mustUse = compileSource(mustUseSource, { emit: false }).diagnostics.find(item => item.code === 'L2097');
+	assert.ok(mustUse);
+	assert.equal(mustUse.severity, 'error');
+	assert.match(mustUse.help ?? '', /discard <expression>/u);
+	assert.deepEqual(mustUse.fixes, [{
+		id: 'discard-must-use-value',
+		title: 'Discard this value explicitly',
+		kind: 'insert',
+		span: mustUse.span,
+		text: 'discard ',
+	}]);
+	assert.match(renderDiagnostic(mustUse, mustUseSource), /help: .*discard <expression>/u);
+	const document = diagnosticsToDocument([mustUse], new Map([[mustUseSource.id, mustUseSource]]));
+	assert.equal(document.diagnostics[0]?.help, mustUse.help);
+	assert.deepEqual(document.diagnostics[0]?.fixIds, ['discard-must-use-value']);
+
+	const openEffectSource: SourceFile = {
+		id: 5,
+		path: 'open-effect.virune',
+		text: 'record Action {\n\trun: fn() -> Unit uses *\n}\n',
+	};
+	const openEffect = compileSource(openEffectSource, { emit: false }).diagnostics.find(item => item.code === 'L2113');
+	assert.ok(openEffect);
+	assert.equal(openEffect.severity, 'error');
+	assert.match(openEffect.help ?? '', /non-escaping/u);
+	assert.equal(openEffect.fixes, undefined);
+});
+
+test('unsafe FFI, platform, and JavaScript interop diagnostics expose correction choices without speculative fixes', () => {
+	const codes = ['L4006', 'L4007', 'L4008', 'L4009', 'L4010', 'L4011', 'L4204', 'L4212', 'L4213'] as const;
+	const bag = new DiagnosticBag();
+	for (const code of codes) bag.error(code, 'test diagnostic', span);
+	assert.equal(bag.items.length, codes.length);
+	for (const diagnostic of bag.items) {
+		assert.ok(diagnostic.help?.length);
+		assert.equal(diagnostic.fixes, undefined);
+		assert.notEqual(explainDiagnosticCode(diagnostic.code), diagnosticCategoryDescriptionForTest(diagnostic.code));
+	}
+	assert.match(bag.items.find(item => item.code === 'L4007')?.help ?? '', /unsafe module/u);
+	assert.match(bag.items.find(item => item.code === 'L4008')?.help ?? '', /src\/ffi\//u);
+	assert.match(bag.items.find(item => item.code === 'L4010')?.help ?? '', /node platform/u);
+	assert.match(bag.items.find(item => item.code === 'L4011')?.help ?? '', /browser platform/u);
+	assert.match(bag.items.find(item => item.code === 'L4204')?.help ?? '', /Unknown.*unsafe extern js/u);
+});
+
+function diagnosticCategoryDescriptionForTest(code: string): string | undefined {
+	const category = diagnosticCategory(code);
+	if (category === undefined) return undefined;
+	if (category === 'module') return 'Project, module graph, configuration, and JavaScript interop diagnostics.';
+	return undefined;
+}
