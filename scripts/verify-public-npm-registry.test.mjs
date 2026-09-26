@@ -163,7 +163,7 @@ function writeGeneratedProject(projectRoot, generatedVersion, generatedScripts) 
 			'@virune/runtime': generatedVersion,
 			'@virune/stdlib': generatedVersion,
 		},
-		devDependencies: { virune: generatedVersion },
+		devDependencies: { '@virune/cli': generatedVersion },
 	}, null, 2)}\n`);
 }
 
@@ -180,7 +180,7 @@ function successfulRunCommand(expectedVersion = version, {
 	return (command, args, options = {}) => {
 		if (command === 'npm') {
 			if (args[0] === 'install' && args.includes('--global')) {
-				assert(args.includes(`virune@${version}`));
+				assert(args.includes(`@virune/cli@${version}`));
 				assert(args.includes(`--registry=${registry}`));
 				inspectInstall?.(args, options);
 				const prefixArgument = args.find(argument => argument.startsWith('--prefix='));
@@ -197,7 +197,8 @@ function successfulRunCommand(expectedVersion = version, {
 				assert(args.includes('--replace-registry-host=never'));
 				const separator = args.indexOf('--');
 				assert(separator >= 0);
-				assert.equal(args[separator + 1], `virune@${version}`);
+				assert.equal(args[separator + 1], 'virune');
+				assert(args.includes(`--package=@virune/cli@${version}`));
 				assert.equal(args[separator + 2], 'init');
 				assert.equal(typeof args[separator + 3], 'string');
 				inspectExec?.(args, options);
@@ -250,24 +251,24 @@ test('verifies exact reviewed package bytes, tags and clean CLI consumer workflo
 	assert(report.releaseBinding.publicationManifestBytes > 0);
 	assert.equal(report.packages.length, publicationPlan.packages.length);
 	assert.deepEqual(report.packages.map(item => item.registryName), [...report.packages.map(item => item.registryName)].sort());
-	assert.equal(report.installation.package, `virune@${version}`);
+	assert.equal(report.installation.package, `@virune/cli@${version}`);
 	assert.equal(report.installation.versionOutput, `virune ${version}`);
 	assert.deepEqual(report.installation.generatedProject.scripts, canonicalGeneratedScripts);
 	assert.deepEqual(report.installation.generatedProject.dependencies, {
 		'@virune/runtime': version,
 		'@virune/stdlib': version,
 	});
-	assert.deepEqual(report.installation.generatedProject.devDependencies, { virune: version });
+	assert.deepEqual(report.installation.generatedProject.devDependencies, { '@virune/cli': version });
 	assert.deepEqual(report.installation.generatedProject.commands, ['npm install', 'npm run check', 'npm run build', 'npm run start']);
 	assert.deepEqual(report.installation.npx, {
-		package: `virune@${version}`,
+		package: `@virune/cli@${version}`,
 		registry,
 		acquisition: 'npm-exec',
 		nonInteractive: true,
 		generatedProject: {
 			scripts: canonicalGeneratedScripts,
 			dependencies: { '@virune/runtime': version, '@virune/stdlib': version },
-			devDependencies: { virune: version },
+			devDependencies: { '@virune/cli': version },
 		},
 	});
 });
@@ -466,7 +467,8 @@ test('exact-version npm exec acquisition is noninteractive, public-Registry-boun
 				assert(args.includes('--replace-registry-host=never'));
 				assert(args.some(argument => argument.startsWith('--userconfig=')));
 				const separator = args.indexOf('--');
-				assert.equal(args[separator + 1], `virune@${version}`);
+				assert.equal(args[separator + 1], 'virune');
+				assert(args.includes(`--package=@virune/cli@${version}`));
 				assert.equal(args[separator + 2], 'init');
 				assert(!args.some(argument => /(?:@latest|@next|\^|~)/u.test(argument)));
 				assert.equal(options.env.NPM_CONFIG_REGISTRY, registry);
