@@ -64,7 +64,7 @@ test('workspace lock license metadata remains synchronized with Apache-2.0', () 
 });
 
 function withFixture(run) {
-	const root = mkdtempSync(join(tmpdir(), 'virune-cli-license-policy-'));
+	const root = mkdtempSync(join(tmpdir(), 'virune-npm-license-policy-'));
 	try {
 		mkdirSync(resolve(root, '.github/release'), { recursive: true });
 		writeFileSync(
