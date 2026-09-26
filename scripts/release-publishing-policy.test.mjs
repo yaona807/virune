@@ -99,7 +99,7 @@ test('public release verification binds required npm Registry consumer evidence 
 	assert.match(source, /name: Validate final public verification evidence/u);
 	assert.match(source, /report\.npmRegistry\?\.required !== required/u);
 	assert.match(source, /\.cache\/public-npm-registry\//u);
-	assert.doesNotMatch(source, /npm install --global virune/u);
+	assert.doesNotMatch(source, /npm install --global @virune\/cli/u);
 
 	const download = source.indexOf('name: Download and verify public release assets and clean CLI installation');
 	const requirement = source.indexOf('name: Resolve public npm Registry verification requirement');
