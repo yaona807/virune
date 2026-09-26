@@ -27,8 +27,11 @@ test('TextMate grammar contains every compiler keyword', async () => {
 });
 
 test('TextMate grammar highlights the View repetition identity keyword', async () => {
-	const grammarText = await readFile(grammarUrl, 'utf8');
-	assert.match(grammarText, /\\bby\\b/u);
+	const grammar = await readJson(grammarUrl);
+	const keywordPatterns = grammar.repository?.keywords?.patterns ?? [];
+	const controlPattern = keywordPatterns.find(pattern => pattern.name === 'keyword.control.virune');
+	assert.ok(controlPattern);
+	assert.match('by', new RegExp(controlPattern.match, 'u'));
 });
 
 test('TextMate grammar does not declare Rust-only keywords', async () => {
