@@ -23,14 +23,11 @@ const internalPackages = [
 	{ directory: 'js-interop', name: '@virune/js-interop' },
 	{ directory: 'stdlib', name: '@virune/stdlib' },
 ].map(item => ({ ...item, file: registryReleaseAssetNameForPackage(item.name, version) }));
-const registryCliPackage = { directory: 'cli', name: 'virune', file: registryReleaseAssetNameForPackage('virune', version) };
+const registryCliPackage = { directory: 'cli', name: '@virune/cli', file: registryReleaseAssetNameForPackage('@virune/cli', version) };
 const registryPackages = [...internalPackages, registryCliPackage];
-const cliPackage = { directory: 'cli', name: 'virune', file: bundledCliReleaseAssetName(version) };
+const cliPackage = { directory: 'cli', name: '@virune/cli', file: bundledCliReleaseAssetName(version) };
 const packages = [...registryPackages, cliPackage];
 
-const pack = directory => {
-	execNpmSync(['pack', '--ignore-scripts', directory, '--pack-destination', out], { stdio: 'inherit' });
-};
 
 const stampCliVersion = directory => {
 	const cliEntryPath = resolve(directory, 'dist/src/main.js');
@@ -52,9 +49,9 @@ const stageRegistryPackage = item => {
 		if (stagingManifest.publishConfig !== undefined) throw new Error(`Registry source workspace ${item.name} must not define publishConfig.`);
 		delete stagingManifest.private;
 		writeFileSync(stagingManifestPath, `${JSON.stringify(stagingManifest, null, '\t')}\n`);
-		if (item.name === 'virune') stampCliVersion(stagingPackage);
+		if (item.name === '@virune/cli') stampCliVersion(stagingPackage);
 		execNpmSync(['pack', '--ignore-scripts', stagingPackage, '--pack-destination', stagingRoot], { stdio: 'inherit' });
-		const npmPackedFile = item.name === 'virune' ? bundledCliReleaseAssetName(version) : item.file;
+		const npmPackedFile = item.file;
 		const packedPath = resolve(stagingRoot, npmPackedFile);
 		if (!statSync(packedPath).isFile()) throw new Error(`npm pack did not create ${npmPackedFile}`);
 		copyFileSync(packedPath, resolve(out, item.file));
@@ -91,7 +88,11 @@ try {
 		],
 		{ cwd: stagingPackage, stdio: 'inherit' },
 	);
-	pack(stagingPackage);
+	const npmPackedFile = registryReleaseAssetNameForPackage('@virune/cli', version);
+	execNpmSync(['pack', '--ignore-scripts', stagingPackage, '--pack-destination', stagingRoot], { stdio: 'inherit' });
+	const packedPath = resolve(stagingRoot, npmPackedFile);
+	if (!statSync(packedPath).isFile()) throw new Error(`npm pack did not create ${npmPackedFile}`);
+	copyFileSync(packedPath, resolve(out, cliPackage.file));
 } finally {
 	rmSync(stagingRoot, { recursive: true, force: true });
 }
@@ -107,7 +108,7 @@ const localPackage = {
 	type: 'module',
 	license: rootPackage.license,
 	description: `Local installation bundle for Virune v${version}.`,
-	dependencies: { virune: `file:./${cliPackage.file}` },
+	dependencies: { '@virune/cli': `file:./${cliPackage.file}` },
 };
 writeFileSync(resolve(out, 'package.json'), `${JSON.stringify(localPackage, null, 2)}\n`);
 copyFileSync(resolve('LICENSE'), resolve(out, 'LICENSE'));
@@ -125,11 +126,11 @@ const registryDistributionEnabled = publicationIdentity.registryVersionEligible 
 if (registryDistributionEnabled) {
 	writeFileSync(
 		resolve(out, 'README.md'),
-		`# Virune v${version} release packages\n\nThe public npm Registry is the canonical package distribution for this Virune release.\n\nInstall the exact CLI version from npm:\n\n\`\`\`bash\nnpm install --global virune@${version}\nvirune --version\n\`\`\`\n\nFor a one-shot exact-version invocation:\n\n\`\`\`bash\nnpx --yes virune@${version} --version\n\`\`\`\n\nGitHub Releases retain the reviewed release artifacts, checksums, SBOM, attestations, and bundled CLI tarball for archive and verification purposes. The bundled tarball is not the canonical package installation channel for Registry-enabled releases. Node.js 24 or later is required. Verify downloaded GitHub release files with \`SHA256SUMS\`, \`RELEASE-MANIFEST.json\`, and the GitHub artifact attestation.\n`,
+		`# Virune v${version} release packages\n\nThe public npm Registry is the canonical package distribution for this Virune release.\n\nInstall the exact CLI version from npm:\n\n\`\`\`bash\nnpm install --global @virune/cli@${version}\nvirune --version\n\`\`\`\n\nFor a one-shot exact-version invocation:\n\n\`\`\`bash\nnpm exec --yes --package=@virune/cli@${version} -- virune --version\n\`\`\`\n\nGitHub Releases retain the reviewed release artifacts, checksums, SBOM, attestations, and bundled CLI tarball for archive and verification purposes. The bundled tarball is not the canonical package installation channel for Registry-enabled releases. Node.js 24 or later is required. Verify downloaded GitHub release files with \`SHA256SUMS\`, \`RELEASE-MANIFEST.json\`, and the GitHub artifact attestation.\n`,
 	);
 	writeFileSync(
 		resolve(out, 'README_ja.md'),
-		`# Virune v${version} リリースパッケージ\n\nこのViruneリリースでは、public npm Registryを正式なpackage配布経路とします。\n\nnpmからexact versionのCLIをインストールします。\n\n\`\`\`bash\nnpm install --global virune@${version}\nvirune --version\n\`\`\`\n\nexact versionを1回だけ実行する場合は、次のようにします。\n\n\`\`\`bash\nnpx --yes virune@${version} --version\n\`\`\`\n\nGitHub Releasesには、review済みrelease artifact、checksum、SBOM、attestation、archive・検証用のbundled CLI tarballを残します。Registry-enabled releaseでは、bundled tarballを正式なpackage install経路として扱いません。Node.js 24以上が必要です。GitHub Releaseからdownloadしたfileは、\`SHA256SUMS\`、\`RELEASE-MANIFEST.json\`、GitHub artifact attestationで検証してください。\n`,
+		`# Virune v${version} リリースパッケージ\n\nこのViruneリリースでは、public npm Registryを正式なpackage配布経路とします。\n\nnpmからexact versionのCLIをインストールします。\n\n\`\`\`bash\nnpm install --global @virune/cli@${version}\nvirune --version\n\`\`\`\n\nexact versionを1回だけ実行する場合は、次のようにします。\n\n\`\`\`bash\nnpm exec --yes --package=@virune/cli@${version} -- virune --version\n\`\`\`\n\nGitHub Releasesには、review済みrelease artifact、checksum、SBOM、attestation、archive・検証用のbundled CLI tarballを残します。Registry-enabled releaseでは、bundled tarballを正式なpackage install経路として扱いません。Node.js 24以上が必要です。GitHub Releaseからdownloadしたfileは、\`SHA256SUMS\`、\`RELEASE-MANIFEST.json\`、GitHub artifact attestationで検証してください。\n`,
 	);
 } else {
 	writeFileSync(
