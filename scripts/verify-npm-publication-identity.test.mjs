@@ -14,7 +14,7 @@ import {
 } from './verify-npm-publication-identity.mjs';
 
 const publishPackages = [
-	{ workspaceName: 'virune', registryName: 'virune' },
+	{ workspaceName: '@virune/cli', registryName: '@virune/cli' },
 	{ workspaceName: '@virune/compiler', registryName: '@virune/compiler' },
 	{ workspaceName: '@virune/formatter', registryName: '@virune/formatter' },
 	{ workspaceName: '@virune/js-interop', registryName: '@virune/js-interop' },
@@ -22,7 +22,7 @@ const publishPackages = [
 	{ workspaceName: '@virune/stdlib', registryName: '@virune/stdlib' },
 ];
 const expectedAssets = {
-	virune: 'virune-npm-1.0.0.tgz',
+	'@virune/cli': 'virune-cli-1.0.0.tgz',
 	'@virune/compiler': 'virune-compiler-1.0.0.tgz',
 	'@virune/formatter': 'virune-formatter-1.0.0.tgz',
 	'@virune/js-interop': 'virune-js-interop-1.0.0.tgz',
@@ -74,10 +74,10 @@ test('current six public packages have independently fixed canonical release ass
 	for (const [registryName, expected] of Object.entries(expectedAssets)) {
 		assert.equal(registryReleaseAssetNameForPackage(registryName, '1.0.0'), expected);
 	}
-	assert.throws(() => registryReleaseAssetNameForPackage('@other/runtime', '1.0.0'), /expected virune or an @virune\/\* package name/u);
+	assert.throws(() => registryReleaseAssetNameForPackage('@other/runtime', '1.0.0'), /expected an @virune\/\* package name/u);
 	assert.throws(() => registryReleaseAssetNameForPackage('@virune/runtime', '1.0.0-preview.1'), /expected stable, alpha, beta, rc, or nightly/u);
 	assert.equal(bundledCliReleaseAssetName('1.0.0'), 'virune-1.0.0.tgz');
-	assert.notEqual(expectedAssets.virune, bundledCliReleaseAssetName('1.0.0'));
+	assert.notEqual(expectedAssets['@virune/cli'], bundledCliReleaseAssetName('1.0.0'));
 });
 
 test('v1.0.0 publication identity is deterministic, byte-bound, and registry-ineligible', () => {
@@ -183,34 +183,34 @@ test('release manifest hash, size, version, and schema are verified against actu
 
 test('Registry CLI candidate is unbundled, publishable, and pinned to the exact Virune dependency version', () => {
 	const good = registryCliTarball({
-		name: 'virune',
+		name: '@virune/cli',
 		version: '1.0.0',
 		dependencies: { '@virune/compiler': '1.0.0' },
 	});
-	assert.deepEqual(verifyRegistryCliCandidateTarball(good, '1.0.0'), { name: 'virune', version: '1.0.0', entryCount: 3 });
+	assert.deepEqual(verifyRegistryCliCandidateTarball(good, '1.0.0'), { name: '@virune/cli', version: '1.0.0', entryCount: 3 });
 
 	const bundledDeclaration = registryCliTarball({
-		name: 'virune', version: '1.0.0',
+		name: '@virune/cli', version: '1.0.0',
 		dependencies: { '@virune/compiler': '1.0.0' },
 		bundledDependencies: ['@virune/compiler'],
 	});
 	assert.throws(() => verifyRegistryCliCandidateTarball(bundledDeclaration, '1.0.0'), /must not declare bundled dependencies/u);
 
 	const bundledFiles = registryCliTarball(
-		{ name: 'virune', version: '1.0.0', dependencies: { '@virune/compiler': '1.0.0' } },
+		{ name: '@virune/cli', version: '1.0.0', dependencies: { '@virune/compiler': '1.0.0' } },
 		[['package/node_modules/@virune/compiler/package.json', '{}\n']],
 	);
 	assert.throws(() => verifyRegistryCliCandidateTarball(bundledFiles, '1.0.0'), /must not contain bundled dependency path/u);
 
-	assert.throws(() => verifyRegistryCliCandidateTarball(registryCliTarball({ name: 'virune', version: '1.0.0', private: true }), '1.0.0'), /must omit private/u);
-	assert.throws(() => verifyRegistryCliCandidateTarball(registryCliTarball({ name: 'virune', version: '1.0.0', private: false }), '1.0.0'), /must omit private/u);
-	assert.throws(() => verifyRegistryCliCandidateTarball(registryCliTarball({ name: 'virune', version: '1.0.0', publishConfig: { access: 'public' } }), '1.0.0'), /publishConfig must not be present/u);
-	assert.throws(() => verifyRegistryCliCandidateTarball(registryCliTarball({ name: 'virune', version: '1.0.0', dependencies: { '@virune/compiler': '0.9.0' } }), '1.0.0'), /expected exact release version 1\.0\.0/u);
-	assert.throws(() => verifyRegistryCliCandidateTarball(registryCliTarball({ name: 'virune', version: '1.0.0', dependencies: [] }), '1.0.0'), /dependencies: expected an object/u);
+	assert.throws(() => verifyRegistryCliCandidateTarball(registryCliTarball({ name: '@virune/cli', version: '1.0.0', private: true }), '1.0.0'), /must omit private/u);
+	assert.throws(() => verifyRegistryCliCandidateTarball(registryCliTarball({ name: '@virune/cli', version: '1.0.0', private: false }), '1.0.0'), /must omit private/u);
+	assert.throws(() => verifyRegistryCliCandidateTarball(registryCliTarball({ name: '@virune/cli', version: '1.0.0', publishConfig: { access: 'public' } }), '1.0.0'), /publishConfig must not be present/u);
+	assert.throws(() => verifyRegistryCliCandidateTarball(registryCliTarball({ name: '@virune/cli', version: '1.0.0', dependencies: { '@virune/compiler': '0.9.0' } }), '1.0.0'), /expected exact release version 1\.0\.0/u);
+	assert.throws(() => verifyRegistryCliCandidateTarball(registryCliTarball({ name: '@virune/cli', version: '1.0.0', dependencies: [] }), '1.0.0'), /dependencies: expected an object/u);
 	const legal = { expectedLicense: 'Apache-2.0', licenseBytes: Buffer.from('license\n'), noticeBytes: Buffer.from('notice\n') };
-	assert.doesNotThrow(() => verifyRegistryCliCandidateTarball(registryCliTarball({ name: 'virune', version: '1.0.0', license: 'Apache-2.0' }), '1.0.0', undefined, legal));
-	assert.throws(() => verifyRegistryCliCandidateTarball(registryCliTarball({ name: 'virune', version: '1.0.0', license: 'MIT' }), '1.0.0', undefined, legal), /expected Apache-2\.0/u);
-	assert.throws(() => verifyRegistryCliCandidateTarball(registryCliTarball({ name: 'virune', version: '1.0.0', license: 'Apache-2.0' }, [], { notice: 'stale\n' }), '1.0.0', undefined, legal), /NOTICE does not match the canonical repository file/u);
+	assert.doesNotThrow(() => verifyRegistryCliCandidateTarball(registryCliTarball({ name: '@virune/cli', version: '1.0.0', license: 'Apache-2.0' }), '1.0.0', undefined, legal));
+	assert.throws(() => verifyRegistryCliCandidateTarball(registryCliTarball({ name: '@virune/cli', version: '1.0.0', license: 'MIT' }), '1.0.0', undefined, legal), /expected Apache-2\.0/u);
+	assert.throws(() => verifyRegistryCliCandidateTarball(registryCliTarball({ name: '@virune/cli', version: '1.0.0', license: 'Apache-2.0' }, [], { notice: 'stale\n' }), '1.0.0', undefined, legal), /NOTICE does not match the canonical repository file/u);
 });
 
 test('publication manifest verification rejects stale or mutated evidence', () => {
