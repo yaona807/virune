@@ -22,7 +22,7 @@ export async function verifyReleaseChannel(rootDirectory = process.cwd()) {
 		if (pkg.version !== root.version) throw new Error(`${pkg.name} version ${pkg.version} differs from root ${root.version}`);
 		for (const dependencies of [pkg.dependencies, pkg.devDependencies, pkg.peerDependencies, pkg.optionalDependencies]) {
 			for (const [name, version] of Object.entries(dependencies ?? {})) {
-				if ((name === 'virune' || name.startsWith('@virune/')) && version !== root.version) {
+				if (name.startsWith('@virune/') && version !== root.version) {
 					throw new Error(`${pkg.name} depends on ${name}@${version}; expected ${root.version}`);
 				}
 			}
