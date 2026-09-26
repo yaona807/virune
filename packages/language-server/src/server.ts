@@ -312,9 +312,9 @@ connection.onCompletion(async (params, token) => {
 		if (root !== undefined && !isCancelled(token)) {
 			const importItems = await jsImportCompletionItems(
 				root,
-				path,
 				document.getText(),
 				document.offsetAt(params.position),
+				(moduleSpecifier, typeOnly) => projectManager.editorImportCompletions(root, path, moduleSpecifier, typeOnly),
 			);
 			if (importItems !== undefined) return [...importItems];
 		}
