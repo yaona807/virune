@@ -17,7 +17,7 @@ import {
 
 const repositoryRoot = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const publicationPlan = JSON.parse(readFileSync(resolve(repositoryRoot, '.github/release/npm-publication-v1.json'), 'utf8'));
-const version = '1.1.0-rc.1';
+const version = '1.1.0-rc.2';
 const registry = 'https://registry.npmjs.org/';
 const reviewedCommit = 'a'.repeat(40);
 const canonicalGeneratedScripts = Object.freeze({
