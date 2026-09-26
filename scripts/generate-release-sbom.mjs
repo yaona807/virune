@@ -38,7 +38,7 @@ export function buildCycloneDxSbom({ lock, manifest, commit = null }) {
 			throw new Error(`Conflicting license metadata for ${name}@${entry.version}: ${existingLicense} vs ${declaredLicense}`);
 		}
 		const component = existing ?? {
-			type: name === 'virune' ? 'application' : 'library',
+			type: name === '@virune/cli' ? 'application' : 'library',
 			'bom-ref': purl,
 			name,
 			version: entry.version,
