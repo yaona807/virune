@@ -294,7 +294,7 @@ test('clean install verification does not repair a non-executable installed CLI 
 				'@virune/runtime': version,
 				'@virune/stdlib': version,
 			},
-			devDependencies: { virune: version },
+			devDependencies: { '@virune/cli': version },
 		}, null, 2)}\n`, 'utf8');
 	};
 	await verifyCleanGlobalCliInstall(version, {
