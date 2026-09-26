@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { DIAGNOSTIC_SCHEMA_VERSION, DIAGNOSTIC_SOURCE, compileSource, diagnosticCategory, diagnosticsToDocument, explainDiagnosticCode, isDiagnosticCode, qualifyDiagnosticCode, renderDiagnostic } from '../src/public-api.js';
+import { DIAGNOSTIC_SCHEMA_VERSION, DIAGNOSTIC_SOURCE, compileSource, diagnosticCategory, diagnosticCategoryDescription, diagnosticsToDocument, explainDiagnosticCode, isDiagnosticCode, qualifyDiagnosticCode, renderDiagnostic } from '../src/public-api.js';
 import { DiagnosticBag } from '../src/diagnostics/diagnostic.js';
 import type { Diagnostic, SourceFile } from '../src/public-api.js';
 
@@ -131,7 +131,9 @@ test('unsafe FFI, platform, and JavaScript interop diagnostics expose correction
 	for (const diagnostic of bag.items) {
 		assert.ok(diagnostic.help?.length);
 		assert.equal(diagnostic.fixes, undefined);
-		assert.notEqual(explainDiagnosticCode(diagnostic.code), diagnosticCategoryDescriptionForTest(diagnostic.code));
+		const category = diagnosticCategory(diagnostic.code);
+		assert.ok(category);
+		assert.notEqual(explainDiagnosticCode(diagnostic.code), diagnosticCategoryDescription(category));
 	}
 	assert.match(bag.items.find(item => item.code === 'L4007')?.help ?? '', /unsafe module/u);
 	assert.match(bag.items.find(item => item.code === 'L4008')?.help ?? '', /src\/ffi\//u);
@@ -140,9 +142,3 @@ test('unsafe FFI, platform, and JavaScript interop diagnostics expose correction
 	assert.match(bag.items.find(item => item.code === 'L4204')?.help ?? '', /Unknown.*unsafe extern js/u);
 });
 
-function diagnosticCategoryDescriptionForTest(code: string): string | undefined {
-	const category = diagnosticCategory(code);
-	if (category === undefined) return undefined;
-	if (category === 'module') return 'Project, module graph, configuration, and JavaScript interop diagnostics.';
-	return undefined;
-}
