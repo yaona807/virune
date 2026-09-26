@@ -319,6 +319,7 @@ connection.onCompletion(async (params, token) => {
 			if (importItems !== undefined) return [...importItems];
 		}
 	}
+	if (params.context?.triggerCharacter === '"') return [];
 	const analysis = await analyzeCompletionPosition(params, token);
 	if (analysis === undefined || isCancelled(token)) return [];
 	return [...completionItems(analysis.module, analysis.module.source, analysis.offset, analysis.workspaceExports)];
