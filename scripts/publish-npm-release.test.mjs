@@ -342,7 +342,7 @@ test('Trusted Publishing environment is bound to the exact release workflow and 
 });
 
 test('publication npm environment removes ambient npm configuration and uses isolated public Registry state', () => {
-	const root = mkdtempSync(join(tmpdir(), 'virune-cli-publish-env-'));
+	const root = mkdtempSync(join(tmpdir(), 'virune-npm-publish-env-'));
 	try {
 		const env = isolatedNpmEnvironment({
 			PATH: '/usr/bin',
@@ -380,7 +380,7 @@ test('npm publish consumes the exact tarball and applies the canonical tag witho
 });
 
 test('npm write boundary rejects changed or symlinked reviewed tarballs', () => {
-	const root = mkdtempSync(join(tmpdir(), 'virune-cli-write-boundary-'));
+	const root = mkdtempSync(join(tmpdir(), 'virune-npm-write-boundary-'));
 	try {
 		const tarball = resolve(root, 'candidate.tgz');
 		const reviewedBytes = Buffer.from('reviewed exact tarball bytes');
