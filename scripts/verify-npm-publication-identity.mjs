@@ -18,9 +18,8 @@ const TAR_SIZE_LENGTH = 12;
 export function registryReleaseAssetNameForPackage(registryName, version) {
 	const name = nonEmptyString(registryName, '$.registryName');
 	const releaseVersion = parseReleaseVersion(version, '$.version').text;
-	if (name === 'virune') return `virune-npm-${releaseVersion}.tgz`;
 	const scoped = /^@virune\/([a-z0-9][a-z0-9-]*)$/u.exec(name);
-	assert(scoped !== null, '$.registryName', 'expected virune or an @virune/* package name');
+	assert(scoped !== null, '$.registryName', 'expected an @virune/* package name');
 	return `virune-${scoped[1]}-${releaseVersion}.tgz`;
 }
 
@@ -172,7 +171,7 @@ export function buildNpmPublicationIdentity({ root = process.cwd(), releaseDirec
 		verifyRegistryCandidateTarball(assetBytes[file], publicationPlan.currentVersion, pkg.registryName, file, {
 			...legal,
 			expectedManifest: sourceManifest,
-			requireEmbeddedCliVersion: pkg.registryName === 'virune',
+			requireEmbeddedCliVersion: pkg.registryName === '@virune/cli',
 		});
 	}
 	return buildNpmPublicationIdentityFromInputs({
@@ -245,7 +244,7 @@ export function verifyRegistryCandidateTarball(bytes, version, registryName, fil
 	verifyCanonicalLegalEntry(entries, 'package/LICENSE', legal.licenseBytes, `${path}.LICENSE`);
 	verifyCanonicalLegalEntry(entries, 'package/NOTICE', legal.noticeBytes, `${path}.NOTICE`);
 	if (legal.requireEmbeddedCliVersion === true) {
-		assert(name === 'virune', path, 'embedded CLI version validation is only valid for the virune package');
+		assert(name === '@virune/cli', path, 'embedded CLI version validation is only valid for the @virune/cli package');
 		verifyEmbeddedCliVersion(entries, version, file);
 	}
 	assert(manifest.bundledDependencies === undefined && manifest.bundleDependencies === undefined, path, 'Registry candidate must not declare bundled dependencies');
@@ -264,8 +263,8 @@ export function verifyRegistryCandidateTarball(bytes, version, registryName, fil
 	return { name: manifest.name, version: manifest.version, entryCount: entries.size };
 }
 
-export function verifyRegistryCliCandidateTarball(bytes, version, file = registryReleaseAssetNameForPackage('virune', version), legal = {}) {
-	return verifyRegistryCandidateTarball(bytes, version, 'virune', file, legal);
+export function verifyRegistryCliCandidateTarball(bytes, version, file = registryReleaseAssetNameForPackage('@virune/cli', version), legal = {}) {
+	return verifyRegistryCandidateTarball(bytes, version, '@virune/cli', file, legal);
 }
 
 function findWorkspaceManifest(root, workspaceName) {
@@ -430,7 +429,7 @@ function compareVersionTuple(left, right) {
 
 function packageName(value, path) {
 	const name = nonEmptyString(value, path);
-	assert(/^(?:@virune\/[a-z0-9][a-z0-9-]*|virune)$/u.test(name), path, 'expected virune or an @virune/* package name');
+	assert(/^@virune\/[a-z0-9][a-z0-9-]*$/u.test(name), path, 'expected an @virune/* package name');
 	return name;
 }
 
