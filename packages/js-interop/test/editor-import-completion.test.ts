@@ -46,12 +46,15 @@ async function projectFixture(t: TestContext): Promise<{ root: string; sourcePat
 		'export declare function makeThing(value: string): string;',
 		'export declare const value: number;',
 		'export interface Options { readonly enabled: boolean; }',
+		'export type Label = string;',
+		'export declare class Widget { readonly name: string; }',
 		'export default function defaultThing(): void;',
 		'',
 	].join('\n'), 'utf8');
 	await writeFile(join(packageRoot, 'index.js'), [
 		'export const value = 1;',
 		'export function makeThing(value) { return value; }',
+		'export class Widget { constructor() { this.name = "widget"; } }',
 		'export default function defaultThing() {}',
 		'',
 	].join('\n'), 'utf8');
@@ -67,10 +70,17 @@ test('cached TypeScript interop provider exposes declaration-aware editor import
 	const names = values.map(item => item.name);
 	assert.equal(names.includes('makeThing'), true);
 	assert.equal(names.includes('value'), true);
-	assert.equal(names.includes('Options'), true);
+	assert.equal(names.includes('Widget'), true);
+	assert.equal(names.includes('Options'), false);
+	assert.equal(names.includes('Label'), false);
 
 	const types = provider.complete(fixture.sourcePath, 'demo-pkg', true);
-	assert.equal(types.some(item => item.name === 'Options'), true);
+	const typeNames = types.map(item => item.name);
+	assert.equal(typeNames.includes('Options'), true);
+	assert.equal(typeNames.includes('Label'), true);
+	assert.equal(typeNames.includes('Widget'), true);
+	assert.equal(typeNames.includes('makeThing'), false);
+	assert.equal(typeNames.includes('value'), false);
 });
 
 test('editor import completion fails soft for unresolved modules', async t => {
