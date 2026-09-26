@@ -211,6 +211,16 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 			workspace.projectVersion++;
 		}
 		try {
+			if (!request.typeOnly) {
+				const runtimeRequest: JsImportRequest = {
+					containingFile: request.containingFile,
+					moduleSpecifier: request.moduleSpecifier,
+					kind: 'side-effect',
+					platform: request.platform,
+				};
+				const runtimeProbe = this.createProbe(runtimeRequest);
+				if (this.moduleWitness(runtimeRequest, runtimeProbe.resolvedModule).runtimeFormat === 'commonjs') return [];
+			}
 			const completions = workspace.languageService.getCompletionsAtPosition(virtualPath, prefix.length, {})?.entries ?? [];
 			const program = workspace.languageService.getProgram();
 			const sourceFile = program?.getSourceFile(virtualPath);
@@ -233,7 +243,12 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 				const supported = request.typeOnly
 					? (target.flags & (ts.SymbolFlags.Type | ts.SymbolFlags.Namespace)) !== 0
 					: (target.flags & ts.SymbolFlags.Value) !== 0;
-				if (supported) eligible.add(exported.name);
+				if (!supported) continue;
+				const targetType = request.typeOnly
+					? checker.getDeclaredTypeOfSymbol(target)
+					: checker.getTypeOfSymbolAtLocation(target, target.valueDeclaration ?? target.declarations?.[0] ?? declaration);
+				if ((targetType.flags & ts.TypeFlags.Any) !== 0) continue;
+				eligible.add(exported.name);
 			}
 			return completions
 				.filter(entry => eligible.has(entry.name))
