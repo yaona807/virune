@@ -1,6 +1,6 @@
 {
 	"name": "@virune/js-interop",
-	"version": "1.0.0",
+	"version": "1.1.0-rc.0",
 	"private": true,
 	"repository": {
 		"type": "git",
@@ -27,7 +27,7 @@
 	],
 	"dependencies": {
 		"@types/node": "^24.0.0",
-		"@virune/compiler": "1.0.0",
+		"@virune/compiler": "1.1.0-rc.0",
 		"typescript": "6.0.3"
 	},
 	"scripts": {
