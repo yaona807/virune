@@ -211,8 +211,32 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 			workspace.projectVersion++;
 		}
 		try {
-			return (workspace.languageService.getCompletionsAtPosition(virtualPath, prefix.length, {})?.entries ?? [])
-				.filter(entry => String(entry.kind) !== 'keyword')
+			const completions = workspace.languageService.getCompletionsAtPosition(virtualPath, prefix.length, {})?.entries ?? [];
+			const program = workspace.languageService.getProgram();
+			const sourceFile = program?.getSourceFile(virtualPath);
+			const declaration = sourceFile?.statements.find(ts.isImportDeclaration);
+			if (program === undefined || declaration === undefined) return [];
+			const checker = program.getTypeChecker();
+			const moduleSymbol = checker.getSymbolAtLocation(declaration.moduleSpecifier);
+			if (moduleSymbol === undefined) return [];
+			const eligible = new Set<string>();
+			for (const exported of checker.getExportsOfModule(moduleSymbol)) {
+				if (!/^[A-Za-z_][A-Za-z0-9_]*$/u.test(exported.name)) continue;
+				let target = exported;
+				if ((exported.flags & ts.SymbolFlags.Alias) !== 0) {
+					try {
+						target = checker.getAliasedSymbol(exported);
+					} catch {
+						continue;
+					}
+				}
+				const supported = request.typeOnly
+					? (target.flags & (ts.SymbolFlags.Type | ts.SymbolFlags.Namespace)) !== 0
+					: (target.flags & ts.SymbolFlags.Value) !== 0;
+				if (supported) eligible.add(exported.name);
+			}
+			return completions
+				.filter(entry => eligible.has(entry.name))
 				.map(entry => Object.freeze({ name: entry.name, kind: String(entry.kind) }));
 		} catch {
 			return [];
