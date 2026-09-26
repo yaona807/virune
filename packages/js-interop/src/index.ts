@@ -45,6 +45,18 @@ export interface TypeScriptInteropProviderOptions {
 	readonly createLanguageService?: (host: ts.LanguageServiceHost) => ts.LanguageService;
 }
 
+interface EditorImportCompletionEntry {
+	readonly name: string;
+	readonly kind: string;
+}
+
+interface EditorImportCompletionRequest {
+	readonly containingFile: string;
+	readonly moduleSpecifier: string;
+	readonly typeOnly: boolean;
+	readonly platform: JsImportRequest['platform'];
+}
+
 interface UsageProjection {
 	readonly typeExpression: string;
 	readonly directory: string;
@@ -179,6 +191,32 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 		this.#references.clear();
 		for (const workspace of this.#workspaces.values()) workspace.languageService.dispose();
 		this.#workspaces.clear();
+	}
+
+	protected editorImportCompletions(request: EditorImportCompletionRequest): readonly EditorImportCompletionEntry[] {
+		const workspace = this.probeWorkspace(request.platform);
+		const prefix = request.typeOnly ? 'import type { ' : 'import { ';
+		const sourceText = `${prefix} } from ${JSON.stringify(request.moduleSpecifier)};\n`;
+		const extension = request.platform === 'node' ? 'mts' : 'ts';
+		const virtualFileName = `.virune-editor-import-${hash(`${request.moduleSpecifier}:${request.typeOnly ? 'type' : 'value'}`)}.${extension}`;
+		const virtualPath = join(dirname(resolve(request.containingFile)), virtualFileName);
+		const virtualKey = canonicalFilePath(virtualPath);
+		const existing = workspace.virtualFiles.get(virtualKey);
+		if (existing?.text !== sourceText) {
+			workspace.virtualFiles.set(virtualKey, {
+				path: virtualPath,
+				text: sourceText,
+				version: (existing?.version ?? 0) + 1,
+			});
+			workspace.projectVersion++;
+		}
+		try {
+			return (workspace.languageService.getCompletionsAtPosition(virtualPath, prefix.length, {})?.entries ?? [])
+				.filter(entry => String(entry.kind) !== 'keyword')
+				.map(entry => Object.freeze({ name: entry.name, kind: String(entry.kind) }));
+		} catch {
+			return [];
+		}
 	}
 
 	public resolveImport(request: JsImportRequest): JsImportResolution {
