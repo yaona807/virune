@@ -65,7 +65,7 @@ test('requires npm publication identity assets for registry-eligible prereleases
 	);
 	assert.throws(
 		() => validateReleaseRecord({ tag_name: `v${registryVersion}`, draft: false, prerelease: true, assets: registryRequiredNames.filter(name => name !== `virune-cli-${registryVersion}.tgz`).map(name => ({ name })) }, { tag: `v${registryVersion}`, version: registryVersion }),
-		new RegExp(`Release is missing virune-npm-${registryVersion.replaceAll('.', '\\.')}\\.tgz`, 'u'),
+		new RegExp(`Release is missing virune-cli-${registryVersion.replaceAll('.', '\\.')}\\.tgz`, 'u'),
 	);
 });
 
