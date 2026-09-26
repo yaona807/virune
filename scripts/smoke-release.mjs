@@ -189,8 +189,8 @@ try {
 		{ stdio: 'inherit' },
 	);
 	const globalPackageRoot = process.platform === 'win32'
-		? resolve(globalPrefix, 'node_modules/@virune/cli')
-		: resolve(globalPrefix, 'lib/node_modules/@virune/cli');
+		? resolve(globalPrefix, 'node_modules/virune')
+		: resolve(globalPrefix, 'lib/node_modules/virune');
 	const globalBin = process.platform === 'win32' ? resolve(globalPrefix, 'virune.cmd') : resolve(globalPrefix, 'bin/virune');
 	if (!existsSync(globalBin)) throw new Error(`Global virune executable was not created: ${globalBin}`);
 	const cliEntry = resolve(globalPackageRoot, 'dist/src/main.js');
