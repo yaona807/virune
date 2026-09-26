@@ -10,6 +10,9 @@ test('v1.0.x generated projects preserve immutable GitHub Release dependencies',
 		stdlib: 'https://github.com/yaona807/virune/releases/download/v1.0.0/virune-stdlib-1.0.0.tgz',
 	});
 	assert.equal(generatedProjectDependencyVersions('1.0.9').source, 'github-release');
+	assert.deepEqual(buildGeneratedProjectPackageManifest('example', '1.0.0').devDependencies, {
+		virune: 'https://github.com/yaona807/virune/releases/download/v1.0.0/virune-1.0.0.tgz',
+	});
 	assert.equal(generatedProjectDependencyVersions('1.0.0-rc.2').source, 'github-release');
 });
 
@@ -37,6 +40,9 @@ test('nightly releases remain on immutable GitHub Release dependencies', () => {
 		cli: `https://github.com/yaona807/virune/releases/download/v${version}/virune-${version}.tgz`,
 		runtime: `https://github.com/yaona807/virune/releases/download/v${version}/virune-runtime-${version}.tgz`,
 		stdlib: `https://github.com/yaona807/virune/releases/download/v${version}/virune-stdlib-${version}.tgz`,
+	});
+	assert.deepEqual(buildGeneratedProjectPackageManifest('example', version).devDependencies, {
+		virune: `https://github.com/yaona807/virune/releases/download/v${version}/virune-${version}.tgz`,
 	});
 });
 
