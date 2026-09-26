@@ -25,7 +25,7 @@ const requiredNames = [
 const registryRequiredNames = [
 	'LICENSE', 'MANIFEST.json', 'NOTICE', 'README.md', 'README_ja.md', 'RELEASE-MANIFEST.json', 'SBOM.cdx.json', 'SHA256SUMS', 'THIRD_PARTY_NOTICES.md', 'package.json',
 	`virune-${registryVersion}.tgz`, `virune-compiler-${registryVersion}.tgz`, `virune-formatter-${registryVersion}.tgz`, `virune-js-interop-${registryVersion}.tgz`, `virune-runtime-${registryVersion}.tgz`, `virune-stdlib-${registryVersion}.tgz`, `virune-vscode-${registryVersion}.vsix`,
-	'PUBLICATION-MANIFEST.json', `virune-npm-${registryVersion}.tgz`,
+	'PUBLICATION-MANIFEST.json', `virune-cli-${registryVersion}.tgz`,
 ];
 const reviewedLegalFiles = ['LICENSE', 'NOTICE', 'THIRD_PARTY_NOTICES.md'];
 
@@ -64,7 +64,7 @@ test('requires npm publication identity assets for registry-eligible prereleases
 		/Release is missing PUBLICATION-MANIFEST\.json/u,
 	);
 	assert.throws(
-		() => validateReleaseRecord({ tag_name: `v${registryVersion}`, draft: false, prerelease: true, assets: registryRequiredNames.filter(name => name !== `virune-npm-${registryVersion}.tgz`).map(name => ({ name })) }, { tag: `v${registryVersion}`, version: registryVersion }),
+		() => validateReleaseRecord({ tag_name: `v${registryVersion}`, draft: false, prerelease: true, assets: registryRequiredNames.filter(name => name !== `virune-cli-${registryVersion}.tgz`).map(name => ({ name })) }, { tag: `v${registryVersion}`, version: registryVersion }),
 		new RegExp(`Release is missing virune-npm-${registryVersion.replaceAll('.', '\\.')}\\.tgz`, 'u'),
 	);
 });
@@ -80,7 +80,7 @@ test('duplicate or unknown assets cannot substitute for missing npm publication 
 
 test('registry eligibility follows the reviewed release policy rather than a stale checkout policy', () => {
 	const withoutNpmIdentity = registryRequiredNames
-		.filter(name => name !== 'PUBLICATION-MANIFEST.json' && name !== `virune-npm-${registryVersion}.tgz`)
+		.filter(name => name !== 'PUBLICATION-MANIFEST.json' && name !== `virune-cli-${registryVersion}.tgz`)
 		.map(name => ({ name }));
 	const release = { tag_name: `v${registryVersion}`, draft: false, prerelease: true, assets: withoutNpmIdentity };
 	const reviewedPolicy = {
