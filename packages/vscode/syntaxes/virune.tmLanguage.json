@@ -219,7 +219,11 @@
       "patterns": [
         {
           "name": "keyword.control.virune",
-          "match": "\\b(?:await|break|by|continue|defer|discard|else|for|if|in|match|parallel|return|then|try|view|while|with)\\b"
+          "match": "\\b(?:await|break|continue|defer|discard|else|for|if|in|match|parallel|return|then|try|view|while|with)\\b"
+        },
+        {
+          "name": "keyword.control.virune",
+          "match": "\\bby\\b(?=\\s+\\S[^{}\\n]*\\s*\\{)"
         },
         {
           "name": "keyword.control.import.virune",
