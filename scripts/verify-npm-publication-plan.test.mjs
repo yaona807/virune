@@ -45,7 +45,7 @@ test('current repository has the reviewed non-ready npm bootstrap candidate plan
 		stage: 'bootstrap-candidate',
 		publicationReady: false,
 		unresolvedRequirements,
-		currentVersion: '1.1.0-rc.0',
+		currentVersion: '1.1.0-rc.1',
 		forbidRegistryPublishThroughVersion: '1.0.0',
 		firstStableRegistryRelease: '1.1.0',
 		distTagPolicy: {
@@ -54,7 +54,7 @@ test('current repository has the reviewed non-ready npm bootstrap candidate plan
 			nightly: null,
 		},
 		publishPackages: [
-			{ workspaceName: 'virune', registryName: 'virune' },
+			{ workspaceName: '@virune/cli', registryName: '@virune/cli' },
 			{ workspaceName: '@virune/compiler', registryName: '@virune/compiler' },
 			{ workspaceName: '@virune/formatter', registryName: '@virune/formatter' },
 			{ workspaceName: '@virune/js-interop', registryName: '@virune/js-interop' },
@@ -166,7 +166,7 @@ test('registry package names must match current workspace package identities', (
 			const path = resolve(root, '.github/release/npm-publication-v1.json');
 			const plan = readJson(path);
 			const item = plan.packages.find(value => value.directory === directory);
-			item.registryName = directory === 'cli' ? '@virune/cli' : '@example/runtime';
+			item.registryName = directory === 'cli' ? '@virune/cli-renamed' : '@example/runtime';
 			writeJson(path, plan);
 			assert.throws(
 				() => verifyNpmPublicationPlan(root),
@@ -319,14 +319,14 @@ test('prepublication blockers cannot be silently dropped', () => {
 test('bootstrap candidate keeps exact reviewed RC artifacts non-ready for normal OIDC publication', () => {
 	withFixture(root => {
 		configureReleaseState(root, {
-			version: '1.1.0-rc.0',
+			version: '1.1.0-rc.1',
 			stage: 'bootstrap-candidate',
 			publicationReady: false,
 			unresolved: unresolvedRequirements,
 		});
 		const result = verifyNpmPublicationPlan(root);
 		assert.equal(result.stage, 'bootstrap-candidate');
-		assert.equal(result.currentVersion, '1.1.0-rc.0');
+		assert.equal(result.currentVersion, '1.1.0-rc.1');
 		assert.equal(result.publicationReady, false);
 		assert.deepEqual(result.unresolvedRequirements, unresolvedRequirements);
 	});
@@ -351,7 +351,7 @@ test('publication candidate enables only the reviewed v1.1 rc path after pre-wri
 test('bootstrap and publication stages fail closed on contradictory readiness and requirement sets', () => {
 	withFixture(root => {
 		configureReleaseState(root, {
-			version: '1.1.0-rc.0',
+			version: '1.1.0-rc.1',
 			stage: 'bootstrap-candidate',
 			publicationReady: true,
 			unresolved: unresolvedRequirements,
@@ -413,7 +413,7 @@ test('unknown publication stages and partial release version transitions fail cl
 	});
 	withFixture(root => {
 		configureReleaseState(root, {
-			version: '1.1.0-rc.0',
+			version: '1.1.0-rc.1',
 			stage: 'bootstrap-candidate',
 			publicationReady: false,
 			unresolved: unresolvedRequirements,

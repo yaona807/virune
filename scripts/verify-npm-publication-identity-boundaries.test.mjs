@@ -7,7 +7,7 @@ import test from 'node:test';
 import { readRegularReleaseAsset, verifyRegistryCandidateTarball, verifyRegistryCliCandidateTarball } from './verify-npm-publication-identity.mjs';
 
 const registryPackages = [
-	'virune',
+	'@virune/cli',
 	'@virune/compiler',
 	'@virune/formatter',
 	'@virune/js-interop',
@@ -23,7 +23,7 @@ test('release packaging stages every Registry candidate as publishable while kee
 	assert.match(source, /delete stagingManifest\.private;/u);
 	assert.match(source, /for \(const item of registryPackages\) stageRegistryPackage\(item\);/u);
 	assert.match(source, /execNpmSync\(\['pack', '--ignore-scripts', stagingPackage, '--pack-destination', stagingRoot\]/u);
-	assert.match(source, /if \(item\.name === 'virune'\) stampCliVersion\(stagingPackage\);/u);
+	assert.match(source, /if \(item\.name === '@virune\/cli'\) stampCliVersion\(stagingPackage\);/u);
 	assert.match(source, /stagingManifest\.private = true;/u);
 	assert.match(source, /stagingManifest\.bundledDependencies = Object\.keys\(stagingManifest\.dependencies \?\? \{\}\)\.sort\(\);/u);
 	assert.doesNotMatch(source, /execNpmSync\(\['pack', directory,/u);
@@ -57,7 +57,7 @@ test('all six Registry candidate manifests are publishable and reject private or
 			version: '1.0.0',
 			license: 'Apache-2.0',
 			homepage: 'https://example.test/readme',
-			dependencies: name === 'virune' ? { '@virune/runtime': '1.0.0' } : {},
+			dependencies: name === '@virune/cli' ? { '@virune/runtime': '1.0.0' } : {},
 		};
 		assert.doesNotThrow(() => verifyRegistryCandidateTarball(
 			registryTarball(manifest),
@@ -157,7 +157,7 @@ test('Registry CLI legal entries accept canonical regular typeflags, reject syml
 		requireEmbeddedCliVersion: true,
 	};
 	const manifest = {
-		name: 'virune',
+		name: '@virune/cli',
 		version: '1.0.0',
 		license: 'Apache-2.0',
 		dependencies: { '@virune/runtime': '1.0.0' },

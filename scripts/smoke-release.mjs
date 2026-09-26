@@ -205,7 +205,7 @@ try {
 	const projectManifest = JSON.parse(readFileSync(projectManifestPath, 'utf8'));
 	projectManifest.dependencies['@virune/runtime'] = `file:${resolve(releaseDirectory, internalPackageFiles.get('@virune/runtime'))}`;
 	projectManifest.dependencies['@virune/stdlib'] = `file:${resolve(releaseDirectory, internalPackageFiles.get('@virune/stdlib'))}`;
-	projectManifest.devDependencies.virune = `file:${resolve(releaseDirectory, cliFile)}`;
+	projectManifest.devDependencies['@virune/cli'] = `file:${resolve(releaseDirectory, cliFile)}`;
 	writeFileSync(projectManifestPath, `${JSON.stringify(projectManifest, null, 2)}\n`);
 	execNpmSync(
 		['install', '--offline', '--ignore-scripts', '--no-audit', '--no-fund', '--cache', npmCache],
