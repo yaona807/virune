@@ -82,6 +82,17 @@ interface ResolvedAnalysis {
 	readonly core: ProjectCore;
 }
 
+class LanguageServerInteropProvider extends CachedTypeScriptInteropProvider {
+	public completeEditorImport(request: {
+		readonly containingFile: string;
+		readonly moduleSpecifier: string;
+		readonly typeOnly: boolean;
+		readonly platform: 'node' | 'browser' | 'neutral';
+	}): readonly { readonly name: string; readonly kind: string }[] {
+		return this.editorImportCompletions(request);
+	}
+}
+
 export class ProjectManager {
 	readonly #getOpenDocuments: () => readonly TextDocument[];
 	readonly #workspaceFolders: readonly string[];
@@ -105,7 +116,7 @@ export class ProjectManager {
 		this.#createBuilder = options.createBuilder ?? (() => new IncrementalProjectBuilder());
 		this.#createSemanticIndex = options.createSemanticIndex ?? createProjectSemanticIndex;
 		this.#createInteropProvider = options.createInteropProvider
-			?? ((root, generation) => new CachedTypeScriptInteropProvider({ projectRoot: root, generation }));
+			?? ((root, generation) => new LanguageServerInteropProvider({ projectRoot: root, generation }));
 	}
 
 	public invalidate(): void {
@@ -165,6 +176,25 @@ export class ProjectManager {
 	public interopGeneration(root: string): number {
 		const normalizedRoot = resolve(root);
 		return this.#interopProviders.get(normalizedRoot)?.generation ?? this.#interopGenerations.get(normalizedRoot) ?? 1;
+	}
+
+	public async editorImportCompletions(
+		root: string,
+		containingFile: string,
+		moduleSpecifier: string,
+		typeOnly: boolean,
+	): Promise<readonly { readonly name: string; readonly kind: string }[]> {
+		const normalizedRoot = resolve(root);
+		const generation = this.#interopGenerations.get(normalizedRoot) ?? 1;
+		const provider = this.#interopProviders.get(normalizedRoot) ?? this.#createInteropProvider(normalizedRoot, generation);
+		this.#interopProviders.set(normalizedRoot, provider);
+		if (!(provider instanceof LanguageServerInteropProvider)) return [];
+		return provider.completeEditorImport({
+			containingFile,
+			moduleSpecifier,
+			typeOnly,
+			platform: await projectPlatform(normalizedRoot),
+		});
 	}
 
 	public async analyzeDocument(uri: string, token?: AnalysisCancellationToken): Promise<DocumentAnalysisSnapshot | undefined> {
@@ -428,6 +458,17 @@ export class ProjectManager {
 		provider?.dispose();
 		this.#interopProviders.delete(root);
 		this.#interopGenerations.set(root, generation + 1);
+	}
+}
+
+async function projectPlatform(root: string): Promise<'node' | 'browser' | 'neutral'> {
+	try {
+		const config = JSON.parse(await readFile(resolve(root, 'virune.json'), 'utf8')) as { readonly platform?: unknown };
+		return config.platform === 'browser' || config.platform === 'neutral' || config.platform === 'node'
+			? config.platform
+			: 'node';
+	} catch {
+		return 'node';
 	}
 }
 
