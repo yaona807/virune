@@ -166,7 +166,7 @@ test('registry package names must match current workspace package identities', (
 			const path = resolve(root, '.github/release/npm-publication-v1.json');
 			const plan = readJson(path);
 			const item = plan.packages.find(value => value.directory === directory);
-			item.registryName = directory === 'cli' ? '@virune/cli' : '@example/runtime';
+			item.registryName = directory === 'cli' ? '@virune/cli-renamed' : '@example/runtime';
 			writeJson(path, plan);
 			assert.throws(
 				() => verifyNpmPublicationPlan(root),
