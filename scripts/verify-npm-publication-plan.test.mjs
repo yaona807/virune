@@ -54,7 +54,7 @@ test('current repository has the reviewed non-ready npm bootstrap candidate plan
 			nightly: null,
 		},
 		publishPackages: [
-			{ workspaceName: 'virune', registryName: 'virune' },
+			{ workspaceName: '@virune/cli', registryName: '@virune/cli' },
 			{ workspaceName: '@virune/compiler', registryName: '@virune/compiler' },
 			{ workspaceName: '@virune/formatter', registryName: '@virune/formatter' },
 			{ workspaceName: '@virune/js-interop', registryName: '@virune/js-interop' },
@@ -493,7 +493,7 @@ test('npm dist-tag policy fails closed on drift, malformed tags, and nightly ena
 });
 
 function withFixture(run) {
-	const root = mkdtempSync(join(tmpdir(), 'virune-npm-publication-plan-'));
+	const root = mkdtempSync(join(tmpdir(), 'virune-cli-publication-plan-'));
 	try {
 		mkdirSync(resolve(root, '.github/release'), { recursive: true });
 		writeFileSync(
