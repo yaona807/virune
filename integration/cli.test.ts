@@ -156,3 +156,10 @@ test('CLI interop check validates project adapters and fails closed on invalid A
 		},
 	);
 });
+
+
+test('explain reports canonical actionable guidance for safety diagnostics', async () => {
+	const result = await runCli(['explain', 'L2097']);
+	assert.match(result.stdout, /L2097: A must-use value was ignored/u);
+	assert.match(result.stdout, /help: .*discard <expression>/u);
+});

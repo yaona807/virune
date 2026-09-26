@@ -1,4 +1,5 @@
 import type { SourceSpan } from '../source.js';
+import { diagnosticHelp } from './codes.js';
 
 export type DiagnosticSeverity = 'error' | 'warning' | 'information' | 'hint';
 
@@ -36,7 +37,16 @@ export interface Diagnostic {
 export class DiagnosticBag {
 	readonly #diagnostics: Diagnostic[] = [];
 	public add(diagnostic: Diagnostic): void {
-		if (this.#diagnostics.length < 100) this.#diagnostics.push({ ...diagnostic, span: normalizeSpan(diagnostic.span) });
+		if (this.#diagnostics.length >= 100) return;
+		const span = normalizeSpan(diagnostic.span);
+		const help = diagnostic.help ?? diagnosticHelp(diagnostic.code);
+		const fixes = diagnostic.fixes ?? defaultDiagnosticFixes(diagnostic.code, span);
+		this.#diagnostics.push({
+			...diagnostic,
+			span,
+			...(help === undefined ? {} : { help }),
+			...(fixes === undefined ? {} : { fixes }),
+		});
 	}
 	public error(code: string, message: string, span: SourceSpan, options: Omit<Diagnostic, 'code' | 'message' | 'span' | 'severity'> = {}): void {
 		this.add({ code, severity: 'error', message, span, ...options });
@@ -52,6 +62,17 @@ export class DiagnosticBag {
 	}
 	public get items(): readonly Diagnostic[] { return this.#diagnostics; }
 	public get hasErrors(): boolean { return this.#diagnostics.some(item => item.severity === 'error'); }
+}
+
+function defaultDiagnosticFixes(code: string, span: SourceSpan): readonly DiagnosticFix[] | undefined {
+	if (code !== 'L2097') return undefined;
+	return [{
+		id: 'discard-must-use-value',
+		title: 'Discard this value explicitly',
+		kind: 'insert',
+		span,
+		text: 'discard ',
+	}];
 }
 
 function normalizeSpan(span: SourceSpan): SourceSpan {
