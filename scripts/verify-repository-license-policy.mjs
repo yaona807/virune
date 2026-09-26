@@ -83,7 +83,7 @@ function listViruneOwnedPackageManifests(root) {
 
 function isViruneOwnedPackageName(name) {
 	return typeof name === 'string'
-		&& (name === 'virune-monorepo' || name === 'virune' || name.startsWith('virune-') || name.startsWith('@virune/'));
+		&& (name === 'virune-monorepo' || name.startsWith('virune-') || name.startsWith('@virune/'));
 }
 
 function gitBlobSha(bytes) {
