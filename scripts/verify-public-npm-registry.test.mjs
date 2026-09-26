@@ -507,7 +507,7 @@ test('generated project smoke rejects dependency, script, and package.json drift
 			runCommand: successfulRunCommand(version, { generatedVersion: '1.1.0-rc.1' }),
 			platform: 'linux',
 		}),
-		/expected 1\.1\.0-rc\.1/u,
+		/expected 1\.1\.0-rc\.2/u,
 	);
 	await assert.rejects(
 		() => verifyCleanGlobalCliInstall(version, {
