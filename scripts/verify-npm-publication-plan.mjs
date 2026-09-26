@@ -153,7 +153,7 @@ export function verifyNpmPublicationPlan(root = process.cwd()) {
 			const dependencies = record(rawDependencies, `$.${item.directory}.${section}`);
 			for (const [dependency, version] of Object.entries(dependencies)) {
 				const isKnownWorkspace = workspaceNames.has(dependency);
-				const claimsViruneNamespace = dependency.startsWith('@virune/');
+				const claimsViruneNamespace = dependency === 'virune' || dependency.startsWith('@virune/');
 				if (!isKnownWorkspace && !claimsViruneNamespace) continue;
 				assert(isKnownWorkspace, `$.${item.directory}.${section}.${dependency}`, 'Virune dependency must refer to a workspace package declared by the publication plan');
 				assert(version === rootManifest.version, `$.${item.directory}.${section}.${dependency}`, 'internal Virune dependencies must use the exact reviewed release version');
