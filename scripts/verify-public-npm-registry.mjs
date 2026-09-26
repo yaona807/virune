@@ -12,6 +12,7 @@ import {
 
 const repositoryRoot = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const PUBLIC_REGISTRY = 'https://registry.npmjs.org/';
+const CLI_REGISTRY_PACKAGE = '@virune/cli';
 const DEFAULT_PUBLICATION_MANIFEST = resolve(repositoryRoot, '.cache/public-release/PUBLICATION-MANIFEST.json');
 const DEFAULT_PUBLIC_RELEASE_REPORT = resolve(repositoryRoot, '.cache/public-release/public-release-report.json');
 const DEFAULT_OUTPUT = resolve(repositoryRoot, '.cache/public-npm-registry/public-npm-registry-report.json');
@@ -175,7 +176,7 @@ export function bindPublicNpmRegistryEvidence(publicReleaseReport, registryRepor
 	}
 	assertUnique(names, '$.publicNpmRegistryReport.packages', 'registryName');
 	const installation = record(registryDocument.installation, '$.publicNpmRegistryReport.installation');
-	assert(installation.package === `virune@${version}`, '$.publicNpmRegistryReport.installation.package', `expected virune@${version}`);
+	assert(installation.package === `${CLI_REGISTRY_PACKAGE}@${version}`, '$.publicNpmRegistryReport.installation.package', `expected virune@${version}`);
 	assert(installation.registry === PUBLIC_REGISTRY, '$.publicNpmRegistryReport.installation.registry', `expected ${PUBLIC_REGISTRY}`);
 	assert(installation.versionOutput === `virune ${version}`, '$.publicNpmRegistryReport.installation.versionOutput', `expected virune ${version}`);
 	const generatedProject = record(installation.generatedProject, '$.publicNpmRegistryReport.installation.generatedProject');
@@ -185,7 +186,7 @@ export function bindPublicNpmRegistryEvidence(publicReleaseReport, registryRepor
 		'expected canonical generated-project consumer commands',
 	);
 	const npx = record(installation.npx, '$.publicNpmRegistryReport.installation.npx');
-	assert(npx.package === `virune@${version}`, '$.publicNpmRegistryReport.installation.npx.package', `expected virune@${version}`);
+	assert(npx.package === `${CLI_REGISTRY_PACKAGE}@${version}`, '$.publicNpmRegistryReport.installation.npx.package', `expected virune@${version}`);
 	assert(npx.registry === PUBLIC_REGISTRY, '$.publicNpmRegistryReport.installation.npx.registry', `expected ${PUBLIC_REGISTRY}`);
 	assert(npx.acquisition === 'npm-exec', '$.publicNpmRegistryReport.installation.npx.acquisition', 'expected npm-exec');
 	assert(npx.nonInteractive === true, '$.publicNpmRegistryReport.installation.npx.nonInteractive', 'expected true');
@@ -333,7 +334,7 @@ export async function verifyCleanGlobalCliInstall(version, {
 		]);
 		const env = cleanNpmEnvironment({ root, npmrc, globalNpmrc, cache, baseEnv });
 		runCommand('npm', [
-			'install', '--global', `virune@${version}`, `--prefix=${prefix}`,
+			'install', '--global', `${CLI_REGISTRY_PACKAGE}@${version}`, `--prefix=${prefix}`,
 			`--registry=${PUBLIC_REGISTRY}`, `--userconfig=${npmrc}`,
 			'--replace-registry-host=never', '--no-audit', '--no-fund',
 		], { cwd: root, env });
@@ -367,7 +368,8 @@ export async function verifyCleanGlobalCliInstall(version, {
 		const npxEnv = { ...env, NPM_CONFIG_CACHE: npxCache };
 		runCommand('npm', [
 			'exec', '--yes', `--registry=${PUBLIC_REGISTRY}`, `--userconfig=${npmrc}`,
-			'--replace-registry-host=never', '--', `virune@${version}`, 'init', npxProjectRoot,
+			'--replace-registry-host=never', `--package=${CLI_REGISTRY_PACKAGE}@${version}`,
+			'--', 'virune', 'init', npxProjectRoot,
 		], { cwd: root, env: npxEnv, capture: true });
 		const npxPackageJsonPath = resolve(npxProjectRoot, 'package.json');
 		const npxPackageJsonBytes = await readFile(npxPackageJsonPath);
@@ -382,7 +384,7 @@ export async function verifyCleanGlobalCliInstall(version, {
 		assert(npxPackageJsonAfter.equals(npxPackageJsonBytes), '$.installation.npx.packageJson', 'npm exec generated package.json changed during verification');
 
 		return {
-			package: `virune@${version}`,
+			package: `${CLI_REGISTRY_PACKAGE}@${version}`,
 			registry: PUBLIC_REGISTRY,
 			versionOutput,
 			generatedProject: {
@@ -390,7 +392,7 @@ export async function verifyCleanGlobalCliInstall(version, {
 				commands: ['npm install', 'npm run check', 'npm run build', 'npm run start'],
 			},
 			npx: {
-				package: `virune@${version}`,
+				package: `${CLI_REGISTRY_PACKAGE}@${version}`,
 				registry: PUBLIC_REGISTRY,
 				acquisition: 'npm-exec',
 				nonInteractive: true,
@@ -424,14 +426,14 @@ export function validateGeneratedProjectManifest(manifest, version) {
 	const dependencies = record(document.dependencies, `${path}.dependencies`);
 	const devDependencies = record(document.devDependencies, `${path}.devDependencies`);
 	assertExactKeys(dependencies, ['@virune/runtime', '@virune/stdlib'], `${path}.dependencies`);
-	assertExactKeys(devDependencies, ['virune'], `${path}.devDependencies`);
+	assertExactKeys(devDependencies, [CLI_REGISTRY_PACKAGE], `${path}.devDependencies`);
 	assert(dependencies['@virune/runtime'] === version, `${path}.dependencies.@virune/runtime`, `expected ${version}`);
 	assert(dependencies['@virune/stdlib'] === version, `${path}.dependencies.@virune/stdlib`, `expected ${version}`);
-	assert(devDependencies.virune === version, `${path}.devDependencies.virune`, `expected ${version}`);
+	assert(devDependencies[CLI_REGISTRY_PACKAGE] === version, `${path}.devDependencies.${CLI_REGISTRY_PACKAGE}`, `expected ${version}`);
 	return {
 		scripts: expectedScripts,
 		dependencies: { '@virune/runtime': version, '@virune/stdlib': version },
-		devDependencies: { virune: version },
+		devDependencies: { [CLI_REGISTRY_PACKAGE]: version },
 	};
 }
 
