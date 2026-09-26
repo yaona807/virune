@@ -28,10 +28,6 @@ const registryPackages = [...internalPackages, registryCliPackage];
 const cliPackage = { directory: 'cli', name: '@virune/cli', file: bundledCliReleaseAssetName(version) };
 const packages = [...registryPackages, cliPackage];
 
-const pack = directory => {
-	execNpmSync(['pack', '--ignore-scripts', directory, '--pack-destination', out], { stdio: 'inherit' });
-};
-
 const stampCliVersion = directory => {
 	const cliEntryPath = resolve(directory, 'dist/src/main.js');
 	const cliEntry = readFileSync(cliEntryPath, 'utf8');
