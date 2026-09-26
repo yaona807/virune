@@ -175,7 +175,7 @@ export function bindPublicNpmRegistryEvidence(publicReleaseReport, registryRepor
 	}
 	assertUnique(names, '$.publicNpmRegistryReport.packages', 'registryName');
 	const installation = record(registryDocument.installation, '$.publicNpmRegistryReport.installation');
-	assert(installation.package === `@virune/cli@${version}`, '$.publicNpmRegistryReport.installation.package', `expected virune@${version}`);
+	assert(installation.package === `@virune/cli@${version}`, '$.publicNpmRegistryReport.installation.package', `expected @virune/cli@${version}`);
 	assert(installation.registry === PUBLIC_REGISTRY, '$.publicNpmRegistryReport.installation.registry', `expected ${PUBLIC_REGISTRY}`);
 	assert(installation.versionOutput === `virune ${version}`, '$.publicNpmRegistryReport.installation.versionOutput', `expected virune ${version}`);
 	const generatedProject = record(installation.generatedProject, '$.publicNpmRegistryReport.installation.generatedProject');
