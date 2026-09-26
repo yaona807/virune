@@ -1,7 +1,16 @@
 import { readFile } from 'node:fs/promises';
-import { dirname, join, resolve } from 'node:path';
-import ts from 'typescript';
+import { join } from 'node:path';
 import { CompletionItemKind, type CompletionItem, type Range } from 'vscode-languageserver/node';
+
+export interface JsImportExportCompletion {
+	readonly name: string;
+	readonly kind: string;
+}
+
+export type JsImportExportResolver = (
+	moduleSpecifier: string,
+	typeOnly: boolean,
+) => readonly JsImportExportCompletion[] | Promise<readonly JsImportExportCompletion[]>;
 
 interface ModuleSpecifierContext {
 	readonly kind: 'module';
@@ -20,19 +29,13 @@ interface NamedExportContext {
 	readonly typeOnly: boolean;
 }
 
-interface TypeScriptExportCompletion {
-	readonly name: string;
-	readonly kind: string;
-}
-
 type JsImportCompletionContext = ModuleSpecifierContext | NamedExportContext;
-type ProjectPlatform = 'node' | 'browser' | 'neutral';
 
 export async function jsImportCompletionItems(
 	projectRoot: string,
-	containingFile: string,
 	text: string,
 	offset: number,
+	resolveExports: JsImportExportResolver = () => [],
 ): Promise<readonly CompletionItem[] | undefined> {
 	const context = jsImportCompletionContext(text, offset);
 	if (context === undefined) return undefined;
@@ -47,8 +50,8 @@ export async function jsImportCompletionItems(
 				textEdit: { range: offsetRange(text, context.replaceStart, context.replaceEnd), newText: name },
 			}));
 	}
-	const exports = await typeScriptModuleExports(projectRoot, containingFile, context.moduleSpecifier, context.typeOnly);
-	return exports
+	const exports = await resolveExports(context.moduleSpecifier, context.typeOnly);
+	return [...exports]
 		.filter(item => item.name.startsWith(context.prefix) && !context.existingImports.has(item.name) && item.name !== 'default')
 		.sort((left, right) => compareText(left.name, right.name))
 		.map(item => ({
@@ -161,95 +164,6 @@ async function declaredPackageNames(projectRoot: string): Promise<readonly strin
 	}
 }
 
-async function typeScriptModuleExports(
-	projectRoot: string,
-	containingFile: string,
-	moduleSpecifier: string,
-	typeOnly: boolean,
-): Promise<readonly TypeScriptExportCompletion[]> {
-	const platform = await projectPlatform(projectRoot);
-	const prefix = typeOnly ? 'import type { ' : 'import { ';
-	const sourceText = `${prefix} } from ${JSON.stringify(moduleSpecifier)};\n`;
-	const extension = platform === 'node' ? 'mts' : 'ts';
-	const virtualPath = join(dirname(resolve(containingFile)), `.virune-editor-import-completion.${extension}`);
-	const virtualKey = canonicalFilePath(virtualPath);
-	const compilerOptions = editorCompilerOptions(platform);
-	const host: ts.LanguageServiceHost = {
-		getCompilationSettings: () => compilerOptions,
-		getScriptFileNames: () => [virtualPath],
-		getScriptVersion: () => '1',
-		getScriptSnapshot: fileName => {
-			const value = canonicalFilePath(fileName) === virtualKey ? sourceText : ts.sys.readFile(fileName);
-			return value === undefined ? undefined : ts.ScriptSnapshot.fromString(value);
-		},
-		getProjectVersion: () => '1',
-		getCurrentDirectory: () => resolve(projectRoot),
-		getDefaultLibFileName: options => ts.getDefaultLibFilePath(options),
-		fileExists: fileName => canonicalFilePath(fileName) === virtualKey || ts.sys.fileExists(fileName),
-		readFile: fileName => canonicalFilePath(fileName) === virtualKey ? sourceText : ts.sys.readFile(fileName),
-		readDirectory: ts.sys.readDirectory,
-		useCaseSensitiveFileNames: () => ts.sys.useCaseSensitiveFileNames,
-		getNewLine: () => ts.sys.newLine,
-		...(ts.sys.directoryExists === undefined ? {} : { directoryExists: ts.sys.directoryExists }),
-		...(ts.sys.getDirectories === undefined ? {} : { getDirectories: ts.sys.getDirectories }),
-		...(ts.sys.realpath === undefined ? {} : { realpath: ts.sys.realpath }),
-	};
-	const service = ts.createLanguageService(host);
-	try {
-		return (service.getCompletionsAtPosition(virtualPath, prefix.length, {})?.entries ?? [])
-			.filter(entry => String(entry.kind) !== 'keyword')
-			.map(entry => ({ name: entry.name, kind: String(entry.kind) }));
-	} catch {
-		return [];
-	} finally {
-		service.dispose();
-	}
-}
-
-function editorCompilerOptions(platform: ProjectPlatform): ts.CompilerOptions {
-	const target = platform === 'node'
-		? {
-			module: ts.ModuleKind.NodeNext,
-			moduleResolution: ts.ModuleResolutionKind.NodeNext,
-			customConditions: ['node-addons', 'module-sync'],
-		}
-		: {
-			module: ts.ModuleKind.ESNext,
-			moduleResolution: ts.ModuleResolutionKind.Bundler,
-			customConditions: platform === 'browser' ? ['browser'] : [],
-		};
-	return {
-		target: ts.ScriptTarget.ES2022,
-		strict: true,
-		strictNullChecks: true,
-		exactOptionalPropertyTypes: true,
-		noUncheckedIndexedAccess: true,
-		skipLibCheck: false,
-		allowJs: true,
-		checkJs: true,
-		allowImportingTsExtensions: true,
-		noEmit: true,
-		...target,
-		resolvePackageJsonExports: true,
-		resolvePackageJsonImports: true,
-		preserveSymlinks: false,
-		allowArbitraryExtensions: false,
-		resolveJsonModule: false,
-		types: platform === 'node' ? ['node'] : [],
-	};
-}
-
-async function projectPlatform(root: string): Promise<ProjectPlatform> {
-	try {
-		const config = JSON.parse(await readFile(resolve(root, 'virune.json'), 'utf8')) as { readonly platform?: unknown };
-		return config.platform === 'browser' || config.platform === 'neutral' || config.platform === 'node'
-			? config.platform
-			: 'node';
-	} catch {
-		return 'node';
-	}
-}
-
 function completionKind(kind: string): CompletionItemKind {
 	switch (kind) {
 		case 'function': return CompletionItemKind.Function;
@@ -280,11 +194,6 @@ function offsetPosition(text: string, offset: number): { readonly line: number; 
 		}
 	}
 	return { line, character: Math.max(0, offset - lineStart) };
-}
-
-function canonicalFilePath(value: string): string {
-	const normalized = resolve(value);
-	return ts.sys.useCaseSensitiveFileNames ? normalized : normalized.toLocaleLowerCase();
 }
 
 function isIdentifierCharacter(character: string): boolean {
