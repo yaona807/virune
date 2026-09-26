@@ -109,7 +109,7 @@ function fixture({ commit = reviewedCommit } = {}) {
 		githubReleaseTag: `v${version}`,
 		publishSource: 'reviewed-release-registry-candidate-tarball',
 		bundledCliReleaseAsset: bundledCliReleaseAssetName(version),
-		publicationReady: true,
+		publicationReady: publicationPlan.stage !== 'bootstrap-candidate',
 		registryVersionEligible: true,
 		distTag: 'next',
 		packages,
@@ -323,9 +323,12 @@ test('publication manifest validation is exact, unique and fail closed', () => {
 	const good = fixture().publicationManifest;
 	assert.equal(validateReviewedPublicationManifest(good, publicationPlan).packages.length, publicationPlan.packages.length);
 
-	const notReady = structuredClone(good);
-	notReady.publicationReady = false;
-	assert.throws(() => validateReviewedPublicationManifest(notReady, publicationPlan), /publication-ready candidate/u);
+	const wrongReadiness = structuredClone(good);
+	wrongReadiness.publicationReady = !good.publicationReady;
+	assert.throws(
+		() => validateReviewedPublicationManifest(wrongReadiness, publicationPlan),
+		good.publicationReady ? /publication-ready candidate/u : /non-ready bootstrap candidate/u,
+	);
 
 	const ineligible = structuredClone(good);
 	ineligible.registryVersionEligible = false;

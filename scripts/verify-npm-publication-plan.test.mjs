@@ -38,14 +38,14 @@ const postPublicationRequirements = [
 const dependencySections = ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies'];
 const runtimeDependencySections = ['dependencies', 'peerDependencies', 'optionalDependencies'];
 
-test('current repository has a complete but explicitly non-ready npm prepublication plan', () => {
+test('current repository has the reviewed non-ready npm bootstrap candidate plan', () => {
 	const result = verifyNpmPublicationPlan(repositoryRoot);
 	assert.deepEqual(result, {
 		schemaVersion: 1,
-		stage: 'prepublication-audit',
+		stage: 'bootstrap-candidate',
 		publicationReady: false,
 		unresolvedRequirements,
-		currentVersion: '1.0.0',
+		currentVersion: '1.1.0-rc.0',
 		forbidRegistryPublishThroughVersion: '1.0.0',
 		firstStableRegistryRelease: '1.1.0',
 		distTagPolicy: {
@@ -128,7 +128,7 @@ test('publishable packages cannot require excluded workspace packages at install
 			const path = resolve(root, 'packages/compiler/package.json');
 			const manifest = readJson(path);
 			manifest[section] ??= {};
-			manifest[section]['@virune/language-server'] = '1.0.0';
+			manifest[section]['@virune/language-server'] = manifest.version;
 			writeJson(path, manifest);
 			assert.throws(
 				() => verifyNpmPublicationPlan(root),
@@ -141,7 +141,7 @@ test('publishable packages cannot require excluded workspace packages at install
 		const path = resolve(root, 'packages/compiler/package.json');
 		const manifest = readJson(path);
 		manifest.devDependencies ??= {};
-		manifest.devDependencies['@virune/language-server'] = '1.0.0';
+		manifest.devDependencies['@virune/language-server'] = manifest.version;
 		writeJson(path, manifest);
 		assert.doesNotThrow(() => verifyNpmPublicationPlan(root));
 	});
@@ -280,6 +280,12 @@ test('publishable package metadata requires exports and a substantive unique fil
 
 test('prepublication plan cannot claim readiness while required work is unresolved', () => {
 	withFixture(root => {
+		configureReleaseState(root, {
+			version: '1.0.0',
+			stage: 'prepublication-audit',
+			publicationReady: false,
+			unresolved: unresolvedRequirements,
+		});
 		const path = resolve(root, '.github/release/npm-publication-v1.json');
 		const plan = readJson(path);
 		plan.publicationReady = true;
@@ -293,6 +299,12 @@ test('prepublication plan cannot claim readiness while required work is unresolv
 
 test('prepublication blockers cannot be silently dropped', () => {
 	withFixture(root => {
+		configureReleaseState(root, {
+			version: '1.0.0',
+			stage: 'prepublication-audit',
+			publicationReady: false,
+			unresolved: unresolvedRequirements,
+		});
 		const path = resolve(root, '.github/release/npm-publication-v1.json');
 		const plan = readJson(path);
 		plan.unresolvedRequirements = plan.unresolvedRequirements.filter(item => item !== 'trusted-publishing');

@@ -1,6 +1,6 @@
 {
 	"name": "virune-monorepo",
-	"version": "1.0.0",
+	"version": "1.1.0-rc.0",
 	"repository": {
 		"type": "git",
 		"url": "git+https://github.com/yaona807/virune.git"

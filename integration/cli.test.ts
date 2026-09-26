@@ -20,10 +20,9 @@ test('CLI init, check, build and run form a complete workflow', async () => {
 	};
 	const repositoryManifest = JSON.parse(await readFile(join(repositoryRoot, 'package.json'), 'utf8')) as { version: string };
 	const version = repositoryManifest.version;
-	const releaseBase = `https://github.com/yaona807/virune/releases/download/v${version}`;
-	assert.equal(manifest.dependencies['@virune/runtime'], `${releaseBase}/virune-runtime-${version}.tgz`);
-	assert.equal(manifest.dependencies['@virune/stdlib'], `${releaseBase}/virune-stdlib-${version}.tgz`);
-	assert.equal(manifest.devDependencies.virune, `${releaseBase}/virune-${version}.tgz`);
+	assert.equal(manifest.dependencies['@virune/runtime'], version);
+	assert.equal(manifest.dependencies['@virune/stdlib'], version);
+	assert.equal(manifest.devDependencies.virune, version);
 	const projectReadme = await readFile(join(root, 'README.md'), 'utf8');
 	assert.match(projectReadme, new RegExp(`Generated with Virune ${version.replaceAll('.', '\\.')}`, 'u'));
 	assert.match(projectReadme, /npm run check/u);
