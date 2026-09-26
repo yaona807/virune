@@ -26,7 +26,7 @@ test('Registry-enabled stable and prerelease lines generate exact npm versions w
 			'@virune/runtime': version,
 			'@virune/stdlib': version,
 		});
-		assert.deepEqual(manifest.devDependencies, { virune: version });
+		assert.deepEqual(manifest.devDependencies, { '@virune/cli': version });
 	}
 });
 
@@ -56,7 +56,7 @@ test('generated project manifest keeps the canonical scripts and private package
 			'@virune/runtime': '1.1.0',
 			'@virune/stdlib': '1.1.0',
 		},
-		devDependencies: { virune: '1.1.0' },
+		devDependencies: { '@virune/cli': '1.1.0' },
 	});
 });
 
