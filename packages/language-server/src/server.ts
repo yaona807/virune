@@ -39,6 +39,7 @@ import { signatureHelpAt } from './features/signature-help.js';
 import { workspaceSymbols } from './features/workspace-symbols.js';
 import { codeLenses } from './features/code-lens.js';
 import { organizeImportsAction } from './features/imports.js';
+import { jsImportCompletionItems } from './features/js-import-completion.js';
 import { defaultEditorInformationSettings, resolveEditorInformationSettings } from './editor-information.js';
 import { filePathToUri, positionToOffset, uriToFilePath } from './analysis/position.js';
 
@@ -81,7 +82,7 @@ connection.onInitialize((params: InitializeParams): InitializeResult => {
 			callHierarchyProvider: true,
 			workspaceSymbolProvider: true,
 			codeLensProvider: { resolveProvider: false },
-			completionProvider: { triggerCharacters: ['.', '@'] },
+			completionProvider: { triggerCharacters: ['.', '@', '"'] },
 			semanticTokensProvider: {
 				legend: { tokenTypes: [...semanticTokenTypes], tokenModifiers: [...semanticTokenModifiers] },
 				full: true,
@@ -304,6 +305,20 @@ connection.languages.callHierarchy.onOutgoingCalls(async params => {
 });
 
 connection.onCompletion(async (params, token) => {
+	const document = documents.get(params.textDocument.uri);
+	const path = uriToFilePath(params.textDocument.uri);
+	if (document !== undefined && path !== undefined && !isCancelled(token)) {
+		const root = await projectManager.projectRootForUri(params.textDocument.uri);
+		if (root !== undefined && !isCancelled(token)) {
+			const importItems = await jsImportCompletionItems(
+				root,
+				path,
+				document.getText(),
+				document.offsetAt(params.position),
+			);
+			if (importItems !== undefined) return [...importItems];
+		}
+	}
 	const analysis = await analyzeCompletionPosition(params, token);
 	if (analysis === undefined || isCancelled(token)) return [];
 	return [...completionItems(analysis.module, analysis.module.source, analysis.offset, analysis.workspaceExports)];
