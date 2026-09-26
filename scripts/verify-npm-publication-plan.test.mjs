@@ -493,7 +493,7 @@ test('npm dist-tag policy fails closed on drift, malformed tags, and nightly ena
 });
 
 function withFixture(run) {
-	const root = mkdtempSync(join(tmpdir(), 'virune-cli-publication-plan-'));
+	const root = mkdtempSync(join(tmpdir(), 'virune-npm-publication-plan-'));
 	try {
 		mkdirSync(resolve(root, '.github/release'), { recursive: true });
 		writeFileSync(
