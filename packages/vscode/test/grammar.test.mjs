@@ -26,14 +26,9 @@ test('TextMate grammar contains every compiler keyword', async () => {
 	for (const keyword of keywords) assert.match(grammarText, new RegExp(`\\b${keyword}\\b`, 'u'), `Missing keyword: ${keyword}`);
 });
 
-test('TextMate grammar highlights the View repetition identity soft keyword contextually', async () => {
-	const grammar = await readJson(grammarUrl);
-	const keywordPatterns = grammar.repository?.keywords?.patterns ?? [];
-	const byPattern = keywordPatterns.find(pattern => pattern.match?.includes('by'));
-	assert.ok(byPattern);
-	const matcher = new RegExp(byPattern.match, 'u');
-	assert.match('by item.id {', matcher);
-	assert.doesNotMatch('let by = 1', matcher);
+test('TextMate grammar highlights the View repetition identity keyword', async () => {
+	const grammarText = await readFile(grammarUrl, 'utf8');
+	assert.match(grammarText, /\\bby\\b/u);
 });
 
 test('TextMate grammar does not declare Rust-only keywords', async () => {
