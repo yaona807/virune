@@ -75,7 +75,7 @@ test('packaged release installation guidance follows the reviewed npm publicatio
 	assert.match(source, /const publicationIdentity = writeNpmPublicationIdentity\(\{ releaseDirectory: out \}\);/u);
 	assert.match(source, /publicationIdentity\.registryVersionEligible === true && publicationIdentity\.publicationReady === true/u);
 	assert.match(source, /The public npm Registry is the canonical package distribution for this Virune release\./u);
-	assert.match(source, /npm install --global virune@\$\{version\}/u);
+	assert.match(source, /npm install --global @virune\/cli@\$\{version\}/u);
 	assert.match(source, /GitHub Releases retain the reviewed release artifacts, checksums, SBOM, attestations/u);
 	assert.match(source, /public npm Registryを正式なpackage配布経路とします/u);
 	assert.match(source, /Virune is not published to the npm Registry/u);
