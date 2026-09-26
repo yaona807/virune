@@ -65,16 +65,16 @@ function registryReport(version, distTag) {
 		reviewedCommit,
 		distTag,
 		releaseBinding: { publicationManifestSha256: 'a'.repeat(64), publicationManifestBytes: 123 },
-		packages: [{ registryName: 'virune', version, distTag }],
+		packages: [{ registryName: '@virune/cli', version, distTag }],
 		installation: {
-			package: `virune@${version}`,
+			package: `@virune/cli@${version}`,
 			registry: publicRegistry,
 			versionOutput: `virune ${version}`,
 			generatedProject: {
 				commands: ['npm install', 'npm run check', 'npm run build', 'npm run start'],
 			},
 			npx: {
-				package: `virune@${version}`,
+				package: `@virune/cli@${version}`,
 				registry: publicRegistry,
 				acquisition: 'npm-exec',
 				nonInteractive: true,
@@ -90,7 +90,7 @@ function releaseAssets(version, registryEligible) {
 		'LICENSE', 'MANIFEST.json', 'NOTICE', 'README.md', 'README_ja.md', 'RELEASE-MANIFEST.json', 'SBOM.cdx.json', 'SHA256SUMS', 'THIRD_PARTY_NOTICES.md', 'THIRD_PARTY_NOTICES_ja.md', 'package.json',
 		`virune-${version}.tgz`, `virune-compiler-${version}.tgz`, `virune-formatter-${version}.tgz`, `virune-js-interop-${version}.tgz`, `virune-runtime-${version}.tgz`, `virune-stdlib-${version}.tgz`, `virune-vscode-${version}.vsix`,
 	];
-	if (registryEligible) assets.push('PUBLICATION-MANIFEST.json', `virune-npm-${version}.tgz`);
+	if (registryEligible) assets.push('PUBLICATION-MANIFEST.json', `virune-cli-${version}.tgz`);
 	return assets.map(name => ({ name }));
 }
 
@@ -110,7 +110,7 @@ function npmGeneratedProject(version) {
 			'@virune/runtime': version,
 			'@virune/stdlib': version,
 		},
-		devDependencies: { virune: version },
+		devDependencies: { '@virune/cli': version },
 	};
 }
 
@@ -143,7 +143,7 @@ test('bootstrap public Registry verification accepts only the reviewed non-ready
 		publicationReady: false,
 		firstStableRegistryRelease: '1.1.0',
 		distTagPolicy: { stable: 'latest', prerelease: 'next', nightly: null },
-		packages: [{ registryName: 'virune' }],
+		packages: [{ registryName: '@virune/cli' }],
 	};
 	const manifest = {
 		schemaVersion: 1,
@@ -155,8 +155,8 @@ test('bootstrap public Registry verification accepts only the reviewed non-ready
 		registryVersionEligible: true,
 		distTag: 'next',
 		packages: [{
-			registryName: 'virune',
-			releaseAsset: registryReleaseAssetNameForPackage('virune', version),
+			registryName: '@virune/cli',
+			releaseAsset: registryReleaseAssetNameForPackage('@virune/cli', version),
 			sha256: 'a'.repeat(64),
 			bytes: 1,
 		}],
@@ -294,7 +294,7 @@ test('clean install verification does not repair a non-executable installed CLI 
 				'@virune/runtime': version,
 				'@virune/stdlib': version,
 			},
-			devDependencies: { virune: version },
+			devDependencies: { '@virune/cli': version },
 		}, null, 2)}\n`, 'utf8');
 	};
 	await verifyCleanGlobalCliInstall(version, {
@@ -314,7 +314,8 @@ test('clean install verification does not repair a non-executable installed CLI 
 					assert.equal(executableChecked, true, 'executable mode must be checked before npm exec consumer initialization');
 					const separator = args.indexOf('--');
 					assert(separator >= 0);
-					assert.equal(args[separator + 1], `virune@${version}`);
+					assert.equal(args[separator + 1], 'virune');
+					assert(args.includes(`--package=@virune/cli@${version}`));
 					assert.equal(args[separator + 2], 'init');
 					assert.equal(typeof args[separator + 3], 'string');
 					writeGeneratedProject(resolve(args[separator + 3]));
