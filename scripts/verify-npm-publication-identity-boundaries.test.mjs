@@ -157,7 +157,7 @@ test('Registry CLI legal entries accept canonical regular typeflags, reject syml
 		requireEmbeddedCliVersion: true,
 	};
 	const manifest = {
-		name: 'virune',
+		name: '@virune/cli',
 		version: '1.0.0',
 		license: 'Apache-2.0',
 		dependencies: { '@virune/runtime': '1.0.0' },
