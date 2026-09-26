@@ -153,7 +153,7 @@ export function verifyNpmPublicationPlan(root = process.cwd()) {
 			const dependencies = record(rawDependencies, `$.${item.directory}.${section}`);
 			for (const [dependency, version] of Object.entries(dependencies)) {
 				const isKnownWorkspace = workspaceNames.has(dependency);
-				const claimsViruneNamespace = dependency === 'virune' || dependency.startsWith('@virune/');
+				const claimsViruneNamespace = dependency.startsWith('@virune/');
 				if (!isKnownWorkspace && !claimsViruneNamespace) continue;
 				assert(isKnownWorkspace, `$.${item.directory}.${section}.${dependency}`, 'Virune dependency must refer to a workspace package declared by the publication plan');
 				assert(version === rootManifest.version, `$.${item.directory}.${section}.${dependency}`, 'internal Virune dependencies must use the exact reviewed release version');
@@ -168,8 +168,8 @@ export function verifyNpmPublicationPlan(root = process.cwd()) {
 	assert(cli !== undefined, '$.packages', 'exactly one CLI publication package is required');
 	assert(publishPackages.filter(item => item.role === 'cli').length === 1, '$.packages', 'exactly one CLI publication package is required');
 	const cliManifest = manifests.get(cli.workspaceName);
-	assert(cli.workspaceName === 'virune', '$.packages', 'canonical CLI workspace package must be virune');
-	assert(cli.registryName === 'virune', '$.packages', 'canonical CLI registry name must be virune');
+	assert(cli.workspaceName === '@virune/cli', '$.packages', 'canonical CLI workspace package must be @virune/cli');
+	assert(cli.registryName === '@virune/cli', '$.packages', 'canonical CLI registry name must be @virune/cli');
 	assertExactKeys(cliManifest.bin, ['virune'], `$.${cli.directory}.bin`);
 	assert(cliManifest.bin.virune === './dist/src/entry.js', `$.${cli.directory}.bin.virune`, 'canonical virune executable mapping is required');
 	for (const item of publishPackages.filter(item => item.role === 'cli-dependency')) {
