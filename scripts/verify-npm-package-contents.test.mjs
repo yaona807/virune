@@ -157,7 +157,7 @@ test('fails closed on npm pack identity or duplicate path drift', () => {
 });
 
 function withFixture(run) {
-  const root = mkdtempSync(join(tmpdir(), 'virune-cli-package-audit-'));
+  const root = mkdtempSync(join(tmpdir(), 'virune-npm-package-audit-'));
   const packageRoot = resolve(root, 'packages/example');
   const manifestPath = resolve(packageRoot, 'package.json');
   try {
