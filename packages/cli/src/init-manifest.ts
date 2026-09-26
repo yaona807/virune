@@ -10,7 +10,7 @@ export interface GeneratedProjectPackageManifest {
 		readonly fmt: 'virune fmt .';
 	};
 	readonly dependencies: Readonly<Record<'@virune/runtime' | '@virune/stdlib', string>>;
-	readonly devDependencies: Readonly<Record<'virune', string>>;
+	readonly devDependencies: Readonly<Record<'@virune/cli', string>>;
 }
 
 const FIRST_REGISTRY_RELEASE = Object.freeze({ major: 1, minor: 1, patch: 0 });
@@ -32,7 +32,7 @@ export function buildGeneratedProjectPackageManifest(projectName: string, versio
 			'@virune/runtime': dependencies.runtime,
 			'@virune/stdlib': dependencies.stdlib,
 		},
-		devDependencies: { virune: dependencies.cli },
+		devDependencies: { '@virune/cli': dependencies.cli },
 	};
 }
 
