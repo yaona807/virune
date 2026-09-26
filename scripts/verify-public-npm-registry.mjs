@@ -185,7 +185,7 @@ export function bindPublicNpmRegistryEvidence(publicReleaseReport, registryRepor
 		'expected canonical generated-project consumer commands',
 	);
 	const npx = record(installation.npx, '$.publicNpmRegistryReport.installation.npx');
-	assert(npx.package === `@virune/cli@${version}`, '$.publicNpmRegistryReport.installation.npx.package', `expected virune@${version}`);
+	assert(npx.package === `@virune/cli@${version}`, '$.publicNpmRegistryReport.installation.npx.package', `expected @virune/cli@${version}`);
 	assert(npx.registry === PUBLIC_REGISTRY, '$.publicNpmRegistryReport.installation.npx.registry', `expected ${PUBLIC_REGISTRY}`);
 	assert(npx.acquisition === 'npm-exec', '$.publicNpmRegistryReport.installation.npx.acquisition', 'expected npm-exec');
 	assert(npx.nonInteractive === true, '$.publicNpmRegistryReport.installation.npx.nonInteractive', 'expected true');
