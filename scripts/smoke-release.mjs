@@ -189,8 +189,8 @@ try {
 		{ stdio: 'inherit' },
 	);
 	const globalPackageRoot = process.platform === 'win32'
-		? resolve(globalPrefix, 'node_modules/virune')
-		: resolve(globalPrefix, 'lib/node_modules/virune');
+		? resolve(globalPrefix, 'node_modules/@virune/cli')
+		: resolve(globalPrefix, 'lib/node_modules/@virune/cli');
 	const globalBin = process.platform === 'win32' ? resolve(globalPrefix, 'virune.cmd') : resolve(globalPrefix, 'bin/virune');
 	if (!existsSync(globalBin)) throw new Error(`Global virune executable was not created: ${globalBin}`);
 	const cliEntry = resolve(globalPackageRoot, 'dist/src/main.js');
@@ -205,7 +205,7 @@ try {
 	const projectManifest = JSON.parse(readFileSync(projectManifestPath, 'utf8'));
 	projectManifest.dependencies['@virune/runtime'] = `file:${resolve(releaseDirectory, internalPackageFiles.get('@virune/runtime'))}`;
 	projectManifest.dependencies['@virune/stdlib'] = `file:${resolve(releaseDirectory, internalPackageFiles.get('@virune/stdlib'))}`;
-	projectManifest.devDependencies.virune = `file:${resolve(releaseDirectory, cliFile)}`;
+	projectManifest.devDependencies['@virune/cli'] = `file:${resolve(releaseDirectory, cliFile)}`;
 	writeFileSync(projectManifestPath, `${JSON.stringify(projectManifest, null, 2)}\n`);
 	execNpmSync(
 		['install', '--offline', '--ignore-scripts', '--no-audit', '--no-fund', '--cache', npmCache],
