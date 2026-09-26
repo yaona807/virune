@@ -40,6 +40,7 @@ fn second(b: Int) -> Int {
 	assert.equal(labels.has('a'), false);
 	assert.equal(labels.has('x'), false);
 	assert.equal(labels.has('fn'), true);
+	assert.equal(labels.has('by'), true);
 });
 
 test('completionItems keeps components distinct from ordinary callable functions', async () => {
