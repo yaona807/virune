@@ -9,16 +9,16 @@ const manifest = {
 	name: 'virune-monorepo',
 	version: '1.0.0',
 	license: 'Apache-2.0',
-	dependencies: { virune: '1.0.0' },
+	dependencies: { '@virune/cli': '1.0.0' },
 	devDependencies: { typescript: '6.0.3' },
 };
 const lock = {
 	lockfileVersion: 3,
 	packages: {
-		'': { name: 'virune-monorepo', version: '1.0.0', dependencies: { virune: '1.0.0' }, devDependencies: { typescript: '6.0.3' } },
-		'packages/cli': { name: 'virune', version: '1.0.0', dependencies: { '@virune/runtime': '1.0.0' } },
+		'': { name: 'virune-monorepo', version: '1.0.0', dependencies: { '@virune/cli': '1.0.0' }, devDependencies: { typescript: '6.0.3' } },
+		'packages/cli': { name: '@virune/cli', version: '1.0.0', dependencies: { '@virune/runtime': '1.0.0' } },
 		'packages/runtime': { name: '@virune/runtime', version: '1.0.0', license: 'Apache-2.0' },
-		'node_modules/virune': { resolved: 'packages/cli', link: true },
+		'node_modules/@virune/cli': { resolved: 'packages/cli', link: true },
 		'node_modules/@virune/runtime': { resolved: 'packages/runtime', link: true },
 		'node_modules/typescript': { version: '6.0.3', dev: true, license: 'Apache-2.0' },
 		'node_modules/example': { version: '2.0.0', license: 'MIT' },
@@ -41,7 +41,7 @@ test('builds a deterministic CycloneDX 1.6 SBOM from package-lock v3', () => {
 
 test('records workspace packages, development scope and dependency relationships', () => {
 	const sbom = buildCycloneDxSbom({ lock, manifest });
-	const cli = sbom.components.find(component => component.name === 'virune');
+	const cli = sbom.components.find(component => component.name === '@virune/cli');
 	const runtime = sbom.components.find(component => component.name === '@virune/runtime');
 	const typescript = sbom.components.find(component => component.name === 'typescript');
 	assert.equal(cli?.type, 'application');
@@ -82,13 +82,13 @@ test('normalizes stale lockfile workspace versions from release manifests', asyn
 	t.after(() => rm(root, { recursive: true, force: true }));
 	await mkdir(join(root, 'packages/cli'), { recursive: true });
 	await writeFile(join(root, 'package.json'), JSON.stringify({ name: 'virune-monorepo', version: '1.0.0-rc.1' }));
-	await writeFile(join(root, 'packages/cli/package.json'), JSON.stringify({ name: 'virune', version: '1.0.0-rc.1' }));
+	await writeFile(join(root, 'packages/cli/package.json'), JSON.stringify({ name: '@virune/cli', version: '1.0.0-rc.1' }));
 	const normalized = normalizeWorkspaceLockVersions({
 		version: '1.0.0',
 		lockfileVersion: 3,
 		packages: {
 			'': { name: 'virune-monorepo', version: '1.0.0' },
-			'packages/cli': { name: 'virune', version: '1.0.0' },
+			'packages/cli': { name: '@virune/cli', version: '1.0.0' },
 			'node_modules/example': { version: '2.0.0' },
 		},
 	}, root);

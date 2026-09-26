@@ -24,7 +24,7 @@ export const NPM_PUBLICATION_ORDER = [
 	'@virune/formatter',
 	'@virune/js-interop',
 	'@virune/stdlib',
-	'virune',
+	'@virune/cli',
 ];
 
 export const NPM_INTERNAL_DEPENDENCIES = {
@@ -33,7 +33,7 @@ export const NPM_INTERNAL_DEPENDENCIES = {
 	'@virune/formatter': ['@virune/compiler'],
 	'@virune/js-interop': ['@virune/compiler'],
 	'@virune/stdlib': ['@virune/runtime'],
-	virune: ['@virune/runtime', '@virune/compiler', '@virune/formatter', '@virune/js-interop', '@virune/stdlib'],
+	'@virune/cli': ['@virune/runtime', '@virune/compiler', '@virune/formatter', '@virune/js-interop', '@virune/stdlib'],
 };
 
 export async function publishNpmRelease({

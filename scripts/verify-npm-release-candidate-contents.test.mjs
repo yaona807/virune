@@ -139,7 +139,7 @@ test('exact candidate requires exports and bin targets to exist in the audited t
 	);
 
 	const cliManifest = {
-		name: 'virune',
+		name: '@virune/cli',
 		version,
 		files: ['dist', 'LICENSE', 'NOTICE'],
 		exports: { '.': './dist/index.js' },
@@ -147,7 +147,7 @@ test('exact candidate requires exports and bin targets to exist in the audited t
 	};
 	const missingBin = canonicalCandidate(cliManifest);
 	assert.throws(
-		() => verifyFixture([{ registryName: 'virune', releaseAsset: 'virune-npm-1.1.0.tgz', bytes: missingBin }]),
+		() => verifyFixture([{ registryName: '@virune/cli', releaseAsset: 'virune-cli-1.1.0.tgz', bytes: missingBin }]),
 		/target is missing from npm pack contents: \.\/dist\/missing-cli\.js/u,
 	);
 });

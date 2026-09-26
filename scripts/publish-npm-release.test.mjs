@@ -32,7 +32,7 @@ const candidates = NPM_PUBLICATION_ORDER.map(registryName => ({
 test('publication order is the exact dependency-safe package set with CLI last', () => {
 	const shuffled = [...candidates].reverse();
 	assert.deepEqual(orderedPublicationCandidates(shuffled).map(item => item.registryName), NPM_PUBLICATION_ORDER);
-	assert.equal(NPM_PUBLICATION_ORDER.at(-1), 'virune');
+	assert.equal(NPM_PUBLICATION_ORDER.at(-1), '@virune/cli');
 	assert.throws(() => orderedPublicationCandidates(candidates.slice(1)), /unexpected Registry package count/u);
 });
 
@@ -161,7 +161,7 @@ test('exact subset is verified first and only missing candidates are published i
 			state.set(candidate.registryName, 'exact');
 		},
 	});
-	assert.deepEqual(publishes, ['@virune/compiler', '@virune/formatter', '@virune/js-interop', 'virune']);
+	assert.deepEqual(publishes, ['@virune/compiler', '@virune/formatter', '@virune/js-interop', '@virune/cli']);
 	assert.deepEqual(result.skipped, ['@virune/runtime', '@virune/stdlib']);
 	assert.deepEqual(result.published, publishes);
 	assert.deepEqual(provenance, [
@@ -198,7 +198,7 @@ test('final complete-set observation rejects Registry drift before publication c
 			observe: async candidate => {
 				observations += 1;
 				const finalPass = observations > NPM_PUBLICATION_ORDER.length;
-				return { state: finalPass && candidate.registryName === 'virune' ? 'missing' : 'exact' };
+				return { state: finalPass && candidate.registryName === '@virune/cli' ? 'missing' : 'exact' };
 			},
 			verifyProvenance: async () => {},
 			publish: async () => assert.fail('all packages were initially exact'),
@@ -367,10 +367,10 @@ test('publication npm environment removes ambient npm configuration and uses iso
 });
 
 test('npm publish consumes the exact tarball and applies the canonical tag without rebuild or token fallback', () => {
-	const args = npmPublishArguments('/tmp/release/virune-npm-1.1.0.tgz', 'latest');
+	const args = npmPublishArguments('/tmp/release/virune-cli-1.1.0.tgz', 'latest');
 	assert.deepEqual(args, [
 		'publish',
-		'/tmp/release/virune-npm-1.1.0.tgz',
+		'/tmp/release/virune-cli-1.1.0.tgz',
 		'--registry=https://registry.npmjs.org/',
 		'--access=public',
 		'--tag=latest',
