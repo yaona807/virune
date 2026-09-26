@@ -45,6 +45,18 @@ export interface TypeScriptInteropProviderOptions {
 	readonly createLanguageService?: (host: ts.LanguageServiceHost) => ts.LanguageService;
 }
 
+interface EditorImportCompletionEntry {
+	readonly name: string;
+	readonly kind: string;
+}
+
+interface EditorImportCompletionRequest {
+	readonly containingFile: string;
+	readonly moduleSpecifier: string;
+	readonly typeOnly: boolean;
+	readonly platform: JsImportRequest['platform'];
+}
+
 interface UsageProjection {
 	readonly typeExpression: string;
 	readonly directory: string;
@@ -179,6 +191,71 @@ export class TypeScriptInteropProvider implements JsInteropProvider {
 		this.#references.clear();
 		for (const workspace of this.#workspaces.values()) workspace.languageService.dispose();
 		this.#workspaces.clear();
+	}
+
+	protected editorImportCompletions(request: EditorImportCompletionRequest): readonly EditorImportCompletionEntry[] {
+		const workspace = this.probeWorkspace(request.platform);
+		const prefix = request.typeOnly ? 'import type { ' : 'import { ';
+		const sourceText = `${prefix} } from ${JSON.stringify(request.moduleSpecifier)};\n`;
+		const extension = request.platform === 'node' ? 'mts' : 'ts';
+		const virtualFileName = `.virune-editor-import-${hash(`${request.moduleSpecifier}:${request.typeOnly ? 'type' : 'value'}`)}.${extension}`;
+		const virtualPath = join(dirname(resolve(request.containingFile)), virtualFileName);
+		const virtualKey = canonicalFilePath(virtualPath);
+		const existing = workspace.virtualFiles.get(virtualKey);
+		if (existing?.text !== sourceText) {
+			workspace.virtualFiles.set(virtualKey, {
+				path: virtualPath,
+				text: sourceText,
+				version: (existing?.version ?? 0) + 1,
+			});
+			workspace.projectVersion++;
+		}
+		try {
+			if (!request.typeOnly) {
+				const runtimeRequest: JsImportRequest = {
+					containingFile: request.containingFile,
+					moduleSpecifier: request.moduleSpecifier,
+					kind: 'side-effect',
+					platform: request.platform,
+				};
+				const runtimeProbe = this.createProbe(runtimeRequest);
+				if (this.moduleWitness(runtimeRequest, runtimeProbe.resolvedModule).runtimeFormat === 'commonjs') return [];
+			}
+			const completions = workspace.languageService.getCompletionsAtPosition(virtualPath, prefix.length, {})?.entries ?? [];
+			const program = workspace.languageService.getProgram();
+			const sourceFile = program?.getSourceFile(virtualPath);
+			const declaration = sourceFile?.statements.find(ts.isImportDeclaration);
+			if (program === undefined || declaration === undefined) return [];
+			const checker = program.getTypeChecker();
+			const moduleSymbol = checker.getSymbolAtLocation(declaration.moduleSpecifier);
+			if (moduleSymbol === undefined) return [];
+			const eligible = new Set<string>();
+			for (const exported of checker.getExportsOfModule(moduleSymbol)) {
+				if (!/^[A-Za-z_][A-Za-z0-9_]*$/u.test(exported.name)) continue;
+				let target = exported;
+				if ((exported.flags & ts.SymbolFlags.Alias) !== 0) {
+					try {
+						target = checker.getAliasedSymbol(exported);
+					} catch {
+						continue;
+					}
+				}
+				const supported = request.typeOnly
+					? (target.flags & (ts.SymbolFlags.Type | ts.SymbolFlags.Namespace)) !== 0
+					: (target.flags & ts.SymbolFlags.Value) !== 0;
+				if (!supported) continue;
+				const targetType = request.typeOnly
+					? checker.getDeclaredTypeOfSymbol(target)
+					: checker.getTypeOfSymbolAtLocation(target, target.valueDeclaration ?? target.declarations?.[0] ?? declaration);
+				if ((targetType.flags & ts.TypeFlags.Any) !== 0) continue;
+				eligible.add(exported.name);
+			}
+			return completions
+				.filter(entry => eligible.has(entry.name))
+				.map(entry => Object.freeze({ name: entry.name, kind: String(entry.kind) }));
+		} catch {
+			return [];
+		}
 	}
 
 	public resolveImport(request: JsImportRequest): JsImportResolution {
