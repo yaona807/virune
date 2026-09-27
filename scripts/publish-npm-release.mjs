@@ -217,6 +217,24 @@ export async function observeRegistryCandidate(candidate, version, distTag, {
 	assert(metadata.name === candidate.registryName, `$.registry.${candidate.registryName}.name`, `expected ${candidate.registryName}`);
 	assert(metadata.version === version, `$.registry.${candidate.registryName}.version`, `expected ${version}`);
 	if (packument === null) return { state: 'pending' };
+	assert(packument.name === candidate.registryName, `$.registry.${candidate.registryName}.packument.name`, `expected ${candidate.registryName}`);
+	const versions = record(packument.versions, `$.registry.${candidate.registryName}.packument.versions`);
+	const targetVisible = Object.hasOwn(versions, version);
+	const tags = record(packument['dist-tags'], `$.registry.${candidate.registryName}.dist-tags`);
+	const canonicalTarget = tags[distTag];
+	if (canonicalTarget !== undefined) {
+		const current = parseRegistryReleaseVersion(canonicalTarget, `$.registry.${candidate.registryName}.dist-tags.${distTag}`);
+		assert(Object.hasOwn(versions, current.text), `$.registry.${candidate.registryName}.dist-tags.${distTag}`, `canonical tag target ${current.text} is absent from packument versions`);
+		const target = parseRegistryReleaseVersion(version, '$.version');
+		const order = compareRegistryReleaseVersions(current, target);
+		assert(
+			order <= 0,
+			`$.registry.${candidate.registryName}.dist-tags.${distTag}`,
+			`canonical tag target ${current.text} is newer than publication target ${target.text}; refusing a stale or contradictory tag update`,
+		);
+		if (order < 0) return { state: 'pending' };
+	}
+	if (!targetVisible || canonicalTarget === undefined) return { state: 'pending' };
 	const verified = await verifyExisting(candidate, version, distTag, { fetchImpl });
 	return { state: 'exact', verified };
 }

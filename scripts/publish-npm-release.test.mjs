@@ -349,6 +349,49 @@ test('Registry probing treats partial target visibility as pending and rejects c
 	});
 	assert.deepEqual(versionFirst, { state: 'pending' });
 
+	let verifiedWhileTagPending = 0;
+	const olderTag = await observeRegistryCandidate(candidate, VERSION, 'next', {
+		fetchImpl: async url => response(200, url.includes(encodeURIComponent(VERSION))
+			? { name: candidate.registryName, version: VERSION }
+			: {
+				name: candidate.registryName,
+				versions: { '1.0.0': {}, [VERSION]: {} },
+				'dist-tags': { next: '1.0.0' },
+			}),
+		verifyExisting: async () => {
+			verifiedWhileTagPending += 1;
+			return {};
+		},
+	});
+	assert.deepEqual(olderTag, { state: 'pending' });
+	assert.equal(verifiedWhileTagPending, 0);
+
+	const missingTag = await observeRegistryCandidate(candidate, VERSION, 'next', {
+		fetchImpl: async url => response(200, url.includes(encodeURIComponent(VERSION))
+			? { name: candidate.registryName, version: VERSION }
+			: {
+				name: candidate.registryName,
+				versions: { [VERSION]: {} },
+				'dist-tags': {},
+			}),
+		verifyExisting: async () => assert.fail('missing canonical tag must remain pending'),
+	});
+	assert.deepEqual(missingTag, { state: 'pending' });
+
+	await assert.rejects(
+		observeRegistryCandidate(candidate, VERSION, 'next', {
+			fetchImpl: async url => response(200, url.includes(encodeURIComponent(VERSION))
+				? { name: candidate.registryName, version: VERSION }
+				: {
+					name: candidate.registryName,
+					versions: { [VERSION]: {}, '1.1.0': {} },
+					'dist-tags': { next: '1.1.0' },
+				}),
+			verifyExisting: async () => assert.fail('newer canonical tag must fail before exact verification'),
+		}),
+		/canonical tag target 1\.1\.0 is newer than publication target .*; refusing a stale or contradictory tag update/u,
+	);
+
 	await assert.rejects(
 		observeRegistryCandidate(candidate, VERSION, 'next', { fetchImpl: async () => response(503, {}) }),
 		/HTTP 503/u,
