@@ -183,7 +183,8 @@ test('post-publish missing Registry state is retried without republishing until 
 			if (state.get(candidate.registryName) === 'propagating') {
 				const count = (postPublishObservations.get(candidate.registryName) ?? 0) + 1;
 				postPublishObservations.set(candidate.registryName, count);
-				if (count < 3) return { state: 'missing' };
+				if (count === 1) return { state: 'pending' };
+				if (count === 2) return { state: 'missing' };
 				state.set(candidate.registryName, 'exact');
 			}
 			return { state: state.get(candidate.registryName) };
@@ -201,13 +202,13 @@ test('post-publish missing Registry state is retried without republishing until 
 	assert.deepEqual(result.published, NPM_PUBLICATION_ORDER);
 });
 
-test('post-publish missing Registry state fails after the bounded observation window without republishing', async () => {
+test('post-publish pending Registry state reports validation pending after the bounded observation window without republishing', async () => {
 	const state = new Map(NPM_PUBLICATION_ORDER.map(name => [name, 'missing']));
 	const publishes = [];
 	let sleeps = 0;
 	await assert.rejects(
 		executePublication({ version: VERSION }, candidates, {
-			observe: async candidate => ({ state: state.get(candidate.registryName) === 'propagating' ? 'missing' : state.get(candidate.registryName) }),
+			observe: async candidate => ({ state: state.get(candidate.registryName) === 'propagating' ? 'pending' : state.get(candidate.registryName) }),
 			verifyProvenance: async () => {},
 			publish: async candidate => {
 				publishes.push(candidate.registryName);
@@ -218,10 +219,41 @@ test('post-publish missing Registry state fails after the bounded observation wi
 				sleeps += 1;
 			},
 		}),
-		/bounded observation window/u,
+		/npm accepted the publish, but .* validation or Registry visibility may still be pending\. Do not republish this version/u,
 	);
 	assert.deepEqual(publishes, ['@virune/runtime']);
 	assert.equal(sleeps, POST_PUBLISH_CONVERGENCE_OBSERVATIONS - 1);
+	assert.equal(
+		sleeps * POST_PUBLISH_CONVERGENCE_DELAY_MS,
+		10 * 60 * 1000,
+	);
+});
+
+test('pre-existing pending target waits for exact visibility and never republishes', async () => {
+	const state = new Map(NPM_PUBLICATION_ORDER.map(name => [name, 'missing']));
+	state.set('@virune/runtime', 'pending');
+	let runtimeObservations = 0;
+	const publishes = [];
+	const sleeps = [];
+	const result = await executePublication({ version: VERSION }, candidates, {
+		observe: async candidate => {
+			if (candidate.registryName === '@virune/runtime') {
+				runtimeObservations += 1;
+				if (runtimeObservations < 3) return { state: 'pending' };
+				state.set(candidate.registryName, 'exact');
+			}
+			return { state: state.get(candidate.registryName) };
+		},
+		verifyProvenance: async () => {},
+		publish: async candidate => {
+			publishes.push(candidate.registryName);
+			state.set(candidate.registryName, 'exact');
+		},
+		sleep: async milliseconds => sleeps.push(milliseconds),
+	});
+	assert.equal(publishes.includes('@virune/runtime'), false);
+	assert.equal(result.skipped.includes('@virune/runtime'), true);
+	assert.deepEqual(sleeps, [POST_PUBLISH_CONVERGENCE_DELAY_MS, POST_PUBLISH_CONVERGENCE_DELAY_MS]);
 });
 
 test('unknown post-publish observation stops before the next package write', async () => {
@@ -244,24 +276,53 @@ test('unknown post-publish observation stops before the next package write', asy
 	assert.deepEqual(publishes, ['@virune/runtime']);
 });
 
-test('final complete-set observation rejects Registry drift before publication completion', async () => {
+test('final complete-set observation waits through transient pending visibility without republishing', async () => {
+	let finalCliObservations = 0;
 	let observations = 0;
+	const publishes = [];
+	const sleeps = [];
+	const result = await executePublication({ version: VERSION }, candidates, {
+		observe: async candidate => {
+			observations += 1;
+			const finalPass = observations > NPM_PUBLICATION_ORDER.length;
+			if (finalPass && candidate.registryName === '@virune/cli') {
+				finalCliObservations += 1;
+				if (finalCliObservations < 3) return { state: 'pending' };
+			}
+			return { state: 'exact' };
+		},
+		verifyProvenance: async () => {},
+		publish: async candidate => publishes.push(candidate.registryName),
+		sleep: async milliseconds => sleeps.push(milliseconds),
+	});
+	assert.deepEqual(publishes, []);
+	assert.deepEqual(sleeps, [POST_PUBLISH_CONVERGENCE_DELAY_MS, POST_PUBLISH_CONVERGENCE_DELAY_MS]);
+	assert.deepEqual(result.skipped, NPM_PUBLICATION_ORDER);
+});
+
+test('final complete-set observation fails closed after pending visibility exhausts the bounded window', async () => {
+	let observations = 0;
+	let sleeps = 0;
 	await assert.rejects(
 		executePublication({ version: VERSION }, candidates, {
 			observe: async candidate => {
 				observations += 1;
 				const finalPass = observations > NPM_PUBLICATION_ORDER.length;
-				return { state: finalPass && candidate.registryName === '@virune/cli' ? 'missing' : 'exact' };
+				return { state: finalPass && candidate.registryName === '@virune/cli' ? 'pending' : 'exact' };
 			},
 			verifyProvenance: async () => {},
 			publish: async () => assert.fail('all packages were initially exact'),
+			sleep: async milliseconds => {
+				assert.equal(milliseconds, POST_PUBLISH_CONVERGENCE_DELAY_MS);
+				sleeps += 1;
+			},
 		}),
-		/final complete-set Registry observation is not exact/u,
+		/npm accepted the publish, but .* validation or Registry visibility may still be pending/u,
 	);
-	assert.equal(observations, NPM_PUBLICATION_ORDER.length * 2);
+	assert.equal(sleeps, POST_PUBLISH_CONVERGENCE_OBSERVATIONS - 1);
 });
 
-test('Registry probing treats 404 as missing but rejects contradictory and unknown states', async () => {
+test('Registry probing treats partial target visibility as pending and rejects contradictory and unknown states', async () => {
 	const candidate = candidates[0];
 	const missing = await observeRegistryCandidate(candidate, VERSION, 'next', {
 		fetchImpl: async url => response(url.includes(encodeURIComponent(VERSION)) ? 404 : 200, url.includes(encodeURIComponent(VERSION)) ? null : {
@@ -272,16 +333,21 @@ test('Registry probing treats 404 as missing but rejects contradictory and unkno
 	});
 	assert.deepEqual(missing, { state: 'missing' });
 
-	await assert.rejects(
-		observeRegistryCandidate(candidate, VERSION, 'next', {
-			fetchImpl: async url => response(url.includes(encodeURIComponent(VERSION)) ? 404 : 200, url.includes(encodeURIComponent(VERSION)) ? null : {
-				name: candidate.registryName,
-				versions: { [VERSION]: {} },
-				'dist-tags': { next: VERSION },
-			}),
+	const packumentFirst = await observeRegistryCandidate(candidate, VERSION, 'next', {
+		fetchImpl: async url => response(url.includes(encodeURIComponent(VERSION)) ? 404 : 200, url.includes(encodeURIComponent(VERSION)) ? null : {
+			name: candidate.registryName,
+			versions: { [VERSION]: {} },
+			'dist-tags': { next: VERSION },
 		}),
-		/version endpoint is missing while packument contains the target version/u,
-	);
+	});
+	assert.deepEqual(packumentFirst, { state: 'pending' });
+
+	const versionFirst = await observeRegistryCandidate(candidate, VERSION, 'next', {
+		fetchImpl: async url => response(url.includes(encodeURIComponent(VERSION)) ? 200 : 404, url.includes(encodeURIComponent(VERSION))
+			? { name: candidate.registryName, version: VERSION }
+			: null),
+	});
+	assert.deepEqual(versionFirst, { state: 'pending' });
 
 	await assert.rejects(
 		observeRegistryCandidate(candidate, VERSION, 'next', { fetchImpl: async () => response(503, {}) }),
