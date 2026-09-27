@@ -7,6 +7,8 @@ import test from 'node:test';
 import {
 	NPM_INTERNAL_DEPENDENCIES,
 	NPM_PUBLICATION_ORDER,
+	POST_PUBLISH_CONVERGENCE_DELAY_MS,
+	POST_PUBLISH_CONVERGENCE_OBSERVATIONS,
 	assertNoTraditionalNpmCredentials,
 	assertTrustedPublishingEnvironment,
 	executePublication,
@@ -169,6 +171,57 @@ test('exact subset is verified first and only missing candidates are published i
 		...publishes,
 		...NPM_PUBLICATION_ORDER,
 	]);
+});
+
+test('post-publish missing Registry state is retried without republishing until exact', async () => {
+	const state = new Map(NPM_PUBLICATION_ORDER.map(name => [name, 'missing']));
+	const postPublishObservations = new Map();
+	const publishes = [];
+	const sleeps = [];
+	const result = await executePublication({ version: VERSION }, candidates, {
+		observe: async candidate => {
+			if (state.get(candidate.registryName) === 'propagating') {
+				const count = (postPublishObservations.get(candidate.registryName) ?? 0) + 1;
+				postPublishObservations.set(candidate.registryName, count);
+				if (count < 3) return { state: 'missing' };
+				state.set(candidate.registryName, 'exact');
+			}
+			return { state: state.get(candidate.registryName) };
+		},
+		verifyProvenance: async () => {},
+		publish: async candidate => {
+			publishes.push(candidate.registryName);
+			state.set(candidate.registryName, candidate.registryName === '@virune/runtime' ? 'propagating' : 'exact');
+		},
+		sleep: async milliseconds => sleeps.push(milliseconds),
+	});
+	assert.deepEqual(publishes, NPM_PUBLICATION_ORDER);
+	assert.equal(publishes.filter(name => name === '@virune/runtime').length, 1);
+	assert.deepEqual(sleeps, [POST_PUBLISH_CONVERGENCE_DELAY_MS, POST_PUBLISH_CONVERGENCE_DELAY_MS]);
+	assert.deepEqual(result.published, NPM_PUBLICATION_ORDER);
+});
+
+test('post-publish missing Registry state fails after the bounded observation window without republishing', async () => {
+	const state = new Map(NPM_PUBLICATION_ORDER.map(name => [name, 'missing']));
+	const publishes = [];
+	let sleeps = 0;
+	await assert.rejects(
+		executePublication({ version: VERSION }, candidates, {
+			observe: async candidate => ({ state: state.get(candidate.registryName) === 'propagating' ? 'missing' : state.get(candidate.registryName) }),
+			verifyProvenance: async () => {},
+			publish: async candidate => {
+				publishes.push(candidate.registryName);
+				state.set(candidate.registryName, 'propagating');
+			},
+			sleep: async milliseconds => {
+				assert.equal(milliseconds, POST_PUBLISH_CONVERGENCE_DELAY_MS);
+				sleeps += 1;
+			},
+		}),
+		/bounded observation window/u,
+	);
+	assert.deepEqual(publishes, ['@virune/runtime']);
+	assert.equal(sleeps, POST_PUBLISH_CONVERGENCE_OBSERVATIONS - 1);
 });
 
 test('unknown post-publish observation stops before the next package write', async () => {

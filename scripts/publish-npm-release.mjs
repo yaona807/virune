@@ -18,6 +18,9 @@ const INTOTO_V1 = 'https://in-toto.io/Statement/v1';
 const GITHUB_BUILD_TYPE = 'https://slsa-framework.github.io/github-actions-buildtypes/workflow/v1';
 const GITHUB_BUILDER = 'https://github.com/actions/runner/github-hosted';
 
+export const POST_PUBLISH_CONVERGENCE_OBSERVATIONS = 12;
+export const POST_PUBLISH_CONVERGENCE_DELAY_MS = 5_000;
+
 export const NPM_PUBLICATION_ORDER = [
 	'@virune/runtime',
 	'@virune/compiler',
@@ -77,7 +80,7 @@ export async function publishNpmRelease({
 	}
 }
 
-export async function executePublication(identity, candidates, { observe, verifyProvenance, publish }) {
+export async function executePublication(identity, candidates, { observe, verifyProvenance, publish, sleep = delay }) {
 	const initial = new Map();
 	for (const candidate of candidates) initial.set(candidate.registryName, await observe(candidate));
 	validateObservedDependencyClosure(initial);
@@ -116,8 +119,8 @@ export async function executePublication(identity, candidates, { observe, verify
 		assert(beforeWrite.state === 'missing', `$.registry.${candidate.registryName}`, 'pre-write Registry state is neither exact nor missing');
 
 		await publish(candidate);
-		const after = await observe(candidate);
-		assert(after.state === 'exact', `$.registry.${candidate.registryName}`, 'publish did not converge to the exact reviewed Registry identity');
+		const after = await observePublishedCandidate(candidate, observe, sleep);
+		assert(after.state === 'exact', `$.registry.${candidate.registryName}`, 'publish did not converge to the exact reviewed Registry identity within the bounded observation window');
 		await verifyProvenance(candidate);
 		published.push(candidate.registryName);
 	}
@@ -130,6 +133,19 @@ export async function executePublication(identity, candidates, { observe, verify
 		await verifyProvenance(candidate);
 	}
 	return { version: identity.version, eligible: true, published, skipped };
+}
+
+async function observePublishedCandidate(candidate, observe, sleep) {
+	let state = await observe(candidate);
+	for (let observation = 1; observation < POST_PUBLISH_CONVERGENCE_OBSERVATIONS && state.state === 'missing'; observation += 1) {
+		await sleep(POST_PUBLISH_CONVERGENCE_DELAY_MS);
+		state = await observe(candidate);
+	}
+	return state;
+}
+
+function delay(milliseconds) {
+	return new Promise(resolve => setTimeout(resolve, milliseconds));
 }
 
 export function orderedPublicationCandidates(packages) {
