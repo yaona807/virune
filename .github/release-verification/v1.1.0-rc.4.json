@@ -1,0 +1,176 @@
+{
+	"schemaVersion": 1,
+	"version": "1.1.0-rc.4",
+	"tag": "v1.1.0-rc.4",
+	"tagCommit": "e227f13c73a92772e084d670d69f1fe309499720",
+	"expectedCommit": "e227f13c73a92772e084d670d69f1fe309499720",
+	"repository": "yaona807/virune",
+	"release": {
+		"id": 397626304,
+		"htmlUrl": "https://github.com/yaona807/virune/releases/tag/v1.1.0-rc.4",
+		"publishedAt": "2026-09-27T11:41:18Z",
+		"prerelease": true,
+		"draft": false,
+		"targetCommitish": "main"
+	},
+	"npmPublication": {
+		"registryVersionEligible": true,
+		"distTag": "next"
+	},
+	"assets": [
+		{
+			"file": "LICENSE",
+			"sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4",
+			"bytes": 11357
+		},
+		{
+			"file": "MANIFEST.json",
+			"sha256": "c21c0f3deab338784e252511346da7d1d9143ea9e4b7899c35b32d1bde98804c",
+			"bytes": 1223
+		},
+		{
+			"file": "NOTICE",
+			"sha256": "a2d558f7becac4f895e2e79c011d9794c81f0a804d262fb5ed06414ef5588d57",
+			"bytes": 59
+		},
+		{
+			"file": "PUBLICATION-MANIFEST.json",
+			"sha256": "47f9c3821dd7d57b4de6d33bd9f198c5d9c807741ad525b34a5587c67b5ef64a",
+			"bytes": 1599
+		},
+		{
+			"file": "README.md",
+			"sha256": "da79c051cade0b0d7ec0dc099c7ae1eff2d4708cfbe6e537c2d1b6ecff95932f",
+			"bytes": 743
+		},
+		{
+			"file": "README_ja.md",
+			"sha256": "531b47b206a1c54a5f613056799773abfb0d276bc56d4dbd70da1d6637336cf9",
+			"bytes": 853
+		},
+		{
+			"file": "RELEASE-MANIFEST.json",
+			"sha256": "d6b5f992e2595514e6471090dd4a2f6b49df662e15403c5751193edda7b6c52c",
+			"bytes": 3706
+		},
+		{
+			"file": "SBOM.cdx.json",
+			"sha256": "0ee3047190ca822ab1229b41f63caad77701edeb199423784c9630da38012889",
+			"bytes": 364483
+		},
+		{
+			"file": "THIRD_PARTY_NOTICES.md",
+			"sha256": "6828c401afb8c0f5c8611e162b4555e39587262e97e2161c3f6f9d1ec6b3b752",
+			"bytes": 1007
+		},
+		{
+			"file": "VSCODE-MANIFEST.json",
+			"sha256": "2bba614f1ea8c648ff2a0c26a4196a1d991760b3ad8e0971cb9b1ec09f8b980d",
+			"bytes": 195
+		},
+		{
+			"file": "package.json",
+			"sha256": "718d861cd5a66838eccb13487ff479978dd4b822d16806855ffac6de133437b6",
+			"bytes": 270
+		},
+		{
+			"file": "virune-1.1.0-rc.4.tgz",
+			"sha256": "851fe8fcd3e8019550332ae4c0c8c4d9fbdcb2879fab87d3592788c423e0fdfe",
+			"bytes": 5923212
+		},
+		{
+			"file": "virune-compiler-1.1.0-rc.4.tgz",
+			"sha256": "4e9655fb34212ea94afab7351a70662937f9f4deedb17fa081c39fd3c8af2009",
+			"bytes": 352233
+		},
+		{
+			"file": "virune-formatter-1.1.0-rc.4.tgz",
+			"sha256": "b22d41ca80cb259047f5d1098f2d03e2a9b1e15f67210658e21dc6da31406115",
+			"bytes": 15800
+		},
+		{
+			"file": "virune-js-interop-1.1.0-rc.4.tgz",
+			"sha256": "ad4123e5fae13186ec1c9df8b1d7b86ca47d43c0c4fe5637e0b8426750e1d38e",
+			"bytes": 57225
+		},
+		{
+			"file": "virune-npm-1.1.0-rc.4.tgz",
+			"sha256": "f29c7ccd0799b312c9076ed47f7e8b9f7b79c188cd3f7a6593ec73cba61b4d0f",
+			"bytes": 30099
+		},
+		{
+			"file": "virune-runtime-1.1.0-rc.4.tgz",
+			"sha256": "1d7af12f3f7884215eb158f6cd89233db99b44b9faa540596f0d28a0758d42e8",
+			"bytes": 47998
+		},
+		{
+			"file": "virune-stdlib-1.1.0-rc.4.tgz",
+			"sha256": "a1411394c73cc4b6c21e84817984105f6f231cee972d4a33bf801d9cea6841cd",
+			"bytes": 11904
+		},
+		{
+			"file": "virune-vscode-1.1.0-rc.4.vsix",
+			"sha256": "2f1d9a16d58800103215eb10f2d7874ab667697c9177b97dd4dd2c882857e16d",
+			"bytes": 2042652
+		}
+	],
+	"manifest": {
+		"schemaVersion": 2,
+		"version": "1.1.0-rc.4",
+		"fileCount": 18
+	},
+	"sbom": {
+		"format": "CycloneDX",
+		"specVersion": "1.6",
+		"serialNumber": "urn:uuid:37b8d1d3-346b-5aa7-90d8-a54c3136a865",
+		"componentCount": 382,
+		"license": "Apache-2.0"
+	},
+	"installation": {
+		"cliUrl": "https://github.com/yaona807/virune/releases/download/v1.1.0-rc.4/virune-1.1.0-rc.4.tgz",
+		"versionOutput": "virune 1.1.0-rc.4",
+		"generatedProject": {
+			"scripts": {
+				"build": "virune build",
+				"start": "virune run",
+				"test": "virune test",
+				"check": "virune check",
+				"fmt": "virune fmt ."
+			},
+			"dependencies": {
+				"@virune/runtime": "1.1.0-rc.4",
+				"@virune/stdlib": "1.1.0-rc.4"
+			},
+			"devDependencies": {
+				"@virune/cli": "1.1.0-rc.4"
+			},
+			"downstreamVerification": "public-npm-registry-required"
+		}
+	},
+	"verifiedAt": "2026-09-27T13:07:21.390Z",
+	"passed": true,
+	"attestations": {
+		"provenance": "passed",
+		"cyclonedx": "passed"
+	},
+	"vsix": {
+		"file": "virune-vscode-1.1.0-rc.4.vsix",
+		"cleanInstall": "passed",
+		"activation": "passed",
+		"languageServer": "passed",
+		"uninstall": "passed"
+	},
+	"npmRegistry": {
+		"required": true,
+		"passed": true,
+		"registry": "https://registry.npmjs.org/",
+		"version": "1.1.0-rc.4",
+		"reviewedCommit": "e227f13c73a92772e084d670d69f1fe309499720",
+		"distTag": "next",
+		"packageCount": 6,
+		"reportSha256": "7c352b5c5f98425ef1ccb6e300724b14045328f5fc10126d0cf5cb160f519378",
+		"globalCli": "passed",
+		"generatedProject": "passed",
+		"npmExec": "passed"
+	}
+}
