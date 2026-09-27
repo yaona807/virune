@@ -276,21 +276,50 @@ test('unknown post-publish observation stops before the next package write', asy
 	assert.deepEqual(publishes, ['@virune/runtime']);
 });
 
-test('final complete-set observation rejects Registry drift before publication completion', async () => {
+test('final complete-set observation waits through transient pending visibility without republishing', async () => {
+	let finalCliObservations = 0;
 	let observations = 0;
+	const publishes = [];
+	const sleeps = [];
+	const result = await executePublication({ version: VERSION }, candidates, {
+		observe: async candidate => {
+			observations += 1;
+			const finalPass = observations > NPM_PUBLICATION_ORDER.length;
+			if (finalPass && candidate.registryName === '@virune/cli') {
+				finalCliObservations += 1;
+				if (finalCliObservations < 3) return { state: 'pending' };
+			}
+			return { state: 'exact' };
+		},
+		verifyProvenance: async () => {},
+		publish: async candidate => publishes.push(candidate.registryName),
+		sleep: async milliseconds => sleeps.push(milliseconds),
+	});
+	assert.deepEqual(publishes, []);
+	assert.deepEqual(sleeps, [POST_PUBLISH_CONVERGENCE_DELAY_MS, POST_PUBLISH_CONVERGENCE_DELAY_MS]);
+	assert.deepEqual(result.skipped, NPM_PUBLICATION_ORDER);
+});
+
+test('final complete-set observation fails closed after pending visibility exhausts the bounded window', async () => {
+	let observations = 0;
+	let sleeps = 0;
 	await assert.rejects(
 		executePublication({ version: VERSION }, candidates, {
 			observe: async candidate => {
 				observations += 1;
 				const finalPass = observations > NPM_PUBLICATION_ORDER.length;
-				return { state: finalPass && candidate.registryName === '@virune/cli' ? 'missing' : 'exact' };
+				return { state: finalPass && candidate.registryName === '@virune/cli' ? 'pending' : 'exact' };
 			},
 			verifyProvenance: async () => {},
 			publish: async () => assert.fail('all packages were initially exact'),
+			sleep: async milliseconds => {
+				assert.equal(milliseconds, POST_PUBLISH_CONVERGENCE_DELAY_MS);
+				sleeps += 1;
+			},
 		}),
-		/final complete-set Registry observation is not exact/u,
+		/npm accepted the publish, but .* validation or Registry visibility may still be pending/u,
 	);
-	assert.equal(observations, NPM_PUBLICATION_ORDER.length * 2);
+	assert.equal(sleeps, POST_PUBLISH_CONVERGENCE_OBSERVATIONS - 1);
 });
 
 test('Registry probing treats partial target visibility as pending and rejects contradictory and unknown states', async () => {
