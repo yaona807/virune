@@ -1,17 +1,11 @@
 {
   "schemaVersion": 1,
-  "stage": "bootstrap-candidate",
-  "publicationReady": false,
+  "stage": "publication-candidate",
+  "publicationReady": true,
   "unresolvedRequirements": [
     "clean-registry-install-smoke",
-    "documentation-sync",
     "generated-project-registry-smoke",
-    "package-publication-enablement",
-    "public-registry-verification",
-    "publication-gate-integration",
-    "registry-ownership",
-    "release-identity-integration",
-    "trusted-publishing"
+    "public-registry-verification"
   ],
   "forbidRegistryPublishThroughVersion": "1.0.0",
   "firstStableRegistryRelease": "1.1.0",

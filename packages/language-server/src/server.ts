@@ -92,7 +92,7 @@ connection.onInitialize((params: InitializeParams): InitializeResult => {
 		},
 		serverInfo: {
 			name: 'Virune Language Server',
-			version: '1.1.0-rc.1',
+			version: '1.1.0-rc.2',
 		},
 	};
 });

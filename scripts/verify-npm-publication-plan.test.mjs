@@ -38,14 +38,14 @@ const postPublicationRequirements = [
 const dependencySections = ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies'];
 const runtimeDependencySections = ['dependencies', 'peerDependencies', 'optionalDependencies'];
 
-test('current repository has the reviewed non-ready npm bootstrap candidate plan', () => {
+test('current repository has the reviewed npm publication candidate plan', () => {
 	const result = verifyNpmPublicationPlan(repositoryRoot);
 	assert.deepEqual(result, {
 		schemaVersion: 1,
-		stage: 'bootstrap-candidate',
-		publicationReady: false,
-		unresolvedRequirements,
-		currentVersion: '1.1.0-rc.1',
+		stage: 'publication-candidate',
+		publicationReady: true,
+		unresolvedRequirements: postPublicationRequirements,
+		currentVersion: '1.1.0-rc.2',
 		forbidRegistryPublishThroughVersion: '1.0.0',
 		firstStableRegistryRelease: '1.1.0',
 		distTagPolicy: {
