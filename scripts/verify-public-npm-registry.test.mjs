@@ -17,7 +17,7 @@ import {
 
 const repositoryRoot = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const publicationPlan = JSON.parse(readFileSync(resolve(repositoryRoot, '.github/release/npm-publication-v1.json'), 'utf8'));
-const version = '1.1.0-rc.3';
+const version = '1.1.0-rc.4';
 const registry = 'https://registry.npmjs.org/';
 const reviewedCommit = 'a'.repeat(40);
 const canonicalGeneratedScripts = Object.freeze({
@@ -488,7 +488,7 @@ test('npm exec generated project fails closed on dependency and script drift ind
 			runCommand: successfulRunCommand(version, { npxGeneratedVersion: '1.1.0-rc.1' }),
 			platform: 'linux',
 		}),
-		/expected 1\.1\.0-rc\.3/u,
+		/expected 1\.1\.0-rc\.4/u,
 	);
 	await assert.rejects(
 		() => verifyCleanGlobalCliInstall(version, {
@@ -507,7 +507,7 @@ test('generated project smoke rejects dependency, script, and package.json drift
 			runCommand: successfulRunCommand(version, { generatedVersion: '1.1.0-rc.1' }),
 			platform: 'linux',
 		}),
-		/expected 1\.1\.0-rc\.3/u,
+		/expected 1\.1\.0-rc\.4/u,
 	);
 	await assert.rejects(
 		() => verifyCleanGlobalCliInstall(version, {
@@ -538,6 +538,6 @@ test('clean global install rejects command failure, npm exec failure, and CLI ve
 	);
 	await assert.rejects(
 		() => verifyCleanGlobalCliInstall(version, { runCommand: successfulRunCommand('1.1.0-rc.1'), platform: 'linux' }),
-		/expected virune 1\.1\.0-rc\.3/u,
+		/expected virune 1\.1\.0-rc\.4/u,
 	);
 });

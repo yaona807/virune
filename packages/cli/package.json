@@ -1,6 +1,6 @@
 {
 	"name": "@virune/cli",
-	"version": "1.1.0-rc.3",
+	"version": "1.1.0-rc.4",
 	"private": true,
 	"repository": {
 		"type": "git",
@@ -27,11 +27,11 @@
 		"dist/src"
 	],
 	"dependencies": {
-		"@virune/compiler": "1.1.0-rc.3",
-		"@virune/formatter": "1.1.0-rc.3",
-		"@virune/js-interop": "1.1.0-rc.3",
-		"@virune/runtime": "1.1.0-rc.3",
-		"@virune/stdlib": "1.1.0-rc.3",
+		"@virune/compiler": "1.1.0-rc.4",
+		"@virune/formatter": "1.1.0-rc.4",
+		"@virune/js-interop": "1.1.0-rc.4",
+		"@virune/runtime": "1.1.0-rc.4",
+		"@virune/stdlib": "1.1.0-rc.4",
 		"typescript": "6.0.3"
 	},
 	"scripts": {
