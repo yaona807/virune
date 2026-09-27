@@ -97,6 +97,13 @@ export async function executePublication(identity, candidates, { observe, verify
 			skipped.push(candidate.registryName);
 			continue;
 		}
+		if (state.state === 'pending') {
+			const afterPending = await observeAcceptedCandidate(candidate, observe, sleep, state);
+			assertAcceptedCandidateIsExact(candidate, afterPending);
+			await verifyProvenance(candidate);
+			skipped.push(candidate.registryName);
+			continue;
+		}
 		assert(state.state === 'missing', `$.registry.${candidate.registryName}`, 'unexpected publication state');
 
 		for (const dependencyName of NPM_INTERNAL_DEPENDENCIES[candidate.registryName]) {
@@ -116,11 +123,18 @@ export async function executePublication(identity, candidates, { observe, verify
 			skipped.push(candidate.registryName);
 			continue;
 		}
-		assert(beforeWrite.state === 'missing', `$.registry.${candidate.registryName}`, 'pre-write Registry state is neither exact nor missing');
+		if (beforeWrite.state === 'pending') {
+			const afterPending = await observeAcceptedCandidate(candidate, observe, sleep, beforeWrite);
+			assertAcceptedCandidateIsExact(candidate, afterPending);
+			await verifyProvenance(candidate);
+			skipped.push(candidate.registryName);
+			continue;
+		}
+		assert(beforeWrite.state === 'missing', `$.registry.${candidate.registryName}`, 'pre-write Registry state is neither exact, pending, nor missing');
 
 		await publish(candidate);
-		const after = await observePublishedCandidate(candidate, observe, sleep);
-		assert(after.state === 'exact', `$.registry.${candidate.registryName}`, 'npm accepted the publish, but the exact reviewed Registry identity is still not publicly observable; npm validation or Registry visibility may still be pending. Do not republish this version; retry the recovery workflow later after reobserving Registry state');
+		const after = await observeAcceptedCandidate(candidate, observe, sleep);
+		assertAcceptedCandidateIsExact(candidate, after);
 		await verifyProvenance(candidate);
 		published.push(candidate.registryName);
 	}
@@ -135,13 +149,25 @@ export async function executePublication(identity, candidates, { observe, verify
 	return { version: identity.version, eligible: true, published, skipped };
 }
 
-async function observePublishedCandidate(candidate, observe, sleep) {
-	let state = await observe(candidate);
-	for (let observation = 1; observation < POST_PUBLISH_CONVERGENCE_OBSERVATIONS && state.state === 'missing'; observation += 1) {
+async function observeAcceptedCandidate(candidate, observe, sleep, initialState) {
+	let state = initialState ?? await observe(candidate);
+	for (
+		let observation = 1;
+		observation < POST_PUBLISH_CONVERGENCE_OBSERVATIONS && (state.state === 'missing' || state.state === 'pending');
+		observation += 1
+	) {
 		await sleep(POST_PUBLISH_CONVERGENCE_DELAY_MS);
 		state = await observe(candidate);
 	}
 	return state;
+}
+
+function assertAcceptedCandidateIsExact(candidate, state) {
+	assert(
+		state.state === 'exact',
+		`$.registry.${candidate.registryName}`,
+		'npm accepted the publish, but the exact reviewed Registry identity is still not publicly observable; npm validation or Registry visibility may still be pending. Do not republish this version; retry the recovery workflow later after reobserving Registry state',
+	);
 }
 
 function delay(milliseconds) {
@@ -171,7 +197,7 @@ export async function observeRegistryCandidate(candidate, version, distTag, {
 		if (packument === null) return { state: 'missing' };
 		assert(packument.name === candidate.registryName, `$.registry.${candidate.registryName}.packument.name`, `expected ${candidate.registryName}`);
 		const versions = record(packument.versions, `$.registry.${candidate.registryName}.packument.versions`);
-		assert(!Object.hasOwn(versions, version), `$.registry.${candidate.registryName}`, 'version endpoint is missing while packument contains the target version');
+		const targetVisible = Object.hasOwn(versions, version);
 		const tags = record(packument['dist-tags'], `$.registry.${candidate.registryName}.dist-tags`);
 		const canonicalTarget = tags[distTag];
 		if (canonicalTarget !== undefined) {
@@ -179,16 +205,16 @@ export async function observeRegistryCandidate(candidate, version, distTag, {
 			assert(Object.hasOwn(versions, current.text), `$.registry.${candidate.registryName}.dist-tags.${distTag}`, `canonical tag target ${current.text} is absent from packument versions`);
 			const target = parseRegistryReleaseVersion(version, '$.version');
 			assert(
-				compareRegistryReleaseVersions(current, target) < 0,
+				compareRegistryReleaseVersions(current, target) < (targetVisible ? 1 : 0),
 				`$.registry.${candidate.registryName}.dist-tags.${distTag}`,
-				`canonical tag target ${current.text} is not older than publication target ${target.text}; refusing a stale or contradictory tag update`,
+				`canonical tag target ${current.text} is ${targetVisible ? 'newer than' : 'not older than'} publication target ${target.text}; refusing a stale or contradictory tag update`,
 			);
 		}
-		return { state: 'missing' };
+		return { state: targetVisible ? 'pending' : 'missing' };
 	}
-	assert(packument !== null, `$.registry.${candidate.registryName}`, 'version metadata exists while package document is missing');
 	assert(metadata.name === candidate.registryName, `$.registry.${candidate.registryName}.name`, `expected ${candidate.registryName}`);
 	assert(metadata.version === version, `$.registry.${candidate.registryName}.version`, `expected ${version}`);
+	if (packument === null) return { state: 'pending' };
 	const verified = await verifyExisting(candidate, version, distTag, { fetchImpl });
 	return { state: 'exact', verified };
 }
