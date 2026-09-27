@@ -45,7 +45,7 @@ test('current repository has the reviewed npm publication candidate plan', () =>
 		stage: 'publication-candidate',
 		publicationReady: true,
 		unresolvedRequirements: postPublicationRequirements,
-		currentVersion: '1.1.0-rc.3',
+		currentVersion: '1.1.0-rc.4',
 		forbidRegistryPublishThroughVersion: '1.0.0',
 		firstStableRegistryRelease: '1.1.0',
 		distTagPolicy: {
