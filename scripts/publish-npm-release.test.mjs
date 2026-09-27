@@ -201,7 +201,7 @@ test('post-publish missing Registry state is retried without republishing until 
 	assert.deepEqual(result.published, NPM_PUBLICATION_ORDER);
 });
 
-test('post-publish missing Registry state fails after the bounded observation window without republishing', async () => {
+test('post-publish missing Registry state reports validation pending after the bounded observation window without republishing', async () => {
 	const state = new Map(NPM_PUBLICATION_ORDER.map(name => [name, 'missing']));
 	const publishes = [];
 	let sleeps = 0;
@@ -218,10 +218,14 @@ test('post-publish missing Registry state fails after the bounded observation wi
 				sleeps += 1;
 			},
 		}),
-		/bounded observation window/u,
+		/npm accepted the publish, but .* validation or Registry visibility may still be pending\. Do not republish this version/u,
 	);
 	assert.deepEqual(publishes, ['@virune/runtime']);
 	assert.equal(sleeps, POST_PUBLISH_CONVERGENCE_OBSERVATIONS - 1);
+	assert.equal(
+		sleeps * POST_PUBLISH_CONVERGENCE_DELAY_MS,
+		10 * 60 * 1000,
+	);
 });
 
 test('unknown post-publish observation stops before the next package write', async () => {
