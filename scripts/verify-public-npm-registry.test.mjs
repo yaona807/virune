@@ -488,7 +488,7 @@ test('npm exec generated project fails closed on dependency and script drift ind
 			runCommand: successfulRunCommand(version, { npxGeneratedVersion: '1.1.0-rc.1' }),
 			platform: 'linux',
 		}),
-		/expected 1\.1\.0-rc\.3/u,
+		/expected 1\.1\.0-rc\.4/u,
 	);
 	await assert.rejects(
 		() => verifyCleanGlobalCliInstall(version, {
@@ -507,7 +507,7 @@ test('generated project smoke rejects dependency, script, and package.json drift
 			runCommand: successfulRunCommand(version, { generatedVersion: '1.1.0-rc.1' }),
 			platform: 'linux',
 		}),
-		/expected 1\.1\.0-rc\.3/u,
+		/expected 1\.1\.0-rc\.4/u,
 	);
 	await assert.rejects(
 		() => verifyCleanGlobalCliInstall(version, {
@@ -538,6 +538,6 @@ test('clean global install rejects command failure, npm exec failure, and CLI ve
 	);
 	await assert.rejects(
 		() => verifyCleanGlobalCliInstall(version, { runCommand: successfulRunCommand('1.1.0-rc.1'), platform: 'linux' }),
-		/expected virune 1\.1\.0-rc\.3/u,
+		/expected virune 1\.1\.0-rc\.4/u,
 	);
 });
