@@ -202,13 +202,13 @@ test('post-publish missing Registry state is retried without republishing until 
 	assert.deepEqual(result.published, NPM_PUBLICATION_ORDER);
 });
 
-test('post-publish missing Registry state reports validation pending after the bounded observation window without republishing', async () => {
+test('post-publish pending Registry state reports validation pending after the bounded observation window without republishing', async () => {
 	const state = new Map(NPM_PUBLICATION_ORDER.map(name => [name, 'missing']));
 	const publishes = [];
 	let sleeps = 0;
 	await assert.rejects(
 		executePublication({ version: VERSION }, candidates, {
-			observe: async candidate => ({ state: state.get(candidate.registryName) === 'propagating' ? 'missing' : state.get(candidate.registryName) }),
+			observe: async candidate => ({ state: state.get(candidate.registryName) === 'propagating' ? 'pending' : state.get(candidate.registryName) }),
 			verifyProvenance: async () => {},
 			publish: async candidate => {
 				publishes.push(candidate.registryName);
@@ -253,7 +253,7 @@ test('pre-existing pending target waits for exact visibility and never republish
 	});
 	assert.equal(publishes.includes('@virune/runtime'), false);
 	assert.equal(result.skipped.includes('@virune/runtime'), true);
-	assert.deepEqual(sleeps, [POST_PUBLISH_CONVERGENCE_DELAY_MS]);
+	assert.deepEqual(sleeps, [POST_PUBLISH_CONVERGENCE_DELAY_MS, POST_PUBLISH_CONVERGENCE_DELAY_MS]);
 });
 
 test('unknown post-publish observation stops before the next package write', async () => {
