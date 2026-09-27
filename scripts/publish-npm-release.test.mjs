@@ -183,7 +183,8 @@ test('post-publish missing Registry state is retried without republishing until 
 			if (state.get(candidate.registryName) === 'propagating') {
 				const count = (postPublishObservations.get(candidate.registryName) ?? 0) + 1;
 				postPublishObservations.set(candidate.registryName, count);
-				if (count < 3) return { state: 'missing' };
+				if (count === 1) return { state: 'pending' };
+				if (count === 2) return { state: 'missing' };
 				state.set(candidate.registryName, 'exact');
 			}
 			return { state: state.get(candidate.registryName) };
@@ -228,6 +229,33 @@ test('post-publish missing Registry state reports validation pending after the b
 	);
 });
 
+test('pre-existing pending target waits for exact visibility and never republishes', async () => {
+	const state = new Map(NPM_PUBLICATION_ORDER.map(name => [name, 'missing']));
+	state.set('@virune/runtime', 'pending');
+	let runtimeObservations = 0;
+	const publishes = [];
+	const sleeps = [];
+	const result = await executePublication({ version: VERSION }, candidates, {
+		observe: async candidate => {
+			if (candidate.registryName === '@virune/runtime') {
+				runtimeObservations += 1;
+				if (runtimeObservations < 3) return { state: 'pending' };
+				state.set(candidate.registryName, 'exact');
+			}
+			return { state: state.get(candidate.registryName) };
+		},
+		verifyProvenance: async () => {},
+		publish: async candidate => {
+			publishes.push(candidate.registryName);
+			state.set(candidate.registryName, 'exact');
+		},
+		sleep: async milliseconds => sleeps.push(milliseconds),
+	});
+	assert.equal(publishes.includes('@virune/runtime'), false);
+	assert.equal(result.skipped.includes('@virune/runtime'), true);
+	assert.deepEqual(sleeps, [POST_PUBLISH_CONVERGENCE_DELAY_MS]);
+});
+
 test('unknown post-publish observation stops before the next package write', async () => {
 	const state = new Map(NPM_PUBLICATION_ORDER.map(name => [name, 'missing']));
 	const publishes = [];
@@ -265,7 +293,7 @@ test('final complete-set observation rejects Registry drift before publication c
 	assert.equal(observations, NPM_PUBLICATION_ORDER.length * 2);
 });
 
-test('Registry probing treats 404 as missing but rejects contradictory and unknown states', async () => {
+test('Registry probing treats partial target visibility as pending and rejects contradictory and unknown states', async () => {
 	const candidate = candidates[0];
 	const missing = await observeRegistryCandidate(candidate, VERSION, 'next', {
 		fetchImpl: async url => response(url.includes(encodeURIComponent(VERSION)) ? 404 : 200, url.includes(encodeURIComponent(VERSION)) ? null : {
@@ -276,16 +304,21 @@ test('Registry probing treats 404 as missing but rejects contradictory and unkno
 	});
 	assert.deepEqual(missing, { state: 'missing' });
 
-	await assert.rejects(
-		observeRegistryCandidate(candidate, VERSION, 'next', {
-			fetchImpl: async url => response(url.includes(encodeURIComponent(VERSION)) ? 404 : 200, url.includes(encodeURIComponent(VERSION)) ? null : {
-				name: candidate.registryName,
-				versions: { [VERSION]: {} },
-				'dist-tags': { next: VERSION },
-			}),
+	const packumentFirst = await observeRegistryCandidate(candidate, VERSION, 'next', {
+		fetchImpl: async url => response(url.includes(encodeURIComponent(VERSION)) ? 404 : 200, url.includes(encodeURIComponent(VERSION)) ? null : {
+			name: candidate.registryName,
+			versions: { [VERSION]: {} },
+			'dist-tags': { next: VERSION },
 		}),
-		/version endpoint is missing while packument contains the target version/u,
-	);
+	});
+	assert.deepEqual(packumentFirst, { state: 'pending' });
+
+	const versionFirst = await observeRegistryCandidate(candidate, VERSION, 'next', {
+		fetchImpl: async url => response(url.includes(encodeURIComponent(VERSION)) ? 200 : 404, url.includes(encodeURIComponent(VERSION))
+			? { name: candidate.registryName, version: VERSION }
+			: null),
+	});
+	assert.deepEqual(versionFirst, { state: 'pending' });
 
 	await assert.rejects(
 		observeRegistryCandidate(candidate, VERSION, 'next', { fetchImpl: async () => response(503, {}) }),
