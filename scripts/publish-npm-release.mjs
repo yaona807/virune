@@ -140,12 +140,14 @@ export async function executePublication(identity, candidates, { observe, verify
 	}
 
 	const final = new Map();
-	for (const candidate of candidates) final.set(candidate.registryName, await observe(candidate));
-	validateObservedDependencyClosure(final);
 	for (const candidate of candidates) {
-		assert(final.get(candidate.registryName).state === 'exact', `$.registry.${candidate.registryName}`, 'final complete-set Registry observation is not exact');
-		await verifyProvenance(candidate);
+		const observed = await observe(candidate);
+		const settled = observed.state === 'exact' ? observed : await observeAcceptedCandidate(candidate, observe, sleep, observed);
+		assertAcceptedCandidateIsExact(candidate, settled);
+		final.set(candidate.registryName, settled);
 	}
+	validateObservedDependencyClosure(final);
+	for (const candidate of candidates) await verifyProvenance(candidate);
 	return { version: identity.version, eligible: true, published, skipped };
 }
 
