@@ -18,8 +18,8 @@ const INTOTO_V1 = 'https://in-toto.io/Statement/v1';
 const GITHUB_BUILD_TYPE = 'https://slsa-framework.github.io/github-actions-buildtypes/workflow/v1';
 const GITHUB_BUILDER = 'https://github.com/actions/runner/github-hosted';
 
-export const POST_PUBLISH_CONVERGENCE_OBSERVATIONS = 12;
-export const POST_PUBLISH_CONVERGENCE_DELAY_MS = 5_000;
+export const POST_PUBLISH_CONVERGENCE_OBSERVATIONS = 21;
+export const POST_PUBLISH_CONVERGENCE_DELAY_MS = 30_000;
 
 export const NPM_PUBLICATION_ORDER = [
 	'@virune/runtime',
@@ -120,7 +120,7 @@ export async function executePublication(identity, candidates, { observe, verify
 
 		await publish(candidate);
 		const after = await observePublishedCandidate(candidate, observe, sleep);
-		assert(after.state === 'exact', `$.registry.${candidate.registryName}`, 'publish did not converge to the exact reviewed Registry identity within the bounded observation window');
+		assert(after.state === 'exact', `$.registry.${candidate.registryName}`, 'npm accepted the publish, but the exact reviewed Registry identity is still not publicly observable; npm validation or Registry visibility may still be pending. Do not republish this version; retry the recovery workflow later after reobserving Registry state');
 		await verifyProvenance(candidate);
 		published.push(candidate.registryName);
 	}
