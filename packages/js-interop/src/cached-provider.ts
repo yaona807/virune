@@ -41,7 +41,7 @@ export class CachedTypeScriptInteropProvider implements JsInteropProvider {
 	#provider: TypeScriptInteropProvider | undefined;
 
 	public constructor(options: CachedTypeScriptInteropProviderOptions) {
-		const createProvider = options.createProvider ?? (providerOptions => new TypeScriptInteropProvider(providerOptions));
+		const createProvider = options.createProvider ?? (providerOptions => new EditorTypeScriptInteropProvider(providerOptions));
 		const provider = createProvider(options);
 		this.#provider = provider;
 		this.id = provider.id;
@@ -152,9 +152,30 @@ export class CachedTypeScriptInteropProvider implements JsInteropProvider {
 		return this.#cache.size;
 	}
 
+	protected editorImportCompletions(request: {
+		readonly containingFile: string;
+		readonly moduleSpecifier: string;
+		readonly typeOnly: boolean;
+		readonly platform: JsImportRequest['platform'];
+	}): readonly { readonly name: string; readonly kind: string }[] {
+		const provider = this.#requireProvider();
+		return provider instanceof EditorTypeScriptInteropProvider ? provider.completeEditorImport(request) : [];
+	}
+
 	#requireProvider(): TypeScriptInteropProvider {
 		if (this.#provider === undefined) throw new Error('Disposed JavaScript interop provider generation');
 		return this.#provider;
+	}
+}
+
+class EditorTypeScriptInteropProvider extends TypeScriptInteropProvider {
+	public completeEditorImport(request: {
+		readonly containingFile: string;
+		readonly moduleSpecifier: string;
+		readonly typeOnly: boolean;
+		readonly platform: JsImportRequest['platform'];
+	}): readonly { readonly name: string; readonly kind: string }[] {
+		return this.editorImportCompletions(request);
 	}
 }
 
