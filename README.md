@@ -145,10 +145,17 @@ The goal is not to make advanced programs impossible. **Even when advanced behav
 
 ## Quick start
 
-Virune 1.0.0 requires Node.js 24 or later. The current stable CLI can be installed from the published package on GitHub Releases.
+Virune 1.0.0 requires Node.js 24 or later and is the current stable release. Install its CLI from GitHub Releases:
 
 ```bash
 npm install --global https://github.com/yaona807/virune/releases/download/v1.0.0/virune-1.0.0.tgz
+virune --version
+```
+
+The public Virune 1.1.0-rc.4 prerelease is available from npm:
+
+```bash
+npm install --global @virune/cli@1.1.0-rc.4
 virune --version
 ```
 
@@ -182,9 +189,9 @@ Changes and proposals are generally developed publicly through Issues and Pull R
 
 ## Releases
 
-Published stable, prerelease, and nightly builds are available from [GitHub Releases](https://github.com/yaona807/virune/releases).
+Stable, prerelease, and nightly release artifacts are available from [GitHub Releases](https://github.com/yaona807/virune/releases). For v1.0.x, the CLI remains installable from its GitHub Release tarball. Starting with v1.1.0, the npm Registry is the canonical package installation channel; the CLI package is `@virune/cli`.
 
-GitHub Releases are an official distribution channel, and published artifacts are not later replaced with different contents. Release eligibility is verified by repository-owned machine-readable policy and CI.
+GitHub Releases remain the source for release archives and verification artifacts. Published artifacts are not later replaced with different contents, and release eligibility is verified by repository-owned machine-readable policy and CI.
 
 ## License
 
