@@ -189,7 +189,7 @@ Viruneは現在、[`@yaona807`](https://github.com/yaona807)がメンテナン�
 
 ## リリース
 
-安定版、プレリリース、Nightly版のリリース成果物は[GitHub Releases](https://github.com/yaona807/virune/releases)で確認できます。v1.0.xのCLIはこれまでどおりGitHub Releaseのtarballからインストールできます。v1.1.0以降、npm Registryをパッケージの標準インストール先とし、CLI packageは`@virune/cli`です。
+安定版、プレリリース、Nightly版のリリース成果物は[GitHub Releases](https://github.com/yaona807/virune/releases)で確認できます。v1.0.xのCLIはこれまでどおりGitHub Releaseのtarballからインストールできます。v1.1.0以降はnpm Registryをパッケージの標準配布先とします。CLIパッケージ名は`@virune/cli`です。
 
 GitHub Releasesはリリースアーカイブと検証用成果物の公開先として引き続き利用します。公開済みの成果物は後から別の内容へ差し替えず、リリース可否はリポジトリ内の機械可読なポリシーとCIで検証します。
 
