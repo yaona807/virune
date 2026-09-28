@@ -3,7 +3,7 @@ import { spawn } from 'node:child_process';
 import { mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import { basename, dirname, join, relative, resolve } from 'node:path';
 import process from 'node:process';
-import { buildProject, compileSource, diagnosticsToJson, externalExecutionReadiness, loadConfig, projectRuntimeModuleClosure, renderDiagnostic, validateEntryPoint, type BuiltModule, type Diagnostic, type ProjectBuildResult, type SourceFile } from '@virune/compiler/experimental';
+import { buildProject, compileSource, diagnosticHelp, diagnosticsToJson, explainDiagnosticCode, externalExecutionReadiness, loadConfig, projectRuntimeModuleClosure, renderDiagnostic, validateEntryPoint, type BuiltModule, type Diagnostic, type ProjectBuildResult, type SourceFile } from '@virune/compiler/experimental';
 import { formatSource } from '@virune/formatter';
 import { buildInteropAdapters, copyInteropRuntimeAssets, createInteropAdapterTemplate, TypeScriptInteropProvider } from '@virune/js-interop';
 import { generateBindings } from './bind.js';
@@ -343,13 +343,11 @@ function printDiagnostics(diagnostics: readonly Diagnostic[], files: readonly So
 }
 
 function explain(code: string | undefined): void {
-	const explanations: Record<string, string> = {
-		L0001: 'The lexer found a character sequence that is not valid Virune syntax.', L0002: 'The parser could not match the source against the Virune grammar.',
-		L2043: 'A value was used where an incompatible type was required. Virune performs no implicit numeric or string conversions.',
-		L3004: 'A match expression omitted at least one enum, Option, or Result variant.', L4002: 'Virune modules must form an acyclic dependency graph.',
-	};
-	if (code === undefined || explanations[code] === undefined) { console.error('Unknown diagnostic code. Example: virune explain L2043'); process.exitCode = 2; return; }
-	console.log(`${code}: ${explanations[code]}`);
+	const explanation = code === undefined ? undefined : explainDiagnosticCode(code);
+	if (code === undefined || explanation === undefined) { console.error('Unknown diagnostic code. Example: virune explain L2043'); process.exitCode = 2; return; }
+	console.log(`${code}: ${explanation}`);
+	const help = diagnosticHelp(code);
+	if (help !== undefined) console.log(`help: ${help}`);
 }
 
 function printHelp(): void {

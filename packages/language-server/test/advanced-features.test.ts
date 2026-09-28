@@ -8,6 +8,7 @@ import { ProjectManager, type AnalysisSnapshot } from '../src/analysis/project-m
 import { filePathToUri } from '../src/analysis/position.js';
 import { codeActionsForDiagnostics, documentationCodeActions } from '../src/features/code-actions.js';
 import { completionItems } from '../src/features/completion.js';
+import { diagnosticsForPath } from '../src/features/diagnostics.js';
 import { semanticTokens, semanticTokenTypes } from '../src/features/semantic-tokens.js';
 
 async function analyze(path: string, text: string) {
@@ -95,6 +96,30 @@ fn greet(user: User) -> String => user.name
 	assert.equal(typeLexemes.includes('User'), true);
 	assert.equal(typeLexemes.includes('String'), true);
 	assert.equal(typeLexemes.every(value => value === 'User' || value === 'String'), true);
+});
+
+test('must-use diagnostics preserve actionable guidance and the safe discard fix through LSP', async () => {
+	const path = join(tmpdir(), 'virune-must-use-code-action.virune');
+	const text = `fn loadValue() -> Result<Int, String> {
+	return Ok(1)
+}
+
+fn main() -> Unit {
+	loadValue()
+	return Unit
+}
+`;
+	const { snapshot, module } = await analyze(path, text);
+	const diagnostics = diagnosticsForPath(snapshot, snapshot.requestedPath);
+	const diagnostic = diagnostics.find(item => String(item.code ?? '') === 'L2097');
+	assert.ok(diagnostic);
+	const data = diagnostic.data as { help?: unknown; fixIds?: unknown };
+	assert.match(String(data.help ?? ''), /discard <expression>/u);
+	assert.deepEqual(data.fixIds, ['discard-must-use-value']);
+	const actions = codeActionsForDiagnostics(snapshot, snapshot.requestedPath, [diagnostic]);
+	assert.equal(actions.length, 1);
+	assert.equal(actions[0]?.title, 'Discard this value explicitly');
+	assert.equal(actions[0]?.edit?.changes?.[filePathToUri(module.source.path)]?.[0]?.newText, 'discard ');
 });
 
 test('codeActionsForDiagnostics converts compiler fixes into workspace edits', async () => {
