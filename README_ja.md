@@ -145,14 +145,14 @@ Viruneは、機能が多いほど良い言語になるとは考えていませ�
 
 ## クイックスタート
 
-Virune 1.0.0はNode.js 24以降で利用できる現在の安定版です。CLIはGitHub Releasesからインストールできます。
+現在の安定版はVirune 1.0.0です。利用にはNode.js 24以降が必要です。CLIは次のコマンドでインストールできます。
 
 ```bash
 npm install --global https://github.com/yaona807/virune/releases/download/v1.0.0/virune-1.0.0.tgz
 virune --version
 ```
 
-公開中のVirune 1.1.0-rc.4プレリリースはnpmからインストールできます。
+Virune 1.1.0-rc.4（プレリリース版）は、npmからインストールできます。
 
 ```bash
 npm install --global @virune/cli@1.1.0-rc.4
@@ -189,9 +189,9 @@ Viruneは現在、[`@yaona807`](https://github.com/yaona807)がメンテナン�
 
 ## リリース
 
-安定版、プレリリース、Nightly版のリリース成果物は[GitHub Releases](https://github.com/yaona807/virune/releases)で確認できます。v1.0.xのCLIはこれまでどおりGitHub Releaseのtarballからインストールできます。v1.1.0以降はnpm Registryをパッケージの標準配布先とします。CLIパッケージ名は`@virune/cli`です。
+安定版、プレリリース版、Nightly版の成果物は、[GitHub Releases](https://github.com/yaona807/virune/releases)から入手できます。v1.0.xのCLIは、これまでどおりGitHub Releasesからtarballをダウンロードしてインストールできます。v1.1.0以降は、npm Registryをパッケージの標準インストール元とします。CLIのパッケージ名は`@virune/cli`です。
 
-GitHub Releasesはリリースアーカイブと検証用成果物の公開先として引き続き利用します。公開済みの成果物は後から別の内容へ差し替えず、リリース可否はリポジトリ内の機械可読なポリシーとCIで検証します。
+GitHub Releasesは、リリースアーカイブや検証用成果物の公開先として引き続き利用します。公開済みの成果物は、後から内容を別のものに差し替えません。リリース可否は、リポジトリ内の機械可読なポリシーとCIで検証します。
 
 ## ライセンス
 
