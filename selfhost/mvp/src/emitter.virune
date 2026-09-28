@@ -172,6 +172,15 @@ fn emitCall(expression: MvpHirExpression, expressions: List<MvpHirExpression>) -
 	return callee + "(" + String.join(values, ", ") + ", $ctx)"
 }
 
+fn emitExternalVariant(expression: MvpHirExpression, expressions: List<MvpHirExpression>) -> String {
+	let values = emitArguments(expression.children, expressions)
+	let callee = safeName(expression.text)
+	if List.isEmpty(values) {
+		return callee + "()"
+	}
+	return callee + "(" + String.join(values, ", ") + ")"
+}
+
 fn emitVariant(expression: MvpHirExpression, expressions: List<MvpHirExpression>) -> String {
 	let values = emitArguments(expression.children, expressions)
 	return "({$tag: " + Debug.format(expression.text) + ", $values: [" + String.join(values, ", ") + "]})"
@@ -356,6 +365,9 @@ fn emitExpression(expressionId: Int, expressions: List<MvpHirExpression>) -> Str
 	}
 	if expression.kind == "call" {
 		return emitCall(expression, expressions)
+	}
+	if expression.kind == "externalVariant" {
+		return emitExternalVariant(expression, expressions)
 	}
 	if expression.kind == "list" {
 		return emitList(expression, expressions)
