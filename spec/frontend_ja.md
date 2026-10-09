@@ -76,9 +76,9 @@ Button(onClick: logout, "data-state": state) {
 
 プロパティに指定する式は通常のVirune式です。View内に書いたという理由だけで、Viewや`External`の値を外へ持ち出せるようにはなりません。
 
-ただしJavaScript-imported External elementには、compiler-controlledな狭い例外を1つだけ設ける。property valueとして直接置かれたsynchronous lambdaは、projectが実際に使用するTypeScript JSX environmentがそのpropertyをcallbackとしてcontextually証明できる場合に限り、directな`view { ... }` expression bodyを持てる。annotationのないcallback parameterはconcreteかつcurrentなprovider evidenceからのみ取得し、初期boundaryではprovider-provenなExternal object parameterだけを受理する。`any`、`unknown`、`never`、unresolved generic、stale、partial、ambiguous、その他unsupportedなevidenceはrejectする。このView resultは引き続きnon-nameableであり、その正確なcallback位置からescapeできない。
+ただし、JavaScriptからインポートした`External`要素には、コンパイラーが管理する限定的な例外があります。プロパティの値として直接記述した同期ラムダは、プロジェクトが実際に使用するTypeScriptのJSX環境で、そのプロパティがコールバックとして使われることを文脈から証明できる場合に限り、本体に`view { ... }`式を直接記述できます。型注釈のないコールバック引数は、具体的かつ現在有効なプロバイダーの証拠からのみ取得します。初期の境界で受理するのは、プロバイダーが型を証明した`External`オブジェクト引数だけです。`any`、`unknown`、`never`、未解決のジェネリクス、古い・部分的・曖昧な証拠、その他未対応の証拠は拒否します。このViewの結果は引き続き型名を持たず、該当するコールバックの位置から外へ持ち出すことはできません。
 
-callbackはdownstream JSX property positionのままemitし、View bodyをhost toolchain向けにpreserveする。ViruneはView resultをcomponent entryでhoistまたはsnapshotしてはならない。generated callbackは、View resultをgeneral External valueへ分類せず、既存のJavaScript callback root-contextおよびerror-isolation machineryを再利用する。その後、actual View resultを含む完全なgenerated callback usageをprojectのTypeScript JSX whole-usage environmentでvalidateする。package名、framework名、property名によってこのcapabilityを判定してはならない。async View-producing callbackはこの初期contractの対象外でありrejectする。
+コールバックは後段のJSXプロパティの位置に出力し、View本体はホスト側のツールチェーンが処理できる形で保持します。Viruneはコンポーネントの入口でViewの結果を事前に移動したり、値を固定したりしてはなりません。生成するコールバックは、Viewの結果を一般の`External`値として扱わず、既存のJavaScriptコールバックのルートコンテキストとエラー分離機構を再利用します。その後、実際のViewの結果を含む生成後のコールバックの使い方全体を、プロジェクトのTypeScript JSX環境で検証します。この対応可否をパッケージ名、フレームワーク名、プロパティ名で判断してはなりません。Viewを生成する非同期コールバックは初期の契約に含まれず、拒否します。
 
 ## `[frontend.view-children]` テキストと式の子要素
 
@@ -113,7 +113,7 @@ view {
 
 コンパイラーは、後段のフロントエンド処理に渡すため、`else`を省いた場合の子要素がない分岐も含めて、条件分岐のソース上の位置と評価位置を維持しなければなりません。フレームワークが管理するリアクティビティや遅延評価を変えてしまうような、条件分岐やホスト依存の分岐式の事前の移動・値の固定・キャッシュは認められません。
 
-no-`else`のabsence branchのために導入するempty Fragmentは、JavaScript-imported External componentから観測可能なchild valueになる位置では使用してはならない。downstream componentのchildren/slot semanticsを変えずにzero-child absenceを保存できることが証明されるまで、そのdirect External child structure内のno-`else` conditionalは成功へ推測せずrejectする。
+`else`を省いた分岐のために導入する空のFragmentが、JavaScriptからインポートした`External`コンポーネントから観測できる子の値になる場合、そのFragmentを使用してはなりません。後段のコンポーネントのchildrenやスロットの意味を変えずに、子要素が0個であることを保持できると証明されるまでは、その`External`コンポーネントの直接の子として書かれた`else`のない条件分岐を拒否します。
 
 ## `[frontend.children-slot]` コンパイラー管理下の子スロット
 
@@ -138,7 +138,7 @@ internal component Panel(title: String) uses JavaScript {
 
 後段のコンパイラー管理下での値の受け渡しと変換処理は、一般のView値を外部へ公開せず、実際のフロントエンドフレームワークが必要とする評価位置と遅延評価の性質を保たなければなりません。
 
-compiler-managed slotをJavaScript-imported External componentから観測可能なdirect child valueにしてはならない。downstreamのchildren/slot semanticsを変えずにそのzero-or-more child contributionを保存できることが証明されるまで、そのdirect External child structure内のstandalone `children`はrejectする。External componentの下でもintrinsic element配下にnestedされたslotは、通常のView validation対象として引き続き利用できる。
+コンパイラー管理下のスロットを、JavaScriptからインポートした`External`コンポーネントから観測できる直接の子の値にしてはなりません。後段のchildrenやスロットの意味を変えずに、0個以上の子要素としての寄与を保持できると証明されるまでは、その`External`コンポーネントの直接の子として単独で書かれた`children`を拒否します。ただし、`External`コンポーネントの配下でも、組み込み要素のさらに内側に置かれたスロットは、通常のView検証の対象として引き続き使用できます。
 
 ## `[frontend.view-repetition]` 宣言的なViewの繰り返し
 
@@ -152,20 +152,20 @@ view {
 }
 ```
 
-`by`はView repetition内だけのcontextual syntaxであり、それ以外では通常のidentifierとして利用できる。identity expressionはcurrent itemとoptional source-index bindingが利用可能になった後に評価する。checked typeは`String`または`Int`でなければならず、unresolvedまたはunsupportedなidentity evidenceはrejectする。StringとIntのidentityは異なるtagged domainとして扱う。1 snapshot内で2つのvisited itemが同じtagged identityを生成した場合、Host reconciliationやView body executionより前にrejectする。
+`by`はViewの繰り返し内だけで意味を持つ構文で、それ以外では通常の識別子として使用できます。同一性を表す式は、現在の要素と省略可能な元のインデックスが利用可能になった後で評価します。その型は`String`または`Int`でなければなりません。同一性について未解決または未対応の証拠は拒否します。`String`と`Int`の同一性は、異なるタグ付きの領域として扱います。1つのスナップショットで、走査した2つの要素が同じタグ付き同一性を生成した場合は、ホストによる要素の対応付けやView本体の実行より前に拒否します。
 
-Viruneはsource index、transportされたJavaScript object identity、`key`等のchild property、`id`等のfield名、framework/package conventionからidentityを推論しない。identity-freeなView repetitionはstable language surfaceに含めない。
+Viruneは、元のインデックス、受け渡したJavaScriptオブジェクトの同一性、`key`などの子要素のプロパティ、`id`などのフィールド名、フレームワークやパッケージの慣習から同一性を推測しません。同一性を指定しないViewの繰り返しは、安定した言語機能に含めません。
 
-identity-bearing repetitionは、project-ownedなRepetition Hostを正確に1つ通して評価する。projectは既存のdeclaration attributeと`extern js` surfaceを使ってHostを宣言する。
+同一性を指定した繰り返しは、プロジェクトが管理するRepetition Hostを必ず1つだけ介して評価します。プロジェクトは既存の宣言属性と`extern js`構文を使ってホストを宣言します。
 
 ```virune
 @repetitionHost("render", 1)
 extern js "./repetition-host.js" {}
 ```
 
-`@repetitionHost` attributeはsafeな`extern js` declarationにだけ指定できる。引数は正確に2つのliteral、すなわちStringのexport nameとIntのprotocol version `1`でなければならない。それ以外のargument shapeまたはprotocol versionはrejectする。View repetitionをemitするprojectはvalidなproject-owned locatorを正確に1つresolveしなければならず、複数のvalid locatorはambiguousとしてfail closedとする。
+`@repetitionHost`属性を指定できるのは、安全な`extern js`宣言だけです。引数には、エクスポート名を表す`String`リテラルと、プロトコルバージョン`1`を表す`Int`リテラルを、正確に2つ指定しなければなりません。引数の形やプロトコルバージョンが異なる場合は拒否します。Viewの繰り返しを出力するプロジェクトでは、プロジェクトが管理する有効なホストの参照先を必ず1つだけ解決しなければなりません。複数の有効な参照先が見つかった場合は曖昧として、安全側に失敗します。
 
-protocol version 1のcompiler-visibleなcall shapeは概念上次の通りである。
+プロトコルバージョン1でコンパイラーから見える呼び出しの形は、概念的には次のとおりです。
 
 ```ts
 repetitionHost(
@@ -178,32 +178,32 @@ repetitionHost(
 )
 ```
 
-compilerはsnapshot traversal、identity encoding、duplicate detection、安全なtransport/capture check、およびHost callを所有する。project Hostとdownstream frameworkはreconciliation、keyed representation、scheduling、lifecycle、renderingを所有する。callback invocation countはViruneの保証ではない。
+コンパイラーは、スナップショットの走査、同一性の符号化、重複検出、安全な値の受け渡しとキャプチャーの検査、ホストの呼び出しを担当します。プロジェクト側のホストと後段のフレームワークは、要素の対応付け、キー付き表現、スケジューリング、ライフサイクル、描画を担当します。Viruneはコールバックの呼び出し回数を保証しません。
 
-Host locatorはproject-ownedである。dependency packageがprojectのrepetition Hostを暗黙選択してはならない。missing、malformed、unsupported、ambiguous、その他証明不能なHost evidenceはfail closedとし、affected outputを抑止する。relative Host moduleはlocator declarationを基準にresolveし、emitted consumer向けにrebaseする。located exportはprojectのcurrent TypeScript whole-usage environmentでvalidateし、ViruneはTypeScript function assignabilityを再実装せず、framework名でも分岐しない。
+ホストの参照先はプロジェクトが管理します。依存パッケージがプロジェクトのRepetition Hostを暗黙に選択してはなりません。ホストの証拠が欠落、不正、未対応、曖昧、その他の理由で証明できない場合は安全側に失敗し、影響を受ける出力を抑止します。相対パスで指定されたホストモジュールは、参照先の宣言を基準に解決し、生成先で使えるようにパスを調整します。見つかったエクスポートは、プロジェクトが現在使用するTypeScriptの利用方法全体を検証する環境で確認します。ViruneはTypeScriptの関数の代入互換性を再実装せず、フレームワーク名による分岐も行いません。
 
-1つのlogical identityは1 iterationの完全なView resultを所有する。1 iterationが複数childを生成する場合、それらはdownstream reconciliation上も1つのidentity-owned groupとして保持される。nested identity repetitionは同じHost contractを通してcomposeする。
+1つの論理的な同一性は、1回の反復で生成されるViewの結果全体に対応します。1回の反復で複数の子要素を生成する場合も、後段の要素の対応付けでは、同じ同一性を持つ1つのグループとして保持します。入れ子になった同一性付きの繰り返しも、同じホストの契約を通して組み合わせます。
 
 ## `[frontend.view-repetition-source]` 繰り返し元の境界
 
-初期repetition sourceはhost-safeなnative `List<T>`と、current interop provider snapshotからarray shapeおよびindexed-element shapeが証明されたJavaScript External `Array<T>` / `ReadonlyArray<T>`に限定する。
+初期の繰り返し元として使用できるのは、ホストへ安全に渡せるVirune固有の`List<T>`と、現在の相互運用プロバイダーのスナップショットで配列構造とインデックス付き要素の構造が証明されたJavaScriptの`External`な`Array<T>` / `ReadonlyArray<T>`に限ります。
 
-External arrayをnative `List`へ暗黙変換しない。`any`、`unknown`、unsupported collection、またはunresolved、stale、partial、ambiguousなprovider evidenceはfail closedとする。
+`External`配列をVirune固有の`List`へ暗黙に変換しません。`any`、`unknown`、未対応のコレクション、または未解決・古い・部分的・曖昧なプロバイダーの証拠は、安全側に失敗します。
 
-Host-triggeredな各`readSnapshot()` evaluationにつきsource expressionは正確に1回だけ評価する。External arrayではinitial `length`を正確に1回観測し、その観測済みlengthまでindex 0から順にvisitし、sparse holeをskipし、visited itemは各1回だけreadする。optional index bindingはoutput ordinalではなく0始まりのsource indexである。
+ホストが呼び出す各`readSnapshot()`の評価では、繰り返し元の式を正確に1回だけ評価します。`External`配列では、最初の`length`を正確に1回だけ読み取り、そのとき観測した長さまで、インデックス0から順に走査します。要素が存在しない疎な配列の位置は飛ばし、実際に訪れた要素はそれぞれ1回だけ読み取ります。省略可能なインデックス変数は、出力順の番号ではなく、0始まりの元のインデックスを表します。
 
-source、transportされるitem、identity expression、View bodyはいずれもHost-deferred boundaryを跨ぐため、frontend lifetime/transport safety ruleを満たさなければならない。Resource/capability value、raw native callable、lifetime-boundまたはmust-use value、unresolved/open shapeその他deferred safetyを証明できない値はrejectする。userが明示的に作成したsnapshotは通常のVirune semanticsのままとし、compilerがreactive Host位置へ戻してはならない。
+繰り返し元、受け渡す要素、同一性を表す式、View本体は、いずれもホスト側で遅延評価される境界を越えるため、フロントエンドのライフタイムと値の受け渡しに関する安全規則を満たさなければなりません。リソースやケイパビリティの値、Virune固有の呼び出し可能な値の生の表現、ライフタイムに束縛された値、使用が必須の値、未解決または開いた構造の値など、遅延評価時の安全性を証明できない値は拒否します。利用者が明示的に作成したスナップショットは、通常のViruneの意味のまま扱います。コンパイラーがそれをリアクティブなホストの位置へ移し戻してはなりません。
 
-Generic `Iterable`、`AsyncIterable`、`Set`、`Map`、arbitrary array-likeはこの初期contractの対象外である。
+汎用の`Iterable`、`AsyncIterable`、`Set`、`Map`、任意の配列風オブジェクトは、この初期の契約の対象外です。
 
 ## `[frontend.view-repetition-children]` 繰り返しと子要素の境界
 
-compiler-managed standalone `children` slotは、nested View conditionalやnested repetitionを経由する場合も含め、repetition subtree内のどこにあってもrejectする。repetitionは`break`、`continue`、assignment、imperative loop-body semanticsを導入しない。
+コンパイラー管理下の単独の`children`スロットは、入れ子のView条件分岐や繰り返しを経由する場合も含め、繰り返しの部分ツリー内のどこにあっても拒否します。繰り返しによって`break`、`continue`、代入、命令的なループ本体の意味を追加することはありません。
 
-生成されるHost callは、projectのTypeScript whole-usage environmentへactual parent JSX positionのまま提出する。JavaScript-imported External componentのdirect childも同様であり、acceptanceは具体的なHost resultとdownstream children contractで決まり、compiler-generated structural arrayやframework-specific exceptionには依存しない。
+生成されたホストの呼び出しは、親のJSX内で実際に使われる位置を保ったまま、プロジェクトのTypeScript環境で利用方法全体を検証します。JavaScriptからインポートした`External`コンポーネントの直接の子でも同様です。受理できるかどうかは具体的なホストの結果と後段のchildrenの契約によって決まり、コンパイラーが生成した構造的な配列やフレームワーク固有の例外には依存しません。
 
 ## `[frontend.framework-neutral]` フレームワーク非依存のコア
 
-component/View grammarはframeworkを選択しない。Virune Coreはframework-name enum、package-name heuristic、Virune frontend VDOM/runtime、universal state/effect/router API、property vocabulary rewrite、framework固有JSX loweringを定義しない。
+コンポーネントとViewの構文はフレームワークを選択しません。Viruneのコアでは、フレームワーク名の列挙型、パッケージ名に依存する特別処理、Virune独自のフロントエンドVDOMやランタイム、共通の状態管理・副作用・ルーターAPI、プロパティ名の書き換え、フレームワーク固有のJSX変換を定義しません。
 
-External component validity、props、children、overload、generic、contextual callback typingは、projectが実際に使用するTypeScript JSX environmentとJavaScript interoperability contractを通じて証明する。unknown、stale、partial、ambiguousなJavaScript/TypeScript evidenceは引き続きfail-closedとする。
+`External`コンポーネントの有効性、props、children、オーバーロード、ジェネリクス、文脈に応じたコールバックの型付けは、プロジェクトが実際に使用するTypeScript JSX環境とJavaScript相互運用の契約に基づいて証明します。未知・古い・部分的・曖昧なJavaScript / TypeScriptの証拠は、引き続き安全側に失敗します。
