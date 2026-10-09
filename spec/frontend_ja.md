@@ -8,7 +8,7 @@
 
 ## `[frontend.component-declaration]` コンポーネント宣言
 
-`component`宣言はフロントエンド側のホストから呼び出される境界であり、通常のViruneの`fn`とは異なります。
+`component`は、フロントエンド側のホストから呼び出すコンポーネントを宣言します。通常のViruneの`fn`とは異なります。
 
 ```virune
 internal component UserPage(user: User) uses JavaScript {
@@ -20,7 +20,9 @@ internal component UserPage(user: User) uses JavaScript {
 }
 ```
 
-コンポーネントには通常の型付き引数と必須の`uses`節があります。一方、型パラメーター一覧、`async`修飾子、式本体、明示的な戻り値型は指定できません。コンポーネントは通常のViruneの呼び出し可能な値ではないため、通常の関数呼び出し構文では呼び出せません。
+コンポーネントには通常の型付き引数を指定し、`uses`節を必ず宣言します。型パラメーター、`async`修飾子、式だけで書く本体、明示的な戻り値型は指定できません。
+
+コンポーネントは通常のViruneの関数値ではないため、関数呼び出し構文で呼び出すこともできません。
 
 ## `[frontend.component-visibility]` コンポーネントの可視性
 
