@@ -26,9 +26,13 @@ internal component UserPage(user: User) uses JavaScript {
 
 ## `[frontend.component-visibility]` コンポーネントの可視性
 
-コンポーネントは、修飾子を付けなければモジュール内でのみ使用できます。`internal component`は`[module.visibility]`で定義されたパッケージまたはアプリケーションのスコープに属し、同じスコープにある別のViruneモジュールからインポートできます。
+修飾子のないコンポーネントは、そのモジュール内でしか使えません。
 
-Virune 1.0では、公開された`pub component`に対する安定したABIを定義しません。`pub component`宣言は、通常の公開関数やJavaScriptへの簡易的なエクスポートとはみなさず、拒否します。
+`internal component`は、`[module.visibility]`で定義されたパッケージまたはアプリケーションのスコープに属します。同じスコープであれば、別のViruneモジュールからインポートできます。
+
+Virune 1.0では、`pub component`を公開するための安定したABIを定義していません。
+
+`pub component`宣言は拒否します。通常の公開関数として扱ったり、JavaScriptへのエクスポートを省略して書く構文と解釈したりはしません。
 
 ## `[frontend.component-effects]` コンポーネントの副作用
 
@@ -38,7 +42,7 @@ Virune 1.0では、公開された`pub component`に対する安定したABIを�
 
 ## `[frontend.view-containment]` 名前を付けられないViewの結果
 
-`view`は、コンパイラーが管理する、型名を持たないViewの結果を生成します。ソースコード上で使用できる`View`型は定義せず、Viewの結果を`Unknown`や一般の`External`値として扱うこともありません。
+`view`の結果はコンパイラーが管理します。ソースコードから参照できる`View`型はなく、`Unknown`や通常の`External`値として扱うこともできません。
 
 Viewの結果は、次の位置でのみ使用できます。
 
