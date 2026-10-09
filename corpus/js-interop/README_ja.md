@@ -1,6 +1,6 @@
-# JavaScript相互運用の検証用corpus
+# JavaScript相互運用の検証データ
 
-Viruneの3段階のJavaScript相互運用を検証するため、代表的なnpmパッケージのAPIを、バージョンを固定して管理しています。
+Viruneの3段階のJavaScript相互運用を検証するため、npmパッケージから代表的なAPIを選び、バージョンを固定して検証しています。
 
 - Tier 1：対応範囲を絞って直接利用するAPI（Direct Facade）
 - Tier 2：コンパイル済みのTypeScriptアダプターを介して利用するAPI
