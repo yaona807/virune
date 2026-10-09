@@ -1,9 +1,9 @@
-# JavaScript Interop corpus
+# JavaScript相互運用の検証用corpus
 
-ViruneのThree-Tier JavaScript相互運用を検証するため、代表的なnpm APIを固定versionで管理します。
+Viruneの3段階のJavaScript相互運用を検証するため、代表的なnpmパッケージのAPIを、バージョンを固定して管理しています。
 
-- Tier 1：保守的な直接Facade
-- Tier 2：コンパイル済みTypeScript Adapter
-- Tier 3：型情報のない動的API向けunsafe escape hatch
+- Tier 1：型宣言から安全に直接利用できるAPI
+- Tier 2：コンパイル済みのTypeScriptアダプターを介して利用するAPI
+- Tier 3：型情報がないAPIや動的なAPI向けの、検証を省略する危険な利用方法（unsafe）
 
-ESM、`@types`分離CommonJS、generic overload、foreign object handle、Promise、Conditional型、callback中心APIを含みます。
+検証対象には、ESM、型定義を別の`@types`パッケージで提供するCommonJS、ジェネリクスのオーバーロード、外部オブジェクトのハンドル、Promise、条件型、コールバックを多用するAPIが含まれます。
