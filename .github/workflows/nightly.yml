@@ -44,7 +44,7 @@ jobs:
           VIRUNE_FUZZ_ARTIFACT_DIR: fuzz-regressions/artifacts/shard-${{ matrix.shard }}
       - name: Upload fuzz regressions
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: fuzz-regressions-${{ matrix.shard }}
           path: fuzz-regressions/artifacts/shard-${{ matrix.shard }}
@@ -67,7 +67,7 @@ jobs:
           VIRUNE_BINDING_CORPUS_REPORT: .cache/binding-corpus/report.current.json
       - name: Upload corpus report
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: binding-corpus-diagnostics
           path: |
@@ -101,7 +101,7 @@ jobs:
           VIRUNE_SEMANTIC_FUZZ_ARTIFACT_DIR: fuzz-regressions/semantic-artifacts/shard-${{ matrix.shard }}
       - name: Upload semantic fuzz regressions
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: semantic-fuzz-regressions-${{ matrix.shard }}
           path: fuzz-regressions/semantic-artifacts/shard-${{ matrix.shard }}
@@ -124,7 +124,7 @@ jobs:
           SOURCE_DATE_EPOCH: '0'
       - name: Upload reproducibility evidence
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: reproducible-release-evidence
           path: .cache/reproducible-release/
@@ -221,7 +221,7 @@ jobs:
           writeFileSync(join(output, 'execution.json'), JSON.stringify(evidence, null, '\t') + '\n', 'utf8');"
       - name: Upload non-promotable self-host evidence
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: selfhost-stage0-evidence-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
