@@ -38,7 +38,7 @@ jobs:
         run: node scripts/run-selfhost-rollback-smoke.mjs --output=.cache/selfhost-promotion-observation/fixed/legacy-rollback.json
       - name: Upload fixed evidence
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: selfhost-promotion-fixed-${{ github.run_id }}-${{ github.run_attempt }}
           path: .cache/selfhost-promotion-observation/fixed/*.json
@@ -69,7 +69,7 @@ jobs:
           --json
       - name: Upload baseline evidence
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: selfhost-promotion-baseline-${{ github.run_id }}-${{ github.run_attempt }}
           path: .cache/selfhost-promotion-observation/baseline.json
@@ -100,7 +100,7 @@ jobs:
           --json
       - name: Upload perturbed evidence
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: selfhost-promotion-perturbed-${{ github.run_id }}-${{ github.run_attempt }}
           path: .cache/selfhost-promotion-observation/perturbed.json
@@ -140,7 +140,7 @@ jobs:
           --json
       - name: Upload release core
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: selfhost-promotion-release-core-${{ github.run_id }}-${{ github.run_attempt }}
           path: .cache/selfhost-promotion-observation/release-core.json
@@ -178,7 +178,7 @@ jobs:
           --json
       - name: Upload cross-runner evidence
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: selfhost-promotion-cross-runner-${{ github.run_id }}-${{ github.run_attempt }}
           path: .cache/selfhost-promotion-observation/cross-runner.json
@@ -206,7 +206,7 @@ jobs:
         run: node scripts/run-selfhost-promotion-quality.mjs
       - name: Upload quality evidence
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: selfhost-promotion-quality-${{ github.run_id }}-${{ github.run_attempt }}
           path: .cache/selfhost-promotion-observation/quality.json
@@ -233,7 +233,7 @@ jobs:
         run: node scripts/run-selfhost-promotion-performance.mjs
       - name: Upload performance evidence
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: selfhost-promotion-performance-${{ github.run_id }}-${{ github.run_attempt }}
           path: .cache/selfhost-promotion-observation/performance.json
@@ -264,7 +264,7 @@ jobs:
       - name: Derive Product Artifact Closure identity
         run: node scripts/create-selfhost-promotion-subject.mjs
       - name: Upload Promotion Subject evidence
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: selfhost-promotion-subject-${{ github.run_id }}-${{ github.run_attempt }}
           path: .cache/selfhost-promotion-observation/promotion-subject.json
@@ -329,7 +329,7 @@ jobs:
           --source-workflow-ref="$SOURCE_WORKFLOW_REF"
           --source-fork="$SOURCE_FORK"
       - name: Upload canonical observation
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: selfhost-promotion-observation-${{ github.run_id }}-${{ github.run_attempt }}
           path: .cache/selfhost-promotion-observation/observation.json

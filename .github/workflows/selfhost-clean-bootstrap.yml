@@ -73,7 +73,7 @@ jobs:
           --output=.cache/selfhost-required-shadow/fixed/legacy-rollback.json
       - name: Upload fixed Seed and rollback evidence
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: selfhost-required-fixed-${{ github.event.pull_request.head.sha || github.sha }}
           path: .cache/selfhost-required-shadow/fixed/*.json
@@ -107,7 +107,7 @@ jobs:
           --json
       - name: Upload baseline clean-bootstrap evidence
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: selfhost-required-baseline-${{ github.event.pull_request.head.sha || github.sha }}
           path: .cache/selfhost-required-shadow/baseline/clean-bootstrap-baseline.json
@@ -141,7 +141,7 @@ jobs:
           --json
       - name: Upload perturbed clean-bootstrap evidence
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: selfhost-required-perturbed-${{ github.event.pull_request.head.sha || github.sha }}
           path: .cache/selfhost-required-shadow/perturbed/clean-bootstrap-perturbed.json
@@ -185,7 +185,7 @@ jobs:
           --json
       - name: Upload assembled release-core evidence
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: selfhost-required-release-core-${{ github.event.pull_request.head.sha || github.sha }}
           path: .cache/selfhost-required-shadow/release-core.json
@@ -227,7 +227,7 @@ jobs:
           --json
       - name: Upload cross-runner reproducibility evidence
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: selfhost-required-cross-runner-${{ github.event.pull_request.head.sha || github.sha }}
           path: .cache/selfhost-required-shadow/cross-runner.json
@@ -311,7 +311,7 @@ jobs:
           --json
       - name: Upload Required Shadow summary
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: selfhost-required-gate-${{ github.event.pull_request.head.sha || github.sha }}
           path: .cache/selfhost-required-shadow/required-gate.json

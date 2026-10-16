@@ -79,7 +79,7 @@ jobs:
         run: node scripts/write-ci-summary.mjs
       - name: Upload metadata evidence
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: ci-metadata-evidence-${{ github.sha }}
           path: |
@@ -109,7 +109,7 @@ jobs:
       - name: Package compiled output
         run: node scripts/run-ci-command.mjs --id package-compiled-output -- bash -lc "tar -czf .cache/compiled-output.tgz packages/*/dist integration/dist"
       - name: Upload compiled output
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: compiled-node-24-${{ github.sha }}
           path: .cache/compiled-output.tgz
@@ -120,7 +120,7 @@ jobs:
         run: node scripts/write-ci-summary.mjs
       - name: Upload build evidence
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: ci-evidence-build-ubuntu-node24
           path: |
@@ -161,7 +161,7 @@ jobs:
         run: node scripts/write-ci-summary.mjs
       - name: Upload core-test evidence
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: ci-evidence-core-tests-ubuntu-node24
           path: |
@@ -226,7 +226,7 @@ jobs:
         run: node scripts/write-ci-summary.mjs
       - name: Upload self-host inventory evidence
         if: always() && needs.classify.outputs.selfhost_inventory_required == 'true'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: ci-evidence-selfhost-inventory-ubuntu-node24-${{ github.sha }}
           path: |
@@ -289,7 +289,7 @@ jobs:
         run: node scripts/write-ci-summary.mjs
       - name: Upload quality evidence
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: ci-evidence-quality-ubuntu-node24
           path: |
@@ -342,7 +342,7 @@ jobs:
         run: node scripts/write-ci-summary.mjs
       - name: Upload semantic fuzz evidence
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: semantic-fuzz-pr-${{ matrix.shard }}-${{ github.sha }}
           path: |
@@ -413,7 +413,7 @@ jobs:
         run: node scripts/write-ci-summary.mjs
       - name: Upload compatibility evidence
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: ci-evidence-${{ matrix.id }}
           path: |
@@ -452,7 +452,7 @@ jobs:
         run: node scripts/write-ci-summary.mjs
       - name: Upload browser evidence
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: ci-evidence-browser-ubuntu-node24
           path: |
@@ -497,7 +497,7 @@ jobs:
         run: node scripts/write-ci-summary.mjs
       - name: Upload release artifacts
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: release-artifacts
           path: |
