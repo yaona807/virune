@@ -165,12 +165,12 @@ jobs:
         with:
           node-version: 24
       - name: Download fixed Seed and rollback evidence
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           name: selfhost-required-fixed-${{ github.event.pull_request.head.sha || github.sha }}
           path: .cache/selfhost-required-shadow/inputs/fixed
       - name: Download baseline clean-bootstrap evidence
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           name: selfhost-required-baseline-${{ github.event.pull_request.head.sha || github.sha }}
           path: .cache/selfhost-required-shadow/inputs/baseline
@@ -209,12 +209,12 @@ jobs:
         with:
           node-version: 24
       - name: Download baseline evidence
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           name: selfhost-required-baseline-${{ github.event.pull_request.head.sha || github.sha }}
           path: .cache/selfhost-required-shadow/inputs/baseline
       - name: Download perturbed evidence
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           name: selfhost-required-perturbed-${{ github.event.pull_request.head.sha || github.sha }}
           path: .cache/selfhost-required-shadow/inputs/perturbed
@@ -280,13 +280,13 @@ jobs:
           --json
       - name: Download assembled release-core evidence
         if: needs.classify.outputs.selfhost_required == 'true' && needs.release-core.result == 'success' && needs.compare.result == 'success'
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           name: selfhost-required-release-core-${{ github.event.pull_request.head.sha || github.sha }}
           path: .cache/selfhost-required-shadow/summary/release-core
       - name: Download cross-runner evidence
         if: needs.classify.outputs.selfhost_required == 'true' && needs.release-core.result == 'success' && needs.compare.result == 'success'
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           name: selfhost-required-cross-runner-${{ github.event.pull_request.head.sha || github.sha }}
           path: .cache/selfhost-required-shadow/summary/cross-runner

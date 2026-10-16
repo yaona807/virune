@@ -121,11 +121,11 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: 24
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           name: selfhost-promotion-fixed-${{ github.run_id }}-${{ github.run_attempt }}
           path: .cache/selfhost-promotion-observation/fixed
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           name: selfhost-promotion-baseline-${{ github.run_id }}-${{ github.run_attempt }}
           path: .cache/selfhost-promotion-observation
@@ -161,11 +161,11 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: 24
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           name: selfhost-promotion-baseline-${{ github.run_id }}-${{ github.run_attempt }}
           path: .cache/selfhost-promotion-observation
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           name: selfhost-promotion-perturbed-${{ github.run_id }}-${{ github.run_attempt }}
           path: .cache/selfhost-promotion-observation
@@ -257,7 +257,7 @@ jobs:
           cache: npm
       - run: npm ci --ignore-scripts
       - run: npm run build
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           name: selfhost-promotion-release-core-${{ github.run_id }}-${{ github.run_attempt }}
           path: .cache/selfhost-promotion-observation
@@ -294,23 +294,23 @@ jobs:
           cache: npm
       - run: npm ci --ignore-scripts
       - run: npm run build
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           name: selfhost-promotion-release-core-${{ github.run_id }}-${{ github.run_attempt }}
           path: .cache/selfhost-promotion-observation
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           name: selfhost-promotion-cross-runner-${{ github.run_id }}-${{ github.run_attempt }}
           path: .cache/selfhost-promotion-observation
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           name: selfhost-promotion-quality-${{ github.run_id }}-${{ github.run_attempt }}
           path: .cache/selfhost-promotion-observation
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           name: selfhost-promotion-performance-${{ github.run_id }}-${{ github.run_attempt }}
           path: .cache/selfhost-promotion-observation
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           name: selfhost-promotion-subject-${{ github.run_id }}-${{ github.run_attempt }}
           path: .cache/selfhost-promotion-observation
